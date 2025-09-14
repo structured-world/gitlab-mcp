@@ -487,7 +487,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@eslint/js@npm:9.35.0":
+"@eslint/js@npm:9.35.0, @eslint/js@npm:^9.35.0":
   version: 9.35.0
   resolution: "@eslint/js@npm:9.35.0"
   checksum: 10c0/d40fe38724bc76c085c0b753cdf937fa35c0d6807ae76b2632e3f5f66c3040c91adcf1aff2ce70b4f45752e60629fadc415eeec9af3be3c274bae1cac54b9840
@@ -1582,6 +1582,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@structured-world/mcp-gitlab@workspace:."
   dependencies:
+    "@eslint/js": "npm:^9.35.0"
     "@graphql-typed-document-node/core": "npm:^3.2.0"
     "@modelcontextprotocol/sdk": "npm:^1.18.0"
     "@semantic-release/changelog": "npm:^6.0.3"

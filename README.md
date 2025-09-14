@@ -10,7 +10,7 @@ A fork of the original [@structured-world/mcp-gitlab]
 ![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)
 ![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)
 ![Codecov](https://codecov.io/gh/structured-world/gitlab-mcp/branch/main/graph/badge.svg)
-[![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://structured-world.github.io/project-nexus-mcp/coverage/)
+[![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://structured-world.github.io/gitlab-mcp/coverage/)
 
 GitLab MCP(Model Context Protocol) Server. **Includes bug fixes and improvements over the original GitLab MCP server.**
 

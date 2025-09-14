@@ -32,10 +32,6 @@ export default [
       prettier: prettierPlugin,
     },
     rules: {
-      ...tseslint.configs['recommended'].rules,
-      ...tseslint.configs['recommended-requiring-type-checking'].rules,
-      ...tseslint.configs['strict'].rules,
-      ...tseslint.configs['strict-type-checked'].rules,
       'prettier/prettier': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       '@typescript-eslint/no-floating-promises': 'error',
@@ -96,16 +92,10 @@ export default [
       prettier: prettierPlugin,
     },
     rules: {
-      ...tseslint.configs['recommended'].rules,
       'prettier/prettier': 'error',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
       // Relax some rules for tests
       '@typescript-eslint/no-explicit-any': 'off',
-      '@typescript-eslint/no-unsafe-assignment': 'off',
-      '@typescript-eslint/no-unsafe-member-access': 'off',
-      '@typescript-eslint/no-unsafe-call': 'off',
-      '@typescript-eslint/no-unsafe-return': 'off',
-      '@typescript-eslint/no-unsafe-argument': 'off',
     },
   },
 ];

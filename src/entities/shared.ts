@@ -92,15 +92,17 @@ export const GitLabProjectSchema = z.object({
   empty_repo: flexibleBoolean,
   archived: flexibleBoolean,
   resolve_outdated_diff_discussions: flexibleBoolean.optional(),
-  container_expiration_policy: z.object({
-    cadence: z.string(),
-    enabled: flexibleBoolean,
-    keep_n: z.number(),
-    older_than: z.string(),
-    name_regex: z.string(),
-    name_regex_keep: z.string().nullable(),
-    next_run_at: z.string(),
-  }).optional(),
+  container_expiration_policy: z
+    .object({
+      cadence: z.string(),
+      enabled: flexibleBoolean,
+      keep_n: z.number(),
+      older_than: z.string(),
+      name_regex: z.string(),
+      name_regex_keep: z.string().nullable(),
+      next_run_at: z.string(),
+    })
+    .optional(),
   repository_object_format: z.string().optional(),
   issues_enabled: flexibleBoolean,
   merge_requests_enabled: flexibleBoolean,
@@ -202,16 +204,24 @@ export const GitLabProjectSchema = z.object({
   prevent_merge_without_jira_issue: flexibleBoolean.optional(),
   duo_remote_flows_enabled: flexibleBoolean.optional(),
   spp_repository_pipeline_access: flexibleBoolean.optional(),
-  permissions: z.object({
-    project_access: z.object({
-      access_level: z.number(),
-      notification_level: z.number(),
-    }).nullable().optional(),
-    group_access: z.object({
-      access_level: z.number(),
-      notification_level: z.number(),
-    }).nullable().optional(),
-  }).optional(),
+  permissions: z
+    .object({
+      project_access: z
+        .object({
+          access_level: z.number(),
+          notification_level: z.number(),
+        })
+        .nullable()
+        .optional(),
+      group_access: z
+        .object({
+          access_level: z.number(),
+          notification_level: z.number(),
+        })
+        .nullable()
+        .optional(),
+    })
+    .optional(),
 });
 
 // Label schema (shared for both read and write)

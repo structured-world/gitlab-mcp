@@ -146,8 +146,14 @@ export const GetBranchDiffsSchema = ProjectParamsSchema.extend({
 // Merge request operations (read-only)
 export const GetMergeRequestSchema = ProjectParamsSchema.extend({
   merge_request_iid: z.coerce.string().describe('The internal ID of the merge request'),
-  include_diverged_commits_count: z.boolean().optional().describe('If true, response includes commits behind the target branch'),
-  include_rebase_in_progress: z.boolean().optional().describe('If true, response includes whether a rebase operation is in progress'),
+  include_diverged_commits_count: z
+    .boolean()
+    .optional()
+    .describe('If true, response includes commits behind the target branch'),
+  include_rebase_in_progress: z
+    .boolean()
+    .optional()
+    .describe('If true, response includes whether a rebase operation is in progress'),
 });
 
 export const GetMergeRequestDiffsSchema = GetMergeRequestSchema.extend({

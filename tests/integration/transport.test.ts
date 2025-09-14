@@ -72,7 +72,7 @@ describe("GitLab MCP Server - Stdio Transport", () => {
 
   // Prepare environment variables for stdio server
   const stdioEnv: Record<string, string> = {
-    GITLAB_PERSONAL_ACCESS_TOKEN: GITLAB_TOKEN,
+    GITLAB_TOKEN: GITLAB_TOKEN,
     GITLAB_API_URL: `${GITLAB_API_URL}/api/v4`,
     GITLAB_PROJECT_ID: TEST_PROJECT_ID,
     GITLAB_READ_ONLY_MODE: "true",

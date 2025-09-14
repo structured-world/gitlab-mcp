@@ -1,31 +1,19 @@
-import fetchCookie from "fetch-cookie";
-import * as fs from "fs";
-import { HttpProxyAgent } from "http-proxy-agent";
-import { HttpsProxyAgent } from "https-proxy-agent";
-import nodeFetch, { RequestInit } from "node-fetch";
-import { SocksProxyAgent } from "socks-proxy-agent";
-import { CookieJar, parse as parseCookie } from "tough-cookie";
-import { pino } from "pino";
+import fetchCookie from 'fetch-cookie';
+import * as fs from 'fs';
+import { HttpProxyAgent } from 'http-proxy-agent';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import nodeFetch, { RequestInit } from 'node-fetch';
+import { SocksProxyAgent } from 'socks-proxy-agent';
+import { CookieJar, parse as parseCookie } from 'tough-cookie';
+import { logger } from './logger';
 import {
   GITLAB_AUTH_COOKIE_PATH,
   GITLAB_CA_CERT_PATH,
   HTTP_PROXY,
   HTTPS_PROXY,
   NODE_TLS_REJECT_UNAUTHORIZED,
-  GITLAB_PERSONAL_ACCESS_TOKEN,
-} from "./config";
-
-const logger = pino({
-  level: process.env.LOG_LEVEL ?? "info",
-  transport: {
-    target: "pino-pretty",
-    options: {
-      colorize: true,
-      translateTime: true,
-      ignore: "pid,hostname",
-    },
-  },
-});
+  GITLAB_TOKEN,
+} from './config';
 
 // Cookie handling
 const createCookieJar = (): CookieJar | null => {
@@ -35,15 +23,15 @@ const createCookieJar = (): CookieJar | null => {
 
   try {
     const jar = new CookieJar();
-    const cookieString = fs.readFileSync(GITLAB_AUTH_COOKIE_PATH, "utf-8");
+    const cookieString = fs.readFileSync(GITLAB_AUTH_COOKIE_PATH, 'utf-8');
 
-    cookieString.split("\n").forEach(line => {
+    cookieString.split('\n').forEach((line) => {
       const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith("#")) {
+      if (trimmed && !trimmed.startsWith('#')) {
         try {
           const cookie = parseCookie(trimmed);
           if (cookie) {
-            jar.setCookieSync(cookie, "https://gitlab.com");
+            jar.setCookieSync(cookie, 'https://gitlab.com');
           }
         } catch (cookieError: unknown) {
           logger.warn({ err: cookieError }, `Failed to parse cookie: ${trimmed}`);
@@ -53,7 +41,7 @@ const createCookieJar = (): CookieJar | null => {
 
     return jar;
   } catch (error: unknown) {
-    logger.error({ err: error }, "Error loading cookie file");
+    logger.error({ err: error }, 'Error loading cookie file');
     return null;
   }
 };
@@ -66,12 +54,12 @@ let agent: HttpProxyAgent<string> | HttpsProxyAgent<string> | SocksProxyAgent | 
 if (HTTP_PROXY || HTTPS_PROXY) {
   const proxyUrl = HTTPS_PROXY ?? HTTP_PROXY;
   if (!proxyUrl) {
-    throw new Error("Proxy URL is undefined");
+    throw new Error('Proxy URL is undefined');
   }
 
-  if (proxyUrl.startsWith("socks4://") || proxyUrl.startsWith("socks5://")) {
+  if (proxyUrl.startsWith('socks4://') || proxyUrl.startsWith('socks5://')) {
     agent = new SocksProxyAgent(proxyUrl);
-  } else if (proxyUrl.startsWith("https://")) {
+  } else if (proxyUrl.startsWith('https://')) {
     agent = new HttpsProxyAgent(proxyUrl);
   } else {
     agent = new HttpProxyAgent(proxyUrl);
@@ -81,9 +69,9 @@ if (HTTP_PROXY || HTTPS_PROXY) {
 }
 
 // TLS configuration
-if (NODE_TLS_REJECT_UNAUTHORIZED === "0") {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
-  logger.warn("TLS certificate verification disabled");
+if (NODE_TLS_REJECT_UNAUTHORIZED === '0') {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  logger.warn('TLS certificate verification disabled');
 }
 
 // CA certificate handling
@@ -99,13 +87,13 @@ if (GITLAB_CA_CERT_PATH) {
 
 // HTTP headers and configuration
 export const DEFAULT_HEADERS: Record<string, string> = {
-  "User-Agent": "GitLab MCP Server",
-  "Content-Type": "application/json",
-  Accept: "application/json",
+  'User-Agent': 'GitLab MCP Server',
+  'Content-Type': 'application/json',
+  Accept: 'application/json',
 };
 
-if (GITLAB_PERSONAL_ACCESS_TOKEN) {
-  DEFAULT_HEADERS.Authorization = `Bearer ${GITLAB_PERSONAL_ACCESS_TOKEN}`;
+if (GITLAB_TOKEN) {
+  DEFAULT_HEADERS.Authorization = `Bearer ${GITLAB_TOKEN}`;
 }
 
 export const DEFAULT_FETCH_CONFIG: RequestInit = {
@@ -116,5 +104,3 @@ export const DEFAULT_FETCH_CONFIG: RequestInit = {
 
 // Export configured fetch function
 export const fetch = cookieJar ? fetchCookie(nodeFetch, cookieJar) : nodeFetch;
-
-export { logger };

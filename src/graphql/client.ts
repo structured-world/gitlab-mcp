@@ -1,6 +1,6 @@
-import { ExecutionResult, print } from "graphql";
-import { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import fetch from "node-fetch";
+import { ExecutionResult, print } from 'graphql';
+import { TypedDocumentNode } from '@graphql-typed-document-node/core';
+import { fetch } from '../http-client';
 
 export interface GraphQLClientOptions {
   endpoint: string;
@@ -8,25 +8,25 @@ export interface GraphQLClientOptions {
 }
 
 export class GraphQLClient {
-  private endpoint: string;
+  public readonly endpoint: string;
   private defaultHeaders: Record<string, string>;
 
-  constructor(options: GraphQLClientOptions) {
-    this.endpoint = options.endpoint;
-    this.defaultHeaders = options.headers ?? {};
+  constructor(endpoint: string, options?: { headers?: Record<string, string> }) {
+    this.endpoint = endpoint;
+    this.defaultHeaders = options?.headers ?? {};
   }
 
   async request<TResult = unknown, TVariables = Record<string, unknown>>(
     document: TypedDocumentNode<TResult, TVariables>,
     variables?: TVariables,
-    requestHeaders?: Record<string, string>
+    requestHeaders?: Record<string, string>,
   ): Promise<TResult> {
     const query = print(document);
 
     const response = await fetch(this.endpoint, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
         ...this.defaultHeaders,
         ...requestHeaders,
       },
@@ -43,11 +43,11 @@ export class GraphQLClient {
     const result: ExecutionResult<TResult> = (await response.json()) as ExecutionResult<TResult>;
 
     if (result.errors) {
-      throw new Error(`GraphQL errors: ${result.errors.map(e => e.message).join(", ")}`);
+      throw new Error(`GraphQL errors: ${result.errors.map((e) => e.message).join(', ')}`);
     }
 
     if (!result.data) {
-      throw new Error("GraphQL request returned no data");
+      throw new Error('GraphQL request returned no data');
     }
 
     return result.data;

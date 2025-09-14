@@ -1,18 +1,18 @@
-import { z } from "zod";
-import { PaginationOptionsSchema } from "../shared.js";
-import { flexibleBoolean } from "../utils.js";
+import { z } from 'zod';
+import { PaginationOptionsSchema } from '../shared';
+import { flexibleBoolean } from '../utils';
 
 // Read-only wiki operation schemas
 export const ListWikiPagesSchema = z
   .object({
-    project_id: z.coerce.string().describe("Project ID or URL-encoded path"),
-    with_content: flexibleBoolean.optional().describe("Include content of the wiki pages"),
+    project_id: z.coerce.string().describe('Project ID or URL-encoded path'),
+    with_content: flexibleBoolean.optional().describe('Include content of the wiki pages'),
   })
   .merge(PaginationOptionsSchema);
 
 export const GetWikiPageSchema = z.object({
-  project_id: z.coerce.string().describe("Project ID or URL-encoded path"),
-  slug: z.string().describe("URL-encoded slug of the wiki page"),
+  project_id: z.coerce.string().describe('Project ID or URL-encoded path'),
+  slug: z.string().describe('URL-encoded slug of the wiki page'),
 });
 
 // Define wiki response schemas

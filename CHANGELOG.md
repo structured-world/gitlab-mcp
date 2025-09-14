@@ -1,3 +1,48 @@
+## [2.1.0] - 2024-12-15
+
+### Added
+- Comprehensive Docker support with multi-stage builds
+- Docker Compose configuration with multiple deployment scenarios (HTTP, SSE, stdio, read-only)
+- Work Items GraphQL support for GitLab Premium/Ultimate instances
+- Enhanced environment variable configuration
+- Complete test suite with Zero Data Validation Rule implementation
+- Comprehensive test lifecycle management (create → use → cleanup pattern)
+- Support for all GitLab tiers with automatic feature detection
+- Enhanced security with non-root Docker user and health checks
+
+### Changed
+- **BREAKING**: Package name changed from `@zereight/mcp-gitlab` to `@structured-world/mcp-gitlab`
+- Updated Docker image repository to `ghcr.io/structured-world/mcp-gitlab`
+- Improved README with categorized tools list (94 total tools)
+- Enhanced documentation with comprehensive Docker deployment instructions
+- Refactored test architecture to follow strict data lifecycle rules
+- Updated all test files to create their own test infrastructure
+- Improved error handling and validation across all test suites
+
+### Fixed
+- Removed hardcoded test values and replaced with dynamic test data
+- Fixed URL encoding issues in test scripts
+- Corrected package references throughout documentation
+- Fixed test dependencies on external test infrastructure
+- Improved test reliability and isolation
+
+### Infrastructure
+- Updated Dockerfile with comprehensive environment variable support
+- Added multi-stage Docker build for optimized image size
+- Enhanced GitHub Actions integration
+- Improved Jest test coverage reporting
+- Added semantic release automation
+- Comprehensive environment configuration documentation
+
+### Documentation
+- Complete rewrite of tools documentation with categorization
+- Added comprehensive Docker deployment guide
+- Updated environment variable documentation
+- Enhanced development setup instructions
+- Added contribution guidelines and testing procedures
+
+---
+
 #### [v2.0.5](https://github.com/zereight/gitlab-mcp/compare/v2.0.4...v2.0.5)
 
 - Add ability to trigger / retry / cancel individual jobs [`#233`](https://github.com/zereight/gitlab-mcp/pull/233)

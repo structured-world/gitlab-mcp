@@ -1,8 +1,8 @@
 // Transport mode constants and type
 const TransportModeObj = {
-  STDIO: "stdio",
-  SSE: "sse",
-  STREAMABLE_HTTP: "streamable-http",
+  STDIO: 'stdio',
+  SSE: 'sse',
+  STREAMABLE_HTTP: 'streamable-http',
 } as const;
 
 export { TransportModeObj as TransportMode };

@@ -9,7 +9,7 @@ import {
   pipelineReadOnlyTools,
   workitemsTools,
   workitemsReadOnlyTools,
-} from "./entities";
+} from './entities';
 import {
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
@@ -17,8 +17,10 @@ import {
   USE_MILESTONE,
   USE_PIPELINE,
   USE_WORKITEMS,
-} from "./config";
-import { ToolDefinition } from "./types";
+} from './config';
+import { ToolDefinition } from './types';
+import { ToolAvailability } from './services/ToolAvailability';
+import { logger } from './logger';
 
 // Build all available tools by combining entities based on configuration
 function buildAllTools(): ToolDefinition[] {
@@ -77,21 +79,32 @@ function buildReadOnlyTools(): string[] {
 export const readOnlyTools = buildReadOnlyTools();
 
 /**
- * Get filtered tools based on configuration
+ * Get filtered tools based on configuration, version, and tier
  */
 export function getFilteredTools(): ToolDefinition[] {
   let tools = [...allTools];
 
   // Filter out read-only tools if in read-only mode
   if (GITLAB_READ_ONLY_MODE) {
-    tools = tools.filter(tool => readOnlyTools.includes(tool.name));
+    tools = tools.filter((tool) => readOnlyTools.includes(tool.name));
   }
 
   // Filter out tools matching the denied regex
   if (GITLAB_DENIED_TOOLS_REGEX) {
     const regex = GITLAB_DENIED_TOOLS_REGEX;
-    tools = tools.filter(tool => !regex.test(tool.name));
+    tools = tools.filter((tool) => !regex.test(tool.name));
   }
 
-  return tools;
+  // Filter out tools that are not available for the current GitLab version/tier
+  const availableTools: ToolDefinition[] = [];
+  for (const tool of tools) {
+    if (ToolAvailability.isToolAvailable(tool.name)) {
+      availableTools.push(tool);
+    } else {
+      const reason = ToolAvailability.getUnavailableReason(tool.name);
+      logger.debug(`Tool '${tool.name}' filtered out: ${reason}`);
+    }
+  }
+
+  return availableTools;
 }

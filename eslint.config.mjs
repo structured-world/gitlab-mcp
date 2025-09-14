@@ -43,7 +43,6 @@ export default [
       '@typescript-eslint/no-unsafe-call': 'error',
       '@typescript-eslint/no-unsafe-return': 'error',
       '@typescript-eslint/restrict-template-expressions': 'error',
-      // Дополнительные строгие правила для соответствия ошибкам компилятора TypeScript
       '@typescript-eslint/no-unsafe-argument': 'error',
       '@typescript-eslint/restrict-plus-operands': 'error',
       '@typescript-eslint/unbound-method': 'error',
@@ -51,7 +50,6 @@ export default [
       '@typescript-eslint/prefer-optional-chain': 'error',
       '@typescript-eslint/no-non-null-assertion': 'error',
       '@typescript-eslint/prefer-as-const': 'error',
-      // Правила для строгого контроля типов аргументов функций
       '@typescript-eslint/no-explicit-any': 'error',
       '@typescript-eslint/no-extraneous-class': 'off',
     },

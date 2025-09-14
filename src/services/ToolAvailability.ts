@@ -423,7 +423,7 @@ export class ToolAvailability {
       }
 
       return null; // Tool is available
-    } catch (error) {
+    } catch {
       return 'GitLab connection not initialized';
     }
   }
@@ -462,13 +462,13 @@ export class ToolAvailability {
 
   public static getToolsByTier(tier: 'free' | 'premium' | 'ultimate'): string[] {
     return Object.entries(this.toolRequirements)
-      .filter(([_, requirement]) => requirement.requiredTier === tier)
+      .filter(([, requirement]) => requirement.requiredTier === tier)
       .map(([toolName]) => toolName);
   }
 
   public static getToolsByMinVersion(minVersion: number): string[] {
     return Object.entries(this.toolRequirements)
-      .filter(([_, requirement]) => requirement.minVersion >= minVersion)
+      .filter(([, requirement]) => requirement.minVersion >= minVersion)
       .map(([toolName]) => toolName);
   }
 }

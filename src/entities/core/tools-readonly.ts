@@ -9,12 +9,7 @@ import {
   ListMergeRequestDiscussionsSchema,
   GetDraftNoteSchema,
   ListDraftNotesSchema,
-  ListIssuesSchema,
-  MyIssuesSchema,
-  GetIssueSchema,
-  ListIssueLinksSchema,
-  ListIssueDiscussionsSchema,
-  GetIssueLinkSchema,
+  // Removed unused issue imports - migrated to Work Items GraphQL
   ListNamespacesSchema,
   GetNamespaceSchema,
   VerifyNamespaceSchema,

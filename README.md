@@ -207,35 +207,30 @@ docker run -i --rm \
 13. `upload_markdown` - Upload a file to a GitLab project for use in markdown content
 14. `download_attachment` - Download an uploaded file from a GitLab project by secret and filename
 
-### Issues Management
-15. `create_issue` - Create a new issue in a GitLab project
-16. `list_issues` - List issues (default: created by current user only; use scope='all' for all accessible issues)
-17. `my_issues` - List issues assigned to the authenticated user (defaults to open issues)
-18. `get_issue` - Get details of a specific issue in a GitLab project
-19. `update_issue` - Update an issue in a GitLab project
-20. `delete_issue` - Delete an issue from a GitLab project
-21. `list_issue_links` - List all issue links for a specific issue
-22. `list_issue_discussions` - List discussions for an issue in a GitLab project
-23. `get_issue_link` - Get a specific issue link
-24. `create_issue_link` - Create an issue link between two issues
-25. `delete_issue_link` - Delete an issue link
-26. `create_note` - Create a new note (comment) to an issue or merge request
-27. `update_issue_note` - Modify an existing issue thread note
-28. `create_issue_note` - Add a new note to an existing issue thread
+### Issues Management (Legacy - Use Work Items for new projects)
+15. `list_issues` - List issues (default: created by current user only; use scope='all' for all accessible issues)
+16. `my_issues` - List issues assigned to the authenticated user (defaults to open issues)
+17. `get_issue` - Get details of a specific issue in a GitLab project
+18. `list_issue_links` - List all issue links for a specific issue
+19. `list_issue_discussions` - List discussions for an issue in a GitLab project
+20. `get_issue_link` - Get a specific issue link
+21. `create_note` - Create a new note (comment) to an issue or merge request
+
+**Note:** Issue creation and modification has been migrated to the Work Items GraphQL API. Use `create_work_item` and `update_work_item` instead.
 
 ### Merge Requests & Code Review
-29. `create_merge_request` - Create a new merge request in a GitLab project
-30. `list_merge_requests` - List merge requests in a GitLab project with filtering options
-31. `get_merge_request` - Get details of a merge request (Either mergeRequestIid or branchName must be provided)
-32. `get_merge_request_diffs` - Get the changes/diffs of a merge request (Either mergeRequestIid or branchName must be provided)
-33. `list_merge_request_diffs` - List merge request diffs with pagination support (Either mergeRequestIid or branchName must be provided)
-34. `get_branch_diffs` - Get the changes/diffs between two branches or commits in a GitLab project
-35. `update_merge_request` - Update a merge request (Either mergeRequestIid or branchName must be provided)
-36. `merge_merge_request` - Merge a merge request in a GitLab project
-37. `create_merge_request_thread` - Create a new thread on a merge request
-38. `mr_discussions` - List discussion items for a merge request
-39. `update_merge_request_note` - Modify an existing merge request thread note
-40. `create_merge_request_note` - Add a new note to an existing merge request thread
+22. `create_merge_request` - Create a new merge request in a GitLab project
+23. `list_merge_requests` - List merge requests in a GitLab project with filtering options
+24. `get_merge_request` - Get details of a merge request (Either mergeRequestIid or branchName must be provided)
+25. `get_merge_request_diffs` - Get the changes/diffs of a merge request (Either mergeRequestIid or branchName must be provided)
+26. `list_merge_request_diffs` - List merge request diffs with pagination support (Either mergeRequestIid or branchName must be provided)
+27. `get_branch_diffs` - Get the changes/diffs between two branches or commits in a GitLab project
+28. `update_merge_request` - Update a merge request (Either mergeRequestIid or branchName must be provided)
+29. `merge_merge_request` - Merge a merge request in a GitLab project
+30. `create_merge_request_thread` - Create a new thread on a merge request
+31. `mr_discussions` - List discussion items for a merge request
+32. `update_merge_request_note` - Modify an existing merge request thread note
+33. `create_merge_request_note` - Add a new note to an existing merge request thread
 
 ### Draft Notes Management
 41. `get_draft_note` - Get a single draft note from a merge request

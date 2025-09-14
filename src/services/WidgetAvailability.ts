@@ -80,14 +80,17 @@ export class WidgetAvailability {
       const actualTierLevel = tierHierarchy[instanceInfo.tier];
 
       return actualTierLevel >= requiredTierLevel;
-    } catch (error) {
+    } catch {
       // If connection not initialized, assume widget not available
       return false;
     }
   }
 
   public static getAvailableWidgets(): WorkItemWidgetType[] {
-    return Object.values(WorkItemWidgetType).filter((widget) => this.isWidgetAvailable(widget));
+    return Object.values(WorkItemWidgetType).filter(
+      (widget): widget is WorkItemWidgetType =>
+        typeof widget === 'string' && this.isWidgetAvailable(widget),
+    );
   }
 
   public static getWidgetRequirement(widget: WorkItemWidgetType): WidgetRequirement | undefined {

@@ -4,7 +4,6 @@ import {
   CreateOrUpdateFileSchema,
   CreateRepositorySchema,
   PushFilesSchema,
-  CreateIssueSchema,
   CreateMergeRequestSchema,
   ForkRepositorySchema,
   CreateBranchSchema,
@@ -18,12 +17,7 @@ import {
   DeleteDraftNoteSchema,
   PublishDraftNoteSchema,
   BulkPublishDraftNotesSchema,
-  UpdateIssueNoteSchema,
-  CreateIssueNoteSchema,
-  UpdateIssueSchema,
-  DeleteIssueSchema,
-  CreateIssueLinkSchema,
-  DeleteIssueLinkSchema,
+  // Removed unused issue-related imports - migrated to Work Items GraphQL
   CreateLabelSchema,
   UpdateLabelSchema,
   DeleteLabelSchema,
@@ -52,11 +46,7 @@ export const coreWriteTools: ToolDefinition[] = [
     description: 'Push multiple files to a GitLab project in a single commit',
     inputSchema: zodToJsonSchema(PushFilesSchema),
   },
-  {
-    name: 'create_issue',
-    description: 'Create a new issue in a GitLab project',
-    inputSchema: zodToJsonSchema(CreateIssueSchema),
-  },
+  // NOTE: create_issue has been removed - use create_work_item instead (Work Items GraphQL API)
   {
     name: 'create_merge_request',
     description: 'Create a new merge request in a GitLab project',

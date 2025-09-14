@@ -52,12 +52,6 @@ interface VersionMetadata {
   enterprise?: boolean;
 }
 
-interface CurrentUser {
-  id: string;
-  username: string;
-  name: string;
-}
-
 const VERSION_QUERY = gql`
   query GetVersionInfo {
     metadata {
@@ -132,7 +126,7 @@ export class GitLabVersionDetector {
     }
 
     const version = await this.detectVersion();
-    const tier = await this.detectTier(version);
+    const tier = await this.detectTier();
     const features = this.determineFeatures(version, tier);
 
     this.cachedInfo = {
@@ -173,12 +167,17 @@ export class GitLabVersionDetector {
     return 'unknown';
   }
 
-  private async detectTier(version: string): Promise<GitLabTier> {
+  private async detectTier(): Promise<GitLabTier> {
     try {
-      const response = await this.client.request<{ currentLicense: any }>(LICENSE_QUERY);
+      interface LicenseResponse {
+        currentLicense: {
+          plan?: string;
+        };
+      }
+      const response = await this.client.request<LicenseResponse>(LICENSE_QUERY);
 
       if (response.currentLicense) {
-        const plan = response.currentLicense.plan?.toLowerCase() || '';
+        const plan = response.currentLicense.plan?.toLowerCase() ?? '';
 
         if (plan.includes('ultimate') || plan.includes('gold')) {
           return 'ultimate';
@@ -195,18 +194,28 @@ export class GitLabVersionDetector {
 
   private async detectTierByFeatures(): Promise<GitLabTier> {
     try {
-      const response = await this.client.request<any>(FEATURE_DETECTION_QUERY, {
+      interface FeatureResponse {
+        group: {
+          epicsEnabled?: boolean;
+          iterationsEnabled?: { nodes: unknown[] };
+          workItemTypesEnabled?: {
+            nodes: Array<{ name: string }>;
+          };
+        };
+      }
+      const response = await this.client.request<FeatureResponse>(FEATURE_DETECTION_QUERY, {
         groupPath: this.testGroupPath,
       });
 
       const group = response.group;
 
       if (group?.epicsEnabled) {
-        const hasIterations = group.iterationsEnabled?.nodes?.length > 0;
+        const hasIterations = (group.iterationsEnabled?.nodes?.length ?? 0) > 0;
 
-        const hasAdvancedWorkItems = group.workItemTypesEnabled?.nodes?.some((type: any) =>
-          ['OBJECTIVE', 'KEY_RESULT', 'REQUIREMENT'].includes(type.name),
-        );
+        const hasAdvancedWorkItems =
+          group.workItemTypesEnabled?.nodes?.some((type) =>
+            ['OBJECTIVE', 'KEY_RESULT', 'REQUIREMENT'].includes(type.name),
+          ) ?? false;
 
         if (hasAdvancedWorkItems) {
           return 'ultimate';

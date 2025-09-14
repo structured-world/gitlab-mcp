@@ -13,9 +13,7 @@ export class ConnectionManager {
   private constructor() {}
 
   public static getInstance(): ConnectionManager {
-    if (!ConnectionManager.instance) {
-      ConnectionManager.instance = new ConnectionManager();
-    }
+    ConnectionManager.instance ??= new ConnectionManager();
     return ConnectionManager.instance;
   }
 
@@ -49,13 +47,13 @@ export class ConnectionManager {
           version: this.instanceInfo.version,
           tier: this.instanceInfo.tier,
           features: Object.entries(this.instanceInfo.features)
-            .filter(([_, enabled]) => enabled)
+            .filter(([, enabled]) => enabled)
             .map(([feature]) => feature),
         },
         'GitLab instance detected',
       );
     } catch (error) {
-      logger.error({ err: error }, 'Failed to initialize connection');
+      logger.error({ err: error as Error }, 'Failed to initialize connection');
       throw error;
     }
   }

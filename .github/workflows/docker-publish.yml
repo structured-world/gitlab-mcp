@@ -1,39 +1,321 @@
-name: Docker Publish
+# GitHub Actions Workflow: Docker Build and Publish
+#
+# This workflow builds a Docker image for Project Nexus MCP and publishes it to:
+# - GitHub Container Registry (ghcr.io) - primary
+# - Docker Hub (optional, if configured)
+#
+# Triggers:
+# - Push to main branch (builds :latest)
+# - Push to tags matching v* (builds versioned releases)
+# - Pull requests (builds for testing, doesn't publish)
+# - Manual workflow dispatch
+#
+# Registry URLs:
+# - GHCR: ghcr.io/structured-world/project-nexus-mcp
+# - Docker Hub: structuredworld/project-nexus-mcp (if configured)
+
+name: Build and Publish Docker Image
 
 on:
-  release:
-    types: [published]
+  # Trigger on pushes to main branch
+  push:
+    branches:
+      - main
+    # Trigger on version tags
+    tags:
+      - "v*.*.*"
+      - "v*.*.*-*"
+
+  # Trigger on pull requests for testing (no publish)
+  pull_request:
+    branches:
+      - main
+
+  # Allow manual triggering
+  workflow_dispatch:
+    inputs:
+      push_to_registries:
+        description: "Push to registries (otherwise just build)"
+        required: false
+        default: "true"
+        type: boolean
+
+# Define environment variables used throughout the workflow
+env:
+  # Registry configuration
+  GHCR_REGISTRY: ghcr.io
+  DOCKER_HUB_REGISTRY: docker.io
+
+  # Image names (without registry prefix)
+  IMAGE_NAME: structured-world/project-nexus-mcp
+  DOCKER_HUB_IMAGE: structuredworld/project-nexus-mcp
+
+# Ensure only one build runs at a time for the same ref
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  docker:
+  # Job 1: Build and test the Docker image
+  build-and-test:
+    name: Build and Test Docker Image
     runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    # Set permissions for the job
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # for attestations
 
+    # Output metadata for use in subsequent jobs
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-metadata: ${{ steps.meta.outputs.json }}
+      should-publish: ${{ steps.should-publish.outputs.result }}
+
+    steps:
+      # Step 1: Check out the repository code
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history for better build context
+          fetch-depth: 0
+
+      # Step 2: Set up Docker Buildx for advanced building features
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+        with:
+          # Enable advanced features like multi-platform builds and caching
+          driver-opts: |
+            network=host
 
-      - name: Login to Docker Hub
+      # Step 3: Log in to GitHub Container Registry
+      - name: Log in to GitHub Container Registry
+        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata for Docker
+      # Step 4: Log in to Docker Hub (optional)
+      # Uncomment and configure if you want to publish to Docker Hub
+      # - name: Log in to Docker Hub
+      #   if: github.event_name != 'pull_request' && secrets.DOCKER_HUB_TOKEN
+      #   uses: docker/login-action@v3
+      #   with:
+      #     registry: ${{ env.DOCKER_HUB_REGISTRY }}
+      #     username: ${{ secrets.DOCKER_HUB_USERNAME }}
+      #     password: ${{ secrets.DOCKER_HUB_TOKEN }}
+
+      # Step 5: Extract metadata (tags, labels) for Docker images
+      - name: Extract metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: iwakitakuma/gitlab-mcp
+          images: |
+            ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Tag strategy:
+          # - main branch -> :latest
+          # - PRs -> :pr-<number>
+          # - tags -> :version (e.g., :1.0.0)
+          # - tags -> :major.minor (e.g., :1.0)
+          # - tags -> :major (e.g., :1)
           tags: |
+            type=ref,event=branch
+            type=ref,event=pr
             type=semver,pattern={{version}}
-            latest
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}},enable={{is_default_branch}}
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            org.opencontainers.image.title=Project Nexus MCP
+            org.opencontainers.image.description=Unified MCP proxy for DevOps platforms (GitHub, GitLab, Azure DevOps)
+            org.opencontainers.image.vendor=Structured World
+            org.opencontainers.image.licenses=MIT
+            org.opencontainers.image.documentation=https://github.com/structured-world/project-nexus-mcp#readme
+            org.opencontainers.image.source=https://github.com/structured-world/project-nexus-mcp
 
+      # Step 6: Determine if we should publish (not just build)
+      - name: Determine if should publish
+        id: should-publish
+        run: |
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            echo "result=false" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "result=${{ github.event.inputs.push_to_registries }}" >> $GITHUB_OUTPUT
+          else
+            echo "result=true" >> $GITHUB_OUTPUT
+          fi
+
+      # Step 7: Build Docker image (and push if not PR)
       - name: Build and push Docker image
+        id: build
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./Dockerfile
           platforms: linux/amd64,linux/arm64
-          push: true
+          # Only push if not a PR and should publish
+          push: ${{ steps.should-publish.outputs.result == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # Enable build caching for faster builds
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          # Build arguments
+          build-args: |
+            BUILDTIME=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+            VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+            REVISION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.revision'] }}
+
+      # Step 8: Test the built image
+      - name: Test Docker image
+        if: steps.should-publish.outputs.result == 'true'
+        run: |
+          # Test that the image starts correctly
+          echo "Testing Docker image..."
+
+          # Run container in background with health check disabled for quick test
+          docker run -d --name nexus-test \
+            -p 3001:3000 \
+            -e NODE_ENV=test \
+            -e GITHUB_TOKEN=test_token \
+            ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version || 'latest' }}
+
+          # Wait for container to start
+          sleep 10
+
+          # Check if container is running
+          if ! docker ps | grep nexus-test; then
+            echo "❌ Container failed to start"
+            docker logs nexus-test
+            exit 1
+          fi
+
+          # Test health endpoint (if implemented)
+          # curl -f http://localhost:3001/health || echo "Health endpoint not available (may be expected)"
+
+          # Clean up
+          docker stop nexus-test
+          docker rm nexus-test
+
+          echo "✅ Docker image test passed"
+
+      # Step 9: Generate SBOM (Software Bill of Materials)
+      - name: Generate SBOM
+        if: steps.should-publish.outputs.result == 'true'
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.meta.outputs.version || 'latest' }}
+          format: spdx-json
+          output-file: sbom.spdx.json
+
+      # Step 10: Upload SBOM as artifact
+      - name: Upload SBOM
+        if: steps.should-publish.outputs.result == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.spdx.json
+          retention-days: 30
+
+  # Job 2: Security scanning
+  security-scan:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: needs.build-and-test.outputs.should-publish == 'true'
+
+    permissions:
+      contents: read
+      packages: read
+      security-events: write
+
+    steps:
+      # Step 1: Log in to GitHub Container Registry for image access
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Step 2: Run Trivy security scanner
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+          format: "sarif"
+          output: "trivy-results.sarif"
+          severity: "CRITICAL,HIGH"
+
+      # Step 3: Upload security scan results
+      - name: Upload Trivy scan results to GitHub Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: "trivy-results.sarif"
+
+  # Job 3: Update documentation and create release notes
+  update-docs:
+    name: Update Documentation
+    runs-on: ubuntu-latest
+    needs: [build-and-test, security-scan]
+    if: github.ref == 'refs/heads/main' && needs.build-and-test.outputs.should-publish == 'true'
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update INSTALLATION.md with new image info
+        run: |
+          # Get the image digest from the build job
+          DIGEST="${{ needs.build-and-test.outputs.image-digest }}"
+
+          # Update the installation documentation
+          sed -i "s|ghcr.io/structured-world/project-nexus-mcp:latest|ghcr.io/structured-world/project-nexus-mcp@${DIGEST}|g" INSTALLATION.md
+
+          # Update the last build timestamp
+          echo "<!-- Last updated: $(date -u '+%Y-%m-%d %H:%M:%S UTC') -->" >> INSTALLATION.md
+
+      # Uncomment to automatically create PRs with documentation updates
+      # - name: Create Pull Request
+      #   uses: peter-evans/create-pull-request@v5
+      #   with:
+      #     token: ${{ secrets.GITHUB_TOKEN }}
+      #     commit-message: "docs: update Docker image references after successful build"
+      #     title: "Update Docker image references"
+      #     body: |
+      #       Automated update after successful Docker build.
+      #
+      #       - Updated image references in INSTALLATION.md
+      #       - New digest: ${{ needs.build-and-test.outputs.image-digest }}
+      #     branch: update-docker-docs
+
+  # Job 4: Notify on success/failure
+  notify:
+    name: Notification
+    runs-on: ubuntu-latest
+    needs: [build-and-test, security-scan, update-docs]
+    if: always()
+
+    steps:
+      - name: Notify on success
+        if: needs.build-and-test.result == 'success'
+        run: |
+          echo "🚀 Docker image built and published successfully!"
+          echo "Image: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest"
+          echo "Digest: ${{ needs.build-and-test.outputs.image-digest }}"
+
+      - name: Notify on failure
+        if: failure()
+        run: |
+          echo "❌ Docker build/publish failed!"
+          echo "Check the workflow logs for details."

@@ -1,12 +1,20 @@
 # GitLab MCP Server
 
-[![Star History Chart](https://api.star-history.com/svg?repos=zereight/gitlab-mcp&type=Date)](https://www.star-history.com/#zereight/gitlab-mcp&Date)
+**Maintained by:** [Dmitry Prudnikov](https://github.com/polaz) | **Original Author:** [zereight](https://github.com/zereight)
 
-## @zereight/mcp-gitlab
+## @structured-world/mcp-gitlab
 
-[![smithery badge](https://smithery.ai/badge/@zereight/gitlab-mcp)](https://smithery.ai/server/@zereight/gitlab-mcp)
+A fork of the original [@zereight/mcp-gitlab]
+
+![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)
+![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)
+![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)
+![Codecov](https://codecov.io/gh/structured-world/gitlab-mcp/branch/main/graph/badge.svg)
+[![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://structured-world.github.io/project-nexus-mcp/coverage/)
 
 GitLab MCP(Model Context Protocol) Server. **Includes bug fixes and improvements over the original GitLab MCP server.**
+
+This fork is actively maintained and enhanced with strict TypeScript standards, Yarn 4 support, and improved development workflows.
 
 <a href="https://glama.ai/mcp/servers/7jwbk4r6d7"><img width="380" height="200" src="https://glama.ai/mcp/servers/7jwbk4r6d7/badge" alt="gitlab mcp MCP server" /></a>
 
@@ -274,3 +282,21 @@ docker run -i --rm \
 <!-- TOOLS-END -->
 
 </details>
+
+## Support the Project
+
+If you find this GitLab MCP Server useful, consider supporting its continued development and maintenance.
+
+<div align="center">
+  <img src="assets/usdt-qr.svg" alt="USDT TRC-20 Donation QR Code" width="150" height="150">
+  <br>
+  <small>📱 <strong>USDT (TRC-20)</strong></small><br>
+  <code>TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA</code>
+  <br><br>
+  <em>Scan with any TRC-20 compatible wallet (TronLink, Trust Wallet, Exodus, etc.)</em>
+</div>
+
+---
+
+**Maintained with ❤️ by [Dmitry Prudnikov](https://github.com/polaz)**
+**Original work by [zereight](https://github.com/zereight) - Thank you for the foundation!**

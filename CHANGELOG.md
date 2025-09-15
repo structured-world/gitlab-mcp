@@ -1,3 +1,11 @@
+## [2.1.2](https://github.com/structured-world/gitlab-mcp/compare/v2.1.1...v2.1.2) (2025-09-15)
+
+
+### Bug Fixes
+
+* remove duplicate docker-publish.yml workflow ([a9a6921](https://github.com/structured-world/gitlab-mcp/commit/a9a692186c1c7db18217a82c387a7fe00536d694))
+* remove duplicate release.yml workflow to prevent concurrent releases ([b69fc9d](https://github.com/structured-world/gitlab-mcp/commit/b69fc9d1b78b674b5991d974c376d7080f83ae34))
+
 ## [1.1.1](https://github.com/structured-world/gitlab-mcp/compare/v1.1.0...v1.1.1) (2025-09-15)
 
 

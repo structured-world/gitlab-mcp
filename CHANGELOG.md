@@ -1,3 +1,10 @@
+# [2.5.0](https://github.com/structured-world/gitlab-mcp/compare/v2.4.0...v2.5.0) (2025-09-15)
+
+
+### Features
+
+* complete GitLab MCP handler implementation with 100% tool coverage ([843886a](https://github.com/structured-world/gitlab-mcp/commit/843886a7f0b744223e3f44344314ce4441f46a8d))
+
 # [2.4.0](https://github.com/structured-world/gitlab-mcp/compare/v2.3.1...v2.4.0) (2025-09-15)
 
 

@@ -14,7 +14,6 @@ WORKDIR /app
 
 # Copy only package files for better caching
 COPY package.json yarn.lock .yarnrc.yml ./
-# Copy .yarn directory if it exists (Yarn 4 cache)
 
 # Install ALL dependencies (including dev) for building
 RUN --mount=type=cache,target=/root/.yarn/berry/cache \
@@ -34,7 +33,6 @@ WORKDIR /app
 
 # Copy dependencies from previous stage
 COPY --from=dependencies /app/node_modules ./node_modules
-COPY --from=dependencies /app/.yarn ./.yarn
 COPY --from=dependencies /app/package.json ./package.json
 COPY --from=dependencies /app/yarn.lock ./yarn.lock
 COPY --from=dependencies /app/.yarnrc.yml ./.yarnrc.yml
@@ -59,6 +57,7 @@ WORKDIR /app
 
 # Copy package files
 COPY package.json yarn.lock .yarnrc.yml ./
+
 # Install only production dependencies
 ENV NODE_ENV=production
 RUN --mount=type=cache,target=/root/.yarn/berry/cache \

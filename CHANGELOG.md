@@ -1,3 +1,10 @@
+## [2.6.2](https://github.com/structured-world/gitlab-mcp/compare/v2.6.1...v2.6.2) (2025-09-15)
+
+
+### Bug Fixes
+
+* Complete unit test infrastructure rewrite and test suite fixes ([05b3f02](https://github.com/structured-world/gitlab-mcp/commit/05b3f024709ec33365cadb5401a47ac154048a59))
+
 ## [2.6.1](https://github.com/structured-world/gitlab-mcp/compare/v2.6.0...v2.6.1) (2025-09-15)
 
 

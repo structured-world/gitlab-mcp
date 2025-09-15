@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/structured-world/gitlab-mcp/compare/v1.1.0...v1.1.1) (2025-09-15)
+
+
+### Bug Fixes
+
+* enable Corepack in GitHub Actions for Yarn 4 support ([7e170e2](https://github.com/structured-world/gitlab-mcp/commit/7e170e2f186fae60e0b10924261f1fd67ded0a0b))
+
 # [1.1.0](https://github.com/structured-world/gitlab-mcp/compare/v1.0.2...v1.1.0) (2025-09-15)
 
 

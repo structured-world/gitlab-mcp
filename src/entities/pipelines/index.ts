@@ -1,28 +1,38 @@
-// Conditional exports based on GITLAB_READONLY environment variable
-const isReadOnly = process.env.GITLAB_READONLY === 'true';
-
 // Always export shared schemas
 export * from '../shared';
 
-// Always export read-only schemas and tools
+// Always export read-only schemas and tools (for backward compatibility)
 export * from './schema-readonly';
 export * from './tools-readonly';
 
-// Import write modules conditionally but export them always
-// The schemas are just type definitions, so exporting them doesn't hurt
-// The actual control is in the tools array
+// Export write schemas (for backward compatibility)
 export * from './schema';
 export * from './tools';
 
-// Import tool arrays
-import { pipelineReadOnlyToolsArray } from './tools-readonly';
-import { pipelineWriteTools } from './tools';
+// Export the new unified registry
+export * from './registry';
+
+// Import from the new registry
+import { getFilteredPipelinesTools, getPipelinesReadOnlyToolNames } from './registry';
 import type { ToolDefinition } from '../../types';
 
-// Create combined or read-only tools array based on environment
-export const pipelineTools: ToolDefinition[] = isReadOnly
-  ? pipelineReadOnlyToolsArray
-  : [...pipelineReadOnlyToolsArray, ...pipelineWriteTools];
+// Conditional exports based on GITLAB_READONLY environment variable
+const isReadOnly = process.env.GITLAB_READONLY === 'true';
 
-// Export handlers
+// Get tools from the new registry (with backward compatibility)
+const pipelinesToolsFromRegistry = getFilteredPipelinesTools(isReadOnly);
+
+// Convert enhanced tool definitions to regular tool definitions for backward compatibility
+export const pipelineTools: ToolDefinition[] = pipelinesToolsFromRegistry.map(
+  (tool): ToolDefinition => ({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+  }),
+);
+
+// Export read-only tool names for backward compatibility
+export const pipelineReadOnlyTools = getPipelinesReadOnlyToolNames();
+
+// Export handlers (for backward compatibility)
 export * from './handlers';

@@ -21,3 +21,12 @@ export interface ToolDefinition {
   description: string;
   inputSchema: Record<string, unknown>;
 }
+
+// Enhanced tool definition interface that includes handler function
+export interface EnhancedToolDefinition extends ToolDefinition {
+  // eslint-disable-next-line no-unused-vars
+  handler: (args: unknown) => Promise<unknown>;
+}
+
+// Tool registry type for storing enhanced tool definitions
+export type ToolRegistry = Map<string, EnhancedToolDefinition>;

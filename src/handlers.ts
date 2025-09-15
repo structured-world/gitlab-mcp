@@ -1,6 +1,5 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { getFilteredTools } from './tools';
 import { ConnectionManager } from './services/ConnectionManager';
 // Import all handler functions that will be implemented
 // TODO: Import actual handler functions once we extract them
@@ -16,8 +15,11 @@ export async function setupHandlers(server: Server): Promise<void> {
     // Continue without version detection - tools will handle gracefully
   }
   // List tools handler
-  server.setRequestHandler(ListToolsRequestSchema, () => {
-    const tools = getFilteredTools();
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    // Get tools from registry manager (already filtered)
+    const { RegistryManager } = await import('./registry-manager');
+    const registryManager = RegistryManager.getInstance();
+    const tools = registryManager.getAllToolDefinitions();
 
     // Remove $schema for Gemini compatibility and ensure proper JSON schema format
     const modifiedTools = tools.map((tool) => {
@@ -72,32 +74,23 @@ export async function setupHandlers(server: Server): Promise<void> {
         }
       }
 
-      // Dynamic tool dispatch using naming convention
+      // Dynamic tool dispatch using the new registry manager
       const toolName = request.params.name;
-      const handlerName = `handle${toolName
-        .split('_')
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join('')}`;
 
       try {
-        // Import the dynamic handlers function
-        const { getDynamicHandlers } = await import('./entities');
-        const dynamicHandlers = await getDynamicHandlers();
-        const handler = dynamicHandlers[handlerName];
+        // Import the registry manager
+        const { RegistryManager } = await import('./registry-manager');
+        const registryManager = RegistryManager.getInstance();
 
-        console.log(`Looking for handler: ${handlerName}`);
-        console.log(`Available dynamic handlers:`, Object.keys(dynamicHandlers));
-
-        if (!handler || typeof handler !== 'function') {
-          throw new Error(
-            `Handler function '${handlerName}' not found in dynamic handlers. Available handlers: ${Object.keys(dynamicHandlers).join(', ')}`,
-          );
+        // Check if tool exists and passes all filtering (applied at registry level)
+        if (!registryManager.hasToolHandler(toolName)) {
+          throw new Error(`Tool '${toolName}' is not available or has been filtered out`);
         }
 
-        // Execute the handler
-        // eslint-disable-next-line no-unused-vars
-        const handlerFn = handler as (args: unknown) => Promise<unknown>;
-        const result = await handlerFn(request.params.arguments);
+        console.log(`Executing tool: ${toolName}`);
+
+        // Execute the tool using the registry manager
+        const result = await registryManager.executeTool(toolName, request.params.arguments);
 
         return {
           content: [
@@ -107,10 +100,9 @@ export async function setupHandlers(server: Server): Promise<void> {
             },
           ],
         };
-      } catch (importError) {
-        const errorMessage =
-          importError instanceof Error ? importError.message : String(importError);
-        throw new Error(`Failed to import handler ${handlerName}: ${errorMessage}`);
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        throw new Error(`Failed to execute tool '${toolName}': ${errorMessage}`);
       }
     } catch (error) {
       console.error('Error in tool handler:', error);

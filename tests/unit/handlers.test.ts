@@ -32,8 +32,14 @@ jest.mock('../../src/entities', () => ({
   wikiReadOnlyTools: [],
   milestoneReadOnlyTools: [],
   pipelineReadOnlyTools: [],
-  workitemsReadOnlyTools: [],
-  getDynamicHandlers: jest.fn()
+  workitemsReadOnlyTools: []
+}));
+
+// Mock the registry manager
+jest.mock('../../src/registry-manager', () => ({
+  RegistryManager: {
+    getInstance: jest.fn()
+  }
 }));
 
 describe('handlers.ts', () => {
@@ -122,13 +128,36 @@ describe('handlers.ts', () => {
   });
 
   describe('ListTools handler', () => {
+    let mockRegistryManager: any;
+
     beforeEach(async () => {
       mockConnectionManager.initialize.mockResolvedValue(undefined);
+
+      // Mock the registry manager for ListTools handler
+      mockRegistryManager = {
+        getAllToolDefinitions: jest.fn().mockReturnValue([
+          {
+            name: 'test_tool',
+            description: 'Test tool',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                param: { type: 'string' }
+              }
+            }
+          }
+        ])
+      };
+
+      // Use require for testing to work with Jest mocks
+      const { RegistryManager } = require('../../src/registry-manager');
+      RegistryManager.getInstance.mockReturnValue(mockRegistryManager);
+
       await setupHandlers(mockServer);
     });
 
-    it('should return filtered tools', () => {
-      const result = listToolsHandler();
+    it('should return filtered tools', async () => {
+      const result = await listToolsHandler();
 
       expect(result).toEqual({
         tools: expect.arrayContaining([
@@ -141,11 +170,11 @@ describe('handlers.ts', () => {
           })
         ])
       });
-      expect(getFilteredTools).toHaveBeenCalled();
+      expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalled();
     });
 
-    it('should ensure all input schemas have type: object', () => {
-      mockGetFilteredTools.mockReturnValue([
+    it('should ensure all input schemas have type: object', async () => {
+      mockRegistryManager.getAllToolDefinitions.mockReturnValue([
         {
           name: 'test_tool',
           description: 'Test tool',
@@ -155,13 +184,13 @@ describe('handlers.ts', () => {
         }
       ]);
 
-      const result = listToolsHandler();
+      const result = await listToolsHandler();
 
       expect(result.tools[0].inputSchema.type).toBe('object');
     });
 
-    it('should remove $schema property for Gemini compatibility', () => {
-      mockGetFilteredTools.mockReturnValue([
+    it('should remove $schema property for Gemini compatibility', async () => {
+      mockRegistryManager.getAllToolDefinitions.mockReturnValue([
         {
           name: 'test_tool',
           description: 'Test tool',
@@ -173,14 +202,14 @@ describe('handlers.ts', () => {
         }
       ]);
 
-      const result = listToolsHandler();
+      const result = await listToolsHandler();
 
       expect(result.tools[0].inputSchema).not.toHaveProperty('$schema');
       expect(result.tools[0].inputSchema.type).toBe('object');
     });
 
-    it('should handle tools with no input schema', () => {
-      mockGetFilteredTools.mockReturnValue([
+    it('should handle tools with no input schema', async () => {
+      mockRegistryManager.getAllToolDefinitions.mockReturnValue([
         {
           name: 'test_tool',
           description: 'Test tool',
@@ -188,7 +217,7 @@ describe('handlers.ts', () => {
         }
       ]);
 
-      const result = listToolsHandler();
+      const result = await listToolsHandler();
 
       expect(result.tools[0]).toEqual({
         name: 'test_tool',
@@ -199,7 +228,7 @@ describe('handlers.ts', () => {
   });
 
   describe('CallTool handler', () => {
-    let mockGetDynamicHandlers: jest.MockedFunction<typeof entities.getDynamicHandlers>;
+    let mockRegistryManager: any;
     let mockHandler: jest.Mock;
 
     beforeEach(async () => {
@@ -211,14 +240,16 @@ describe('handlers.ts', () => {
         setAuthToken: jest.fn()
       } as any);
 
-      // Get the mocked function from the already mocked entities module
-      mockGetDynamicHandlers = entities.getDynamicHandlers as jest.MockedFunction<typeof entities.getDynamicHandlers>;
+      // Mock the registry manager
       mockHandler = jest.fn().mockResolvedValue({ success: true });
+      mockRegistryManager = {
+        hasToolHandler: jest.fn().mockReturnValue(true),
+        executeTool: jest.fn().mockResolvedValue({ success: true })
+      };
 
-      // Configure the mock to return our test handlers
-      mockGetDynamicHandlers.mockResolvedValue({
-        handleTestTool: mockHandler
-      });
+      // Use require for testing to work with Jest mocks
+      const { RegistryManager } = require('../../src/registry-manager');
+      RegistryManager.getInstance.mockReturnValue(mockRegistryManager);
 
       await setupHandlers(mockServer);
     });
@@ -241,7 +272,8 @@ describe('handlers.ts', () => {
           }
         ]
       });
-      expect(mockHandler).toHaveBeenCalledWith({ param: 'value' });
+      expect(mockRegistryManager.hasToolHandler).toHaveBeenCalledWith('test_tool');
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith('test_tool', { param: 'value' });
     });
 
     it('should throw error when arguments are missing', async () => {
@@ -314,32 +346,12 @@ describe('handlers.ts', () => {
       });
     });
 
-    it('should convert tool name to handler name correctly', async () => {
-      const request = {
-        params: {
-          name: 'create_merge_request',
-          arguments: { param: 'value' }
-        }
-      };
-
-      mockGetDynamicHandlers.mockResolvedValue({
-        handleCreateMergeRequest: mockHandler
-      });
-
-      await callToolHandler(request);
-
-      expect(mockGetDynamicHandlers).toHaveBeenCalled();
-      expect(mockHandler).toHaveBeenCalledWith({ param: 'value' });
-    });
-
-    it('should handle missing handler function', async () => {
-      mockGetDynamicHandlers.mockResolvedValue({
-        handleOtherTool: jest.fn()
-      });
+    it('should handle tool not found in registry', async () => {
+      mockRegistryManager.hasToolHandler.mockReturnValue(false);
 
       const request = {
         params: {
-          name: 'test_tool',
+          name: 'nonexistent_tool',
           arguments: { param: 'value' }
         }
       };
@@ -350,19 +362,20 @@ describe('handlers.ts', () => {
         content: [
           {
             type: 'text',
-            text: expect.stringContaining('Handler function \'handleTestTool\' not found')
+            text: expect.stringContaining('Tool \'nonexistent_tool\' is not available or has been filtered out')
           }
         ],
         isError: true
       });
     });
 
-    it('should handle handler execution errors', async () => {
-      mockHandler.mockRejectedValue(new Error('Handler failed'));
+    it('should respect GITLAB_DENIED_TOOLS_REGEX filter', async () => {
+      // Mock the registry manager to simulate tool being filtered out
+      mockRegistryManager.hasToolHandler.mockReturnValue(false); // Simulate tool being filtered out at registry level
 
       const request = {
         params: {
-          name: 'test_tool',
+          name: 'list_projects',
           arguments: { param: 'value' }
         }
       };
@@ -373,15 +386,15 @@ describe('handlers.ts', () => {
         content: [
           {
             type: 'text',
-            text: expect.stringContaining('Handler failed')
+            text: expect.stringContaining('Tool \'list_projects\' is not available or has been filtered out')
           }
         ],
         isError: true
       });
     });
 
-    it('should handle dynamic handler import errors', async () => {
-      mockGetDynamicHandlers.mockRejectedValue(new Error('Import failed'));
+    it('should allow execution when tool passes filters', async () => {
+      // Registry manager is already mocked to return true for hasToolHandler by default
 
       const request = {
         params: {
@@ -396,7 +409,30 @@ describe('handlers.ts', () => {
         content: [
           {
             type: 'text',
-            text: expect.stringContaining('Failed to import handler handleTestTool')
+            text: JSON.stringify({ success: true }, null, 2)
+          }
+        ]
+      });
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith('test_tool', { param: 'value' });
+    });
+
+    it('should handle tool execution errors', async () => {
+      mockRegistryManager.executeTool.mockRejectedValue(new Error('Tool execution failed'));
+
+      const request = {
+        params: {
+          name: 'test_tool',
+          arguments: { param: 'value' }
+        }
+      };
+
+      const result = await callToolHandler(request);
+
+      expect(result).toEqual({
+        content: [
+          {
+            type: 'text',
+            text: expect.stringContaining('Tool execution failed')
           }
         ],
         isError: true

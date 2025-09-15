@@ -20,5 +20,4 @@ export * from './milestones/handlers';
 export * from './pipelines/handlers';
 export * from './workitems/handlers';
 
-// Export dynamic function factory handlers
-export { getDynamicHandlers } from './function-factory';
+// Legacy function factory has been removed - all entities now use the registry pattern

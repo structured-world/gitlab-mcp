@@ -1,6 +1,11 @@
 import {
   coreTools,
   coreReadOnlyTools,
+  labelsTools,
+  labelsReadOnlyTools,
+  mrsTools,
+  mrsReadOnlyTools,
+  // Legacy imports for entities not yet migrated
   wikiTools,
   wikiReadOnlyTools,
   milestoneTools,
@@ -9,10 +14,6 @@ import {
   pipelineReadOnlyTools,
   workitemsTools,
   workitemsReadOnlyTools,
-  labelsTools,
-  labelsReadOnlyTools,
-  mrsTools,
-  mrsReadOnlyTools,
   filesTools,
   filesReadOnlyTools,
   variablesTools,
@@ -36,17 +37,20 @@ import { logger } from './logger';
 
 // Build all available tools by combining entities based on configuration
 function buildAllTools(): ToolDefinition[] {
-  let tools: ToolDefinition[] = [...coreTools];
+  let tools: ToolDefinition[] = [];
 
-  // Add labels tools if enabled
+  // Add tools from migrated entities (using new registry system)
+  tools.push(...coreTools);
+
   if (USE_LABELS) {
     tools.push(...labelsTools);
   }
 
-  // Add merge request tools if enabled
   if (USE_MRS) {
     tools.push(...mrsTools);
   }
+
+  // Legacy entities (not yet migrated to registry system)
 
   // Add file tools if enabled
   if (USE_FILES) {
@@ -86,7 +90,10 @@ export const allTools: ToolDefinition[] = buildAllTools();
 
 // Build read-only tools list based on enabled entities
 function buildReadOnlyTools(): string[] {
-  let readOnly: string[] = [...coreReadOnlyTools];
+  let readOnly: string[] = [];
+
+  // Add read-only tools from migrated entities (using new registry system)
+  readOnly.push(...coreReadOnlyTools);
 
   if (USE_LABELS) {
     readOnly.push(...labelsReadOnlyTools);
@@ -95,6 +102,8 @@ function buildReadOnlyTools(): string[] {
   if (USE_MRS) {
     readOnly.push(...mrsReadOnlyTools);
   }
+
+  // Legacy entities (not yet migrated to registry system)
 
   if (USE_FILES) {
     readOnly.push(...filesReadOnlyTools);

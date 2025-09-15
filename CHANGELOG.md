@@ -1,3 +1,10 @@
+## [1.0.1](https://github.com/structured-world/gitlab-mcp/compare/v1.0.0...v1.0.1) (2025-09-15)
+
+
+### Bug Fixes
+
+* Add repository field to package.json for npm publish ([a405435](https://github.com/structured-world/gitlab-mcp/commit/a405435432a0b31569bd8c78840c453d5bfa2ee9))
+
 # 1.0.0 (2025-09-15)
 
 

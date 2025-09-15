@@ -9,6 +9,12 @@ import {
   pipelineReadOnlyTools,
   workitemsTools,
   workitemsReadOnlyTools,
+  labelsTools,
+  labelsReadOnlyTools,
+  mrsTools,
+  mrsReadOnlyTools,
+  filesTools,
+  filesReadOnlyTools,
 } from './entities';
 import {
   GITLAB_READ_ONLY_MODE,
@@ -17,6 +23,9 @@ import {
   USE_MILESTONE,
   USE_PIPELINE,
   USE_WORKITEMS,
+  USE_LABELS,
+  USE_MRS,
+  USE_FILES,
 } from './config';
 import { ToolDefinition } from './types';
 import { ToolAvailability } from './services/ToolAvailability';
@@ -25,6 +34,21 @@ import { logger } from './logger';
 // Build all available tools by combining entities based on configuration
 function buildAllTools(): ToolDefinition[] {
   let tools: ToolDefinition[] = [...coreTools];
+
+  // Add labels tools if enabled
+  if (USE_LABELS) {
+    tools.push(...labelsTools);
+  }
+
+  // Add merge request tools if enabled
+  if (USE_MRS) {
+    tools.push(...mrsTools);
+  }
+
+  // Add file tools if enabled
+  if (USE_FILES) {
+    tools.push(...filesTools);
+  }
 
   // Add wiki tools if enabled
   if (USE_GITLAB_WIKI) {
@@ -55,6 +79,18 @@ export const allTools: ToolDefinition[] = buildAllTools();
 // Build read-only tools list based on enabled entities
 function buildReadOnlyTools(): string[] {
   let readOnly: string[] = [...coreReadOnlyTools];
+
+  if (USE_LABELS) {
+    readOnly.push(...labelsReadOnlyTools);
+  }
+
+  if (USE_MRS) {
+    readOnly.push(...mrsReadOnlyTools);
+  }
+
+  if (USE_FILES) {
+    readOnly.push(...filesReadOnlyTools);
+  }
 
   if (USE_GITLAB_WIKI) {
     readOnly.push(...wikiReadOnlyTools);

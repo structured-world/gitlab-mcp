@@ -17,7 +17,7 @@ import {
   requireTestData,
   getTestProject,
 } from '../../setup/testConfig';
-import { GetRepositoryTreeSchema } from '../../../src/entities/core/schema-readonly';
+import { GetRepositoryTreeSchema } from '../../../src/entities/files/schema-readonly';
 
 describe('🌳 Repository Schema - Using Lifecycle Data', () => {
   let testData: any;

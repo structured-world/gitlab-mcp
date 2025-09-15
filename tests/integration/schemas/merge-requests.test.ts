@@ -3,8 +3,8 @@
  * Tests ListMergeRequestsSchema and GetMergeRequestSchema against real GitLab 18.3 API responses
  */
 
-import { ListMergeRequestsSchema, GetMergeRequestSchema } from '../../../src/entities/core/schema-readonly';
-import { CreateMergeRequestSchema, UpdateMergeRequestSchema, MergeMergeRequestSchema } from '../../../src/entities/core/schema';
+import { ListMergeRequestsSchema, GetMergeRequestSchema } from '../../../src/entities/mrs/schema-readonly';
+import { CreateMergeRequestSchema, UpdateMergeRequestSchema, MergeMergeRequestSchema } from '../../../src/entities/mrs/schema';
 
 describe('Merge Requests Schema - GitLab 18.3 Integration', () => {
   const GITLAB_TOKEN = process.env.GITLAB_TOKEN;

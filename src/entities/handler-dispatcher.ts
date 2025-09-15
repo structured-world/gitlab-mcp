@@ -4,44 +4,50 @@
  */
 
 // Import all handler modules
+// Core handlers (remaining in core)
 import {
   handleListProjects,
   handleSearchRepositories,
   handleListNamespaces,
   handleGetUsers,
   handleGetProject,
-  handleGetFileContents,
-  handleGetMergeRequest,
-  handleListMergeRequests,
-  handleListLabels,
-  handleGetLabel,
   handleGetNamespace,
   handleVerifyNamespace,
   handleListProjectMembers,
-  handleGetRepositoryTree,
   handleListCommits,
   handleGetCommit,
-  handleGetMergeRequestDiffs,
-  handleListMergeRequestDiffs,
-  handleGetBranchDiffs,
-  handleMrDiscussions,
-  handleGetDraftNote,
-  handleListDraftNotes,
   handleListGroupProjects,
   handleGetCommitDiff,
   handleListEvents,
   handleGetProjectEvents,
   handleListGroupIterations,
   handleDownloadAttachment,
-  handleMergeMergeRequest,
-  handleCreateOrUpdateFile,
   handleCreateRepository,
-  handlePushFiles,
-  handleCreateMergeRequest,
   handleForkRepository,
   handleCreateBranch,
+} from './core/handlers';
+
+// File operation handlers
+import {
+  handleGetFileContents,
+  handleGetRepositoryTree,
+  handleCreateOrUpdateFile,
+  handlePushFiles,
+  handleUploadMarkdown,
+} from './files/handlers';
+
+// Merge request handlers
+import {
+  handleGetMergeRequest,
+  handleListMergeRequests,
+  handleGetMergeRequestDiffs,
+  handleListMergeRequestDiffs,
+  handleListMergeRequestDiscussions,
+  handleGetDraftNote,
+  handleListDraftNotes,
+  handleMergeMergeRequest,
+  handleCreateMergeRequest,
   handleUpdateMergeRequest,
-  handleCreateNote,
   handleCreateMergeRequestThread,
   handleUpdateMergeRequestNote,
   handleCreateMergeRequestNote,
@@ -50,11 +56,18 @@ import {
   handleDeleteDraftNote,
   handlePublishDraftNote,
   handleBulkPublishDraftNotes,
+  handleGetBranchDiffs,
+  handleCreateNote,
+} from './mrs/handlers';
+
+// Label handlers
+import {
+  handleListLabels,
+  handleGetLabel,
   handleCreateLabel,
   handleUpdateLabel,
   handleDeleteLabel,
-  handleUploadMarkdown,
-} from './core/handlers';
+} from './labels/handlers';
 
 import {
   handleListWorkItems,
@@ -125,7 +138,7 @@ const handlerMap: Record<string, HandlerFunction> = {
   get_merge_request_diffs: handleGetMergeRequestDiffs,
   list_merge_request_diffs: handleListMergeRequestDiffs,
   get_branch_diffs: handleGetBranchDiffs,
-  mr_discussions: handleMrDiscussions,
+  mr_discussions: handleListMergeRequestDiscussions,
   get_draft_note: handleGetDraftNote,
   list_draft_notes: handleListDraftNotes,
   list_group_projects: handleListGroupProjects,

@@ -17,7 +17,7 @@ import {
   requireTestData,
   getTestProject,
 } from '../../setup/testConfig';
-import { ListMergeRequestsSchema } from '../../../src/entities/core/schema-readonly';
+import { ListMergeRequestsSchema } from '../../../src/entities/mrs/schema-readonly';
 
 describe('🔀 Merge Requests Schema - Using Lifecycle Data', () => {
   let testData: any;

@@ -178,15 +178,20 @@ docker run -i --rm \
 - `USE_GITLAB_WIKI`: When set to 'true', enables the wiki-related tools (list_wiki_pages, get_wiki_page, create_wiki_page, update_wiki_page, delete_wiki_page). By default, wiki features are disabled.
 - `USE_MILESTONE`: When set to 'true', enables the milestone-related tools (list_milestones, get_milestone, create_milestone, edit_milestone, delete_milestone, get_milestone_issue, get_milestone_merge_requests, promote_milestone, get_milestone_burndown_events). By default, milestone features are disabled.
 - `USE_PIPELINE`: When set to 'true', enables the pipeline-related tools (list_pipelines, get_pipeline, list_pipeline_jobs, list_pipeline_trigger_jobs, get_pipeline_job, get_pipeline_job_output, create_pipeline, retry_pipeline, cancel_pipeline, play_pipeline_job, retry_pipeline_job, cancel_pipeline_job). By default, pipeline features are disabled.
+- `USE_LABELS`: When set to 'true', enables the label-related tools (list_labels, get_label, create_label, update_label, delete_label). By default, label features are enabled.
+- `USE_MRS`: When set to 'true', enables the merge request-related tools (list_merge_requests, get_merge_request, create_merge_request, update_merge_request, merge_merge_request, get_merge_request_diffs, list_merge_request_diffs, mr_discussions, create_merge_request_thread, create_merge_request_note, update_merge_request_note, create_draft_note, update_draft_note, delete_draft_note, publish_draft_note, bulk_publish_draft_notes, get_draft_note, list_draft_notes). By default, merge request features are enabled.
+- `USE_FILES`: When set to 'true', enables the file-related tools (get_file_contents, get_repository_tree, create_or_update_file, push_files, upload_markdown). By default, file operation features are enabled.
 - `GITLAB_AUTH_COOKIE_PATH`: Path to an authentication cookie file for GitLab instances that require cookie-based authentication. When provided, the cookie will be included in all GitLab API requests.
 - `SSE`: When set to 'true', enables the Server-Sent Events transport.
 - `STREAMABLE_HTTP`: When set to 'true', enables the Streamable HTTP transport. If both **SSE** and **STREAMABLE_HTTP** are set to 'true', the server will prioritize Streamable HTTP over SSE transport.
 
 ## Tools 🛠️
 
-**81 Tools Available** - Organized by category below.
+**81 Tools Available** - Organized by entity and functionality below.
 
 ### Key Features:
+- **Modular Entity Architecture** - Separate entities for Labels, Merge Requests, Files, Pipelines, etc.
+- **Environment-Gated Features** - Enable/disable tool groups with USE_* environment variables
 - **Work Items Management** - Modern GraphQL API for Issues, Epics, Tasks, and more
 - **Complete GitLab API Coverage** - Repository, Merge Requests, Pipelines, Wiki, and more
 - **Tier-based Feature Detection** - Automatically enables features based on your GitLab tier
@@ -222,7 +227,7 @@ The following issue-related tools have been removed and replaced by Work Items G
 - 📖 = Read-only tool (available in GITLAB_READ_ONLY_MODE)
 - ✏️ = Read/Write tool (disabled in GITLAB_READ_ONLY_MODE)
 
-### Core Tools (49 tools)
+### Core Tools (22 tools)
 Core GitLab functionality always available.
 
 #### Repository & Project Management
@@ -231,52 +236,16 @@ Core GitLab functionality always available.
 - **`list_projects`** 📖: List projects accessible by the current user
 - **`search_repositories`** 📖: Search for GitLab projects
 - **`list_group_projects`** 📖: List projects in a GitLab group with filtering options
-- **`get_repository_tree`** 📖: Get the repository tree for a GitLab project (list files and directories)
 - **`list_project_members`** 📖: List members of a GitLab project
-
-#### File Operations
-- **`create_or_update_file`** ✏️: Create or update a single file in a GitLab project
-- **`push_files`** ✏️: Push multiple files to a GitLab project in a single commit
-- **`get_file_contents`** 📖: Get the contents of a file or directory from a GitLab project
-- **`upload_markdown`** ✏️: Upload a file to a GitLab project for use in markdown content
-- **`download_attachment`** 📖: Download an uploaded file from a GitLab project by secret and filename
 
 #### Branch Management
 - **`create_branch`** ✏️: Create a new branch in a GitLab project
 - **`get_branch_diffs`** 📖: Get the changes/diffs between two branches or commits in a GitLab project
 - **`fork_repository`** ✏️: Fork a GitLab project to your account or specified namespace
 
-#### Merge Requests
-- **`create_merge_request`** ✏️: Create a new merge request in a GitLab project
-- **`update_merge_request`** ✏️: Update a merge request (Either mergeRequestIid or branchName must be provided)
-- **`merge_merge_request`** ✏️: Merge a merge request in a GitLab project
-- **`get_merge_request`** 📖: Get details of a merge request (Either mergeRequestIid or branchName must be provided)
-- **`get_merge_request_diffs`** 📖: Get the changes/diffs of a merge request (Either mergeRequestIid or branchName must be provided)
-- **`list_merge_request_diffs`** 📖: List merge request diffs with pagination support (Either mergeRequestIid or branchName must be provided)
-- **`list_merge_requests`** 📖: List merge requests in a GitLab project with filtering options
-- **`mr_discussions`** 📖: List discussion items for a merge request
-
-#### Comments & Discussions
+#### Comments & General Notes
 - **`create_note`** ✏️: Create a new note (comment) to an issue or merge request
-- **`create_merge_request_thread`** ✏️: Create a new thread on a merge request
-- **`create_merge_request_note`** ✏️: Add a new note to an existing merge request thread
-- **`update_merge_request_note`** ✏️: Modify an existing merge request thread note
-
-#### Draft Notes
-- **`create_draft_note`** ✏️: Create a draft note for a merge request
-- **`update_draft_note`** ✏️: Update an existing draft note
-- **`delete_draft_note`** ✏️: Delete a draft note
-- **`publish_draft_note`** ✏️: Publish a single draft note
-- **`bulk_publish_draft_notes`** ✏️: Publish all draft notes for a merge request
-- **`get_draft_note`** 📖: Get a single draft note from a merge request
-- **`list_draft_notes`** 📖: List draft notes for a merge request
-
-#### Labels
-- **`create_label`** ✏️: Create a new label in a project
-- **`update_label`** ✏️: Update an existing label in a project
-- **`delete_label`** ✏️: Delete a label from a project
-- **`get_label`** 📖: Get a single label from a project
-- **`list_labels`** 📖: List labels for a project
+- **`download_attachment`** 📖: Download an uploaded file from a GitLab project by secret and filename
 
 #### Commits & History
 - **`get_commit`** 📖: Get details of a specific commit
@@ -293,6 +262,51 @@ Core GitLab functionality always available.
 - **`get_project_events`** 📖: List all visible events for a specified project. Note: before/after parameters accept date format YYYY-MM-DD only
 - **`list_events`** 📖: List all events for the currently authenticated user. Note: before/after parameters accept date format YYYY-MM-DD only
 - **`list_group_iterations`** 📖: List group iterations with filtering options
+
+### Labels Management (5 tools)
+Requires USE_LABELS=true environment variable (enabled by default).
+
+- **`create_label`** ✏️: Create a new label in a project
+- **`update_label`** ✏️: Update an existing label in a project
+- **`delete_label`** ✏️: Delete a label from a project
+- **`get_label`** 📖: Get a single label from a project
+- **`list_labels`** 📖: List labels for a project
+
+### Merge Requests Management (17 tools)
+Requires USE_MRS=true environment variable (enabled by default).
+
+#### Merge Request Operations
+- **`create_merge_request`** ✏️: Create a new merge request in a GitLab project
+- **`update_merge_request`** ✏️: Update a merge request (Either mergeRequestIid or branchName must be provided)
+- **`merge_merge_request`** ✏️: Merge a merge request in a GitLab project
+- **`get_merge_request`** 📖: Get details of a merge request (Either mergeRequestIid or branchName must be provided)
+- **`get_merge_request_diffs`** 📖: Get the changes/diffs of a merge request (Either mergeRequestIid or branchName must be provided)
+- **`list_merge_request_diffs`** 📖: List merge request diffs with pagination support (Either mergeRequestIid or branchName must be provided)
+- **`list_merge_requests`** 📖: List merge requests in a GitLab project with filtering options
+- **`mr_discussions`** 📖: List discussion items for a merge request
+
+#### MR Comments & Discussions
+- **`create_merge_request_thread`** ✏️: Create a new thread on a merge request
+- **`create_merge_request_note`** ✏️: Add a new note to an existing merge request thread
+- **`update_merge_request_note`** ✏️: Modify an existing merge request thread note
+
+#### MR Draft Notes
+- **`create_draft_note`** ✏️: Create a draft note for a merge request
+- **`update_draft_note`** ✏️: Update an existing draft note
+- **`delete_draft_note`** ✏️: Delete a draft note
+- **`publish_draft_note`** ✏️: Publish a single draft note
+- **`bulk_publish_draft_notes`** ✏️: Publish all draft notes for a merge request
+- **`get_draft_note`** 📖: Get a single draft note from a merge request
+- **`list_draft_notes`** 📖: List draft notes for a merge request
+
+### File Operations (5 tools)
+Requires USE_FILES=true environment variable (enabled by default).
+
+- **`create_or_update_file`** ✏️: Create or update a single file in a GitLab project
+- **`push_files`** ✏️: Push multiple files to a GitLab project in a single commit
+- **`get_file_contents`** 📖: Get the contents of a file or directory from a GitLab project
+- **`get_repository_tree`** 📖: Get the repository tree for a GitLab project (list files and directories)
+- **`upload_markdown`** ✏️: Upload a file to a GitLab project for use in markdown content
 
 ### Work Items (6 tools)
 Modern GraphQL API for issues, epics, tasks, and more. Requires USE_WORKITEMS=true (enabled by default).

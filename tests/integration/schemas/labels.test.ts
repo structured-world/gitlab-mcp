@@ -4,8 +4,8 @@
  * against real GitLab 18.3 API responses following CRITICAL COMPREHENSIVE TEST DATA LIFECYCLE WORKFLOW RULE
  */
 
-import { ListLabelsSchema, GetLabelSchema } from '../../../src/entities/core/schema-readonly';
-import { CreateLabelSchema, UpdateLabelSchema, DeleteLabelSchema } from '../../../src/entities/core/schema';
+import { ListLabelsSchema, GetLabelSchema } from '../../../src/entities/labels/schema-readonly';
+import { CreateLabelSchema, UpdateLabelSchema, DeleteLabelSchema } from '../../../src/entities/labels/schema';
 
 describe('Labels Schema - GitLab 18.3 Integration', () => {
   const GITLAB_TOKEN = process.env.GITLAB_TOKEN;

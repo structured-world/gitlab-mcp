@@ -33,7 +33,7 @@
     "build": "tsc -p tsconfig.build.json",
     "start": "node --no-warnings -r source-map-support/register --experimental-specifier-resolution=node dist/main.js",
     "dev:stdio": "node --env-file=.env.test -r source-map-support/register -r ts-node/register --experimental-specifier-resolution=node --experimental-print-required-tla --watch src/main.ts stdio",
-    "dev:sse": "node --env-file=.env.test -r source-map-support/register -r ts-node/register --experimental-specifier-resolution=node --experimental-print-required-tla --watch src/main.ts sse",
+    "dev": "node --env-file=.env.test -r source-map-support/register -r ts-node/register --experimental-specifier-resolution=node --experimental-print-required-tla --watch src/main.ts",
     "watch": "tsc --watch",
     "test": "yarn jest --runInBand",
     "test:cov": "yarn jest --coverage",

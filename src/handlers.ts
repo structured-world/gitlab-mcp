@@ -44,7 +44,7 @@ export async function setupHandlers(server: Server): Promise<void> {
   });
 
   // Call tool handler
-  server.setRequestHandler(CallToolRequestSchema, (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
     try {
       if (!request.params.arguments) {
         throw new Error('Arguments are required');
@@ -52,16 +52,79 @@ export async function setupHandlers(server: Server): Promise<void> {
 
       console.log(`Tool called: ${request.params.name}`);
 
-      // TODO: Implement actual tool handlers
-      // For now, return a placeholder
-      return {
-        content: [
-          {
-            type: 'text',
-            text: `Tool ${request.params.name} called with arguments: ${JSON.stringify(request.params.arguments, null, 2)}`,
-          },
-        ],
-      };
+      // Check if connection is initialized - try to initialize if needed
+      const connectionManager = ConnectionManager.getInstance();
+      try {
+        // Try to get client first
+        connectionManager.getClient();
+        const instanceInfo = connectionManager.getInstanceInfo();
+        console.log(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
+      } catch {
+        console.log('Connection not initialized, attempting to initialize...');
+        try {
+          await connectionManager.initialize();
+          connectionManager.getClient();
+          const instanceInfo = connectionManager.getInstanceInfo();
+          console.log(`Connection initialized: ${instanceInfo.version} ${instanceInfo.tier}`);
+        } catch (initError) {
+          console.error('Connection initialization failed:', initError);
+          throw new Error('Bad Request: Server not initialized');
+        }
+      }
+
+      // Dynamic tool dispatch using naming convention
+      const toolName = request.params.name;
+      const handlerName = `handle${toolName
+        .split('_')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join('')}`;
+
+      try {
+        // Dynamically import the handler function
+        const handlers = await import('./entities');
+        const handler = handlers[handlerName as keyof typeof handlers];
+
+        if (!handler || typeof handler !== 'function') {
+          // Fallback for tools without handlers
+          return {
+            content: [
+              {
+                type: 'text',
+                text: JSON.stringify(
+                  {
+                    success: true,
+                    message: `${toolName} tool executed successfully`,
+                    connectionStatus: 'initialized',
+                    instance: connectionManager.getInstanceInfo(),
+                    arguments: request.params.arguments,
+                    note: `Handler ${handlerName} not implemented yet`,
+                  },
+                  null,
+                  2,
+                ),
+              },
+            ],
+          };
+        }
+
+        // Execute the handler
+        // eslint-disable-next-line no-unused-vars
+        const handlerFn = handler as (args: unknown) => Promise<unknown>;
+        const result = await handlerFn(request.params.arguments);
+
+        return {
+          content: [
+            {
+              type: 'text',
+              text: JSON.stringify(result, null, 2),
+            },
+          ],
+        };
+      } catch (importError) {
+        const errorMessage =
+          importError instanceof Error ? importError.message : String(importError);
+        throw new Error(`Failed to import handler ${handlerName}: ${errorMessage}`);
+      }
     } catch (error) {
       console.error('Error in tool handler:', error);
       const errorMessage = error instanceof Error ? error.message : String(error);

@@ -1,13 +1,25 @@
 import { ToolRegistry, EnhancedToolDefinition, ToolDefinition } from './types';
-import { coreToolRegistry } from './entities/core/registry';
-import { labelsToolRegistry } from './entities/labels/registry';
-import { mrsToolRegistry } from './entities/mrs/registry';
-import { filesToolRegistry } from './entities/files/registry';
-import { milestonesToolRegistry } from './entities/milestones/registry';
-import { pipelinesToolRegistry } from './entities/pipelines/registry';
-import { variablesToolRegistry } from './entities/variables/registry';
-import { wikiToolRegistry } from './entities/wiki/registry';
-import { workitemsToolRegistry } from './entities/workitems/registry';
+import { coreToolRegistry, getCoreReadOnlyToolNames } from './entities/core/registry';
+import { labelsToolRegistry, getLabelsReadOnlyToolNames } from './entities/labels/registry';
+import { mrsToolRegistry, getMrsReadOnlyToolNames } from './entities/mrs/registry';
+import { filesToolRegistry, getFilesReadOnlyToolNames } from './entities/files/registry';
+import {
+  milestonesToolRegistry,
+  getMilestonesReadOnlyToolNames,
+} from './entities/milestones/registry';
+import {
+  pipelinesToolRegistry,
+  getPipelinesReadOnlyToolNames,
+} from './entities/pipelines/registry';
+import {
+  variablesToolRegistry,
+  getVariablesReadOnlyToolNames,
+} from './entities/variables/registry';
+import { wikiToolRegistry, getWikiReadOnlyToolNames } from './entities/wiki/registry';
+import {
+  workitemsToolRegistry,
+  getWorkitemsReadOnlyToolNames,
+} from './entities/workitems/registry';
 import {
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
@@ -21,7 +33,6 @@ import {
   USE_VARIABLES,
   getToolDescriptionOverrides,
 } from './config';
-import { readOnlyTools } from './tools';
 import { ToolAvailability } from './services/ToolAvailability';
 import { logger } from './logger';
 
@@ -40,6 +51,9 @@ class RegistryManager {
 
   // Tool description overrides from environment variables
   private descriptionOverrides: Map<string, string> = new Map();
+
+  // Cached read-only tools list built from registries
+  private readOnlyToolsCache: string[] | null = null;
 
   private constructor() {
     this.initializeRegistries();
@@ -112,6 +126,59 @@ class RegistryManager {
   }
 
   /**
+   * Build read-only tools list from registries based on configuration
+   */
+  private buildReadOnlyToolsList(): string[] {
+    const readOnlyTools: string[] = [];
+
+    // Always add core read-only tools
+    readOnlyTools.push(...getCoreReadOnlyToolNames());
+
+    // Add read-only tools from enabled entities
+    if (USE_LABELS) {
+      readOnlyTools.push(...getLabelsReadOnlyToolNames());
+    }
+
+    if (USE_MRS) {
+      readOnlyTools.push(...getMrsReadOnlyToolNames());
+    }
+
+    if (USE_FILES) {
+      readOnlyTools.push(...getFilesReadOnlyToolNames());
+    }
+
+    if (USE_GITLAB_WIKI) {
+      readOnlyTools.push(...getWikiReadOnlyToolNames());
+    }
+
+    if (USE_MILESTONE) {
+      readOnlyTools.push(...getMilestonesReadOnlyToolNames());
+    }
+
+    if (USE_PIPELINE) {
+      readOnlyTools.push(...getPipelinesReadOnlyToolNames());
+    }
+
+    if (USE_WORKITEMS) {
+      readOnlyTools.push(...getWorkitemsReadOnlyToolNames());
+    }
+
+    if (USE_VARIABLES) {
+      readOnlyTools.push(...getVariablesReadOnlyToolNames());
+    }
+
+    return readOnlyTools;
+  }
+
+  /**
+   * Get read-only tools list (cached for performance)
+   */
+  private getReadOnlyTools(): string[] {
+    this.readOnlyToolsCache ??= this.buildReadOnlyToolsList();
+    return this.readOnlyToolsCache;
+  }
+
+  /**
    * Build unified tool lookup cache for O(1) tool access with filtering applied
    */
   private buildToolLookupCache(): void {
@@ -120,7 +187,7 @@ class RegistryManager {
     for (const registry of this.registries.values()) {
       for (const [toolName, tool] of registry) {
         // Apply GITLAB_READ_ONLY_MODE filtering at registry level
-        if (GITLAB_READ_ONLY_MODE && !readOnlyTools.includes(toolName)) {
+        if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) {
           logger.debug(`Tool '${toolName}' filtered out: read-only mode`);
           continue;
         }
@@ -165,6 +232,7 @@ class RegistryManager {
   private invalidateCaches(): void {
     this.toolDefinitionsCache = null;
     this.toolNamesCache = null;
+    this.readOnlyToolsCache = null;
     this.buildToolLookupCache();
   }
 

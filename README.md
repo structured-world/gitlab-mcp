@@ -253,11 +253,11 @@ export GITLAB_TOOL_CREATE_WORK_ITEM="Create tickets for our sprint planning"
 - **Case Sensitivity**: Tool names in environment variables must be UPPERCASE (e.g., `LIST_PROJECTS` not `list_projects`)
 - **Invalid Names**: Invalid tool names in environment variables are ignored with a warning in debug logs
 - **Content Guidelines**: Descriptions can be any valid string but should be kept concise for better UX
-- **Scope**: Works with all 86+ available tools across all entities (Core, Work Items, Merge Requests, Files, etc.)
+- **Scope**: Works with all 89+ available tools across all entities (Core, Work Items, Merge Requests, Files, etc.)
 
 ## Tools 🛠️
 
-**86 Tools Available** - Organized by entity and functionality below.
+**89 Tools Available** - Organized by entity and functionality below.
 
 ### Key Features:
 - **Modular Entity Architecture** - Separate entities for Labels, Merge Requests, Files, Pipelines, etc.

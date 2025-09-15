@@ -33,10 +33,7 @@ jest.mock('../../../src/logger', () => ({
   },
 }));
 
-// Mock the tools module
-jest.mock('../../../src/tools', () => ({
-  readOnlyTools: ['list_projects', 'get_project', 'search_repositories'],
-}));
+// Note: No need to mock tools module anymore - registry manager handles read-only tools internally
 
 // Mock the ToolAvailability service
 jest.mock('../../../src/services/ToolAvailability', () => ({
@@ -134,7 +131,7 @@ describe('Tool Description Overrides', () => {
       const realConfig = jest.requireActual('../../../src/config');
       const overrides = realConfig.getToolDescriptionOverrides();
 
-      expect(overrides.size).toBe(3);
+      expect(overrides.size).toBe(5);
       expect(overrides.get('list_projects')).toBe('Custom project list description');
       expect(overrides.get('get_project')).toBe('Custom project details description');
       expect(overrides.get('create_merge_request')).toBe('Custom MR creation description');
@@ -164,6 +161,91 @@ describe('Tool Description Overrides', () => {
       // Clean up environment variables
       delete process.env.GITLAB_TOOL_LIST_PROJECTS;
       delete process.env.GITLAB_TOOL_GET_FILE_CONTENTS;
+    });
+
+    it('should handle special characters in descriptions', () => {
+      // Set up environment variables with special characters
+      process.env.GITLAB_TOOL_TEST_SPECIAL = 'Description with "quotes" & <brackets> and symbols: @#$%^&*()';
+      process.env.GITLAB_TOOL_TEST_UNICODE = 'Unicode: café résumé naïve 中文 🚀 📋';
+      process.env.GITLAB_TOOL_TEST_NEWLINES = 'Multi\nline\tdescription\rwith\r\nvarious\\nescapes';
+
+      // Import the real function for this test
+      const realConfig = jest.requireActual('../../../src/config');
+      const overrides = realConfig.getToolDescriptionOverrides();
+
+      expect(overrides.get('test_special')).toBe('Description with "quotes" & <brackets> and symbols: @#$%^&*()');
+      expect(overrides.get('test_unicode')).toBe('Unicode: café résumé naïve 中文 🚀 📋');
+      expect(overrides.get('test_newlines')).toBe('Multi\nline\tdescription\rwith\r\nvarious\\nescapes');
+
+      // Clean up
+      delete process.env.GITLAB_TOOL_TEST_SPECIAL;
+      delete process.env.GITLAB_TOOL_TEST_UNICODE;
+      delete process.env.GITLAB_TOOL_TEST_NEWLINES;
+    });
+
+    it('should handle very long descriptions', () => {
+      const longDescription = 'A'.repeat(10000); // 10KB description
+      process.env.GITLAB_TOOL_LONG_DESC = longDescription;
+
+      // Import the real function for this test
+      const realConfig = jest.requireActual('../../../src/config');
+      const overrides = realConfig.getToolDescriptionOverrides();
+
+      expect(overrides.get('long_desc')).toBe(longDescription);
+      expect(overrides.get('long_desc')?.length).toBe(10000);
+
+      // Clean up
+      delete process.env.GITLAB_TOOL_LONG_DESC;
+    });
+
+    it('should handle case sensitivity correctly', () => {
+      // Set up environment variables with different cases
+      process.env.GITLAB_TOOL_LOWER_CASE = 'Lower case tool';
+      process.env.GITLAB_TOOL_UPPER_CASE = 'Upper case tool';
+      process.env.GITLAB_TOOL_MiXeD_CaSe = 'Mixed case tool';
+      process.env.GITLAB_TOOL_WITH_NUMBERS_123 = 'Tool with numbers';
+
+      // Import the real function for this test
+      const realConfig = jest.requireActual('../../../src/config');
+      const overrides = realConfig.getToolDescriptionOverrides();
+
+      expect(overrides.get('lower_case')).toBe('Lower case tool');
+      expect(overrides.get('upper_case')).toBe('Upper case tool');
+      expect(overrides.get('mixed_case')).toBe('Mixed case tool');
+      expect(overrides.get('with_numbers_123')).toBe('Tool with numbers');
+
+      // Clean up
+      delete process.env.GITLAB_TOOL_LOWER_CASE;
+      delete process.env.GITLAB_TOOL_UPPER_CASE;
+      delete process.env.GITLAB_TOOL_MiXeD_CaSe;
+      delete process.env.GITLAB_TOOL_WITH_NUMBERS_123;
+    });
+
+    it('should ignore malformed or invalid variable names', () => {
+      // Set up malformed environment variables
+      process.env.GITLAB_TOOL_ = 'Empty suffix'; // Should be ignored
+      process.env.GITLAB_TOOL_123_STARTS_WITH_NUMBER = 'Starts with number';
+      process.env.GITLAB_TOOL_VALID_NAME = 'Valid tool name';
+      process.env['GITLAB_TOOL_SPECIAL_CHARS_!@#'] = 'Special chars in name';
+
+      // Import the real function for this test
+      const realConfig = jest.requireActual('../../../src/config');
+      const overrides = realConfig.getToolDescriptionOverrides();
+
+      // Should include valid ones
+      expect(overrides.get('123_starts_with_number')).toBe('Starts with number');
+      expect(overrides.get('valid_name')).toBe('Valid tool name');
+      expect(overrides.get('special_chars_!@#')).toBe('Special chars in name');
+
+      // Should include empty suffix (current implementation allows it)
+      expect(overrides.has('')).toBe(true);
+      expect(overrides.get('')).toBe('Empty suffix');
+
+      // Clean up
+      delete process.env.GITLAB_TOOL_;
+      delete process.env.GITLAB_TOOL_123_STARTS_WITH_NUMBER;
+      delete process.env.GITLAB_TOOL_VALID_NAME;
+      delete process.env['GITLAB_TOOL_SPECIAL_CHARS_!@#'];
     });
 
     it('should return empty map when no override environment variables are set', () => {

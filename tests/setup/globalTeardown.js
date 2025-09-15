@@ -9,6 +9,9 @@ const path = require('path');
 const fs = require('fs');
 const { config } = require('dotenv');
 
+// Use native fetch API (available in Node.js 18+)
+// No import needed - fetch is global in modern Node.js
+
 module.exports = async () => {
   // Load environment
   const path = require('path');

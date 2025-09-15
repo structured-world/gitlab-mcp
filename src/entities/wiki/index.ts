@@ -1,13 +1,11 @@
 // Always export shared schemas
 export * from '../shared';
 
-// Always export read-only schemas and tools (for backward compatibility)
+// Always export read-only schemas (for backward compatibility)
 export * from './schema-readonly';
-export * from './tools-readonly';
 
 // Export write schemas (for backward compatibility)
 export * from './schema';
-export * from './tools';
 
 // Export the new unified registry
 export * from './registry';
@@ -33,6 +31,3 @@ export const wikiTools: ToolDefinition[] = wikiToolsFromRegistry.map(
 
 // Export read-only tool names for backward compatibility
 export const wikiReadOnlyTools = getWikiReadOnlyToolNames();
-
-// Export handlers (for backward compatibility)
-export * from './handlers';

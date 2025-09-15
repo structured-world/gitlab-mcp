@@ -39,20 +39,30 @@ const isForce = process.argv.includes('--force');
 async function findTestGroups() {
   console.log('🔍 Searching for test groups...');
 
-  const response = await fetch(`${GITLAB_API_URL}/api/v4/groups?search=lifecycle-test`, {
-    headers: {
-      'Authorization': `Bearer ${GITLAB_TOKEN}`,
-    },
-  });
+  let allGroups = [];
+  let page = 1;
 
-  if (!response.ok) {
-    throw new Error(`Failed to fetch groups: ${response.status} ${response.statusText}`);
+  while (page <= 10) { // Limit to 10 pages to avoid infinite loop
+    const response = await fetch(`${GITLAB_API_URL}/api/v4/groups?search=lifecycle-test&page=${page}&per_page=100`, {
+      headers: {
+        'Authorization': `Bearer ${GITLAB_TOKEN}`,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch groups: ${response.status} ${response.statusText}`);
+    }
+
+    const groups = await response.json();
+
+    if (groups.length === 0) break;
+    allGroups = allGroups.concat(groups);
+    page++;
   }
 
-  const groups = await response.json();
-  console.log(`📋 Found ${groups.length} test groups`);
+  console.log(`📋 Found ${allGroups.length} test groups across ${page - 1} pages`);
 
-  return groups;
+  return allGroups;
 }
 
 async function deleteGroup(groupId, groupName) {

@@ -18,6 +18,7 @@ import {
   ListGroupIterationsSchema,
   DownloadAttachmentSchema,
 } from './schema-readonly';
+import { CreateRepositorySchema, ForkRepositorySchema, CreateBranchSchema } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
@@ -536,6 +537,114 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
         const events = await response.json();
         return events;
+      },
+    },
+  ],
+
+  // Write tools
+  [
+    'create_repository',
+    {
+      name: 'create_repository',
+      description: 'Create a new GitLab project',
+      inputSchema: zodToJsonSchema(CreateRepositorySchema),
+      handler: async (args: unknown): Promise<unknown> => {
+        const options = CreateRepositorySchema.parse(args);
+
+        const body = new URLSearchParams();
+        Object.entries(options).forEach(([key, value]) => {
+          if (value !== undefined) {
+            if (Array.isArray(value)) {
+              body.set(key, value.join(','));
+            } else {
+              body.set(key, String(value));
+            }
+          }
+        });
+
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects`;
+        const response = await enhancedFetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+
+        if (!response.ok) {
+          throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+        }
+
+        const project = await response.json();
+        return project;
+      },
+    },
+  ],
+  [
+    'fork_repository',
+    {
+      name: 'fork_repository',
+      description: 'Fork a GitLab project to your account or specified namespace',
+      inputSchema: zodToJsonSchema(ForkRepositorySchema),
+      handler: async (args: unknown): Promise<unknown> => {
+        const options = ForkRepositorySchema.parse(args);
+
+        const body = new URLSearchParams();
+        Object.entries(options).forEach(([key, value]) => {
+          if (value !== undefined && key !== 'project_id') {
+            body.set(key, String(value));
+          }
+        });
+
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/fork`;
+        const response = await enhancedFetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+
+        if (!response.ok) {
+          throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+        }
+
+        const fork = await response.json();
+        return fork;
+      },
+    },
+  ],
+  [
+    'create_branch',
+    {
+      name: 'create_branch',
+      description: 'Create a new branch in a GitLab project',
+      inputSchema: zodToJsonSchema(CreateBranchSchema),
+      handler: async (args: unknown): Promise<unknown> => {
+        const options = CreateBranchSchema.parse(args);
+
+        const body = new URLSearchParams();
+        body.set('branch', options.branch);
+        body.set('ref', options.ref);
+
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/repository/branches`;
+        const response = await enhancedFetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+
+        if (!response.ok) {
+          throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+        }
+
+        const branch = await response.json();
+        return branch;
       },
     },
   ],

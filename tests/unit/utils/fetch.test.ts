@@ -161,4 +161,123 @@ describe('Enhanced Fetch Utilities', () => {
       expect(result).toBe(mockResponse);
     });
   });
+
+  describe('Additional Edge Cases', () => {
+    it('should handle undefined headers', async () => {
+      const mockResponse = { ok: true, status: 200 };
+      mockFetch.mockResolvedValue(mockResponse);
+
+      // Test with undefined headers
+      await enhancedFetch('https://example.com', { headers: undefined });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://example.com',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'User-Agent': 'GitLab MCP Server'
+          })
+        })
+      );
+    });
+
+    it('should handle array-like headers', async () => {
+      const mockResponse = { ok: true, status: 200 };
+      mockFetch.mockResolvedValue(mockResponse);
+
+      // Test with array-like headers
+      await enhancedFetch('https://example.com', {
+        headers: [['X-Custom', 'value'], ['Another-Header', 'value2']]
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://example.com',
+        expect.objectContaining({
+          headers: expect.any(Object)
+        })
+      );
+    });
+
+    it('should preserve custom HTTP methods', async () => {
+      const mockResponse = { ok: true, status: 200 };
+      mockFetch.mockResolvedValue(mockResponse);
+
+      await enhancedFetch('https://example.com', { method: 'PATCH' });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://example.com',
+        expect.objectContaining({
+          method: 'PATCH'
+        })
+      );
+    });
+
+    it('should handle request timeout option', async () => {
+      const mockResponse = { ok: true, status: 200 };
+      mockFetch.mockResolvedValue(mockResponse);
+
+      await enhancedFetch('https://example.com', {
+        signal: AbortSignal.timeout(5000)
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://example.com',
+        expect.objectContaining({
+          signal: expect.any(AbortSignal)
+        })
+      );
+    });
+
+    it('should handle different request body types', async () => {
+      const mockResponse = { ok: true, status: 200 };
+      mockFetch.mockResolvedValue(mockResponse);
+
+      const formData = new FormData();
+      formData.append('key', 'value');
+
+      await enhancedFetch('https://example.com', {
+        method: 'POST',
+        body: formData
+      });
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://example.com',
+        expect.objectContaining({
+          method: 'POST',
+          body: formData
+        })
+      );
+    });
+
+    it('should handle empty options object', async () => {
+      const mockResponse = { ok: true, status: 200 };
+      mockFetch.mockResolvedValue(mockResponse);
+
+      await enhancedFetch('https://example.com', {});
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://example.com',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'User-Agent': 'GitLab MCP Server'
+          })
+        })
+      );
+    });
+
+    it('should handle undefined options', async () => {
+      const mockResponse = { ok: true, status: 200 };
+      mockFetch.mockResolvedValue(mockResponse);
+
+      await enhancedFetch('https://example.com', undefined);
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://example.com',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            'User-Agent': 'GitLab MCP Server'
+          })
+        })
+      );
+    });
+  });
 });

@@ -1,3 +1,10 @@
+## [1.0.2](https://github.com/structured-world/gitlab-mcp/compare/v1.0.1...v1.0.2) (2025-09-15)
+
+
+### Bug Fixes
+
+* correct Docker build configuration for production deployment ([d9b089f](https://github.com/structured-world/gitlab-mcp/commit/d9b089f6c76fda01bd19e96997fa99e37602aec3))
+
 ## [1.0.1](https://github.com/structured-world/gitlab-mcp/compare/v1.0.0...v1.0.1) (2025-09-15)
 
 

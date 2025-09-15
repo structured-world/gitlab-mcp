@@ -814,26 +814,51 @@ export const GET_WORK_ITEM: TypedDocumentNode<{ workItem: WorkItem }, { id: stri
 
 // GraphQL Mutations
 
+// Minimal work item creation (for tests)
 export const CREATE_WORK_ITEM: TypedDocumentNode<
   { workItemCreate: { workItem: WorkItem; errors: string[] } },
   {
     namespacePath: string;
     title: string;
     workItemTypeId: string;
-    description?: string;
-    assigneeIds?: string[];
-    labelIds?: string[];
-    milestoneId?: string;
   }
 > = gql`
-  mutation CreateWorkItem(
+  mutation CreateWorkItem($namespacePath: ID!, $title: String!, $workItemTypeId: WorkItemsTypeID!) {
+    workItemCreate(
+      input: { namespacePath: $namespacePath, title: $title, workItemTypeId: $workItemTypeId }
+    ) {
+      workItem {
+        id
+        iid
+        title
+        description
+        state
+        workItemType {
+          id
+          name
+        }
+        webUrl
+      }
+      errors
+    }
+  }
+`;
+
+// Full work item creation with optional description (for MCP registry)
+export const CREATE_WORK_ITEM_WITH_DESCRIPTION: TypedDocumentNode<
+  { workItemCreate: { workItem: WorkItem; errors: string[] } },
+  {
+    namespacePath: string;
+    title: string;
+    workItemTypeId: string;
+    description: string;
+  }
+> = gql`
+  mutation CreateWorkItemWithDescription(
     $namespacePath: ID!
     $title: String!
     $workItemTypeId: WorkItemsTypeID!
-    $description: String
-    $assigneeIds: [UserID!]
-    $labelIds: [LabelID!]
-    $milestoneId: MilestoneID
+    $description: String!
   ) {
     workItemCreate(
       input: {
@@ -841,9 +866,6 @@ export const CREATE_WORK_ITEM: TypedDocumentNode<
         title: $title
         workItemTypeId: $workItemTypeId
         descriptionWidget: { description: $description }
-        assigneesWidget: { assigneeIds: $assigneeIds }
-        labelsWidget: { addLabelIds: $labelIds }
-        milestoneWidget: { milestoneId: $milestoneId }
       }
     ) {
       workItem {

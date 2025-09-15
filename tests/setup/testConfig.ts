@@ -24,7 +24,8 @@ export interface TestDataState {
     files: any[];
     tags: any[];
   };
-  workItems?: any[];
+  workItems?: any[]; // PROJECT-level work items (Issues, Tasks, Bugs)
+  groupWorkItems?: any[]; // GROUP-level work items (Epics)
   mergeRequests?: any[];
   milestones?: any[];
   labels?: any[];

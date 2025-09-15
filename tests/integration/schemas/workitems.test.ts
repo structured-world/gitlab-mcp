@@ -695,7 +695,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
   describe('CreateWorkItemSchema', () => {
     it('should validate create work item parameters', async () => {
       const validParams = {
-        groupPath: testGroupPath || TEST_GROUP,
+        namespacePath: testGroupPath || TEST_GROUP,
         title: 'Test Work Item',
         workItemType: 'ISSUE' as const,
         description: 'This is a test work item',
@@ -705,7 +705,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       expect(result.success).toBe(true);
 
       if (result.success) {
-        expect(result.data.groupPath).toBe(TEST_GROUP);
+        expect(result.data.namespacePath).toBe(TEST_GROUP);
         expect(result.data.title).toBe('Test Work Item');
         expect(result.data.workItemType).toBe('ISSUE');
       }

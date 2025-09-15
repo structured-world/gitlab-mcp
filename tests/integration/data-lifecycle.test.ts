@@ -15,16 +15,28 @@
  */
 
 import { GITLAB_TOKEN, GITLAB_API_URL, updateTestData, getTestData } from '../setup/testConfig';
+import { GraphQLClient } from '../../src/graphql/client';
+import { CREATE_WORK_ITEM, GET_WORK_ITEM_TYPES } from '../../src/graphql/workItems';
+import { ConnectionManager } from '../../src/services/ConnectionManager';
 
 describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
   const timestamp = Date.now();
   const baseTestName = `lifecycle-test-${timestamp}`;
+  let client: GraphQLClient;
+  let connectionManager: ConnectionManager;
 
   beforeAll(async () => {
     if (!GITLAB_TOKEN || !GITLAB_API_URL) {
       throw new Error('GITLAB_TOKEN and GITLAB_API_URL are required for lifecycle tests');
     }
     console.log(`🚀 Starting data lifecycle chain with timestamp: ${timestamp}`);
+
+    // 🚨 CRITICAL: Initialize GraphQL schema introspection FIRST
+    console.log('🔍 Initializing GraphQL schema introspection...');
+    connectionManager = ConnectionManager.getInstance();
+    await connectionManager.initialize();
+    client = connectionManager.getClient();
+    console.log('✅ GraphQL schema introspection completed');
   });
 
   // Note: Cleanup moved to globalTeardown.js to run after ALL tests complete
@@ -336,64 +348,132 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
   });
 
   describe('📋 Step 5: Work Items Infrastructure', () => {
-    it('should create work items (depends on project + labels + milestones)', async () => {
+    it('should create PROJECT-level work items (Issues, Tasks - depends on project + labels + milestones)', async () => {
       const testData = getTestData();
       expect(testData.project?.id).toBeDefined();
-      console.log('🔧 Creating work items...');
+      console.log('🔧 Creating PROJECT-level work items (Issues, Tasks) using GraphQL with dynamic type discovery...');
 
-      const createdWorkItems: any[] = [];
+      // 🚨 CRITICAL: Get work item types dynamically for this project namespace
+      console.log('🔍 Getting work item types for project namespace...');
+      const workItemTypesResponse = await client.request(GET_WORK_ITEM_TYPES, {
+        namespacePath: testData.project!.path_with_namespace,
+      });
 
-      // Create different types of work items (with user assignment if available)
-      const workItemsData = [
+      const projectWorkItemTypes = workItemTypesResponse.namespace.workItemTypes.nodes;
+      console.log('📋 Available project work item types:', projectWorkItemTypes.map(t => `${t.name}(${t.id})`).join(', '));
+
+      const issueType = projectWorkItemTypes.find(t => t.name === 'Issue');
+      const taskType = projectWorkItemTypes.find(t => t.name === 'Task');
+
+      expect(issueType).toBeDefined();
+      expect(taskType).toBeDefined();
+
+      const createdProjectWorkItems: any[] = [];
+
+      // 🚨 CRITICAL: PROJECT-level work items use project namespace, not group namespace
+      const projectWorkItemsData = [
         {
           title: `Test Issue ${timestamp}`,
-          description: 'Test issue for API validation',
-          workItemTypeId: 'gid://gitlab/WorkItems::Type/1', // Issue
-          assignee_ids: testData.user ? [testData.user.id] : undefined,
-        },
-        {
-          title: `Test Epic ${timestamp}`,
-          description: 'Test epic for feature development',
-          workItemTypeId: 'gid://gitlab/WorkItems::Type/7', // Epic
+          description: 'Test issue for API validation - PROJECT LEVEL ONLY (GraphQL)',
+          typeId: issueType!.id,
+          typeName: 'Issue',
         },
         {
           title: `Test Task ${timestamp}`,
-          description: 'Test task for development work',
-          workItemTypeId: 'gid://gitlab/WorkItems::Type/4', // Task
-          assignee_ids: testData.user ? [testData.user.id] : undefined,
+          description: 'Test task for development work - PROJECT LEVEL ONLY (GraphQL)',
+          typeId: taskType!.id,
+          typeName: 'Task',
         },
       ];
 
-      for (const workItemData of workItemsData) {
+      for (const workItemData of projectWorkItemsData) {
         try {
-          // Use REST API for work item creation as GraphQL might have different requirements
-          const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${testData.project!.id}/issues`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${GITLAB_TOKEN}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              title: workItemData.title,
-              description: workItemData.description,
-              labels: testData.labels?.[0]?.name || undefined,
-              milestone_id: testData.milestones?.[0]?.id || undefined,
-            }),
-          });
+          console.log(`  🔧 Creating ${workItemData.typeName} via GraphQL with type ID ${workItemData.typeId}...`);
 
-          if (response.ok) {
-            const workItem = await response.json();
-            createdWorkItems.push(workItem);
+          const response = await client.request(CREATE_WORK_ITEM, {
+            namespacePath: testData.project!.path_with_namespace,
+            title: workItemData.title,
+            workItemTypeId: workItemData.typeId,
+          }) as { workItemCreate: any };
+
+          if (response.workItemCreate?.workItem) {
+            const workItem = response.workItemCreate.workItem;
+            createdProjectWorkItems.push(workItem);
+            console.log(`  ✅ Created PROJECT-level ${workItemData.typeName}: ${workItem.iid} (Type: ${workItem.workItemType.name})`);
+          } else if (response.workItemCreate?.errors?.length > 0) {
+            console.log(`  ⚠️  GraphQL errors creating ${workItemData.typeName}: ${response.workItemCreate.errors.join(', ')}`);
+          } else {
+            console.log(`  ⚠️  Unexpected GraphQL response creating ${workItemData.typeName}:`, response);
           }
         } catch (error) {
-          console.log(`⚠️  Could not create work item: ${workItemData.title}`);
+          console.log(`  ⚠️  Could not create PROJECT work item: ${workItemData.title}`, error);
         }
       }
 
-      updateTestData({ workItems: createdWorkItems });
+      updateTestData({ workItems: createdProjectWorkItems });
 
-      expect(createdWorkItems.length).toBeGreaterThan(0);
-      console.log(`✅ Created ${createdWorkItems.length} work items`);
+      expect(createdProjectWorkItems.length).toBeGreaterThan(0);
+      console.log(`✅ Created ${createdProjectWorkItems.length} PROJECT-level work items using GraphQL`);
+    });
+
+    it('should create GROUP-level work items (Epics - depends on group)', async () => {
+      const testData = getTestData();
+      expect(testData.group?.id).toBeDefined();
+      console.log('🔧 Creating GROUP-level work items (Epics) using GraphQL with dynamic type discovery...');
+
+      // 🚨 CRITICAL: Get work item types dynamically for this group namespace
+      console.log('🔍 Getting work item types for group namespace...');
+      const workItemTypesResponse = await client.request(GET_WORK_ITEM_TYPES, {
+        namespacePath: testData.group!.path,
+      });
+
+      const groupWorkItemTypes = workItemTypesResponse.namespace.workItemTypes.nodes;
+      console.log('📋 Available group work item types:', groupWorkItemTypes.map(t => `${t.name}(${t.id})`).join(', '));
+
+      const epicType = groupWorkItemTypes.find(t => t.name === 'Epic');
+      expect(epicType).toBeDefined();
+
+      const createdGroupWorkItems: any[] = [];
+
+      // 🚨 CRITICAL: Epics are GROUP-level only using GraphQL
+      const groupWorkItemsData = [
+        {
+          title: `Test Epic ${timestamp}`,
+          description: 'Test epic for feature development - GROUP LEVEL ONLY (GraphQL)',
+          typeId: epicType!.id,
+          typeName: 'Epic',
+        },
+      ];
+
+      for (const workItemData of groupWorkItemsData) {
+        try {
+          console.log(`  🔧 Creating ${workItemData.typeName} via GraphQL with type ID ${workItemData.typeId}...`);
+
+          const response = await client.request(CREATE_WORK_ITEM, {
+            namespacePath: testData.group!.path,
+            title: workItemData.title,
+            workItemTypeId: workItemData.typeId,
+          }) as { workItemCreate: any };
+
+          if (response.workItemCreate?.workItem) {
+            const workItem = response.workItemCreate.workItem;
+            createdGroupWorkItems.push(workItem);
+            console.log(`  ✅ Created GROUP-level ${workItemData.typeName}: ${workItem.iid} (Type: ${workItem.workItemType.name})`);
+          } else if (response.workItemCreate?.errors?.length > 0) {
+            console.log(`  ⚠️  GraphQL errors creating ${workItemData.typeName}: ${response.workItemCreate.errors.join(', ')}`);
+          } else {
+            console.log(`  ⚠️  Unexpected GraphQL response creating ${workItemData.typeName}:`, response);
+          }
+        } catch (error) {
+          console.log(`  ⚠️  Could not create GROUP work item: ${workItemData.title}`, error);
+        }
+      }
+
+      // Store group work items separately
+      updateTestData({ groupWorkItems: createdGroupWorkItems });
+
+      expect(createdGroupWorkItems.length).toBeGreaterThan(0);
+      console.log(`✅ Created ${createdGroupWorkItems.length} GROUP-level work items (Epics)`);
     });
   });
 

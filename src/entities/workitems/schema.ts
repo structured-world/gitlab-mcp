@@ -1,9 +1,38 @@
 import { z } from 'zod';
 import { WorkItemIdSchema, WorkItemTypeEnumSchema, WorkItemStateSchema } from './schema-readonly';
 
-// Write operation schemas
+/**
+ * 🚨 CRITICAL: GitLab Work Items Hierarchy Rules for MCP Agents
+ *
+ * Work items in GitLab have STRICT level restrictions that CANNOT be violated:
+ *
+ * GROUP LEVEL ONLY (use group path in namespacePath):
+ * - Epic work items - ONLY exist at group level, NEVER at project level
+ * - Use namespacePath like "my-group" or "parent-group/sub-group"
+ *
+ * PROJECT LEVEL ONLY (use project path in namespacePath):
+ * - Issue work items - ONLY exist at project level, NEVER at group level
+ * - Task work items - ONLY exist at project level, NEVER at group level
+ * - Bug work items - ONLY exist at project level, NEVER at group level
+ * - Use namespacePath like "group/project" or "group/subgroup/project"
+ *
+ * FORBIDDEN PATTERNS (will always fail):
+ * - ❌ Creating Epic with project namespacePath
+ * - ❌ Creating Issue/Task/Bug with group namespacePath
+ *
+ * EXAMPLES:
+ * ✅ Epic: namespacePath="my-group", workItemType="EPIC"
+ * ✅ Issue: namespacePath="my-group/my-project", workItemType="ISSUE"
+ * ✅ Task: namespacePath="my-group/my-project", workItemType="TASK"
+ * ❌ Epic: namespacePath="my-group/my-project" (WRONG - will fail)
+ * ❌ Issue: namespacePath="my-group" (WRONG - will fail)
+ */
 export const CreateWorkItemSchema = z.object({
-  groupPath: z.string().describe('Group path where to create the work item'),
+  namespacePath: z
+    .string()
+    .describe(
+      'CRITICAL: Namespace path (group OR project). For Epics use GROUP path (e.g. "my-group"). For Issues/Tasks use PROJECT path (e.g. "my-group/my-project"). Wrong level will cause creation to fail.',
+    ),
   title: z.string().describe('Title of the work item'),
   workItemType: WorkItemTypeEnumSchema,
   description: z.string().optional().describe('Description of the work item'),

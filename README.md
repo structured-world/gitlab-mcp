@@ -4,7 +4,7 @@
 
 ## @structured-world/mcp-gitlab
 
-A fork of the original [zereight/mcp-gitlab]
+A fork of the original [zereight/mcp-gitlab](https://github.com/zereight/gitlab-mcp)
 
 ![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)
 ![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)

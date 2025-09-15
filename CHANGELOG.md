@@ -1,3 +1,10 @@
+# [2.6.0](https://github.com/structured-world/gitlab-mcp/compare/v2.5.1...v2.6.0) (2025-09-15)
+
+
+### Features
+
+* enhance Labels, Milestones, and Wiki entities with dual project/group scope support ([6e406e6](https://github.com/structured-world/gitlab-mcp/commit/6e406e6d50de66770d9614407e589ff4895533fb))
+
 ## [2.5.1](https://github.com/structured-world/gitlab-mcp/compare/v2.5.0...v2.5.1) (2025-09-15)
 
 

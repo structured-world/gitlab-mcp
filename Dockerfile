@@ -6,8 +6,8 @@
 # ============================================================================
 FROM node:22-alpine AS dependencies
 
-# Enable Corepack for Yarn 4
-RUN corepack enable
+# Enable Corepack and prepare Yarn
+RUN corepack enable && corepack prepare yarn@4.9.4 --activate
 
 # Set working directory
 WORKDIR /app
@@ -25,17 +25,19 @@ RUN --mount=type=cache,target=/root/.yarn/berry/cache \
 # ============================================================================
 FROM node:22-alpine AS builder
 
-# Enable Corepack for Yarn 4
-RUN corepack enable
+# Enable Corepack and prepare Yarn (same version)
+RUN corepack enable && corepack prepare yarn@4.9.4 --activate
 
 # Set working directory
 WORKDIR /app
 
-# Copy dependencies from previous stage
+# Copy dependencies and Yarn setup from previous stage
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY --from=dependencies /app/package.json ./package.json
 COPY --from=dependencies /app/yarn.lock ./yarn.lock
 COPY --from=dependencies /app/.yarnrc.yml ./.yarnrc.yml
+# Copy .yarn directory to avoid re-downloading Yarn
+COPY --from=dependencies /app/.yarn ./.yarn
 
 # Copy source code and config files
 COPY tsconfig*.json ./
@@ -49,14 +51,16 @@ RUN yarn build
 # ============================================================================
 FROM node:22-alpine AS production-deps
 
-# Enable Corepack for Yarn 4
-RUN corepack enable
+# Enable Corepack and prepare Yarn (same version)
+RUN corepack enable && corepack prepare yarn@4.9.4 --activate
 
 # Set working directory
 WORKDIR /app
 
-# Copy package files
+# Copy package files and Yarn setup
 COPY package.json yarn.lock .yarnrc.yml ./
+# Copy .yarn directory from dependencies stage to avoid re-downloading
+COPY --from=dependencies /app/.yarn ./.yarn
 
 # Install only production dependencies
 ENV NODE_ENV=production

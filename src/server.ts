@@ -2,7 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
-import * as express from 'express';
+import express from 'express';
 import { SSE, STREAMABLE_HTTP, HOST, PORT } from './config';
 import { TransportMode } from './types';
 import { packageName, packageVersion } from './config';

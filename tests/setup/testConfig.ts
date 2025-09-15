@@ -16,6 +16,7 @@ if (!GITLAB_TOKEN || !GITLAB_API_URL) {
 
 // Test data state interface
 export interface TestDataState {
+  user?: any;
   group?: any;
   project?: any;
   repository?: {

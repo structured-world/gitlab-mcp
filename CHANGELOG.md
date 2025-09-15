@@ -1,3 +1,10 @@
+# [2.4.0](https://github.com/structured-world/gitlab-mcp/compare/v2.3.1...v2.4.0) (2025-09-15)
+
+
+### Features
+
+* implement dynamic tool handler dispatch system ([5bfe1c3](https://github.com/structured-world/gitlab-mcp/commit/5bfe1c33b8d02f7705a4bf33c583691b44708e59))
+
 ## [2.3.1](https://github.com/structured-world/gitlab-mcp/compare/v2.3.0...v2.3.1) (2025-09-15)
 
 

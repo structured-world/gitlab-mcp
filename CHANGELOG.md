@@ -1,3 +1,10 @@
+# [2.8.0](https://github.com/structured-world/gitlab-mcp/compare/v2.7.0...v2.8.0) (2025-09-15)
+
+
+### Features
+
+* implement dynamic tool description customization via environment variables ([e28dcd9](https://github.com/structured-world/gitlab-mcp/commit/e28dcd913bd8b518e5cedb84482b6c3e5442ecc9))
+
 # [2.7.0](https://github.com/structured-world/gitlab-mcp/compare/v2.6.2...v2.7.0) (2025-09-15)
 
 

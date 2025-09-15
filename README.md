@@ -416,8 +416,7 @@ This GitLab MCP Server is developed and maintained with care for the community. 
 ☕ **Buy me a coffee with USDT (TRC-20)**
 `TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA`
 
-📱 *Scan QR code with your mobile wallet (TronLink, Trust Wallet, Exodus, etc.)*
-💻 *Or [click here](tron:TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA) if you have a TRON wallet app installed on your PC*
+📱 *Scan QR code with your wallet (TronLink, Trust Wallet, Exodus, etc.)*
 
 **Every contribution helps keep this project alive and growing! 🚀**
 

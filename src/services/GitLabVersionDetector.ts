@@ -1,6 +1,6 @@
 import { GraphQLClient } from '../graphql/client';
 import { gql } from 'graphql-tag';
-import { fetch } from '../http-client';
+import { enhancedFetch } from '../utils/fetch';
 
 export type GitLabTier = 'free' | 'premium' | 'ultimate';
 
@@ -155,7 +155,7 @@ export class GitLabVersionDetector {
   private async detectVersionFallback(): Promise<string> {
     try {
       const baseUrl = this.client.endpoint.replace('/api/graphql', '');
-      const response = await fetch(`${baseUrl}/api/v4/version`);
+      const response = await enhancedFetch(`${baseUrl}/api/v4/version`);
       if (response.ok) {
         const data = (await response.json()) as { version: string };
         return data.version;

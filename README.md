@@ -16,6 +16,11 @@ GitLab MCP(Model Context Protocol) Server. **Includes bug fixes and improvements
 
 This fork is actively maintained and enhanced with strict TypeScript standards, Yarn 4 support, and improved development workflows.
 
+## Requirements
+
+- **Node.js**: >=18.0.0 (required for native fetch API support)
+- **GitLab**: Compatible with GitLab.com and self-hosted instances
+
 ## Usage
 
 ### Using with Claude App, Cline, Roo Code, Cursor, Kilo Code
@@ -39,7 +44,8 @@ When using with the Claude App, you need to set up your API key and URLs directl
         "USE_GITLAB_WIKI": "false", // use wiki api?
         "USE_MILESTONE": "false", // use milestone api?
         "USE_PIPELINE": "false", // use pipeline api?
-        "USE_VARIABLES": "true" // use variables api?
+        "USE_VARIABLES": "true", // use variables api?
+        "SKIP_TLS_VERIFY": "false" // skip SSL cert verification (dev only)
       }
     }
   }
@@ -187,6 +193,7 @@ docker run -i --rm \
 - `USE_FILES`: When set to 'true', enables the file-related tools (get_file_contents, get_repository_tree, create_or_update_file, push_files, upload_markdown). By default, file operation features are enabled.
 - `USE_VARIABLES`: When set to 'true', enables the CI/CD variables-related tools (list_variables, get_variable, create_variable, update_variable, delete_variable). Supports both project-level and group-level variables. By default, variables features are enabled.
 - `GITLAB_AUTH_COOKIE_PATH`: Path to an authentication cookie file for GitLab instances that require cookie-based authentication. When provided, the cookie will be included in all GitLab API requests.
+- `SKIP_TLS_VERIFY`: When set to 'true', skips TLS certificate verification for all GitLab API requests (both REST and GraphQL). **WARNING**: This bypasses SSL certificate validation and should only be used for testing with self-signed certificates or trusted internal GitLab instances. Never use this in production environments.
 - `SSE`: When set to 'true', enables the Server-Sent Events transport.
 - `STREAMABLE_HTTP`: When set to 'true', enables the Streamable HTTP transport. If both **SSE** and **STREAMABLE_HTTP** are set to 'true', the server will prioritize Streamable HTTP over SSE transport.
 

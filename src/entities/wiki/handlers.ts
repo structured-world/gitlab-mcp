@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { ListWikiPagesSchema, GetWikiPageSchema } from './schema-readonly';
 import { CreateWikiPageSchema, UpdateWikiPageSchema, DeleteWikiPageSchema } from './schema';
+import { enhancedFetch } from '../../utils/fetch';
 
 /**
  * Handler for list_wiki_pages tool - REAL GitLab API call
@@ -20,7 +21,7 @@ export async function handleListWikiPages(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -47,7 +48,7 @@ export async function handleGetWikiPage(args: unknown): Promise<unknown> {
   const entityId = (isProject ? project_id : group_id) as string;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis/${encodeURIComponent(options.slug)}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -81,7 +82,7 @@ export async function handleCreateWikiPage(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -122,7 +123,7 @@ export async function handleUpdateWikiPage(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis/${encodeURIComponent(options.slug)}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -152,7 +153,7 @@ export async function handleDeleteWikiPage(args: unknown): Promise<unknown> {
   const entityId = (isProject ? project_id : group_id) as string;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis/${encodeURIComponent(options.slug)}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,

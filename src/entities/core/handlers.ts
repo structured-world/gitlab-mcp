@@ -18,6 +18,7 @@ import {
   DownloadAttachmentSchema,
 } from './schema-readonly';
 import { CreateRepositorySchema, ForkRepositorySchema, CreateBranchSchema } from './schema';
+import { enhancedFetch } from '../../utils/fetch';
 
 /**
  * Handler for list_projects tool - REAL GitLab API call
@@ -35,7 +36,7 @@ export async function handleListProjects(args: unknown): Promise<unknown> {
 
   // Make REAL GitLab API call
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -65,7 +66,7 @@ export async function handleSearchRepositories(args: unknown): Promise<unknown> 
 
   // Make REAL GitLab API call to search projects
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -93,7 +94,7 @@ export async function handleGetUsers(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/users?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -122,7 +123,7 @@ export async function handleGetProject(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -150,7 +151,7 @@ export async function handleListNamespaces(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/namespaces?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -172,7 +173,7 @@ export async function handleGetNamespace(args: unknown): Promise<unknown> {
   const { namespace_id } = options;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/namespaces/${encodeURIComponent(namespace_id)}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -194,7 +195,7 @@ export async function handleVerifyNamespace(args: unknown): Promise<unknown> {
   const { namespace } = options;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/namespaces/${encodeURIComponent(namespace)}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -222,7 +223,7 @@ export async function handleListProjectMembers(args: unknown): Promise<unknown> 
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/members?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -251,7 +252,7 @@ export async function handleListGroupProjects(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(group_id)}/projects?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -280,7 +281,7 @@ export async function handleListCommits(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -307,7 +308,7 @@ export async function handleGetCommit(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits/${encodeURIComponent(commit_sha)}?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -334,7 +335,7 @@ export async function handleGetCommitDiff(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits/${encodeURIComponent(commit_sha)}/diff?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -363,7 +364,7 @@ export async function handleListGroupIterations(args: unknown): Promise<unknown>
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(group_id)}/iterations?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -385,7 +386,7 @@ export async function handleDownloadAttachment(args: unknown): Promise<unknown> 
   const { project_id, secret, filename } = options;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/uploads/${encodeURIComponent(secret)}/${encodeURIComponent(filename)}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -417,7 +418,7 @@ export async function handleListEvents(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/events?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -446,7 +447,7 @@ export async function handleGetProjectEvents(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/events?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -478,7 +479,7 @@ export async function handleCreateRepository(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -509,7 +510,7 @@ export async function handleForkRepository(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/fork`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -537,7 +538,7 @@ export async function handleCreateBranch(args: unknown): Promise<unknown> {
   body.set('ref', options.ref);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/repository/branches`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,

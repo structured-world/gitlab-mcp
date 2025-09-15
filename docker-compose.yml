@@ -100,6 +100,19 @@ services:
       # Enable Wiki functionality (available in all tiers)
       USE_GITLAB_WIKI: ${USE_GITLAB_WIKI:-true}
 
+      # Enable Labels functionality (available in all tiers)
+      USE_LABELS: ${USE_LABELS:-true}
+
+      # Enable Merge Requests functionality (available in all tiers)
+      USE_MRS: ${USE_MRS:-true}
+
+      # Enable File operations (available in all tiers)
+      USE_FILES: ${USE_FILES:-true}
+
+      # Enable CI/CD Variables (available in all tiers)
+      # Supports both project-level and group-level variables
+      USE_VARIABLES: ${USE_VARIABLES:-true}
+
       # ========================================================================
       # SECURITY AND ACCESS CONTROL
       # ========================================================================
@@ -135,6 +148,19 @@ services:
 
       # Comma-separated list of hosts to bypass proxy
       NO_PROXY: ${NO_PROXY:-}
+
+      # ========================================================================
+      # SSL/TLS CONFIGURATION
+      # ========================================================================
+
+      # Skip TLS certificate verification (DEVELOPMENT ONLY)
+      # WARNING: Only use for testing with self-signed certificates
+      # Never enable in production environments
+      SKIP_TLS_VERIFY: ${SKIP_TLS_VERIFY:-false}
+
+      # GitLab authentication cookie file path (for cookie-based auth)
+      # Leave empty unless using cookie-based authentication
+      GITLAB_AUTH_COOKIE_PATH: ${GITLAB_AUTH_COOKIE_PATH:-}
 
       # ========================================================================
       # PERFORMANCE TUNING
@@ -203,9 +229,17 @@ services:
       USE_MILESTONE: ${USE_MILESTONE:-true}
       USE_PIPELINE: ${USE_PIPELINE:-true}
       USE_GITLAB_WIKI: ${USE_GITLAB_WIKI:-true}
+      USE_LABELS: ${USE_LABELS:-true}
+      USE_MRS: ${USE_MRS:-true}
+      USE_FILES: ${USE_FILES:-true}
+      USE_VARIABLES: ${USE_VARIABLES:-true}
 
       # Security
       GITLAB_READ_ONLY_MODE: ${GITLAB_READ_ONLY_MODE:-false}
+
+      # SSL/TLS Configuration
+      SKIP_TLS_VERIFY: ${SKIP_TLS_VERIFY:-false}
+      GITLAB_AUTH_COOKIE_PATH: ${GITLAB_AUTH_COOKIE_PATH:-}
 
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -261,9 +295,17 @@ services:
       USE_MILESTONE: ${USE_MILESTONE:-true}
       USE_PIPELINE: ${USE_PIPELINE:-true}
       USE_GITLAB_WIKI: ${USE_GITLAB_WIKI:-true}
+      USE_LABELS: ${USE_LABELS:-true}
+      USE_MRS: ${USE_MRS:-true}
+      USE_FILES: ${USE_FILES:-true}
+      USE_VARIABLES: ${USE_VARIABLES:-true}
 
       # Security
       GITLAB_READ_ONLY_MODE: ${GITLAB_READ_ONLY_MODE:-false}
+
+      # SSL/TLS Configuration
+      SKIP_TLS_VERIFY: ${SKIP_TLS_VERIFY:-false}
+      GITLAB_AUTH_COOKIE_PATH: ${GITLAB_AUTH_COOKIE_PATH:-}
 
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-info}
@@ -307,12 +349,20 @@ services:
       USE_MILESTONE: ${USE_MILESTONE:-true}
       USE_PIPELINE: ${USE_PIPELINE:-true}
       USE_GITLAB_WIKI: ${USE_GITLAB_WIKI:-true}
+      USE_LABELS: ${USE_LABELS:-true}
+      USE_MRS: ${USE_MRS:-true}
+      USE_FILES: ${USE_FILES:-true}
+      USE_VARIABLES: ${USE_VARIABLES:-true}
 
       # SECURITY: Enable read-only mode
       GITLAB_READ_ONLY_MODE: true
 
       # Additional security: Block potentially sensitive tools
       GITLAB_DENIED_TOOLS_REGEX: "delete.*|remove.*"
+
+      # SSL/TLS Configuration
+      SKIP_TLS_VERIFY: ${SKIP_TLS_VERIFY:-false}
+      GITLAB_AUTH_COOKIE_PATH: ${GITLAB_AUTH_COOKIE_PATH:-}
 
       # Logging
       LOG_LEVEL: ${LOG_LEVEL:-info}

@@ -23,6 +23,7 @@ import {
   PublishDraftNoteSchema,
   BulkPublishDraftNotesSchema,
 } from './schema';
+import { enhancedFetch } from '../../utils/fetch';
 
 /**
  * Handler for get_branch_diffs tool - REAL GitLab API call
@@ -37,7 +38,7 @@ export async function handleGetBranchDiffs(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/repository/compare?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -59,7 +60,7 @@ export async function handleGetMergeRequest(args: unknown): Promise<unknown> {
   const { project_id, merge_request_iid } = options;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/merge_requests/${merge_request_iid}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -91,7 +92,7 @@ export async function handleListMergeRequests(args: unknown): Promise<unknown> {
     ? `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests?${queryParams}`
     : `${process.env.GITLAB_API_URL}/api/v4/merge_requests?${queryParams}`;
 
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -121,7 +122,7 @@ export async function handleGetMergeRequestDiffs(args: unknown): Promise<unknown
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/merge_requests/${merge_request_iid}/diffs?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -151,7 +152,7 @@ export async function handleListMergeRequestDiffs(args: unknown): Promise<unknow
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/merge_requests/${merge_request_iid}/diffs?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -180,7 +181,7 @@ export async function handleListMergeRequestDiscussions(args: unknown): Promise<
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/merge_requests/${merge_request_iid}/discussions?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -202,7 +203,7 @@ export async function handleGetDraftNote(args: unknown): Promise<unknown> {
   const { project_id, merge_request_iid, draft_note_id } = options;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -224,7 +225,7 @@ export async function handleListDraftNotes(args: unknown): Promise<unknown> {
   const { project_id, merge_request_iid } = options;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/merge_requests/${merge_request_iid}/draft_notes`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -256,7 +257,7 @@ export async function handleCreateMergeRequest(args: unknown): Promise<unknown> 
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -291,7 +292,7 @@ export async function handleUpdateMergeRequest(args: unknown): Promise<unknown> 
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -322,7 +323,7 @@ export async function handleMergeMergeRequest(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/merge`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -355,7 +356,7 @@ export async function handleCreateNote(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/notes`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -388,7 +389,7 @@ export async function handleCreateMergeRequestThread(args: unknown): Promise<unk
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/discussions`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -415,7 +416,7 @@ export async function handleUpdateMergeRequestNote(args: unknown): Promise<unkno
   body.set('body', options.body);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/notes/${options.note_id}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -445,7 +446,7 @@ export async function handleCreateMergeRequestNote(args: unknown): Promise<unkno
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/notes`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -481,7 +482,7 @@ export async function handleCreateDraftNote(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/draft_notes`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -511,7 +512,7 @@ export async function handleUpdateDraftNote(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/draft_notes/${options.draft_note_id}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -535,7 +536,7 @@ export async function handleDeleteDraftNote(args: unknown): Promise<unknown> {
   const options = DeleteDraftNoteSchema.parse(args);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/draft_notes/${options.draft_note_id}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -556,7 +557,7 @@ export async function handlePublishDraftNote(args: unknown): Promise<unknown> {
   const options = PublishDraftNoteSchema.parse(args);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/draft_notes/${options.draft_note_id}/publish`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -578,7 +579,7 @@ export async function handleBulkPublishDraftNotes(args: unknown): Promise<unknow
   const options = BulkPublishDraftNotesSchema.parse(args);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/draft_notes/bulk_publish`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,

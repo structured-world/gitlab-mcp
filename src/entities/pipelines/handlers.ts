@@ -15,6 +15,7 @@ import {
   RetryPipelineJobSchema,
   CancelPipelineJobSchema,
 } from './schema';
+import { enhancedFetch } from '../../utils/fetch';
 
 /**
  * Handler for list_pipelines tool - REAL GitLab API call
@@ -30,7 +31,7 @@ export async function handleListPipelines(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/pipelines?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -51,7 +52,7 @@ export async function handleGetPipeline(args: unknown): Promise<unknown> {
   const options = GetPipelineSchema.parse(args);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/pipelines/${options.pipeline_id}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -79,7 +80,7 @@ export async function handleListPipelineJobs(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/pipelines/${options.pipeline_id}/jobs?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -100,7 +101,7 @@ export async function handleListPipelineTriggerJobs(args: unknown): Promise<unkn
   const options = ListPipelineTriggerJobsSchema.parse(args);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/pipelines/${options.pipeline_id}/bridges`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -121,7 +122,7 @@ export async function handleGetPipelineJob(args: unknown): Promise<unknown> {
   const options = PipelineJobControlSchema.parse(args);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/jobs/${options.job_id}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -142,7 +143,7 @@ export async function handleGetPipelineJobOutput(args: unknown): Promise<unknown
   const options = GetPipelineJobOutputSchema.parse(args);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/jobs/${options.job_id}/trace`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -186,7 +187,7 @@ export async function handleCreatePipeline(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/pipeline`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -210,7 +211,7 @@ export async function handleRetryPipeline(args: unknown): Promise<unknown> {
   const options = RetryPipelineSchema.parse(args);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/pipelines/${options.pipeline_id}/retry`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -232,7 +233,7 @@ export async function handleCancelPipeline(args: unknown): Promise<unknown> {
   const options = CancelPipelineSchema.parse(args);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/pipelines/${options.pipeline_id}/cancel`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -262,7 +263,7 @@ export async function handlePlayPipelineJob(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/jobs/${options.job_id}/play`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -286,7 +287,7 @@ export async function handleRetryPipelineJob(args: unknown): Promise<unknown> {
   const options = RetryPipelineJobSchema.parse(args);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/jobs/${options.job_id}/retry`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -308,7 +309,7 @@ export async function handleCancelPipelineJob(args: unknown): Promise<unknown> {
   const options = CancelPipelineJobSchema.parse(args);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/jobs/${options.job_id}/cancel`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,

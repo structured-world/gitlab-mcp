@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-explicit-any */
 import { GetRepositoryTreeSchema, GetFileContentsSchema } from './schema-readonly';
 import { CreateOrUpdateFileSchema, PushFilesSchema, MarkdownUploadSchema } from './schema';
+import { enhancedFetch } from '../../utils/fetch';
 
 /**
  * Handler for get_file_contents tool - REAL GitLab API call
@@ -15,7 +16,7 @@ export async function handleGetFileContents(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/repository/files/${encodeURIComponent(file_path)}?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -44,7 +45,7 @@ export async function handleGetRepositoryTree(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/repository/tree?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -73,7 +74,7 @@ export async function handleCreateOrUpdateFile(args: unknown): Promise<unknown> 
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/repository/files/${encodeURIComponent(file_path)}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -120,7 +121,7 @@ export async function handlePushFiles(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/repository/commits`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -165,7 +166,7 @@ export async function handleUploadMarkdown(args: unknown): Promise<unknown> {
   formData.append('file', fileBlob, filename);
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/uploads`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,

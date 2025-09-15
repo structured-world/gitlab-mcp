@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { ListVariablesSchema, GetVariableSchema } from './schema-readonly';
 import { CreateVariableSchema, UpdateVariableSchema, DeleteVariableSchema } from './schema';
+import { enhancedFetch } from '../../utils/fetch';
 
 /**
  * Handler for list_variables tool - REAL GitLab API call
@@ -22,7 +23,7 @@ export async function handleListVariables(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/variables?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -57,7 +58,7 @@ export async function handleGetVariable(args: unknown): Promise<unknown> {
     apiUrl += `?${queryParams}`;
   }
 
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -91,7 +92,7 @@ export async function handleCreateVariable(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/variables`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -139,7 +140,7 @@ export async function handleUpdateVariable(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/variables/${encodeURIComponent(key)}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -177,7 +178,7 @@ export async function handleDeleteVariable(args: unknown): Promise<unknown> {
     apiUrl += `?${queryParams}`;
   }
 
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,

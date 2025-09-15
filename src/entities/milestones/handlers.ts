@@ -12,6 +12,7 @@ import {
   DeleteProjectMilestoneSchema,
   PromoteProjectMilestoneSchema,
 } from './schema';
+import { enhancedFetch } from '../../utils/fetch';
 
 /**
  * Handler for list_milestones tool - REAL GitLab API call
@@ -33,7 +34,7 @@ export async function handleListMilestones(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -60,7 +61,7 @@ export async function handleGetMilestone(args: unknown): Promise<unknown> {
   const entityId = (isProject ? project_id : group_id) as string;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -100,7 +101,7 @@ export async function handleGetMilestoneIssue(args: unknown): Promise<unknown> {
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}/issues?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -140,7 +141,7 @@ export async function handleGetMilestoneMergeRequests(args: unknown): Promise<un
   });
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}/merge_requests?${queryParams}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -167,7 +168,7 @@ export async function handleGetMilestoneBurndownEvents(args: unknown): Promise<u
   const entityId = (isProject ? project_id : group_id) as string;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}/burndown_events`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
     },
@@ -206,7 +207,7 @@ export async function handleCreateMilestone(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -253,7 +254,7 @@ export async function handleEditMilestone(args: unknown): Promise<unknown> {
   }
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'PUT',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -283,7 +284,7 @@ export async function handleDeleteMilestone(args: unknown): Promise<unknown> {
   const entityId = (isProject ? project_id : group_id) as string;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'DELETE',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -316,7 +317,7 @@ export async function handlePromoteMilestone(args: unknown): Promise<unknown> {
   const entityId = (isProject ? project_id : group_id) as string;
 
   const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}/promote`;
-  const response = await fetch(apiUrl, {
+  const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,

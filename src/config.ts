@@ -24,6 +24,9 @@ export const STREAMABLE_HTTP = process.env.STREAMABLE_HTTP === 'true';
 export const HOST = process.env.HOST ?? '0.0.0.0';
 export const PORT = process.env.PORT ?? 3002;
 
+// TLS/SSL configuration
+export const SKIP_TLS_VERIFY = process.env.SKIP_TLS_VERIFY === 'true';
+
 // Proxy configuration
 export const HTTP_PROXY = process.env.HTTP_PROXY;
 export const HTTPS_PROXY = process.env.HTTPS_PROXY;

@@ -1,41 +1,7 @@
 import { ExecutionResult, print } from 'graphql';
 import { TypedDocumentNode } from '@graphql-typed-document-node/core';
 import { DEFAULT_HEADERS } from '../http-client';
-import { GITLAB_AUTH_COOKIE_PATH } from '../config';
-import * as fs from 'fs';
-import { logger } from '../logger';
-
-/**
- * Reads GitLab authentication cookies from file and formats them for HTTP Cookie header
- */
-function loadCookieHeader(): string | null {
-  if (!GITLAB_AUTH_COOKIE_PATH) {
-    return null;
-  }
-
-  try {
-    const cookieString = fs.readFileSync(GITLAB_AUTH_COOKIE_PATH, 'utf-8');
-    const cookies: string[] = [];
-
-    cookieString.split('\n').forEach((line) => {
-      const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith('#')) {
-        // Parse cookie line format: domain flag path secure expiration name value
-        const parts = trimmed.split('\t');
-        if (parts.length >= 7) {
-          const name = parts[5];
-          const value = parts[6];
-          cookies.push(`${name}=${value}`);
-        }
-      }
-    });
-
-    return cookies.length > 0 ? cookies.join('; ') : null;
-  } catch (error: unknown) {
-    logger.warn({ err: error }, 'Failed to load GitLab authentication cookies');
-    return null;
-  }
-}
+import { enhancedFetch } from '../utils/fetch';
 
 export interface GraphQLClientOptions {
   endpoint: string;
@@ -58,8 +24,7 @@ export class GraphQLClient {
   ): Promise<TResult> {
     const query = print(document);
 
-    // Prepare headers with authentication (token + cookies)
-    const cookieHeader = loadCookieHeader();
+    // Prepare headers with authentication (enhancedFetch handles cookies automatically)
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
       ...DEFAULT_HEADERS,
@@ -67,12 +32,7 @@ export class GraphQLClient {
       ...requestHeaders,
     };
 
-    // Add cookies if available
-    if (cookieHeader) {
-      headers.Cookie = cookieHeader;
-    }
-
-    const response = await globalThis.fetch(this.endpoint, {
+    const response = await enhancedFetch(this.endpoint, {
       method: 'POST',
       headers,
       body: JSON.stringify({

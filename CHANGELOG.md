@@ -1,3 +1,10 @@
+# [2.7.0](https://github.com/structured-world/gitlab-mcp/compare/v2.6.2...v2.7.0) (2025-09-15)
+
+
+### Features
+
+* implement fully dynamic tool registry system with enhanced security ([2c4fe5a](https://github.com/structured-world/gitlab-mcp/commit/2c4fe5a85710aa980c1ced9eeaddc60cf87c01d4))
+
 ## [2.6.2](https://github.com/structured-world/gitlab-mcp/compare/v2.6.1...v2.6.2) (2025-09-15)
 
 

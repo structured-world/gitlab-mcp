@@ -23,3 +23,6 @@ import type { ToolDefinition } from '../../types';
 export const pipelineTools: ToolDefinition[] = isReadOnly
   ? pipelineReadOnlyToolsArray
   : [...pipelineReadOnlyToolsArray, ...pipelineWriteTools];
+
+// Export handlers
+export * from './handlers';

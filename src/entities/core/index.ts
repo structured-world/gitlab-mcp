@@ -23,3 +23,6 @@ import type { ToolDefinition } from '../../types';
 export const coreTools: ToolDefinition[] = isReadOnly
   ? coreReadOnlyToolsArray
   : [...coreReadOnlyToolsArray, ...coreWriteTools];
+
+// Export read-only tool names for backward compatibility
+export const coreReadOnlyTools = coreReadOnlyToolsArray.map((tool) => tool.name);

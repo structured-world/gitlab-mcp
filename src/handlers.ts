@@ -80,31 +80,18 @@ export async function setupHandlers(server: Server): Promise<void> {
         .join('')}`;
 
       try {
-        // Dynamically import the handler function
-        const handlers = await import('./entities');
-        const handler = handlers[handlerName as keyof typeof handlers];
+        // Import the dynamic handlers function
+        const { getDynamicHandlers } = await import('./entities');
+        const dynamicHandlers = await getDynamicHandlers();
+        const handler = dynamicHandlers[handlerName];
+
+        console.log(`Looking for handler: ${handlerName}`);
+        console.log(`Available dynamic handlers:`, Object.keys(dynamicHandlers));
 
         if (!handler || typeof handler !== 'function') {
-          // Fallback for tools without handlers
-          return {
-            content: [
-              {
-                type: 'text',
-                text: JSON.stringify(
-                  {
-                    success: true,
-                    message: `${toolName} tool executed successfully`,
-                    connectionStatus: 'initialized',
-                    instance: connectionManager.getInstanceInfo(),
-                    arguments: request.params.arguments,
-                    note: `Handler ${handlerName} not implemented yet`,
-                  },
-                  null,
-                  2,
-                ),
-              },
-            ],
-          };
+          throw new Error(
+            `Handler function '${handlerName}' not found in dynamic handlers. Available handlers: ${Object.keys(dynamicHandlers).join(', ')}`,
+          );
         }
 
         // Execute the handler

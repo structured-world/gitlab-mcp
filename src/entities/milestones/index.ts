@@ -23,3 +23,6 @@ import type { ToolDefinition } from '../../types';
 export const milestoneTools: ToolDefinition[] = isReadOnly
   ? milestoneReadOnlyToolsArray
   : [...milestoneReadOnlyToolsArray, ...milestoneWriteTools];
+
+// Export handlers
+export * from './handlers';

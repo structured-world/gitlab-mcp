@@ -26,3 +26,6 @@ export const workitemsTools: ToolDefinition[] = isReadOnly
 
 // Export read-only tool names for backward compatibility
 export const workitemsReadOnlyTools = workitemsReadOnlyToolsArray.map((tool) => tool.name);
+
+// Export handlers
+export * from './handlers';

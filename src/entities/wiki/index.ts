@@ -23,3 +23,6 @@ import type { ToolDefinition } from '../../types';
 export const wikiTools: ToolDefinition[] = isReadOnly
   ? wikiReadOnlyToolsArray
   : [...wikiReadOnlyToolsArray, ...wikiWriteTools];
+
+// Export handlers
+export * from './handlers';

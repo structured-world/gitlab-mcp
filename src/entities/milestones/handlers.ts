@@ -18,15 +18,21 @@ import {
  */
 export async function handleListMilestones(args: unknown): Promise<unknown> {
   const options = ListProjectMilestonesSchema.parse(args);
+  const { project_id, group_id } = options;
+
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
 
   const queryParams = new URLSearchParams();
   Object.entries(options).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && key !== 'project_id') {
+    if (value !== undefined && value !== null && key !== 'project_id' && key !== 'group_id') {
       queryParams.set(key, String(value));
     }
   });
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/milestones?${queryParams}`;
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones?${queryParams}`;
   const response = await fetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -46,8 +52,14 @@ export async function handleListMilestones(args: unknown): Promise<unknown> {
  */
 export async function handleGetMilestone(args: unknown): Promise<unknown> {
   const options = GetProjectMilestoneSchema.parse(args);
+  const { project_id, group_id } = options;
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/milestones/${options.milestone_id}`;
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
+
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}`;
   const response = await fetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -67,15 +79,27 @@ export async function handleGetMilestone(args: unknown): Promise<unknown> {
  */
 export async function handleGetMilestoneIssue(args: unknown): Promise<unknown> {
   const options = GetMilestoneIssuesSchema.parse(args);
+  const { project_id, group_id } = options;
+
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
 
   const queryParams = new URLSearchParams();
   Object.entries(options).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && key !== 'project_id' && key !== 'milestone_id') {
+    if (
+      value !== undefined &&
+      value !== null &&
+      key !== 'project_id' &&
+      key !== 'group_id' &&
+      key !== 'milestone_id'
+    ) {
       queryParams.set(key, String(value));
     }
   });
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/milestones/${options.milestone_id}/issues?${queryParams}`;
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}/issues?${queryParams}`;
   const response = await fetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -95,15 +119,27 @@ export async function handleGetMilestoneIssue(args: unknown): Promise<unknown> {
  */
 export async function handleGetMilestoneMergeRequests(args: unknown): Promise<unknown> {
   const options = GetMilestoneMergeRequestsSchema.parse(args);
+  const { project_id, group_id } = options;
+
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
 
   const queryParams = new URLSearchParams();
   Object.entries(options).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && key !== 'project_id' && key !== 'milestone_id') {
+    if (
+      value !== undefined &&
+      value !== null &&
+      key !== 'project_id' &&
+      key !== 'group_id' &&
+      key !== 'milestone_id'
+    ) {
       queryParams.set(key, String(value));
     }
   });
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/milestones/${options.milestone_id}/merge_requests?${queryParams}`;
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}/merge_requests?${queryParams}`;
   const response = await fetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -123,8 +159,14 @@ export async function handleGetMilestoneMergeRequests(args: unknown): Promise<un
  */
 export async function handleGetMilestoneBurndownEvents(args: unknown): Promise<unknown> {
   const options = GetMilestoneBurndownEventsSchema.parse(args);
+  const { project_id, group_id } = options;
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/milestones/${options.milestone_id}/burndown_events`;
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
+
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}/burndown_events`;
   const response = await fetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -144,6 +186,12 @@ export async function handleGetMilestoneBurndownEvents(args: unknown): Promise<u
  */
 export async function handleCreateMilestone(args: unknown): Promise<unknown> {
   const options = CreateProjectMilestoneSchema.parse(args);
+  const { project_id, group_id } = options;
+
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
 
   const body = new URLSearchParams();
   body.set('title', options.title);
@@ -157,7 +205,7 @@ export async function handleCreateMilestone(args: unknown): Promise<unknown> {
     body.set('start_date', options.start_date);
   }
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/milestones`;
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones`;
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
@@ -180,6 +228,12 @@ export async function handleCreateMilestone(args: unknown): Promise<unknown> {
  */
 export async function handleEditMilestone(args: unknown): Promise<unknown> {
   const options = EditProjectMilestoneSchema.parse(args);
+  const { project_id, group_id } = options;
+
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
 
   const body = new URLSearchParams();
   if (options.title) {
@@ -198,7 +252,7 @@ export async function handleEditMilestone(args: unknown): Promise<unknown> {
     body.set('state_event', options.state_event);
   }
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/milestones/${options.milestone_id}`;
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}`;
   const response = await fetch(apiUrl, {
     method: 'PUT',
     headers: {
@@ -221,8 +275,14 @@ export async function handleEditMilestone(args: unknown): Promise<unknown> {
  */
 export async function handleDeleteMilestone(args: unknown): Promise<unknown> {
   const options = DeleteProjectMilestoneSchema.parse(args);
+  const { project_id, group_id } = options;
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/milestones/${options.milestone_id}`;
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
+
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}`;
   const response = await fetch(apiUrl, {
     method: 'DELETE',
     headers: {
@@ -248,8 +308,14 @@ export async function handleDeleteMilestone(args: unknown): Promise<unknown> {
  */
 export async function handlePromoteMilestone(args: unknown): Promise<unknown> {
   const options = PromoteProjectMilestoneSchema.parse(args);
+  const { project_id, group_id } = options;
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/milestones/${options.milestone_id}/promote`;
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
+
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${options.milestone_id}/promote`;
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {

@@ -113,6 +113,14 @@ import {
   handleCancelPipelineJob,
 } from './pipelines/handlers';
 
+import {
+  handleListVariables,
+  handleGetVariable,
+  handleCreateVariable,
+  handleUpdateVariable,
+  handleDeleteVariable,
+} from './variables/handlers';
+
 // Define handler mapping type
 type HandlerFunction = (args: unknown) => Promise<unknown>;
 
@@ -147,6 +155,10 @@ const handlerMap: Record<string, HandlerFunction> = {
   get_project_events: handleGetProjectEvents,
   list_group_iterations: handleListGroupIterations,
   download_attachment: handleDownloadAttachment,
+
+  // Variables handlers
+  list_variables: handleListVariables,
+  get_variable: handleGetVariable,
 
   // Work items handlers (GraphQL)
   list_work_items: handleListWorkItems,
@@ -210,6 +222,9 @@ const handlerMap: Record<string, HandlerFunction> = {
   update_label: handleUpdateLabel,
   delete_label: handleDeleteLabel,
   upload_markdown: handleUploadMarkdown,
+  create_variable: handleCreateVariable,
+  update_variable: handleUpdateVariable,
+  delete_variable: handleDeleteVariable,
 
   // TODO: Add more handlers as they are implemented
 };

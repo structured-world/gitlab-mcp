@@ -7,13 +7,19 @@ import { CreateWikiPageSchema, UpdateWikiPageSchema, DeleteWikiPageSchema } from
  */
 export async function handleListWikiPages(args: unknown): Promise<unknown> {
   const options = ListWikiPagesSchema.parse(args);
+  const { project_id, group_id } = options;
+
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
 
   const queryParams = new URLSearchParams();
   if (options.with_content !== undefined) {
     queryParams.set('with_content', String(options.with_content));
   }
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/wikis?${queryParams}`;
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis?${queryParams}`;
   const response = await fetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -33,8 +39,14 @@ export async function handleListWikiPages(args: unknown): Promise<unknown> {
  */
 export async function handleGetWikiPage(args: unknown): Promise<unknown> {
   const options = GetWikiPageSchema.parse(args);
+  const { project_id, group_id } = options;
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/wikis/${encodeURIComponent(options.slug)}`;
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
+
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis/${encodeURIComponent(options.slug)}`;
   const response = await fetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -54,6 +66,12 @@ export async function handleGetWikiPage(args: unknown): Promise<unknown> {
  */
 export async function handleCreateWikiPage(args: unknown): Promise<unknown> {
   const options = CreateWikiPageSchema.parse(args);
+  const { project_id, group_id } = options;
+
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
 
   const body = new URLSearchParams();
   body.set('title', options.title);
@@ -62,7 +80,7 @@ export async function handleCreateWikiPage(args: unknown): Promise<unknown> {
     body.set('format', options.format);
   }
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/wikis`;
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis`;
   const response = await fetch(apiUrl, {
     method: 'POST',
     headers: {
@@ -85,6 +103,12 @@ export async function handleCreateWikiPage(args: unknown): Promise<unknown> {
  */
 export async function handleUpdateWikiPage(args: unknown): Promise<unknown> {
   const options = UpdateWikiPageSchema.parse(args);
+  const { project_id, group_id } = options;
+
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
 
   const body = new URLSearchParams();
   if (options.title) {
@@ -97,7 +121,7 @@ export async function handleUpdateWikiPage(args: unknown): Promise<unknown> {
     body.set('format', options.format);
   }
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/wikis/${encodeURIComponent(options.slug)}`;
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis/${encodeURIComponent(options.slug)}`;
   const response = await fetch(apiUrl, {
     method: 'PUT',
     headers: {
@@ -120,8 +144,14 @@ export async function handleUpdateWikiPage(args: unknown): Promise<unknown> {
  */
 export async function handleDeleteWikiPage(args: unknown): Promise<unknown> {
   const options = DeleteWikiPageSchema.parse(args);
+  const { project_id, group_id } = options;
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/wikis/${encodeURIComponent(options.slug)}`;
+  // Determine entity type and ID
+  const isProject = !!project_id;
+  const entityType = isProject ? 'projects' : 'groups';
+  const entityId = (isProject ? project_id : group_id) as string;
+
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis/${encodeURIComponent(options.slug)}`;
   const response = await fetch(apiUrl, {
     method: 'DELETE',
     headers: {

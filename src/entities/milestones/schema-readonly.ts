@@ -22,10 +22,11 @@ export const GitLabMilestonesSchema = z.object({
 });
 
 // Read-only milestone operation schemas
-// Schema for listing project milestones
+// Schema for listing project/group milestones
 export const ListProjectMilestonesSchema = z
   .object({
-    project_id: z.coerce.string().describe('Project ID or URL-encoded path'),
+    project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
+    group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
     iids: z
       .array(z.number())
       .optional()
@@ -52,13 +53,21 @@ export const ListProjectMilestonesSchema = z
       .optional()
       .describe('Return milestones updated after the specified date (ISO 8601 format)'),
   })
-  .merge(PaginationOptionsSchema);
+  .merge(PaginationOptionsSchema)
+  .refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
+    message: 'Exactly one of project_id or group_id must be provided',
+  });
 
 // Schema for getting a single milestone
-export const GetProjectMilestoneSchema = z.object({
-  project_id: z.coerce.string().describe('Project ID or URL-encoded path'),
-  milestone_id: z.coerce.string().describe('The ID of a project milestone'),
-});
+export const GetProjectMilestoneSchema = z
+  .object({
+    project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
+    group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
+    milestone_id: z.coerce.string().describe('The ID of a project or group milestone'),
+  })
+  .refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
+    message: 'Exactly one of project_id or group_id must be provided',
+  });
 
 // Schema for getting issues assigned to a milestone
 export const GetMilestoneIssuesSchema = GetProjectMilestoneSchema;

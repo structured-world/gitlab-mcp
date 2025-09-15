@@ -5,17 +5,17 @@ import { ToolDefinition } from '../../types';
 export const wikiWriteTools: ToolDefinition[] = [
   {
     name: 'create_wiki_page',
-    description: 'Create a new wiki page in a GitLab project',
+    description: 'Create a new wiki page in a GitLab project or group',
     inputSchema: zodToJsonSchema(CreateWikiPageSchema),
   },
   {
     name: 'update_wiki_page',
-    description: 'Update an existing wiki page in a GitLab project',
+    description: 'Update an existing wiki page in a GitLab project or group',
     inputSchema: zodToJsonSchema(UpdateWikiPageSchema),
   },
   {
     name: 'delete_wiki_page',
-    description: 'Delete a wiki page from a GitLab project',
+    description: 'Delete a wiki page from a GitLab project or group',
     inputSchema: zodToJsonSchema(DeleteWikiPageSchema),
   },
 ];

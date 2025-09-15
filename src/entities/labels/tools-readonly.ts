@@ -5,12 +5,12 @@ import { ToolDefinition } from '../../types';
 export const labelsReadOnlyToolsArray: ToolDefinition[] = [
   {
     name: 'list_labels',
-    description: 'List labels for a project',
+    description: 'List labels for a project or group',
     inputSchema: zodToJsonSchema(ListLabelsSchema),
   },
   {
     name: 'get_label',
-    description: 'Get a single label from a project',
+    description: 'Get a single label from a project or group',
     inputSchema: zodToJsonSchema(GetLabelSchema),
   },
 ];

@@ -38,7 +38,8 @@ When using with the Claude App, you need to set up your API key and URLs directl
         "GITLAB_READ_ONLY_MODE": "false",
         "USE_GITLAB_WIKI": "false", // use wiki api?
         "USE_MILESTONE": "false", // use milestone api?
-        "USE_PIPELINE": "false" // use pipeline api?
+        "USE_PIPELINE": "false", // use pipeline api?
+        "USE_VARIABLES": "true" // use variables api?
       }
     }
   }
@@ -98,6 +99,8 @@ When using with the Claude App, you need to set up your API key and URLs directl
         "USE_MILESTONE",
         "-e",
         "USE_PIPELINE",
+        "-e",
+        "USE_VARIABLES",
         "ghcr.io/structured-world/mcp-gitlab:latest"
       ],
       "env": {
@@ -106,7 +109,8 @@ When using with the Claude App, you need to set up your API key and URLs directl
         "GITLAB_READ_ONLY_MODE": "false",
         "USE_GITLAB_WIKI": "true",
         "USE_MILESTONE": "true",
-        "USE_PIPELINE": "true"
+        "USE_PIPELINE": "true",
+        "USE_VARIABLES": "true"
       }
     }
   }
@@ -175,19 +179,20 @@ docker run -i --rm \
   - Multiple values `123,456,789`: MCP server can access projects 123, 456, and 789 but requires explicit project ID in requests
 - `GITLAB_READ_ONLY_MODE`: When set to 'true', restricts the server to only expose read-only operations. Useful for enhanced security or when write access is not needed. Also useful for using with Cursor and it's 40 tool limit.
 - `GITLAB_DENIED_TOOLS_REGEX`: When set as a regular expression, it excludes the matching tools.
-- `USE_GITLAB_WIKI`: When set to 'true', enables the wiki-related tools (list_wiki_pages, get_wiki_page, create_wiki_page, update_wiki_page, delete_wiki_page). By default, wiki features are disabled.
+- `USE_GITLAB_WIKI`: When set to 'true', enables the wiki-related tools (list_wiki_pages, get_wiki_page, create_wiki_page, update_wiki_page, delete_wiki_page). Supports both project-level and group-level wikis. By default, wiki features are disabled.
 - `USE_MILESTONE`: When set to 'true', enables the milestone-related tools (list_milestones, get_milestone, create_milestone, edit_milestone, delete_milestone, get_milestone_issue, get_milestone_merge_requests, promote_milestone, get_milestone_burndown_events). By default, milestone features are disabled.
 - `USE_PIPELINE`: When set to 'true', enables the pipeline-related tools (list_pipelines, get_pipeline, list_pipeline_jobs, list_pipeline_trigger_jobs, get_pipeline_job, get_pipeline_job_output, create_pipeline, retry_pipeline, cancel_pipeline, play_pipeline_job, retry_pipeline_job, cancel_pipeline_job). By default, pipeline features are disabled.
 - `USE_LABELS`: When set to 'true', enables the label-related tools (list_labels, get_label, create_label, update_label, delete_label). By default, label features are enabled.
 - `USE_MRS`: When set to 'true', enables the merge request-related tools (list_merge_requests, get_merge_request, create_merge_request, update_merge_request, merge_merge_request, get_merge_request_diffs, list_merge_request_diffs, mr_discussions, create_merge_request_thread, create_merge_request_note, update_merge_request_note, create_draft_note, update_draft_note, delete_draft_note, publish_draft_note, bulk_publish_draft_notes, get_draft_note, list_draft_notes). By default, merge request features are enabled.
 - `USE_FILES`: When set to 'true', enables the file-related tools (get_file_contents, get_repository_tree, create_or_update_file, push_files, upload_markdown). By default, file operation features are enabled.
+- `USE_VARIABLES`: When set to 'true', enables the CI/CD variables-related tools (list_variables, get_variable, create_variable, update_variable, delete_variable). Supports both project-level and group-level variables. By default, variables features are enabled.
 - `GITLAB_AUTH_COOKIE_PATH`: Path to an authentication cookie file for GitLab instances that require cookie-based authentication. When provided, the cookie will be included in all GitLab API requests.
 - `SSE`: When set to 'true', enables the Server-Sent Events transport.
 - `STREAMABLE_HTTP`: When set to 'true', enables the Streamable HTTP transport. If both **SSE** and **STREAMABLE_HTTP** are set to 'true', the server will prioritize Streamable HTTP over SSE transport.
 
 ## Tools 🛠️
 
-**81 Tools Available** - Organized by entity and functionality below.
+**86 Tools Available** - Organized by entity and functionality below.
 
 ### Key Features:
 - **Modular Entity Architecture** - Separate entities for Labels, Merge Requests, Files, Pipelines, etc.
@@ -231,130 +236,139 @@ The following issue-related tools have been removed and replaced by Work Items G
 Core GitLab functionality always available.
 
 #### Repository & Project Management
-- **`create_repository`** ✏️: Create a new GitLab project
-- **`get_project`** 📖: Get details of a specific project
-- **`list_projects`** 📖: List projects accessible by the current user
-- **`search_repositories`** 📖: Search for GitLab projects
-- **`list_group_projects`** 📖: List projects in a GitLab group with filtering options
-- **`list_project_members`** 📖: List members of a GitLab project
+- ✏️ **`create_repository`**: Create a new GitLab project
+- 📖 **`get_project`**: Get details of a specific project
+- 📖 **`list_projects`**: List projects accessible by the current user
+- 📖 **`search_repositories`**: Search for GitLab projects
+- 📖 **`list_group_projects`**: List projects in a GitLab group with filtering options
+- 📖 **`list_project_members`**: List members of a GitLab project
 
 #### Branch Management
-- **`create_branch`** ✏️: Create a new branch in a GitLab project
-- **`get_branch_diffs`** 📖: Get the changes/diffs between two branches or commits in a GitLab project
-- **`fork_repository`** ✏️: Fork a GitLab project to your account or specified namespace
+- ✏️ **`create_branch`**: Create a new branch in a GitLab project
+- 📖 **`get_branch_diffs`**: Get the changes/diffs between two branches or commits in a GitLab project
+- ✏️ **`fork_repository`**: Fork a GitLab project to your account or specified namespace
 
 #### Comments & General Notes
-- **`create_note`** ✏️: Create a new note (comment) to an issue or merge request
-- **`download_attachment`** 📖: Download an uploaded file from a GitLab project by secret and filename
+- ✏️ **`create_note`**: Create a new note (comment) to an issue or merge request
+- 📖 **`download_attachment`**: Download an uploaded file from a GitLab project by secret and filename
 
 #### Commits & History
-- **`get_commit`** 📖: Get details of a specific commit
-- **`get_commit_diff`** 📖: Get changes/diffs of a specific commit
-- **`list_commits`** 📖: List repository commits with filtering options
+- 📖 **`get_commit`**: Get details of a specific commit
+- 📖 **`get_commit_diff`**: Get changes/diffs of a specific commit
+- 📖 **`list_commits`**: List repository commits with filtering options
 
 #### Namespaces & Users
-- **`get_namespace`** 📖: Get details of a namespace by ID or path
-- **`list_namespaces`** 📖: List all namespaces available to the current user
-- **`verify_namespace`** 📖: Verify if a namespace path exists
-- **`get_users`** 📖: Get GitLab user details by usernames
+- 📖 **`get_namespace`**: Get details of a namespace by ID or path
+- 📖 **`list_namespaces`**: List all namespaces available to the current user
+- 📖 **`verify_namespace`**: Verify if a namespace path exists
+- 📖 **`get_users`**: Get GitLab user details by usernames
 
 #### Events & Activity
-- **`get_project_events`** 📖: List all visible events for a specified project. Note: before/after parameters accept date format YYYY-MM-DD only
-- **`list_events`** 📖: List all events for the currently authenticated user. Note: before/after parameters accept date format YYYY-MM-DD only
-- **`list_group_iterations`** 📖: List group iterations with filtering options
+- 📖 **`get_project_events`**: List all visible events for a specified project. Note: before/after parameters accept date format YYYY-MM-DD only
+- 📖 **`list_events`**: List all events for the currently authenticated user. Note: before/after parameters accept date format YYYY-MM-DD only
+- 📖 **`list_group_iterations`**: List group iterations with filtering options
 
 ### Labels Management (5 tools)
-Requires USE_LABELS=true environment variable (enabled by default).
+Requires USE_LABELS=true environment variable (enabled by default). Supports both project and group labels.
 
-- **`create_label`** ✏️: Create a new label in a project
-- **`update_label`** ✏️: Update an existing label in a project
-- **`delete_label`** ✏️: Delete a label from a project
-- **`get_label`** 📖: Get a single label from a project
-- **`list_labels`** 📖: List labels for a project
+- ✏️ **`create_label`**: Create a new label in a project or group
+- ✏️ **`update_label`**: Update an existing label in a project or group
+- ✏️ **`delete_label`**: Delete a label from a project or group
+- 📖 **`get_label`**: Get a single label from a project or group
+- 📖 **`list_labels`**: List labels for a project or group
 
 ### Merge Requests Management (17 tools)
 Requires USE_MRS=true environment variable (enabled by default).
 
 #### Merge Request Operations
-- **`create_merge_request`** ✏️: Create a new merge request in a GitLab project
-- **`update_merge_request`** ✏️: Update a merge request (Either mergeRequestIid or branchName must be provided)
-- **`merge_merge_request`** ✏️: Merge a merge request in a GitLab project
-- **`get_merge_request`** 📖: Get details of a merge request (Either mergeRequestIid or branchName must be provided)
-- **`get_merge_request_diffs`** 📖: Get the changes/diffs of a merge request (Either mergeRequestIid or branchName must be provided)
-- **`list_merge_request_diffs`** 📖: List merge request diffs with pagination support (Either mergeRequestIid or branchName must be provided)
-- **`list_merge_requests`** 📖: List merge requests in a GitLab project with filtering options
-- **`mr_discussions`** 📖: List discussion items for a merge request
+- ✏️ **`create_merge_request`**: Create a new merge request in a GitLab project
+- ✏️ **`update_merge_request`**: Update a merge request (Either mergeRequestIid or branchName must be provided)
+- ✏️ **`merge_merge_request`**: Merge a merge request in a GitLab project
+- 📖 **`get_merge_request`**: Get details of a merge request (Either mergeRequestIid or branchName must be provided)
+- 📖 **`get_merge_request_diffs`**: Get the changes/diffs of a merge request (Either mergeRequestIid or branchName must be provided)
+- 📖 **`list_merge_request_diffs`**: List merge request diffs with pagination support (Either mergeRequestIid or branchName must be provided)
+- 📖 **`list_merge_requests`**: List merge requests in a GitLab project with filtering options
+- 📖 **`mr_discussions`**: List discussion items for a merge request
 
 #### MR Comments & Discussions
-- **`create_merge_request_thread`** ✏️: Create a new thread on a merge request
-- **`create_merge_request_note`** ✏️: Add a new note to an existing merge request thread
-- **`update_merge_request_note`** ✏️: Modify an existing merge request thread note
+- ✏️ **`create_merge_request_thread`**: Create a new thread on a merge request
+- ✏️ **`create_merge_request_note`**: Add a new note to an existing merge request thread
+- ✏️ **`update_merge_request_note`**: Modify an existing merge request thread note
 
 #### MR Draft Notes
-- **`create_draft_note`** ✏️: Create a draft note for a merge request
-- **`update_draft_note`** ✏️: Update an existing draft note
-- **`delete_draft_note`** ✏️: Delete a draft note
-- **`publish_draft_note`** ✏️: Publish a single draft note
-- **`bulk_publish_draft_notes`** ✏️: Publish all draft notes for a merge request
-- **`get_draft_note`** 📖: Get a single draft note from a merge request
-- **`list_draft_notes`** 📖: List draft notes for a merge request
+- ✏️ **`create_draft_note`**: Create a draft note for a merge request
+- ✏️ **`update_draft_note`**: Update an existing draft note
+- ✏️ **`delete_draft_note`**: Delete a draft note
+- ✏️ **`publish_draft_note`**: Publish a single draft note
+- ✏️ **`bulk_publish_draft_notes`**: Publish all draft notes for a merge request
+- 📖 **`get_draft_note`**: Get a single draft note from a merge request
+- 📖 **`list_draft_notes`**: List draft notes for a merge request
 
 ### File Operations (5 tools)
 Requires USE_FILES=true environment variable (enabled by default).
 
-- **`create_or_update_file`** ✏️: Create or update a single file in a GitLab project
-- **`push_files`** ✏️: Push multiple files to a GitLab project in a single commit
-- **`get_file_contents`** 📖: Get the contents of a file or directory from a GitLab project
-- **`get_repository_tree`** 📖: Get the repository tree for a GitLab project (list files and directories)
-- **`upload_markdown`** ✏️: Upload a file to a GitLab project for use in markdown content
+- ✏️ **`create_or_update_file`**: Create or update a single file in a GitLab project
+- ✏️ **`push_files`**: Push multiple files to a GitLab project in a single commit
+- 📖 **`get_file_contents`**: Get the contents of a file or directory from a GitLab project
+- 📖 **`get_repository_tree`**: Get the repository tree for a GitLab project (list files and directories)
+- ✏️ **`upload_markdown`**: Upload a file to a GitLab project for use in markdown content
+
+### CI/CD Variables (5 tools)
+Requires USE_VARIABLES=true environment variable (enabled by default). Supports both project-level and group-level variables.
+
+- 📖 **`list_variables`**: List all CI/CD variables for a project or group with their configuration and security settings
+- 📖 **`get_variable`**: Get a specific CI/CD variable by key from a project or group, optionally filtered by environment scope
+- ✏️ **`create_variable`**: Create a new CI/CD variable for automated deployments and pipeline configuration in a project or group
+- ✏️ **`update_variable`**: Update an existing CI/CD variable's value, security settings, or configuration in a project or group
+- ✏️ **`delete_variable`**: Remove a CI/CD variable from a project or group
 
 ### Work Items (6 tools)
 Modern GraphQL API for issues, epics, tasks, and more. Requires USE_WORKITEMS=true (enabled by default).
 
-- **`create_work_item`** ✏️: Create a new work item (epic, issue, task, etc.) in a GitLab group
-- **`update_work_item`** ✏️: Update an existing work item
-- **`delete_work_item`** ✏️: Delete a work item
-- **`get_work_item`** 📖: Get details of a specific work item by ID
-- **`get_work_item_types`** 📖: Get available work item types for a group
-- **`list_work_items`** 📖: List work items from a GitLab group with optional filtering by type
+- ✏️ **`create_work_item`**: Create a new work item (epic, issue, task, etc.) in a GitLab group
+- ✏️ **`update_work_item`**: Update an existing work item
+- ✏️ **`delete_work_item`**: Delete a work item
+- 📖 **`get_work_item`**: Get details of a specific work item by ID
+- 📖 **`get_work_item_types`**: Get available work item types for a group
+- 📖 **`list_work_items`**: List work items from a GitLab group with optional filtering by type
 
 ### Wiki Management (5 tools)
-Requires USE_GITLAB_WIKI=true environment variable.
+Requires USE_GITLAB_WIKI=true environment variable. Supports both project-level and group-level wikis.
 
-- **`create_wiki_page`** ✏️: Create a new wiki page in a GitLab project
-- **`update_wiki_page`** ✏️: Update an existing wiki page in a GitLab project
-- **`delete_wiki_page`** ✏️: Delete a wiki page from a GitLab project
-- **`get_wiki_page`** 📖: Get details of a specific wiki page
-- **`list_wiki_pages`** 📖: List wiki pages in a GitLab project
+- ✏️ **`create_wiki_page`**: Create a new wiki page in a GitLab project or group
+- ✏️ **`update_wiki_page`**: Update an existing wiki page in a GitLab project or group
+- ✏️ **`delete_wiki_page`**: Delete a wiki page from a GitLab project or group
+- 📖 **`get_wiki_page`**: Get details of a specific wiki page from a project or group
+- 📖 **`list_wiki_pages`**: List wiki pages in a GitLab project or group
 
 ### Milestones (9 tools)
-Requires USE_MILESTONE=true environment variable.
+Requires USE_MILESTONE=true environment variable. Supports both project and group milestones.
 
-- **`create_milestone`** ✏️: Create a new milestone in a GitLab project
-- **`edit_milestone`** ✏️: Edit an existing milestone in a GitLab project
-- **`delete_milestone`** ✏️: Delete a milestone from a GitLab project
-- **`promote_milestone`** ✏️: Promote a milestone to the next stage
-- **`get_milestone`** 📖: Get details of a specific milestone
-- **`get_milestone_issue`** 📖: Get issues associated with a specific milestone
-- **`get_milestone_merge_requests`** 📖: Get merge requests associated with a specific milestone
-- **`get_milestone_burndown_events`** 📖: Get burndown events for a specific milestone
-- **`list_milestones`** 📖: List milestones in a GitLab project with filtering options
+- ✏️ **`create_milestone`**: Create a new milestone in a GitLab project or group
+- ✏️ **`edit_milestone`**: Edit an existing milestone in a GitLab project or group
+- ✏️ **`delete_milestone`**: Delete a milestone from a GitLab project or group
+- ✏️ **`promote_milestone`**: Promote a project milestone to a group milestone
+- 📖 **`get_milestone`**: Get details of a specific project or group milestone
+- 📖 **`get_milestone_issue`**: Get issues associated with a specific project or group milestone
+- 📖 **`get_milestone_merge_requests`**: Get merge requests associated with a specific project or group milestone
+- 📖 **`get_milestone_burndown_events`**: Get burndown events for a specific project or group milestone
+- 📖 **`list_milestones`**: List milestones in a GitLab project or group with filtering options
 
 ### Pipelines & CI/CD (12 tools)
 Requires USE_PIPELINE=true environment variable.
 
-- **`create_pipeline`** ✏️: Create a new pipeline for a branch or tag
-- **`retry_pipeline`** ✏️: Retry a failed or canceled pipeline
-- **`cancel_pipeline`** ✏️: Cancel a running pipeline
-- **`play_pipeline_job`** ✏️: Run a manual pipeline job
-- **`retry_pipeline_job`** ✏️: Retry a failed or canceled pipeline job
-- **`cancel_pipeline_job`** ✏️: Cancel a running pipeline job
-- **`get_pipeline`** 📖: Get details of a specific pipeline in a GitLab project
-- **`get_pipeline_job`** 📖: Get details of a GitLab pipeline job number
-- **`get_pipeline_job_output`** 📖: Get the output/trace of a GitLab pipeline job with optional pagination to limit context window usage
-- **`list_pipelines`** 📖: List pipelines in a GitLab project with filtering options
-- **`list_pipeline_jobs`** 📖: List all jobs in a specific pipeline
-- **`list_pipeline_trigger_jobs`** 📖: List all trigger jobs (bridges) in a specific pipeline that trigger downstream pipelines
+- ✏️ **`create_pipeline`**: Create a new pipeline for a branch or tag
+- ✏️ **`retry_pipeline`**: Retry a failed or canceled pipeline
+- ✏️ **`cancel_pipeline`**: Cancel a running pipeline
+- ✏️ **`play_pipeline_job`**: Run a manual pipeline job
+- ✏️ **`retry_pipeline_job`**: Retry a failed or canceled pipeline job
+- ✏️ **`cancel_pipeline_job`**: Cancel a running pipeline job
+- 📖 **`get_pipeline`**: Get details of a specific pipeline in a GitLab project
+- 📖 **`get_pipeline_job`**: Get details of a GitLab pipeline job number
+- 📖 **`get_pipeline_job_output`**: Get the output/trace of a GitLab pipeline job with optional pagination to limit context window usage
+- 📖 **`list_pipelines`**: List pipelines in a GitLab project with filtering options
+- 📖 **`list_pipeline_jobs`**: List all jobs in a specific pipeline
+- 📖 **`list_pipeline_trigger_jobs`**: List all trigger jobs (bridges) in a specific pipeline that trigger downstream pipelines
 
 ## Testing
 

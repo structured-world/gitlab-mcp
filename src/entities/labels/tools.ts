@@ -5,17 +5,17 @@ import { ToolDefinition } from '../../types';
 export const labelsWriteTools: ToolDefinition[] = [
   {
     name: 'create_label',
-    description: 'Create a new label in a project',
+    description: 'Create a new label in a project or group',
     inputSchema: zodToJsonSchema(CreateLabelSchema),
   },
   {
     name: 'update_label',
-    description: 'Update an existing label in a project',
+    description: 'Update an existing label in a project or group',
     inputSchema: zodToJsonSchema(UpdateLabelSchema),
   },
   {
     name: 'delete_label',
-    description: 'Delete a label from a project',
+    description: 'Delete a label from a project or group',
     inputSchema: zodToJsonSchema(DeleteLabelSchema),
   },
 ];

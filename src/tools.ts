@@ -15,6 +15,8 @@ import {
   mrsReadOnlyTools,
   filesTools,
   filesReadOnlyTools,
+  variablesTools,
+  variablesReadOnlyTools,
 } from './entities';
 import {
   GITLAB_READ_ONLY_MODE,
@@ -26,6 +28,7 @@ import {
   USE_LABELS,
   USE_MRS,
   USE_FILES,
+  USE_VARIABLES,
 } from './config';
 import { ToolDefinition } from './types';
 import { ToolAvailability } from './services/ToolAvailability';
@@ -70,6 +73,11 @@ function buildAllTools(): ToolDefinition[] {
     tools.push(...workitemsTools);
   }
 
+  // Add variables tools if enabled
+  if (USE_VARIABLES) {
+    tools.push(...variablesTools);
+  }
+
   return tools;
 }
 
@@ -106,6 +114,10 @@ function buildReadOnlyTools(): string[] {
 
   if (USE_WORKITEMS) {
     readOnly.push(...workitemsReadOnlyTools);
+  }
+
+  if (USE_VARIABLES) {
+    readOnly.push(...variablesReadOnlyTools);
   }
 
   return readOnly;

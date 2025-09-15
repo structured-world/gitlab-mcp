@@ -89,3 +89,26 @@ try {
 }
 
 export { packageName, packageVersion };
+
+/**
+ * Parse tool description overrides from environment variables
+ * Environment variables should follow the pattern: GITLAB_TOOL_{TOOL_NAME}="Custom description"
+ * @returns Map of tool name to custom description
+ */
+export function getToolDescriptionOverrides(): Map<string, string> {
+  const overrides = new Map<string, string>();
+  const prefix = 'GITLAB_TOOL_';
+
+  // Scan all environment variables for tool description overrides
+  for (const [key, value] of Object.entries(process.env)) {
+    if (key.startsWith(prefix) && value) {
+      // Extract tool name from environment variable
+      // Convert from GITLAB_TOOL_LIST_PROJECTS to list_projects
+      const toolName = key.substring(prefix.length).toLowerCase();
+
+      overrides.set(toolName, value);
+    }
+  }
+
+  return overrides;
+}

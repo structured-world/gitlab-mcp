@@ -6,11 +6,7 @@
 
 A fork of the original [zereight/mcp-gitlab](https://github.com/zereight/gitlab-mcp)
 
-![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)
-![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)
-![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)
-![Codecov](https://codecov.io/gh/structured-world/gitlab-mcp/branch/main/graph/badge.svg)
-[![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://structured-world.github.io/gitlab-mcp/coverage/)
+![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp) ![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp) ![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg) ![Codecov](https://codecov.io/gh/structured-world/gitlab-mcp/branch/main/graph/badge.svg) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://structured-world.github.io/gitlab-mcp/coverage/)
 
 GitLab MCP(Model Context Protocol) Server. **Includes bug fixes and improvements over the original GitLab MCP server.**
 
@@ -196,6 +192,68 @@ docker run -i --rm \
 - `SKIP_TLS_VERIFY`: When set to 'true', skips TLS certificate verification for all GitLab API requests (both REST and GraphQL). **WARNING**: This bypasses SSL certificate validation and should only be used for testing with self-signed certificates or trusted internal GitLab instances. Never use this in production environments.
 - `SSE`: When set to 'true', enables the Server-Sent Events transport.
 - `STREAMABLE_HTTP`: When set to 'true', enables the Streamable HTTP transport. If both **SSE** and **STREAMABLE_HTTP** are set to 'true', the server will prioritize Streamable HTTP over SSE transport.
+
+### Dynamic Tool Description Customization
+
+You can customize tool descriptions at runtime using environment variables following the pattern `GITLAB_TOOL_{TOOL_NAME}`. This is useful for:
+
+- Providing context-specific descriptions for your team
+- Translating tool descriptions to different languages
+- Adding organization-specific documentation or warnings
+- Simplifying descriptions for non-technical users
+
+#### Format
+```bash
+GITLAB_TOOL_{TOOL_NAME}="Your custom description"
+```
+
+Where `{TOOL_NAME}` is the uppercase version of the tool name with underscores preserved.
+
+#### Examples
+```bash
+# Customize the list_projects tool description
+export GITLAB_TOOL_LIST_PROJECTS="Show all available GitLab projects in our organization"
+
+# Customize the create_merge_request tool description
+export GITLAB_TOOL_CREATE_MERGE_REQUEST="Create a new MR following our team's review process"
+
+# Customize the get_file_contents tool description
+export GITLAB_TOOL_GET_FILE_CONTENTS="Read source code files from the repository"
+
+# Multiple customizations
+export GITLAB_TOOL_LIST_PROJECTS="List user projects"
+export GITLAB_TOOL_GET_PROJECT="Get project details including settings"
+export GITLAB_TOOL_CREATE_WORK_ITEM="Create tickets for our sprint planning"
+```
+
+#### Usage in Configuration Files
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "npx",
+      "args": ["-y", "@structured-world/mcp-gitlab"],
+      "env": {
+        "GITLAB_TOKEN": "your_token",
+        "GITLAB_API_URL": "https://gitlab.com",
+
+        "GITLAB_TOOL_LIST_PROJECTS": "Show our team's GitLab projects",
+        "GITLAB_TOOL_CREATE_MERGE_REQUEST": "Create MR with our review standards",
+        "GITLAB_TOOL_GET_FILE_CONTENTS": "Read code from repo"
+      }
+    }
+  }
+}
+```
+
+#### Important Notes
+
+- **Description Override Only**: Only the tool description is overridden - the tool name and functionality remain unchanged
+- **Schema Preservation**: Schema field descriptions are NOT affected - they remain hardcoded for consistency
+- **Case Sensitivity**: Tool names in environment variables must be UPPERCASE (e.g., `LIST_PROJECTS` not `list_projects`)
+- **Invalid Names**: Invalid tool names in environment variables are ignored with a warning in debug logs
+- **Content Guidelines**: Descriptions can be any valid string but should be kept concise for better UX
+- **Scope**: Works with all 86+ available tools across all entities (Core, Work Items, Merge Requests, Files, etc.)
 
 ## Tools 🛠️
 

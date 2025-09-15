@@ -19,6 +19,7 @@ import {
   USE_MRS,
   USE_FILES,
   USE_VARIABLES,
+  getToolDescriptionOverrides,
 } from './config';
 import { readOnlyTools } from './tools';
 import { ToolAvailability } from './services/ToolAvailability';
@@ -37,8 +38,12 @@ class RegistryManager {
   private toolDefinitionsCache: ToolDefinition[] | null = null;
   private toolNamesCache: string[] | null = null;
 
+  // Tool description overrides from environment variables
+  private descriptionOverrides: Map<string, string> = new Map();
+
   private constructor() {
     this.initializeRegistries();
+    this.loadDescriptionOverrides();
     this.buildToolLookupCache();
   }
 
@@ -93,6 +98,20 @@ class RegistryManager {
   }
 
   /**
+   * Load tool description overrides from environment variables
+   */
+  private loadDescriptionOverrides(): void {
+    this.descriptionOverrides = getToolDescriptionOverrides();
+
+    if (this.descriptionOverrides.size > 0) {
+      logger.debug(`Loaded ${this.descriptionOverrides.size} tool description overrides`);
+      for (const [toolName, description] of this.descriptionOverrides) {
+        logger.debug(`Tool description override: ${toolName} -> "${description}"`);
+      }
+    }
+  }
+
+  /**
    * Build unified tool lookup cache for O(1) tool access with filtering applied
    */
   private buildToolLookupCache(): void {
@@ -119,8 +138,19 @@ class RegistryManager {
           continue;
         }
 
-        // Tool passes all filters - add to cache
-        this.toolLookupCache.set(toolName, tool);
+        // Tool passes all filters - apply description override if available
+        let finalTool = tool;
+        const customDescription = this.descriptionOverrides.get(toolName);
+        if (customDescription) {
+          finalTool = {
+            ...tool,
+            description: customDescription,
+          };
+          logger.debug(`Applied description override for '${toolName}': "${customDescription}"`);
+        }
+
+        // Add to cache
+        this.toolLookupCache.set(toolName, finalTool);
       }
     }
 

@@ -33,10 +33,6 @@ export type WorkItemTypeEnum =
   | 'OBJECTIVE'
   | 'KEY_RESULT';
 
-export interface WorkItemWidget {
-  type: WorkItemWidgetType;
-}
-
 // Work Item Widget Type constants
 export const WorkItemWidgetTypes = {
   ASSIGNEES: 'ASSIGNEES',
@@ -74,8 +70,9 @@ export const WorkItemWidgetTypes = {
 // Work Item Widget Type type - defines all available widget types
 export type WorkItemWidgetType = (typeof WorkItemWidgetTypes)[keyof typeof WorkItemWidgetTypes];
 
-// Export the constant with the original name too for backward compatibility
-export { WorkItemWidgetTypes as WorkItemWidgetType };
+export interface WorkItemWidget {
+  type: WorkItemWidgetType;
+}
 
 export interface WorkItemAssigneesWidget extends WorkItemWidget {
   type: 'ASSIGNEES';

@@ -1,4 +1,4 @@
-import { WorkItemWidgetType } from '../graphql/workItems';
+import { WorkItemWidgetType, WorkItemWidgetTypes } from '../graphql/workItems';
 import { ConnectionManager } from './ConnectionManager';
 import { GitLabTier } from './GitLabVersionDetector';
 
@@ -10,41 +10,41 @@ interface WidgetRequirement {
 export class WidgetAvailability {
   private static widgetRequirements: Record<WorkItemWidgetType, WidgetRequirement> = {
     // Free tier widgets (available to all)
-    [WorkItemWidgetType.ASSIGNEES]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.DESCRIPTION]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.HIERARCHY]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.LABELS]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.MILESTONE]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.NOTES]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.START_AND_DUE_DATE]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.STATUS]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.NOTIFICATIONS]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.CURRENT_USER_TODOS]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.AWARD_EMOJI]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.PARTICIPANTS]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.DESIGNS]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.DEVELOPMENT]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.TIME_TRACKING]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.ERROR_TRACKING]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.ASSIGNEES]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.DESCRIPTION]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.HIERARCHY]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.LABELS]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.MILESTONE]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.NOTES]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.START_AND_DUE_DATE]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.STATUS]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.NOTIFICATIONS]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.CURRENT_USER_TODOS]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.AWARD_EMOJI]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.PARTICIPANTS]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.DESIGNS]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.DEVELOPMENT]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.TIME_TRACKING]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.ERROR_TRACKING]: { tier: 'free', minVersion: 15.0 },
 
     // Premium tier widgets
-    [WorkItemWidgetType.WEIGHT]: { tier: 'premium', minVersion: 15.0 },
-    [WorkItemWidgetType.ITERATION]: { tier: 'premium', minVersion: 15.0 },
-    [WorkItemWidgetType.LINKED_ITEMS]: { tier: 'premium', minVersion: 15.0 },
-    [WorkItemWidgetType.CRM_CONTACTS]: { tier: 'premium', minVersion: 16.0 },
-    [WorkItemWidgetType.EMAIL_PARTICIPANTS]: { tier: 'premium', minVersion: 16.0 },
-    [WorkItemWidgetType.LINKED_RESOURCES]: { tier: 'premium', minVersion: 16.5 },
+    [WorkItemWidgetTypes.WEIGHT]: { tier: 'premium', minVersion: 15.0 },
+    [WorkItemWidgetTypes.ITERATION]: { tier: 'premium', minVersion: 15.0 },
+    [WorkItemWidgetTypes.LINKED_ITEMS]: { tier: 'premium', minVersion: 15.0 },
+    [WorkItemWidgetTypes.CRM_CONTACTS]: { tier: 'premium', minVersion: 16.0 },
+    [WorkItemWidgetTypes.EMAIL_PARTICIPANTS]: { tier: 'premium', minVersion: 16.0 },
+    [WorkItemWidgetTypes.LINKED_RESOURCES]: { tier: 'premium', minVersion: 16.5 },
 
     // Ultimate tier widgets
-    [WorkItemWidgetType.HEALTH_STATUS]: { tier: 'ultimate', minVersion: 15.0 },
-    [WorkItemWidgetType.CUSTOM_FIELDS]: { tier: 'ultimate', minVersion: 17.0 },
-    [WorkItemWidgetType.VULNERABILITIES]: { tier: 'ultimate', minVersion: 15.0 },
+    [WorkItemWidgetTypes.HEALTH_STATUS]: { tier: 'ultimate', minVersion: 15.0 },
+    [WorkItemWidgetTypes.CUSTOM_FIELDS]: { tier: 'ultimate', minVersion: 17.0 },
+    [WorkItemWidgetTypes.VULNERABILITIES]: { tier: 'ultimate', minVersion: 15.0 },
 
     // Legacy widgets (may not be available)
-    [WorkItemWidgetType.PROGRESS]: { tier: 'free', minVersion: 15.0 },
-    [WorkItemWidgetType.REQUIREMENT_LEGACY]: { tier: 'ultimate', minVersion: 13.1 },
-    [WorkItemWidgetType.TEST_REPORTS]: { tier: 'ultimate', minVersion: 13.6 },
-    [WorkItemWidgetType.COLOR]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.PROGRESS]: { tier: 'free', minVersion: 15.0 },
+    [WorkItemWidgetTypes.REQUIREMENT_LEGACY]: { tier: 'ultimate', minVersion: 13.1 },
+    [WorkItemWidgetTypes.TEST_REPORTS]: { tier: 'ultimate', minVersion: 13.6 },
+    [WorkItemWidgetTypes.COLOR]: { tier: 'free', minVersion: 15.0 },
   };
 
   public static isWidgetAvailable(widget: WorkItemWidgetType): boolean {
@@ -87,9 +87,9 @@ export class WidgetAvailability {
   }
 
   public static getAvailableWidgets(): WorkItemWidgetType[] {
-    return Object.values(WorkItemWidgetType).filter(
+    return Object.values(WorkItemWidgetTypes).filter(
       (widget): widget is WorkItemWidgetType =>
-        typeof widget === 'string' && this.isWidgetAvailable(widget),
+        typeof widget === 'string' && this.isWidgetAvailable(widget as WorkItemWidgetType),
     );
   }
 

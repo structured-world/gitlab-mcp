@@ -2,16 +2,9 @@
 # Multi-stage build for optimal image size and security
 
 # ============================================================================
-# BUILD STAGE
+# DEPENDENCIES STAGE - Install all dependencies
 # ============================================================================
-FROM node:22-alpine AS builder
-
-# Install build dependencies
-RUN apk add --no-cache \
-    python3 \
-    make \
-    g++ \
-    git
+FROM node:22-alpine AS dependencies
 
 # Enable Corepack for Yarn 4
 RUN corepack enable
@@ -19,22 +12,60 @@ RUN corepack enable
 # Set working directory
 WORKDIR /app
 
-# Copy package management files
+# Copy only package files for better caching
 COPY package.json yarn.lock .yarnrc.yml ./
-COPY .yarn ./.yarn
+# Copy .yarn directory if it exists (Yarn 4 cache)
+COPY .yarn/ ./.yarn/
 
-# Install dependencies with cache mount
-RUN --mount=type=cache,target=/app/.yarn/cache \
+# Install ALL dependencies (including dev) for building
+RUN --mount=type=cache,target=/root/.yarn/berry/cache \
+    --mount=type=cache,target=/app/.yarn/cache \
     yarn install --immutable
 
-# Copy source code
-COPY . .
+# ============================================================================
+# BUILD STAGE - Build the application
+# ============================================================================
+FROM node:22-alpine AS builder
+
+# Enable Corepack for Yarn 4
+RUN corepack enable
+
+# Set working directory
+WORKDIR /app
+
+# Copy dependencies from previous stage
+COPY --from=dependencies /app/node_modules ./node_modules
+COPY --from=dependencies /app/.yarn ./.yarn
+COPY --from=dependencies /app/package.json ./package.json
+COPY --from=dependencies /app/yarn.lock ./yarn.lock
+COPY --from=dependencies /app/.yarnrc.yml ./.yarnrc.yml
+
+# Copy source code and config files
+COPY tsconfig*.json ./
+COPY src ./src
 
 # Build the application
 RUN yarn build
 
-# Remove dev dependencies and rebuild for production
-RUN --mount=type=cache,target=/app/.yarn/cache \
+# ============================================================================
+# PRODUCTION DEPENDENCIES STAGE - Install only production dependencies
+# ============================================================================
+FROM node:22-alpine AS production-deps
+
+# Enable Corepack for Yarn 4
+RUN corepack enable
+
+# Set working directory
+WORKDIR /app
+
+# Copy package files
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn/ ./.yarn/
+
+# Install only production dependencies
+ENV NODE_ENV=production
+RUN --mount=type=cache,target=/root/.yarn/berry/cache \
+    --mount=type=cache,target=/app/.yarn/cache \
     yarn workspaces focus --production
 
 # ============================================================================
@@ -55,9 +86,13 @@ RUN addgroup -g 1001 -S gitlab-mcp && \
 # Set working directory
 WORKDIR /app
 
-# Copy built application and dependencies from builder
+# Copy built application from builder
 COPY --from=builder --chown=gitlab-mcp:gitlab-mcp /app/dist ./dist
-COPY --from=builder --chown=gitlab-mcp:gitlab-mcp /app/node_modules ./node_modules
+
+# Copy production dependencies from production-deps stage
+COPY --from=production-deps --chown=gitlab-mcp:gitlab-mcp /app/node_modules ./node_modules
+
+# Copy package.json for reference
 COPY --from=builder --chown=gitlab-mcp:gitlab-mcp /app/package.json ./package.json
 
 # ============================================================================
@@ -96,8 +131,8 @@ ENV HTTP_PROXY=""
 ENV HTTPS_PROXY=""
 ENV NO_PROXY=""
 
-# Performance and resource limits
-ENV NODE_OPTIONS="--max-old-space-size=512"
+# Performance and resource limits with ESM support
+ENV NODE_OPTIONS="--max-old-space-size=512 --experimental-specifier-resolution=node --no-warnings"
 
 # Health check endpoint
 ENV HEALTH_CHECK_ENABLED=true

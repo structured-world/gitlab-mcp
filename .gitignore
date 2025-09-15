@@ -21,5 +21,8 @@ coverage/
 .opencode*
 .aider*
 
+# Scripts directory (local tools and utilities)
+scripts/
+
 # Keep assets
 !assets/

@@ -11,6 +11,7 @@ const { config } = require('dotenv');
 
 module.exports = async () => {
   // Load environment
+  const path = require('path');
   const envTestPath = path.resolve(__dirname, '../../.env.test');
   if (fs.existsSync(envTestPath)) {
     config({ path: envTestPath, quiet: true });
@@ -61,4 +62,16 @@ module.exports = async () => {
   console.log('  ✅ Complete cleanup performed');
   console.log('');
   console.log('✅ GitLab Integration Test Suite - All tests completed successfully');
+
+  // Clean up temporary test data file
+  const os = require('os');
+  const testDataFile = path.join(os.tmpdir(), 'gitlab-mcp-test-data.json');
+  try {
+    if (fs.existsSync(testDataFile)) {
+      fs.unlinkSync(testDataFile);
+      console.log('🧹 Cleaned up temporary test data file');
+    }
+  } catch (error) {
+    console.warn('⚠️ Could not clean up test data file:', error);
+  }
 };

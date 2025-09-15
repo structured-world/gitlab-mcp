@@ -29,6 +29,13 @@ export interface TestDataState {
   labels?: any[];
 }
 
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+
+// Use persistent file storage to share data across test files (Jest creates separate contexts)
+const TEST_DATA_FILE = path.join(os.tmpdir(), 'gitlab-mcp-test-data.json');
+
 // Use global state to share data across all test files in the same Jest process
 declare global {
   var TEST_DATA_STATE: TestDataState;
@@ -39,14 +46,44 @@ if (!global.TEST_DATA_STATE) {
   global.TEST_DATA_STATE = {};
 }
 
-export const getTestData = (): TestDataState => global.TEST_DATA_STATE || {};
+export const getTestData = (): TestDataState => {
+  // Try global state first (for same file)
+  if (global.TEST_DATA_STATE && Object.keys(global.TEST_DATA_STATE).length > 0) {
+    return global.TEST_DATA_STATE;
+  }
+
+  // Fall back to persistent file (for cross-file sharing)
+  try {
+    if (fs.existsSync(TEST_DATA_FILE)) {
+      const data = JSON.parse(fs.readFileSync(TEST_DATA_FILE, 'utf8'));
+      global.TEST_DATA_STATE = data; // Cache in global state
+      return data;
+    }
+  } catch (error) {
+    console.warn('⚠️ Could not read test data file:', error);
+  }
+
+  return {};
+};
 
 export const setTestData = (data: TestDataState): void => {
   global.TEST_DATA_STATE = { ...global.TEST_DATA_STATE, ...data };
+  // Persist to file for cross-file sharing
+  try {
+    fs.writeFileSync(TEST_DATA_FILE, JSON.stringify(global.TEST_DATA_STATE, null, 2));
+  } catch (error) {
+    console.warn('⚠️ Could not write test data file:', error);
+  }
 };
 
 export const updateTestData = (updates: Partial<TestDataState>): void => {
   global.TEST_DATA_STATE = { ...global.TEST_DATA_STATE, ...updates };
+  // Persist to file for cross-file sharing
+  try {
+    fs.writeFileSync(TEST_DATA_FILE, JSON.stringify(global.TEST_DATA_STATE, null, 2));
+  } catch (error) {
+    console.warn('⚠️ Could not write test data file:', error);
+  }
 };
 
 // Helper functions for common test operations

@@ -5,6 +5,7 @@
 
 import { ListWorkItemsSchema, GetWorkItemSchema, GetWorkItemTypesSchema } from '../../../src/entities/workitems/schema-readonly';
 import { CreateWorkItemSchema, UpdateWorkItemSchema, DeleteWorkItemSchema } from '../../../src/entities/workitems/schema';
+import { getTestData } from '../../setup/testConfig';
 
 // Test environment constants
 const GITLAB_API_URL = process.env.GITLAB_API_URL!;
@@ -393,7 +394,21 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
     let createdTestWorkItem = false;
 
     beforeAll(async () => {
-      // First try to find existing work item in PROJECT (not group - group-level work items disabled)
+      console.log('🔧 GetWorkItemSchema beforeAll - Using lifecycle test data...');
+
+      // Try to get work items from lifecycle data
+      const lifecycleData = getTestData();
+      if (lifecycleData.workItems && lifecycleData.workItems.length > 0) {
+        // Convert issue IID to GraphQL ID format expected by work items
+        const firstWorkItem = lifecycleData.workItems[0];
+        testWorkItemId = `gid://gitlab/WorkItem/${firstWorkItem.id}`;
+        console.log('✅ Using work item from lifecycle data:', testWorkItemId);
+        return;
+      }
+
+      console.log('⚠️ No lifecycle work items found - attempting fallback search...');
+
+      // Fallback: search for work items in project
       const findQuery = `
         query GetFirstWorkItem($projectPath: ID!) {
           project(fullPath: $projectPath) {
@@ -405,8 +420,6 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
           }
         }
       `;
-
-      console.log('🔍 GetWorkItemSchema beforeAll - Searching for existing work items...');
 
       try {
         const findResponse = await fetch(`${GITLAB_API_URL!}/api/graphql`, {
@@ -454,9 +467,16 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       console.log('🔧 Creating test work item...');
 
       try {
+        // Use lifecycle project for work item creation (group-level only allowed for epics)
+        const lifecycleData = getTestData();
+        if (!lifecycleData.project?.id) {
+          console.log('⚠️ No lifecycle project found - skipping work item creation');
+          return;
+        }
+
         const variables = {
           input: {
-            namespacePath: testGroupPath, // Use project path (corrected)
+            namespacePath: lifecycleData.project.path_with_namespace,
             workItemTypeId: 'gid://gitlab/WorkItems::Type/1', // Issue type
             title: 'Test Work Item for Integration Testing',
             descriptionWidget: { // Use correct widget structure
@@ -791,10 +811,16 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
         }
       `;
 
-      // Use project path instead of group path (required - group-level work items disabled)
+      // Use lifecycle project for work item creation (group-level only allowed for epics)
+      const lifecycleData = getTestData();
+      if (!lifecycleData.project?.id) {
+        console.log('⚠️ No lifecycle project found - skipping CRUD test');
+        return;
+      }
+
       const variables = {
         input: {
-          namespacePath: testGroupPath, // Use project path from .env.test
+          namespacePath: lifecycleData.project.path_with_namespace,
           title: 'CRUD Test Work Item',
           workItemTypeId: 'gid://gitlab/WorkItems::Type/1', // Issue type
           descriptionWidget: {

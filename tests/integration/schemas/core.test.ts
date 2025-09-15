@@ -49,8 +49,7 @@ describe('Core Schemas - GitLab 18.3 Integration', () => {
     if (!GITLAB_API_URL) {
       throw new Error('GITLAB_API_URL environment variable is required');
     }
-    // Note: GITLAB_PROJECT_ID is intentionally non-existent for Tier 2 testing
-    // Tests should soft fail with 404s when hitting non-existent default targets
+    // Note: GITLAB_PROJECT_ID may be blank - tests should fail if no valid project is configured
 
     testTimestamp = Date.now().toString();
     console.log('✅ Core schemas test setup complete');
@@ -165,6 +164,7 @@ describe('Core Schemas - GitLab 18.3 Integration', () => {
         },
       });
 
+
       expect(response.ok).toBe(true);
 
       const project = await response.json();
@@ -234,6 +234,7 @@ describe('Core Schemas - GitLab 18.3 Integration', () => {
           'Authorization': `Bearer ${GITLAB_TOKEN}`,
         },
       });
+
 
       expect(response.ok).toBe(true);
 
@@ -307,6 +308,7 @@ describe('Core Schemas - GitLab 18.3 Integration', () => {
         },
         body: JSON.stringify(paramResult.data),
       });
+
 
       expect(response.ok).toBe(true);
 
@@ -402,6 +404,7 @@ describe('Core Schemas - GitLab 18.3 Integration', () => {
         },
       });
 
+
       expect(response.ok).toBe(true);
 
       const issues = await response.json();
@@ -464,6 +467,7 @@ describe('Core Schemas - GitLab 18.3 Integration', () => {
           'Authorization': `Bearer ${GITLAB_TOKEN}`,
         },
       });
+
 
       expect(response.ok).toBe(true);
 
@@ -582,6 +586,7 @@ describe('Core Schemas - GitLab 18.3 Integration', () => {
         },
       });
 
+
       expect(response.ok).toBe(true);
 
       const labels = await response.json();
@@ -631,6 +636,7 @@ describe('Core Schemas - GitLab 18.3 Integration', () => {
           'Authorization': `Bearer ${GITLAB_TOKEN}`,
         },
       });
+
 
       expect(response.ok).toBe(true);
 
@@ -718,6 +724,7 @@ describe('Core Schemas - GitLab 18.3 Integration', () => {
           'Authorization': `Bearer ${GITLAB_TOKEN}`,
         },
       });
+
 
       expect(response.ok).toBe(true);
 

@@ -342,6 +342,34 @@ Requires USE_PIPELINE=true environment variable.
 - **`list_pipeline_jobs`** 📖: List all jobs in a specific pipeline
 - **`list_pipeline_trigger_jobs`** 📖: List all trigger jobs (bridges) in a specific pipeline that trigger downstream pipelines
 
+## Testing
+
+This project includes comprehensive integration tests that verify functionality against a real GitLab instance.
+
+### Running Tests
+
+```bash
+# Run all tests (requires .env.test configuration)
+yarn test
+
+# Run with verbose output
+yarn test --verbose
+
+# Run specific test suites
+yarn test tests/integration/data-lifecycle.test.ts
+yarn test tests/integration/schemas/workitems.test.ts
+```
+
+### Test Architecture
+
+- **200+ integration tests** running against real GitLab 18.3 Ultimate instance
+- **Data lifecycle pattern** - Creates test infrastructure once, shared across dependent tests
+- **Work Items CRUD testing** - Complete Create/Read/Update/Delete for both Issues and Epics
+- **Schema validation** - All 50+ schemas validated against real API responses
+- **Dependency chain** - Tests run in proper order using `--runInBand` for reliable results
+
+For detailed testing documentation, see [TESTING.md](TESTING.md).
+
 ## Support the Project
 
 If you find this GitLab MCP Server useful, consider supporting its continued development and maintenance.

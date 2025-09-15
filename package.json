@@ -35,7 +35,7 @@
     "dev:stdio": "node --env-file=.env.test -r source-map-support/register -r ts-node/register --experimental-specifier-resolution=node --experimental-print-required-tla --watch src/main.ts stdio",
     "dev:sse": "node --env-file=.env.test -r source-map-support/register -r ts-node/register --experimental-specifier-resolution=node --experimental-print-required-tla --watch src/main.ts sse",
     "watch": "tsc --watch",
-    "test": "yarn jest",
+    "test": "yarn jest --runInBand",
     "test:cov": "yarn jest --coverage",
     "test:env-gating": "node tests/scripts/test-env-gating.js",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" ",

@@ -5,6 +5,9 @@ const path = require('path');
 const envTestPath = path.resolve(__dirname, '.env.test');
 const integrationTestsEnabled = fs.existsSync(envTestPath);
 
+// Check for verbose flag from command line
+const isVerbose = process.argv.includes('--verbose');
+
 /** @type {import('jest').Config} */
 module.exports = {
   preset: "ts-jest",
@@ -30,6 +33,9 @@ module.exports = {
   collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts", "!tests/**/*", "!dist/**/*"],
   coverageDirectory: "coverage",
   coverageReporters: ["text", "lcov", "html"],
+  // Control output verbosity - by default suppress verbose output, show only warnings/errors
+  verbose: isVerbose,
+  silent: !isVerbose, // Suppress console.log output in tests unless verbose mode
   testPathIgnorePatterns: integrationTestsEnabled ?
     ["<rootDir>/dist/", "<rootDir>/node_modules/"] :
     ["<rootDir>/dist/", "<rootDir>/node_modules/", "<rootDir>/tests/integration/"],

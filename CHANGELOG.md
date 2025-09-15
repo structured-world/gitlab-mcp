@@ -1,3 +1,10 @@
+## [2.5.1](https://github.com/structured-world/gitlab-mcp/compare/v2.5.0...v2.5.1) (2025-09-15)
+
+
+### Bug Fixes
+
+* correct GetUsersSchema validation test expectations ([50b7e04](https://github.com/structured-world/gitlab-mcp/commit/50b7e04512517ca715736d305f2dbb14a5688a81))
+
 # [2.5.0](https://github.com/structured-world/gitlab-mcp/compare/v2.4.0...v2.5.0) (2025-09-15)
 
 

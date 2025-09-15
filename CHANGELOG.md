@@ -1,3 +1,10 @@
+## [2.6.1](https://github.com/structured-world/gitlab-mcp/compare/v2.6.0...v2.6.1) (2025-09-15)
+
+
+### Bug Fixes
+
+* correct FUNDING.yml format according to GitHub documentation ([071ff87](https://github.com/structured-world/gitlab-mcp/commit/071ff879f324f9e0386912050132cb6c7fe581fe))
+
 # [2.6.0](https://github.com/structured-world/gitlab-mcp/compare/v2.5.1...v2.6.0) (2025-09-15)
 
 

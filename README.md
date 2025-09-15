@@ -11,6 +11,7 @@ A fork of the original [zereight/mcp-gitlab](https://github.com/zereight/gitlab-
 ![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)
 ![Codecov](https://codecov.io/gh/structured-world/gitlab-mcp/branch/main/graph/badge.svg)
 [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://structured-world.github.io/gitlab-mcp/coverage/)
+[![TRON Donations](https://img.shields.io/badge/TRON-TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA-red?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTEyIDI0QzE4LjYyNzQgMjQgMjQgMTguNjI3NCAyNCAxMkMyNCA1LjM3MjU4IDE4LjYyNzQgMCAxMiAwQzUuMzcyNTggMCAwIDUuMzcyNTggMCAxMkMwIDE4LjYyNzQgNS4zNzI1OCAyNCAxMiAyNFoiIGZpbGw9IiNGRkZGRkYiLz4KPHBhdGggZD0iTTcuMiA2LjZMMTIgOS42TDE2LjggNi42TDEyIDMuNkw3LjIgNi42WiIgZmlsbD0iI0ZGMDAwMCIvPgo8cGF0aCBkPSJNNy4yIDYuNkw3LjIgMTNMMTIgMTZMNy4yIDEzVjYuNloiIGZpbGw9IiNGRjAwMDAiLz4KPHA+PGF0aCBkPSJNMTYuOCA2LjZMMTYuOCAxM0wxMiAxNkwxNi44IDEzVjYuNloiIGZpbGw9IiNGRjAwMDAiLz4KPHBhdGggZD0iTTcuMiAxM0wxMiAyMC40TDE2LjggMTNIMTJINy4yWiIgZmlsbD0iI0ZGMDAwMCIvPgo8L3N2Zz4K)](tron:TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA)
 
 GitLab MCP(Model Context Protocol) Server. **Includes bug fixes and improvements over the original GitLab MCP server.**
 

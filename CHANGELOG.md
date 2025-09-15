@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/structured-world/gitlab-mcp/compare/v1.0.2...v1.1.0) (2025-09-15)
+
+
+### Features
+
+* add comprehensive CI/CD pipeline with semantic versioning ([4e6822f](https://github.com/structured-world/gitlab-mcp/commit/4e6822ff865fb2045bfeeb015891e4281cc6c26e))
+
 ## [1.0.2](https://github.com/structured-world/gitlab-mcp/compare/v1.0.1...v1.0.2) (2025-09-15)
 
 

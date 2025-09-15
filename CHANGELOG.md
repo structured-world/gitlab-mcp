@@ -1,3 +1,10 @@
+## [2.3.1](https://github.com/structured-world/gitlab-mcp/compare/v2.3.0...v2.3.1) (2025-09-15)
+
+
+### Bug Fixes
+
+* **sse:** implement missing SSE transport and fix schema validation ([e6aed28](https://github.com/structured-world/gitlab-mcp/commit/e6aed2848ec0b48e18d96935557d3a5cf9a92f90))
+
 # [2.3.0](https://github.com/structured-world/gitlab-mcp/compare/v2.2.0...v2.3.0) (2025-09-15)
 
 

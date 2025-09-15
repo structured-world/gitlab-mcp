@@ -1,3 +1,21 @@
+# [2.2.0](https://github.com/structured-world/gitlab-mcp/compare/v2.1.2...v2.2.0) (2025-09-15)
+
+
+### Bug Fixes
+
+* add esModuleInterop for Zod v4 compatibility ([e3010bb](https://github.com/structured-world/gitlab-mcp/commit/e3010bbe02e03091e07b1774d1ef7a0437b80e8f))
+* Docker build and test cleanup improvements ([79a7d9e](https://github.com/structured-world/gitlab-mcp/commit/79a7d9e58508bc2ece922dbd5852b2e15a894599))
+* prevent Yarn re-download in Docker build stages ([5807776](https://github.com/structured-world/gitlab-mcp/commit/5807776c704dbe7490469723db314e7e8a99f7e9))
+* Resolve critical test infrastructure issues and eliminate soft-fail patterns ([528d34c](https://github.com/structured-world/gitlab-mcp/commit/528d34c0e6fbd0ae5da584878f3c2f68bfff19cf))
+* resolve data lifecycle test dependency chain issues ([282ac42](https://github.com/structured-world/gitlab-mcp/commit/282ac42de91e74a98cca2b038ca4a284dbdf8e42))
+* resolve TypeScript/ESLint errors in GraphQL introspection code ([f50ea1a](https://github.com/structured-world/gitlab-mcp/commit/f50ea1a367d7e0741817167cc52d7ab673145fe3))
+
+
+### Features
+
+* reorganize integration tests into dependency chain pattern ([6d8c05e](https://github.com/structured-world/gitlab-mcp/commit/6d8c05e84a5fb8daa30084073cb5905b62a2dbeb))
+* **test:** add user infrastructure setup and assignment to test data lifecycle ([3915773](https://github.com/structured-world/gitlab-mcp/commit/39157736cb01791e7e0e4c18c1d7610b28422731))
+
 ## [2.1.2](https://github.com/structured-world/gitlab-mcp/compare/v2.1.1...v2.1.2) (2025-09-15)
 
 

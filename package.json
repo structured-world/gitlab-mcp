@@ -18,6 +18,14 @@
   "publishConfig": {
     "access": "public"
   },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/structured-world/gitlab-mcp"
+  },
+  "homepage": "https://github.com/structured-world/gitlab-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/structured-world/gitlab-mcp/issues"
+  },
   "engines": {
     "node": ">=14"
   },

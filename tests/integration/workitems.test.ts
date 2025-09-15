@@ -4,29 +4,38 @@
  */
 
 import { GraphQLClient } from '../../src/graphql/client';
-import { GET_WORK_ITEMS, GET_WORK_ITEM, CREATE_WORK_ITEM, WorkItemTypeEnum } from '../../src/graphql/workItems';
+import { GET_WORK_ITEM, CREATE_WORK_ITEM, WorkItemTypeEnum } from '../../src/graphql/workItems';
+import { DynamicWorkItemsQueryBuilder } from '../../src/graphql/DynamicWorkItemsQuery';
+import { ConnectionManager } from '../../src/services/ConnectionManager';
 
 describe('Work Items GraphQL - Real GitLab Instance', () => {
   let client: GraphQLClient;
+  let connectionManager: ConnectionManager;
+  let queryBuilder: DynamicWorkItemsQueryBuilder;
   const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
-  const GITLAB_API_URL = process.env.GITLAB_API_URL || 'https://gitlab.com';
+  const GITLAB_BASE_URL = process.env.GITLAB_API_URL || 'https://gitlab.com';
   const TEST_GROUP_PATH = 'test'; // Use test group for integration tests
 
-  beforeAll(() => {
+  beforeAll(async () => {
     if (!GITLAB_TOKEN) {
       throw new Error('GITLAB_TOKEN environment variable is required');
     }
 
-    client = new GraphQLClient(`${GITLAB_API_URL}/api/graphql`, {
-      headers: {
-        Authorization: `Bearer ${GITLAB_TOKEN}`,
-      },
-    });
+    // Initialize connection manager to load schema
+    connectionManager = ConnectionManager.getInstance();
+    await connectionManager.initialize();
+
+    client = connectionManager.getClient();
+
+    // Create dynamic query builder with schema introspection
+    const schemaIntrospector = connectionManager.getSchemaIntrospector();
+    queryBuilder = new DynamicWorkItemsQueryBuilder(schemaIntrospector);
   });
 
   describe('Work Items Query Operations', () => {
     it('should list work items from test group', async () => {
-      const response = await client.request(GET_WORK_ITEMS, {
+      const query = queryBuilder.buildMinimalQuery();
+      const response = await client.request(query, {
         groupPath: TEST_GROUP_PATH,
         first: 10,
       }) as { group: { workItems: { nodes: any[] } } };
@@ -34,7 +43,7 @@ describe('Work Items GraphQL - Real GitLab Instance', () => {
       expect(response).toBeDefined();
       expect(response.group).toBeDefined();
       expect(response.group.workItems).toBeDefined();
-      expect(response.group.workItems.nodes).toBeInstanceOf(Array);
+      expect(Array.isArray(response.group.workItems.nodes)).toBe(true);
 
       // Log available work items for debugging
       console.log(`Found ${response.group.workItems.nodes.length} work items in test group`);
@@ -48,7 +57,8 @@ describe('Work Items GraphQL - Real GitLab Instance', () => {
 
     it('should get single work item with widgets', async () => {
       // First get a list to find a work item ID
-      const listResponse = await client.request(GET_WORK_ITEMS, {
+      const listQuery = queryBuilder.buildWorkItemsQuery();
+      const listResponse = await client.request(listQuery, {
         groupPath: TEST_GROUP_PATH,
         first: 1,
       }) as { group: { workItems: { nodes: any[] } } };
@@ -67,7 +77,7 @@ describe('Work Items GraphQL - Real GitLab Instance', () => {
       expect(response).toBeDefined();
       expect(response.workItem).toBeDefined();
       expect(response.workItem.id).toBe(workItemId);
-      expect(response.workItem.widgets).toBeInstanceOf(Array);
+      expect(Array.isArray(response.workItem.widgets)).toBe(true);
 
       // Validate that we have the expected widget structure
       const widgets = response.workItem.widgets;
@@ -82,7 +92,8 @@ describe('Work Items GraphQL - Real GitLab Instance', () => {
 
   describe('Work Items Widget Validation', () => {
     it('should validate core widget types are supported', async () => {
-      const response = await client.request(GET_WORK_ITEMS, {
+      const query = queryBuilder.buildWorkItemsQuery();
+      const response = await client.request(query, {
         groupPath: TEST_GROUP_PATH,
         first: 10,
       }) as { group: { workItems: { nodes: any[] } } };

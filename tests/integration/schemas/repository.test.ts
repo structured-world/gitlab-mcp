@@ -12,6 +12,7 @@ describe('Repository Schema - GitLab 18.3 Integration', () => {
 
   let testTimestamp: string;
   let createdTags: string[] = [];
+  let sharedTestProject: any = null;
 
   beforeAll(async () => {
     if (!GITLAB_TOKEN) {
@@ -20,61 +21,93 @@ describe('Repository Schema - GitLab 18.3 Integration', () => {
     if (!GITLAB_API_URL) {
       throw new Error('GITLAB_API_URL environment variable is required');
     }
-    if (!TEST_PROJECT) {
-      throw new Error('GITLAB_PROJECT_ID environment variable is required');
-    }
 
     testTimestamp = Date.now().toString();
 
-    // Create test tags for repository testing to follow ZERO DATA VALIDATION RULE
-    console.log('🔧 Creating test tags for repository validation...');
+    // Create shared test project for tag operations following WORK.md lifecycle rules
+    console.log('🔧 Creating shared test project for repository tag validation...');
 
-    const tagsToCreate = [
-      {
-        tag_name: `test-v1.0.0-${testTimestamp}`,
-        ref: 'main',
-        message: `Test tag 1 for repository schema validation - ${testTimestamp}`
+    const createProjectResponse = await fetch(`${GITLAB_API_URL}/api/v4/projects`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${GITLAB_TOKEN}`,
+        'Content-Type': 'application/json',
       },
-      {
-        tag_name: `test-v1.1.0-${testTimestamp}`,
-        ref: 'main',
-        message: `Test tag 2 for repository schema validation - ${testTimestamp}`
-      }
-    ];
+      body: JSON.stringify({
+        name: `repo-tag-test-shared-${testTimestamp}`,
+        namespace_id: 124, // test group ID
+        description: 'Shared test project for repository tag validation - safe to delete',
+        visibility: 'private',
+      }),
+    });
 
-    for (const tagData of tagsToCreate) {
-      try {
-        const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(TEST_PROJECT!)}/repository/tags`, {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${GITLAB_TOKEN}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(tagData),
-        });
+    if (createProjectResponse.ok) {
+      sharedTestProject = await createProjectResponse.json();
 
-        if (response.ok) {
-          const tag = await response.json();
-          createdTags.push(tag.name);
-          console.log(`✅ Created test tag: ${tag.name}`);
-        } else {
-          console.log(`⚠️  Could not create tag ${tagData.tag_name}: ${response.status}`);
+      // Initialize repository with a file to enable tag creation
+      await fetch(`${GITLAB_API_URL}/api/v4/projects/${sharedTestProject.id}/repository/files/README.md`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GITLAB_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          branch: 'main',
+          content: 'IyBTaGFyZWQgVGVzdCBQcm9qZWN0', // base64 for "# Shared Test Project"
+          commit_message: 'Initial commit for tag testing',
+        }),
+      });
+
+      // Create test tags
+      const tagsToCreate = [
+        {
+          tag_name: `test-v1.0.0-${testTimestamp}`,
+          ref: 'main',
+          message: `Test tag 1 for repository schema validation - ${testTimestamp}`
+        },
+        {
+          tag_name: `test-v1.1.0-${testTimestamp}`,
+          ref: 'main',
+          message: `Test tag 2 for repository schema validation - ${testTimestamp}`
         }
-      } catch (error) {
-        console.log(`⚠️  Error creating tag ${tagData.tag_name}:`, error);
-      }
-    }
+      ];
 
-    console.log(`✅ Repository test setup complete - created ${createdTags.length} test tags`);
+      for (const tagData of tagsToCreate) {
+        try {
+          const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${sharedTestProject.id}/repository/tags`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${GITLAB_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(tagData),
+          });
+
+          if (response.ok) {
+            const tag = await response.json();
+            createdTags.push(tag.name);
+            console.log(`✅ Created test tag: ${tag.name}`);
+          } else {
+            console.log(`⚠️  Could not create tag ${tagData.tag_name}: ${response.status}`);
+          }
+        } catch (error) {
+          console.log(`⚠️  Error creating tag ${tagData.tag_name}:`, error);
+        }
+      }
+
+      console.log(`✅ Repository test setup complete - created shared project ${sharedTestProject.id} with ${createdTags.length} test tags`);
+    } else {
+      console.log(`⚠️  Could not create shared test project for tag operations`);
+    }
   });
 
   afterAll(async () => {
-    // Clean up created tags
-    console.log('🧹 Cleaning up test tags...');
+    // Clean up shared test project (includes all tags and data)
+    console.log('🧹 Cleaning up shared test project...');
 
-    for (const tagName of createdTags) {
+    if (sharedTestProject?.id) {
       try {
-        const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(TEST_PROJECT!)}/repository/tags/${encodeURIComponent(tagName)}`, {
+        const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${sharedTestProject.id}`, {
           method: 'DELETE',
           headers: {
             'Authorization': `Bearer ${GITLAB_TOKEN}`,
@@ -82,14 +115,16 @@ describe('Repository Schema - GitLab 18.3 Integration', () => {
         });
 
         if (response.ok) {
-          console.log(`✅ Cleaned up test tag: ${tagName}`);
+          console.log(`✅ Cleaned up shared test project: ${sharedTestProject.id}`);
         } else {
-          console.log(`⚠️  Could not delete tag ${tagName}: ${response.status}`);
+          console.log(`⚠️  Could not delete shared test project ${sharedTestProject.id}: ${response.status}`);
         }
       } catch (error) {
-        console.log(`⚠️  Error deleting tag ${tagName}:`, error);
+        console.log(`⚠️  Error deleting shared test project ${sharedTestProject.id}:`, error);
       }
     }
+
+    console.log('✅ Repository test cleanup complete');
   });
 
   describe('GetRepositoryTreeSchema', () => {
@@ -114,7 +149,24 @@ describe('Repository Schema - GitLab 18.3 Integration', () => {
       console.log('✅ GetRepositoryTreeSchema validates basic parameters correctly');
     });
 
-    it('should make successful API request with validated parameters', async () => {
+    it('should make successful API request with validated parameters (DEFAULT_PROJECT test)', async () => {
+      // This is a DEFAULT_PROJECT test - skip if the default project doesn't exist
+      if (!TEST_PROJECT) {
+        console.log(`⚠️  Skipping DEFAULT_PROJECT test - TEST_PROJECT not configured`);
+        return;
+      }
+
+      const projectCheckResponse = await fetch(`${GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(TEST_PROJECT)}`, {
+        headers: {
+          'Authorization': `Bearer ${GITLAB_TOKEN}`,
+        },
+      });
+
+      if (!projectCheckResponse.ok) {
+        console.log(`⚠️  Skipping DEFAULT_PROJECT test - project '${TEST_PROJECT}' doesn't exist`);
+        return;
+      }
+
       const params = {
         project_id: TEST_PROJECT,
         ref: 'main',
@@ -174,6 +226,107 @@ describe('Repository Schema - GitLab 18.3 Integration', () => {
 
       console.log(`✅ GetRepositoryTreeSchema API request successful, validated ${treeItems.length} tree items`);
     }, 15000);
+
+    it('should make API request with created test data (main functionality test)', async () => {
+      // Follow WORK.md data lifecycle: create test project → add files → test repository tree API → cleanup
+      const timestamp = Date.now();
+      const testProjectName = `repo-tree-test-${timestamp}`;
+
+      // 1. Create test project
+      const createProjectResponse = await fetch(`${GITLAB_API_URL}/api/v4/projects`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GITLAB_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          name: testProjectName,
+          namespace_id: 124, // test group ID
+          description: 'Test project for repository tree API validation - safe to delete',
+          visibility: 'private',
+        }),
+      });
+
+      if (!createProjectResponse.ok) {
+        const errorBody = await createProjectResponse.text();
+        throw new Error(`Failed to create test project: ${createProjectResponse.status} ${errorBody}`);
+      }
+
+      const testProject = await createProjectResponse.json();
+      const testProjectId = testProject.id;
+
+      try {
+        // 2. Create test files to populate repository tree
+        const testFiles = [
+          { path: 'README.md', content: 'IyBUZXN0IFByb2plY3Q=', message: 'Add README' },
+          { path: 'src/main.js', content: 'Y29uc29sZS5sb2coImhlbGxvIik=', message: 'Add main.js' },
+          { path: 'docs/guide.md', content: 'IyBHdWlkZQ==', message: 'Add guide' },
+        ];
+
+        for (const file of testFiles) {
+          await fetch(`${GITLAB_API_URL}/api/v4/projects/${testProjectId}/repository/files/${encodeURIComponent(file.path)}`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${GITLAB_TOKEN}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              branch: 'main',
+              content: file.content,
+              commit_message: file.message,
+            }),
+          });
+        }
+
+        // 3. Test the actual GetRepositoryTree functionality
+        const params = {
+          project_id: testProjectId.toString(),
+          ref: 'main',
+          path: '',
+          per_page: 20,
+        };
+
+        const paramResult = GetRepositoryTreeSchema.safeParse(params);
+        expect(paramResult.success).toBe(true);
+
+        if (paramResult.success) {
+          const queryParams = new URLSearchParams();
+          Object.entries(paramResult.data).forEach(([key, value]) => {
+            if (value !== undefined && key !== 'project_id') {
+              queryParams.set(key, String(value));
+            }
+          });
+
+          const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${testProjectId}/repository/tree?${queryParams}`, {
+            headers: {
+              'Authorization': `Bearer ${GITLAB_TOKEN}`,
+            },
+          });
+
+          expect(response.ok).toBe(true);
+          const treeItems = await response.json();
+          expect(Array.isArray(treeItems)).toBe(true);
+          expect(treeItems.length).toBeGreaterThan(0);
+
+          // Validate tree structure with created files
+          const itemNames = treeItems.map((item: any) => item.name);
+          expect(itemNames).toContain('README.md');
+          expect(itemNames).toContain('src');
+          expect(itemNames).toContain('docs');
+
+          console.log(`✅ GetRepositoryTreeSchema main functionality test successful with ${treeItems.length} tree items`);
+        }
+      } finally {
+        // 4. Cleanup: Delete test project
+        await fetch(`${GITLAB_API_URL}/api/v4/projects/${testProjectId}`, {
+          method: 'DELETE',
+          headers: {
+            'Authorization': `Bearer ${GITLAB_TOKEN}`,
+          },
+        });
+        console.log(`🧹 Cleaned up test project: ${testProjectId}`);
+      }
+    }, 30000);
 
     it('should validate recursive tree parameters', async () => {
       const recursiveParams = {

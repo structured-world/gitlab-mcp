@@ -270,7 +270,7 @@ export class GitLabVersionDetector {
   }
 
   private parseVersion(version: string): number {
-    if (version === 'unknown') return 0;
+    if (!version || version === 'unknown') return 0;
 
     const match = version.match(/^(\d+)\.(\d+)/);
     if (!match) return 0;

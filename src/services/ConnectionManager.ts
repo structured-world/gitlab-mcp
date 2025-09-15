@@ -1,13 +1,16 @@
 import { GraphQLClient } from '../graphql/client';
 import { GitLabVersionDetector, GitLabInstanceInfo } from './GitLabVersionDetector';
-import { GITLAB_API_URL, GITLAB_TOKEN } from '../config';
+import { SchemaIntrospector, SchemaInfo } from './SchemaIntrospector';
+import { GITLAB_BASE_URL, GITLAB_TOKEN } from '../config';
 import { logger } from '../logger';
 
 export class ConnectionManager {
   private static instance: ConnectionManager | null = null;
   private client: GraphQLClient | null = null;
   private versionDetector: GitLabVersionDetector | null = null;
+  private schemaIntrospector: SchemaIntrospector | null = null;
   private instanceInfo: GitLabInstanceInfo | null = null;
+  private schemaInfo: SchemaInfo | null = null;
   private isInitialized: boolean = false;
 
   private constructor() {}
@@ -23,12 +26,12 @@ export class ConnectionManager {
     }
 
     try {
-      if (!GITLAB_API_URL || !GITLAB_TOKEN) {
-        throw new Error('GitLab API URL and token are required');
+      if (!GITLAB_BASE_URL || !GITLAB_TOKEN) {
+        throw new Error('GitLab base URL and token are required');
       }
 
-      // Construct GraphQL endpoint from base GITLAB_API_URL
-      const endpoint = `${GITLAB_API_URL}/api/graphql`;
+      // Construct GraphQL endpoint from base URL
+      const endpoint = `${GITLAB_BASE_URL}/api/graphql`;
 
       this.client = new GraphQLClient(endpoint, {
         headers: {
@@ -37,9 +40,16 @@ export class ConnectionManager {
       });
 
       this.versionDetector = new GitLabVersionDetector(this.client);
+      this.schemaIntrospector = new SchemaIntrospector(this.client);
 
-      this.instanceInfo = await this.versionDetector.detectInstance();
+      // Detect instance info and introspect schema in parallel
+      const [instanceInfo, schemaInfo] = await Promise.all([
+        this.versionDetector.detectInstance(),
+        this.schemaIntrospector.introspectSchema(),
+      ]);
 
+      this.instanceInfo = instanceInfo;
+      this.schemaInfo = schemaInfo;
       this.isInitialized = true;
 
       logger.info(
@@ -49,8 +59,10 @@ export class ConnectionManager {
           features: Object.entries(this.instanceInfo.features)
             .filter(([, enabled]) => enabled)
             .map(([feature]) => feature),
+          widgetTypes: this.schemaInfo.workItemWidgetTypes.length,
+          schemaTypes: this.schemaInfo.typeDefinitions.size,
         },
-        'GitLab instance detected',
+        'GitLab instance and schema detected',
       );
     } catch (error) {
       logger.error({ err: error as Error }, 'Failed to initialize connection');
@@ -72,11 +84,25 @@ export class ConnectionManager {
     return this.versionDetector;
   }
 
+  public getSchemaIntrospector(): SchemaIntrospector {
+    if (!this.schemaIntrospector) {
+      throw new Error('Connection not initialized. Call initialize() first.');
+    }
+    return this.schemaIntrospector;
+  }
+
   public getInstanceInfo(): GitLabInstanceInfo {
     if (!this.instanceInfo) {
       throw new Error('Connection not initialized. Call initialize() first.');
     }
     return this.instanceInfo;
+  }
+
+  public getSchemaInfo(): SchemaInfo {
+    if (!this.schemaInfo) {
+      throw new Error('Connection not initialized. Call initialize() first.');
+    }
+    return this.schemaInfo;
   }
 
   public isFeatureAvailable(feature: keyof GitLabInstanceInfo['features']): boolean {
@@ -100,10 +126,19 @@ export class ConnectionManager {
     return this.instanceInfo.version;
   }
 
+  public isWidgetAvailable(widgetType: string): boolean {
+    if (!this.schemaIntrospector) {
+      return false;
+    }
+    return this.schemaIntrospector.isWidgetTypeAvailable(widgetType);
+  }
+
   public reset(): void {
     this.client = null;
     this.versionDetector = null;
+    this.schemaIntrospector = null;
     this.instanceInfo = null;
+    this.schemaInfo = null;
     this.isInitialized = false;
   }
 }

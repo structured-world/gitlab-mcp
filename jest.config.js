@@ -33,5 +33,16 @@ module.exports = {
   testPathIgnorePatterns: integrationTestsEnabled ?
     ["<rootDir>/dist/", "<rootDir>/node_modules/"] :
     ["<rootDir>/dist/", "<rootDir>/node_modules/", "<rootDir>/tests/integration/"],
+  globalSetup: integrationTestsEnabled ? '<rootDir>/tests/setup/globalSetup.js' : undefined,
+  globalTeardown: integrationTestsEnabled ? '<rootDir>/tests/setup/globalTeardown.js' : undefined,
   moduleDirectories: ["node_modules", "src"],
+  // Use lifecycle pattern for integration tests with proper sequencing
+  ...(integrationTestsEnabled && {
+    testSequencer: '<rootDir>/tests/setup/sequencer.js',
+    maxWorkers: 1, // Serial execution for lifecycle tests
+    testTimeout: 30000, // Longer timeout for API calls
+  }),
+  ...(!integrationTestsEnabled && {
+    testTimeout: 10000, // Standard timeout for unit tests
+  }),
 };

@@ -189,14 +189,14 @@ export interface WorkItemParticipantsWidget extends WorkItemWidget {
 
 export interface WorkItemProgressWidget extends WorkItemWidget {
   type: 'PROGRESS';
+  currentValue?: number;
+  endValue?: number;
   progress?: number;
-  totalProgress?: number;
+  startValue?: number;
 }
 
 export interface WorkItemRequirementLegacyWidget extends WorkItemWidget {
   type: 'REQUIREMENT_LEGACY';
-  requirement?: string;
-  status?: string;
 }
 
 export interface WorkItemTestReportsWidget extends WorkItemWidget {
@@ -265,7 +265,7 @@ export interface WorkItemCrmContactsWidget extends WorkItemWidget {
 export interface WorkItemEmailParticipantsWidget extends WorkItemWidget {
   type: 'EMAIL_PARTICIPANTS';
   emailParticipants: {
-    nodes: User[];
+    nodes: Array<{ email: string }>;
   };
 }
 
@@ -341,9 +341,9 @@ export interface Todo {
 }
 
 export interface AwardEmoji {
-  id: string;
   name: string;
   emoji: string;
+  description: string;
   user: User;
 }
 
@@ -417,7 +417,7 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
   { group: { workItems: { nodes: WorkItem[] } } },
   { groupPath: string; types?: WorkItemTypeEnum[]; first?: number; after?: string }
 > = gql`
-  query GetWorkItems($groupPath: ID!, $types: [WorkItemType!], $first: Int, $after: String) {
+  query GetWorkItems($groupPath: ID!, $types: [IssueType!], $first: Int, $after: String) {
     group(fullPath: $groupPath) {
       workItems(types: $types, first: $first, after: $after) {
         nodes {
@@ -501,7 +501,7 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
                 state
                 dueDate
                 startDate
-                webUrl
+                webPath
               }
             }
             ... on WorkItemWidgetNotes {
@@ -539,13 +539,18 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
               weight
             }
             ... on WorkItemWidgetStatus {
-              status
+              status {
+                name
+                color
+              }
             }
             ... on WorkItemWidgetTimeTracking {
               timeEstimate
               totalTimeSpent
-              humanTimeEstimate
-              humanTotalTimeSpent
+              humanReadableAttributes {
+                timeEstimate
+                totalTimeSpent
+              }
             }
             ... on WorkItemWidgetParticipants {
               participants {
@@ -559,29 +564,29 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
               }
             }
             ... on WorkItemWidgetProgress {
+              currentValue
+              endValue
               progress
-              totalProgress
+              startValue
             }
             ... on WorkItemWidgetRequirementLegacy {
-              requirement
-              status
+              type
             }
             ... on WorkItemWidgetTestReports {
               testReports {
-                id
-                name
-                status
-                summary {
-                  total
-                  success
-                  failed
-                  skipped
+                nodes {
+                  id
+                  state
+                  createdAt
+                  author {
+                    id
+                    username
+                  }
                 }
               }
             }
             ... on WorkItemWidgetNotifications {
               subscribed
-              emailsDisabled
             }
             ... on WorkItemWidgetCurrentUserTodos {
               currentUserTodos {
@@ -601,9 +606,9 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
             ... on WorkItemWidgetAwardEmoji {
               awardEmoji {
                 nodes {
-                  id
                   name
                   emoji
+                  description
                   user {
                     id
                     username
@@ -617,12 +622,16 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
             ... on WorkItemWidgetLinkedItems {
               linkedItems {
                 nodes {
-                  id
-                  iid
-                  title
-                  state
-                  workItemType {
-                    name
+                  linkId
+                  linkType
+                  workItem {
+                    id
+                    iid
+                    title
+                    state
+                    workItemType {
+                      name
+                    }
                   }
                 }
               }
@@ -631,13 +640,15 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
               color
             }
             ... on WorkItemWidgetDesigns {
-              designs {
-                nodes {
-                  id
-                  filename
-                  fullPath
-                  image
-                  imageV432x230
+              designCollection {
+                designs {
+                  nodes {
+                    id
+                    filename
+                    fullPath
+                    image
+                    imageV432x230
+                  }
                 }
               }
             }
@@ -645,17 +656,21 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
               closingMergeRequests {
                 nodes {
                   id
-                  iid
-                  title
-                  state
-                  webUrl
+                  mergeRequest {
+                    id
+                    iid
+                    title
+                    state
+                    webUrl
+                  }
                 }
               }
               featureFlags {
                 nodes {
                   id
                   name
-                  description
+                  path
+                  reference
                   active
                 }
               }
@@ -668,51 +683,33 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
                   lastName
                   email
                   phone
-                  organization
+                  organization {
+                    id
+                    name
+                    description
+                  }
                 }
               }
             }
             ... on WorkItemWidgetEmailParticipants {
               emailParticipants {
                 nodes {
-                  id
-                  username
-                  name
-                  avatarUrl
-                  webUrl
+                  email
                 }
               }
             }
             ... on WorkItemWidgetCustomFields {
-              customFields {
-                nodes {
-                  id
-                  name
-                  value
-                  type
-                }
-              }
+              type
             }
             ... on WorkItemWidgetErrorTracking {
-              errorTrackingEnabled
-              errors {
-                nodes {
-                  id
-                  title
-                  message
-                  count
-                  firstSeen
-                  lastSeen
-                }
-              }
+              identifier
+              stackTrace
+              status
             }
             ... on WorkItemWidgetLinkedResources {
               linkedResources {
                 nodes {
-                  id
                   url
-                  type
-                  title
                 }
               }
             }

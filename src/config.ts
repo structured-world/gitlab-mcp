@@ -26,24 +26,26 @@ export const HTTPS_PROXY = process.env.HTTPS_PROXY;
 export const NODE_TLS_REJECT_UNAUTHORIZED = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
 export const GITLAB_CA_CERT_PATH = process.env.GITLAB_CA_CERT_PATH;
 
-// GitLab API configuration
-function normalizeGitLabApiUrl(url?: string): string {
+// GitLab base URL configuration (without /api/v4)
+function normalizeGitLabBaseUrl(url?: string): string {
   if (!url) {
-    return 'https://gitlab.com/api/v4';
+    return 'https://gitlab.com';
   }
 
   if (url.endsWith('/')) {
     url = url.slice(0, -1);
   }
 
+  // Remove /api/v4 if user accidentally added it
   if (url.endsWith('/api/v4')) {
-    return url;
+    url = url.slice(0, -7);
   }
 
-  return `${url}/api/v4`;
+  return url;
 }
 
-export const GITLAB_API_URL = normalizeGitLabApiUrl(process.env.GITLAB_API_URL ?? '');
+export const GITLAB_BASE_URL = normalizeGitLabBaseUrl(process.env.GITLAB_API_URL ?? '');
+export const GITLAB_API_URL = `${GITLAB_BASE_URL}/api/v4`;
 export const GITLAB_PROJECT_ID = process.env.GITLAB_PROJECT_ID;
 export const GITLAB_ALLOWED_PROJECT_IDS =
   process.env.GITLAB_ALLOWED_PROJECT_IDS?.split(',').map((id) => id.trim()) ?? [];

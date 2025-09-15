@@ -1,6 +1,41 @@
 import { ExecutionResult, print } from 'graphql';
 import { TypedDocumentNode } from '@graphql-typed-document-node/core';
-import { fetch } from '../http-client';
+import { DEFAULT_HEADERS } from '../http-client';
+import { GITLAB_AUTH_COOKIE_PATH } from '../config';
+import * as fs from 'fs';
+import { logger } from '../logger';
+
+/**
+ * Reads GitLab authentication cookies from file and formats them for HTTP Cookie header
+ */
+function loadCookieHeader(): string | null {
+  if (!GITLAB_AUTH_COOKIE_PATH) {
+    return null;
+  }
+
+  try {
+    const cookieString = fs.readFileSync(GITLAB_AUTH_COOKIE_PATH, 'utf-8');
+    const cookies: string[] = [];
+
+    cookieString.split('\n').forEach((line) => {
+      const trimmed = line.trim();
+      if (trimmed && !trimmed.startsWith('#')) {
+        // Parse cookie line format: domain flag path secure expiration name value
+        const parts = trimmed.split('\t');
+        if (parts.length >= 7) {
+          const name = parts[5];
+          const value = parts[6];
+          cookies.push(`${name}=${value}`);
+        }
+      }
+    });
+
+    return cookies.length > 0 ? cookies.join('; ') : null;
+  } catch (error: unknown) {
+    logger.warn({ err: error }, 'Failed to load GitLab authentication cookies');
+    return null;
+  }
+}
 
 export interface GraphQLClientOptions {
   endpoint: string;
@@ -23,13 +58,23 @@ export class GraphQLClient {
   ): Promise<TResult> {
     const query = print(document);
 
-    const response = await fetch(this.endpoint, {
+    // Prepare headers with authentication (token + cookies)
+    const cookieHeader = loadCookieHeader();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      ...DEFAULT_HEADERS,
+      ...this.defaultHeaders,
+      ...requestHeaders,
+    };
+
+    // Add cookies if available
+    if (cookieHeader) {
+      headers.Cookie = cookieHeader;
+    }
+
+    const response = await globalThis.fetch(this.endpoint, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...this.defaultHeaders,
-        ...requestHeaders,
-      },
+      headers,
       body: JSON.stringify({
         query,
         variables: variables ?? {},

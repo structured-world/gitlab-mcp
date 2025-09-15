@@ -29,18 +29,24 @@ export interface TestDataState {
   labels?: any[];
 }
 
-// Import the shared test data from data-lifecycle.test.ts
-// This will be populated by the lifecycle tests and used by all other tests
-let sharedTestData: TestDataState = {};
+// Use global state to share data across all test files in the same Jest process
+declare global {
+  var TEST_DATA_STATE: TestDataState;
+}
 
-export const getTestData = (): TestDataState => sharedTestData;
+// Initialize global state if not exists
+if (!global.TEST_DATA_STATE) {
+  global.TEST_DATA_STATE = {};
+}
+
+export const getTestData = (): TestDataState => global.TEST_DATA_STATE || {};
 
 export const setTestData = (data: TestDataState): void => {
-  sharedTestData = { ...sharedTestData, ...data };
+  global.TEST_DATA_STATE = { ...global.TEST_DATA_STATE, ...data };
 };
 
 export const updateTestData = (updates: Partial<TestDataState>): void => {
-  sharedTestData = { ...sharedTestData, ...updates };
+  global.TEST_DATA_STATE = { ...global.TEST_DATA_STATE, ...updates };
 };
 
 // Helper functions for common test operations

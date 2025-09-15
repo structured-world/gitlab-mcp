@@ -1,6 +1,6 @@
 import { gql } from 'graphql-tag';
 import { TypedDocumentNode } from '@graphql-typed-document-node/core';
-import { SchemaIntrospector } from '../services/SchemaIntrospector';
+import { SchemaIntrospector, FieldInfo } from '../services/SchemaIntrospector';
 import { logger } from '../logger';
 
 export interface DynamicWorkItem {
@@ -17,7 +17,7 @@ export interface DynamicWorkItem {
   updatedAt: string;
   closedAt?: string;
   webUrl: string;
-  widgets: Array<{ type: string; [key: string]: any }>;
+  widgets: Array<{ type: string; [key: string]: unknown }>;
 }
 
 export class DynamicWorkItemsQueryBuilder {
@@ -37,7 +37,7 @@ export class DynamicWorkItemsQueryBuilder {
     { groupPath: string; types?: string[]; first?: number; after?: string }
   > {
     // Use all available widgets if none specified
-    const widgets = requestedWidgets || this.schemaIntrospector.getAvailableWidgetTypes();
+    const widgets = requestedWidgets ?? this.schemaIntrospector.getAvailableWidgetTypes();
 
     // Filter to only widgets that are actually available
     const availableWidgets = widgets.filter((widget) =>
@@ -146,7 +146,7 @@ export class DynamicWorkItemsQueryBuilder {
   /**
    * Build safe field selections for a widget type
    */
-  private buildSafeFields(widgetType: string, fields: any[]): string[] {
+  private buildSafeFields(widgetType: string, fields: FieldInfo[]): string[] {
     const safeFields: string[] = [];
 
     // Widget-specific field mappings
@@ -172,7 +172,7 @@ export class DynamicWorkItemsQueryBuilder {
     for (const field of fields) {
       if (field.name === 'type') continue; // Skip type field as it's already included
 
-      if (field.type.kind === 'SCALAR' || field.type.kind === 'ENUM') {
+      if (field.type?.kind === 'SCALAR' || field.type?.kind === 'ENUM') {
         safeFields.push(field.name);
       }
     }

@@ -13,10 +13,10 @@ class DependencySequencer extends Sequencer {
   sort(tests) {
     // Define test execution order based on dependencies
     const testOrder = [
-      'data-lifecycle.test.ts',      // MUST be first - creates all data
-      'merge-requests.test.ts',      // Uses MR data from lifecycle
-      'repository.test.ts',          // Uses repository data from lifecycle
-      'workitems.test.ts',          // Uses work items from lifecycle
+      'data-lifecycle.test.ts',                    // MUST be first - creates all data
+      'schemas-dependent/merge-requests.test.ts',  // Uses MR data from lifecycle
+      'schemas-dependent/repository.test.ts',     // Uses repository data from lifecycle
+      'workitems.test.ts',                        // Uses work items from lifecycle
     ];
 
     // Sort tests according to dependency order

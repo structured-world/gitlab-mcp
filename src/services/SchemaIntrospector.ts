@@ -17,13 +17,26 @@ export interface FieldInfo {
 export interface TypeInfo {
   name: string;
   fields: FieldInfo[] | null;
-  enumValues?: Array<{ name: string; description: string }> | null;
+  enumValues?: Array<{ name: string; description?: string }> | null;
 }
 
 export interface SchemaInfo {
   workItemWidgetTypes: string[];
   typeDefinitions: Map<string, TypeInfo>;
   availableFeatures: Set<string>;
+}
+
+interface IntrospectionType {
+  name: string;
+  kind: string;
+  fields?: FieldInfo[] | null;
+  enumValues?: Array<{ name: string; description?: string }> | null;
+}
+
+interface IntrospectionResult {
+  __schema: {
+    types: IntrospectionType[];
+  };
 }
 
 const INTROSPECTION_QUERY = gql`
@@ -68,20 +81,19 @@ export class SchemaIntrospector {
     try {
       logger.info('🔍 Introspecting GitLab GraphQL schema...');
 
-      const result = await this.client.request(INTROSPECTION_QUERY);
+      const result = await this.client.request<IntrospectionResult>(INTROSPECTION_QUERY);
       const types = result.__schema.types;
 
       // Extract WorkItem widget types
-      const workItemWidgetType = types.find((type: any) => type.name === 'WorkItemWidgetType');
-      const workItemWidgetTypes =
-        workItemWidgetType?.enumValues?.map((value: any) => value.name) || [];
+      const workItemWidgetType = types.find((type) => type.name === 'WorkItemWidgetType');
+      const workItemWidgetTypes = workItemWidgetType?.enumValues?.map((value) => value.name) ?? [];
 
       // Build type definitions map
       const typeDefinitions = new Map<string, TypeInfo>();
 
       // Focus on WorkItem-related types
       const relevantTypes = types.filter(
-        (type: any) =>
+        (type) =>
           type.name &&
           (type.name.startsWith('WorkItem') ||
             type.name.includes('Widget') ||
@@ -94,8 +106,8 @@ export class SchemaIntrospector {
       for (const type of relevantTypes) {
         typeDefinitions.set(type.name, {
           name: type.name,
-          fields: type.fields || null,
-          enumValues: type.enumValues || null,
+          fields: type.fields ?? null,
+          enumValues: type.enumValues ?? null,
         });
       }
 
@@ -207,7 +219,7 @@ export class SchemaIntrospector {
           widget
             .slice(1)
             .toLowerCase()
-            .replace(/_([a-z])/g, (_, letter) => letter.toUpperCase())
+            .replace(/_([a-z])/g, (_, letter: string) => letter.toUpperCase())
         }`;
 
         // Generate safe field selections for this widget

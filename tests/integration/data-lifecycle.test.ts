@@ -30,31 +30,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
     console.log(`🚀 Starting data lifecycle chain with timestamp: ${timestamp}`);
   });
 
-  afterAll(async () => {
-    // Only cleanup happens here - at the very end of the entire test suite
-    console.log('🧹 Final cleanup: Deleting all test infrastructure...');
-
-    if (TEST_DATA.group?.id) {
-      try {
-        const response = await fetch(`${GITLAB_API_URL}/api/v4/groups/${TEST_DATA.group.id}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${GITLAB_TOKEN}`,
-          },
-        });
-
-        if (response.ok) {
-          console.log(`✅ Cleaned up test group: ${TEST_DATA.group.id} (includes all projects, MRs, work items)`);
-        } else {
-          console.log(`⚠️  Could not delete test group ${TEST_DATA.group.id}: ${response.status}`);
-        }
-      } catch (error) {
-        console.log(`⚠️  Error deleting test group:`, error);
-      }
-    }
-
-    console.log('✅ Data lifecycle cleanup complete');
-  });
+  // Note: Cleanup moved to globalTeardown.js to run after ALL tests complete
 
   describe('📁 Step 1: Group Infrastructure', () => {
     it('should create test group (foundation for all tests)', async () => {

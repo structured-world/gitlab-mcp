@@ -59,8 +59,6 @@ WORKDIR /app
 
 # Copy package files
 COPY package.json yarn.lock .yarnrc.yml ./
-COPY .yarn/ ./.yarn/
-
 # Install only production dependencies
 ENV NODE_ENV=production
 RUN --mount=type=cache,target=/root/.yarn/berry/cache \

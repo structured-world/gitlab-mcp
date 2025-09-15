@@ -56,10 +56,34 @@ export async function startServer(): Promise<void> {
 
     case 'sse': {
       const app = express();
+      app.use(express.json());
+
+      const sseTransports: { [sessionId: string]: SSEServerTransport } = {};
 
       app.get('/sse', async (req, res) => {
         const transport = new SSEServerTransport('/messages', res);
         await server.connect(transport);
+
+        // Store transport by session ID for message handling
+        const sessionId = transport.sessionId || Math.random().toString(36).substring(7);
+        sseTransports[sessionId] = transport;
+      });
+
+      app.post('/messages', async (req, res) => {
+        const sessionId = req.query.sessionId as string;
+
+        if (!sessionId || !sseTransports[sessionId]) {
+          return res.status(404).json({ error: 'Session not found' });
+        }
+
+        try {
+          const transport = sseTransports[sessionId];
+          // Use the correct MCP SDK method for SSE transport
+          await transport.handlePostMessage(req, res, req.body);
+        } catch (error: unknown) {
+          logger.error({ err: error }, 'Error handling SSE message');
+          res.status(500).json({ error: 'Internal server error' });
+        }
       });
 
       app.listen(Number(PORT), HOST, () => {

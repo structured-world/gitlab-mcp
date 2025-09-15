@@ -19,14 +19,23 @@ export async function setupHandlers(server: Server): Promise<void> {
   server.setRequestHandler(ListToolsRequestSchema, () => {
     const tools = getFilteredTools();
 
-    // Remove $schema for Gemini compatibility
+    // Remove $schema for Gemini compatibility and ensure proper JSON schema format
     const modifiedTools = tools.map((tool) => {
-      if ('$schema' in tool.inputSchema) {
-        const inputSchema = { ...tool.inputSchema } as Record<string, unknown>;
-        delete inputSchema.$schema;
-        return { ...tool, inputSchema };
+      let inputSchema = tool.inputSchema;
+
+      // Force all input schemas to be type: "object" for MCP compatibility
+      if (inputSchema && typeof inputSchema === 'object') {
+        inputSchema = { ...inputSchema, type: 'object' };
       }
-      return tool;
+
+      // Remove $schema for Gemini compatibility
+      if (inputSchema && typeof inputSchema === 'object' && '$schema' in inputSchema) {
+        const cleanedSchema = { ...inputSchema } as Record<string, unknown>;
+        delete cleanedSchema.$schema;
+        inputSchema = cleanedSchema;
+      }
+
+      return { ...tool, inputSchema };
     });
 
     return {

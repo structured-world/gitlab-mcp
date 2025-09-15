@@ -1,3 +1,10 @@
+# [2.3.0](https://github.com/structured-world/gitlab-mcp/compare/v2.2.0...v2.3.0) (2025-09-15)
+
+
+### Features
+
+* **test:** add user infrastructure setup and assignment to test data lifecycle ([e88f5bb](https://github.com/structured-world/gitlab-mcp/commit/e88f5bb048c8d40d83edeb2fbb2c171906e503b5))
+
 # [2.2.0](https://github.com/structured-world/gitlab-mcp/compare/v2.1.2...v2.2.0) (2025-09-15)
 
 

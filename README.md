@@ -405,19 +405,21 @@ yarn test tests/integration/schemas/workitems.test.ts
 
 For detailed testing documentation, see [TESTING.md](TESTING.md).
 
-## Support the Project
+## 💖 Support the Project
 
-If you find this GitLab MCP Server useful, consider supporting its continued development and maintenance.
+This GitLab MCP Server is developed and maintained with care for the community. If it saves you time or helps your workflow, consider supporting its continued development!
 
 <div align="center">
   <a href="tron:TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA">
     <img src="assets/usdt-qr.svg" alt="USDT TRC-20 Donation QR Code" width="150" height="150">
   </a>
   <br>
-  <small>📱 <strong>USDT (TRC-20)</strong></small><br>
+  <small>☕ <strong>Buy me a coffee with USDT (TRC-20)</strong></small><br>
   <code>TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA</code>
   <br><br>
-  <em>Click QR code or scan with any TRC-20 compatible wallet (TronLink, Trust Wallet, Exodus, etc.)</em>
+  <em>💡 Click QR code to open your wallet or scan with TronLink, Trust Wallet, Exodus, etc.</em>
+  <br>
+  <small><strong>Every contribution helps keep this project alive and growing! 🚀</strong></small>
 </div>
 
 ---

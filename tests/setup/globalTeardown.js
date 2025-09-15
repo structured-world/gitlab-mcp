@@ -17,17 +17,21 @@ module.exports = async () => {
     config({ path: envTestPath, quiet: true });
   }
 
-  // Get test data from shared state
-  const testConfigPath = path.resolve(__dirname, './testConfig.ts');
+  // Get test data from persistent file storage (globalTeardown runs in separate context)
+  const os = require('os');
+  const testDataFile = path.join(os.tmpdir(), 'gitlab-mcp-test-data.json');
   let testData = null;
 
   try {
-    // Try to get test data if available
-    if (global.TEST_DATA_STATE && global.TEST_DATA_STATE.group?.id) {
-      testData = global.TEST_DATA_STATE;
+    // Read test data from persistent file
+    if (fs.existsSync(testDataFile)) {
+      testData = JSON.parse(fs.readFileSync(testDataFile, 'utf8'));
+      console.log(`📋 Found test data file with group ID: ${testData.group?.id}`);
+    } else {
+      console.log('📋 No test data file found - nothing to clean up');
     }
   } catch (error) {
-    // No test data to clean up
+    console.log('⚠️  Could not read test data file:', error);
   }
 
   console.log('');
@@ -64,8 +68,6 @@ module.exports = async () => {
   console.log('✅ GitLab Integration Test Suite - All tests completed successfully');
 
   // Clean up temporary test data file
-  const os = require('os');
-  const testDataFile = path.join(os.tmpdir(), 'gitlab-mcp-test-data.json');
   try {
     if (fs.existsSync(testDataFile)) {
       fs.unlinkSync(testDataFile);

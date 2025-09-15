@@ -58,7 +58,8 @@ jest.config.*
 .eslintrc*
 .prettierrc*
 .editorconfig
-tsconfig.json
+# Keep TypeScript config files for build
+!tsconfig.json
 !tsconfig.build.json
 
 # Temporary files

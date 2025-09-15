@@ -120,7 +120,8 @@ export const MergeMergeRequestSchema = z.object({
 // Note operations (write)
 export const CreateNoteSchema = z.object({
   project_id: z.coerce.string().describe('Project ID or URL-encoded path'),
-  merge_request_iid: z.coerce.string().describe('The internal ID of the merge request'),
+  noteable_type: z.enum(['issue', 'merge_request']).describe('Type of noteable object'),
+  noteable_id: z.coerce.string().describe('ID of the noteable object'),
   body: z.string().describe('The content of a note'),
   created_at: z.string().optional().describe('Date time string, ISO 8601 formatted'),
   confidential: flexibleBoolean.optional().describe('Confidential note flag'),
@@ -145,6 +146,7 @@ export const UpdateMergeRequestNoteSchema = ProjectParamsSchema.extend({
 
 export const CreateMergeRequestNoteSchema = ProjectParamsSchema.extend({
   merge_request_iid: z.coerce.string().describe('The internal ID of the merge request'),
+  discussion_id: z.string().describe('The ID of a discussion'),
   body: z.string().describe('The content of a note'),
   created_at: z.string().optional().describe('Date time string, ISO 8601 formatted'),
 });

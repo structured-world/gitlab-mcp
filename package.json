@@ -37,6 +37,7 @@
     "dev": "node --env-file=.env.test -r source-map-support/register -r ts-node/register --experimental-specifier-resolution=node --experimental-print-required-tla --watch src/main.ts",
     "watch": "tsc --watch",
     "test": "yarn jest --runInBand",
+    "test:unit": "yarn jest --config jest.config.unit.js",
     "test:cov": "yarn jest --coverage",
     "test:env-gating": "node tests/scripts/test-env-gating.js",
     "cleanup:test-groups": "node scripts/cleanup-test-groups.js",

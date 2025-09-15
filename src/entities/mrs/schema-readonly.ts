@@ -15,6 +15,22 @@ export const GetBranchDiffsSchema = ProjectParamsSchema.extend({
 
 // Merge request operations (read-only)
 export const GetMergeRequestSchema = ProjectParamsSchema.extend({
+  merge_request_iid: z.coerce.string().optional().describe('The internal ID of the merge request'),
+  branch_name: z.string().optional().describe('Source branch name to find the merge request'),
+  include_diverged_commits_count: z
+    .boolean()
+    .optional()
+    .describe('If true, response includes commits behind the target branch'),
+  include_rebase_in_progress: z
+    .boolean()
+    .optional()
+    .describe('If true, response includes whether a rebase operation is in progress'),
+}).refine((data) => data.merge_request_iid ?? data.branch_name, {
+  message: 'Either merge_request_iid or branch_name must be provided',
+});
+
+// Base schema for MR operations with just project and IID (no refinements)
+const BaseMergeRequestSchema = ProjectParamsSchema.extend({
   merge_request_iid: z.coerce.string().describe('The internal ID of the merge request'),
   include_diverged_commits_count: z
     .boolean()
@@ -26,12 +42,12 @@ export const GetMergeRequestSchema = ProjectParamsSchema.extend({
     .describe('If true, response includes whether a rebase operation is in progress'),
 });
 
-export const GetMergeRequestDiffsSchema = GetMergeRequestSchema.extend({
+export const GetMergeRequestDiffsSchema = BaseMergeRequestSchema.extend({
   page: z.number().optional(),
   per_page: z.number().optional(),
 });
 
-export const ListMergeRequestDiffsSchema = GetMergeRequestSchema.extend({
+export const ListMergeRequestDiffsSchema = BaseMergeRequestSchema.extend({
   page: z.number().optional(),
   per_page: z.number().optional(),
 });

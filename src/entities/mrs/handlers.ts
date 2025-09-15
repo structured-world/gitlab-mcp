@@ -57,9 +57,20 @@ export async function handleGetBranchDiffs(args: unknown): Promise<unknown> {
  */
 export async function handleGetMergeRequest(args: unknown): Promise<unknown> {
   const options = GetMergeRequestSchema.parse(args);
-  const { project_id, merge_request_iid } = options;
+  const { project_id, merge_request_iid, branch_name } = options;
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/merge_requests/${merge_request_iid}`;
+  let apiUrl: string;
+
+  if (merge_request_iid) {
+    // Get specific MR by IID
+    apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/merge_requests/${merge_request_iid}`;
+  } else if (branch_name) {
+    // Search for MR by source branch
+    apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/merge_requests?source_branch=${encodeURIComponent(branch_name)}`;
+  } else {
+    throw new Error('Either merge_request_iid or branch_name must be provided');
+  }
+
   const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -70,8 +81,18 @@ export async function handleGetMergeRequest(args: unknown): Promise<unknown> {
     throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
   }
 
-  const mergeRequest = await response.json();
-  return mergeRequest;
+  const result = await response.json();
+
+  if (branch_name) {
+    // When searching by branch, return the first MR found
+    if (Array.isArray(result) && result.length > 0) {
+      return result[0];
+    } else {
+      throw new Error('No merge request found for branch');
+    }
+  }
+
+  return result;
 }
 
 /**
@@ -121,7 +142,7 @@ export async function handleGetMergeRequestDiffs(args: unknown): Promise<unknown
     queryParams.set('per_page', String(per_page));
   }
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/merge_requests/${merge_request_iid}/diffs?${queryParams}`;
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/merge_requests/${merge_request_iid}/changes?${queryParams}`;
   const response = await enhancedFetch(apiUrl, {
     headers: {
       Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -355,7 +376,9 @@ export async function handleCreateNote(args: unknown): Promise<unknown> {
     body.set('confidential', String(options.confidential));
   }
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/notes`;
+  // Build URL based on noteable type
+  const noteableResource = options.noteable_type === 'merge_request' ? 'merge_requests' : 'issues';
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/${noteableResource}/${options.noteable_id}/notes`;
   const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {
@@ -445,7 +468,7 @@ export async function handleCreateMergeRequestNote(args: unknown): Promise<unkno
     body.set('created_at', options.created_at);
   }
 
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/notes`;
+  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(options.project_id)}/merge_requests/${options.merge_request_iid}/discussions/${options.discussion_id}/notes`;
   const response = await enhancedFetch(apiUrl, {
     method: 'POST',
     headers: {

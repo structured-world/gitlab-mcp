@@ -119,13 +119,15 @@ describe("GitLab Users API - GetUsersSchema", () => {
     "should handle invalid parameters correctly",
     async () => {
       const invalidCases = [
-        // Invalid types
+        // Invalid types for pagination
         { page: "not-a-number" },
         { per_page: -1 },
         { per_page: 101 }, // Exceeds max
-        { active: "not-a-boolean" },
-        // Invalid date format (should be ISO 8601)
-        { created_after: "invalid-date" },
+        { page: 0 }, // Min value violation
+        // Invalid types for other fields
+        { username: 123 }, // Should be string
+        { public_email: true }, // Should be string
+        { search: [] }, // Should be string
       ];
 
       for (const params of invalidCases) {

@@ -29,6 +29,46 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
   // Note: Cleanup moved to globalTeardown.js to run after ALL tests complete
 
+  describe('👤 Step 0: User Infrastructure', () => {
+    it('should create test user (for assignment and collaboration testing)', async () => {
+      console.log('🔧 Creating test user...');
+
+      // Note: User creation typically requires admin privileges
+      // If not admin, this will be skipped gracefully but logged for tracking
+      try {
+        const createResponse = await fetch(`${GITLAB_API_URL}/api/v4/users`, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${GITLAB_TOKEN}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            name: `Test User ${baseTestName}`,
+            username: `testuser-${baseTestName}`,
+            email: `testuser-${baseTestName}@example.com`,
+            password: `Xy9#mK8$pQ2!vN7&${timestamp}`, // Strong password meeting GitLab policy
+            skip_confirmation: true,
+          }),
+        });
+
+        if (createResponse.ok) {
+          const user = await createResponse.json();
+          updateTestData({ user });
+          console.log(`✅ Created test user: ${user.id} (${user.username})`);
+        } else if (createResponse.status === 403) {
+          console.log('⚠️  User creation requires admin privileges - skipping user tests');
+          updateTestData({ user: null }); // Mark as intentionally skipped
+        } else {
+          console.log(`⚠️  Could not create user: ${createResponse.status} ${createResponse.statusText}`);
+          updateTestData({ user: null });
+        }
+      } catch (error) {
+        console.log('⚠️  User creation failed:', error);
+        updateTestData({ user: null });
+      }
+    });
+  });
+
   describe('📁 Step 1: Group Infrastructure', () => {
     it('should create test group (foundation for all tests)', async () => {
       console.log('🔧 Creating test group...');
@@ -78,6 +118,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
           description: `Integration test project - contains repository, MRs, work items for testing`,
           visibility: 'private',
           initialize_with_readme: false,
+          owner_id: testData.user?.id || undefined, // Set test user as project owner if available
         }),
       });
 
@@ -302,12 +343,13 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
       const createdWorkItems: any[] = [];
 
-      // Create different types of work items
+      // Create different types of work items (with user assignment if available)
       const workItemsData = [
         {
           title: `Test Issue ${timestamp}`,
           description: 'Test issue for API validation',
           workItemTypeId: 'gid://gitlab/WorkItems::Type/1', // Issue
+          assignee_ids: testData.user ? [testData.user.id] : undefined,
         },
         {
           title: `Test Epic ${timestamp}`,
@@ -318,6 +360,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
           title: `Test Task ${timestamp}`,
           description: 'Test task for development work',
           workItemTypeId: 'gid://gitlab/WorkItems::Type/4', // Task
+          assignee_ids: testData.user ? [testData.user.id] : undefined,
         },
       ];
 
@@ -380,6 +423,8 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
             description: `Test merge request from ${branch.name} branch`,
             labels: testData.labels?.[0]?.name || undefined,
             milestone_id: testData.milestones?.[0]?.id || undefined,
+            assignee_id: testData.user?.id || undefined,
+            reviewer_ids: testData.user ? [testData.user.id] : undefined,
           }),
         });
 
@@ -413,6 +458,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       expect(testData.milestones?.length).toBeGreaterThan(0);
 
       console.log('📊 Test Infrastructure Summary:');
+      console.log(`  👤 User: ${testData.user?.id ? `${testData.user.id} (${testData.user.username})` : 'N/A (no admin privileges)'}`);
       console.log(`  🏢 Group: ${testData.group?.id} (${testData.group?.path})`);
       console.log(`  📦 Project: ${testData.project?.id}`);
       console.log(`  📁 Files: ${testData.repository?.files?.length || 0}`);

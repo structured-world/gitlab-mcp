@@ -2,7 +2,7 @@
 
 **Maintained by:** [Dmitry Prudnikov](https://github.com/polaz) | **Original Author:** [zereight](https://github.com/zereight)
 
-## @structured-world/mcp-gitlab
+## @structured-world/gitlab-mcp
 
 A fork of the original [zereight/mcp-gitlab](https://github.com/zereight/gitlab-mcp)
 
@@ -30,7 +30,7 @@ When using with the Claude App, you need to set up your API key and URLs directl
   "mcpServers": {
     "gitlab": {
       "command": "npx",
-      "args": ["-y", "@structured-world/mcp-gitlab"],
+      "args": ["-y", "@structured-world/gitlab-mcp"],
       "env": {
         "GITLAB_TOKEN": "your_gitlab_token",
         "GITLAB_API_URL": "your_gitlab_api_url",
@@ -64,7 +64,7 @@ When using with the Claude App, you need to set up your API key and URLs directl
     "GitLab-MCP": {
       "type": "stdio",
       "command": "npx",
-      "args": ["-y", "@structured-world/mcp-gitlab"],
+      "args": ["-y", "@structured-world/gitlab-mcp"],
       "env": {
         "GITLAB_TOKEN": "${input:gitlab-token}",
         "GITLAB_API_URL": "your-fancy-gitlab-url",
@@ -103,7 +103,7 @@ When using with the Claude App, you need to set up your API key and URLs directl
         "USE_PIPELINE",
         "-e",
         "USE_VARIABLES",
-        "ghcr.io/structured-world/mcp-gitlab:latest"
+        "ghcr.io/structured-world/gitlab-mcp:latest"
       ],
       "env": {
         "GITLAB_TOKEN": "your_gitlab_token",
@@ -131,7 +131,7 @@ docker run -i --rm \
   -e USE_PIPELINE=true \
   -e SSE=true \
   -p 3333:3002 \
-  ghcr.io/structured-world/mcp-gitlab:latest
+  ghcr.io/structured-world/gitlab-mcp:latest
 ```
 
 ```json
@@ -157,7 +157,7 @@ docker run -i --rm \
   -e USE_PIPELINE=true \
   -e STREAMABLE_HTTP=true \
   -p 3333:3002 \
-  ghcr.io/structured-world/mcp-gitlab:latest
+  ghcr.io/structured-world/gitlab-mcp:latest
 ```
 
 ```json
@@ -232,7 +232,7 @@ export GITLAB_TOOL_CREATE_WORK_ITEM="Create tickets for our sprint planning"
   "mcpServers": {
     "gitlab": {
       "command": "npx",
-      "args": ["-y", "@structured-world/mcp-gitlab"],
+      "args": ["-y", "@structured-world/gitlab-mcp"],
       "env": {
         "GITLAB_TOKEN": "your_token",
         "GITLAB_API_URL": "https://gitlab.com",

@@ -1601,9 +1601,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@structured-world/mcp-gitlab@workspace:.":
+"@structured-world/gitlab-mcp@workspace:.":
   version: 0.0.0-use.local
-  resolution: "@structured-world/mcp-gitlab@workspace:."
+  resolution: "@structured-world/gitlab-mcp@workspace:."
   dependencies:
     "@eslint/js": "npm:^9.35.0"
     "@graphql-typed-document-node/core": "npm:^3.2.0"
@@ -1641,7 +1641,7 @@ __metadata:
     zod: "npm:^4.1.8"
     zod-to-json-schema: "npm:^3.24.6"
   bin:
-    mcp-gitlab: ./dist/main.js
+    gitlab-mcp: ./dist/main.js
   languageName: unknown
   linkType: soft
 

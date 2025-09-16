@@ -308,8 +308,8 @@
 - Enhanced security with non-root Docker user and health checks
 
 ### Changed
-- **BREAKING**: Package name changed from `@zereight/mcp-gitlab` to `@structured-world/mcp-gitlab`
-- Updated Docker image repository to `ghcr.io/structured-world/mcp-gitlab`
+- **BREAKING**: Package name changed from `@zereight/mcp-gitlab` to `@structured-world/gitlab-mcp`
+- Updated Docker image repository to `ghcr.io/structured-world/gitlab-mcp`
 - Improved README with categorized tools list (94 total tools)
 - Enhanced documentation with comprehensive Docker deployment instructions
 - Refactored test architecture to follow strict data lifecycle rules

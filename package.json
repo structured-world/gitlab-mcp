@@ -1,5 +1,5 @@
 {
-  "name": "@structured-world/mcp-gitlab",
+  "name": "@structured-world/gitlab-mcp",
   "version": "3.2.0",
   "description": "MCP server for using the GitLab API",
   "license": "MIT",

@@ -32,7 +32,7 @@ services:
   # Best for: Web applications, API integrations, most MCP clients
   # Port: 3000 (HTTP with streaming support)
   gitlab-mcp-http:
-    image: ghcr.io/structured-world/mcp-gitlab:latest
+    image: ghcr.io/structured-world/gitlab-mcp:latest
     container_name: gitlab-mcp-http
     restart: unless-stopped
     ports:
@@ -207,7 +207,7 @@ services:
   # Best for: SSE-specific clients, real-time applications
   # Port: 3001 (SSE endpoint)
   gitlab-mcp-sse:
-    image: ghcr.io/structured-world/mcp-gitlab:latest
+    image: ghcr.io/structured-world/gitlab-mcp:latest
     container_name: gitlab-mcp-sse
     restart: unless-stopped
     ports:
@@ -280,7 +280,7 @@ services:
   # Best for: Command-line integration, stdio-based MCP clients
   # No port exposure (uses stdio)
   gitlab-mcp-stdio:
-    image: ghcr.io/structured-world/mcp-gitlab:latest
+    image: ghcr.io/structured-world/gitlab-mcp:latest
     container_name: gitlab-mcp-stdio
     restart: "no"  # stdio mode typically runs on-demand
     environment:
@@ -327,7 +327,7 @@ services:
   # Best for: Security-sensitive environments, monitoring, read-only access
   # Port: 3002 (HTTP with read-only restrictions)
   gitlab-mcp-readonly:
-    image: ghcr.io/structured-world/mcp-gitlab:latest
+    image: ghcr.io/structured-world/gitlab-mcp:latest
     container_name: gitlab-mcp-readonly
     restart: unless-stopped
     ports:
@@ -410,7 +410,7 @@ networks:
 # VOLUMES (if needed for persistence)
 # ============================================================================
 
-volumes:
+#volumes:
   # Uncomment if you need persistent storage
   # gitlab-mcp-data:
   #   driver: local

@@ -4,7 +4,7 @@
 
 ## @structured-world/gitlab-mcp
 
-A fork of the original [zereight/mcp-gitlab](https://github.com/zereight/gitlab-mcp)
+A fork of the original [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp)
 
 ![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp) ![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp) ![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg) ![Codecov](https://codecov.io/gh/structured-world/gitlab-mcp/branch/main/graph/badge.svg) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://structured-world.github.io/gitlab-mcp/coverage/)
 

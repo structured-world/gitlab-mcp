@@ -4,6 +4,12 @@ import { SchemaIntrospector, SchemaInfo } from './SchemaIntrospector';
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from '../config';
 import { logger } from '../logger';
 
+interface CacheEntry {
+  schemaInfo: SchemaInfo;
+  instanceInfo: GitLabInstanceInfo;
+  timestamp: number;
+}
+
 export class ConnectionManager {
   private static instance: ConnectionManager | null = null;
   private client: GraphQLClient | null = null;
@@ -12,6 +18,8 @@ export class ConnectionManager {
   private instanceInfo: GitLabInstanceInfo | null = null;
   private schemaInfo: SchemaInfo | null = null;
   private isInitialized: boolean = false;
+  private static introspectionCache = new Map<string, CacheEntry>();
+  private static readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
 
   private constructor() {}
 
@@ -42,25 +50,49 @@ export class ConnectionManager {
       this.versionDetector = new GitLabVersionDetector(this.client);
       this.schemaIntrospector = new SchemaIntrospector(this.client);
 
-      // Detect instance info and introspect schema in parallel
-      const [instanceInfo, schemaInfo] = await Promise.all([
-        this.versionDetector.detectInstance(),
-        this.schemaIntrospector.introspectSchema(),
-      ]);
+      // Check cache first
+      const cached = ConnectionManager.introspectionCache.get(endpoint);
+      const now = Date.now();
 
-      this.instanceInfo = instanceInfo;
-      this.schemaInfo = schemaInfo;
+      if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
+        logger.info('📋 Using cached GraphQL introspection data');
+        this.instanceInfo = cached.instanceInfo;
+        this.schemaInfo = cached.schemaInfo;
+      } else {
+        logger.debug('🔍 Introspecting GitLab GraphQL schema...');
+
+        // Detect instance info and introspect schema in parallel
+        const [instanceInfo, schemaInfo] = await Promise.all([
+          this.versionDetector.detectInstance(),
+          this.schemaIntrospector.introspectSchema(),
+        ]);
+
+        this.instanceInfo = instanceInfo;
+        this.schemaInfo = schemaInfo;
+
+        // Cache the results
+        ConnectionManager.introspectionCache.set(endpoint, {
+          instanceInfo,
+          schemaInfo,
+          timestamp: now,
+        });
+
+        logger.info('✅ GraphQL schema introspection completed');
+      }
+
       this.isInitialized = true;
 
       logger.info(
         {
-          version: this.instanceInfo.version,
-          tier: this.instanceInfo.tier,
-          features: Object.entries(this.instanceInfo.features)
-            .filter(([, enabled]) => enabled)
-            .map(([feature]) => feature),
-          widgetTypes: this.schemaInfo.workItemWidgetTypes.length,
-          schemaTypes: this.schemaInfo.typeDefinitions.size,
+          version: this.instanceInfo?.version,
+          tier: this.instanceInfo?.tier,
+          features: this.instanceInfo
+            ? Object.entries(this.instanceInfo.features)
+                .filter(([, enabled]) => enabled)
+                .map(([feature]) => feature)
+            : [],
+          widgetTypes: this.schemaInfo?.workItemWidgetTypes.length || 0,
+          schemaTypes: this.schemaInfo?.typeDefinitions.size || 0,
         },
         'GitLab instance and schema detected',
       );

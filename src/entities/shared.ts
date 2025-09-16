@@ -10,6 +10,7 @@ export const PaginationOptionsSchema = z.object({
     .min(1)
     .max(100)
     .optional()
+    .default(20)
     .describe('Number of items per page (max 100)'),
 });
 

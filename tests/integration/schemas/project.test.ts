@@ -5,8 +5,10 @@
 
 import { GitLabProjectSchema } from '../../../src/entities/shared';
 import { CreateRepositorySchema } from '../../../src/entities/core/schema';
+import { IntegrationTestHelper } from '../helpers/registry-helper';
 
 describe('Project Schema - GitLab 18.3 Integration', () => {
+  let helper: IntegrationTestHelper;
   const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
   const GITLAB_API_URL = process.env.GITLAB_API_URL;
   const TEST_GROUP = process.env.TEST_GROUP;
@@ -23,8 +25,12 @@ describe('Project Schema - GitLab 18.3 Integration', () => {
     }
 
     if (!GITLAB_TOKEN) {
-      throw new Error('GITLAB_TOKEN environment variable is required for integration tests');
+      throw new Error('GITLAB_TOKEN environment variable is required');
     }
+
+    helper = new IntegrationTestHelper();
+    await helper.initialize();
+    console.log('✅ Integration test helper initialized for project schema testing');
     if (!GITLAB_API_URL) {
       throw new Error('GITLAB_API_URL environment variable is required for integration tests');
     }
@@ -273,9 +279,18 @@ describe('Project Schema - GitLab 18.3 Integration', () => {
   }, 30000);
 
   it('should handle missing optional fields gracefully', async () => {
-    // Test with minimal project data (simulating different GitLab instances)
+    // Get real project structure from API and test with minimal required fields
+    // Use handler function instead of direct API call
+    const projects = await helper.executeTool('list_projects', { per_page: 1 }) as any[];
+    if (projects.length === 0) {
+      console.log('⚠️  No projects available for minimal fields testing');
+      return;
+    }
+
+    const realProject = projects[0];
+    // Create minimal version based on real project structure
     const minimalProject = {
-      id: '123',
+      id: realProject.id.toString(), // Use real project ID from data lifecycle
       description: null,
       name: 'test project',
       name_with_namespace: 'group / test project',
@@ -303,13 +318,13 @@ describe('Project Schema - GitLab 18.3 Integration', () => {
         web_url: 'https://example.com/groups/group',
       },
       _links: {
-        self: 'https://example.com/api/v4/projects/123',
-        issues: 'https://example.com/api/v4/projects/123/issues',
-        merge_requests: 'https://example.com/api/v4/projects/123/merge_requests',
-        repo_branches: 'https://example.com/api/v4/projects/123/repository/branches',
-        labels: 'https://example.com/api/v4/projects/123/labels',
-        events: 'https://example.com/api/v4/projects/123/events',
-        members: 'https://example.com/api/v4/projects/123/members',
+        self: `https://git.phantom-traffic.com/api/v4/projects/${realProject.id}`,
+        issues: `https://git.phantom-traffic.com/api/v4/projects/${realProject.id}/issues`,
+        merge_requests: `https://git.phantom-traffic.com/api/v4/projects/${realProject.id}/merge_requests`,
+        repo_branches: `https://git.phantom-traffic.com/api/v4/projects/${realProject.id}/repository/branches`,
+        labels: `https://git.phantom-traffic.com/api/v4/projects/${realProject.id}/labels`,
+        events: `https://git.phantom-traffic.com/api/v4/projects/${realProject.id}/events`,
+        members: `https://git.phantom-traffic.com/api/v4/projects/${realProject.id}/members`,
       },
       marked_for_deletion_at: null,
       empty_repo: false,

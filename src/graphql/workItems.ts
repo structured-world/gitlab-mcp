@@ -703,7 +703,6 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
             }
             ... on WorkItemWidgetErrorTracking {
               identifier
-              stackTrace
               status
             }
             ... on WorkItemWidgetLinkedResources {
@@ -714,16 +713,7 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
               }
             }
             ... on WorkItemWidgetVulnerabilities {
-              vulnerabilities {
-                nodes {
-                  id
-                  title
-                  description
-                  severity
-                  state
-                  reportType
-                }
-              }
+              type
             }
           }
         }

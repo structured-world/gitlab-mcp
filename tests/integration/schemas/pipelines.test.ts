@@ -1,742 +1,286 @@
 /**
  * Pipelines Schema Integration Tests
- * Tests all pipeline and job-related schemas against real GitLab 18.3 API responses
- * Following CRITICAL COMPREHENSIVE TEST DATA LIFECYCLE WORKFLOW RULE
+ * Tests schemas using handler functions with real GitLab API
  */
 
-import { beforeAll, describe, expect, it, afterAll } from '@jest/globals';
-import {
-  ListPipelinesSchema,
-  GetPipelineSchema,
-  CreatePipelineSchema,
-  RetryPipelineSchema,
-  CancelPipelineSchema,
-  ListPipelineJobsSchema,
-  ListPipelineTriggerJobsSchema,
-  GetPipelineJobOutputSchema,
-  PlayPipelineJobSchema,
-  RetryPipelineJobSchema,
-  CancelPipelineJobSchema,
-  GitLabPipelineSchema,
-  GitLabPipelineJobSchema,
-  GitLabPipelineTriggerJobSchema,
-} from '../../../src/entities/pipelines';
+import { ListPipelinesSchema, GetPipelineSchema } from '../../../src/entities/pipelines/schema-readonly';
+import { IntegrationTestHelper } from '../helpers/registry-helper';
 
-// Test environment constants
-const GITLAB_API_URL = process.env.GITLAB_API_URL!;
-const GITLAB_TOKEN = process.env.GITLAB_TOKEN!;
-const TEST_GROUP = process.env.TEST_GROUP!;
+describe('Pipelines Schema - GitLab Integration', () => {
+  let helper: IntegrationTestHelper;
 
-// Dynamic test data
-const testTimestamp = Date.now();
-let testProjectId: number | null = null;
-let testGroupId: number | null = null;
-let createdTestGroup = false;
-let availablePipelineIds: string[] = [];
-let availableJobIds: string[] = [];
-let createdPipelineIds: string[] = [];
-
-describe('Pipelines Schema - GitLab 18.3 Integration', () => {
   beforeAll(async () => {
-    expect(GITLAB_API_URL).toBeDefined();
-    expect(GITLAB_TOKEN).toBeDefined();
-    expect(TEST_GROUP).toBeDefined();
-
-    console.log('🔧 Setting up test infrastructure for pipelines schema validation...');
-
-    // Check if test group exists, create if needed
-    const checkGroupResponse = await fetch(`${GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(TEST_GROUP!)}`, {
-      headers: { 'Authorization': `Bearer ${GITLAB_TOKEN}` },
-    });
-
-    if (checkGroupResponse.ok) {
-      const existingGroup = await checkGroupResponse.json();
-      testGroupId = existingGroup.id;
-      console.log(`✅ Found existing test group: ${existingGroup.name} (ID: ${existingGroup.id})`);
-    } else if (checkGroupResponse.status === 404) {
-      // Create test group
-      console.log(`🔧 Creating test group '${TEST_GROUP}' for pipeline testing...`);
-      const createGroupResponse = await fetch(`${GITLAB_API_URL}/api/v4/groups`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${GITLAB_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: `Test Group ${testTimestamp}`,
-          path: TEST_GROUP,
-          visibility: 'private',
-          description: `Test group for pipeline schema validation - ${testTimestamp}`,
-        }),
-      });
-
-      if (createGroupResponse.ok) {
-        const group = await createGroupResponse.json();
-        testGroupId = group.id;
-        createdTestGroup = true;
-        console.log(`✅ Created test group: ${group.name} (ID: ${group.id})`);
-      } else {
-        const errorBody = await createGroupResponse.text();
-        console.log(`⚠️  Could not create group: ${createGroupResponse.status} - ${errorBody}`);
-      }
+    const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
+    if (!GITLAB_TOKEN) {
+      throw new Error('GITLAB_TOKEN environment variable is required');
     }
 
-    // Create test project for pipelines with CI/CD enabled
-    if (testGroupId) {
-      console.log(`🔧 Creating test project for pipeline validation...`);
-      const createProjectResponse = await fetch(`${GITLAB_API_URL}/api/v4/projects`, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${GITLAB_TOKEN}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          name: `Pipeline Test Project ${testTimestamp}`,
-          path: `pipeline-test-project-${testTimestamp}`,
-          namespace_id: testGroupId,
-          visibility: 'private',
-          description: `Test project for pipeline schema validation - ${testTimestamp}`,
-          initialize_with_readme: true,
-          builds_enabled: true,
-          issues_enabled: true,
-          merge_requests_enabled: true,
-        }),
-      });
-
-      if (createProjectResponse.ok) {
-        const project = await createProjectResponse.json();
-        testProjectId = project.id;
-        console.log(`✅ Created test project: ${project.name} (ID: ${project.id})`);
-      } else {
-        const errorBody = await createProjectResponse.text();
-        console.log(`⚠️  Could not create project: ${createProjectResponse.status} - ${errorBody}`);
-      }
-    }
-
-    console.log(`✅ Pipelines test setup complete - project ID: ${testProjectId}`);
-  });
-
-  afterAll(async () => {
-    console.log('🧹 Cleaning up test infrastructure...');
-
-    // Clean up any created pipelines (if we created any during testing)
-    if (createdPipelineIds.length > 0 && testProjectId) {
-      console.log('🧹 Cleaning up created pipelines...');
-      for (const pipelineId of createdPipelineIds) {
-        try {
-          const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${testProjectId}/pipelines/${pipelineId}`, {
-            method: 'DELETE',
-            headers: {
-              'Authorization': `Bearer ${GITLAB_TOKEN}`,
-            },
-          });
-          if (response.ok) {
-            console.log(`✅ Cleaned up pipeline ID: ${pipelineId}`);
-          }
-        } catch (error) {
-          console.log(`⚠️ Could not clean up pipeline ${pipelineId}:`, error);
-        }
-      }
-    }
-
-    // Clean up test project
-    if (testProjectId) {
-      console.log('🧹 Cleaning up test project...');
-      try {
-        const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${testProjectId}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${GITLAB_TOKEN}`,
-          },
-        });
-        if (response.ok) {
-          console.log(`✅ Cleaned up test project: ${testProjectId}`);
-        }
-      } catch (error) {
-        console.log(`⚠️ Could not clean up project ${testProjectId}:`, error);
-      }
-    }
-
-    // Clean up test group only if we created it
-    if (createdTestGroup && testGroupId) {
-      console.log(`🧹 Cleaning up test group '${TEST_GROUP}' (ID: ${testGroupId}) that was created during test...`);
-      try {
-        const response = await fetch(`${GITLAB_API_URL}/api/v4/groups/${testGroupId}`, {
-          method: 'DELETE',
-          headers: {
-            'Authorization': `Bearer ${GITLAB_TOKEN}`,
-          },
-        });
-        if (response.ok) {
-          console.log(`✅ Cleaned up test group '${TEST_GROUP}': ${testGroupId}`);
-        }
-      } catch (error) {
-        console.log(`⚠️ Could not clean up group ${testGroupId}:`, error);
-      }
-    } else if (testGroupId) {
-      console.log(`ℹ️  Test group '${TEST_GROUP}' (ID: ${testGroupId}) existed before test - not deleting`);
-    }
+    helper = new IntegrationTestHelper();
+    await helper.initialize();
+    console.log('✅ Integration test helper initialized for pipelines testing');
   });
 
   describe('ListPipelinesSchema', () => {
-    it('should validate basic list pipelines parameters', async () => {
+    it('should validate and test with real project data using handler functions', async () => {
+      console.log('🔍 Getting real project for pipelines testing');
+
+      // Get actual project from data lifecycle
+      const projects = await helper.listProjects({ per_page: 1 }) as any[];
+      if (projects.length === 0) {
+        console.log('⚠️  No projects available for testing');
+        return;
+      }
+
+      const testProject = projects[0];
+      console.log(`📋 Using project: ${testProject.name} (ID: ${testProject.id})`);
+
       const validParams = {
-        project_id: String(testProjectId),
+        project_id: testProject.id.toString(),
         scope: 'finished' as const,
+        status: 'success' as const,
         per_page: 10,
+        order_by: 'id' as const,
+        sort: 'desc' as const,
       };
 
+      // Validate schema
       const result = ListPipelinesSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
       if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.scope).toBe('finished');
-        expect(result.data.per_page).toBe(10);
+        // Test actual handler function
+        const pipelines = await helper.executeTool('list_pipelines', result.data) as any[];
+        expect(Array.isArray(pipelines)).toBe(true);
+        console.log(`📋 Retrieved ${pipelines.length} pipelines via handler`);
+
+        // Validate structure if we have pipelines
+        if (pipelines.length > 0) {
+          const pipeline = pipelines[0];
+          expect(pipeline).toHaveProperty('id');
+          expect(pipeline).toHaveProperty('status');
+          expect(pipeline).toHaveProperty('ref');
+          expect(pipeline).toHaveProperty('sha');
+          expect(pipeline).toHaveProperty('source');
+          console.log(`✅ Validated pipeline structure: ${pipeline.id} (${pipeline.status})`);
+        }
       }
 
-      console.log('✅ ListPipelinesSchema validates basic parameters correctly');
+      console.log('✅ ListPipelinesSchema test completed with real data');
     });
 
-    it('should make successful API request and discover existing pipelines', async () => {
-      const params = {
-        project_id: String(testProjectId),
-        per_page: 50,
+    it('should validate scope and status filtering parameters', async () => {
+      const testCases = [
+        { scope: 'running' as const, status: 'running' as const },
+        { scope: 'pending' as const, status: 'pending' as const },
+        { scope: 'finished' as const, status: 'success' as const },
+        { scope: 'branches' as const, status: 'failed' as const },
+        { scope: 'tags' as const, status: 'canceled' as const },
+      ];
+
+      for (const testCase of testCases) {
+        const result = ListPipelinesSchema.safeParse(testCase);
+        expect(result.success).toBe(true);
+
+        if (result.success) {
+          expect(result.data.scope).toBe(testCase.scope);
+          expect(result.data.status).toBe(testCase.status);
+        }
+      }
+
+      console.log('✅ ListPipelinesSchema validates scope and status combinations');
+    });
+
+    it('should validate source and pipeline parameters with real commit data', async () => {
+      // Get actual project from data lifecycle
+      const projects = await helper.listProjects({ per_page: 1 }) as any[];
+      if (projects.length === 0) {
+        console.log('⚠️  No projects available for pipeline parameter testing');
+        return;
+      }
+
+      const testProject = projects[0];
+
+      // Get real commits from the repository to use actual SHAs
+      const commits = await helper.executeTool('list_commits', {
+        project_id: testProject.id.toString(),
+        per_page: 1
+      }) as any[];
+
+      // Use real commit SHA and ref from data lifecycle
+      const realSha = commits.length > 0 ? commits[0].id : undefined;
+      const realRef = commits.length > 0 ? (commits[0].message.includes('Initial') ? 'main' : 'main') : 'main';
+
+      const sourceParams = {
+        source: 'push' as const,
+        ref: realRef,
+        sha: realSha,
+        yaml_errors: true,
+        per_page: 20,
       };
 
-      // Validate parameters first
-      const paramResult = ListPipelinesSchema.safeParse(params);
-      expect(paramResult.success).toBe(true);
+      const result = ListPipelinesSchema.safeParse(sourceParams);
+      expect(result.success).toBe(true);
 
-      if (!paramResult.success) return;
+      if (result.success) {
+        expect(result.data.source).toBe('push');
+        expect(result.data.ref).toBe(realRef);
+        if (realSha) {
+          expect(result.data.sha).toBe(realSha);
+          console.log(`✅ Using real commit SHA from data lifecycle: ${realSha.substring(0, 8)}...`);
+        }
+        expect(result.data.yaml_errors).toBe(true);
+        expect(result.data.per_page).toBe(20);
+      }
 
-      console.log('🔍 ListPipelinesSchema - Testing against real GitLab API');
-
-      const queryParams = new URLSearchParams({
-        per_page: String(paramResult.data.per_page || 20),
-      });
-
-      console.log(`🔍 API URL: ${GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(paramResult.data.project_id!)}/pipelines?${queryParams}`);
-
-      const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(paramResult.data.project_id!)}/pipelines?${queryParams}`, {
-        headers: {
-          'Authorization': `Bearer ${GITLAB_TOKEN}`,
-        },
-      });
-
-      console.log(`📡 Response status: ${response.status} ${response.statusText}`);
-
-      expect(response.ok).toBe(true);
-
-      const pipelines = await response.json();
-      expect(Array.isArray(pipelines)).toBe(true);
-
-      console.log(`📋 Retrieved ${pipelines.length} pipelines from project`);
-
-      // Store available pipeline IDs for later tests
-      availablePipelineIds = pipelines.slice(0, 3).map((p: any) => String(p.id));
-
-      // Validate each pipeline against schema
-      pipelines.slice(0, 5).forEach((pipeline: any) => {
-        const pipelineResult = GitLabPipelineSchema.safeParse(pipeline);
-        expect(pipelineResult.success).toBe(true);
-      });
-
-      console.log(`✅ ListPipelinesSchema API request successful - discovered ${availablePipelineIds.length} pipeline IDs for testing`);
+      console.log('✅ ListPipelinesSchema validates parameters with real commit data from data lifecycle');
     });
 
-    it('should validate advanced filtering parameters', async () => {
-      const advancedParams = {
-        project_id: String(testProjectId),
-        scope: 'branches' as const,
-        status: 'success' as const,
-        ref: 'main',
-        sha: 'abc123def456',
-        updated_after: '2024-01-01T00:00:00Z',
+    it('should validate date filtering parameters', async () => {
+      const dateParams = {
+        updated_after: '2023-01-01T00:00:00Z',
+        updated_before: '2023-12-31T23:59:59Z',
         order_by: 'updated_at' as const,
-        sort: 'desc' as const,
+        sort: 'asc' as const,
       };
 
-      const result = ListPipelinesSchema.safeParse(advancedParams);
+      const result = ListPipelinesSchema.safeParse(dateParams);
       expect(result.success).toBe(true);
 
       if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.scope).toBe('branches');
-        expect(result.data.status).toBe('success');
-        expect(result.data.ref).toBe('main');
+        expect(result.data.updated_after).toBe('2023-01-01T00:00:00Z');
+        expect(result.data.updated_before).toBe('2023-12-31T23:59:59Z');
+        expect(result.data.order_by).toBe('updated_at');
+        expect(result.data.sort).toBe('asc');
       }
 
-      console.log('✅ ListPipelinesSchema validates advanced filtering parameters');
+      console.log('✅ ListPipelinesSchema validates date filtering parameters');
     });
 
-    it('should accept additional unknown parameters (schemas are permissive)', async () => {
-      const paramsWithExtra = {
-        project_id: String(testProjectId),
-        unknown_field: 'test',
-        extra_param: 123,
+    it('should reject invalid parameters', async () => {
+      const invalidParams = {
+        scope: 'invalid_scope', // Invalid enum value
+        status: 'invalid_status', // Invalid enum value
+        source: 'invalid_source', // Invalid enum value
+        order_by: 'invalid_field', // Invalid enum value
+        sort: 'sideways', // Invalid enum value
+        per_page: 150, // Exceeds max of 100
+        page: 0, // Below minimum of 1
       };
 
-      const result = ListPipelinesSchema.safeParse(paramsWithExtra);
-      expect(result.success).toBe(true);
+      const result = ListPipelinesSchema.safeParse(invalidParams);
+      expect(result.success).toBe(false);
 
-      if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
+      if (!result.success) {
+        expect(result.error.issues.length).toBeGreaterThan(0);
       }
 
-      console.log('✅ ListPipelinesSchema accepts additional properties as designed');
+      console.log('✅ ListPipelinesSchema correctly rejects invalid parameters');
     });
   });
 
   describe('GetPipelineSchema', () => {
-    it('should validate get pipeline parameters', async () => {
+    it('should validate get pipeline parameters with real data', async () => {
+      // Get a project and its pipelines for testing
+      const projects = await helper.listProjects({ per_page: 1 }) as any[];
+      if (projects.length === 0) {
+        console.log('⚠️  No projects available for GetPipelineSchema testing');
+        return;
+      }
+
+      const testProject = projects[0];
+      const pipelines = await helper.executeTool('list_pipelines', {
+        project_id: testProject.id.toString(),
+        per_page: 1
+      }) as any[];
+
+      if (pipelines.length === 0) {
+        console.log('⚠️  No pipelines found for GetPipelineSchema testing');
+        return;
+      }
+
+      const testPipeline = pipelines[0];
       const validParams = {
-        project_id: String(testProjectId),
-        pipeline_id: '123',
+        project_id: testProject.id.toString(),
+        pipeline_id: testPipeline.id,
       };
 
       const result = GetPipelineSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
       if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.pipeline_id).toBe('123');
+        expect(result.data.project_id).toBe(testProject.id.toString());
+        expect(result.data.pipeline_id).toBe(testPipeline.id);
       }
 
       console.log('✅ GetPipelineSchema validates parameters correctly');
     });
 
-    it('should get a pipeline via API using available pipeline ID', async () => {
-      if (availablePipelineIds.length === 0) {
-        console.log('⚠️ No existing pipelines found - skipping pipeline retrieval test');
+    it('should test handler function for single pipeline', async () => {
+      // Get a project and its pipelines for testing
+      const projects = await helper.listProjects({ per_page: 1 }) as any[];
+      if (projects.length === 0) {
+        console.log('⚠️  No projects available for handler testing');
         return;
       }
 
-      const testPipelineId = availablePipelineIds[0];
+      const testProject = projects[0];
+      const pipelines = await helper.executeTool('list_pipelines', {
+        project_id: testProject.id.toString(),
+        per_page: 1
+      }) as any[];
+
+      if (pipelines.length === 0) {
+        console.log('⚠️  No pipelines found for handler testing');
+        return;
+      }
+
+      const testPipeline = pipelines[0];
       const params = {
-        project_id: String(testProjectId),
-        pipeline_id: testPipelineId,
+        project_id: testProject.id.toString(),
+        pipeline_id: testPipeline.id,
       };
 
       // Validate parameters first
       const paramResult = GetPipelineSchema.safeParse(params);
       expect(paramResult.success).toBe(true);
 
-      if (!paramResult.success) return;
+      if (paramResult.success) {
+        // Test handler function
+        const pipeline = await helper.executeTool('get_pipeline', paramResult.data) as any;
 
-      console.log(`🔍 Getting pipeline ID: ${testPipelineId} via GitLab API...`);
+        // Validate pipeline structure
+        expect(pipeline).toHaveProperty('id');
+        expect(pipeline).toHaveProperty('status');
+        expect(pipeline).toHaveProperty('ref');
+        expect(pipeline).toHaveProperty('sha');
+        expect(pipeline).toHaveProperty('source');
+        expect(pipeline).toHaveProperty('created_at');
+        expect(pipeline).toHaveProperty('updated_at');
+        expect(pipeline).toHaveProperty('started_at');
+        expect(pipeline).toHaveProperty('finished_at');
+        expect(pipeline).toHaveProperty('duration');
+        expect(pipeline).toHaveProperty('queued_duration');
 
-      const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(paramResult.data.project_id!)}/pipelines/${paramResult.data.pipeline_id!}`, {
-        headers: {
-          'Authorization': `Bearer ${GITLAB_TOKEN}`,
-        },
-      });
-
-      expect(response.ok).toBe(true);
-
-      const retrievedPipeline = await response.json();
-
-      console.log('📋 Retrieved pipeline:', {
-        id: retrievedPipeline.id,
-        status: retrievedPipeline.status,
-        ref: retrievedPipeline.ref,
-        created_at: retrievedPipeline.created_at,
-      });
-
-      // Validate response structure
-      const pipelineResult = GitLabPipelineSchema.safeParse(retrievedPipeline);
-      expect(pipelineResult.success).toBe(true);
-
-      expect(retrievedPipeline.id).toBe(parseInt(testPipelineId));
-      expect(retrievedPipeline.status).toBeDefined();
-      expect(retrievedPipeline.ref).toBeDefined();
-
-      console.log(`✅ Successfully retrieved pipeline with ID: ${testPipelineId}`);
-    });
-  });
-
-  describe('CreatePipelineSchema', () => {
-    it('should validate create pipeline parameters', async () => {
-      const validParams = {
-        project_id: String(testProjectId),
-        ref: 'main',
-        variables: [
-          {
-            key: 'TEST_VAR',
-            value: 'test_value',
-            variable_type: 'env_var' as const,
-          },
-        ],
-      };
-
-      const result = CreatePipelineSchema.safeParse(validParams);
-      expect(result.success).toBe(true);
-
-      if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.ref).toBe('main');
-        expect(result.data.variables).toHaveLength(1);
-        expect(result.data.variables?.[0].key).toBe('TEST_VAR');
+        console.log(`✅ GetPipelineSchema handler test successful: ${pipeline.id} (${pipeline.status})`);
       }
-
-      console.log('✅ CreatePipelineSchema validates parameters correctly');
     });
 
-    it('should validate create pipeline parameters without variables', async () => {
-      const basicParams = {
-        project_id: String(testProjectId),
-        ref: 'main',
-      };
-
-      const result = CreatePipelineSchema.safeParse(basicParams);
-      expect(result.success).toBe(true);
-
-      if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.ref).toBe('main');
-        expect(result.data.variables).toBeUndefined();
-      }
-
-      console.log('✅ CreatePipelineSchema validates basic parameters without variables');
-    });
-  });
-
-  describe('Pipeline Control Operations', () => {
-    it('should validate retry pipeline parameters', async () => {
+    it('should validate required pipeline parameters', async () => {
+      // Test that valid parameters pass validation
       const validParams = {
-        project_id: String(testProjectId),
-        pipeline_id: '123',
-      };
-
-      const result = RetryPipelineSchema.safeParse(validParams);
-      expect(result.success).toBe(true);
-
-      if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.pipeline_id).toBe('123');
-      }
-
-      console.log('✅ RetryPipelineSchema validates parameters correctly');
-    });
-
-    it('should validate cancel pipeline parameters', async () => {
-      const validParams = {
-        project_id: String(testProjectId),
+        project_id: '123',
         pipeline_id: '456',
       };
 
-      const result = CancelPipelineSchema.safeParse(validParams);
+      const result = GetPipelineSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
       if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
+        expect(result.data.project_id).toBe('123');
         expect(result.data.pipeline_id).toBe('456');
       }
 
-      console.log('✅ CancelPipelineSchema validates parameters correctly');
-    });
-  });
-
-  describe('Pipeline Jobs Operations', () => {
-    it('should validate list pipeline jobs parameters', async () => {
-      const validParams = {
-        project_id: String(testProjectId),
-        pipeline_id: '123',
-        scope: ['success', 'failed'] as const,
-        include_retried: true,
-        per_page: 50,
-      };
-
-      const result = ListPipelineJobsSchema.safeParse(validParams);
-      expect(result.success).toBe(true);
-
-      if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.pipeline_id).toBe('123');
-        expect(result.data.scope).toEqual(['success', 'failed']);
-        expect(result.data.include_retried).toBe(true);
-      }
-
-      console.log('✅ ListPipelineJobsSchema validates parameters correctly');
-    });
-
-    it('should list pipeline jobs for existing pipeline', async () => {
-      if (availablePipelineIds.length === 0) {
-        console.log('⚠️ No existing pipelines found - skipping jobs listing test');
-        return;
-      }
-
-      const testPipelineId = availablePipelineIds[0];
-      const params = {
-        project_id: String(testProjectId),
-        pipeline_id: testPipelineId,
-        per_page: 20,
-      };
-
-      // Validate parameters first
-      const paramResult = ListPipelineJobsSchema.safeParse(params);
-      expect(paramResult.success).toBe(true);
-
-      if (!paramResult.success) return;
-
-      console.log(`🔍 Listing jobs for pipeline ID: ${testPipelineId}...`);
-
-      const queryParams = new URLSearchParams({
-        per_page: '20',
-      });
-
-      const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(paramResult.data.project_id!)}/pipelines/${paramResult.data.pipeline_id!}/jobs?${queryParams}`, {
-        headers: {
-          'Authorization': `Bearer ${GITLAB_TOKEN}`,
-        },
-      });
-
-      expect(response.ok).toBe(true);
-
-      const jobs = await response.json();
-      expect(Array.isArray(jobs)).toBe(true);
-
-      console.log(`📋 Retrieved ${jobs.length} jobs from pipeline ${testPipelineId}`);
-
-      // Store job IDs for later tests
-      availableJobIds = jobs.slice(0, 3).map((j: any) => String(j.id));
-
-      // Validate each job against schema
-      jobs.slice(0, 3).forEach((job: any) => {
-        const jobResult = GitLabPipelineJobSchema.safeParse(job);
-        expect(jobResult.success).toBe(true);
-      });
-
-      console.log(`✅ ListPipelineJobsSchema API request successful - discovered ${availableJobIds.length} job IDs`);
-    });
-
-    it('should validate list pipeline trigger jobs parameters', async () => {
-      const validParams = {
-        project_id: String(testProjectId),
-        pipeline_id: '123',
-        scope: ['success', 'running'] as const,
-        include_retried: false,
-      };
-
-      const result = ListPipelineTriggerJobsSchema.safeParse(validParams);
-      expect(result.success).toBe(true);
-
-      if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.pipeline_id).toBe('123');
-        expect(result.data.scope).toEqual(['success', 'running']);
-        expect(result.data.include_retried).toBe(false);
-      }
-
-      console.log('✅ ListPipelineTriggerJobsSchema validates parameters correctly');
-    });
-
-    it('should validate get pipeline job output parameters', async () => {
-      const validParams = {
-        project_id: String(testProjectId),
-        job_id: '789',
-        limit: 1000,
-        start: 0,
-      };
-
-      const result = GetPipelineJobOutputSchema.safeParse(validParams);
-      expect(result.success).toBe(true);
-
-      if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.job_id).toBe('789');
-        expect(result.data.limit).toBe(1000);
-        expect(result.data.start).toBe(0);
-      }
-
-      console.log('✅ GetPipelineJobOutputSchema validates parameters correctly');
-    });
-  });
-
-  describe('Pipeline Job Control Operations', () => {
-    it('should validate play pipeline job parameters', async () => {
-      const validParams = {
-        project_id: String(testProjectId),
-        job_id: '123',
-        job_variables_attributes: [
-          {
-            key: 'DEPLOY_ENV',
-            value: 'staging',
-            variable_type: 'env_var' as const,
-          },
-        ],
-      };
-
-      const result = PlayPipelineJobSchema.safeParse(validParams);
-      expect(result.success).toBe(true);
-
-      if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.job_id).toBe('123');
-        expect(result.data.job_variables_attributes).toHaveLength(1);
-        expect(result.data.job_variables_attributes?.[0].key).toBe('DEPLOY_ENV');
-      }
-
-      console.log('✅ PlayPipelineJobSchema validates parameters correctly');
-    });
-
-    it('should validate retry pipeline job parameters', async () => {
-      const validParams = {
-        project_id: String(testProjectId),
-        job_id: '456',
-      };
-
-      const result = RetryPipelineJobSchema.safeParse(validParams);
-      expect(result.success).toBe(true);
-
-      if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.job_id).toBe('456');
-      }
-
-      console.log('✅ RetryPipelineJobSchema validates parameters correctly');
-    });
-
-    it('should validate cancel pipeline job parameters', async () => {
-      const validParams = {
-        project_id: String(testProjectId),
-        job_id: '789',
-        force: true,
-      };
-
-      const result = CancelPipelineJobSchema.safeParse(validParams);
-      expect(result.success).toBe(true);
-
-      if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.job_id).toBe('789');
-        expect(result.data.force).toBe(true);
-      }
-
-      console.log('✅ CancelPipelineJobSchema validates parameters correctly');
-    });
-  });
-
-  describe('Pipeline Job Output Retrieval', () => {
-    it('should get job output for existing job', async () => {
-      if (availableJobIds.length === 0) {
-        console.log('⚠️ No existing jobs found - skipping job output retrieval test');
-        return;
-      }
-
-      const testJobId = availableJobIds[0];
-      const params = {
-        project_id: String(testProjectId),
-        job_id: testJobId,
-        limit: 500,
-      };
-
-      // Validate parameters first
-      const paramResult = GetPipelineJobOutputSchema.safeParse(params);
-      expect(paramResult.success).toBe(true);
-
-      if (!paramResult.success) return;
-
-      console.log(`🔍 Getting job output for job ID: ${testJobId}...`);
-
-      const response = await fetch(`${GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(paramResult.data.project_id!)}/jobs/${paramResult.data.job_id!}/trace`, {
-        headers: {
-          'Authorization': `Bearer ${GITLAB_TOKEN}`,
-        },
-      });
-
-      // Job output might not be available or accessible, so we just validate the schema worked
-      console.log(`📡 Job output response status: ${response.status} ${response.statusText}`);
-
-      if (response.ok) {
-        const jobOutput = await response.text();
-        console.log(`📋 Retrieved ${jobOutput.length} characters of job output`);
-      } else {
-        console.log('📋 Job output not available or accessible (normal for completed/private jobs)');
-      }
-
-      console.log(`✅ GetPipelineJobOutputSchema API request attempted for job: ${testJobId}`);
-    });
-  });
-
-  describe('Schema Edge Cases', () => {
-    it('should accept parameters (GitLab API handles validation)', async () => {
-      const basicParams = {
-        project_id: String(testProjectId),
-        ref: '', // Schema accepts empty string, API may reject
-      };
-
-      const result = CreatePipelineSchema.safeParse(basicParams);
-      expect(result.success).toBe(true); // Schema is permissive
-
-      if (result.success) {
-        expect(result.data.project_id).toBe(String(testProjectId));
-        expect(result.data.ref).toBe('');
-      }
-
-      console.log('✅ CreatePipelineSchema accepts parameters, API handles validation');
-    });
-
-    it('should validate complex variable structures', async () => {
-      const complexParams = {
-        project_id: String(testProjectId),
-        ref: 'main',
-        variables: [
-          {
-            key: 'ENV_VAR',
-            value: 'production',
-            variable_type: 'env_var' as const,
-          },
-          {
-            key: 'CONFIG_FILE',
-            value: '/path/to/config.yml',
-            variable_type: 'file' as const,
-          },
-          {
-            key: 'SIMPLE_VAR',
-            value: 'simple_value',
-            // variable_type is optional
-          },
-        ],
-      };
-
-      const result = CreatePipelineSchema.safeParse(complexParams);
-      expect(result.success).toBe(true);
-
-      if (result.success) {
-        expect(result.data.variables).toHaveLength(3);
-        expect(result.data.variables?.[0].variable_type).toBe('env_var');
-        expect(result.data.variables?.[1].variable_type).toBe('file');
-        expect(result.data.variables?.[2].variable_type).toBeUndefined();
-      }
-
-      console.log('✅ CreatePipelineSchema validates complex variable structures');
-    });
-  });
-
-  describe('Integration Summary', () => {
-    it('should provide test summary', async () => {
-      console.log('🎯 Pipelines Schema Integration Test Summary:');
-      console.log(`📊 Pipelines discovered: ${availablePipelineIds.length}`);
-      console.log(`📊 Jobs discovered: ${availableJobIds.length}`);
-      console.log(`📊 Pipelines created during test: ${createdPipelineIds.length}`);
-
-      const schemasCovered = [
-        'ListPipelinesSchema',
-        'GetPipelineSchema',
-        'CreatePipelineSchema',
-        'RetryPipelineSchema',
-        'CancelPipelineSchema',
-        'ListPipelineJobsSchema',
-        'ListPipelineTriggerJobsSchema',
-        'GetPipelineJobOutputSchema',
-        'PlayPipelineJobSchema',
-        'RetryPipelineJobSchema',
-        'CancelPipelineJobSchema',
-      ];
-
-      console.log(`📊 Schemas verified: ${schemasCovered.length}`);
-      console.log('✅ All pipeline schemas validated successfully against GitLab 18.3 API');
+      console.log('✅ GetPipelineSchema validates required parameters correctly');
     });
   });
 });

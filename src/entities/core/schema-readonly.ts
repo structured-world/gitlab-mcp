@@ -135,16 +135,21 @@ export const ListProjectsSchema = z
         'wiki_size',
       ])
       .optional()
+      .default('created_at')
       .describe('Return projects ordered by field'),
     sort: z
       .enum(['asc', 'desc'])
       .optional()
+      .default('desc')
       .describe('Return projects sorted in asc or desc order'),
     search: z.string().optional().describe('Return list of projects matching the search criteria'),
     search_namespaces: flexibleBoolean
       .optional()
       .describe('Include ancestor namespaces when matching search criteria'),
-    simple: flexibleBoolean.optional().describe('Return only limited fields for each project'),
+    simple: flexibleBoolean
+      .optional()
+      .default(true)
+      .describe('Return only limited fields for each project'),
     owned: flexibleBoolean
       .optional()
       .describe('Limit by projects explicitly owned by the current user'),

@@ -64,18 +64,52 @@ describe('ListProjectsSchema - GitLab 18.3 Integration', () => {
       console.log(`📋 Retrieved ${projects.length} projects via handler`);
       expect(Array.isArray(projects)).toBe(true);
 
-      // Validate that each project matches our GitLabProjectSchema
-      for (const project of projects.slice(0, 2)) { // Test first 2 projects
-        const projectResult = GitLabProjectSchema.safeParse(project);
-        if (!projectResult.success) {
-          console.error('Project validation failed:', projectResult.error);
-          throw new Error(`Project schema validation failed for project ${project.id}`);
-        }
-        expect(projectResult.success).toBe(true);
-        console.log(`  ✅ Project validated: ${project.name} (ID: ${project.id})`);
+      // Check what we actually got with simple=true
+      if (projects.length > 0) {
+        const firstProject = projects[0];
+        console.log('First project keys with simple=true:', Object.keys(firstProject));
+        console.log('Sample project data:', JSON.stringify(firstProject, null, 2));
+
+        // Since simple=true returns limited fields, let's just validate structure exists
+        expect(firstProject).toHaveProperty('id');
+        expect(firstProject).toHaveProperty('name');
+        expect(firstProject).toHaveProperty('path');
+        console.log(`  ✅ Project basic structure validated: ${firstProject.name} (ID: ${firstProject.id})`);
       }
 
       console.log(`✅ ListProjectsSchema API request successful, validated ${projects.length} projects`);
+    }
+  }, 15000);
+
+  it('should validate full project schema with simple=false', async () => {
+    console.log('🔍 ListProjectsSchema - Testing full project schema validation');
+
+    const fullParams = {
+      per_page: 2,
+      simple: false, // Override default to get full project data
+    };
+
+    const paramResult = ListProjectsSchema.safeParse(fullParams);
+    expect(paramResult.success).toBe(true);
+
+    if (paramResult.success) {
+      const projects = await helper.executeTool('list_projects', paramResult.data) as any[];
+      console.log(`📋 Retrieved ${projects.length} full projects via handler`);
+      expect(Array.isArray(projects)).toBe(true);
+
+      // Validate that each project matches our GitLabProjectSchema
+      for (const project of projects.slice(0, 1)) { // Test first project
+        const projectResult = GitLabProjectSchema.safeParse(project);
+        if (!projectResult.success) {
+          console.error('Full project validation failed for project:', project.id);
+          console.error('Error details:', JSON.stringify(projectResult.error.issues, null, 2));
+          console.error('Project data keys:', Object.keys(project).length);
+        }
+        expect(projectResult.success).toBe(true);
+        console.log(`  ✅ Full project validated: ${project.name} (ID: ${project.id})`);
+      }
+
+      console.log(`✅ ListProjectsSchema full validation successful`);
     }
   }, 15000);
 

@@ -79,7 +79,7 @@ export class SchemaIntrospector {
     }
 
     try {
-      logger.info('🔍 Introspecting GitLab GraphQL schema...');
+      logger.debug('🔍 Introspecting GitLab GraphQL schema...');
 
       const result = await this.client.request<IntrospectionResult>(INTROSPECTION_QUERY);
       const types = result.__schema.types;

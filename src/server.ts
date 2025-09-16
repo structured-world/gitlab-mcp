@@ -22,29 +22,28 @@ export const server = new Server(
   },
 );
 
-// Terminal colors for logging
-const colorGreen = '\x1b[32m';
-const colorReset = '\x1b[0m';
+// Terminal colors for logging (currently unused)
+// const colorGreen = '\x1b[32m';
+// const colorReset = '\x1b[0m';
 
 function determineTransportMode(): TransportMode {
   const args = process.argv.slice(2);
 
-  console.log('Transport mode detection:');
-  console.log('  args:', args);
-  console.log('  SSE env var:', SSE);
-  console.log('  STREAMABLE_HTTP env var:', STREAMABLE_HTTP);
+  logger.info(
+    `Transport mode detection: args=${JSON.stringify(args)}, SSE=${SSE}, STREAMABLE_HTTP=${STREAMABLE_HTTP}`,
+  );
 
   if (args.includes('sse') || SSE) {
-    console.log('  -> Selected SSE mode');
+    logger.info('Selected SSE mode');
     return 'sse' as TransportMode;
   }
 
   if (args.includes('streamable-http') || STREAMABLE_HTTP) {
-    console.log('  -> Selected streamable-http mode');
+    logger.info('Selected streamable-http mode');
     return 'streamable-http' as TransportMode;
   }
 
-  console.log('  -> Defaulting to stdio mode');
+  logger.info('Defaulting to stdio mode');
   return 'stdio' as TransportMode;
 }
 
@@ -63,7 +62,7 @@ export async function startServer(): Promise<void> {
     }
 
     case 'sse': {
-      console.log('Setting up SSE mode with MCP SDK...');
+      logger.info('Setting up SSE mode with MCP SDK...');
       const app = express();
       app.use(express.json());
 
@@ -71,7 +70,7 @@ export async function startServer(): Promise<void> {
 
       // SSE endpoint for establishing the stream
       app.get('/sse', async (req, res) => {
-        console.log('SSE endpoint hit!');
+        logger.debug('SSE endpoint hit!');
         const transport = new SSEServerTransport('/messages', res);
 
         // Connect the server to this transport (this calls start() automatically)
@@ -80,12 +79,12 @@ export async function startServer(): Promise<void> {
         // Store transport by session ID for message routing
         const sessionId = transport.sessionId;
         sseTransports[sessionId] = transport;
-        console.log('SSE transport created with session:', sessionId);
+        logger.debug(`SSE transport created with session: ${sessionId}`);
       });
 
       // Messages endpoint for receiving JSON-RPC messages
       app.post('/messages', async (req, res) => {
-        console.log('Messages endpoint hit!');
+        logger.debug('Messages endpoint hit!');
         const sessionId = req.query.sessionId as string;
 
         if (!sessionId || !sseTransports[sessionId]) {
@@ -104,8 +103,7 @@ export async function startServer(): Promise<void> {
       app.listen(Number(PORT), HOST, () => {
         const url = `http://${HOST}:${PORT}`;
         logger.info(`GitLab MCP Server SSE running on ${url}`);
-        console.error(`${colorGreen}GitLab MCP Server SSE running on ${url}${colorReset}`);
-        console.log('SSE server started successfully');
+        logger.info('SSE server started successfully');
       });
       break;
     }
@@ -143,7 +141,6 @@ export async function startServer(): Promise<void> {
       app.listen(Number(PORT), HOST, () => {
         const url = `http://${HOST}:${PORT}`;
         logger.info(`GitLab MCP Server HTTP running on ${url}`);
-        console.error(`${colorGreen}GitLab MCP Server HTTP running on ${url}${colorReset}`);
       });
       break;
     }

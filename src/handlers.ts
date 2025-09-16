@@ -1,18 +1,19 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { ConnectionManager } from './services/ConnectionManager';
-// Import all handler functions that will be implemented
-// TODO: Import actual handler functions once we extract them
+import { logger } from './logger';
 
 export async function setupHandlers(server: Server): Promise<void> {
   // Initialize connection and detect GitLab instance on startup
   const connectionManager = ConnectionManager.getInstance();
   try {
     await connectionManager.initialize();
-    // Logger is handled inside ConnectionManager
-  } catch {
-    // Logger is handled inside ConnectionManager
-    // Continue without version detection - tools will handle gracefully
+    logger.info('Connection initialized during server setup');
+  } catch (error) {
+    logger.warn(
+      `Initial connection failed during setup, will retry on first tool call: ${error instanceof Error ? error.message : String(error)}`,
+    );
+    // Continue without initialization - tools will handle gracefully on first call
   }
   // List tools handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -52,7 +53,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         throw new Error('Arguments are required');
       }
 
-      console.log(`Tool called: ${request.params.name}`);
+      logger.info(`Tool called: ${request.params.name}`);
 
       // Check if connection is initialized - try to initialize if needed
       const connectionManager = ConnectionManager.getInstance();
@@ -60,16 +61,18 @@ export async function setupHandlers(server: Server): Promise<void> {
         // Try to get client first
         connectionManager.getClient();
         const instanceInfo = connectionManager.getInstanceInfo();
-        console.log(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
+        logger.info(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
       } catch {
-        console.log('Connection not initialized, attempting to initialize...');
+        logger.info('Connection not initialized, attempting to initialize...');
         try {
           await connectionManager.initialize();
           connectionManager.getClient();
           const instanceInfo = connectionManager.getInstanceInfo();
-          console.log(`Connection initialized: ${instanceInfo.version} ${instanceInfo.tier}`);
+          logger.info(`Connection initialized: ${instanceInfo.version} ${instanceInfo.tier}`);
         } catch (initError) {
-          console.error('Connection initialization failed:', initError);
+          logger.error(
+            `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`,
+          );
           throw new Error('Bad Request: Server not initialized');
         }
       }
@@ -87,7 +90,7 @@ export async function setupHandlers(server: Server): Promise<void> {
           throw new Error(`Tool '${toolName}' is not available or has been filtered out`);
         }
 
-        console.log(`Executing tool: ${toolName}`);
+        logger.info(`Executing tool: ${toolName}`);
 
         // Execute the tool using the registry manager
         const result = await registryManager.executeTool(toolName, request.params.arguments);
@@ -105,7 +108,9 @@ export async function setupHandlers(server: Server): Promise<void> {
         throw new Error(`Failed to execute tool '${toolName}': ${errorMessage}`);
       }
     } catch (error) {
-      console.error('Error in tool handler:', error);
+      logger.error(
+        `Error in tool handler: ${error instanceof Error ? error.message : String(error)}`,
+      );
       const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         content: [

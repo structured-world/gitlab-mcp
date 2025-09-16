@@ -1,5 +1,6 @@
 import { ConnectionManager } from './ConnectionManager';
 import { GitLabTier } from './GitLabVersionDetector';
+import { logger } from '../logger';
 
 interface ToolRequirement {
   minVersion: number;
@@ -368,13 +369,19 @@ export class ToolAvailability {
   public static isToolAvailable(toolName: string): boolean {
     const connectionManager = ConnectionManager.getInstance();
 
+    // Add null check as extra safety
+    if (!connectionManager) {
+      logger.debug(`Tool availability check for '${toolName}': ConnectionManager instance is null`);
+      return false;
+    }
+
     try {
       const instanceInfo = connectionManager.getInstanceInfo();
       const requirement = this.toolRequirements[toolName];
 
       if (!requirement) {
         // Unknown tool, check if it exists in the codebase but not in our requirements
-        console.warn(`Tool '${toolName}' not found in requirements database`);
+        logger.warn(`Tool '${toolName}' not found in requirements database`);
         // Default to allowing it if version is recent enough
         return this.parseVersion(instanceInfo.version) >= 15.0;
       }
@@ -389,7 +396,14 @@ export class ToolAvailability {
       return this.isTierSufficient(instanceInfo.tier, requirement.requiredTier);
     } catch (error) {
       // If connection not initialized, assume tool not available
-      console.warn(`Failed to check tool availability for '${toolName}':`, error);
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      // Use debug level for expected "not initialized" errors, warn for others
+      if (errorMessage.includes('Connection not initialized')) {
+        logger.debug(`Tool availability check for '${toolName}': ${errorMessage}`);
+      } else {
+        logger.warn(`Failed to check tool availability for '${toolName}': ${errorMessage}`);
+      }
       return false;
     }
   }

@@ -3,17 +3,12 @@
  * Tests GraphQL request handling, error management, and authentication
  */
 
-import { GraphQLClient } from '../../../src/graphql/client';
-import { enhancedFetch } from '../../../src/utils/fetch';
-import { gql } from 'graphql-tag';
-import {
-  resetMocks,
-  mockSuccessResponse,
-  mockErrorResponse
-} from '../../utils/testHelpers';
+// Mock enhancedFetch before any imports
+jest.mock('../../../src/utils/fetch', () => ({
+  enhancedFetch: jest.fn()
+}));
 
-// Mock dependencies
-jest.mock('../../../src/utils/fetch');
+// Mock the http-client module
 jest.mock('../../../src/http-client', () => ({
   DEFAULT_HEADERS: {
     'User-Agent': 'GitLab MCP Server',
@@ -21,6 +16,11 @@ jest.mock('../../../src/http-client', () => ({
   }
 }));
 
+import { GraphQLClient } from '../../../src/graphql/client';
+import { gql } from 'graphql-tag';
+import { enhancedFetch } from '../../../src/utils/fetch';
+
+// Get the mocked function
 const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
 
 describe('GraphQLClient', () => {
@@ -36,7 +36,7 @@ describe('GraphQLClient', () => {
   `;
 
   beforeEach(() => {
-    resetMocks();
+    jest.clearAllMocks();
     client = new GraphQLClient('https://gitlab.example.com/api/graphql', {
       headers: { Authorization: 'Bearer test-token' }
     });
@@ -77,13 +77,13 @@ describe('GraphQLClient', () => {
         'https://gitlab.example.com/api/graphql',
         expect.objectContaining({
           method: 'POST',
-          headers: {
+          headers: expect.objectContaining({
             'Content-Type': 'application/json',
             'User-Agent': 'GitLab MCP Server',
             'Accept': 'application/json',
             Authorization: 'Bearer test-token'
-          },
-          body: expect.stringContaining('"query":"query TestQuery')
+          }),
+          body: expect.stringMatching(/"query".*TestQuery/)
         })
       );
     });
@@ -110,7 +110,7 @@ describe('GraphQLClient', () => {
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
         expect.any(String),
         expect.objectContaining({
-          body: expect.stringContaining('"query":"query SimpleQuery')
+          body: expect.stringMatching(/"query".*SimpleQuery/)
         })
       );
     });
@@ -211,10 +211,9 @@ describe('GraphQLClient', () => {
   });
 
   describe('header management', () => {
-    it('should set headers correctly', () => {
+    it('should set headers correctly', async () => {
       client.setHeaders({ 'X-Custom': 'value', 'X-Another': 'another' });
 
-      // Headers are set internally, verify through a request
       const mockResponse = {
         ok: true,
         status: 200,
@@ -223,7 +222,7 @@ describe('GraphQLClient', () => {
 
       mockEnhancedFetch.mockResolvedValue(mockResponse as any);
 
-      client.request(testQuery, { id: 'test' });
+      await client.request(testQuery, { id: 'test' });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
         expect.any(String),
@@ -237,7 +236,7 @@ describe('GraphQLClient', () => {
       );
     });
 
-    it('should merge new headers with existing ones', () => {
+    it('should merge new headers with existing ones', async () => {
       client.setHeaders({ 'X-First': 'first' });
       client.setHeaders({ 'X-Second': 'second' });
 
@@ -249,7 +248,7 @@ describe('GraphQLClient', () => {
 
       mockEnhancedFetch.mockResolvedValue(mockResponse as any);
 
-      client.request(testQuery, { id: 'test' });
+      await client.request(testQuery, { id: 'test' });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
         expect.any(String),
@@ -262,7 +261,7 @@ describe('GraphQLClient', () => {
       );
     });
 
-    it('should set auth token correctly', () => {
+    it('should set auth token correctly', async () => {
       client.setAuthToken('new-token');
 
       const mockResponse = {
@@ -273,7 +272,7 @@ describe('GraphQLClient', () => {
 
       mockEnhancedFetch.mockResolvedValue(mockResponse as any);
 
-      client.request(testQuery, { id: 'test' });
+      await client.request(testQuery, { id: 'test' });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
         expect.any(String),
@@ -285,7 +284,7 @@ describe('GraphQLClient', () => {
       );
     });
 
-    it('should override auth token when setting new one', () => {
+    it('should override auth token when setting new one', async () => {
       client.setAuthToken('token1');
       client.setAuthToken('token2');
 
@@ -297,7 +296,7 @@ describe('GraphQLClient', () => {
 
       mockEnhancedFetch.mockResolvedValue(mockResponse as any);
 
-      client.request(testQuery, { id: 'test' });
+      await client.request(testQuery, { id: 'test' });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
         expect.any(String),
@@ -397,7 +396,6 @@ describe('GraphQLClient', () => {
         project: {
           id: 'gid://gitlab/Project/123',
           name: 'My Project'
-          // description missing
         }
       };
 

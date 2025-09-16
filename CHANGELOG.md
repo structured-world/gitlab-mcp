@@ -1,3 +1,24 @@
+# [3.0.0](https://github.com/structured-world/gitlab-mcp/compare/v2.8.0...v3.0.0) (2025-09-16)
+
+
+### Bug Fixes
+
+* convert work items registry to use GraphQL API instead of REST ([75f9161](https://github.com/structured-world/gitlab-mcp/commit/75f91616a177329b763136367f5ca464c7bbff4f))
+* resolve GraphQL WorkItemWidgetVulnerabilities schema error ([99b7794](https://github.com/structured-world/gitlab-mcp/commit/99b7794edd81cad3dea1bb784854dab39066b1b2))
+
+
+### Features
+
+* add subgroup creation with epic hierarchy and parent relationships ([6cf3e24](https://github.com/structured-world/gitlab-mcp/commit/6cf3e2476d739d53fa317db49f18ae54762f4cbf))
+* Complete integration test migration to handler functions ([3a16c50](https://github.com/structured-world/gitlab-mcp/commit/3a16c500d7b398c0f60267cbc670a5dd0cdbadaf))
+* migrate integration tests to use handler functions and fix registry initialization ([a818c7f](https://github.com/structured-world/gitlab-mcp/commit/a818c7f1e3c28c1eedfd677dc3dae9e4c7c206b3))
+* migrate work items to GraphQL-only with dynamic type discovery and widget support ([ace59c5](https://github.com/structured-world/gitlab-mcp/commit/ace59c55f74d38105fa5c1c46ac24727080da80d))
+
+
+### BREAKING CHANGES
+
+* Work items now use GraphQL API exclusively, no REST fallback
+
 # [2.8.0](https://github.com/structured-world/gitlab-mcp/compare/v2.7.0...v2.8.0) (2025-09-15)
 
 

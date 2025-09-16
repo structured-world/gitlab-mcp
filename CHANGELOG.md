@@ -1,3 +1,11 @@
+## [3.1.2](https://github.com/structured-world/gitlab-mcp/compare/v3.1.1...v3.1.2) (2025-09-16)
+
+
+### Bug Fixes
+
+* align workitems test parameter names with GitLab API schema ([950e0eb](https://github.com/structured-world/gitlab-mcp/commit/950e0eb59a7f88a4c0d88eff3094d23d54874df3))
+* improve test infrastructure for cross-platform compatibility ([5eb62c0](https://github.com/structured-world/gitlab-mcp/commit/5eb62c05ccfdeec77239f1c7c7b04189956be667))
+
 ## [3.1.1](https://github.com/structured-world/gitlab-mcp/compare/v3.1.0...v3.1.1) (2025-09-16)
 
 

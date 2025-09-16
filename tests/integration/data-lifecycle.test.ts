@@ -18,12 +18,14 @@ import { GITLAB_TOKEN, GITLAB_API_URL, updateTestData, getTestData } from '../se
 import { GraphQLClient } from '../../src/graphql/client';
 import { CREATE_WORK_ITEM, GET_WORK_ITEM_TYPES } from '../../src/graphql/workItems';
 import { ConnectionManager } from '../../src/services/ConnectionManager';
+import { IntegrationTestHelper } from './helpers/registry-helper';
 
 describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
   const timestamp = Date.now();
   const baseTestName = `lifecycle-test-${timestamp}`;
   let client: GraphQLClient;
   let connectionManager: ConnectionManager;
+  let helper: IntegrationTestHelper;
 
   beforeAll(async () => {
     if (!GITLAB_TOKEN || !GITLAB_API_URL) {
@@ -37,6 +39,11 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
     await connectionManager.initialize();
     client = connectionManager.getClient();
     console.log('✅ GraphQL schema introspection completed');
+
+    // Initialize integration test helper
+    helper = new IntegrationTestHelper();
+    await helper.initialize();
+    console.log('✅ Integration test helper initialized');
   });
 
   // Note: Cleanup moved to globalTeardown.js to run after ALL tests complete
@@ -353,13 +360,11 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       expect(testData.project?.id).toBeDefined();
       console.log('🔧 Creating PROJECT-level work items (Issues, Tasks) using GraphQL with dynamic type discovery...');
 
-      // 🚨 CRITICAL: Get work item types dynamically for this project namespace
-      console.log('🔍 Getting work item types for project namespace...');
-      const workItemTypesResponse = await client.request(GET_WORK_ITEM_TYPES, {
-        namespacePath: testData.project!.path_with_namespace,
-      });
-
-      const projectWorkItemTypes = workItemTypesResponse.namespace.workItemTypes.nodes;
+      // 🚨 CRITICAL: Get work item types using handler function instead of direct GraphQL
+      console.log('🔍 Getting work item types for project namespace using get_work_item_types handler...');
+      const projectWorkItemTypes = await helper.getWorkItemTypes({
+        groupPath: testData.project!.path_with_namespace,
+      }) as any[];
       console.log('📋 Available project work item types:', projectWorkItemTypes.map(t => `${t.name}(${t.id})`).join(', '));
 
       const issueType = projectWorkItemTypes.find(t => t.name === 'Issue');
@@ -370,43 +375,97 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
       const createdProjectWorkItems: any[] = [];
 
-      // 🚨 CRITICAL: PROJECT-level work items use project namespace, not group namespace
-      const projectWorkItemsData = [
+      // 🚨 CRITICAL: Create diverse Issues/Tasks to test with and without widgets
+      // Get created labels and milestones for widget testing
+      const labels = testData.labels || [];
+      const milestones = testData.milestones || [];
+      const user = testData.user;
+
+      const projectWorkItemsData: Array<{
+        title: string;
+        description: string;
+        workItemType: string;
+        assigneeIds?: string[];
+        labelIds?: string[];
+        milestoneId?: string;
+      }> = [
         {
-          title: `Test Issue ${timestamp}`,
-          description: 'Test issue for API validation - PROJECT LEVEL ONLY (GraphQL)',
-          typeId: issueType!.id,
-          typeName: 'Issue',
+          title: `Test Issue (No Widgets) ${timestamp}`,
+          description: 'Test issue with no widgets - PROJECT LEVEL ONLY (using handler)',
+          workItemType: 'ISSUE',
+          // No assignees, labels, or milestones - tests conditional widget inclusion
         },
         {
-          title: `Test Task ${timestamp}`,
-          description: 'Test task for development work - PROJECT LEVEL ONLY (GraphQL)',
-          typeId: taskType!.id,
-          typeName: 'Task',
+          title: `Test Issue (With Widgets) ${timestamp}`,
+          description: 'Test issue with widgets - PROJECT LEVEL ONLY (using handler)',
+          workItemType: 'ISSUE',
+          assigneeIds: user ? [user.id.toString()] : undefined,
+          labelIds: labels.length > 0 ? [labels[0].id.toString()] : undefined,
+          milestoneId: milestones.length > 0 ? milestones[0].id.toString() : undefined,
+        },
+        {
+          title: `Test Task (No Widgets) ${timestamp}`,
+          description: 'Test task with no widgets - PROJECT LEVEL ONLY (using handler)',
+          workItemType: 'TASK',
+          // No assignees, labels, or milestones - tests conditional widget inclusion
+        },
+        {
+          title: `Test Task (With Widgets) ${timestamp}`,
+          description: 'Test task with widgets - PROJECT LEVEL ONLY (using handler)',
+          workItemType: 'TASK',
+          assigneeIds: user ? [user.id.toString()] : undefined,
+          labelIds: labels.length > 0 ? [labels[0].id.toString()] : undefined,
+          milestoneId: milestones.length > 0 ? milestones[0].id.toString() : undefined,
         },
       ];
 
       for (const workItemData of projectWorkItemsData) {
         try {
-          console.log(`  🔧 Creating ${workItemData.typeName} via GraphQL with type ID ${workItemData.typeId}...`);
+          console.log(`  🔧 Creating ${workItemData.workItemType} via create_work_item handler...`);
 
-          const response = await client.request(CREATE_WORK_ITEM, {
+          // Step 1: Create work item with basic parameters (CREATE doesn't support widgets)
+          const workItem = await helper.createWorkItem({
             namespacePath: testData.project!.path_with_namespace,
             title: workItemData.title,
-            workItemTypeId: workItemData.typeId,
-          }) as { workItemCreate: any };
+            workItemType: workItemData.workItemType,
+            description: workItemData.description,
+          }) as any;
 
-          if (response.workItemCreate?.workItem) {
-            const workItem = response.workItemCreate.workItem;
+          // Step 2: If widgets are needed, update the work item with widget data
+          if (workItem && (workItemData.assigneeIds || workItemData.labelIds || workItemData.milestoneId)) {
+            console.log(`    🔧 Adding widgets to ${workItemData.workItemType}...`);
+
+            const updateParams: any = { id: workItem.id };
+            if (workItemData.assigneeIds) updateParams.assigneeIds = workItemData.assigneeIds;
+            if (workItemData.labelIds) updateParams.labelIds = workItemData.labelIds;
+            if (workItemData.milestoneId) updateParams.milestoneId = workItemData.milestoneId;
+
+            try {
+              const updatedWorkItem = await helper.updateWorkItem(updateParams) as any;
+              console.log(`    ✅ Added widgets - assignees: ${workItemData.assigneeIds?.length || 0}, labels: ${workItemData.labelIds?.length || 0}, milestone: ${workItemData.milestoneId ? 1 : 0}`);
+
+              // Use the updated work item which should have widgets
+              if (updatedWorkItem) {
+                Object.assign(workItem, updatedWorkItem);
+              }
+            } catch (widgetError) {
+              console.log(`    ⚠️  Could not add widgets to ${workItemData.workItemType}:`, widgetError);
+            }
+          }
+
+          console.log(`    🔍 Widget testing - ${workItemData.workItemType}:`,
+            workItemData.assigneeIds ? `assignees: ${workItemData.assigneeIds.length}` : 'no assignees',
+            workItemData.labelIds ? `labels: ${workItemData.labelIds.length}` : 'no labels',
+            workItemData.milestoneId ? 'milestone: 1' : 'no milestone');
+
+          if (workItem) {
             createdProjectWorkItems.push(workItem);
-            console.log(`  ✅ Created PROJECT-level ${workItemData.typeName}: ${workItem.iid} (Type: ${workItem.workItemType.name})`);
-          } else if (response.workItemCreate?.errors?.length > 0) {
-            console.log(`  ⚠️  GraphQL errors creating ${workItemData.typeName}: ${response.workItemCreate.errors.join(', ')}`);
+            console.log(`  ✅ Created PROJECT-level ${workItemData.workItemType}: ${workItem.iid} (Type: ${workItem.workItemType.name})`);
           } else {
-            console.log(`  ⚠️  Unexpected GraphQL response creating ${workItemData.typeName}:`, response);
+            console.log(`  ⚠️  Handler returned null for ${workItemData.workItemType}`);
           }
         } catch (error) {
-          console.log(`  ⚠️  Could not create PROJECT work item: ${workItemData.title}`, error);
+          console.log(`  ⚠️  Could not create PROJECT work item via handler: ${workItemData.title}`, error);
         }
       }
 
@@ -421,13 +480,11 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       expect(testData.group?.id).toBeDefined();
       console.log('🔧 Creating GROUP-level work items (Epics) using GraphQL with dynamic type discovery...');
 
-      // 🚨 CRITICAL: Get work item types dynamically for this group namespace
-      console.log('🔍 Getting work item types for group namespace...');
-      const workItemTypesResponse = await client.request(GET_WORK_ITEM_TYPES, {
-        namespacePath: testData.group!.path,
-      });
-
-      const groupWorkItemTypes = workItemTypesResponse.namespace.workItemTypes.nodes;
+      // 🚨 CRITICAL: Get work item types using handler function instead of direct GraphQL
+      console.log('🔍 Getting work item types for group namespace using get_work_item_types handler...');
+      const groupWorkItemTypes = await helper.getWorkItemTypes({
+        groupPath: testData.group!.path,
+      }) as any[];
       console.log('📋 Available group work item types:', groupWorkItemTypes.map(t => `${t.name}(${t.id})`).join(', '));
 
       const epicType = groupWorkItemTypes.find(t => t.name === 'Epic');
@@ -435,37 +492,83 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
       const createdGroupWorkItems: any[] = [];
 
-      // 🚨 CRITICAL: Epics are GROUP-level only using GraphQL
-      const groupWorkItemsData = [
+      // 🚨 CRITICAL: Create diverse Epics to test with and without widgets
+      // Get created labels and milestones for widget testing
+      const labels = testData.labels || [];
+      const milestones = testData.milestones || [];
+      const user = testData.user;
+
+      const groupWorkItemsData: Array<{
+        title: string;
+        description: string;
+        workItemType: string;
+        assigneeIds?: string[];
+        labelIds?: string[];
+        milestoneId?: string;
+      }> = [
         {
-          title: `Test Epic ${timestamp}`,
-          description: 'Test epic for feature development - GROUP LEVEL ONLY (GraphQL)',
-          typeId: epicType!.id,
-          typeName: 'Epic',
+          title: `Test Epic (No Widgets) ${timestamp}`,
+          description: 'Test epic with no widgets - GROUP LEVEL ONLY (using handler)',
+          workItemType: 'EPIC',
+          // No assignees, labels, or milestones - tests conditional widget inclusion
+        },
+        {
+          title: `Test Epic (With Widgets) ${timestamp}`,
+          description: 'Test epic with widgets - GROUP LEVEL ONLY (using handler)',
+          workItemType: 'EPIC',
+          assigneeIds: user ? [user.id.toString()] : undefined,
+          labelIds: labels.length > 0 ? [labels[0].id.toString()] : undefined,
+          milestoneId: milestones.length > 0 ? milestones[0].id.toString() : undefined,
         },
       ];
 
       for (const workItemData of groupWorkItemsData) {
         try {
-          console.log(`  🔧 Creating ${workItemData.typeName} via GraphQL with type ID ${workItemData.typeId}...`);
+          console.log(`  🔧 Creating ${workItemData.workItemType} via create_work_item handler...`);
 
-          const response = await client.request(CREATE_WORK_ITEM, {
+          // Step 1: Create work item with basic parameters (CREATE doesn't support widgets)
+          const workItem = await helper.createWorkItem({
             namespacePath: testData.group!.path,
             title: workItemData.title,
-            workItemTypeId: workItemData.typeId,
-          }) as { workItemCreate: any };
+            workItemType: workItemData.workItemType,
+            description: workItemData.description,
+          }) as any;
 
-          if (response.workItemCreate?.workItem) {
-            const workItem = response.workItemCreate.workItem;
+          // Step 2: If widgets are needed, update the work item with widget data
+          if (workItem && (workItemData.assigneeIds || workItemData.labelIds || workItemData.milestoneId)) {
+            console.log(`    🔧 Adding widgets to ${workItemData.workItemType}...`);
+
+            const updateParams: any = { id: workItem.id };
+            if (workItemData.assigneeIds) updateParams.assigneeIds = workItemData.assigneeIds;
+            if (workItemData.labelIds) updateParams.labelIds = workItemData.labelIds;
+            if (workItemData.milestoneId) updateParams.milestoneId = workItemData.milestoneId;
+
+            try {
+              const updatedWorkItem = await helper.updateWorkItem(updateParams) as any;
+              console.log(`    ✅ Added widgets - assignees: ${workItemData.assigneeIds?.length || 0}, labels: ${workItemData.labelIds?.length || 0}, milestone: ${workItemData.milestoneId ? 1 : 0}`);
+
+              // Use the updated work item which should have widgets
+              if (updatedWorkItem) {
+                Object.assign(workItem, updatedWorkItem);
+              }
+            } catch (widgetError) {
+              console.log(`    ⚠️  Could not add widgets to ${workItemData.workItemType}:`, widgetError);
+            }
+          }
+
+          console.log(`    🔍 Widget testing - ${workItemData.workItemType}:`,
+            workItemData.assigneeIds ? `assignees: ${workItemData.assigneeIds.length}` : 'no assignees',
+            workItemData.labelIds ? `labels: ${workItemData.labelIds.length}` : 'no labels',
+            workItemData.milestoneId ? 'milestone: 1' : 'no milestone');
+
+          if (workItem) {
             createdGroupWorkItems.push(workItem);
-            console.log(`  ✅ Created GROUP-level ${workItemData.typeName}: ${workItem.iid} (Type: ${workItem.workItemType.name})`);
-          } else if (response.workItemCreate?.errors?.length > 0) {
-            console.log(`  ⚠️  GraphQL errors creating ${workItemData.typeName}: ${response.workItemCreate.errors.join(', ')}`);
+            console.log(`  ✅ Created GROUP-level ${workItemData.workItemType}: ${workItem.iid} (Type: ${workItem.workItemType.name})`);
           } else {
-            console.log(`  ⚠️  Unexpected GraphQL response creating ${workItemData.typeName}:`, response);
+            console.log(`  ⚠️  Handler returned null for ${workItemData.workItemType}`);
           }
         } catch (error) {
-          console.log(`  ⚠️  Could not create GROUP work item: ${workItemData.title}`, error);
+          console.log(`  ⚠️  Could not create GROUP work item via handler: ${workItemData.title}`, error);
         }
       }
 
@@ -475,6 +578,113 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       expect(createdGroupWorkItems.length).toBeGreaterThan(0);
       console.log(`✅ Created ${createdGroupWorkItems.length} GROUP-level work items (Epics)`);
     });
+
+    it('should verify work items actually have widgets (assignees, labels, milestones)', async () => {
+      const testData = getTestData();
+      console.log('🔍 Verifying work items actually contain widgets...');
+
+      // Check project-level work items
+      if (testData.workItems && testData.workItems.length > 0) {
+        for (const workItem of testData.workItems) {
+          console.log(`📋 Checking PROJECT work item: ${workItem.title}`);
+
+          // Use get_work_item handler to fetch full work item with widgets
+          const fullWorkItem = await helper.getWorkItem({ id: workItem.id }) as any;
+
+          expect(fullWorkItem).toBeDefined();
+          expect(fullWorkItem.widgets).toBeDefined();
+          expect(Array.isArray(fullWorkItem.widgets)).toBe(true);
+
+          const widgets = fullWorkItem.widgets;
+          const assigneesWidget = widgets.find((w: any) => w.type === 'ASSIGNEES');
+          const labelsWidget = widgets.find((w: any) => w.type === 'LABELS');
+          const milestoneWidget = widgets.find((w: any) => w.type === 'MILESTONE');
+
+          console.log(`  📊 Found widgets: ${widgets.map((w: any) => w.type).join(', ')}`);
+
+          if (workItem.title.includes('(With Widgets)')) {
+            console.log(`  🔍 Verifying "With Widgets" work item has actual widget data...`);
+
+            if (assigneesWidget) {
+              console.log(`    👤 Assignees widget:`, assigneesWidget.assignees?.nodes?.length || 0, 'assignees');
+              if (testData.user) {
+                expect(assigneesWidget.assignees?.nodes?.length).toBeGreaterThan(0);
+              }
+            }
+
+            if (labelsWidget) {
+              console.log(`    🏷️  Labels widget:`, labelsWidget.labels?.nodes?.length || 0, 'labels');
+              if (testData.labels && testData.labels.length > 0) {
+                expect(labelsWidget.labels?.nodes?.length).toBeGreaterThan(0);
+              }
+            }
+
+            if (milestoneWidget && milestoneWidget.milestone) {
+              console.log(`    📅 Milestone widget:`, milestoneWidget.milestone.title);
+              expect(milestoneWidget.milestone).toBeDefined();
+            }
+          } else if (workItem.title.includes('(No Widgets)')) {
+            console.log(`  🔍 Verifying "No Widgets" work item has empty widget data...`);
+
+            if (assigneesWidget) {
+              expect(assigneesWidget.assignees?.nodes?.length || 0).toBe(0);
+            }
+            if (labelsWidget) {
+              expect(labelsWidget.labels?.nodes?.length || 0).toBe(0);
+            }
+            if (milestoneWidget) {
+              expect(milestoneWidget.milestone).toBeNull();
+            }
+          }
+        }
+      }
+
+      // Check group-level work items (Epics)
+      if (testData.groupWorkItems && testData.groupWorkItems.length > 0) {
+        for (const workItem of testData.groupWorkItems) {
+          console.log(`📋 Checking GROUP work item: ${workItem.title}`);
+
+          // Use get_work_item handler to fetch full work item with widgets
+          const fullWorkItem = await helper.getWorkItem({ id: workItem.id }) as any;
+
+          expect(fullWorkItem).toBeDefined();
+          expect(fullWorkItem.widgets).toBeDefined();
+          expect(Array.isArray(fullWorkItem.widgets)).toBe(true);
+
+          const widgets = fullWorkItem.widgets;
+          const assigneesWidget = widgets.find((w: any) => w.type === 'ASSIGNEES');
+          const labelsWidget = widgets.find((w: any) => w.type === 'LABELS');
+          const milestoneWidget = widgets.find((w: any) => w.type === 'MILESTONE');
+
+          console.log(`  📊 Found widgets: ${widgets.map((w: any) => w.type).join(', ')}`);
+
+          if (workItem.title.includes('(With Widgets)')) {
+            console.log(`  🔍 Verifying Epic "With Widgets" has actual widget data...`);
+
+            if (assigneesWidget) {
+              console.log(`    👤 Assignees widget:`, assigneesWidget.assignees?.nodes?.length || 0, 'assignees');
+              if (testData.user) {
+                expect(assigneesWidget.assignees?.nodes?.length).toBeGreaterThan(0);
+              }
+            }
+
+            if (labelsWidget) {
+              console.log(`    🏷️  Labels widget:`, labelsWidget.labels?.nodes?.length || 0, 'labels');
+              if (testData.labels && testData.labels.length > 0) {
+                expect(labelsWidget.labels?.nodes?.length).toBeGreaterThan(0);
+              }
+            }
+
+            if (milestoneWidget && milestoneWidget.milestone) {
+              console.log(`    📅 Milestone widget:`, milestoneWidget.milestone.title);
+              expect(milestoneWidget.milestone).toBeDefined();
+            }
+          }
+        }
+      }
+
+      console.log('✅ Widget verification completed');
+    }, 30000);
   });
 
   describe('🔀 Step 6: Merge Requests Infrastructure', () => {

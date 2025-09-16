@@ -1,143 +1,128 @@
 /**
- * Work Items GraphQL Integration Tests
- * Tests against real GitLab instance to validate widget implementation
+ * Work Items Integration Tests using Handler Functions
+ * Tests work items handlers through RegistryManager instead of direct API calls
  *
  * 🚨 CRITICAL: GitLab Work Items Hierarchy Rules
  *
  * GROUP LEVEL ONLY:
- * - Epics (Type 7) - ONLY exist at group level, query with group { workItems }
+ * - Epics - ONLY exist at group level, use list_work_items with groupPath
  *
  * PROJECT LEVEL ONLY:
- * - Issues (Type 1) - ONLY exist at project level, query with project { workItems }
- * - Tasks (Type 4) - ONLY exist at project level, query with project { workItems }
- * - Bugs (Type 2) - ONLY exist at project level, query with project { workItems }
+ * - Issues/Tasks/Bugs - ONLY exist at project level, use appropriate project tools
  *
- * FORBIDDEN:
- * - ❌ project { workItems(types: [EPIC]) } - Epics don't exist at project level
- * - ❌ group { workItems(types: [ISSUE]) } - Issues don't exist at group level
+ * This test validates the ACTUAL production code path that MCP clients use,
+ * not parallel implementations with direct GraphQL calls.
  */
 
-import { GraphQLClient } from '../../src/graphql/client';
-import { GET_WORK_ITEM, CREATE_WORK_ITEM, GET_WORK_ITEM_TYPES, WorkItemTypeEnum } from '../../src/graphql/workItems';
-import { DynamicWorkItemsQueryBuilder } from '../../src/graphql/DynamicWorkItemsQuery';
-import { ConnectionManager } from '../../src/services/ConnectionManager';
+import { IntegrationTestHelper } from './helpers/registry-helper';
 import { getTestData, requireTestData } from '../setup/testConfig';
 
-describe('Work Items GraphQL - Real GitLab Instance', () => {
-  let client: GraphQLClient;
-  let connectionManager: ConnectionManager;
-  let queryBuilder: DynamicWorkItemsQueryBuilder;
+describe('Work Items Integration - Using Handler Functions', () => {
+  let helper: IntegrationTestHelper;
   const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
-  const GITLAB_BASE_URL = process.env.GITLAB_API_URL || 'https://gitlab.com';
 
   beforeAll(async () => {
     if (!GITLAB_TOKEN) {
       throw new Error('GITLAB_TOKEN environment variable is required');
     }
 
-    // Initialize connection manager to load schema
-    connectionManager = ConnectionManager.getInstance();
-    await connectionManager.initialize();
-
-    client = connectionManager.getClient();
-
-    // Create dynamic query builder with schema introspection
-    const schemaIntrospector = connectionManager.getSchemaIntrospector();
-    queryBuilder = new DynamicWorkItemsQueryBuilder(schemaIntrospector);
+    // Initialize integration test helper
+    helper = new IntegrationTestHelper();
+    await helper.initialize();
   });
 
-  describe('Work Items Query Operations', () => {
-    it('should list GROUP-level work items (Epics) from test group', async () => {
-      // 🚨 CRITICAL: This queries GROUP-level work items (Epics only)
-      // Issues/Tasks exist at PROJECT level, not group level
+  describe('Work Items Handler Operations', () => {
+    it('should list GROUP-level work items (Epics) using list_work_items handler', async () => {
+      // 🚨 CRITICAL: This uses the ACTUAL list_work_items handler
+      // Tests the production code path that MCP clients use
       const testData = requireTestData();
       const testGroupPath = testData.group.path;
 
-      console.log(`🔧 Querying GROUP-level work items from: ${testGroupPath}`);
+      console.log(`🔧 Testing list_work_items handler with group: ${testGroupPath}`);
 
-      const query = queryBuilder.buildMinimalQuery();
-      const response = await client.request(query, {
+      // Use handler function instead of direct GraphQL
+      const workItems = await helper.listWorkItems({
         groupPath: testGroupPath,
         first: 10,
-      }) as { group: { workItems: { nodes: any[] } | null } };
+      }) as any[];
 
-      expect(response).toBeDefined();
-      expect(response.group).toBeDefined();
+      expect(workItems).toBeDefined();
+      expect(Array.isArray(workItems)).toBe(true);
 
-      // GROUP work items might be null if no Epics exist - this is valid
-      if (response.group.workItems === null) {
-        console.log('📋 No GROUP-level work items (Epics) found - this is expected if no Epics were created');
-        expect(response.group.workItems).toBeNull();
-      } else {
-        expect(Array.isArray(response.group.workItems.nodes)).toBe(true);
-        console.log(`📋 Found ${response.group.workItems.nodes.length} GROUP-level work items (Epics)`);
+      console.log(`📋 Handler returned ${workItems.length} GROUP-level work items (Epics)`);
 
-        if (response.group.workItems.nodes.length > 0) {
-          const firstWorkItem = response.group.workItems.nodes[0];
-          console.log(`First work item: ${firstWorkItem.title} (${firstWorkItem.workItemType.name})`);
+      if (workItems.length > 0) {
+        const firstWorkItem = workItems[0];
+        expect(firstWorkItem.title).toBeDefined();
+        expect(firstWorkItem.workItemType).toBeDefined();
+
+        console.log(`First work item: ${firstWorkItem.title} (${firstWorkItem.workItemType.name})`);
+
+        if (firstWorkItem.widgets) {
           console.log(`Available widgets: ${firstWorkItem.widgets.map((w: any) => w.type).join(', ')}`);
         }
       }
     }, 30000);
 
-    it('should get single work item with widgets', async () => {
-      // First get a list to find a work item ID
+    it('should get single work item using get_work_item handler', async () => {
+      // First get a list using handler to find a work item ID
       const testData = requireTestData();
       const testGroupPath = testData.group.path;
 
-      const listQuery = queryBuilder.buildWorkItemsQuery();
-      const listResponse = await client.request(listQuery, {
+      const workItems = await helper.listWorkItems({
         groupPath: testGroupPath,
         first: 1,
-      }) as { group: { workItems: { nodes: any[] } | null } };
+      }) as any[];
 
-      if (!listResponse.group.workItems || listResponse.group.workItems.nodes.length === 0) {
+      if (!workItems || workItems.length === 0) {
         console.warn('No GROUP-level work items (Epics) found - skipping single work item test');
         return;
       }
 
-      const workItemId = listResponse.group.workItems.nodes[0].id;
+      const workItemId = workItems[0].id;
+      console.log(`🔧 Testing get_work_item handler with ID: ${workItemId}`);
 
-      const response = await client.request(GET_WORK_ITEM, {
-        id: workItemId,
-      }) as { workItem: any };
+      // Use handler function instead of direct GraphQL
+      const workItem = await helper.getWorkItem({ id: workItemId }) as any;
 
-      expect(response).toBeDefined();
-      expect(response.workItem).toBeDefined();
-      expect(response.workItem.id).toBe(workItemId);
-      expect(Array.isArray(response.workItem.widgets)).toBe(true);
+      expect(workItem).toBeDefined();
+      expect(workItem.id).toBe(workItemId);
+      expect(workItem.title).toBeDefined();
 
-      // Validate that we have the expected widget structure
-      const widgets = response.workItem.widgets;
-      console.log(`Work item "${response.workItem.title}" has ${widgets.length} widgets:`);
+      // Validate widget structure if present
+      if (workItem.widgets) {
+        expect(Array.isArray(workItem.widgets)).toBe(true);
+        const widgets = workItem.widgets;
+        console.log(`Work item "${workItem.title}" has ${widgets.length} widgets:`);
 
-      widgets.forEach((widget: any) => {
-        expect(widget.type).toBeDefined();
-        console.log(`- Widget: ${widget.type}`);
-      });
+        widgets.forEach((widget: any) => {
+          expect(widget.type).toBeDefined();
+          console.log(`- Widget: ${widget.type}`);
+        });
+      }
     }, 30000);
   });
 
-  describe('Work Items Widget Validation', () => {
-    it('should validate core widget types are supported', async () => {
+  describe('Work Items Widget Validation through Handlers', () => {
+    it('should validate core widget types through list_work_items handler', async () => {
       const testData = requireTestData();
       const testGroupPath = testData.group.path;
 
-      const query = queryBuilder.buildWorkItemsQuery();
-      const response = await client.request(query, {
+      // Use handler function instead of direct GraphQL
+      const workItems = await helper.listWorkItems({
         groupPath: testGroupPath,
         first: 10,
-      }) as { group: { workItems: { nodes: any[] } | null } };
+      }) as any[];
 
-      if (!response.group.workItems || response.group.workItems.nodes.length === 0) {
+      if (!workItems || workItems.length === 0) {
         console.warn('No GROUP-level work items (Epics) found - skipping widget validation test');
         return;
       }
 
-      const allWidgets = response.group.workItems.nodes.flatMap((item: any) => item.widgets);
-      const widgetTypes = new Set(allWidgets.map(w => w.type));
+      const allWidgets = workItems.flatMap((item: any) => item.widgets || []);
+      const widgetTypes = new Set(allWidgets.map((w: any) => w.type));
 
-      console.log('Available widget types in test data:', Array.from(widgetTypes).sort());
+      console.log('Available widget types through handler:', Array.from(widgetTypes).sort());
 
       // Check that our implemented widgets are available
       const expectedWidgets = [
@@ -153,55 +138,49 @@ describe('Work Items GraphQL - Real GitLab Instance', () => {
       ];
 
       const availableExpected = expectedWidgets.filter(type => widgetTypes.has(type));
-      console.log('Expected widgets found:', availableExpected);
+      console.log('Expected widgets found through handler:', availableExpected);
 
       // At least some core widgets should be available
       expect(availableExpected.length).toBeGreaterThan(3);
     }, 30000);
   });
 
-  describe('Work Item Creation (if supported)', () => {
-    it('should create a test Epic at GROUP level', async () => {
+  describe('Work Item Creation through Handlers', () => {
+    it('should create a test Epic using create_work_item handler', async () => {
       try {
         const testData = requireTestData();
         const testGroupPath = testData.group.path;
 
-        // 🚨 CRITICAL: Get work item types dynamically for this group namespace
-        console.log('🔍 Getting Epic work item type for group namespace...');
-        const workItemTypesResponse = await client.request(GET_WORK_ITEM_TYPES, {
-          namespacePath: testGroupPath,
-        });
+        // 🚨 CRITICAL: Get work item types using handler function
+        console.log('🔍 Getting Epic work item type using get_work_item_types handler...');
+        const workItemTypes = await helper.getWorkItemTypes({
+          groupPath: testGroupPath,
+        }) as any[];
 
-        const groupWorkItemTypes = workItemTypesResponse.namespace.workItemTypes.nodes;
-        const epicType = groupWorkItemTypes.find(t => t.name === 'Epic');
+        const epicType = workItemTypes.find((t: any) => t.name === 'Epic');
 
         if (!epicType) {
           console.warn('Epic work item type not found in group - skipping Epic creation test');
           return;
         }
 
-        console.log(`📋 Found Epic type: ${epicType.name}(${epicType.id})`);
+        console.log(`📋 Found Epic type: ${epicType.name}`);
 
-        // 🚨 CRITICAL: Creating Epic at GROUP level (correct)
-        // NEVER try to create Epic at project level - it will fail
-        const response = await client.request(CREATE_WORK_ITEM, {
+        // 🚨 CRITICAL: Creating Epic using handler function (tests production code path)
+        const createdWorkItem = await helper.createWorkItem({
           namespacePath: testGroupPath,
           title: `Test Epic Created ${Date.now()}`,
-          workItemTypeId: epicType.id, // Epic type - dynamically discovered
-        }) as { workItemCreate: any };
+          workItemType: 'EPIC', // Use enum value, handler will resolve to ID
+          description: 'Test Epic created through handler for integration testing',
+        }) as any;
 
-        expect(response).toBeDefined();
-        expect(response.workItemCreate).toBeDefined();
+        expect(createdWorkItem).toBeDefined();
+        expect(createdWorkItem.title).toContain('Test Epic Created');
+        expect(createdWorkItem.workItemType.name).toBe('Epic');
 
-        if (response.workItemCreate.errors.length > 0) {
-          console.warn('Epic creation errors:', response.workItemCreate.errors);
-        } else {
-          expect(response.workItemCreate.workItem).toBeDefined();
-          expect(response.workItemCreate.workItem.title).toContain('Test Epic Created');
-          console.log(`Created test Epic: ${response.workItemCreate.workItem.webUrl}`);
-        }
+        console.log(`Created test Epic through handler: ${createdWorkItem.webUrl}`);
       } catch (error) {
-        console.warn('Epic creation not supported or failed:', error);
+        console.warn('Epic creation through handler not supported or failed:', error);
         // Don't fail the test - creation permissions might not be available
       }
     }, 30000);

@@ -1,13 +1,15 @@
-/* eslint-disable @typescript-eslint/no-unsafe-assignment */
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ListWorkItemsSchema, GetWorkItemSchema, GetWorkItemTypesSchema } from './schema-readonly';
 import { CreateWorkItemSchema, UpdateWorkItemSchema, DeleteWorkItemSchema } from './schema';
-import { enhancedFetch } from '../../utils/fetch';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import {
   CREATE_WORK_ITEM,
   CREATE_WORK_ITEM_WITH_DESCRIPTION,
+  GET_WORK_ITEMS,
+  GET_WORK_ITEM,
+  UPDATE_WORK_ITEM,
+  DELETE_WORK_ITEM,
   GET_WORK_ITEM_TYPES,
 } from '../../graphql/workItems';
 
@@ -27,26 +29,19 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         const options = ListWorkItemsSchema.parse(args);
         const { groupPath } = options;
 
-        const queryParams = new URLSearchParams();
-        Object.entries(options).forEach(([key, value]) => {
-          if (value !== undefined && value !== null && key !== 'groupPath') {
-            queryParams.set(key, String(value));
-          }
+        // Get GraphQL client from ConnectionManager
+        const connectionManager = ConnectionManager.getInstance();
+        const client = connectionManager.getClient();
+
+        // Use GraphQL query for listing work items
+        const response = await client.request(GET_WORK_ITEMS, {
+          groupPath: groupPath,
+          first: options.first || 20,
+          after: options.after,
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(groupPath)}/work_items?${queryParams}`;
-        const response = await enhancedFetch(apiUrl, {
-          headers: {
-            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
-        }
-
-        const workItems = await response.json();
-        return workItems;
+        // Return the work items in the expected format
+        return response.group?.workItems?.nodes || [];
       },
     },
   ],
@@ -61,19 +56,18 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         const options = GetWorkItemSchema.parse(args);
         const { id } = options;
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/work_items/${id}`;
-        const response = await enhancedFetch(apiUrl, {
-          headers: {
-            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
-          },
-        });
+        // Get GraphQL client from ConnectionManager
+        const connectionManager = ConnectionManager.getInstance();
+        const client = connectionManager.getClient();
 
-        if (!response.ok) {
-          throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+        // Use GraphQL query for getting work item details
+        const response = await client.request(GET_WORK_ITEM, { id });
+
+        if (!response.workItem) {
+          throw new Error(`Work item with ID "${id}" not found`);
         }
 
-        const workItem = await response.json();
-        return workItem;
+        return response.workItem;
       },
     },
   ],
@@ -88,19 +82,17 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         const options = GetWorkItemTypesSchema.parse(args);
         const { groupPath } = options;
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(groupPath)}/work_item_types`;
-        const response = await enhancedFetch(apiUrl, {
-          headers: {
-            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
-          },
+        // Get GraphQL client from ConnectionManager
+        const connectionManager = ConnectionManager.getInstance();
+        const client = connectionManager.getClient();
+
+        // Use GraphQL query for getting work item types
+        const response = await client.request(GET_WORK_ITEM_TYPES, {
+          namespacePath: groupPath,
         });
 
-        if (!response.ok) {
-          throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
-        }
-
-        const workItemTypes = await response.json();
-        return workItemTypes;
+        // Return the work item types in the expected format
+        return response.namespace?.workItemTypes?.nodes || [];
       },
     },
   ],
@@ -168,31 +160,44 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       inputSchema: zodToJsonSchema(UpdateWorkItemSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = UpdateWorkItemSchema.parse(args);
-        const { id } = options;
+        const { id, title, description, state, assigneeIds, labelIds, milestoneId } = options;
 
-        const body: Record<string, unknown> = {};
-        Object.entries(options).forEach(([key, value]) => {
-          if (value !== undefined && value !== null && key !== 'id') {
-            body[key] = value;
-          }
-        });
+        // Get GraphQL client from ConnectionManager
+        const connectionManager = ConnectionManager.getInstance();
+        const client = connectionManager.getClient();
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/work_items/${id}`;
-        const response = await enhancedFetch(apiUrl, {
-          method: 'PUT',
-          headers: {
-            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(body),
-        });
+        // Build variables object with only provided values
+        const variables: {
+          id: string;
+          title?: string;
+          description?: string;
+          state?: string;
+          assigneeIds?: string[];
+          labelIds?: string[];
+          milestoneId?: string;
+        } = { id };
 
-        if (!response.ok) {
-          throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+        if (title !== undefined) variables.title = title;
+        if (description !== undefined) variables.description = description;
+        if (state !== undefined) variables.state = state;
+        if (assigneeIds !== undefined && assigneeIds.length > 0) {
+          variables.assigneeIds = assigneeIds;
+        }
+        if (labelIds !== undefined && labelIds.length > 0) variables.labelIds = labelIds;
+        if (milestoneId !== undefined) variables.milestoneId = milestoneId;
+
+        // Use GraphQL mutation for updating work item
+        const response = await client.request(UPDATE_WORK_ITEM, variables);
+
+        if (response.workItemUpdate?.errors?.length && response.workItemUpdate.errors.length > 0) {
+          throw new Error(`GitLab GraphQL errors: ${response.workItemUpdate.errors.join(', ')}`);
         }
 
-        const workItem = await response.json();
-        return workItem;
+        if (!response.workItemUpdate?.workItem) {
+          throw new Error('Work item update failed - no work item returned');
+        }
+
+        return response.workItemUpdate.workItem;
       },
     },
   ],
@@ -206,21 +211,19 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         const options = DeleteWorkItemSchema.parse(args);
         const { id } = options;
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/work_items/${id}`;
-        const response = await enhancedFetch(apiUrl, {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
-          },
-        });
+        // Get GraphQL client from ConnectionManager
+        const connectionManager = ConnectionManager.getInstance();
+        const client = connectionManager.getClient();
 
-        if (!response.ok) {
-          throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+        // Use GraphQL mutation for deleting work item
+        const response = await client.request(DELETE_WORK_ITEM, { id });
+
+        if (response.workItemDelete?.errors?.length && response.workItemDelete.errors.length > 0) {
+          throw new Error(`GitLab GraphQL errors: ${response.workItemDelete.errors.join(', ')}`);
         }
 
-        // Work item deletion may return empty response
-        const result = response.status === 204 ? { deleted: true } : await response.json();
-        return result;
+        // Return success indicator for deletion
+        return { deleted: true };
       },
     },
   ],

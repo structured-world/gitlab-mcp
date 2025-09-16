@@ -1,5 +1,9 @@
 import { z } from 'zod';
-import { WorkItemIdSchema, WorkItemTypeEnumSchema, WorkItemStateSchema } from './schema-readonly';
+import {
+  WorkItemIdSchema,
+  WorkItemTypeEnumSchema,
+  WorkItemStateEventSchema,
+} from './schema-readonly';
 
 /**
  * 🚨 CRITICAL: GitLab Work Items Hierarchy Rules for MCP Agents
@@ -45,7 +49,9 @@ export const UpdateWorkItemSchema = z.object({
   id: WorkItemIdSchema,
   title: z.string().optional().describe('New title for the work item'),
   description: z.string().optional().describe('New description for the work item'),
-  state: WorkItemStateSchema.optional().describe('New state for the work item'),
+  state: WorkItemStateEventSchema.optional().describe(
+    'State event for the work item (CLOSE, REOPEN)',
+  ),
   assigneeIds: z.array(z.string()).optional().describe('Array of assignee user IDs'),
   labelIds: z.array(z.string()).optional().describe('Array of label IDs'),
   milestoneId: z.string().optional().describe('Milestone ID'),

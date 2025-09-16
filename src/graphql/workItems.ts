@@ -19,6 +19,25 @@ export interface WorkItem {
   webUrl: string;
 }
 
+// Flexible work item update using dynamic input object construction
+export interface WorkItemUpdateInput {
+  id: string;
+  title?: string;
+  stateEvent?: string;
+  descriptionWidget?: {
+    description: string;
+  };
+  assigneesWidget?: {
+    assigneeIds: string[];
+  };
+  labelsWidget?: {
+    addLabelIds: string[];
+  };
+  milestoneWidget?: {
+    milestoneId: string;
+  };
+}
+
 // Work Item State enum - defines possible states
 export type WorkItemState = 'OPEN' | 'CLOSED';
 
@@ -293,8 +312,13 @@ export interface WorkItemLinkedResourcesWidget extends WorkItemWidget {
 
 export interface WorkItemVulnerabilitiesWidget extends WorkItemWidget {
   type: 'VULNERABILITIES';
-  vulnerabilities: {
+  relatedVulnerabilities: {
     nodes: Vulnerability[];
+    pageInfo: {
+      hasNextPage: boolean;
+      endCursor?: string;
+    };
+    count: number;
   };
 }
 
@@ -404,11 +428,10 @@ export interface LinkedResource {
 
 export interface Vulnerability {
   id: string;
-  title: string;
-  description?: string;
-  severity: string;
   state: string;
-  reportType: string;
+  severity: string;
+  name: string;
+  webUrl: string;
 }
 
 // GraphQL Queries
@@ -713,7 +736,21 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
               }
             }
             ... on WorkItemWidgetVulnerabilities {
-              __typename
+              type
+              relatedVulnerabilities(first: 25) {
+                nodes {
+                  id
+                  state
+                  severity
+                  name
+                  webUrl
+                }
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+                count
+              }
             }
           }
         }
@@ -877,36 +914,10 @@ export const CREATE_WORK_ITEM_WITH_DESCRIPTION: TypedDocumentNode<
 
 export const UPDATE_WORK_ITEM: TypedDocumentNode<
   { workItemUpdate: { workItem: WorkItem; errors: string[] } },
-  {
-    id: string;
-    title?: string;
-    description?: string;
-    state?: WorkItemState;
-    assigneeIds?: string[];
-    labelIds?: string[];
-    milestoneId?: string;
-  }
+  { input: WorkItemUpdateInput }
 > = gql`
-  mutation UpdateWorkItem(
-    $id: WorkItemID!
-    $title: String
-    $description: String
-    $state: WorkItemState
-    $assigneeIds: [UserID!]
-    $labelIds: [LabelID!]
-    $milestoneId: MilestoneID
-  ) {
-    workItemUpdate(
-      input: {
-        id: $id
-        title: $title
-        stateEvent: $state
-        descriptionWidget: { description: $description }
-        assigneesWidget: { assigneeIds: $assigneeIds }
-        labelsWidget: { addLabelIds: $labelIds }
-        milestoneWidget: { milestoneId: $milestoneId }
-      }
-    ) {
+  mutation UpdateWorkItem($input: WorkItemUpdateInput!) {
+    workItemUpdate(input: $input) {
       workItem {
         id
         iid
@@ -918,6 +929,41 @@ export const UPDATE_WORK_ITEM: TypedDocumentNode<
           name
         }
         webUrl
+        widgets {
+          type
+          ... on WorkItemWidgetAssignees {
+            assignees {
+              nodes {
+                id
+                username
+                name
+                avatarUrl
+                webUrl
+              }
+            }
+          }
+          ... on WorkItemWidgetLabels {
+            labels {
+              nodes {
+                id
+                title
+                description
+                color
+                textColor
+              }
+            }
+          }
+          ... on WorkItemWidgetMilestone {
+            milestone {
+              id
+              title
+              state
+              startDate
+              dueDate
+              webPath
+            }
+          }
+        }
       }
       errors
     }

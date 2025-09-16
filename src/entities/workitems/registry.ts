@@ -11,6 +11,7 @@ import {
   UPDATE_WORK_ITEM,
   DELETE_WORK_ITEM,
   GET_WORK_ITEM_TYPES,
+  WorkItemUpdateInput,
 } from '../../graphql/workItems';
 
 /**
@@ -166,28 +167,32 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         const connectionManager = ConnectionManager.getInstance();
         const client = connectionManager.getClient();
 
-        // Build variables object with only provided values
-        const variables: {
-          id: string;
-          title?: string;
-          description?: string;
-          state?: string;
-          assigneeIds?: string[];
-          labelIds?: string[];
-          milestoneId?: string;
-        } = { id };
+        // Build dynamic input object based on provided values
+        const input: WorkItemUpdateInput = { id };
 
-        if (title !== undefined) variables.title = title;
-        if (description !== undefined) variables.description = description;
-        if (state !== undefined) variables.state = state;
-        if (assigneeIds !== undefined && assigneeIds.length > 0) {
-          variables.assigneeIds = assigneeIds;
+        // Add basic properties if provided
+        if (title !== undefined) input.title = title;
+        if (state !== undefined) input.stateEvent = state;
+
+        // Add widget objects only if data is provided
+        if (description !== undefined) {
+          input.descriptionWidget = { description };
         }
-        if (labelIds !== undefined && labelIds.length > 0) variables.labelIds = labelIds;
-        if (milestoneId !== undefined) variables.milestoneId = milestoneId;
 
-        // Use GraphQL mutation for updating work item
-        const response = await client.request(UPDATE_WORK_ITEM, variables);
+        if (assigneeIds !== undefined && assigneeIds.length > 0) {
+          input.assigneesWidget = { assigneeIds };
+        }
+
+        if (labelIds !== undefined && labelIds.length > 0) {
+          input.labelsWidget = { addLabelIds: labelIds };
+        }
+
+        if (milestoneId !== undefined) {
+          input.milestoneWidget = { milestoneId };
+        }
+
+        // Use single GraphQL mutation with dynamic input
+        const response = await client.request(UPDATE_WORK_ITEM, { input });
 
         if (response.workItemUpdate?.errors?.length && response.workItemUpdate.errors.length > 0) {
           throw new Error(`GitLab GraphQL errors: ${response.workItemUpdate.errors.join(', ')}`);

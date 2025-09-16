@@ -18,6 +18,10 @@ export const WorkItemTypeEnumSchema = z
 
 export const WorkItemStateSchema = z.enum(['OPEN', 'CLOSED']).describe('State of work item');
 
+export const WorkItemStateEventSchema = z
+  .enum(['CLOSE', 'REOPEN'])
+  .describe('State event for updating work item');
+
 // Read-only schemas
 export const ListWorkItemsSchema = z.object({
   groupPath: z.string().describe('Group path for listing work items'),

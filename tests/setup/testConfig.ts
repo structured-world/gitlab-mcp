@@ -26,6 +26,8 @@ export interface TestDataState {
   };
   workItems?: any[]; // PROJECT-level work items (Issues, Tasks, Bugs)
   groupWorkItems?: any[]; // GROUP-level work items (Epics)
+  subgroup?: any; // Subgroup for testing epic hierarchy
+  childEpic?: any; // Child epic in subgroup
   mergeRequests?: any[];
   milestones?: any[];
   labels?: any[];

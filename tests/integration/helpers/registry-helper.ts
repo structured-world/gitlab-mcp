@@ -136,7 +136,7 @@ export class IntegrationTestHelper {
     id: string;
     title?: string;
     description?: string;
-    state?: 'OPEN' | 'CLOSED';
+    state?: 'OPEN' | 'CLOSE' | 'REOPEN';
     assigneeIds?: string[];
     labelIds?: string[];
     milestoneId?: string;

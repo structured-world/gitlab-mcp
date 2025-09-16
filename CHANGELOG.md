@@ -1,3 +1,10 @@
+# [3.2.0](https://github.com/structured-world/gitlab-mcp/compare/v3.1.2...v3.2.0) (2025-09-16)
+
+
+### Features
+
+* improve unit test coverage from 86% to 90.65% ([a853967](https://github.com/structured-world/gitlab-mcp/commit/a853967402fc3aa6ff92439158bfed1042f5cea3))
+
 ## [3.1.2](https://github.com/structured-world/gitlab-mcp/compare/v3.1.1...v3.1.2) (2025-09-16)
 
 

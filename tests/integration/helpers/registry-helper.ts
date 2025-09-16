@@ -34,6 +34,12 @@ export class IntegrationTestHelper {
 
     // Initialize connection manager (loads schema, connects to GitLab)
     await this.connectionManager.initialize();
+
+    // Force rebuild the registry cache now that ConnectionManager is initialized
+    // This is needed because RegistryManager checks ToolAvailability during cache building
+    // which requires ConnectionManager to be initialized first
+    this.registryManager.refreshCache();
+
     this.initialized = true;
 
     const instanceInfo = this.connectionManager.getInstanceInfo();

@@ -256,6 +256,13 @@ class RegistryManager {
   }
 
   /**
+   * Clear all caches and rebuild
+   */
+  public refreshCache(): void {
+    this.buildToolLookupCache();
+  }
+
+  /**
    * Get all tool definitions (for backward compatibility with tools.ts) - cached for performance
    */
   public getAllToolDefinitions(): ToolDefinition[] {

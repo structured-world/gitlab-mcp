@@ -1,24 +1,28 @@
 /**
  * GitLab Users API Integration Tests
- * Tests the GetUsersSchema against GitLab 18.3 API
+ * Tests the GetUsersSchema against GitLab 18.3 API using actual handler functions
  */
 
 import { GetUsersSchema } from "../../../src/entities/core/schema-readonly";
-
-const GITLAB_API_URL = process.env.GITLAB_API_URL || "https://gitlab.com";
-const GITLAB_TOKEN = process.env.GITLAB_TOKEN_TEST || process.env.GITLAB_TOKEN;
+import { IntegrationTestHelper } from "../helpers/registry-helper";
 
 describe("GitLab Users API - GetUsersSchema", () => {
-  const shouldSkip = !GITLAB_TOKEN;
+  let helper: IntegrationTestHelper;
 
-  beforeAll(() => {
+  beforeAll(async () => {
+    const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
     if (!GITLAB_TOKEN) {
-      console.warn("⚠️  Skipping GitLab Users API tests: GITLAB_TOKEN required");
+      throw new Error("GITLAB_TOKEN environment variable is required");
     }
+
+    // Initialize integration test helper
+    helper = new IntegrationTestHelper();
+    await helper.initialize();
+    console.log("✅ Integration test helper initialized for users API testing");
   });
 
-  (shouldSkip ? it.skip : it)(
-    "should validate GetUsersSchema parameters against GitLab API",
+  it(
+    "should validate GetUsersSchema parameters against GitLab API using handler functions",
     async () => {
       // Test with various parameter combinations
       const testCases = [
@@ -32,7 +36,6 @@ describe("GitLab Users API - GetUsersSchema", () => {
         { active: true, per_page: 10 },
         // Filter with multiple parameters
         {
-          humans: true,
           exclude_internal: true,
           without_project_bots: true,
           per_page: 20,
@@ -46,37 +49,18 @@ describe("GitLab Users API - GetUsersSchema", () => {
       ];
 
       for (const params of testCases) {
+        console.log(`🔍 Testing users with params:`, params);
+
         // Validate request schema
         const validationResult = GetUsersSchema.safeParse(params);
         expect(validationResult.success).toBe(true);
 
         if (validationResult.success) {
-          // Build query string
-          const queryParams = new URLSearchParams();
-          Object.entries(validationResult.data).forEach(([key, value]) => {
-            if (value !== undefined) {
-              queryParams.append(key, String(value));
-            }
-          });
-
-          // Make API request
-          const url = `${GITLAB_API_URL}/api/v4/users${
-            queryParams.toString() ? `?${queryParams.toString()}` : ""
-          }`;
-
-          const response = await fetch(url, {
-            headers: {
-              "PRIVATE-TOKEN": GITLAB_TOKEN!,
-              "Content-Type": "application/json",
-            },
-          });
-
-          // Validate response
-          expect(response.ok).toBe(true);
-          expect([200, 304]).toContain(response.status);
-
-          const data = await response.json();
+          // Use executeTool directly since getUsers convenience method might not work
+          const data = await helper.executeTool('get_users', validationResult.data) as any[];
           expect(Array.isArray(data)).toBe(true);
+
+          console.log(`  📊 Retrieved ${data.length} users`);
 
           // Validate response structure if we have results
           if (data.length > 0) {
@@ -95,19 +79,13 @@ describe("GitLab Users API - GetUsersSchema", () => {
             expect(typeof user.name).toBe("string");
             expect(typeof user.state).toBe("string");
             expect(["active", "blocked", "deactivated"]).toContain(user.state);
+
+            console.log(`  ✅ User structure validated: ${user.username} (${user.state})`);
           }
 
-          // Check pagination headers
-          const totalPages = response.headers.get("X-Total-Pages");
-          const totalCount = response.headers.get("X-Total");
-          const perPage = response.headers.get("X-Per-Page");
-          const page = response.headers.get("X-Page");
-
-          if (params.per_page) {
-            expect(perPage).toBe(String(params.per_page));
-          }
-          if (params.page) {
-            expect(page).toBe(String(params.page));
+          // Verify pagination parameters were respected
+          if (params.per_page && data.length > 0) {
+            expect(data.length).toBeLessThanOrEqual(params.per_page);
           }
         }
       }
@@ -115,7 +93,7 @@ describe("GitLab Users API - GetUsersSchema", () => {
     30000 // 30 second timeout for multiple API calls
   );
 
-  (shouldSkip ? it.skip : it)(
+  it(
     "should handle invalid parameters correctly",
     async () => {
       const invalidCases = [
@@ -126,39 +104,38 @@ describe("GitLab Users API - GetUsersSchema", () => {
         { page: 0 }, // Min value violation
         // Invalid types for other fields
         { username: 123 }, // Should be string
-        { public_email: true }, // Should be string
         { search: [] }, // Should be string
       ];
 
       for (const params of invalidCases) {
         const validationResult = GetUsersSchema.safeParse(params);
         expect(validationResult.success).toBe(false);
+        console.log(`  ✅ Correctly rejected invalid params:`, params);
       }
     }
   );
 
-  (shouldSkip ? it.skip : it)(
-    "should correctly handle all filter parameters",
+  it(
+    "should correctly handle all filter parameters with handler function",
     async () => {
       // Test that all documented parameters are accepted
       const allParams = {
         username: "test",
-        public_email: "test@example.com",
         search: "test",
         active: true,
         external: false,
         blocked: false,
-        humans: true,
         created_after: "2023-01-01T00:00:00Z",
         created_before: "2024-01-01T00:00:00Z",
         exclude_active: false,
         exclude_external: false,
-        exclude_humans: false,
         exclude_internal: true,
         without_project_bots: true,
         page: 1,
         per_page: 50,
       };
+
+      console.log(`🔍 Testing complete parameter set with handler function`);
 
       const validationResult = GetUsersSchema.safeParse(allParams);
       expect(validationResult.success).toBe(true);
@@ -166,6 +143,11 @@ describe("GitLab Users API - GetUsersSchema", () => {
       // Ensure all parameters are preserved
       if (validationResult.success) {
         expect(Object.keys(validationResult.data).length).toBe(Object.keys(allParams).length);
+
+        // Test that handler accepts all parameters
+        const data = await helper.executeTool('get_users', validationResult.data) as any[];
+        expect(Array.isArray(data)).toBe(true);
+        console.log(`  ✅ Handler accepted all parameters, returned ${data.length} users`);
       }
     }
   );

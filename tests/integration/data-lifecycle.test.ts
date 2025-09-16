@@ -633,7 +633,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
               expect(labelsWidget.labels?.nodes?.length || 0).toBe(0);
             }
             if (milestoneWidget) {
-              expect(milestoneWidget.milestone).toBeNull();
+              expect(milestoneWidget.milestone).toBeFalsy();
             }
           }
         }

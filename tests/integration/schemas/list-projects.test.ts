@@ -1,23 +1,25 @@
 /**
  * List Projects Schema Integration Tests
- * Tests ListProjectsSchema against real GitLab 18.3 API responses
+ * Tests ListProjectsSchema against real GitLab 18.3 API responses using handler functions
  */
 
 import { ListProjectsSchema } from '../../../src/entities/core/schema-readonly';
 import { GitLabProjectSchema } from '../../../src/entities/shared';
-import { z } from 'zod';
+import { IntegrationTestHelper } from '../helpers/registry-helper';
 
 describe('ListProjectsSchema - GitLab 18.3 Integration', () => {
-  const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
-  const GITLAB_API_URL = process.env.GITLAB_API_URL;
+  let helper: IntegrationTestHelper;
 
-  beforeAll(() => {
+  beforeAll(async () => {
+    const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
     if (!GITLAB_TOKEN) {
       throw new Error('GITLAB_TOKEN environment variable is required');
     }
-    if (!GITLAB_API_URL) {
-      throw new Error('GITLAB_API_URL environment variable is required');
-    }
+
+    // Initialize integration test helper
+    helper = new IntegrationTestHelper();
+    await helper.initialize();
+    console.log('✅ Integration test helper initialized for list projects testing');
   });
 
   it('should validate basic list projects parameters', async () => {
@@ -43,62 +45,38 @@ describe('ListProjectsSchema - GitLab 18.3 Integration', () => {
     console.log('✅ ListProjectsSchema validates basic parameters correctly');
   });
 
-  it('should make successful API request with validated parameters', async () => {
+  it('should make successful API request with validated parameters using handler function', async () => {
     const params = {
       per_page: 3,
       order_by: 'last_activity_at' as const,
       sort: 'desc' as const,
     };
 
+    console.log('🔍 ListProjectsSchema - Testing with handler function');
+
     // Validate parameters first
     const paramResult = ListProjectsSchema.safeParse(params);
     expect(paramResult.success).toBe(true);
 
-    // Build query string from validated parameters
-    const queryParams = new URLSearchParams();
     if (paramResult.success) {
-      Object.entries(paramResult.data).forEach(([key, value]) => {
-        if (value !== undefined) {
-          queryParams.set(key, String(value));
+      // Use handler function instead of direct API call
+      const projects = await helper.executeTool('list_projects', paramResult.data) as any[];
+      console.log(`📋 Retrieved ${projects.length} projects via handler`);
+      expect(Array.isArray(projects)).toBe(true);
+
+      // Validate that each project matches our GitLabProjectSchema
+      for (const project of projects.slice(0, 2)) { // Test first 2 projects
+        const projectResult = GitLabProjectSchema.safeParse(project);
+        if (!projectResult.success) {
+          console.error('Project validation failed:', projectResult.error);
+          throw new Error(`Project schema validation failed for project ${project.id}`);
         }
-      });
-    }
-
-    console.log('🔍 ListProjectsSchema - Testing against real GitLab API');
-
-    // Make API request (with correct API prefix)
-    const apiUrl = `${GITLAB_API_URL}/api/v4/projects?${queryParams}`;
-    console.log(`🔍 API URL: ${apiUrl}`);
-
-    const response = await fetch(apiUrl, {
-      headers: {
-        'Authorization': `Bearer ${GITLAB_TOKEN}`,
-      },
-    });
-
-    console.log(`📡 Response status: ${response.status} ${response.statusText}`);
-
-    if (!response.ok) {
-      const errorBody = await response.text();
-      console.error('❌ API Error Response:', errorBody.substring(0, 500));
-      throw new Error(`GitLab API request failed: ${response.status} ${response.statusText}`);
-    }
-
-    const projects = await response.json();
-    console.log(`📋 Retrieved ${projects.length} projects`);
-    expect(Array.isArray(projects)).toBe(true);
-
-    // Validate that each project matches our GitLabProjectSchema
-    for (const project of projects.slice(0, 2)) { // Test first 2 projects
-      const projectResult = GitLabProjectSchema.safeParse(project);
-      if (!projectResult.success) {
-        console.error('Project validation failed:', projectResult.error);
-        throw new Error(`Project schema validation failed for project ${project.id}`);
+        expect(projectResult.success).toBe(true);
+        console.log(`  ✅ Project validated: ${project.name} (ID: ${project.id})`);
       }
-      expect(projectResult.success).toBe(true);
-    }
 
-    console.log(`✅ ListProjectsSchema API request successful, validated ${projects.length} projects`);
+      console.log(`✅ ListProjectsSchema API request successful, validated ${projects.length} projects`);
+    }
   }, 15000);
 
   it('should validate advanced filtering parameters', async () => {
@@ -162,40 +140,24 @@ describe('ListProjectsSchema - GitLab 18.3 Integration', () => {
     console.log('✅ ListProjectsSchema handles optional parameters correctly');
   });
 
-  it('should validate search functionality', async () => {
+  it('should validate search functionality using handler function', async () => {
     const searchParams = {
       search: 'test',
       search_namespaces: true,
       per_page: 5,
     };
 
+    console.log('🔍 Testing search functionality with handler');
+
     const result = ListProjectsSchema.safeParse(searchParams);
     expect(result.success).toBe(true);
 
-    // Try actual search if we have permissions
-    try {
-      const queryParams = new URLSearchParams();
-      if (result.success) {
-        Object.entries(result.data).forEach(([key, value]) => {
-          if (value !== undefined) {
-            queryParams.set(key, String(value));
-          }
-        });
-      }
-
-      const response = await fetch(`${GITLAB_API_URL}/projects?${queryParams}`, {
-        headers: {
-          'Authorization': `Bearer ${GITLAB_TOKEN}`,
-        },
-      });
-
-      expect(response.ok).toBe(true);
-      const projects = await response.json();
+    if (result.success) {
+      // Use handler function for search instead of direct API call
+      const projects = await helper.executeTool('list_projects', result.data) as any[];
       expect(Array.isArray(projects)).toBe(true);
 
-      console.log(`✅ Search functionality works, found ${projects.length} projects matching 'test'`);
-    } catch (error) {
-      console.log('⚠️  Search test skipped due to permissions or network issues');
+      console.log(`✅ Search via handler works, found ${projects.length} projects matching 'test'`);
     }
   }, 15000);
 });

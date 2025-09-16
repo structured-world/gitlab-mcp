@@ -24,7 +24,9 @@ export const WorkItemStateEventSchema = z
 
 // Read-only schemas
 export const ListWorkItemsSchema = z.object({
-  groupPath: z.string().describe('Group path for listing work items (epics only exist at group level)'),
+  groupPath: z
+    .string()
+    .describe('Group path for listing work items (epics only exist at group level)'),
   types: z.array(WorkItemTypeEnumSchema).optional().describe('Filter by work item types'),
   first: z.number().optional().default(20).describe('Number of items to fetch'),
   after: z.string().optional().describe('Cursor for pagination'),
@@ -35,7 +37,9 @@ export const GetWorkItemSchema = z.object({
 });
 
 export const GetWorkItemTypesSchema = z.object({
-  namespacePath: z.string().describe('Namespace path (group or project) to get work item types for'),
+  namespacePath: z
+    .string()
+    .describe('Namespace path (group or project) to get work item types for'),
 });
 
 // Type exports

@@ -1,3 +1,15 @@
+# [3.1.0](https://github.com/structured-world/gitlab-mcp/compare/v3.0.0...v3.1.0) (2025-09-16)
+
+
+### Bug Fixes
+
+* improve error handling and logging consistency ([96d962e](https://github.com/structured-world/gitlab-mcp/commit/96d962e668147318a26bdc8bd133c5f94d56580a))
+
+
+### Features
+
+* enhance GitLab API schema compliance and validation ([55f90b3](https://github.com/structured-world/gitlab-mcp/commit/55f90b3339e6c5cc158f4cb3d24355ceab8edb0f))
+
 # [3.0.0](https://github.com/structured-world/gitlab-mcp/compare/v2.8.0...v3.0.0) (2025-09-16)
 
 

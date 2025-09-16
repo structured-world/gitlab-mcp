@@ -24,14 +24,14 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       expect(testData.project?.path_with_namespace).toBeDefined();
 
       const validParams = {
-        groupPath: testData.project!.path_with_namespace,
+        namespacePath: testData.project!.path_with_namespace,
       };
 
       const result = GetWorkItemTypesSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
       if (result.success) {
-        expect(result.data.groupPath).toBe(testData.project!.path_with_namespace);
+        expect(result.data.namespacePath).toBe(testData.project!.path_with_namespace);
       }
 
       console.log('✅ GetWorkItemTypesSchema validates parameters correctly');

@@ -367,7 +367,7 @@ describe('Workitems Registry', () => {
         mockClient.request.mockResolvedValueOnce({ group: null });
 
         const tool = workitemsToolRegistry.get('list_work_items');
-        const result = await tool?.handler({ namespacePath: 'empty-group' });
+        const result = await tool?.handler({ groupPath: 'empty-group' });
 
         expect(result).toEqual([]);
       });
@@ -476,7 +476,7 @@ describe('Workitems Registry', () => {
 
         const tool = workitemsToolRegistry.get('create_work_item');
         const result = await tool?.handler({
-          groupPath: 'test-group',
+          namespacePath: 'test-group',
           workItemType: 'EPIC',
           title: 'New Epic',
         });
@@ -508,7 +508,7 @@ describe('Workitems Registry', () => {
 
         const tool = workitemsToolRegistry.get('create_work_item');
         await tool?.handler({
-          groupPath: 'test-group',
+          namespacePath: 'test-group',
           workItemType: 'EPIC',
           title: 'Epic with Description',
           description: 'Detailed description',
@@ -551,8 +551,10 @@ describe('Workitems Registry', () => {
         expect(mockClient.request).toHaveBeenCalledWith(
           expect.any(Object),
           expect.objectContaining({
-            id: 'gid://gitlab/WorkItem/123',
-            title: 'Updated Epic',
+            input: expect.objectContaining({
+              id: 'gid://gitlab/WorkItem/123',
+              title: 'Updated Epic',
+            }),
           })
         );
         expect(result).toEqual(updatedWorkItem);

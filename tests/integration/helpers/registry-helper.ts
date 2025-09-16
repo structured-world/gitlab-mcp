@@ -168,7 +168,7 @@ export class IntegrationTestHelper {
   async getWorkItemTypes(args: {
     groupPath: string;
   }): Promise<unknown> {
-    return this.executeTool('get_work_item_types', args);
+    return this.executeTool('get_work_item_types', { namespacePath: args.groupPath });
   }
 
   // ========================================

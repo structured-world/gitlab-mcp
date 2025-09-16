@@ -1,16 +1,34 @@
 import { milestonesToolRegistry, getMilestonesReadOnlyToolNames, getMilestonesToolDefinitions, getFilteredMilestonesTools } from '../../../../src/entities/milestones/registry';
+import { enhancedFetch } from '../../../../src/utils/fetch';
 
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
-  enhancedFetch: jest.fn().mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: jest.fn().mockResolvedValue([
-      { id: 1, title: 'Sprint 1', state: 'active' },
-      { id: 2, title: 'Sprint 2', state: 'closed' }
-    ])
-  })
+  enhancedFetch: jest.fn()
 }));
+
+const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
+
+// Mock environment variables
+const originalEnv = process.env;
+
+beforeAll(() => {
+  process.env = {
+    ...originalEnv,
+    GITLAB_API_URL: 'https://gitlab.example.com',
+    GITLAB_TOKEN: 'test-token-12345'
+  };
+});
+
+afterAll(() => {
+  process.env = originalEnv;
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.resetAllMocks();
+  // Ensure mockEnhancedFetch is properly reset
+  mockEnhancedFetch.mockReset();
+});
 
 describe('Milestones Registry', () => {
   describe('Registry Structure', () => {
@@ -347,6 +365,409 @@ describe('Milestones Registry', () => {
       const promoteTool = milestonesToolRegistry.get('promote_milestone');
       expect(promoteTool).toBeDefined();
       expect(promoteTool!.description).toContain('Promote a project milestone to a group milestone');
+    });
+  });
+
+  describe('Handler Functions', () => {
+    const mockResponse = (data: any, ok = true, status = 200) => ({
+      ok,
+      status,
+      statusText: ok ? 'OK' : 'Error',
+      json: jest.fn().mockResolvedValue(data)
+    });
+
+    describe('list_milestones handler', () => {
+      it('should list project milestones', async () => {
+        const mockMilestones = [
+          { id: 1, title: 'Sprint 1', state: 'active', project_id: 123 },
+          { id: 2, title: 'Sprint 2', state: 'closed', project_id: 123 }
+        ];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestones) as any);
+
+        const tool = milestonesToolRegistry.get('list_milestones')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          state: 'active'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('https://gitlab.example.com/api/v4/projects/test%2Fproject/milestones'),
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockMilestones);
+      });
+
+      it('should list group milestones', async () => {
+        const mockMilestones = [{ id: 1, title: 'Group Milestone', state: 'active', group_id: 456 }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestones) as any);
+
+        const tool = milestonesToolRegistry.get('list_milestones')!;
+        await tool.handler({
+          group_id: 'test-group',
+          state: 'closed',
+          per_page: 50
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const url = call[0] as string;
+        expect(url).toContain('api/v4/groups/test-group/milestones');
+        expect(url).toContain('state=closed');
+        expect(url).toContain('per_page=50');
+      });
+
+      it('should handle API errors', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 404) as any);
+
+        const tool = milestonesToolRegistry.get('list_milestones')!;
+
+        await expect(tool.handler({
+          project_id: 'nonexistent/project'
+        })).rejects.toThrow('GitLab API error: 404 Error');
+      });
+    });
+
+    describe('get_milestone handler', () => {
+      it('should get project milestone by ID', async () => {
+        const mockMilestone = {
+          id: 1,
+          iid: 1,
+          title: 'Sprint 1',
+          description: 'First sprint milestone',
+          state: 'active',
+          project_id: 123
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestone) as any);
+
+        const tool = milestonesToolRegistry.get('get_milestone')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          milestone_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/milestones/1',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockMilestone);
+      });
+
+      it('should get group milestone by ID', async () => {
+        const mockMilestone = { id: 2, title: 'Group Milestone', group_id: 456 };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestone) as any);
+
+        const tool = milestonesToolRegistry.get('get_milestone')!;
+        await tool.handler({
+          group_id: 'test-group',
+          milestone_id: 2
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/milestones/2',
+          expect.any(Object)
+        );
+      });
+    });
+
+    describe('get_milestone_issue handler', () => {
+      it('should get issues for project milestone', async () => {
+        const mockIssues = [
+          { id: 1, iid: 1, title: 'Issue 1', milestone: { id: 1 } },
+          { id: 2, iid: 2, title: 'Issue 2', milestone: { id: 1 } }
+        ];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockIssues) as any);
+
+        const tool = milestonesToolRegistry.get('get_milestone_issue')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          milestone_id: 1,
+          state: 'opened'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('https://gitlab.example.com/api/v4/projects/test%2Fproject/milestones/1/issues'),
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockIssues);
+      });
+
+      it('should get issues for group milestone', async () => {
+        const mockIssues = [{ id: 1, title: 'Group Issue' }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockIssues) as any);
+
+        const tool = milestonesToolRegistry.get('get_milestone_issue')!;
+        await tool.handler({
+          group_id: 'test-group',
+          milestone_id: 1,
+          per_page: 20
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const url = call[0] as string;
+        expect(url).toContain('api/v4/groups/test-group/milestones/1/issues');
+      });
+    });
+
+    describe('get_milestone_merge_requests handler', () => {
+      it('should get merge requests for milestone', async () => {
+        const mockMRs = [
+          { id: 1, iid: 1, title: 'MR 1', milestone: { id: 1 } },
+          { id: 2, iid: 2, title: 'MR 2', milestone: { id: 1 } }
+        ];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMRs) as any);
+
+        const tool = milestonesToolRegistry.get('get_milestone_merge_requests')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          milestone_id: 1,
+          state: 'merged'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('https://gitlab.example.com/api/v4/projects/test%2Fproject/milestones/1/merge_requests'),
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockMRs);
+      });
+    });
+
+    describe('get_milestone_burndown_events handler', () => {
+      it('should get burndown events for milestone', async () => {
+        const mockEvents = [
+          { created_at: '2024-01-01T00:00:00Z', weight: 5, action: 'add' },
+          { created_at: '2024-01-02T00:00:00Z', weight: 3, action: 'remove' }
+        ];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockEvents) as any);
+
+        const tool = milestonesToolRegistry.get('get_milestone_burndown_events')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          milestone_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/milestones/1/burndown_events',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockEvents);
+      });
+    });
+
+    describe('create_milestone handler', () => {
+      it('should create project milestone', async () => {
+        const mockMilestone = {
+          id: 3,
+          iid: 3,
+          title: 'New Sprint',
+          description: 'A new sprint milestone',
+          state: 'active'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestone) as any);
+
+        const tool = milestonesToolRegistry.get('create_milestone')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          title: 'New Sprint',
+          description: 'A new sprint milestone',
+          due_date: '2024-12-31',
+          start_date: '2024-12-01'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/milestones',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/json'
+            },
+            body: expect.stringContaining('"title":"New Sprint"')
+          }
+        );
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const body = JSON.parse(call[1]?.body as string);
+        expect(body).toEqual({
+          title: 'New Sprint',
+          description: 'A new sprint milestone',
+          due_date: '2024-12-31',
+          start_date: '2024-12-01'
+        });
+        expect(result).toEqual(mockMilestone);
+      });
+
+      it('should create group milestone', async () => {
+        const mockMilestone = { id: 4, title: 'Group Milestone', group_id: 456 };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestone) as any);
+
+        const tool = milestonesToolRegistry.get('create_milestone')!;
+        await tool.handler({
+          group_id: 'test-group',
+          title: 'Group Milestone'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/milestones',
+          expect.any(Object)
+        );
+      });
+    });
+
+    describe('edit_milestone handler', () => {
+      it('should edit project milestone', async () => {
+        const mockMilestone = {
+          id: 1,
+          title: 'Updated Sprint',
+          description: 'Updated description',
+          state: 'closed'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestone) as any);
+
+        const tool = milestonesToolRegistry.get('edit_milestone')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          milestone_id: 1,
+          title: 'Updated Sprint',
+          description: 'Updated description',
+          state_event: 'close'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/milestones/1',
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/json'
+            },
+            body: expect.stringContaining('"title":"Updated Sprint"')
+          }
+        );
+        expect(result).toEqual(mockMilestone);
+      });
+    });
+
+    describe('delete_milestone handler', () => {
+      it('should delete project milestone', async () => {
+        const mockResult = { message: 'Milestone deleted' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockResult) as any);
+
+        const tool = milestonesToolRegistry.get('delete_milestone')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          milestone_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/milestones/1',
+          {
+            method: 'DELETE',
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockResult);
+      });
+
+      it('should delete group milestone', async () => {
+        const mockResult = { message: 'Group milestone deleted' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockResult) as any);
+
+        const tool = milestonesToolRegistry.get('delete_milestone')!;
+        await tool.handler({
+          group_id: 'test-group',
+          milestone_id: 2
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/milestones/2',
+          expect.any(Object)
+        );
+      });
+    });
+
+    describe('promote_milestone handler', () => {
+      it('should promote project milestone to group', async () => {
+        const mockMilestone = {
+          id: 1,
+          title: 'Promoted Milestone',
+          group_id: 456,
+          project_id: null
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestone) as any);
+
+        const tool = milestonesToolRegistry.get('promote_milestone')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          milestone_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/milestones/1/promote',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockMilestone);
+      });
+
+      it('should require project_id for promotion', async () => {
+        const tool = milestonesToolRegistry.get('promote_milestone')!;
+
+        // Test with empty project_id which should fail schema validation
+        await expect(tool.handler({
+          project_id: '',
+          milestone_id: 1
+        })).rejects.toThrow('Exactly one of project_id or group_id must be provided');
+      });
+    });
+
+    describe('Error handling', () => {
+      it('should handle validation errors', async () => {
+        const tool = milestonesToolRegistry.get('get_milestone')!;
+
+        // Test with invalid input that should fail Zod validation
+        await expect(tool.handler({
+          project_id: 123, // Should be string
+          milestone_id: 'not-a-number'
+        })).rejects.toThrow();
+      });
+
+      it('should handle API errors with proper error messages', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 403) as any);
+
+        const tool = milestonesToolRegistry.get('list_milestones')!;
+
+        await expect(tool.handler({
+          project_id: 'private/project'
+        })).rejects.toThrow('GitLab API error: 403 Error');
+      });
+
+      it('should handle network errors', async () => {
+        mockEnhancedFetch.mockRejectedValueOnce(new Error('Network timeout'));
+
+        const tool = milestonesToolRegistry.get('create_milestone')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project',
+          title: 'Test Milestone'
+        })).rejects.toThrow('Network timeout');
+      });
     });
   });
 });

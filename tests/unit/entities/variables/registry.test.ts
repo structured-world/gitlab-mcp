@@ -1,9 +1,34 @@
-import { variablesToolRegistry, getVariablesReadOnlyToolNames } from '../../../../src/entities/variables/registry';
+import { variablesToolRegistry, getVariablesReadOnlyToolNames, getVariablesToolDefinitions, getFilteredVariablesTools } from '../../../../src/entities/variables/registry';
+import { enhancedFetch } from '../../../../src/utils/fetch';
 
-// Mock the fetch function to avoid actual API calls
+// Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
-  enhancedFetch: jest.fn(),
+  enhancedFetch: jest.fn()
 }));
+
+const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
+
+// Mock environment variables
+const originalEnv = process.env;
+
+beforeAll(() => {
+  process.env = {
+    ...originalEnv,
+    GITLAB_API_URL: 'https://gitlab.example.com',
+    GITLAB_TOKEN: 'test-token-12345'
+  };
+});
+
+afterAll(() => {
+  process.env = originalEnv;
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.resetAllMocks();
+  // Reset the mock for proper isolation
+  mockEnhancedFetch.mockReset();
+});
 
 describe('Variables Registry', () => {
   describe('Registry Structure', () => {
@@ -180,6 +205,422 @@ describe('Variables Registry', () => {
         const tool = variablesToolRegistry.get(toolName);
         expect(tool?.description.toLowerCase()).toMatch(/ci\/cd|variable/);
       }
+    });
+  });
+
+  describe('Helper Functions', () => {
+    describe('getVariablesToolDefinitions', () => {
+      it('should return all tool definitions', () => {
+        const definitions = getVariablesToolDefinitions();
+        expect(definitions).toHaveLength(5);
+        expect(definitions.every(def => def.name && def.description && def.inputSchema && def.handler)).toBe(true);
+      });
+    });
+
+    describe('getFilteredVariablesTools', () => {
+      it('should return all tools when readOnlyMode is false', () => {
+        const tools = getFilteredVariablesTools(false);
+        expect(tools).toHaveLength(5);
+      });
+
+      it('should return only read-only tools when readOnlyMode is true', () => {
+        const tools = getFilteredVariablesTools(true);
+        expect(tools).toHaveLength(2);
+        const toolNames = tools.map(t => t.name);
+        expect(toolNames).toContain('list_variables');
+        expect(toolNames).toContain('get_variable');
+        expect(toolNames).not.toContain('create_variable');
+      });
+    });
+  });
+
+  describe('Handler Functions', () => {
+    const mockResponse = (data: any, ok = true, status = 200) => ({
+      ok,
+      status,
+      statusText: ok ? 'OK' : 'Error',
+      json: jest.fn().mockResolvedValue(data)
+    });
+
+    describe('list_variables handler', () => {
+      it('should list project variables', async () => {
+        const mockVariables = [
+          { key: 'API_KEY', value: '[hidden]', protected: true, masked: true, environment_scope: '*' },
+          { key: 'DB_PASSWORD', value: '[hidden]', protected: true, masked: true, environment_scope: 'production' }
+        ];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockVariables) as any);
+
+        const tool = variablesToolRegistry.get('list_variables')!;
+        const result = await tool.handler({
+          project_id: 'test/project'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/variables',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockVariables);
+      });
+
+      it('should list group variables', async () => {
+        const mockVariables = [
+          { key: 'GROUP_TOKEN', value: '[hidden]', protected: false, masked: true, environment_scope: '*' }
+        ];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockVariables) as any);
+
+        const tool = variablesToolRegistry.get('list_variables')!;
+        const result = await tool.handler({
+          group_id: 'test-group'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/variables',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockVariables);
+      });
+
+      it('should handle API errors', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 403) as any);
+
+        const tool = variablesToolRegistry.get('list_variables')!;
+
+        await expect(tool.handler({
+          project_id: 'private/project'
+        })).rejects.toThrow('GitLab API error: 403 Error');
+      });
+    });
+
+    describe('get_variable handler', () => {
+      it('should get project variable by key', async () => {
+        const mockVariable = {
+          key: 'API_KEY',
+          value: '[hidden]',
+          variable_type: 'env_var',
+          protected: true,
+          masked: true,
+          environment_scope: '*'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockVariable) as any);
+
+        const tool = variablesToolRegistry.get('get_variable')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          key: 'API_KEY'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/variables/API_KEY?',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockVariable);
+      });
+
+      it('should get group variable with environment scope filter', async () => {
+        const mockVariable = {
+          key: 'DB_URL',
+          value: '[hidden]',
+          environment_scope: 'production'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockVariable) as any);
+
+        const tool = variablesToolRegistry.get('get_variable')!;
+        const result = await tool.handler({
+          group_id: 'test-group',
+          key: 'DB_URL',
+          filter: {
+            environment_scope: 'production'
+          }
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/variables/DB_URL?filter%5Benvironment_scope%5D=production',
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockVariable);
+      });
+
+      it('should handle variable not found', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 404) as any);
+
+        const tool = variablesToolRegistry.get('get_variable')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project',
+          key: 'NONEXISTENT_KEY'
+        })).rejects.toThrow('GitLab API error: 404 Error');
+      });
+    });
+
+    describe('create_variable handler', () => {
+      it('should create project variable with basic settings', async () => {
+        const mockVariable = {
+          key: 'NEW_API_KEY',
+          value: 'secret123',
+          variable_type: 'env_var',
+          protected: false,
+          masked: false,
+          environment_scope: '*'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockVariable) as any);
+
+        const tool = variablesToolRegistry.get('create_variable')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          key: 'NEW_API_KEY',
+          value: 'secret123'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/variables',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/json'
+            },
+            body: expect.stringContaining('"key":"NEW_API_KEY"')
+          }
+        );
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const body = JSON.parse(call[1]?.body as string);
+        expect(body.key).toBe('NEW_API_KEY');
+        expect(body.value).toBe('secret123');
+        expect(result).toEqual(mockVariable);
+      });
+
+      it('should create group variable with advanced settings', async () => {
+        const mockVariable = {
+          key: 'DEPLOY_KEY',
+          value: '[hidden]',
+          variable_type: 'file',
+          protected: true,
+          masked: true,
+          environment_scope: 'production'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockVariable) as any);
+
+        const tool = variablesToolRegistry.get('create_variable')!;
+        const result = await tool.handler({
+          group_id: 'test-group',
+          key: 'DEPLOY_KEY',
+          value: 'ssh-rsa AAAAB3NzaC1yc2E...',
+          variable_type: 'file',
+          protected: true,
+          masked: true,
+          environment_scope: 'production'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/variables',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/json'
+            },
+            body: expect.stringContaining('"protected":true')
+          }
+        );
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const body = JSON.parse(call[1]?.body as string);
+        expect(body.variable_type).toBe('file');
+        expect(body.protected).toBe(true);
+        expect(body.masked).toBe(true);
+        expect(body.environment_scope).toBe('production');
+        expect(result).toEqual(mockVariable);
+      });
+
+      it('should handle variable creation conflicts', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 400) as any);
+
+        const tool = variablesToolRegistry.get('create_variable')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project',
+          key: 'EXISTING_KEY',
+          value: 'value'
+        })).rejects.toThrow('GitLab API error: 400 Error');
+      });
+    });
+
+    describe('update_variable handler', () => {
+      it('should update project variable', async () => {
+        const mockVariable = {
+          key: 'API_KEY',
+          value: '[hidden]',
+          variable_type: 'env_var',
+          protected: true,
+          masked: true,
+          environment_scope: '*'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockVariable) as any);
+
+        const tool = variablesToolRegistry.get('update_variable')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          key: 'API_KEY',
+          value: 'new-secret-value',
+          protected: true,
+          masked: true
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/variables/API_KEY?',
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/json'
+            },
+            body: expect.stringContaining('"value":"new-secret-value"')
+          }
+        );
+        expect(result).toEqual(mockVariable);
+      });
+
+      it('should update group variable with environment scope filter', async () => {
+        const mockVariable = {
+          key: 'DB_PASSWORD',
+          value: '[hidden]',
+          environment_scope: 'staging'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockVariable) as any);
+
+        const tool = variablesToolRegistry.get('update_variable')!;
+        await tool.handler({
+          group_id: 'test-group',
+          key: 'DB_PASSWORD',
+          value: 'new-password',
+          filter: {
+            environment_scope: 'staging'
+          }
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/variables/DB_PASSWORD?filter%5Benvironment_scope%5D=staging',
+          expect.any(Object)
+        );
+      });
+
+      it('should handle variable update errors', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 404) as any);
+
+        const tool = variablesToolRegistry.get('update_variable')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project',
+          key: 'NONEXISTENT_KEY',
+          value: 'value'
+        })).rejects.toThrow('GitLab API error: 404 Error');
+      });
+    });
+
+    describe('delete_variable handler', () => {
+      it('should delete project variable', async () => {
+        const mockResult = { message: 'Variable deleted successfully' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockResult) as any);
+
+        const tool = variablesToolRegistry.get('delete_variable')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          key: 'OLD_API_KEY'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/variables/OLD_API_KEY?',
+          {
+            method: 'DELETE',
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockResult);
+      });
+
+      it('should delete group variable with environment scope', async () => {
+        const mockResult = { message: 'Variable deleted' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockResult) as any);
+
+        const tool = variablesToolRegistry.get('delete_variable')!;
+        await tool.handler({
+          group_id: 'test-group',
+          key: 'TEMP_TOKEN',
+          filter: {
+            environment_scope: 'development'
+          }
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/variables/TEMP_TOKEN?filter%5Benvironment_scope%5D=development',
+          {
+            method: 'DELETE',
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+      });
+
+      it('should handle variable deletion errors', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 404) as any);
+
+        const tool = variablesToolRegistry.get('delete_variable')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project',
+          key: 'NONEXISTENT_KEY'
+        })).rejects.toThrow('GitLab API error: 404 Error');
+      });
+    });
+
+    describe('Error handling', () => {
+      it('should handle validation errors', async () => {
+        const tool = variablesToolRegistry.get('get_variable')!;
+
+        // Test with invalid input that should fail Zod validation
+        await expect(tool.handler({
+          project_id: 123, // Should be string
+          key: null // Should be string
+        })).rejects.toThrow();
+      });
+
+      it('should handle API errors with proper error messages', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 500) as any);
+
+        const tool = variablesToolRegistry.get('list_variables')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project'
+        })).rejects.toThrow('GitLab API error: 500 Error');
+      });
+
+      it('should handle network errors', async () => {
+        mockEnhancedFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        const tool = variablesToolRegistry.get('create_variable')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project',
+          key: 'TEST_KEY',
+          value: 'test-value'
+        })).rejects.toThrow('Network error');
+      });
     });
   });
 });

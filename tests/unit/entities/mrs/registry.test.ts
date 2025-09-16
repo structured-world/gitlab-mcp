@@ -1,16 +1,34 @@
 import { mrsToolRegistry, getMrsReadOnlyToolNames, getMrsToolDefinitions, getFilteredMrsTools } from '../../../../src/entities/mrs/registry';
+import { enhancedFetch } from '../../../../src/utils/fetch';
 
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
-  enhancedFetch: jest.fn().mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: jest.fn().mockResolvedValue([
-      { id: 1, iid: 1, title: 'Feature: Add new functionality', state: 'opened' },
-      { id: 2, iid: 2, title: 'Fix: Resolve bug in component', state: 'merged' }
-    ])
-  })
+  enhancedFetch: jest.fn()
 }));
+
+const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
+
+// Mock environment variables
+const originalEnv = process.env;
+
+beforeAll(() => {
+  process.env = {
+    ...originalEnv,
+    GITLAB_API_URL: 'https://gitlab.example.com',
+    GITLAB_TOKEN: 'test-token-12345'
+  };
+});
+
+afterAll(() => {
+  process.env = originalEnv;
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.resetAllMocks();
+  // Ensure mockEnhancedFetch is properly reset
+  mockEnhancedFetch.mockReset();
+});
 
 describe('MRS Registry', () => {
   describe('Registry Structure', () => {
@@ -377,6 +395,624 @@ describe('MRS Registry', () => {
       expect(mrsToolRegistry.has('create_merge_request_note')).toBe(true);
       expect(mrsToolRegistry.has('update_merge_request_note')).toBe(true);
       expect(mrsToolRegistry.has('create_merge_request_thread')).toBe(true);
+    });
+  });
+
+  describe('Handler Functions', () => {
+    const mockResponse = (data: any, ok = true, status = 200) => ({
+      ok,
+      status,
+      statusText: ok ? 'OK' : 'Error',
+      json: jest.fn().mockResolvedValue(data)
+    });
+
+    describe('get_branch_diffs handler', () => {
+      it('should make correct API call for branch comparison', async () => {
+        const mockData = { commits: [], diffs: [] };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockData) as any);
+
+        const tool = mrsToolRegistry.get('get_branch_diffs')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          from: 'main',
+          to: 'feature-branch',
+          straight: true
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/repository/compare?from=main&to=feature-branch&straight=true',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockData);
+      });
+
+      it('should handle API errors', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 404) as any);
+
+        const tool = mrsToolRegistry.get('get_branch_diffs')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project',
+          from: 'main',
+          to: 'nonexistent'
+        })).rejects.toThrow('GitLab API error: 404 Error');
+      });
+
+      it('should handle optional straight parameter', async () => {
+        const mockData = { commits: [], diffs: [] };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockData) as any);
+
+        const tool = mrsToolRegistry.get('get_branch_diffs')!;
+        await tool.handler({
+          project_id: 'test/project',
+          from: 'main',
+          to: 'feature-branch'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/repository/compare?from=main&to=feature-branch&',
+          expect.any(Object)
+        );
+      });
+    });
+
+    describe('get_merge_request handler', () => {
+      it('should get MR by IID', async () => {
+        const mockMR = { id: 1, iid: 1, title: 'Test MR' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMR) as any);
+
+        const tool = mrsToolRegistry.get('get_merge_request')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1',
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockMR);
+      });
+
+      it('should get MR by branch name', async () => {
+        const mockMRs = [{ id: 1, iid: 1, title: 'Test MR', source_branch: 'feature' }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMRs) as any);
+
+        const tool = mrsToolRegistry.get('get_merge_request')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          branch_name: 'feature'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests?source_branch=feature',
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockMRs[0]);
+      });
+
+      it('should throw error when no MR found by branch', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse([]) as any);
+
+        const tool = mrsToolRegistry.get('get_merge_request')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project',
+          branch_name: 'nonexistent'
+        })).rejects.toThrow('No merge request found for branch');
+      });
+
+      it('should require either merge_request_iid or branch_name', async () => {
+        const tool = mrsToolRegistry.get('get_merge_request')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project'
+        })).rejects.toThrow('Either merge_request_iid or branch_name must be provided');
+      });
+    });
+
+    describe('list_merge_requests handler', () => {
+      it('should list MRs for specific project', async () => {
+        const mockMRs = [{ id: 1, iid: 1, title: 'Test MR' }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMRs) as any);
+
+        const tool = mrsToolRegistry.get('list_merge_requests')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          state: 'opened'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests'),
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockMRs);
+      });
+
+      it('should use global endpoint when no project_id', async () => {
+        const mockMRs = [{ id: 1, iid: 1, title: 'Test MR' }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMRs) as any);
+
+        const tool = mrsToolRegistry.get('list_merge_requests')!;
+        await tool.handler({ state: 'opened' });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('https://gitlab.example.com/api/v4/merge_requests'),
+          expect.any(Object)
+        );
+      });
+    });
+
+    describe('create_merge_request handler', () => {
+      it('should create new MR with basic data', async () => {
+        const mockMR = { id: 1, iid: 1, title: 'New MR' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMR) as any);
+
+        const tool = mrsToolRegistry.get('create_merge_request')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          source_branch: 'feature',
+          target_branch: 'main',
+          title: 'New MR'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: expect.stringContaining('source_branch=feature&target_branch=main&title=New+MR')
+          }
+        );
+        expect(result).toEqual(mockMR);
+      });
+
+      it('should handle array parameters', async () => {
+        const mockMR = { id: 1, iid: 1, title: 'New MR' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMR) as any);
+
+        const tool = mrsToolRegistry.get('create_merge_request')!;
+        await tool.handler({
+          project_id: 'test/project',
+          source_branch: 'feature',
+          target_branch: 'main',
+          title: 'New MR',
+          assignee_ids: [1, 2]
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const body = call[1]?.body as string;
+        expect(body).toContain('assignee_ids=1%2C2');
+      });
+    });
+
+    describe('merge_merge_request handler', () => {
+      it('should merge MR with options', async () => {
+        const mockResult = { state: 'merged' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockResult) as any);
+
+        const tool = mrsToolRegistry.get('merge_merge_request')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          merge_commit_message: 'Custom merge message',
+          should_remove_source_branch: true
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/merge',
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: expect.stringContaining('merge_commit_message=Custom+merge+message&should_remove_source_branch=true')
+          }
+        );
+        expect(result).toEqual(mockResult);
+      });
+    });
+
+    describe('draft note handlers', () => {
+      it('should create draft note', async () => {
+        const mockNote = { id: 1, note: 'Draft comment' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockNote) as any);
+
+        const tool = mrsToolRegistry.get('create_draft_note')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          note: 'Draft comment'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/draft_notes',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'note=Draft+comment'
+          }
+        );
+        expect(result).toEqual(mockNote);
+      });
+
+      it('should get draft note', async () => {
+        const mockNote = { id: 1, note: 'Draft comment' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockNote) as any);
+
+        const tool = mrsToolRegistry.get('get_draft_note')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          draft_note_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/draft_notes/1',
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockNote);
+      });
+
+      it('should list draft notes', async () => {
+        const mockNotes = [{ id: 1, note: 'Draft 1' }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockNotes) as any);
+
+        const tool = mrsToolRegistry.get('list_draft_notes')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1
+        });
+
+        expect(result).toEqual(mockNotes);
+      });
+
+      it('should publish draft note', async () => {
+        const mockResult = { success: true };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockResult) as any);
+
+        const tool = mrsToolRegistry.get('publish_draft_note')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          draft_note_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/draft_notes/1/publish',
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockResult);
+      });
+
+      it('should bulk publish draft notes', async () => {
+        const mockResult = { published_count: 3 };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockResult) as any);
+
+        const tool = mrsToolRegistry.get('bulk_publish_draft_notes')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/draft_notes/bulk_publish',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockResult);
+      });
+
+      it('should update draft note', async () => {
+        const mockNote = { id: 1, note: 'Updated draft' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockNote) as any);
+
+        const tool = mrsToolRegistry.get('update_draft_note')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          draft_note_id: 1,
+          note: 'Updated draft'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/draft_notes/1',
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'note=Updated+draft'
+          }
+        );
+        expect(result).toEqual(mockNote);
+      });
+
+      it('should delete draft note', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse({}) as any);
+
+        const tool = mrsToolRegistry.get('delete_draft_note')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          draft_note_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/draft_notes/1',
+          {
+            method: 'DELETE',
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual({ success: true, message: 'Draft note deleted successfully' });
+      });
+    });
+
+    describe('note and discussion handlers', () => {
+      it('should create note for merge request', async () => {
+        const mockNote = { id: 1, body: 'Test comment' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockNote) as any);
+
+        const tool = mrsToolRegistry.get('create_note')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          noteable_type: 'merge_request',
+          noteable_id: 1,
+          body: 'Test comment'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/notes',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'body=Test+comment'
+          }
+        );
+        expect(result).toEqual(mockNote);
+      });
+
+      it('should create note for issue', async () => {
+        const mockNote = { id: 1, body: 'Test comment' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockNote) as any);
+
+        const tool = mrsToolRegistry.get('create_note')!;
+        await tool.handler({
+          project_id: 'test/project',
+          noteable_type: 'issue',
+          noteable_id: 1,
+          body: 'Test comment'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/issues/1/notes',
+          expect.any(Object)
+        );
+      });
+
+      it('should create MR thread', async () => {
+        const mockDiscussion = { id: 'abc123', notes: [] };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockDiscussion) as any);
+
+        const tool = mrsToolRegistry.get('create_merge_request_thread')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          body: 'Thread comment'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/discussions',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'body=Thread+comment'
+          }
+        );
+        expect(result).toEqual(mockDiscussion);
+      });
+
+      it('should create MR note in thread', async () => {
+        const mockNote = { id: 1, body: 'Reply comment' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockNote) as any);
+
+        const tool = mrsToolRegistry.get('create_merge_request_note')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          discussion_id: 'abc123',
+          body: 'Reply comment'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/discussions/abc123/notes',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'body=Reply+comment'
+          }
+        );
+        expect(result).toEqual(mockNote);
+      });
+
+      it('should update MR note', async () => {
+        const mockNote = { id: 1, body: 'Updated comment' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockNote) as any);
+
+        const tool = mrsToolRegistry.get('update_merge_request_note')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          note_id: 1,
+          body: 'Updated comment'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/notes/1',
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: 'body=Updated+comment'
+          }
+        );
+        expect(result).toEqual(mockNote);
+      });
+
+      it('should list MR discussions', async () => {
+        const mockDiscussions = [{ id: 'abc123', notes: [] }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockDiscussions) as any);
+
+        const tool = mrsToolRegistry.get('mr_discussions')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/discussions'),
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockDiscussions);
+      });
+    });
+
+    describe('MR diff handlers', () => {
+      it('should get MR diffs', async () => {
+        const mockDiffs = { changes: [] };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockDiffs) as any);
+
+        const tool = mrsToolRegistry.get('get_merge_request_diffs')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          page: 1,
+          per_page: 20
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/changes?page=1&per_page=20',
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockDiffs);
+      });
+
+      it('should list MR diffs with pagination', async () => {
+        const mockDiffs = [{ diff: 'diff content' }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockDiffs) as any);
+
+        const tool = mrsToolRegistry.get('list_merge_request_diffs')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          page: 2,
+          per_page: 10
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1/diffs?page=2&per_page=10',
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockDiffs);
+      });
+    });
+
+    describe('update_merge_request handler', () => {
+      it('should update MR with all fields', async () => {
+        const mockMR = { id: 1, iid: 1, title: 'Updated MR' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMR) as any);
+
+        const tool = mrsToolRegistry.get('update_merge_request')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1,
+          title: 'Updated MR',
+          description: 'Updated description',
+          target_branch: 'develop',
+          labels: ['bug', 'urgent']
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/merge_requests/1',
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: expect.stringContaining('title=Updated+MR')
+          }
+        );
+        expect(result).toEqual(mockMR);
+      });
+    });
+
+    describe('Error handling', () => {
+      it('should handle validation errors', async () => {
+        const tool = mrsToolRegistry.get('get_merge_request')!;
+
+        // Test with invalid input that should fail Zod validation
+        await expect(tool.handler({
+          project_id: 123, // Should be string
+          merge_request_iid: 'not-a-number'
+        })).rejects.toThrow();
+      });
+
+      it('should handle API errors with proper error messages', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 500) as any);
+
+        const tool = mrsToolRegistry.get('list_merge_requests')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project'
+        })).rejects.toThrow('GitLab API error: 500 Error');
+      });
+
+      it('should handle network errors', async () => {
+        mockEnhancedFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        const tool = mrsToolRegistry.get('get_merge_request')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project',
+          merge_request_iid: 1
+        })).rejects.toThrow('Network error');
+      });
     });
   });
 });

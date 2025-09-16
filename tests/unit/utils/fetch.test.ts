@@ -3,49 +3,42 @@
  * Tests the native fetch-based implementation with GitLab-specific features
  */
 
+// Unmock the fetch module to test the actual implementation
+jest.unmock('../../../src/utils/fetch');
+
+// Mock config values FIRST - before any imports
+jest.mock('../../../src/config', () => ({
+  SKIP_TLS_VERIFY: false,
+  GITLAB_AUTH_COOKIE_PATH: '',
+  GITLAB_CA_CERT_PATH: '',
+  HTTP_PROXY: '',
+  HTTPS_PROXY: '',
+  NODE_TLS_REJECT_UNAUTHORIZED: '',
+  GITLAB_TOKEN: 'test-token'
+}));
+
+// Mock dependencies
+jest.mock('fs');
+jest.mock('https');
+jest.mock('http-proxy-agent');
+jest.mock('https-proxy-agent');
+jest.mock('socks-proxy-agent');
+jest.mock('../../../src/logger');
+
+// Import the actual implementation (not mocked)
+const fetchModule = jest.requireActual('../../../src/utils/fetch');
+const { enhancedFetch, createFetchOptions, DEFAULT_HEADERS } = fetchModule;
+
 describe('Enhanced Fetch Utilities', () => {
-  let enhancedFetch: any;
-  let createFetchOptions: any;
-  let DEFAULT_HEADERS: any;
   let mockFetch: jest.MockedFunction<typeof fetch>;
 
   beforeAll(() => {
-    // Isolate modules to prevent interference from other tests
-    jest.isolateModules(() => {
-      // Mock config values FIRST - before any imports
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token'
-      }));
-
-      // Mock dependencies
-      jest.doMock('fs');
-      jest.doMock('https');
-      jest.doMock('http-proxy-agent');
-      jest.doMock('https-proxy-agent');
-      jest.doMock('socks-proxy-agent');
-      jest.doMock('../../../src/logger');
-
-      // Import after mocking to ensure proper module initialization
-      const fetchModule = require('../../../src/utils/fetch');
-      enhancedFetch = fetchModule.enhancedFetch;
-      createFetchOptions = fetchModule.createFetchOptions;
-      DEFAULT_HEADERS = fetchModule.DEFAULT_HEADERS;
-    });
-
     // Mock the global fetch function
     mockFetch = jest.fn();
     global.fetch = mockFetch;
   });
 
   afterAll(() => {
-    // Clean up mocks after all tests
-    jest.resetModules();
     jest.restoreAllMocks();
   });
 

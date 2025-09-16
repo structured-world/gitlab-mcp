@@ -1,38 +1,36 @@
+import { coreToolRegistry } from '../../../../src/entities/core/registry';
+import { enhancedFetch } from '../../../../src/utils/fetch';
+
+// Mock enhancedFetch to avoid actual API calls
+jest.mock('../../../../src/utils/fetch', () => ({
+  enhancedFetch: jest.fn()
+}));
+
+const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
+
+// Mock environment variables
+const originalEnv = process.env;
+
+beforeAll(() => {
+  process.env = {
+    ...originalEnv,
+    GITLAB_API_URL: 'https://test-gitlab.com',
+    GITLAB_TOKEN: 'test-token-123'
+  };
+});
+
+afterAll(() => {
+  process.env = originalEnv;
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.resetAllMocks();
+  // Ensure mockEnhancedFetch is properly reset
+  mockEnhancedFetch.mockReset();
+});
+
 describe('Core Registry Handlers', () => {
-  let coreToolRegistry: any;
-  let mockEnhancedFetch: jest.MockedFunction<any>;
-  const originalEnv = process.env;
-
-  beforeAll(async () => {
-    process.env.GITLAB_API_URL = 'https://test-gitlab.com';
-    process.env.GITLAB_TOKEN = 'test-token-123';
-
-    // Mock enhancedFetch
-    jest.doMock('../../../../src/utils/fetch');
-
-    // Import after mocking (use dynamic import to ensure proper module loading)
-    const [registryModule, fetchModule] = await Promise.all([
-      import('../../../../src/entities/core/registry'),
-      import('../../../../src/utils/fetch')
-    ]);
-
-    coreToolRegistry = registryModule.coreToolRegistry;
-    mockEnhancedFetch = fetchModule.enhancedFetch as jest.MockedFunction<any>;
-  });
-
-  afterAll(() => {
-    process.env = originalEnv;
-    jest.resetModules();
-    jest.restoreAllMocks();
-  });
-
-  beforeEach(() => {
-    jest.clearAllMocks();
-    if (mockEnhancedFetch) {
-      mockEnhancedFetch.mockClear();
-      mockEnhancedFetch.mockReset();
-    }
-  });
 
   describe('search_repositories handler', () => {
 

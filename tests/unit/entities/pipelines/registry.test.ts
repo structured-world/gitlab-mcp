@@ -1,16 +1,34 @@
 import { pipelinesToolRegistry, getPipelinesReadOnlyToolNames, getPipelinesToolDefinitions, getFilteredPipelinesTools } from '../../../../src/entities/pipelines/registry';
+import { enhancedFetch } from '../../../../src/utils/fetch';
 
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
-  enhancedFetch: jest.fn().mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: jest.fn().mockResolvedValue([
-      { id: 1, status: 'success', ref: 'main', sha: 'abc123' },
-      { id: 2, status: 'running', ref: 'feature-branch', sha: 'def456' }
-    ])
-  })
+  enhancedFetch: jest.fn()
 }));
+
+const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
+
+// Mock environment variables
+const originalEnv = process.env;
+
+beforeAll(() => {
+  process.env = {
+    ...originalEnv,
+    GITLAB_API_URL: 'https://gitlab.example.com',
+    GITLAB_TOKEN: 'test-token-12345'
+  };
+});
+
+afterAll(() => {
+  process.env = originalEnv;
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.resetAllMocks();
+  // Ensure mockEnhancedFetch is properly reset
+  mockEnhancedFetch.mockReset();
+});
 
 describe('Pipelines Registry', () => {
   describe('Registry Structure', () => {
@@ -364,6 +382,500 @@ describe('Pipelines Registry', () => {
 
       const triggerTool = pipelinesToolRegistry.get('list_pipeline_trigger_jobs');
       expect(triggerTool!.description).toContain('List all trigger jobs');
+    });
+  });
+
+  describe('Handler Functions', () => {
+    const mockResponse = (data: any, ok = true, status = 200) => ({
+      ok,
+      status,
+      statusText: ok ? 'OK' : 'Error',
+      json: jest.fn().mockResolvedValue(data),
+      text: jest.fn().mockResolvedValue(data)
+    });
+
+    describe('list_pipelines handler', () => {
+      it('should list pipelines with basic parameters', async () => {
+        const mockPipelines = [
+          { id: 1, status: 'success', ref: 'main', sha: 'abc123' },
+          { id: 2, status: 'running', ref: 'feature-branch', sha: 'def456' }
+        ];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipelines) as any);
+
+        const tool = pipelinesToolRegistry.get('list_pipelines')!;
+        const result = await tool.handler({
+          project_id: 'test/project'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('https://gitlab.example.com/api/v4/projects/test%2Fproject/pipelines'),
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockPipelines);
+      });
+
+      it('should list pipelines with filtering options', async () => {
+        const mockPipelines = [{ id: 1, status: 'success', ref: 'main' }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipelines) as any);
+
+        const tool = pipelinesToolRegistry.get('list_pipelines')!;
+        await tool.handler({
+          project_id: 'test/project',
+          status: 'success',
+          ref: 'main',
+          per_page: 50,
+          page: 1
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const url = call[0] as string;
+        expect(url).toContain('status=success');
+        expect(url).toContain('ref=main');
+        expect(url).toContain('per_page=50');
+        expect(url).toContain('page=1');
+      });
+
+      it('should handle API errors', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 404) as any);
+
+        const tool = pipelinesToolRegistry.get('list_pipelines')!;
+
+        await expect(tool.handler({
+          project_id: 'nonexistent/project'
+        })).rejects.toThrow('GitLab API error: 404 Error');
+      });
+    });
+
+    describe('get_pipeline handler', () => {
+      it('should get pipeline by ID', async () => {
+        const mockPipeline = {
+          id: 1,
+          iid: 1,
+          status: 'success',
+          ref: 'main',
+          sha: 'abc123',
+          web_url: 'https://gitlab.example.com/test/project/-/pipelines/1'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipeline) as any);
+
+        const tool = pipelinesToolRegistry.get('get_pipeline')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          pipeline_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/pipelines/1',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockPipeline);
+      });
+
+      it('should handle pipeline not found', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 404) as any);
+
+        const tool = pipelinesToolRegistry.get('get_pipeline')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project',
+          pipeline_id: 999
+        })).rejects.toThrow('GitLab API error: 404 Error');
+      });
+    });
+
+    describe('list_pipeline_jobs handler', () => {
+      it('should list jobs in pipeline', async () => {
+        const mockJobs = [
+          { id: 1, name: 'build', status: 'success', stage: 'build' },
+          { id: 2, name: 'test', status: 'failed', stage: 'test' }
+        ];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJobs) as any);
+
+        const tool = pipelinesToolRegistry.get('list_pipeline_jobs')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          pipeline_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('https://gitlab.example.com/api/v4/projects/test%2Fproject/pipelines/1/jobs'),
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockJobs);
+      });
+
+      it('should list jobs with scope filter', async () => {
+        const mockJobs = [{ id: 1, name: 'build', status: 'failed' }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJobs) as any);
+
+        const tool = pipelinesToolRegistry.get('list_pipeline_jobs')!;
+        await tool.handler({
+          project_id: 'test/project',
+          pipeline_id: 1,
+          scope: ['failed']
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const url = call[0] as string;
+        expect(url).toContain('scope=failed');
+      });
+    });
+
+    describe('list_pipeline_trigger_jobs handler', () => {
+      it('should list trigger jobs (bridges)', async () => {
+        const mockBridges = [
+          { id: 1, name: 'trigger-downstream', status: 'success', downstream_pipeline: { id: 2 } }
+        ];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockBridges) as any);
+
+        const tool = pipelinesToolRegistry.get('list_pipeline_trigger_jobs')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          pipeline_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          expect.stringContaining('https://gitlab.example.com/api/v4/projects/test%2Fproject/pipelines/1/bridges'),
+          expect.any(Object)
+        );
+        expect(result).toEqual(mockBridges);
+      });
+    });
+
+    describe('get_pipeline_job handler', () => {
+      it('should get job details', async () => {
+        const mockJob = {
+          id: 1,
+          name: 'build',
+          status: 'success',
+          stage: 'build',
+          pipeline: { id: 1 },
+          web_url: 'https://gitlab.example.com/test/project/-/jobs/1'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as any);
+
+        const tool = pipelinesToolRegistry.get('get_pipeline_job')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          job_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/jobs/1',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockJob);
+      });
+    });
+
+    describe('get_pipeline_job_output handler', () => {
+      it('should get job trace without limit', async () => {
+        const mockTrace = 'Running build...\nBuild successful\nTests passed';
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          text: jest.fn().mockResolvedValue(mockTrace)
+        } as any);
+
+        const tool = pipelinesToolRegistry.get('get_pipeline_job_output')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          job_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/jobs/1/trace',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual({ trace: mockTrace });
+      });
+
+      it('should truncate long job trace when limit is provided', async () => {
+        const longTrace = Array(100).fill('Very long line with lots of content here').join('\n');
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          statusText: 'OK',
+          text: jest.fn().mockResolvedValue(longTrace)
+        } as any);
+
+        const tool = pipelinesToolRegistry.get('get_pipeline_job_output')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          job_id: 1,
+          limit: 500
+        });
+
+        expect(result).toHaveProperty('trace');
+        expect((result as any).trace).toContain('lines truncated');
+        expect((result as any).trace.length).toBeLessThan(longTrace.length);
+      });
+    });
+
+    describe('create_pipeline handler', () => {
+      it('should create pipeline for branch', async () => {
+        const mockPipeline = {
+          id: 3,
+          iid: 3,
+          status: 'pending',
+          ref: 'main',
+          sha: 'new123'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipeline) as any);
+
+        const tool = pipelinesToolRegistry.get('create_pipeline')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          ref: 'main'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/pipeline',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/json'
+            },
+            body: expect.stringContaining('"ref":"main"')
+          }
+        );
+        expect(result).toEqual(mockPipeline);
+      });
+
+      it('should create pipeline with variables', async () => {
+        const mockPipeline = { id: 4, status: 'pending', ref: 'feature' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipeline) as any);
+
+        const tool = pipelinesToolRegistry.get('create_pipeline')!;
+        await tool.handler({
+          project_id: 'test/project',
+          ref: 'feature',
+          variables: [
+            { key: 'BUILD_TYPE', value: 'release' },
+            { key: 'DEPLOY', value: 'true' }
+          ]
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const body = JSON.parse(call[1]?.body as string);
+        expect(body.variables).toEqual([
+          { key: 'BUILD_TYPE', value: 'release' },
+          { key: 'DEPLOY', value: 'true' }
+        ]);
+      });
+    });
+
+    describe('retry_pipeline handler', () => {
+      it('should retry failed pipeline', async () => {
+        const mockPipeline = {
+          id: 1,
+          status: 'running',
+          ref: 'main'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipeline) as any);
+
+        const tool = pipelinesToolRegistry.get('retry_pipeline')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          pipeline_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/pipelines/1/retry',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockPipeline);
+      });
+    });
+
+    describe('cancel_pipeline handler', () => {
+      it('should cancel running pipeline', async () => {
+        const mockPipeline = {
+          id: 1,
+          status: 'canceled',
+          ref: 'main'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipeline) as any);
+
+        const tool = pipelinesToolRegistry.get('cancel_pipeline')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          pipeline_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/pipelines/1/cancel',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockPipeline);
+      });
+    });
+
+    describe('play_pipeline_job handler', () => {
+      it('should play manual job', async () => {
+        const mockJob = {
+          id: 1,
+          name: 'deploy',
+          status: 'running'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as any);
+
+        const tool = pipelinesToolRegistry.get('play_pipeline_job')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          job_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/jobs/1/play',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/json'
+            },
+            body: '{}'
+          }
+        );
+        expect(result).toEqual(mockJob);
+      });
+
+      it('should play job with job variables', async () => {
+        const mockJob = { id: 1, name: 'deploy', status: 'running' };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as any);
+
+        const tool = pipelinesToolRegistry.get('play_pipeline_job')!;
+        await tool.handler({
+          project_id: 'test/project',
+          job_id: 1,
+          job_variables_attributes: [
+            { key: 'ENVIRONMENT', value: 'production' }
+          ]
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const body = JSON.parse(call[1]?.body as string);
+        expect(body.job_variables_attributes).toEqual([
+          { key: 'ENVIRONMENT', value: 'production' }
+        ]);
+      });
+    });
+
+    describe('retry_pipeline_job handler', () => {
+      it('should retry failed job', async () => {
+        const mockJob = {
+          id: 1,
+          name: 'test',
+          status: 'running'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as any);
+
+        const tool = pipelinesToolRegistry.get('retry_pipeline_job')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          job_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/jobs/1/retry',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockJob);
+      });
+    });
+
+    describe('cancel_pipeline_job handler', () => {
+      it('should cancel running job', async () => {
+        const mockJob = {
+          id: 1,
+          name: 'build',
+          status: 'canceled'
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as any);
+
+        const tool = pipelinesToolRegistry.get('cancel_pipeline_job')!;
+        const result = await tool.handler({
+          project_id: 'test/project',
+          job_id: 1
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test%2Fproject/jobs/1/cancel',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345'
+            }
+          }
+        );
+        expect(result).toEqual(mockJob);
+      });
+    });
+
+    describe('Error handling', () => {
+      it('should handle validation errors', async () => {
+        const tool = pipelinesToolRegistry.get('get_pipeline')!;
+
+        // Test with invalid input that should fail Zod validation
+        await expect(tool.handler({
+          project_id: 123, // Should be string
+          pipeline_id: 'not-a-number'
+        })).rejects.toThrow();
+      });
+
+      it('should handle API errors with proper error messages', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 403) as any);
+
+        const tool = pipelinesToolRegistry.get('list_pipelines')!;
+
+        await expect(tool.handler({
+          project_id: 'private/project'
+        })).rejects.toThrow('GitLab API error: 403 Error');
+      });
+
+      it('should handle network errors', async () => {
+        mockEnhancedFetch.mockRejectedValueOnce(new Error('Connection timeout'));
+
+        const tool = pipelinesToolRegistry.get('create_pipeline')!;
+
+        await expect(tool.handler({
+          project_id: 'test/project',
+          ref: 'main'
+        })).rejects.toThrow('Connection timeout');
+      });
     });
   });
 });

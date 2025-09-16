@@ -96,7 +96,12 @@ export const ListNamespacesSchema = z
   .merge(PaginationOptionsSchema);
 
 export const GetNamespaceSchema = z.object({
-  namespace_id: z.coerce.string().describe('ID or URL-encoded path of the namespace'),
+  namespace_id: z.coerce
+    .string()
+    .refine((val) => val && val !== 'undefined' && val !== 'null', {
+      message: 'namespace_id is required and cannot be empty',
+    })
+    .describe('ID or URL-encoded path of the namespace'),
 });
 
 export const VerifyNamespaceSchema = z.object({
@@ -116,6 +121,13 @@ export const GetProjectSchema = z.object({
 export const ListProjectsSchema = z
   .object({
     archived: flexibleBoolean.optional().describe('Limit by archived status'),
+    active: flexibleBoolean
+      .optional()
+      .default(true)
+      .describe('Limit by projects that are not archived and not marked for deletion'),
+    imported: flexibleBoolean
+      .optional()
+      .describe('Limit results to projects imported from external systems by current user'),
     visibility: z
       .enum(['public', 'internal', 'private'])
       .optional()
@@ -192,6 +204,12 @@ export const ListProjectsSchema = z
       .string()
       .optional()
       .describe('Limit results to projects with last_activity before specified time (ISO 8601)'),
+    marked_for_deletion_on: z
+      .string()
+      .optional()
+      .describe(
+        'Filter by date when project was marked for deletion (YYYY-MM-DD format, Premium/Ultimate only)',
+      ),
     repository_storage: z
       .string()
       .optional()

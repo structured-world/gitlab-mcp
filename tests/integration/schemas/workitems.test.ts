@@ -42,7 +42,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       expect(testData.project?.path_with_namespace).toBeDefined();
 
       const params = {
-        groupPath: testData.project!.path_with_namespace,
+        namespacePath: testData.project!.path_with_namespace,
       };
 
       // Validate parameters first

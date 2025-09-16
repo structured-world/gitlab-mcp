@@ -3,36 +3,76 @@
  * Tests the native fetch-based implementation with GitLab-specific features
  */
 
-import { enhancedFetch, createFetchOptions, DEFAULT_HEADERS } from '../../../src/utils/fetch';
-
-// Mock dependencies
-jest.mock('fs');
-jest.mock('https');
-jest.mock('http-proxy-agent');
-jest.mock('https-proxy-agent');
-jest.mock('socks-proxy-agent');
-jest.mock('../../../src/logger');
-
-// Mock the global fetch function
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
-
-// Mock config values
-jest.mock('../../../src/config', () => ({
-  SKIP_TLS_VERIFY: false,
-  GITLAB_AUTH_COOKIE_PATH: '',
-  GITLAB_CA_CERT_PATH: '',
-  HTTP_PROXY: '',
-  HTTPS_PROXY: '',
-  NODE_TLS_REJECT_UNAUTHORIZED: '',
-  GITLAB_TOKEN: 'test-token'
-}));
-
 describe('Enhanced Fetch Utilities', () => {
+  let enhancedFetch: any;
+  let createFetchOptions: any;
+  let DEFAULT_HEADERS: any;
+  let mockFetch: jest.MockedFunction<typeof fetch>;
+
+  beforeAll(() => {
+    // Isolate modules to prevent interference from other tests
+    jest.isolateModules(() => {
+      // Mock config values FIRST - before any imports
+      jest.doMock('../../../src/config', () => ({
+        SKIP_TLS_VERIFY: false,
+        GITLAB_AUTH_COOKIE_PATH: '',
+        GITLAB_CA_CERT_PATH: '',
+        HTTP_PROXY: '',
+        HTTPS_PROXY: '',
+        NODE_TLS_REJECT_UNAUTHORIZED: '',
+        GITLAB_TOKEN: 'test-token'
+      }));
+
+      // Mock dependencies
+      jest.doMock('fs');
+      jest.doMock('https');
+      jest.doMock('http-proxy-agent');
+      jest.doMock('https-proxy-agent');
+      jest.doMock('socks-proxy-agent');
+      jest.doMock('../../../src/logger');
+
+      // Import after mocking to ensure proper module initialization
+      const fetchModule = require('../../../src/utils/fetch');
+      enhancedFetch = fetchModule.enhancedFetch;
+      createFetchOptions = fetchModule.createFetchOptions;
+      DEFAULT_HEADERS = fetchModule.DEFAULT_HEADERS;
+    });
+
+    // Mock the global fetch function
+    mockFetch = jest.fn();
+    global.fetch = mockFetch;
+  });
+
+  afterAll(() => {
+    // Clean up mocks after all tests
+    jest.resetModules();
+    jest.restoreAllMocks();
+  });
+
   beforeEach(() => {
     jest.clearAllMocks();
     mockFetch.mockClear();
   });
+
+  // Helper function to create proper Response mocks
+  const createMockResponse = (overrides: Partial<Response> = {}): Response => ({
+    ok: true,
+    status: 200,
+    statusText: 'OK',
+    headers: new Headers(),
+    redirected: false,
+    type: 'basic' as ResponseType,
+    url: '',
+    body: null,
+    bodyUsed: false,
+    clone: jest.fn(),
+    arrayBuffer: jest.fn(),
+    blob: jest.fn(),
+    formData: jest.fn(),
+    text: jest.fn(),
+    json: jest.fn(),
+    ...overrides
+  } as Response);
 
   describe('DEFAULT_HEADERS', () => {
     it('should include basic headers', () => {
@@ -56,11 +96,9 @@ describe('Enhanced Fetch Utilities', () => {
 
   describe('enhancedFetch', () => {
     it('should call native fetch with merged options', async () => {
-      const mockResponse = {
-        ok: true,
-        status: 200,
+      const mockResponse = createMockResponse({
         json: jest.fn().mockResolvedValue({ success: true })
-      };
+      });
       mockFetch.mockResolvedValue(mockResponse);
 
       const result = await enhancedFetch('https://example.com');
@@ -81,7 +119,7 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should merge custom headers with default headers', async () => {
-      const mockResponse = { ok: true, status: 200 };
+      const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
       await enhancedFetch('https://example.com', {
@@ -101,7 +139,7 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should handle Headers object in options', async () => {
-      const mockResponse = { ok: true, status: 200 };
+      const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
       const headers = new Headers();
@@ -122,7 +160,7 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should merge options correctly', async () => {
-      const mockResponse = { ok: true, status: 200 };
+      const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
       await enhancedFetch('https://example.com', {
@@ -148,12 +186,9 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should return the response from fetch', async () => {
-      const mockResponse = {
-        ok: true,
-        status: 200,
-        statusText: 'OK',
+      const mockResponse = createMockResponse({
         json: jest.fn()
-      };
+      });
       mockFetch.mockResolvedValue(mockResponse);
 
       const result = await enhancedFetch('https://example.com');
@@ -164,7 +199,7 @@ describe('Enhanced Fetch Utilities', () => {
 
   describe('Additional Edge Cases', () => {
     it('should handle undefined headers', async () => {
-      const mockResponse = { ok: true, status: 200 };
+      const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
       // Test with undefined headers
@@ -181,7 +216,7 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should handle array-like headers', async () => {
-      const mockResponse = { ok: true, status: 200 };
+      const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
       // Test with array-like headers
@@ -198,7 +233,7 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should preserve custom HTTP methods', async () => {
-      const mockResponse = { ok: true, status: 200 };
+      const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
       await enhancedFetch('https://example.com', { method: 'PATCH' });
@@ -212,7 +247,7 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should handle request timeout option', async () => {
-      const mockResponse = { ok: true, status: 200 };
+      const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
       await enhancedFetch('https://example.com', {
@@ -228,7 +263,7 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should handle different request body types', async () => {
-      const mockResponse = { ok: true, status: 200 };
+      const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
       const formData = new FormData();
@@ -249,7 +284,7 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should handle empty options object', async () => {
-      const mockResponse = { ok: true, status: 200 };
+      const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
       await enhancedFetch('https://example.com', {});
@@ -265,7 +300,7 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should handle undefined options', async () => {
-      const mockResponse = { ok: true, status: 200 };
+      const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
       await enhancedFetch('https://example.com', undefined);

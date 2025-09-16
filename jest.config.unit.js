@@ -19,6 +19,7 @@ module.exports = {
   moduleNameMapper: {
     "^../utils/fetch$": "<rootDir>/tests/__mocks__/enhancedFetch.ts",
     "^../../utils/fetch$": "<rootDir>/tests/__mocks__/enhancedFetch.ts",
+    "^../../../src/utils/fetch$": "<rootDir>/tests/__mocks__/enhancedFetch.ts",
   },
   testMatch: ["**/tests/unit/**/*.test.ts"],
   collectCoverageFrom: ["src/**/*.ts", "!src/**/*.d.ts", "!tests/**/*", "!dist/**/*"],

@@ -3,10 +3,8 @@
  * Tests GraphQL request handling, error management, and authentication
  */
 
-// Mock enhancedFetch before any imports
-jest.mock('../../../src/utils/fetch', () => ({
-  enhancedFetch: jest.fn()
-}));
+// Mock the utils/fetch module
+jest.mock('../../../src/utils/fetch');
 
 // Mock the http-client module
 jest.mock('../../../src/http-client', () => ({
@@ -20,7 +18,6 @@ import { GraphQLClient } from '../../../src/graphql/client';
 import { gql } from 'graphql-tag';
 import { enhancedFetch } from '../../../src/utils/fetch';
 
-// Get the mocked function
 const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
 
 describe('GraphQLClient', () => {
@@ -37,6 +34,7 @@ describe('GraphQLClient', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    mockEnhancedFetch.mockClear();
     client = new GraphQLClient('https://gitlab.example.com/api/graphql', {
       headers: { Authorization: 'Bearer test-token' }
     });

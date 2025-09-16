@@ -713,7 +713,7 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
               }
             }
             ... on WorkItemWidgetVulnerabilities {
-              type
+              __typename
             }
           }
         }

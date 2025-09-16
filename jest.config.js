@@ -44,7 +44,7 @@ module.exports = {
   silent: !isVerbose, // Suppress console.log output in tests unless verbose mode
   testPathIgnorePatterns: integrationTestsEnabled ?
     ["<rootDir>/dist/", "<rootDir>/node_modules/"] :
-    ["<rootDir>/dist/", "<rootDir>/node_modules/", "<rootDir>/tests/integration/", "<rootDir>/tests/unit/utils/fetch.test.ts"],
+    ["<rootDir>/dist/", "<rootDir>/node_modules/", "<rootDir>/tests/integration/"],
   globalSetup: integrationTestsEnabled ? '<rootDir>/tests/setup/globalSetup.js' : undefined,
   globalTeardown: integrationTestsEnabled ? '<rootDir>/tests/setup/globalTeardown.js' : undefined,
   moduleDirectories: ["node_modules", "src"],

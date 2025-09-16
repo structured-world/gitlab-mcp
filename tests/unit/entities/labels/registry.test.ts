@@ -1,16 +1,33 @@
 import { labelsToolRegistry, getLabelsReadOnlyToolNames, getLabelsToolDefinitions, getFilteredLabelsTools } from '../../../../src/entities/labels/registry';
+import { enhancedFetch } from '../../../../src/utils/fetch';
 
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
-  enhancedFetch: jest.fn().mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: jest.fn().mockResolvedValue([
-      { id: 1, name: 'bug', color: '#ff0000' },
-      { id: 2, name: 'feature', color: '#00ff00' }
-    ])
-  })
+  enhancedFetch: jest.fn()
 }));
+
+const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
+
+// Mock environment variables
+const originalEnv = process.env;
+
+beforeAll(() => {
+  process.env = {
+    ...originalEnv,
+    GITLAB_API_URL: 'https://gitlab.example.com',
+    GITLAB_TOKEN: 'test-token-12345'
+  };
+});
+
+afterAll(() => {
+  process.env = originalEnv;
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.resetAllMocks();
+  mockEnhancedFetch.mockReset();
+});
 
 describe('Labels Registry', () => {
   describe('Registry Structure', () => {
@@ -286,6 +303,366 @@ describe('Labels Registry', () => {
 
       toolEntries.forEach(tool => {
         expect(tool.description.toLowerCase()).toMatch(/label/);
+      });
+    });
+  });
+
+  describe('Handler Function Tests', () => {
+    describe('list_labels handler', () => {
+      it('should list project labels successfully', async () => {
+        const mockLabels = [
+          { id: 1, name: 'bug', color: '#ff0000' },
+          { id: 2, name: 'feature', color: '#00ff00' }
+        ];
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue(mockLabels)
+        } as any);
+
+        const handler = labelsToolRegistry.get('list_labels')!.handler;
+        const result = await handler({ project_id: 'test-project' });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test-project/labels?',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+            },
+          }
+        );
+        expect(result).toEqual(mockLabels);
+      });
+
+      it('should list group labels successfully', async () => {
+        const mockLabels = [{ id: 3, name: 'priority', color: '#0000ff' }];
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue(mockLabels)
+        } as any);
+
+        const handler = labelsToolRegistry.get('list_labels')!.handler;
+        const result = await handler({ group_id: 'test-group' });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/labels?',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+            },
+          }
+        );
+        expect(result).toEqual(mockLabels);
+      });
+
+      it('should handle query parameters', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue([])
+        } as any);
+
+        const handler = labelsToolRegistry.get('list_labels')!.handler;
+        await handler({
+          project_id: 'test-project',
+          search: 'bug'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test-project/labels?search=bug',
+          expect.any(Object)
+        );
+      });
+
+      it('should throw error on failed API call', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found'
+        } as any);
+
+        const handler = labelsToolRegistry.get('list_labels')!.handler;
+
+        await expect(handler({ project_id: 'invalid-project' }))
+          .rejects.toThrow('GitLab API error: 404 Not Found');
+      });
+    });
+
+    describe('get_label handler', () => {
+      it('should get project label successfully', async () => {
+        const mockLabel = { id: 1, name: 'bug', color: '#ff0000' };
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue(mockLabel)
+        } as any);
+
+        const handler = labelsToolRegistry.get('get_label')!.handler;
+        const result = await handler({
+          project_id: 'test-project',
+          label_id: '1'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test-project/labels/1',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+            },
+          }
+        );
+        expect(result).toEqual(mockLabel);
+      });
+
+      it('should get group label successfully', async () => {
+        const mockLabel = { id: 2, name: 'feature', color: '#00ff00' };
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue(mockLabel)
+        } as any);
+
+        const handler = labelsToolRegistry.get('get_label')!.handler;
+        const result = await handler({
+          group_id: 'test-group',
+          label_id: '2'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/labels/2',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+            },
+          }
+        );
+        expect(result).toEqual(mockLabel);
+      });
+    });
+
+    describe('create_label handler', () => {
+      it('should create project label successfully', async () => {
+        const mockLabel = { id: 3, name: 'new-label', color: '#ffff00' };
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          json: jest.fn().mockResolvedValue(mockLabel)
+        } as any);
+
+        const handler = labelsToolRegistry.get('create_label')!.handler;
+        const result = await handler({
+          project_id: 'test-project',
+          name: 'new-label',
+          color: '#ffff00'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test-project/labels',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'name=new-label&color=%23ffff00'
+          }
+        );
+        expect(result).toEqual(mockLabel);
+      });
+
+      it('should create group label successfully', async () => {
+        const mockLabel = { id: 4, name: 'group-label', color: '#ff00ff' };
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          json: jest.fn().mockResolvedValue(mockLabel)
+        } as any);
+
+        const handler = labelsToolRegistry.get('create_label')!.handler;
+        const result = await handler({
+          group_id: 'test-group',
+          name: 'group-label',
+          color: '#ff00ff',
+          description: 'A group label'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/labels',
+          expect.objectContaining({
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'name=group-label&color=%23ff00ff&description=A+group+label'
+          })
+        );
+        expect(result).toEqual(mockLabel);
+      });
+    });
+
+    describe('update_label handler', () => {
+      it('should update project label successfully', async () => {
+        const mockLabel = { id: 1, name: 'updated-bug', color: '#cc0000' };
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue(mockLabel)
+        } as any);
+
+        const handler = labelsToolRegistry.get('update_label')!.handler;
+        const result = await handler({
+          project_id: 'test-project',
+          label_id: '1',
+          color: '#cc0000'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test-project/labels/1',
+          {
+            method: 'PUT',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'color=%23cc0000'
+          }
+        );
+        expect(result).toEqual(mockLabel);
+      });
+
+      it('should update group label successfully', async () => {
+        const mockLabel = { id: 2, name: 'updated-feature', color: '#00cc00' };
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue(mockLabel)
+        } as any);
+
+        const handler = labelsToolRegistry.get('update_label')!.handler;
+        const result = await handler({
+          group_id: 'test-group',
+          label_id: '2',
+          new_name: 'updated-feature',
+          color: '#00cc00'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/labels/2',
+          expect.objectContaining({
+            method: 'PUT',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/x-www-form-urlencoded',
+            },
+            body: 'new_name=updated-feature&color=%2300cc00'
+          })
+        );
+        expect(result).toEqual(mockLabel);
+      });
+    });
+
+    describe('delete_label handler', () => {
+      it('should delete project label successfully', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 204,
+          json: jest.fn().mockResolvedValue({})
+        } as any);
+
+        const handler = labelsToolRegistry.get('delete_label')!.handler;
+        const result = await handler({
+          project_id: 'test-project',
+          label_id: '1'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test-project/labels/1',
+          {
+            method: 'DELETE',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+            },
+          }
+        );
+        expect(result).toEqual({ success: true, message: 'Label deleted successfully' });
+      });
+
+      it('should delete group label successfully', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 204,
+          json: jest.fn().mockResolvedValue({})
+        } as any);
+
+        const handler = labelsToolRegistry.get('delete_label')!.handler;
+        const result = await handler({
+          group_id: 'test-group',
+          label_id: '2'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/labels/2',
+          expect.objectContaining({
+            method: 'DELETE'
+          })
+        );
+        expect(result).toEqual({ success: true, message: 'Label deleted successfully' });
+      });
+
+      it('should handle deletion errors', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          statusText: 'Forbidden'
+        } as any);
+
+        const handler = labelsToolRegistry.get('delete_label')!.handler;
+
+        await expect(handler({
+          project_id: 'test-project',
+          label_id: '1'
+        })).rejects.toThrow('GitLab API error: 403 Forbidden');
+      });
+    });
+
+    describe('Error handling', () => {
+      it('should handle invalid schema input', async () => {
+        const handler = labelsToolRegistry.get('list_labels')!.handler;
+
+        await expect(handler({})).rejects.toThrow();
+        await expect(handler({ invalid_param: 'value' })).rejects.toThrow();
+      });
+
+      it('should handle network errors', async () => {
+        mockEnhancedFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        const handler = labelsToolRegistry.get('list_labels')!.handler;
+
+        await expect(handler({ project_id: 'test-project' }))
+          .rejects.toThrow('Network error');
+      });
+
+      it('should handle malformed JSON responses', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockRejectedValue(new Error('Invalid JSON'))
+        } as any);
+
+        const handler = labelsToolRegistry.get('list_labels')!.handler;
+
+        await expect(handler({ project_id: 'test-project' }))
+          .rejects.toThrow('Invalid JSON');
       });
     });
   });

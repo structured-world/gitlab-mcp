@@ -81,7 +81,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       inputSchema: zodToJsonSchema(GetWorkItemTypesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetWorkItemTypesSchema.parse(args);
-        const { groupPath } = options;
+        const { namespacePath } = options;
 
         // Get GraphQL client from ConnectionManager
         const connectionManager = ConnectionManager.getInstance();
@@ -89,7 +89,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
         // Use GraphQL query for getting work item types
         const response = await client.request(GET_WORK_ITEM_TYPES, {
-          namespacePath: groupPath,
+          namespacePath: namespacePath,
         });
 
         // Return the work item types in the expected format

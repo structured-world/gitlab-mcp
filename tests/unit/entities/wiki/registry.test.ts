@@ -1,16 +1,33 @@
 import { wikiToolRegistry, getWikiReadOnlyToolNames, getWikiToolDefinitions, getFilteredWikiTools } from '../../../../src/entities/wiki/registry';
+import { enhancedFetch } from '../../../../src/utils/fetch';
 
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
-  enhancedFetch: jest.fn().mockResolvedValue({
-    ok: true,
-    status: 200,
-    json: jest.fn().mockResolvedValue([
-      { slug: 'home', title: 'Home', content: 'Welcome to our wiki' },
-      { slug: 'api-docs', title: 'API Documentation', content: 'API reference documentation' }
-    ])
-  })
+  enhancedFetch: jest.fn()
 }));
+
+const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
+
+// Mock environment variables
+const originalEnv = process.env;
+
+beforeAll(() => {
+  process.env = {
+    ...originalEnv,
+    GITLAB_API_URL: 'https://gitlab.example.com',
+    GITLAB_TOKEN: 'test-token-12345'
+  };
+});
+
+afterAll(() => {
+  process.env = originalEnv;
+});
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  jest.resetAllMocks();
+  mockEnhancedFetch.mockReset();
+});
 
 describe('Wiki Registry', () => {
   describe('Registry Structure', () => {
@@ -303,6 +320,184 @@ describe('Wiki Registry', () => {
         tool.description.includes('project or group')
       );
       expect(supportsProjectAndGroup).toBe(true);
+    });
+  });
+
+  describe('Handler Function Tests', () => {
+    describe('list_wiki_pages handler', () => {
+      it('should list project wiki pages successfully', async () => {
+        const mockWikiPages = [
+          { slug: 'home', title: 'Home', content: 'Welcome' },
+          { slug: 'docs', title: 'Documentation', content: 'API docs' }
+        ];
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue(mockWikiPages)
+        } as any);
+
+        const handler = wikiToolRegistry.get('list_wiki_pages')!.handler;
+        const result = await handler({ project_id: 'test-project' });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test-project/wikis?per_page=20',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+            },
+          }
+        );
+        expect(result).toEqual(mockWikiPages);
+      });
+
+      it('should list group wiki pages successfully', async () => {
+        const mockWikiPages = [{ slug: 'group-home', title: 'Group Home' }];
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue(mockWikiPages)
+        } as any);
+
+        const handler = wikiToolRegistry.get('list_wiki_pages')!.handler;
+        const result = await handler({ group_id: 'test-group' });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/wikis?per_page=20',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+            },
+          }
+        );
+        expect(result).toEqual(mockWikiPages);
+      });
+
+      it('should throw error on failed API call', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found'
+        } as any);
+
+        const handler = wikiToolRegistry.get('list_wiki_pages')!.handler;
+
+        await expect(handler({ project_id: 'invalid-project' }))
+          .rejects.toThrow('GitLab API error: 404 Not Found');
+      });
+    });
+
+    describe('get_wiki_page handler', () => {
+      it('should get project wiki page successfully', async () => {
+        const mockWikiPage = { slug: 'home', title: 'Home', content: 'Welcome to wiki' };
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue(mockWikiPage)
+        } as any);
+
+        const handler = wikiToolRegistry.get('get_wiki_page')!.handler;
+        const result = await handler({
+          project_id: 'test-project',
+          slug: 'home'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test-project/wikis/home?',
+          {
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+            },
+          }
+        );
+        expect(result).toEqual(mockWikiPage);
+      });
+    });
+
+    describe('create_wiki_page handler', () => {
+      it('should create project wiki page successfully', async () => {
+        const mockWikiPage = { slug: 'new-page', title: 'New Page', content: 'New content' };
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          json: jest.fn().mockResolvedValue(mockWikiPage)
+        } as any);
+
+        const handler = wikiToolRegistry.get('create_wiki_page')!.handler;
+        const result = await handler({
+          project_id: 'test-project',
+          title: 'New Page',
+          content: 'New content'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/test-project/wikis',
+          {
+            method: 'POST',
+            headers: {
+              Authorization: 'Bearer test-token-12345',
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              title: 'New Page',
+              content: 'New content'
+            })
+          }
+        );
+        expect(result).toEqual(mockWikiPage);
+      });
+
+      it('should create group wiki page successfully', async () => {
+        const mockWikiPage = { slug: 'group-page', title: 'Group Page' };
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          json: jest.fn().mockResolvedValue(mockWikiPage)
+        } as any);
+
+        const handler = wikiToolRegistry.get('create_wiki_page')!.handler;
+        const result = await handler({
+          group_id: 'test-group',
+          title: 'Group Page',
+          content: 'Group content',
+          format: 'markdown'
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/test-group/wikis',
+          expect.objectContaining({
+            method: 'POST',
+            body: JSON.stringify({
+              title: 'Group Page',
+              content: 'Group content',
+              format: 'markdown'
+            })
+          })
+        );
+        expect(result).toEqual(mockWikiPage);
+      });
+    });
+
+    describe('Error handling', () => {
+      it('should handle invalid schema input', async () => {
+        const handler = wikiToolRegistry.get('list_wiki_pages')!.handler;
+
+        await expect(handler({})).rejects.toThrow();
+        await expect(handler({ invalid_param: 'value' })).rejects.toThrow();
+      });
+
+      it('should handle network errors', async () => {
+        mockEnhancedFetch.mockRejectedValueOnce(new Error('Network error'));
+
+        const handler = wikiToolRegistry.get('list_wiki_pages')!.handler;
+
+        await expect(handler({ project_id: 'test-project' }))
+          .rejects.toThrow('Network error');
+      });
     });
   });
 });

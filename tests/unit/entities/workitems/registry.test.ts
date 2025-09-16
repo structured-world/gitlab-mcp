@@ -1,12 +1,15 @@
 import { workitemsToolRegistry, getWorkitemsReadOnlyToolNames, getWorkitemsToolDefinitions, getFilteredWorkitemsTools } from '../../../../src/entities/workitems/registry';
 
+// Create mock client
+const mockClient = {
+  request: jest.fn(),
+};
+
 // Mock GraphQL client to avoid actual API calls
 jest.mock('../../../../src/services/ConnectionManager', () => ({
   ConnectionManager: {
     getInstance: jest.fn(() => ({
-      getClient: jest.fn(() => ({
-        request: jest.fn().mockResolvedValue({ group: { workItems: { nodes: [] } } }),
-      })),
+      getClient: jest.fn(() => mockClient),
     })),
   },
 }));
@@ -305,6 +308,329 @@ describe('Workitems Registry', () => {
 
       expect(tool?.description).toContain('CRITICAL GitLab Hierarchy');
       expect(tool?.description).toContain('For Issues/Tasks, query the project they belong to, not the group');
+    });
+  });
+
+  describe('Handler Tests', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    describe('list_work_items handler', () => {
+      it('should execute successfully with valid group path', async () => {
+        const mockWorkItems = [
+          { id: 'gid://gitlab/WorkItem/1', title: 'Epic 1', workItemType: { name: 'Epic' } },
+          { id: 'gid://gitlab/WorkItem/2', title: 'Epic 2', workItemType: { name: 'Epic' } },
+        ];
+
+        mockClient.request.mockResolvedValueOnce({
+          group: { workItems: { nodes: mockWorkItems } },
+        });
+
+        const tool = workitemsToolRegistry.get('list_work_items');
+        const result = await tool?.handler({ groupPath: 'test-group' });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.any(Object), // GraphQL query object
+          {
+            groupPath: 'test-group',
+            first: 20,
+            after: undefined,
+          }
+        );
+        expect(result).toEqual(mockWorkItems);
+      });
+
+      it('should handle custom pagination parameters', async () => {
+        mockClient.request.mockResolvedValueOnce({
+          group: { workItems: { nodes: [] } },
+        });
+
+        const tool = workitemsToolRegistry.get('list_work_items');
+        await tool?.handler({
+          groupPath: 'test-group',
+          first: 50,
+          after: 'cursor-123',
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.any(Object),
+          {
+            groupPath: 'test-group',
+            first: 50,
+            after: 'cursor-123',
+          }
+        );
+      });
+
+      it('should return empty array when group has no work items', async () => {
+        mockClient.request.mockResolvedValueOnce({ group: null });
+
+        const tool = workitemsToolRegistry.get('list_work_items');
+        const result = await tool?.handler({ namespacePath: 'empty-group' });
+
+        expect(result).toEqual([]);
+      });
+
+      it('should throw error on invalid parameters', async () => {
+        const tool = workitemsToolRegistry.get('list_work_items');
+
+        await expect(tool?.handler({})).rejects.toThrow();
+        await expect(tool?.handler({ namespacePath: '' })).rejects.toThrow();
+      });
+    });
+
+    describe('get_work_item handler', () => {
+      it('should execute successfully with valid work item ID', async () => {
+        const mockWorkItem = {
+          id: 'gid://gitlab/WorkItem/1',
+          title: 'Test Work Item',
+          description: 'Test description',
+          workItemType: { name: 'Epic' },
+        };
+
+        mockClient.request.mockResolvedValueOnce({
+          workItem: mockWorkItem,
+        });
+
+        const tool = workitemsToolRegistry.get('get_work_item');
+        const result = await tool?.handler({ id: 'gid://gitlab/WorkItem/1' });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.any(Object),
+          { id: 'gid://gitlab/WorkItem/1' }
+        );
+        expect(result).toEqual(mockWorkItem);
+      });
+
+      it('should handle non-existent work item', async () => {
+        mockClient.request.mockResolvedValueOnce({ workItem: null });
+
+        const tool = workitemsToolRegistry.get('get_work_item');
+
+        await expect(tool?.handler({ id: 'gid://gitlab/WorkItem/999' }))
+          .rejects.toThrow('Work item with ID "gid://gitlab/WorkItem/999" not found');
+      });
+    });
+
+    describe('get_work_item_types handler', () => {
+      it('should execute successfully with valid namespace path', async () => {
+        const mockTypes = [
+          { id: 'gid://gitlab/WorkItems::Type/1', name: 'Epic' },
+          { id: 'gid://gitlab/WorkItems::Type/2', name: 'Issue' },
+          { id: 'gid://gitlab/WorkItems::Type/3', name: 'Task' },
+        ];
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: { workItemTypes: { nodes: mockTypes } },
+        });
+
+        const tool = workitemsToolRegistry.get('get_work_item_types');
+        const result = await tool?.handler({ namespacePath: 'test-namespace' });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.any(Object),
+          { namespacePath: 'test-namespace' }
+        );
+        expect(result).toEqual(mockTypes);
+      });
+
+      it('should return empty array when namespace has no types', async () => {
+        mockClient.request.mockResolvedValueOnce({ namespace: null });
+
+        const tool = workitemsToolRegistry.get('get_work_item_types');
+        const result = await tool?.handler({ namespacePath: 'empty-namespace' });
+
+        expect(result).toEqual([]);
+      });
+    });
+
+    describe('create_work_item handler', () => {
+      it('should execute successfully with valid parameters', async () => {
+        // First mock the work item types query
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            workItemTypes: {
+              nodes: [
+                { id: 'gid://gitlab/WorkItems::Type/1', name: 'EPIC' }
+              ]
+            }
+          }
+        });
+
+        // Then mock the creation mutation
+        const createdWorkItem = {
+          workItem: {
+            id: 'gid://gitlab/WorkItem/123',
+            title: 'New Epic',
+            workItemType: { name: 'EPIC' },
+          },
+        };
+
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: {
+            ...createdWorkItem,
+            errors: []
+          }
+        });
+
+        const tool = workitemsToolRegistry.get('create_work_item');
+        const result = await tool?.handler({
+          groupPath: 'test-group',
+          workItemType: 'EPIC',
+          title: 'New Epic',
+        });
+
+        expect(mockClient.request).toHaveBeenCalledTimes(2);
+        expect(result).toEqual(createdWorkItem.workItem);
+      });
+
+      it('should create work item with description', async () => {
+        // Mock work item types
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            workItemTypes: {
+              nodes: [{ id: 'gid://gitlab/WorkItems::Type/1', name: 'EPIC' }]
+            }
+          }
+        });
+
+        // Mock creation
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: {
+            workItem: {
+              id: 'gid://gitlab/WorkItem/124',
+              title: 'Epic with Description',
+              description: 'Detailed description',
+            }
+          }
+        });
+
+        const tool = workitemsToolRegistry.get('create_work_item');
+        await tool?.handler({
+          groupPath: 'test-group',
+          workItemType: 'EPIC',
+          title: 'Epic with Description',
+          description: 'Detailed description',
+        });
+
+        expect(mockClient.request).toHaveBeenCalledTimes(2);
+      });
+
+      it('should handle creation errors', async () => {
+        const tool = workitemsToolRegistry.get('create_work_item');
+
+        await expect(tool?.handler({
+          groupPath: 'test-group',
+          workItemType: 'INVALID_TYPE',
+          title: 'Failed Epic',
+        })).rejects.toThrow('Invalid option');
+      });
+    });
+
+    describe('update_work_item handler', () => {
+      it('should execute successfully with valid parameters', async () => {
+        const updatedWorkItem = {
+          id: 'gid://gitlab/WorkItem/123',
+          title: 'Updated Epic',
+        };
+
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: {
+            workItem: updatedWorkItem,
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get('update_work_item');
+        const result = await tool?.handler({
+          id: 'gid://gitlab/WorkItem/123',
+          title: 'Updated Epic',
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            id: 'gid://gitlab/WorkItem/123',
+            title: 'Updated Epic',
+          })
+        );
+        expect(result).toEqual(updatedWorkItem);
+      });
+
+      it('should handle update with multiple fields', async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: {
+            workItem: { id: 'gid://gitlab/WorkItem/123' },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get('update_work_item');
+        await tool?.handler({
+          id: 'gid://gitlab/WorkItem/123',
+          title: 'Updated Title',
+          description: 'Updated description',
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              id: 'gid://gitlab/WorkItem/123',
+              title: 'Updated Title',
+              descriptionWidget: { description: 'Updated description' },
+            })
+          })
+        );
+      });
+    });
+
+    describe('delete_work_item handler', () => {
+      it('should execute successfully with valid work item ID', async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemDelete: { errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get('delete_work_item');
+        const result = await tool?.handler({ id: 'gid://gitlab/WorkItem/123' });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.any(Object),
+          { id: 'gid://gitlab/WorkItem/123' }
+        );
+        expect(result).toEqual({ deleted: true });
+      });
+
+      it('should handle deletion errors', async () => {
+        mockClient.request.mockRejectedValueOnce(new Error('Deletion failed'));
+
+        const tool = workitemsToolRegistry.get('delete_work_item');
+
+        await expect(tool?.handler({ id: 'gid://gitlab/WorkItem/123' }))
+          .rejects.toThrow('Deletion failed');
+      });
+    });
+
+    describe('Error Handling', () => {
+      it('should handle GraphQL client errors gracefully', async () => {
+        mockClient.request.mockRejectedValueOnce(new Error('Network error'));
+
+        const tool = workitemsToolRegistry.get('list_work_items');
+
+        await expect(tool?.handler({ groupPath: 'test-group' }))
+          .rejects.toThrow('Network error');
+      });
+
+      it('should handle schema validation errors', async () => {
+        const tool = workitemsToolRegistry.get('list_work_items');
+
+        // Missing required groupPath
+        await expect(tool?.handler({})).rejects.toThrow();
+
+        // Invalid parameter types
+        await expect(tool?.handler({ groupPath: 123 })).rejects.toThrow();
+      });
     });
   });
 });

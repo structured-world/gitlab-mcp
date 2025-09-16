@@ -1,3 +1,11 @@
+## [3.1.1](https://github.com/structured-world/gitlab-mcp/compare/v3.1.0...v3.1.1) (2025-09-16)
+
+
+### Bug Fixes
+
+* implement per-file mock isolation for parallel unit tests ([7839d0c](https://github.com/structured-world/gitlab-mcp/commit/7839d0ce271ce7d9bb29aad264770aa41e15feea))
+* resolve test module loading and improve test infrastructure ([0da17ff](https://github.com/structured-world/gitlab-mcp/commit/0da17ff57779b493e3d7e428d1d757c5653d1b61))
+
 # [3.1.0](https://github.com/structured-world/gitlab-mcp/compare/v3.0.0...v3.1.0) (2025-09-16)
 
 

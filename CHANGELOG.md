@@ -1,3 +1,15 @@
+# [4.0.0](https://github.com/structured-world/gitlab-mcp/compare/v3.2.0...v4.0.0) (2025-09-16)
+
+
+* feat!: rename package to @structured-world/gitlab-mcp ([3849c3e](https://github.com/structured-world/gitlab-mcp/commit/3849c3e70bb35510720c1fe75f0c67342473a6d8))
+
+
+### BREAKING CHANGES
+
+* The package and Docker image names have changed to
+@structured-world/gitlab-mcp and ghcr.io/structured-world/gitlab-mcp
+respectively. Update your configurations accordingly.
+
 # [3.2.0](https://github.com/structured-world/gitlab-mcp/compare/v3.1.2...v3.2.0) (2025-09-16)
 
 

@@ -104,6 +104,11 @@ export const GetUsersSchema = z
       .describe(
         'Exclude project bot users that are automatically created for project integrations.',
       ),
+    smart_search: flexibleBoolean
+      .optional()
+      .describe(
+        'Override smart search behavior. AUTO-ENABLED for "search" parameter (detects emails/usernames/names with automatic transliteration and fallback). Set to false to disable auto-smart search for "search" queries. Set to true to force smart search for "username"/"public_email" queries. When enabled: 1) Email patterns use exact email search, 2) Username patterns use exact username search, 3) Name patterns use fuzzy search, 4) Non-Latin text is automatically transliterated to Latin.',
+      ),
   })
   .merge(PaginationOptionsSchema);
 

@@ -19,6 +19,7 @@ import {
 } from './schema-readonly';
 import { CreateRepositorySchema, ForkRepositorySchema, CreateBranchSchema } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
+import { smartUserSearch, type UserSearchParams } from '../../utils/smart-user-search';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
@@ -227,31 +228,59 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: 'get_users',
       description:
-        'FIND USERS: Search and retrieve GitLab users by username, email, or other criteria. Use when: Finding users for assignments/mentions, Checking user existence, Getting user IDs for other operations. Supports filtering by active status, creation date, and user type (human/bot).',
+        'FIND USERS: Search and retrieve GitLab users with intelligent pattern detection. RECOMMENDED: Use "search" parameter for most queries - automatically detects emails, usernames, or names with automatic transliteration and multi-phase fallback search. ADVANCED: Use "username" or "public_email" for exact matches when you need precise control. Supports filtering by active status, creation date, and user type (human/bot).',
       inputSchema: zodToJsonSchema(GetUsersSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetUsersSchema.parse(args);
+        const { smart_search, search, username, public_email, ...otherParams } = options;
 
-        const queryParams = new URLSearchParams();
-        Object.entries(options).forEach(([key, value]) => {
-          if (value !== undefined) {
-            queryParams.set(key, String(value));
+        // Smart search logic:
+        // 1. If only 'search' parameter is provided → auto-enable smart search (unless explicitly disabled)
+        // 2. If username/email are provided → use legacy behavior (unless smart_search explicitly enabled)
+        // 3. Respect explicit smart_search setting when provided
+        const hasUsernameOrEmail = Boolean(username) || Boolean(public_email);
+        const hasOnlySearch = Boolean(search) && !hasUsernameOrEmail;
+
+        const shouldUseSmartSearch =
+          smart_search === false ? false : smart_search === true || hasOnlySearch;
+
+        if (shouldUseSmartSearch && (search || username || public_email)) {
+          // Smart search mode: auto-detect pattern and use intelligent search strategy
+          const query = search ?? username ?? public_email ?? '';
+          const additionalParams: UserSearchParams = {};
+
+          // Pass through all other filter parameters
+          Object.entries(otherParams).forEach(([key, value]) => {
+            if (value !== undefined && key !== 'smart_search') {
+              additionalParams[key] = value;
+            }
+          });
+
+          const result = await smartUserSearch(query, additionalParams);
+          return result;
+        } else {
+          // Legacy mode: direct GitLab API call with all provided parameters
+          const queryParams = new URLSearchParams();
+          Object.entries(options).forEach(([key, value]) => {
+            if (value !== undefined && key !== 'smart_search') {
+              queryParams.set(key, String(value));
+            }
+          });
+
+          const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/users?${queryParams}`;
+          const response = await enhancedFetch(apiUrl, {
+            headers: {
+              Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
           }
-        });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/users?${queryParams}`;
-        const response = await enhancedFetch(apiUrl, {
-          headers: {
-            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
-          },
-        });
-
-        if (!response.ok) {
-          throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+          const users = await response.json();
+          return users;
         }
-
-        const users = await response.json();
-        return users;
       },
     },
   ],

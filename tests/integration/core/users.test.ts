@@ -57,9 +57,22 @@ describe("GitLab Users API - GetUsersSchema", () => {
 
         if (validationResult.success) {
           // Use executeTool directly since getUsers convenience method might not work
-          const data = await helper.executeTool('get_users', validationResult.data) as any[];
-          expect(Array.isArray(data)).toBe(true);
+          const rawData = await helper.executeTool('get_users', validationResult.data) as any;
 
+          // Handle both smart search result format and legacy array format
+          let data: any[];
+          if (Array.isArray(rawData)) {
+            // Legacy format: direct array of users
+            data = rawData;
+          } else if (rawData && Array.isArray(rawData.users)) {
+            // Smart search format: object with users array and metadata
+            data = rawData.users;
+            console.log(`  🔍 Smart search metadata:`, rawData.searchMetadata);
+          } else {
+            throw new Error(`Unexpected response format: ${typeof rawData}`);
+          }
+
+          expect(Array.isArray(data)).toBe(true);
           console.log(`  📊 Retrieved ${data.length} users`);
 
           // Validate response structure if we have results

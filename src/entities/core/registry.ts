@@ -619,13 +619,75 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: 'create_repository',
       description:
-        'CREATE NEW: Initialize a new GitLab project/repository. Use when: Starting a new project, Setting up repository structure, Automating project creation. Set visibility (private/internal/public), enable features (issues/wiki/CI), configure merge settings. Creates in your namespace by default.',
+        'CREATE NEW: Initialize a new GitLab project/repository with automatic validation. Features: (1) Automatically checks if project already exists before creation, (2) Resolves namespace paths to IDs automatically, (3) Generates URL-safe project path from name, (4) Returns detailed validation information. Use when: Starting new projects, Setting up repository structure, Automating project creation. Creates in your namespace by default if no namespace specified.',
       inputSchema: zodToJsonSchema(CreateRepositorySchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateRepositorySchema.parse(args);
+        const { namespacePath, name, ...otherOptions } = options;
 
+        // Step 1: Resolve namespace path to ID if provided
+        let namespaceId: string | undefined;
+        let resolvedNamespace: { id: string; full_path: string } | null = null;
+        if (namespacePath) {
+          const namespaceApiUrl = `${process.env.GITLAB_API_URL}/api/v4/namespaces/${encodeURIComponent(namespacePath)}`;
+          const namespaceResponse = await enhancedFetch(namespaceApiUrl, {
+            headers: {
+              Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
+            },
+          });
+
+          if (namespaceResponse.ok) {
+            resolvedNamespace = (await namespaceResponse.json()) as {
+              id: string;
+              full_path: string;
+            };
+            namespaceId = String(resolvedNamespace.id);
+          } else {
+            throw new Error(`Namespace '${namespacePath}' not found or not accessible`);
+          }
+        }
+
+        // Step 2: Check if project already exists in target namespace
+        const targetNamespacePath = resolvedNamespace
+          ? resolvedNamespace.full_path
+          : 'current-user';
+        const projectPath = `${targetNamespacePath}/${name}`;
+
+        const checkProjectUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(projectPath)}`;
+        const checkResponse = await enhancedFetch(checkProjectUrl, {
+          headers: {
+            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
+          },
+        });
+
+        if (checkResponse.ok) {
+          const existingProject = (await checkResponse.json()) as { id: string };
+          throw new Error(
+            `Project '${projectPath}' already exists (ID: ${existingProject.id}). Use a different name or update the existing project.`,
+          );
+        }
+
+        // Step 3: Create project
         const body = new URLSearchParams();
-        Object.entries(options).forEach(([key, value]) => {
+
+        // Add required name
+        body.set('name', name);
+
+        // Generate path from name (replace spaces and special chars)
+        const generatedPath = name
+          .toLowerCase()
+          .replace(/[^a-z0-9-]/g, '-')
+          .replace(/-+/g, '-')
+          .replace(/^-|-$/g, '');
+        body.set('path', generatedPath);
+
+        // Add namespace_id if resolved
+        if (namespaceId) {
+          body.set('namespace_id', namespaceId);
+        }
+
+        // Add all other options
+        Object.entries(otherOptions).forEach(([key, value]) => {
           if (value !== undefined) {
             if (Array.isArray(value)) {
               body.set(key, value.join(','));
@@ -635,8 +697,8 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects`;
-        const response = await enhancedFetch(apiUrl, {
+        const createApiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects`;
+        const createResponse = await enhancedFetch(createApiUrl, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -645,12 +707,29 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           body: body.toString(),
         });
 
-        if (!response.ok) {
-          throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+        if (!createResponse.ok) {
+          throw new Error(
+            `GitLab API error: ${createResponse.status} ${createResponse.statusText}`,
+          );
         }
 
-        const project = await response.json();
-        return project;
+        const project = await createResponse.json();
+
+        // Step 4: Return enhanced result with validation info
+        return {
+          ...project,
+          validation: {
+            namespace_resolved: namespacePath
+              ? `${namespacePath} → ${namespaceId}`
+              : 'current-user',
+            project_name_available: true,
+            created_in_expected_namespace:
+              !namespacePath ||
+              (project as { namespace: { full_path: string } }).namespace.full_path ===
+                resolvedNamespace?.full_path,
+            generated_path: generatedPath,
+          },
+        };
       },
     },
   ],

@@ -3,6 +3,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ListLabelsSchema, GetLabelSchema } from './schema-readonly';
 import { CreateLabelSchema, UpdateLabelSchema, DeleteLabelSchema } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
+import { resolveNamespaceForAPI } from '../../utils/namespace';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
@@ -19,21 +20,22 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
       inputSchema: zodToJsonSchema(ListLabelsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = ListLabelsSchema.parse(args);
-        const { project_id, group_id } = options;
+        const { namespacePath } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
+        // Try to auto-detect if it's a project or group by checking for presence of a project
+        // If it contains a slash, it's likely a project path (group/project)
+        // If no slash, it's likely a group path
+        const isProject = namespacePath.includes('/');
         const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
 
         const queryParams = new URLSearchParams();
         Object.entries(options).forEach(([key, value]) => {
-          if (value !== undefined && key !== 'project_id' && key !== 'group_id') {
+          if (value !== undefined && key !== 'namespacePath') {
             queryParams.set(key, String(value));
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/labels?${queryParams}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(namespacePath)}/labels?${queryParams}`;
         const response = await enhancedFetch(apiUrl, {
           headers: {
             Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -58,14 +60,12 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
       inputSchema: zodToJsonSchema(GetLabelSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetLabelSchema.parse(args);
-        const { project_id, group_id, label_id } = options;
+        const { namespacePath, label_id } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/labels/${encodeURIComponent(label_id)}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/labels/${encodeURIComponent(label_id)}`;
         const response = await enhancedFetch(apiUrl, {
           headers: {
             Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -91,12 +91,10 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
       inputSchema: zodToJsonSchema(CreateLabelSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateLabelSchema.parse(args);
-        const { project_id, group_id } = options;
+        const { namespacePath } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
         const body = new URLSearchParams();
         body.set('name', options.name);
@@ -108,7 +106,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
           body.set('priority', String(options.priority));
         }
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/labels`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/labels`;
         const response = await enhancedFetch(apiUrl, {
           method: 'POST',
           headers: {
@@ -136,26 +134,19 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
       inputSchema: zodToJsonSchema(UpdateLabelSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = UpdateLabelSchema.parse(args);
-        const { project_id, group_id, label_id } = options;
+        const { namespacePath, label_id } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
         const body = new URLSearchParams();
         Object.entries(options).forEach(([key, value]) => {
-          if (
-            value !== undefined &&
-            key !== 'project_id' &&
-            key !== 'group_id' &&
-            key !== 'label_id'
-          ) {
+          if (value !== undefined && key !== 'namespacePath' && key !== 'label_id') {
             body.set(key, String(value));
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/labels/${encodeURIComponent(label_id)}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/labels/${encodeURIComponent(label_id)}`;
         const response = await enhancedFetch(apiUrl, {
           method: 'PUT',
           headers: {
@@ -183,14 +174,12 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
       inputSchema: zodToJsonSchema(DeleteLabelSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = DeleteLabelSchema.parse(args);
-        const { project_id, group_id, label_id } = options;
+        const { namespacePath, label_id } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/labels/${encodeURIComponent(label_id)}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/labels/${encodeURIComponent(label_id)}`;
         const response = await enhancedFetch(apiUrl, {
           method: 'DELETE',
           headers: {

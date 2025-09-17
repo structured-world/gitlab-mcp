@@ -42,7 +42,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
 
       // Use handler function instead of direct GraphQL
       const workItems = await helper.listWorkItems({
-        groupPath: testGroupPath,
+        namespacePath: testGroupPath,
         first: 10,
       }) as any[];
 
@@ -72,9 +72,9 @@ describe('Work Items Integration - Using Handler Functions', () => {
 
       console.log(`🔧 Testing list_work_items handler with project: ${testProjectPath}`);
 
-      // Use handler function with projectPath for Issues/Tasks/Bugs
+      // Use handler function with namespacePath for Issues/Tasks/Bugs
       const workItems = await helper.listWorkItems({
-        projectPath: testProjectPath,
+        namespacePath: testProjectPath,
         first: 10,
       }) as any[];
 
@@ -106,7 +106,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
       const testGroupPath = testData.group.path;
 
       const workItems = await helper.listWorkItems({
-        groupPath: testGroupPath,
+        namespacePath: testGroupPath,
         first: 1,
       }) as any[];
 
@@ -146,7 +146,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
 
       // Use handler function instead of direct GraphQL
       const workItems = await helper.listWorkItems({
-        groupPath: testGroupPath,
+        namespacePath: testGroupPath,
         first: 10,
       }) as any[];
 
@@ -190,7 +190,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
         // 🚨 CRITICAL: Get work item types using handler function
         console.log('🔍 Getting Epic work item type using get_work_item_types handler...');
         const workItemTypes = await helper.getWorkItemTypes({
-          groupPath: testGroupPath,
+          namespacePath: testGroupPath,
         }) as any[];
 
         const epicType = workItemTypes.find((t: any) => t.name === 'Epic');

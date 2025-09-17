@@ -1,12 +1,19 @@
 import { labelsToolRegistry, getLabelsReadOnlyToolNames, getLabelsToolDefinitions, getFilteredLabelsTools } from '../../../../src/entities/labels/registry';
 import { enhancedFetch } from '../../../../src/utils/fetch';
+import { resolveNamespaceForAPI } from '../../../../src/utils/namespace';
 
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn()
 }));
 
+// Mock resolveNamespaceForAPI to avoid actual API calls
+jest.mock('../../../../src/utils/namespace', () => ({
+  resolveNamespaceForAPI: jest.fn()
+}));
+
 const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
+const mockResolveNamespaceForAPI = resolveNamespaceForAPI as jest.MockedFunction<typeof resolveNamespaceForAPI>;
 
 // Mock environment variables
 const originalEnv = process.env;
@@ -27,6 +34,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.resetAllMocks();
   mockEnhancedFetch.mockReset();
+  mockResolveNamespaceForAPI.mockReset();
 });
 
 describe('Labels Registry', () => {
@@ -322,10 +330,10 @@ describe('Labels Registry', () => {
         } as any);
 
         const handler = labelsToolRegistry.get('list_labels')!.handler;
-        const result = await handler({ project_id: 'test-project' });
+        const result = await handler({ namespacePath: 'test-group/test-project' });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          'https://gitlab.example.com/api/v4/projects/test-project/labels?',
+          'https://gitlab.example.com/api/v4/projects/test-group%2Ftest-project/labels?',
           {
             headers: {
               Authorization: 'Bearer test-token-12345',
@@ -345,7 +353,7 @@ describe('Labels Registry', () => {
         } as any);
 
         const handler = labelsToolRegistry.get('list_labels')!.handler;
-        const result = await handler({ group_id: 'test-group' });
+        const result = await handler({ namespacePath: 'test-group' });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
           'https://gitlab.example.com/api/v4/groups/test-group/labels?',
@@ -367,12 +375,12 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('list_labels')!.handler;
         await handler({
-          project_id: 'test-project',
+          namespacePath: 'test-group/test-project',
           search: 'bug'
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          'https://gitlab.example.com/api/v4/projects/test-project/labels?search=bug',
+          'https://gitlab.example.com/api/v4/projects/test-group%2Ftest-project/labels?search=bug',
           expect.any(Object)
         );
       });
@@ -386,7 +394,7 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('list_labels')!.handler;
 
-        await expect(handler({ project_id: 'invalid-project' }))
+        await expect(handler({ namespacePath: 'invalid-project' }))
           .rejects.toThrow('GitLab API error: 404 Not Found');
       });
     });
@@ -394,6 +402,11 @@ describe('Labels Registry', () => {
     describe('get_label handler', () => {
       it('should get project label successfully', async () => {
         const mockLabel = { id: 1, name: 'bug', color: '#ff0000' };
+
+        mockResolveNamespaceForAPI.mockResolvedValueOnce({
+          entityType: 'projects',
+          encodedPath: 'test-project'
+        });
 
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: true,
@@ -403,7 +416,7 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('get_label')!.handler;
         const result = await handler({
-          project_id: 'test-project',
+          namespacePath: 'test-project',
           label_id: '1'
         });
 
@@ -421,6 +434,11 @@ describe('Labels Registry', () => {
       it('should get group label successfully', async () => {
         const mockLabel = { id: 2, name: 'feature', color: '#00ff00' };
 
+        mockResolveNamespaceForAPI.mockResolvedValueOnce({
+          entityType: 'groups',
+          encodedPath: 'test-group'
+        });
+
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
@@ -429,7 +447,7 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('get_label')!.handler;
         const result = await handler({
-          group_id: 'test-group',
+          namespacePath: 'test-group',
           label_id: '2'
         });
 
@@ -449,6 +467,11 @@ describe('Labels Registry', () => {
       it('should create project label successfully', async () => {
         const mockLabel = { id: 3, name: 'new-label', color: '#ffff00' };
 
+        mockResolveNamespaceForAPI.mockResolvedValueOnce({
+          entityType: 'projects',
+          encodedPath: 'test-project'
+        });
+
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: true,
           status: 201,
@@ -457,7 +480,7 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('create_label')!.handler;
         const result = await handler({
-          project_id: 'test-project',
+          namespacePath: 'test-project',
           name: 'new-label',
           color: '#ffff00'
         });
@@ -479,6 +502,11 @@ describe('Labels Registry', () => {
       it('should create group label successfully', async () => {
         const mockLabel = { id: 4, name: 'group-label', color: '#ff00ff' };
 
+        mockResolveNamespaceForAPI.mockResolvedValueOnce({
+          entityType: 'groups',
+          encodedPath: 'test-group'
+        });
+
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: true,
           status: 201,
@@ -487,7 +515,7 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('create_label')!.handler;
         const result = await handler({
-          group_id: 'test-group',
+          namespacePath: 'test-group',
           name: 'group-label',
           color: '#ff00ff',
           description: 'A group label'
@@ -512,6 +540,11 @@ describe('Labels Registry', () => {
       it('should update project label successfully', async () => {
         const mockLabel = { id: 1, name: 'updated-bug', color: '#cc0000' };
 
+        mockResolveNamespaceForAPI.mockResolvedValueOnce({
+          entityType: 'projects',
+          encodedPath: 'test-project'
+        });
+
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
@@ -520,7 +553,7 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('update_label')!.handler;
         const result = await handler({
-          project_id: 'test-project',
+          namespacePath: 'test-project',
           label_id: '1',
           color: '#cc0000'
         });
@@ -542,6 +575,11 @@ describe('Labels Registry', () => {
       it('should update group label successfully', async () => {
         const mockLabel = { id: 2, name: 'updated-feature', color: '#00cc00' };
 
+        mockResolveNamespaceForAPI.mockResolvedValueOnce({
+          entityType: 'groups',
+          encodedPath: 'test-group'
+        });
+
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
@@ -550,7 +588,7 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('update_label')!.handler;
         const result = await handler({
-          group_id: 'test-group',
+          namespacePath: 'test-group',
           label_id: '2',
           new_name: 'updated-feature',
           color: '#00cc00'
@@ -573,6 +611,11 @@ describe('Labels Registry', () => {
 
     describe('delete_label handler', () => {
       it('should delete project label successfully', async () => {
+        mockResolveNamespaceForAPI.mockResolvedValueOnce({
+          entityType: 'projects',
+          encodedPath: 'test-project'
+        });
+
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: true,
           status: 204,
@@ -581,7 +624,7 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('delete_label')!.handler;
         const result = await handler({
-          project_id: 'test-project',
+          namespacePath: 'test-project',
           label_id: '1'
         });
 
@@ -598,6 +641,11 @@ describe('Labels Registry', () => {
       });
 
       it('should delete group label successfully', async () => {
+        mockResolveNamespaceForAPI.mockResolvedValueOnce({
+          entityType: 'groups',
+          encodedPath: 'test-group'
+        });
+
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: true,
           status: 204,
@@ -606,7 +654,7 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('delete_label')!.handler;
         const result = await handler({
-          group_id: 'test-group',
+          namespacePath: 'test-group',
           label_id: '2'
         });
 
@@ -620,6 +668,11 @@ describe('Labels Registry', () => {
       });
 
       it('should handle deletion errors', async () => {
+        mockResolveNamespaceForAPI.mockResolvedValueOnce({
+          entityType: 'projects',
+          encodedPath: 'test-project'
+        });
+
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: false,
           status: 403,
@@ -629,7 +682,7 @@ describe('Labels Registry', () => {
         const handler = labelsToolRegistry.get('delete_label')!.handler;
 
         await expect(handler({
-          project_id: 'test-project',
+          namespacePath: 'test-project',
           label_id: '1'
         })).rejects.toThrow('GitLab API error: 403 Forbidden');
       });
@@ -648,7 +701,7 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('list_labels')!.handler;
 
-        await expect(handler({ project_id: 'test-project' }))
+        await expect(handler({ namespacePath: 'test-project' }))
           .rejects.toThrow('Network error');
       });
 
@@ -661,7 +714,7 @@ describe('Labels Registry', () => {
 
         const handler = labelsToolRegistry.get('list_labels')!.handler;
 
-        await expect(handler({ project_id: 'test-project' }))
+        await expect(handler({ namespacePath: 'test-project' }))
           .rejects.toThrow('Invalid JSON');
       });
     });

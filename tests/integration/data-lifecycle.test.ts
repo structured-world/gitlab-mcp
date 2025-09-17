@@ -353,7 +353,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       // 🚨 CRITICAL: Get work item types using handler function instead of direct GraphQL
       console.log('🔍 Getting work item types for project namespace using get_work_item_types handler...');
       const projectWorkItemTypes = await helper.getWorkItemTypes({
-        groupPath: testData.project!.path_with_namespace,
+        namespacePath: testData.project!.path_with_namespace,
       }) as any[];
       console.log('📋 Available project work item types:', projectWorkItemTypes.map(t => `${t.name}(${t.id})`).join(', '));
 
@@ -512,7 +512,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       // 🚨 CRITICAL: Get work item types using handler function instead of direct GraphQL
       console.log('🔍 Getting work item types for group namespace using get_work_item_types handler...');
       const groupWorkItemTypes = await helper.getWorkItemTypes({
-        groupPath: testData.group!.path,
+        namespacePath: testData.group!.path,
       }) as any[];
       console.log('📋 Available group work item types:', groupWorkItemTypes.map(t => `${t.name}(${t.id})`).join(', '));
 

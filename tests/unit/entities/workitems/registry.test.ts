@@ -64,8 +64,8 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('list_work_items');
-      expect(tool?.description).toContain('HIERARCHY-AWARE');
-      expect(tool?.description).toContain('EPICS exist ONLY at GROUP level');
+      expect(tool?.description).toContain('COMPREHENSIVE');
+      expect(tool?.description).toContain('For GROUP: Returns EPICS from group');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -298,16 +298,16 @@ describe('Workitems Registry', () => {
     it('should have proper hierarchy documentation in list_work_items', () => {
       const tool = workitemsToolRegistry.get('list_work_items');
 
-      expect(tool?.description).toContain('groupPath for EPICS ONLY');
-      expect(tool?.description).toContain('projectPath for ISSUES/TASKS/BUGS ONLY');
-      expect(tool?.description).toContain('GROUP level');
+      expect(tool?.description).toContain('For GROUP: Returns EPICS from group');
+      expect(tool?.description).toContain('For PROJECT: Returns ISSUES/TASKS/BUGS from that project');
+      expect(tool?.description).toContain('Automatically detects namespace type');
     });
 
     it('should emphasize critical hierarchy rules', () => {
       const tool = workitemsToolRegistry.get('list_work_items');
 
-      expect(tool?.description).toContain('HIERARCHY-AWARE');
-      expect(tool?.description).toContain('PROJECT level');
+      expect(tool?.description).toContain('COMPREHENSIVE');
+      expect(tool?.description).toContain('For PROJECT: Returns ISSUES/TASKS/BUGS');
     });
   });
 
@@ -328,12 +328,12 @@ describe('Workitems Registry', () => {
         });
 
         const tool = workitemsToolRegistry.get('list_work_items');
-        const result = await tool?.handler({ groupPath: 'test-group' });
+        const result = await tool?.handler({ namespacePath: 'test-group' });
 
         expect(mockClient.request).toHaveBeenCalledWith(
           expect.any(Object), // GraphQL query object
           {
-            groupPath: 'test-group',
+            namespacePath: 'test-group',
             first: 20,
             after: undefined,
           }
@@ -348,7 +348,7 @@ describe('Workitems Registry', () => {
 
         const tool = workitemsToolRegistry.get('list_work_items');
         await tool?.handler({
-          groupPath: 'test-group',
+          namespacePath: 'test-group',
           first: 50,
           after: 'cursor-123',
         });
@@ -356,7 +356,7 @@ describe('Workitems Registry', () => {
         expect(mockClient.request).toHaveBeenCalledWith(
           expect.any(Object),
           {
-            groupPath: 'test-group',
+            namespacePath: 'test-group',
             first: 50,
             after: 'cursor-123',
           }
@@ -367,7 +367,7 @@ describe('Workitems Registry', () => {
         mockClient.request.mockResolvedValueOnce({ group: null });
 
         const tool = workitemsToolRegistry.get('list_work_items');
-        const result = await tool?.handler({ groupPath: 'empty-group' });
+        const result = await tool?.handler({ namespacePath: 'empty-group' });
 
         expect(result).toEqual([]);
       });
@@ -521,7 +521,7 @@ describe('Workitems Registry', () => {
         const tool = workitemsToolRegistry.get('create_work_item');
 
         await expect(tool?.handler({
-          groupPath: 'test-group',
+          namespacePath: 'test-group',
           workItemType: 'INVALID_TYPE',
           title: 'Failed Epic',
         })).rejects.toThrow();
@@ -620,18 +620,18 @@ describe('Workitems Registry', () => {
 
         const tool = workitemsToolRegistry.get('list_work_items');
 
-        await expect(tool?.handler({ groupPath: 'test-group' }))
+        await expect(tool?.handler({ namespacePath: 'test-group' }))
           .rejects.toThrow('Network error');
       });
 
       it('should handle schema validation errors', async () => {
         const tool = workitemsToolRegistry.get('list_work_items');
 
-        // Missing required groupPath
+        // Missing required namespacePath
         await expect(tool?.handler({})).rejects.toThrow();
 
         // Invalid parameter types
-        await expect(tool?.handler({ groupPath: 123 })).rejects.toThrow();
+        await expect(tool?.handler({ namespacePath: 123 })).rejects.toThrow();
       });
     });
   });

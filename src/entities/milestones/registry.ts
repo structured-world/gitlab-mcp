@@ -14,6 +14,7 @@ import {
   PromoteProjectMilestoneSchema,
 } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
+import { resolveNamespaceForAPI } from '../../utils/namespace';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
@@ -30,21 +31,19 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       inputSchema: zodToJsonSchema(ListProjectMilestonesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = ListProjectMilestonesSchema.parse(args);
-        const { project_id, group_id } = options;
+        const { namespacePath } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
         const queryParams = new URLSearchParams();
         Object.entries(options).forEach(([key, value]) => {
-          if (value !== undefined && value !== null && key !== 'project_id' && key !== 'group_id') {
+          if (value !== undefined && value !== null && key !== 'namespacePath') {
             queryParams.set(key, String(value));
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones?${queryParams}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/milestones?${queryParams}`;
         const response = await enhancedFetch(apiUrl, {
           headers: {
             Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -69,14 +68,12 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       inputSchema: zodToJsonSchema(GetProjectMilestoneSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetProjectMilestoneSchema.parse(args);
-        const { project_id, group_id, milestone_id } = options;
+        const { namespacePath, milestone_id } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${milestone_id}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/milestones/${milestone_id}`;
         const response = await enhancedFetch(apiUrl, {
           headers: {
             Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -101,27 +98,24 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       inputSchema: zodToJsonSchema(GetMilestoneIssuesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetMilestoneIssuesSchema.parse(args);
-        const { project_id, group_id, milestone_id } = options;
+        const { namespacePath, milestone_id } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
         const queryParams = new URLSearchParams();
         Object.entries(options).forEach(([key, value]) => {
           if (
             value !== undefined &&
             value !== null &&
-            key !== 'project_id' &&
-            key !== 'group_id' &&
+            key !== 'namespacePath' &&
             key !== 'milestone_id'
           ) {
             queryParams.set(key, String(value));
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${milestone_id}/issues?${queryParams}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/milestones/${milestone_id}/issues?${queryParams}`;
         const response = await enhancedFetch(apiUrl, {
           headers: {
             Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -146,27 +140,24 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       inputSchema: zodToJsonSchema(GetMilestoneMergeRequestsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetMilestoneMergeRequestsSchema.parse(args);
-        const { project_id, group_id, milestone_id } = options;
+        const { namespacePath, milestone_id } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
         const queryParams = new URLSearchParams();
         Object.entries(options).forEach(([key, value]) => {
           if (
             value !== undefined &&
             value !== null &&
-            key !== 'project_id' &&
-            key !== 'group_id' &&
+            key !== 'namespacePath' &&
             key !== 'milestone_id'
           ) {
             queryParams.set(key, String(value));
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${milestone_id}/merge_requests?${queryParams}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/milestones/${milestone_id}/merge_requests?${queryParams}`;
         const response = await enhancedFetch(apiUrl, {
           headers: {
             Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -191,14 +182,12 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       inputSchema: zodToJsonSchema(GetMilestoneBurndownEventsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetMilestoneBurndownEventsSchema.parse(args);
-        const { project_id, group_id, milestone_id } = options;
+        const { namespacePath, milestone_id } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${milestone_id}/burndown_events`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/milestones/${milestone_id}/burndown_events`;
         const response = await enhancedFetch(apiUrl, {
           headers: {
             Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -224,21 +213,19 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       inputSchema: zodToJsonSchema(CreateProjectMilestoneSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateProjectMilestoneSchema.parse(args);
-        const { project_id, group_id } = options;
+        const { namespacePath } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
         const body: Record<string, unknown> = {};
         Object.entries(options).forEach(([key, value]) => {
-          if (value !== undefined && value !== null && key !== 'project_id' && key !== 'group_id') {
+          if (value !== undefined && value !== null && key !== 'namespacePath') {
             body[key] = value;
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/milestones`;
         const response = await enhancedFetch(apiUrl, {
           method: 'POST',
           headers: {
@@ -266,27 +253,24 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       inputSchema: zodToJsonSchema(EditProjectMilestoneSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = EditProjectMilestoneSchema.parse(args);
-        const { project_id, group_id, milestone_id } = options;
+        const { namespacePath, milestone_id } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
         const body: Record<string, unknown> = {};
         Object.entries(options).forEach(([key, value]) => {
           if (
             value !== undefined &&
             value !== null &&
-            key !== 'project_id' &&
-            key !== 'group_id' &&
+            key !== 'namespacePath' &&
             key !== 'milestone_id'
           ) {
             body[key] = value;
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${milestone_id}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/milestones/${milestone_id}`;
         const response = await enhancedFetch(apiUrl, {
           method: 'PUT',
           headers: {
@@ -314,14 +298,12 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       inputSchema: zodToJsonSchema(DeleteProjectMilestoneSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = DeleteProjectMilestoneSchema.parse(args);
-        const { project_id, group_id, milestone_id } = options;
+        const { namespacePath, milestone_id } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/milestones/${milestone_id}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/milestones/${milestone_id}`;
         const response = await enhancedFetch(apiUrl, {
           method: 'DELETE',
           headers: {
@@ -347,13 +329,16 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       inputSchema: zodToJsonSchema(PromoteProjectMilestoneSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = PromoteProjectMilestoneSchema.parse(args);
-        const { project_id, milestone_id } = options;
+        const { namespacePath, milestone_id } = options;
 
-        if (!project_id) {
-          throw new Error('project_id is required for promoting milestones');
+        // Resolve namespace - for promote, we need to ensure it's a project
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
+
+        if (entityType !== 'projects') {
+          throw new Error('Milestone promotion is only available for projects, not groups');
         }
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodeURIComponent(project_id)}/milestones/${encodeURIComponent(milestone_id)}/promote`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${encodedPath}/milestones/${encodeURIComponent(milestone_id)}/promote`;
         const response = await enhancedFetch(apiUrl, {
           method: 'POST',
           headers: {

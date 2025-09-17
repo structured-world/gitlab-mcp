@@ -10,17 +10,11 @@ export const CreateRepositorySchema = z.object({
     .describe(
       'Project display name. Can contain spaces and special characters. Example: "My Awesome Project".',
     ),
-  path: z
+  namespacePath: z
     .string()
     .optional()
     .describe(
-      'URL path for the project. Must be valid URL slug (lowercase, no spaces). Defaults to name if not provided.',
-    ),
-  namespace_id: z.coerce
-    .string()
-    .optional()
-    .describe(
-      'Group or user namespace ID where project will be created. Defaults to current user namespace.',
+      'Target namespace for project creation. Use group path ("test"), user path ("username"), or subgroup ("group/subgroup"). Omit for current user namespace. Tool automatically resolves paths to IDs and validates existence.',
     ),
   description: z
     .string()

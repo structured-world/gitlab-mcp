@@ -25,9 +25,8 @@ afterAll(() => {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  jest.resetAllMocks();
-  // Reset the mock for proper isolation
-  mockEnhancedFetch.mockReset();
+  // Clear the mock call history but preserve implementation
+  mockEnhancedFetch.mockClear();
 });
 
 describe('Variables Registry', () => {
@@ -252,7 +251,7 @@ describe('Variables Registry', () => {
 
         const tool = variablesToolRegistry.get('list_variables')!;
         const result = await tool.handler({
-          project_id: 'test/project'
+          namespacePath: 'test/project'
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
@@ -274,7 +273,7 @@ describe('Variables Registry', () => {
 
         const tool = variablesToolRegistry.get('list_variables')!;
         const result = await tool.handler({
-          group_id: 'test-group'
+          namespacePath: 'test-group'
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
@@ -294,7 +293,7 @@ describe('Variables Registry', () => {
         const tool = variablesToolRegistry.get('list_variables')!;
 
         await expect(tool.handler({
-          project_id: 'private/project'
+          namespacePath: 'private/project'
         })).rejects.toThrow('GitLab API error: 403 Error');
       });
     });
@@ -313,7 +312,7 @@ describe('Variables Registry', () => {
 
         const tool = variablesToolRegistry.get('get_variable')!;
         const result = await tool.handler({
-          project_id: 'test/project',
+          namespacePath: 'test/project',
           key: 'API_KEY'
         });
 
@@ -338,7 +337,7 @@ describe('Variables Registry', () => {
 
         const tool = variablesToolRegistry.get('get_variable')!;
         const result = await tool.handler({
-          group_id: 'test-group',
+          namespacePath: 'test-group',
           key: 'DB_URL',
           filter: {
             environment_scope: 'production'
@@ -358,7 +357,7 @@ describe('Variables Registry', () => {
         const tool = variablesToolRegistry.get('get_variable')!;
 
         await expect(tool.handler({
-          project_id: 'test/project',
+          namespacePath: 'test/project',
           key: 'NONEXISTENT_KEY'
         })).rejects.toThrow('GitLab API error: 404 Error');
       });
@@ -378,7 +377,7 @@ describe('Variables Registry', () => {
 
         const tool = variablesToolRegistry.get('create_variable')!;
         const result = await tool.handler({
-          project_id: 'test/project',
+          namespacePath: 'test/project',
           key: 'NEW_API_KEY',
           value: 'secret123'
         });
@@ -415,7 +414,7 @@ describe('Variables Registry', () => {
 
         const tool = variablesToolRegistry.get('create_variable')!;
         const result = await tool.handler({
-          group_id: 'test-group',
+          namespacePath: 'test-group',
           key: 'DEPLOY_KEY',
           value: 'ssh-rsa AAAAB3NzaC1yc2E...',
           variable_type: 'file',
@@ -451,7 +450,7 @@ describe('Variables Registry', () => {
         const tool = variablesToolRegistry.get('create_variable')!;
 
         await expect(tool.handler({
-          project_id: 'test/project',
+          namespacePath: 'test/project',
           key: 'EXISTING_KEY',
           value: 'value'
         })).rejects.toThrow('GitLab API error: 400 Error');
@@ -472,7 +471,7 @@ describe('Variables Registry', () => {
 
         const tool = variablesToolRegistry.get('update_variable')!;
         const result = await tool.handler({
-          project_id: 'test/project',
+          namespacePath: 'test/project',
           key: 'API_KEY',
           value: 'new-secret-value',
           protected: true,
@@ -503,7 +502,7 @@ describe('Variables Registry', () => {
 
         const tool = variablesToolRegistry.get('update_variable')!;
         await tool.handler({
-          group_id: 'test-group',
+          namespacePath: 'test-group',
           key: 'DB_PASSWORD',
           value: 'new-password',
           filter: {
@@ -523,7 +522,7 @@ describe('Variables Registry', () => {
         const tool = variablesToolRegistry.get('update_variable')!;
 
         await expect(tool.handler({
-          project_id: 'test/project',
+          namespacePath: 'test/project',
           key: 'NONEXISTENT_KEY',
           value: 'value'
         })).rejects.toThrow('GitLab API error: 404 Error');
@@ -537,7 +536,7 @@ describe('Variables Registry', () => {
 
         const tool = variablesToolRegistry.get('delete_variable')!;
         const result = await tool.handler({
-          project_id: 'test/project',
+          namespacePath: 'test/project',
           key: 'OLD_API_KEY'
         });
 
@@ -559,7 +558,7 @@ describe('Variables Registry', () => {
 
         const tool = variablesToolRegistry.get('delete_variable')!;
         await tool.handler({
-          group_id: 'test-group',
+          namespacePath: 'test-group',
           key: 'TEMP_TOKEN',
           filter: {
             environment_scope: 'development'
@@ -583,7 +582,7 @@ describe('Variables Registry', () => {
         const tool = variablesToolRegistry.get('delete_variable')!;
 
         await expect(tool.handler({
-          project_id: 'test/project',
+          namespacePath: 'test/project',
           key: 'NONEXISTENT_KEY'
         })).rejects.toThrow('GitLab API error: 404 Error');
       });
@@ -595,7 +594,7 @@ describe('Variables Registry', () => {
 
         // Test with invalid input that should fail Zod validation
         await expect(tool.handler({
-          project_id: 123, // Should be string
+          namespacePath: 123, // Should be string
           key: null // Should be string
         })).rejects.toThrow();
       });
@@ -606,7 +605,7 @@ describe('Variables Registry', () => {
         const tool = variablesToolRegistry.get('list_variables')!;
 
         await expect(tool.handler({
-          project_id: 'test/project'
+          namespacePath: 'test/project'
         })).rejects.toThrow('GitLab API error: 500 Error');
       });
 
@@ -616,7 +615,7 @@ describe('Variables Registry', () => {
         const tool = variablesToolRegistry.get('create_variable')!;
 
         await expect(tool.handler({
-          project_id: 'test/project',
+          namespacePath: 'test/project',
           key: 'TEST_KEY',
           value: 'test-value'
         })).rejects.toThrow('Network error');

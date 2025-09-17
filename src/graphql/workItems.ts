@@ -436,9 +436,37 @@ export interface Vulnerability {
 
 // GraphQL Queries
 
+export const GET_GROUP_PROJECTS: TypedDocumentNode<
+  { group: { projects: { nodes: Array<{ id: string; fullPath: string }> } } },
+  { groupPath: string; includeSubgroups?: boolean }
+> = gql`
+  query GetGroupProjects($groupPath: ID!, $includeSubgroups: Boolean) {
+    group(fullPath: $groupPath) {
+      projects(includeSubgroups: $includeSubgroups) {
+        nodes {
+          id
+          fullPath
+        }
+      }
+    }
+  }
+`;
+
+export const GET_NAMESPACE_TYPE: TypedDocumentNode<
+  { namespace: { __typename: string; fullPath: string } },
+  { namespacePath: string }
+> = gql`
+  query GetNamespaceType($namespacePath: ID!) {
+    namespace(fullPath: $namespacePath) {
+      __typename
+      fullPath
+    }
+  }
+`;
+
 export const GET_WORK_ITEMS: TypedDocumentNode<
   { group: { workItems: { nodes: WorkItem[] } } },
-  { groupPath: string; types?: WorkItemTypeEnum[]; first?: number; after?: string }
+  { groupPath: string; types?: string[]; first?: number; after?: string }
 > = gql`
   query GetWorkItems($groupPath: ID!, $types: [IssueType!], $first: Int, $after: String) {
     group(fullPath: $groupPath) {
@@ -645,7 +673,6 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
             ... on WorkItemWidgetLinkedItems {
               linkedItems {
                 nodes {
-                  linkId
                   linkType
                   workItem {
                     id
@@ -761,7 +788,7 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
 
 export const GET_PROJECT_WORK_ITEMS: TypedDocumentNode<
   { project: { workItems: { nodes: WorkItem[] } } },
-  { projectPath: string; types?: WorkItemTypeEnum[]; first?: number; after?: string }
+  { projectPath: string; types?: string[]; first?: number; after?: string }
 > = gql`
   query GetProjectWorkItems($projectPath: ID!, $types: [IssueType!], $first: Int, $after: String) {
     project(fullPath: $projectPath) {
@@ -877,12 +904,9 @@ export const GET_PROJECT_WORK_ITEMS: TypedDocumentNode<
               startDate
               dueDate
               isFixed
-              fixed
-              inherited
             }
             ... on WorkItemWidgetHealthStatus {
               healthStatus
-              allowsScopedLabels
             }
             ... on WorkItemWidgetWeight {
               weight
@@ -957,10 +981,7 @@ export const GET_PROJECT_WORK_ITEMS: TypedDocumentNode<
             ... on WorkItemWidgetLinkedItems {
               linkedItems {
                 nodes {
-                  id
                   linkType
-                  linkCreatedAt
-                  linkUpdatedAt
                   workItem {
                     id
                     iid
@@ -1005,17 +1026,19 @@ export const GET_PROJECT_WORK_ITEMS: TypedDocumentNode<
                 nodes {
                   id
                   name
-                  description
                   active
                 }
               }
-              mergeRequests {
+              closingMergeRequests {
                 nodes {
                   id
-                  iid
-                  title
-                  state
-                  webUrl
+                  mergeRequest {
+                    id
+                    iid
+                    title
+                    state
+                    webUrl
+                  }
                 }
               }
             }
@@ -1040,7 +1063,9 @@ export const GET_PROJECT_WORK_ITEMS: TypedDocumentNode<
                 nodes {
                   id
                   timeSpent
-                  note
+                  note {
+                    body
+                  }
                   spentAt
                   user {
                     id
@@ -1057,33 +1082,16 @@ export const GET_PROJECT_WORK_ITEMS: TypedDocumentNode<
               }
             }
             ... on WorkItemWidgetCustomFields {
-              customFields {
-                nodes {
-                  id
-                  name
-                  value
-                  fieldType
-                }
-              }
+              type
             }
             ... on WorkItemWidgetErrorTracking {
-              errorTrackingEnabled
-              errors {
-                nodes {
-                  id
-                  status
-                  title
-                  firstSeen
-                  lastSeen
-                }
-              }
+              identifier
+              status
             }
             ... on WorkItemWidgetLinkedResources {
               linkedResources {
                 nodes {
-                  id
-                  type
-                  title
+                  url
                 }
               }
             }

@@ -25,8 +25,7 @@ export const GitLabMilestonesSchema = z.object({
 // Schema for listing project/group milestones
 export const ListProjectMilestonesSchema = z
   .object({
-    project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
-    group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
+    namespacePath: z.string().describe('Namespace path (group or project) to list milestones from'),
     iids: z
       .array(z.number())
       .optional()
@@ -53,42 +52,27 @@ export const ListProjectMilestonesSchema = z
       .optional()
       .describe('Return milestones updated after the specified date (ISO 8601 format)'),
   })
-  .merge(PaginationOptionsSchema)
-  .refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
-    message: 'Exactly one of project_id or group_id must be provided',
-  });
+  .merge(PaginationOptionsSchema);
 
-// Base schema without refinement
+// Base schema for milestone operations
 const GetProjectMilestoneBaseSchema = z.object({
-  project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
-  group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
+  namespacePath: z.string().describe('Namespace path (group or project) containing the milestone'),
   milestone_id: z.coerce.string().describe('The ID of a project or group milestone'),
 });
 
 // Schema for getting a single milestone
-export const GetProjectMilestoneSchema = GetProjectMilestoneBaseSchema.refine(
-  (data) => Boolean(data.project_id) !== Boolean(data.group_id),
-  {
-    message: 'Exactly one of project_id or group_id must be provided',
-  },
-);
+export const GetProjectMilestoneSchema = GetProjectMilestoneBaseSchema;
 
 // Schema for getting issues assigned to a milestone
 export const GetMilestoneIssuesSchema = GetProjectMilestoneSchema;
 
 // Schema for getting merge requests assigned to a milestone
-export const GetMilestoneMergeRequestsSchema = GetProjectMilestoneBaseSchema.merge(
-  PaginationOptionsSchema,
-).refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
-  message: 'Exactly one of project_id or group_id must be provided',
-});
+export const GetMilestoneMergeRequestsSchema =
+  GetProjectMilestoneBaseSchema.merge(PaginationOptionsSchema);
 
 // Schema for getting burndown chart events for a milestone
-export const GetMilestoneBurndownEventsSchema = GetProjectMilestoneBaseSchema.merge(
-  PaginationOptionsSchema,
-).refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
-  message: 'Exactly one of project_id or group_id must be provided',
-});
+export const GetMilestoneBurndownEventsSchema =
+  GetProjectMilestoneBaseSchema.merge(PaginationOptionsSchema);
 
 // Type exports
 export type GitLabMilestones = z.infer<typeof GitLabMilestonesSchema>;

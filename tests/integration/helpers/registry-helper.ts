@@ -157,8 +157,9 @@ export class IntegrationTestHelper {
   }
 
   async listWorkItems(args: {
-    groupPath: string;
+    namespacePath: string;
     types?: string[];
+    includeSubgroups?: boolean;
     first?: number;
     after?: string;
   }): Promise<unknown> {
@@ -166,9 +167,9 @@ export class IntegrationTestHelper {
   }
 
   async getWorkItemTypes(args: {
-    groupPath: string;
+    namespacePath: string;
   }): Promise<unknown> {
-    return this.executeTool('get_work_item_types', { namespacePath: args.groupPath });
+    return this.executeTool('get_work_item_types', args);
   }
 
   // ========================================

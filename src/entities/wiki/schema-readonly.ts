@@ -5,24 +5,15 @@ import { flexibleBoolean } from '../utils';
 // Read-only wiki operation schemas
 export const ListWikiPagesSchema = z
   .object({
-    project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
-    group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
+    namespacePath: z.string().describe('Namespace path (group or project) to list wiki pages from'),
     with_content: flexibleBoolean.optional().describe('Include content of the wiki pages'),
   })
-  .merge(PaginationOptionsSchema)
-  .refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
-    message: 'Exactly one of project_id or group_id must be provided',
-  });
+  .merge(PaginationOptionsSchema);
 
-export const GetWikiPageSchema = z
-  .object({
-    project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
-    group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
-    slug: z.string().describe('URL-encoded slug of the wiki page'),
-  })
-  .refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
-    message: 'Exactly one of project_id or group_id must be provided',
-  });
+export const GetWikiPageSchema = z.object({
+  namespacePath: z.string().describe('Namespace path (group or project) containing the wiki page'),
+  slug: z.string().describe('URL-encoded slug of the wiki page'),
+});
 
 // Define wiki response schemas
 export const GitLabWikiPageSchema = z.object({

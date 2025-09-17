@@ -3,6 +3,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ListWikiPagesSchema, GetWikiPageSchema } from './schema-readonly';
 import { CreateWikiPageSchema, UpdateWikiPageSchema, DeleteWikiPageSchema } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
+import { resolveNamespaceForAPI } from '../../utils/namespace';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
@@ -19,21 +20,19 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       inputSchema: zodToJsonSchema(ListWikiPagesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = ListWikiPagesSchema.parse(args);
-        const { project_id, group_id } = options;
+        const { namespacePath } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
         const queryParams = new URLSearchParams();
         Object.entries(options).forEach(([key, value]) => {
-          if (value !== undefined && value !== null && key !== 'project_id' && key !== 'group_id') {
+          if (value !== undefined && value !== null && key !== 'namespacePath') {
             queryParams.set(key, String(value));
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis?${queryParams}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/wikis?${queryParams}`;
         const response = await enhancedFetch(apiUrl, {
           headers: {
             Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -58,27 +57,19 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       inputSchema: zodToJsonSchema(GetWikiPageSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetWikiPageSchema.parse(args);
-        const { project_id, group_id, slug } = options;
+        const { namespacePath, slug } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
         const queryParams = new URLSearchParams();
         Object.entries(options).forEach(([key, value]) => {
-          if (
-            value !== undefined &&
-            value !== null &&
-            key !== 'project_id' &&
-            key !== 'group_id' &&
-            key !== 'slug'
-          ) {
+          if (value !== undefined && value !== null && key !== 'namespacePath' && key !== 'slug') {
             queryParams.set(key, String(value));
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis/${encodeURIComponent(slug)}?${queryParams}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/wikis/${encodeURIComponent(slug)}?${queryParams}`;
         const response = await enhancedFetch(apiUrl, {
           headers: {
             Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
@@ -104,21 +95,19 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       inputSchema: zodToJsonSchema(CreateWikiPageSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateWikiPageSchema.parse(args);
-        const { project_id, group_id } = options;
+        const { namespacePath } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
         const body: Record<string, unknown> = {};
         Object.entries(options).forEach(([key, value]) => {
-          if (value !== undefined && value !== null && key !== 'project_id' && key !== 'group_id') {
+          if (value !== undefined && value !== null && key !== 'namespacePath') {
             body[key] = value;
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/wikis`;
         const response = await enhancedFetch(apiUrl, {
           method: 'POST',
           headers: {
@@ -146,27 +135,19 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       inputSchema: zodToJsonSchema(UpdateWikiPageSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = UpdateWikiPageSchema.parse(args);
-        const { project_id, group_id, slug } = options;
+        const { namespacePath, slug } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
         const body: Record<string, unknown> = {};
         Object.entries(options).forEach(([key, value]) => {
-          if (
-            value !== undefined &&
-            value !== null &&
-            key !== 'project_id' &&
-            key !== 'group_id' &&
-            key !== 'slug'
-          ) {
+          if (value !== undefined && value !== null && key !== 'namespacePath' && key !== 'slug') {
             body[key] = value;
           }
         });
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis/${encodeURIComponent(slug)}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/wikis/${encodeURIComponent(slug)}`;
         const response = await enhancedFetch(apiUrl, {
           method: 'PUT',
           headers: {
@@ -194,14 +175,12 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       inputSchema: zodToJsonSchema(DeleteWikiPageSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = DeleteWikiPageSchema.parse(args);
-        const { project_id, group_id, slug } = options;
+        const { namespacePath, slug } = options;
 
-        // Determine entity type and ID
-        const isProject = !!project_id;
-        const entityType = isProject ? 'projects' : 'groups';
-        const entityId = (isProject ? project_id : group_id) as string;
+        // Resolve namespace type and get proper API path
+        const { entityType, encodedPath } = await resolveNamespaceForAPI(namespacePath);
 
-        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(entityId)}/wikis/${encodeURIComponent(slug)}`;
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodedPath}/wikis/${encodeURIComponent(slug)}`;
         const response = await enhancedFetch(apiUrl, {
           method: 'DELETE',
           headers: {

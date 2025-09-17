@@ -2,59 +2,39 @@ import { z } from 'zod';
 
 // Write-only milestone operation schemas
 // Schema for creating a new milestone
-export const CreateProjectMilestoneSchema = z
-  .object({
-    project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
-    group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
-    title: z.string().describe('The title of the milestone'),
-    description: z.string().optional().describe('The description of the milestone'),
-    due_date: z.string().optional().describe('The due date of the milestone (YYYY-MM-DD)'),
-    start_date: z.string().optional().describe('The start date of the milestone (YYYY-MM-DD)'),
-  })
-  .refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
-    message: 'Exactly one of project_id or group_id must be provided',
-  });
+export const CreateProjectMilestoneSchema = z.object({
+  namespacePath: z.string().describe('Namespace path (group or project) to create milestone in'),
+  title: z.string().describe('The title of the milestone'),
+  description: z.string().optional().describe('The description of the milestone'),
+  due_date: z.string().optional().describe('The due date of the milestone (YYYY-MM-DD)'),
+  start_date: z.string().optional().describe('The start date of the milestone (YYYY-MM-DD)'),
+});
 
 // Schema for editing a milestone
-export const EditProjectMilestoneSchema = z
-  .object({
-    project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
-    group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
-    milestone_id: z.coerce.string().describe('The ID of a project or group milestone'),
-    title: z.string().optional().describe('The title of the milestone'),
-    description: z.string().optional().describe('The description of the milestone'),
-    due_date: z.string().optional().describe('The due date of the milestone (YYYY-MM-DD)'),
-    start_date: z.string().optional().describe('The start date of the milestone (YYYY-MM-DD)'),
-    state_event: z
-      .enum(['close', 'activate'])
-      .optional()
-      .describe('The state event of the milestone'),
-  })
-  .refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
-    message: 'Exactly one of project_id or group_id must be provided',
-  });
+export const EditProjectMilestoneSchema = z.object({
+  namespacePath: z.string().describe('Namespace path (group or project) containing the milestone'),
+  milestone_id: z.coerce.string().describe('The ID of a project or group milestone'),
+  title: z.string().optional().describe('The title of the milestone'),
+  description: z.string().optional().describe('The description of the milestone'),
+  due_date: z.string().optional().describe('The due date of the milestone (YYYY-MM-DD)'),
+  start_date: z.string().optional().describe('The start date of the milestone (YYYY-MM-DD)'),
+  state_event: z
+    .enum(['close', 'activate'])
+    .optional()
+    .describe('The state event of the milestone'),
+});
 
 // Schema for deleting a milestone
-export const DeleteProjectMilestoneSchema = z
-  .object({
-    project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
-    group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
-    milestone_id: z.coerce.string().describe('The ID of a project or group milestone'),
-  })
-  .refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
-    message: 'Exactly one of project_id or group_id must be provided',
-  });
+export const DeleteProjectMilestoneSchema = z.object({
+  namespacePath: z.string().describe('Namespace path (group or project) containing the milestone'),
+  milestone_id: z.coerce.string().describe('The ID of a project or group milestone'),
+});
 
 // Schema for promoting a project milestone to a group milestone
-export const PromoteProjectMilestoneSchema = z
-  .object({
-    project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
-    group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
-    milestone_id: z.coerce.string().describe('The ID of a project or group milestone'),
-  })
-  .refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
-    message: 'Exactly one of project_id or group_id must be provided',
-  });
+export const PromoteProjectMilestoneSchema = z.object({
+  namespacePath: z.string().describe('Namespace path (group or project) containing the milestone'),
+  milestone_id: z.coerce.string().describe('The ID of a project or group milestone'),
+});
 
 // Type exports
 export type CreateProjectMilestoneOptions = z.infer<typeof CreateProjectMilestoneSchema>;

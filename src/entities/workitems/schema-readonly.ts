@@ -39,6 +39,20 @@ export const ListWorkItemsSchema = z.object({
     ),
   first: z.number().optional().default(20).describe('Number of items to fetch'),
   after: z.string().optional().describe('Cursor for pagination'),
+  simple: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(
+      'Return simplified structure with essential fields only (id, title, state, type, assignees, labels). Set false for full details.',
+    ),
+  active: z
+    .boolean()
+    .optional()
+    .default(true)
+    .describe(
+      'Include only active projects and work items (excludes archived and deletion_scheduled projects). Set false to include all.',
+    ),
 });
 
 export const GetWorkItemSchema = z.object({

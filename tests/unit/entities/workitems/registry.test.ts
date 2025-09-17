@@ -64,8 +64,8 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('list_work_items');
-      expect(tool?.description).toContain('COMPREHENSIVE');
-      expect(tool?.description).toContain('GROUP query: gets EPICs + recursively fetches ISSUES/TASKS from all subprojects');
+      expect(tool?.description).toContain('List all work items');
+      expect(tool?.description).toContain('epics, issues, tasks');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -298,16 +298,16 @@ describe('Workitems Registry', () => {
     it('should have proper hierarchy documentation in list_work_items', () => {
       const tool = workitemsToolRegistry.get('list_work_items');
 
-      expect(tool?.description).toContain('ALWAYS tries both GROUP and PROJECT queries and combines results');
-      expect(tool?.description).toContain('GROUP query: gets EPICs + recursively fetches ISSUES/TASKS from all subprojects');
-      expect(tool?.description).toContain('PROJECT query: gets ISSUES/TASKS directly from project');
+      expect(tool?.description).toContain('List all work items');
+      expect(tool?.description).toContain('group path to get all work items across the entire group hierarchy');
+      expect(tool?.description).toContain('project path to get project-specific items');
     });
 
-    it('should emphasize critical hierarchy rules', () => {
+    it('should emphasize comprehensive coverage', () => {
       const tool = workitemsToolRegistry.get('list_work_items');
 
-      expect(tool?.description).toContain('COMPREHENSIVE');
-      expect(tool?.description).toContain('PROJECT query: gets ISSUES/TASKS directly from project');
+      expect(tool?.description).toContain('comprehensive overview');
+      expect(tool?.description).toContain('all work across teams and projects');
     });
   });
 
@@ -317,11 +317,54 @@ describe('Workitems Registry', () => {
       mockClient.request.mockReset();
     });
 
+    // Helper function to create complete mock work items
+    const createMockWorkItem = (overrides: any = {}) => ({
+      id: 'gid://gitlab/WorkItem/1',
+      iid: '1',
+      title: 'Test Work Item',
+      state: 'OPEN',
+      workItemType: { id: 'gid://gitlab/WorkItems::Type/8', name: 'Epic' },
+      webUrl: 'https://gitlab.example.com/groups/test/-/epics/1',
+      createdAt: '2025-01-01T00:00:00Z',
+      updatedAt: '2025-01-01T00:00:00Z',
+      description: null,
+      widgets: [],
+      ...overrides
+    });
+
+    // Helper function to create mock project
+    const createMockProject = (overrides: any = {}) => ({
+      id: 'gid://gitlab/Project/1',
+      fullPath: 'test-group/test-project',
+      archived: false,
+      ...overrides
+    });
+
     describe('list_work_items handler', () => {
       it('should execute successfully with valid group path', async () => {
         const mockWorkItems = [
-          { id: 'gid://gitlab/WorkItem/1', title: 'Epic 1', workItemType: { name: 'Epic' } },
-          { id: 'gid://gitlab/WorkItem/2', title: 'Epic 2', workItemType: { name: 'Epic' } },
+          {
+            id: 'gid://gitlab/WorkItem/1',
+            iid: '1',
+            title: 'Epic 1',
+            state: 'OPEN',
+            workItemType: { id: 'gid://gitlab/WorkItems::Type/8', name: 'Epic' },
+            webUrl: 'https://gitlab.example.com/groups/test/-/epics/1',
+            createdAt: '2025-01-01T00:00:00Z',
+            updatedAt: '2025-01-01T00:00:00Z',
+            widgets: []
+          },
+          {
+            id: 'gid://gitlab/WorkItem/2',
+            iid: '2',
+            title: 'Epic 2',
+            state: 'OPEN',
+            workItemType: { id: 'gid://gitlab/WorkItems::Type/8', name: 'Epic' },
+            webUrl: 'https://gitlab.example.com/groups/test/-/epics/2',
+            createdAt: '2025-01-01T00:00:00Z',
+            updatedAt: '2025-01-01T00:00:00Z',
+            widgets: []
+          },
         ];
 
         // Mock epic work items query (1st call - unified strategy)
@@ -353,6 +396,62 @@ describe('Workitems Registry', () => {
           }
         );
 
+        // With simple=true (default), expect simplified structure
+        const expectedSimplified = mockWorkItems.map(item => ({
+          id: item.id,
+          iid: item.iid,
+          title: item.title,
+          state: item.state,
+          workItemType: item.workItemType,
+          webUrl: item.webUrl,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+          // No widgets because empty array is filtered out
+        }));
+
+        expect(result).toEqual(expectedSimplified);
+      });
+
+      it('should return full structure when simple=false', async () => {
+        const mockWorkItems = [
+          {
+            id: 'gid://gitlab/WorkItem/1',
+            iid: '1',
+            title: 'Epic 1',
+            state: 'OPEN',
+            workItemType: { id: 'gid://gitlab/WorkItems::Type/8', name: 'Epic' },
+            webUrl: 'https://gitlab.example.com/groups/test/-/epics/1',
+            createdAt: '2025-01-01T00:00:00Z',
+            updatedAt: '2025-01-01T00:00:00Z',
+            description: 'Test epic description',
+            widgets: [
+              {
+                type: 'ASSIGNEES',
+                assignees: { nodes: [{ id: 'user1', username: 'test', name: 'Test User' }] }
+              }
+            ]
+          }
+        ];
+
+        // Mock epic work items query
+        mockClient.request.mockResolvedValueOnce({
+          group: { workItems: { nodes: mockWorkItems } },
+        });
+
+        // Mock group projects query
+        mockClient.request.mockResolvedValueOnce({
+          group: { projects: { nodes: [] } },
+        });
+
+        // Mock project query
+        mockClient.request.mockResolvedValueOnce({
+          project: null,
+        });
+
+        const tool = workitemsToolRegistry.get('list_work_items');
+        const result = await tool?.handler({ namespacePath: 'test-group', simple: false });
+
+        // With simple=false, expect full original structure
         expect(result).toEqual(mockWorkItems);
       });
 
@@ -412,69 +511,131 @@ describe('Workitems Registry', () => {
       });
 
       it('should handle group with projects containing work items', async () => {
+        const mockWorkItems = [
+          {
+            id: 'gid://gitlab/WorkItem/100',
+            iid: '1',
+            title: 'Issue 1',
+            state: 'OPEN',
+            workItemType: { name: 'Issue' },
+            webUrl: 'https://gitlab.example.com/work-items/100',
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+            description: 'Test description',
+            widgets: []
+          },
+          {
+            id: 'gid://gitlab/WorkItem/101',
+            iid: '2',
+            title: 'Task 1',
+            state: 'OPEN',
+            workItemType: { name: 'Task' },
+            webUrl: 'https://gitlab.example.com/work-items/101',
+            createdAt: '2024-01-01T00:00:00Z',
+            updatedAt: '2024-01-01T00:00:00Z',
+            description: 'Test description',
+            widgets: []
+          }
+        ];
+
         const mockProjects = [
-          { fullPath: 'test-group/project1', name: 'Project 1' },
-          { fullPath: 'test-group/project2', name: 'Project 2' },
-        ];
-        const mockProjectWorkItems = [
-          { id: 'gid://gitlab/WorkItem/100', title: 'Issue 1', workItemType: { name: 'Issue' } },
-          { id: 'gid://gitlab/WorkItem/101', title: 'Task 1', workItemType: { name: 'Task' } },
+          { fullPath: 'test-group/project1', archived: false },
+          { fullPath: 'test-group/project2', archived: false }
         ];
 
-        // Mock epic work items query (1st call - no epics)
-        mockClient.request.mockResolvedValueOnce({
-          group: { workItems: { nodes: [] } },
-        });
+        // Smart mock based on query variables instead of call order
+        mockClient.request.mockImplementation((query: any, variables: any) => {
+          // Epic query (groupPath + types: ['EPIC'])
+          if (variables?.groupPath === 'test-group' && variables?.types?.includes('EPIC')) {
+            return Promise.resolve({ group: { workItems: { nodes: [] } } });
+          }
 
-        // Mock group projects query (2nd call)
-        mockClient.request.mockResolvedValueOnce({
-          group: { projects: { nodes: mockProjects } },
-        });
+          // Group projects query (groupPath + includeSubgroups)
+          if (variables?.groupPath === 'test-group' && variables?.includeSubgroups !== undefined) {
+            return Promise.resolve({ group: { projects: { nodes: mockProjects } } });
+          }
 
-        // Mock project work items queries (3rd and 4th calls)
-        mockClient.request.mockResolvedValueOnce({
-          project: { workItems: { nodes: [mockProjectWorkItems[0]] } },
-        });
-        mockClient.request.mockResolvedValueOnce({
-          project: { workItems: { nodes: [mockProjectWorkItems[1]] } },
-        });
+          // Project work items queries (projectPath)
+          if (variables?.projectPath === 'test-group/project1') {
+            return Promise.resolve({ project: { workItems: { nodes: [mockWorkItems[0]] } } });
+          }
+          if (variables?.projectPath === 'test-group/project2') {
+            return Promise.resolve({ project: { workItems: { nodes: [mockWorkItems[1]] } } });
+          }
 
-        // Mock project query (5th call - unified strategy)
-        mockClient.request.mockResolvedValueOnce({
-          project: null, // Group, not project
+          // Direct project query for group (will fail)
+          if (variables?.projectPath === 'test-group') {
+            return Promise.resolve({ project: null });
+          }
+
+          return Promise.resolve({});
         });
 
         const tool = workitemsToolRegistry.get('list_work_items');
         const result = await tool?.handler({ namespacePath: 'test-group' });
 
-        expect(result).toEqual(mockProjectWorkItems);
-        expect(mockClient.request).toHaveBeenCalledTimes(5);
+        // Expect simplified results (default simple=true)
+        const expectedSimplified = mockWorkItems.map(item => ({
+          id: item.id,
+          iid: item.iid,
+          title: item.title,
+          state: item.state,
+          workItemType: item.workItemType,
+          webUrl: item.webUrl,
+          createdAt: item.createdAt,
+          updatedAt: item.updatedAt,
+          description: item.description
+        }));
+
+        expect(result).toEqual(expectedSimplified);
       });
 
       it('should handle project-specific query (unified strategy)', async () => {
-        const mockProjectWorkItems = [
-          { id: 'gid://gitlab/WorkItem/200', title: 'Project Issue', workItemType: { name: 'Issue' } },
-        ];
+        const mockWorkItem = {
+          id: 'gid://gitlab/WorkItem/200',
+          iid: '1',
+          title: 'Project Issue',
+          state: 'OPEN',
+          workItemType: { name: 'Issue' },
+          webUrl: 'https://gitlab.example.com/work-items/200',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+          description: 'Test description',
+          widgets: []
+        };
 
-        // Mock group query (1st call - fails for project)
-        mockClient.request.mockResolvedValueOnce({
-          group: null,
-        });
+        // Smart mock based on query variables
+        mockClient.request.mockImplementation((query: any, variables: any) => {
+          // Group queries fail for project paths
+          if (variables?.groupPath === 'test-group/test-project') {
+            return Promise.resolve({ group: null });
+          }
 
-        // Mock group projects query (2nd call - fails for project)
-        mockClient.request.mockResolvedValueOnce({
-          group: null,
-        });
+          // Direct project query succeeds
+          if (variables?.projectPath === 'test-group/test-project') {
+            return Promise.resolve({ project: { workItems: { nodes: [mockWorkItem] } } });
+          }
 
-        // Mock project query (3rd call - succeeds)
-        mockClient.request.mockResolvedValueOnce({
-          project: { workItems: { nodes: mockProjectWorkItems } },
+          return Promise.resolve({});
         });
 
         const tool = workitemsToolRegistry.get('list_work_items');
         const result = await tool?.handler({ namespacePath: 'test-group/test-project' });
 
-        expect(result).toEqual(mockProjectWorkItems);
+        // Expected simplified result
+        const expectedSimplified = [{
+          id: mockWorkItem.id,
+          iid: mockWorkItem.iid,
+          title: mockWorkItem.title,
+          state: mockWorkItem.state,
+          workItemType: mockWorkItem.workItemType,
+          webUrl: mockWorkItem.webUrl,
+          createdAt: mockWorkItem.createdAt,
+          updatedAt: mockWorkItem.updatedAt,
+          description: mockWorkItem.description
+        }];
+
+        expect(result).toEqual(expectedSimplified);
       });
 
       it('should handle error in project work items fetch', async () => {
@@ -542,33 +703,41 @@ describe('Workitems Registry', () => {
         );
       });
 
-      it('should handle pagination parameters correctly in distributed queries', async () => {
+      it('should handle pagination parameters correctly - each project gets full first value', async () => {
         const mockProjects = [
-          { fullPath: 'test-group/project1', name: 'Project 1' },
-          { fullPath: 'test-group/project2', name: 'Project 2' },
+          { fullPath: 'test-group/project1', archived: false },
+          { fullPath: 'test-group/project2', archived: false },
         ];
 
-        // Mock epic work items query (1st call)
-        mockClient.request.mockResolvedValueOnce({
-          group: { workItems: { nodes: [] } },
-        });
+        // Track calls to verify pagination parameters
+        const calls: any[] = [];
 
-        // Mock group projects query (2nd call)
-        mockClient.request.mockResolvedValueOnce({
-          group: { projects: { nodes: mockProjects } },
-        });
+        // Smart mock based on query variables for parallel execution
+        mockClient.request.mockImplementation((query: any, variables: any) => {
+          calls.push({ query, variables });
 
-        // Mock project work items queries with distributed pagination
-        mockClient.request.mockResolvedValueOnce({
-          project: { workItems: { nodes: [] } },
-        });
-        mockClient.request.mockResolvedValueOnce({
-          project: { workItems: { nodes: [] } },
-        });
+          // Epic query
+          if (variables?.groupPath === 'test-group' && variables?.types?.includes('EPIC')) {
+            return Promise.resolve({ group: { workItems: { nodes: [] } } });
+          }
 
-        // Mock project query (5th call)
-        mockClient.request.mockResolvedValueOnce({
-          project: null,
+          // Group projects query
+          if (variables?.groupPath === 'test-group' && variables?.includeSubgroups !== undefined) {
+            return Promise.resolve({ group: { projects: { nodes: mockProjects } } });
+          }
+
+          // Individual project queries
+          if (variables?.projectPath === 'test-group/project1' ||
+              variables?.projectPath === 'test-group/project2') {
+            return Promise.resolve({ project: { workItems: { nodes: [] } } });
+          }
+
+          // Direct project query (fails for group)
+          if (variables?.projectPath === 'test-group') {
+            return Promise.resolve({ project: null });
+          }
+
+          return Promise.resolve({});
         });
 
         const tool = workitemsToolRegistry.get('list_work_items');
@@ -578,61 +747,121 @@ describe('Workitems Registry', () => {
           after: 'cursor-abc'
         });
 
-        // Check pagination parameters passed to main project query (last call)
-        expect(mockClient.request).toHaveBeenNthCalledWith(5,
-          expect.any(Object),
-          expect.objectContaining({
-            first: 100,
-            after: 'cursor-abc'
-          })
-        );
+        // Verify that each project got the full pagination parameters
+        const project1Call = calls.find(call => call.variables?.projectPath === 'test-group/project1');
+        const project2Call = calls.find(call => call.variables?.projectPath === 'test-group/project2');
+
+        expect(project1Call).toBeDefined();
+        expect(project1Call.variables).toMatchObject({
+          first: 100,
+          after: 'cursor-abc'
+        });
+
+        expect(project2Call).toBeDefined();
+        expect(project2Call.variables).toMatchObject({
+          first: 100,
+          after: 'cursor-abc'
+        });
       });
 
       it('should handle both GROUP and PROJECT queries failing', async () => {
-        // Mock group query failure (1st call)
-        mockClient.request.mockRejectedValueOnce(new Error('Group not found'));
-
-        // Mock group projects query failure (2nd call)
-        mockClient.request.mockRejectedValueOnce(new Error('Group projects not found'));
-
-        // Mock project query failure (3rd call)
-        mockClient.request.mockRejectedValueOnce(new Error('Project not found'));
+        // Mock all queries to fail based on variables
+        mockClient.request.mockImplementation((query: any, variables: any) => {
+          if (variables?.groupPath === 'non-existent') {
+            return Promise.reject(new Error('Group not found'));
+          }
+          if (variables?.projectPath === 'non-existent') {
+            return Promise.reject(new Error('Project not found'));
+          }
+          return Promise.resolve({});
+        });
 
         const tool = workitemsToolRegistry.get('list_work_items');
         const result = await tool?.handler({ namespacePath: 'non-existent' });
 
         expect(result).toEqual([]); // Should return empty array, not throw
-        expect(mockClient.request).toHaveBeenCalledTimes(2); // Only epic query and project query attempted
+        // With parallel execution: groupQuery attempts epic + projects, projectQuery attempts direct
+        // Total: 3 attempts (all fail gracefully)
+        expect(mockClient.request).toHaveBeenCalledTimes(3);
       });
 
       it('should handle mixed success/failure in unified strategy', async () => {
-        const mockEpics = [
-          { id: 'gid://gitlab/WorkItem/400', title: 'Epic from group', workItemType: { name: 'Epic' } },
-        ];
-        const mockProjectWorkItems = [
-          { id: 'gid://gitlab/WorkItem/401', title: 'Issue from project', workItemType: { name: 'Issue' } },
-        ];
+        const mockEpic = {
+          id: 'gid://gitlab/WorkItem/400',
+          iid: '1',
+          title: 'Epic from group',
+          state: 'OPEN',
+          workItemType: { name: 'Epic' },
+          webUrl: 'https://gitlab.example.com/epics/400',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+          description: 'Epic description',
+          widgets: []
+        };
 
-        // Mock group epic query success (1st call)
-        mockClient.request.mockResolvedValueOnce({
-          group: { workItems: { nodes: mockEpics } },
-        });
+        const mockProjectWorkItem = {
+          id: 'gid://gitlab/WorkItem/401',
+          iid: '1',
+          title: 'Issue from project',
+          state: 'OPEN',
+          workItemType: { name: 'Issue' },
+          webUrl: 'https://gitlab.example.com/issues/401',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+          description: 'Issue description',
+          widgets: []
+        };
 
-        // Mock group projects query success (2nd call) - but with empty projects
-        mockClient.request.mockResolvedValueOnce({
-          group: { projects: { nodes: [] } },
-        });
+        // Smart mock for mixed success scenario
+        mockClient.request.mockImplementation((query: any, variables: any) => {
+          // Epic query succeeds
+          if (variables?.groupPath === 'mixed-namespace' && variables?.types?.includes('EPIC')) {
+            return Promise.resolve({ group: { workItems: { nodes: [mockEpic] } } });
+          }
 
-        // Mock project query success (3rd call)
-        mockClient.request.mockResolvedValueOnce({
-          project: { workItems: { nodes: mockProjectWorkItems } },
+          // Group projects query succeeds but returns no projects
+          if (variables?.groupPath === 'mixed-namespace' && variables?.includeSubgroups !== undefined) {
+            return Promise.resolve({ group: { projects: { nodes: [] } } });
+          }
+
+          // Direct project query succeeds
+          if (variables?.projectPath === 'mixed-namespace') {
+            return Promise.resolve({ project: { workItems: { nodes: [mockProjectWorkItem] } } });
+          }
+
+          return Promise.resolve({});
         });
 
         const tool = workitemsToolRegistry.get('list_work_items');
         const result = await tool?.handler({ namespacePath: 'mixed-namespace' });
 
-        // Should combine successful results from both strategies
-        expect(result).toEqual([...mockEpics, ...mockProjectWorkItems]);
+        // Should combine successful results from both strategies (simplified)
+        const expectedResult = [
+          {
+            id: mockEpic.id,
+            iid: mockEpic.iid,
+            title: mockEpic.title,
+            state: mockEpic.state,
+            workItemType: mockEpic.workItemType,
+            webUrl: mockEpic.webUrl,
+            createdAt: mockEpic.createdAt,
+            updatedAt: mockEpic.updatedAt,
+            description: mockEpic.description
+          },
+          {
+            id: mockProjectWorkItem.id,
+            iid: mockProjectWorkItem.iid,
+            title: mockProjectWorkItem.title,
+            state: mockProjectWorkItem.state,
+            workItemType: mockProjectWorkItem.workItemType,
+            webUrl: mockProjectWorkItem.webUrl,
+            createdAt: mockProjectWorkItem.createdAt,
+            updatedAt: mockProjectWorkItem.updatedAt,
+            description: mockProjectWorkItem.description
+          }
+        ];
+
+        expect(result).toEqual(expectedResult);
       });
 
       it('should skip group projects query when no project-level types requested', async () => {
@@ -663,19 +892,29 @@ describe('Workitems Registry', () => {
       });
 
       it('should handle includeSubgroups parameter correctly', async () => {
-        // Mock epic work items query (1st call)
-        mockClient.request.mockResolvedValueOnce({
-          group: { workItems: { nodes: [] } },
-        });
+        // Track calls to verify includeSubgroups parameter
+        const calls: any[] = [];
 
-        // Mock group projects query (2nd call)
-        mockClient.request.mockResolvedValueOnce({
-          group: { projects: { nodes: [] } },
-        });
+        // Smart mock for parallel execution
+        mockClient.request.mockImplementation((query: any, variables: any) => {
+          calls.push({ query, variables });
 
-        // Mock project query (3rd call)
-        mockClient.request.mockResolvedValueOnce({
-          project: null,
+          // Epic query
+          if (variables?.groupPath === 'test-group' && variables?.types?.includes('EPIC')) {
+            return Promise.resolve({ group: { workItems: { nodes: [] } } });
+          }
+
+          // Group projects query - this should receive includeSubgroups: false
+          if (variables?.groupPath === 'test-group' && variables?.includeSubgroups !== undefined) {
+            return Promise.resolve({ group: { projects: { nodes: [] } } });
+          }
+
+          // Direct project query
+          if (variables?.projectPath === 'test-group') {
+            return Promise.resolve({ project: null });
+          }
+
+          return Promise.resolve({});
         });
 
         const tool = workitemsToolRegistry.get('list_work_items');
@@ -684,13 +923,10 @@ describe('Workitems Registry', () => {
           includeSubgroups: false
         });
 
-        // Check that includeSubgroups parameter is passed correctly
-        expect(mockClient.request).toHaveBeenNthCalledWith(2,
-          expect.any(Object),
-          expect.objectContaining({
-            includeSubgroups: false
-          })
-        );
+        // Verify that includeSubgroups parameter was passed correctly
+        const projectsCall = calls.find(call => call.variables?.includeSubgroups !== undefined);
+        expect(projectsCall).toBeDefined();
+        expect(projectsCall.variables.includeSubgroups).toBe(false);
       });
 
       it('should validate required parameters', async () => {
@@ -1087,23 +1323,44 @@ describe('Workitems Registry', () => {
     });
 
     describe('Edge Cases and Advanced Scenarios', () => {
-      it('should handle pagination parameters correctly', async () => {
-        const mockEpics = [
-          { id: 'gid://gitlab/WorkItem/600', title: 'Paginated Epic', workItemType: { name: 'Epic' } },
-        ];
+      it('should handle pagination parameters correctly in parallel strategy', async () => {
+        const mockEpic = {
+          id: 'gid://gitlab/WorkItem/600',
+          iid: '1',
+          title: 'Paginated Epic',
+          state: 'OPEN',
+          workItemType: { name: 'Epic' },
+          webUrl: 'https://gitlab.example.com/epics/600',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+          description: 'Epic description',
+          widgets: []
+        };
 
-        // Mock epic work items query with pagination
-        mockClient.request.mockResolvedValueOnce({
-          group: { workItems: { nodes: mockEpics } },
+        // Track calls to verify pagination parameters
+        const calls: any[] = [];
+
+        // Smart mock for parallel execution
+        mockClient.request.mockImplementation((query: any, variables: any) => {
+          calls.push({ query, variables });
+
+          // Epic query with pagination
+          if (variables?.groupPath === 'test-group' && variables?.types?.includes('EPIC')) {
+            return Promise.resolve({ group: { workItems: { nodes: [mockEpic] } } });
+          }
+
+          // Group projects query
+          if (variables?.groupPath === 'test-group' && variables?.includeSubgroups !== undefined) {
+            return Promise.resolve({ group: { projects: { nodes: [] } } });
+          }
+
+          // Direct project query with pagination
+          if (variables?.projectPath === 'test-group') {
+            return Promise.resolve({ project: null });
+          }
+
+          return Promise.resolve({});
         });
-
-        // Mock group projects query
-        mockClient.request.mockResolvedValueOnce({
-          group: { projects: { nodes: [] } },
-        });
-
-        // Mock project query
-        mockClient.request.mockResolvedValueOnce({ project: null });
 
         const tool = workitemsToolRegistry.get('list_work_items');
         await tool?.handler({
@@ -1112,70 +1369,80 @@ describe('Workitems Registry', () => {
           after: 'cursor123'
         });
 
-        // Verify pagination parameters are passed correctly
-        expect(mockClient.request).toHaveBeenNthCalledWith(1,
-          expect.any(Object),
-          expect.objectContaining({
-            first: 50,
-            after: 'cursor123'
-          })
+        // Verify pagination parameters are passed correctly to epic query
+        const epicCall = calls.find(call =>
+          call.variables?.groupPath === 'test-group' && call.variables?.types?.includes('EPIC')
         );
+        expect(epicCall).toBeDefined();
+        expect(epicCall.variables).toMatchObject({
+          first: 50,
+          after: 'cursor123'
+        });
 
-        expect(mockClient.request).toHaveBeenNthCalledWith(3,
-          expect.any(Object),
-          expect.objectContaining({
-            first: 50,
-            after: 'cursor123'
-          })
+        // Verify pagination parameters are passed correctly to direct project query
+        const projectCall = calls.find(call =>
+          call.variables?.projectPath === 'test-group'
         );
+        expect(projectCall).toBeDefined();
+        expect(projectCall.variables).toMatchObject({
+          first: 50,
+          after: 'cursor123'
+        });
       });
 
-      it('should distribute pagination across multiple projects', async () => {
+      it('should apply first parameter to each project individually', async () => {
         const projects = [
-          { fullPath: 'test-group/project1' },
-          { fullPath: 'test-group/project2' },
-          { fullPath: 'test-group/project3' },
+          { fullPath: 'test-group/project1', archived: false },
+          { fullPath: 'test-group/project2', archived: false },
+          { fullPath: 'test-group/project3', archived: false },
         ];
 
-        // Mock epic work items query (empty)
-        mockClient.request.mockResolvedValueOnce({
-          group: { workItems: { nodes: [] } },
-        });
+        // Track calls to verify each project gets the full first value
+        const calls: any[] = [];
 
-        // Mock group projects query
-        mockClient.request.mockResolvedValueOnce({
-          group: { projects: { nodes: projects } },
-        });
+        // Smart mock for parallel execution
+        mockClient.request.mockImplementation((query: any, variables: any) => {
+          calls.push({ query, variables });
 
-        // Mock project work items queries for each project
-        mockClient.request.mockResolvedValueOnce({ project: { workItems: { nodes: [] } } });
-        mockClient.request.mockResolvedValueOnce({ project: { workItems: { nodes: [] } } });
-        mockClient.request.mockResolvedValueOnce({ project: { workItems: { nodes: [] } } });
+          // Epic query
+          if (variables?.groupPath === 'test-group' && variables?.types?.includes('EPIC')) {
+            return Promise.resolve({ group: { workItems: { nodes: [] } } });
+          }
 
-        // Mock main project query
-        mockClient.request.mockResolvedValueOnce({
-          project: { workItems: { nodes: [] } },
+          // Group projects query
+          if (variables?.groupPath === 'test-group' && variables?.includeSubgroups !== undefined) {
+            return Promise.resolve({ group: { projects: { nodes: projects } } });
+          }
+
+          // Individual project queries
+          if (variables?.projectPath?.startsWith('test-group/project')) {
+            return Promise.resolve({ project: { workItems: { nodes: [] } } });
+          }
+
+          // Direct project query (fails for group)
+          if (variables?.projectPath === 'test-group') {
+            return Promise.resolve({ project: null });
+          }
+
+          return Promise.resolve({});
         });
 
         const tool = workitemsToolRegistry.get('list_work_items');
         const result = await tool?.handler({
           namespacePath: 'test-group',
-          first: 30 // Should be divided among 3 projects: 10 each
+          first: 30 // Each project gets full 30, not divided
         });
 
-        // Check that pagination is properly distributed
-        expect(mockClient.request).toHaveBeenCalledTimes(6);
-        expect(result).toEqual([]); // 1 epic + 1 projects + 3 project items + 1 main project
+        expect(result).toEqual([]);
 
-        // Verify each project gets a fair share of the pagination limit
-        for (let i = 3; i <= 5; i++) {
-          expect(mockClient.request).toHaveBeenNthCalledWith(i,
-            expect.any(Object),
-            expect.objectContaining({
-              first: 10 // 30 / 3 projects = 10 each
-            })
-          );
-        }
+        // Verify each project gets the full first value, not distributed
+        const project1Call = calls.find(call => call.variables?.projectPath === 'test-group/project1');
+        const project2Call = calls.find(call => call.variables?.projectPath === 'test-group/project2');
+        const project3Call = calls.find(call => call.variables?.projectPath === 'test-group/project3');
+
+        expect(project1Call?.variables?.first).toBe(30);
+        expect(project2Call?.variables?.first).toBe(30);
+        expect(project3Call?.variables?.first).toBe(30);
       });
 
       it('should handle malformed GraphQL responses', async () => {
@@ -1192,31 +1459,71 @@ describe('Workitems Registry', () => {
       });
 
       it('should handle complex type filtering scenarios', async () => {
-        const mockEpics = [
-          { id: 'gid://gitlab/WorkItem/700', title: 'Complex Epic', workItemType: { name: 'Epic' } },
-        ];
-        const mockIssues = [
-          { id: 'gid://gitlab/WorkItem/701', title: 'Complex Issue', workItemType: { name: 'Issue' } },
-        ];
+        const mockEpic = {
+          id: 'gid://gitlab/WorkItem/700',
+          iid: '1',
+          title: 'Complex Epic',
+          state: 'OPEN',
+          workItemType: { name: 'Epic' },
+          webUrl: 'https://gitlab.example.com/epics/700',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+          description: 'Epic description',
+          widgets: []
+        };
 
-        // Mock epic query for mixed types
-        mockClient.request.mockResolvedValueOnce({
-          group: { workItems: { nodes: mockEpics } },
-        });
+        const mockProjectIssue = {
+          id: 'gid://gitlab/WorkItem/701',
+          iid: '1',
+          title: 'Project Issue',
+          state: 'OPEN',
+          workItemType: { name: 'Issue' },
+          webUrl: 'https://gitlab.example.com/issues/701',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+          description: 'Issue description',
+          widgets: []
+        };
 
-        // Mock group projects query
-        mockClient.request.mockResolvedValueOnce({
-          group: { projects: { nodes: [{ fullPath: 'test-group/project' }] } },
-        });
+        const mockDirectIssue = {
+          id: 'gid://gitlab/WorkItem/702',
+          iid: '2',
+          title: 'Direct Issue',
+          state: 'OPEN',
+          workItemType: { name: 'Issue' },
+          webUrl: 'https://gitlab.example.com/issues/702',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+          description: 'Direct issue description',
+          widgets: []
+        };
 
-        // Mock project work items query
-        mockClient.request.mockResolvedValueOnce({
-          project: { workItems: { nodes: mockIssues } },
-        });
+        // Smart mock for complex type filtering
+        mockClient.request.mockImplementation((query: any, variables: any) => {
+          // Epic query with type filtering
+          if (variables?.groupPath === 'test-group' && variables?.types?.includes('EPIC')) {
+            return Promise.resolve({ group: { workItems: { nodes: [mockEpic] } } });
+          }
 
-        // Mock main project query
-        mockClient.request.mockResolvedValueOnce({
-          project: { workItems: { nodes: mockIssues } },
+          // Group projects query
+          if (variables?.groupPath === 'test-group' && variables?.includeSubgroups !== undefined) {
+            return Promise.resolve({
+              group: { projects: { nodes: [{ fullPath: 'test-group/project', archived: false }] } }
+            });
+          }
+
+          // Project within group query
+          if (variables?.projectPath === 'test-group/project') {
+            return Promise.resolve({ project: { workItems: { nodes: [mockProjectIssue] } } });
+          }
+
+          // Direct project query (for when namespacePath might be a project)
+          if (variables?.projectPath === 'test-group' &&
+              variables?.types?.some(t => ['ISSUE', 'TASK'].includes(t))) {
+            return Promise.resolve({ project: { workItems: { nodes: [mockDirectIssue] } } });
+          }
+
+          return Promise.resolve({});
         });
 
         const tool = workitemsToolRegistry.get('list_work_items');
@@ -1225,9 +1532,47 @@ describe('Workitems Registry', () => {
           types: ['EPIC', 'ISSUE', 'TASK']
         });
 
-        // Should combine both epics and issues
-        expect(result).toHaveLength(3); // 1 epic + 2 issues (from two different queries)
-        expect(result).toEqual(expect.arrayContaining([...mockEpics, ...mockIssues, ...mockIssues]));
+        // Should combine epic from group + issue from project + issue from direct query
+        expect(result).toHaveLength(3);
+
+        // Check that we get simplified versions of all three work items
+        const expectedResults = [
+          {
+            id: mockEpic.id,
+            iid: mockEpic.iid,
+            title: mockEpic.title,
+            state: mockEpic.state,
+            workItemType: mockEpic.workItemType,
+            webUrl: mockEpic.webUrl,
+            createdAt: mockEpic.createdAt,
+            updatedAt: mockEpic.updatedAt,
+            description: mockEpic.description
+          },
+          {
+            id: mockProjectIssue.id,
+            iid: mockProjectIssue.iid,
+            title: mockProjectIssue.title,
+            state: mockProjectIssue.state,
+            workItemType: mockProjectIssue.workItemType,
+            webUrl: mockProjectIssue.webUrl,
+            createdAt: mockProjectIssue.createdAt,
+            updatedAt: mockProjectIssue.updatedAt,
+            description: mockProjectIssue.description
+          },
+          {
+            id: mockDirectIssue.id,
+            iid: mockDirectIssue.iid,
+            title: mockDirectIssue.title,
+            state: mockDirectIssue.state,
+            workItemType: mockDirectIssue.workItemType,
+            webUrl: mockDirectIssue.webUrl,
+            createdAt: mockDirectIssue.createdAt,
+            updatedAt: mockDirectIssue.updatedAt,
+            description: mockDirectIssue.description
+          }
+        ];
+
+        expect(result).toEqual(expect.arrayContaining(expectedResults));
       });
 
       it('should handle widget-specific updates correctly', async () => {

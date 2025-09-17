@@ -26,13 +26,194 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'list_work_items',
       description:
-        'COMPREHENSIVE: List ALL work items from namespace using unified strategy. ALWAYS tries both GROUP and PROJECT queries and combines results. GROUP query: gets EPICs + recursively fetches ISSUES/TASKS from all subprojects. PROJECT query: gets ISSUES/TASKS directly from project. AUTOMATIC: Works for both groups and projects without type detection. BEST PRACTICE: Use group path "ps/recipes" to get ALL tasks from entire group hierarchy. Set includeSubgroups=false to limit scope.',
+        'List all work items (epics, issues, tasks) from a GitLab namespace. Use with group path to get all work items across the entire group hierarchy, or project path to get project-specific items. Supports filtering by work item types and pagination. Perfect for getting comprehensive overview of all work across teams and projects.',
       inputSchema: zodToJsonSchema(ListWorkItemsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         console.log('🚀 list_work_items called with args:', JSON.stringify(args, null, 2));
         const options = ListWorkItemsSchema.parse(args);
-        const { namespacePath, types, includeSubgroups, first, after } = options;
-        console.log('📋 Parsed options:', { namespacePath, types, includeSubgroups, first, after });
+        const { namespacePath, types, includeSubgroups, first, after, simple, active } = options;
+        console.log('📋 Parsed options:', {
+          namespacePath,
+          types,
+          includeSubgroups,
+          first,
+          after,
+          simple,
+          active,
+        });
+
+        // Types for work item structure
+        interface WorkItemWidget {
+          type: string;
+          assignees?: {
+            nodes?: Array<{
+              id: string;
+              username: string;
+              name: string;
+            }>;
+          };
+          labels?: {
+            nodes?: Array<{
+              id: string;
+              title: string;
+              color: string;
+            }>;
+          };
+          milestone?: {
+            id: string;
+            title: string;
+            state: string;
+          };
+          parent?: {
+            id: string;
+            iid: string;
+            title: string;
+            workItemType: string;
+          };
+          hasChildren?: boolean;
+        }
+
+        interface WorkItem {
+          id: string;
+          iid: string;
+          title: string;
+          state: string;
+          workItemType: string;
+          webUrl: string;
+          createdAt: string;
+          updatedAt: string;
+          description?: string;
+          widgets?: WorkItemWidget[];
+        }
+
+        interface SimplifiedWorkItem {
+          id: string;
+          iid: string;
+          title: string;
+          state: string;
+          workItemType: string;
+          webUrl: string;
+          createdAt: string;
+          updatedAt: string;
+          description?: string;
+          widgets?: Array<{
+            type: string;
+            assignees?: Array<{
+              id: string;
+              username: string;
+              name: string;
+            }>;
+            labels?: Array<{
+              id: string;
+              title: string;
+              color: string;
+            }>;
+            milestone?: {
+              id: string;
+              title: string;
+              state: string;
+            };
+            parent?: {
+              id: string;
+              iid: string;
+              title: string;
+              workItemType: string;
+            } | null;
+            hasChildren?: boolean;
+          }>;
+        }
+
+        // Function to simplify work item structure for agent consumption
+        const simplifyWorkItem = (workItem: WorkItem): WorkItem | SimplifiedWorkItem => {
+          if (!simple) return workItem;
+
+          const simplified: SimplifiedWorkItem = {
+            id: workItem.id,
+            iid: workItem.iid,
+            title: workItem.title,
+            state: workItem.state,
+            workItemType: workItem.workItemType,
+            webUrl: workItem.webUrl,
+            createdAt: workItem.createdAt,
+            updatedAt: workItem.updatedAt,
+          };
+
+          // Add description if it exists and is not too long
+          if (workItem.description && typeof workItem.description === 'string') {
+            simplified.description =
+              workItem.description.length > 200
+                ? workItem.description.substring(0, 200) + '...'
+                : workItem.description;
+          }
+
+          // Extract essential widgets only
+          if (workItem.widgets && Array.isArray(workItem.widgets)) {
+            const essentialWidgets: SimplifiedWorkItem['widgets'] = [];
+
+            for (const widget of workItem.widgets) {
+              switch (widget.type) {
+                case 'ASSIGNEES':
+                  if (widget.assignees?.nodes && widget.assignees.nodes.length > 0) {
+                    essentialWidgets.push({
+                      type: 'ASSIGNEES',
+                      assignees: widget.assignees.nodes.map((assignee) => ({
+                        id: assignee.id,
+                        username: assignee.username,
+                        name: assignee.name,
+                      })),
+                    });
+                  }
+                  break;
+                case 'LABELS':
+                  if (widget.labels?.nodes && widget.labels.nodes.length > 0) {
+                    essentialWidgets.push({
+                      type: 'LABELS',
+                      labels: widget.labels.nodes.map((label) => ({
+                        id: label.id,
+                        title: label.title,
+                        color: label.color,
+                      })),
+                    });
+                  }
+                  break;
+                case 'MILESTONE':
+                  if (widget.milestone) {
+                    essentialWidgets.push({
+                      type: 'MILESTONE',
+                      milestone: {
+                        id: widget.milestone.id,
+                        title: widget.milestone.title,
+                        state: widget.milestone.state,
+                      },
+                    });
+                  }
+                  break;
+                case 'HIERARCHY':
+                  if (widget.parent || widget.hasChildren) {
+                    essentialWidgets.push({
+                      type: 'HIERARCHY',
+                      parent: widget.parent
+                        ? {
+                            id: widget.parent.id,
+                            iid: widget.parent.iid,
+                            title: widget.parent.title,
+                            workItemType: widget.parent.workItemType,
+                          }
+                        : null,
+                      hasChildren: widget.hasChildren,
+                    });
+                  }
+                  break;
+              }
+            }
+
+            if (essentialWidgets && essentialWidgets.length > 0) {
+              simplified.widgets = essentialWidgets;
+            }
+          }
+
+          return simplified;
+        };
 
         // Get GraphQL client from ConnectionManager
         const connectionManager = ConnectionManager.getInstance();
@@ -40,25 +221,33 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
         const allWorkItems: unknown[] = [];
 
-        // Strategy: Always try both GROUP and PROJECT queries, combine results
+        // Strategy: Run GROUP and PROJECT queries in parallel for better performance
         // This is simpler and more reliable than trying to determine namespace type
         console.log('📋 Using unified strategy: try both group and project queries');
 
-        // 1. Try GROUP query (gets epics + can recursively get projects)
-        try {
-          console.log('📋 Trying GROUP query for:', namespacePath);
+        // Define query functions for parallel execution
+        const groupQuery = async () => {
+          console.log('📋 Starting GROUP query for:', namespacePath);
+          const groupWorkItems: unknown[] = [];
 
           // Get epics from group (if requested)
           if (!types || types.includes('EPIC')) {
-            const epicResponse = await client.request(GET_WORK_ITEMS, {
-              groupPath: namespacePath,
-              types: ['EPIC'],
-              first: first || 20,
-              after: after,
-            });
-            const epics = epicResponse.group?.workItems?.nodes || [];
-            console.log('📋 GROUP epics found:', epics.length);
-            allWorkItems.push(...epics);
+            try {
+              const epicResponse = await client.request(GET_WORK_ITEMS, {
+                groupPath: namespacePath,
+                types: ['EPIC'],
+                first: first || 20,
+                after: after,
+              });
+              const epics = epicResponse.group?.workItems?.nodes || [];
+              console.log('📋 GROUP epics found:', epics.length);
+              groupWorkItems.push(...epics);
+            } catch (e) {
+              console.log(
+                '📋 GROUP epics query failed:',
+                e instanceof Error ? e.message : String(e),
+              );
+            }
           }
 
           // Get projects in the group and fetch their work items
@@ -66,72 +255,121 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             !types ||
             types.some((t) => ['ISSUE', 'TASK', 'INCIDENT', 'TEST_CASE', 'REQUIREMENT'].includes(t))
           ) {
-            const projectsResponse = await client.request(GET_GROUP_PROJECTS, {
-              groupPath: namespacePath,
-              includeSubgroups: includeSubgroups !== false,
-            });
-            const projects = projectsResponse.group?.projects?.nodes || [];
-            console.log('📋 GROUP projects found:', projects.length);
-
-            if (projects.length > 0) {
-              const projectTypes = types?.filter((t) => t !== 'EPIC') ?? [
-                'ISSUE',
-                'TASK',
-                'INCIDENT',
-              ];
-              const projectWorkItemPromises = projects.map(async (project) => {
-                try {
-                  const projectResponse = await client.request(GET_PROJECT_WORK_ITEMS, {
-                    projectPath: project.fullPath,
-                    types: projectTypes,
-                    first: Math.floor((first || 20) / Math.max(projects.length, 1)),
-                    after: after,
-                  });
-                  return projectResponse.project?.workItems?.nodes || [];
-                } catch (e) {
-                  console.log(
-                    `📋 Could not fetch work items from project ${project.fullPath}:`,
-                    e instanceof Error ? e.message : String(e),
-                  );
-                  return [];
-                }
+            try {
+              const projectsResponse = await client.request(GET_GROUP_PROJECTS, {
+                groupPath: namespacePath,
+                includeSubgroups: includeSubgroups !== false,
               });
+              const allProjects = projectsResponse.group?.projects?.nodes || [];
+              // Filter out archived and deletion_scheduled projects if active=true
+              const projects = active
+                ? allProjects.filter(
+                    (project) =>
+                      !project.archived && !project.fullPath.includes('deletion_scheduled'),
+                  )
+                : allProjects;
 
-              const projectWorkItems = await Promise.all(projectWorkItemPromises);
-              const flattenedItems = projectWorkItems.flat();
-              console.log('📋 GROUP recursive project items found:', flattenedItems.length);
-              allWorkItems.push(...flattenedItems);
+              if (active) {
+                console.log(
+                  `📋 GROUP projects found: ${projects.length} active (${allProjects.length} total)`,
+                );
+              } else {
+                console.log(`📋 GROUP projects found: ${projects.length} total`);
+              }
+
+              if (projects.length > 0) {
+                const projectTypes = types?.filter((t) => t !== 'EPIC') ?? [
+                  'ISSUE',
+                  'TASK',
+                  'INCIDENT',
+                ];
+                const projectLimit = first || 20;
+                console.log(
+                  `📋 Fetching from ${projects.length} projects with up to ${projectLimit} items each`,
+                );
+
+                const projectWorkItemPromises = projects.map(async (project, index) => {
+                  try {
+                    const projectResponse = await client.request(GET_PROJECT_WORK_ITEMS, {
+                      projectPath: project.fullPath,
+                      types: projectTypes,
+                      first: projectLimit,
+                      after: after,
+                    });
+                    const items = projectResponse.project?.workItems?.nodes || [];
+                    if (index < 5 || items.length > 0) {
+                      // Log first 5 projects or any with items
+                      console.log(`📋 Project ${project.fullPath}: ${items.length} items`);
+                    }
+                    return items;
+                  } catch (e) {
+                    console.log(
+                      `📋 Could not fetch work items from project ${project.fullPath}:`,
+                      e instanceof Error ? e.message : String(e),
+                    );
+                    return [];
+                  }
+                });
+
+                const projectWorkItems = await Promise.all(projectWorkItemPromises);
+                const flattenedItems = projectWorkItems.flat();
+                console.log('📋 GROUP recursive project items found:', flattenedItems.length);
+                groupWorkItems.push(...flattenedItems);
+              }
+            } catch (e) {
+              console.log(
+                '📋 GROUP projects query failed:',
+                e instanceof Error ? e.message : String(e),
+              );
             }
           }
-        } catch (e) {
-          console.log(
-            "📋 GROUP query failed (this is normal if it's a project):",
-            e instanceof Error ? e.message : String(e),
-          );
-        }
 
-        // 2. Try PROJECT query (gets issues/tasks from specific project)
-        try {
-          console.log('📋 Trying PROJECT query for:', namespacePath);
-          const projectTypes = types?.filter((t) => t !== 'EPIC') ?? ['ISSUE', 'TASK', 'INCIDENT'];
-          const response = await client.request(GET_PROJECT_WORK_ITEMS, {
-            projectPath: namespacePath,
-            types: projectTypes,
-            first: first || 20,
-            after: after,
-          });
-          const projectWorkItems = response.project?.workItems?.nodes || [];
-          console.log('📋 PROJECT items found:', projectWorkItems.length);
-          allWorkItems.push(...projectWorkItems);
-        } catch (e) {
-          console.log(
-            "📋 PROJECT query failed (this is normal if it's a group):",
-            e instanceof Error ? e.message : String(e),
-          );
-        }
+          return groupWorkItems;
+        };
 
-        console.log('🎯 Final result - total work items found:', allWorkItems.length);
-        return allWorkItems;
+        const projectQuery = async () => {
+          console.log('📋 Starting PROJECT query for:', namespacePath);
+          try {
+            const projectTypes = types?.filter((t) => t !== 'EPIC') ?? [
+              'ISSUE',
+              'TASK',
+              'INCIDENT',
+            ];
+            const response = await client.request(GET_PROJECT_WORK_ITEMS, {
+              projectPath: namespacePath,
+              types: projectTypes,
+              first: first || 20,
+              after: after,
+            });
+            const projectWorkItems = response.project?.workItems?.nodes || [];
+            console.log('📋 PROJECT items found:', projectWorkItems.length);
+            return projectWorkItems;
+          } catch (e) {
+            console.log(
+              "📋 PROJECT query failed (this is normal if it's a group):",
+              e instanceof Error ? e.message : String(e),
+            );
+            return [];
+          }
+        };
+
+        // Execute both queries in parallel
+        const [groupWorkItems, projectWorkItems] = await Promise.all([
+          groupQuery(),
+          projectQuery(),
+        ]);
+
+        // Combine results
+        allWorkItems.push(...groupWorkItems, ...projectWorkItems);
+
+        // Apply simplification if requested - cast to WorkItem interface for type safety
+        const finalResults = allWorkItems.map((item) => simplifyWorkItem(item as WorkItem));
+
+        console.log('🎯 Final result - total work items found:', finalResults.length);
+        if (simple) {
+          console.log('📋 Using simplified structure for agent consumption');
+        }
+        return finalResults;
       },
     },
   ],

@@ -437,7 +437,7 @@ export interface Vulnerability {
 // GraphQL Queries
 
 export const GET_GROUP_PROJECTS: TypedDocumentNode<
-  { group: { projects: { nodes: Array<{ id: string; fullPath: string }> } } },
+  { group: { projects: { nodes: Array<{ id: string; fullPath: string; archived: boolean }> } } },
   { groupPath: string; includeSubgroups?: boolean }
 > = gql`
   query GetGroupProjects($groupPath: ID!, $includeSubgroups: Boolean) {
@@ -446,6 +446,7 @@ export const GET_GROUP_PROJECTS: TypedDocumentNode<
         nodes {
           id
           fullPath
+          archived
         }
       }
     }

@@ -38,16 +38,12 @@ describe('config.ts', () => {
       process.env.GITLAB_IS_OLD = 'true';
       process.env.GITLAB_READ_ONLY_MODE = 'true';
       process.env.SKIP_TLS_VERIFY = 'true';
-      process.env.SSE = 'true';
-      process.env.STREAMABLE_HTTP = 'true';
 
       const config = require('../../src/config');
 
       expect(config.IS_OLD).toBe(true);
       expect(config.GITLAB_READ_ONLY_MODE).toBe(true);
       expect(config.SKIP_TLS_VERIFY).toBe(true);
-      expect(config.SSE).toBe(true);
-      expect(config.STREAMABLE_HTTP).toBe(true);
     });
 
     it('should handle false boolean environment variables', () => {

@@ -57,7 +57,8 @@ describe('Types Module', () => {
     expect(keys).toContain('STDIO');
     expect(keys).toContain('SSE');
     expect(keys).toContain('STREAMABLE_HTTP');
-    expect(keys.length).toBe(3);
+    expect(keys).toContain('DUAL');
+    expect(keys.length).toBe(4);
   });
 
   it('should support runtime type checking of transport modes', () => {
@@ -68,6 +69,7 @@ describe('Types Module', () => {
     expect(validModes).toContain('stdio');
     expect(validModes).toContain('sse');
     expect(validModes).toContain('streamable-http');
+    expect(validModes).toContain('dual');
     expect(validModes).not.toContain('invalid-mode');
     expect(validModes).not.toContain('');
   });

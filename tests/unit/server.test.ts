@@ -12,6 +12,7 @@ const mockApp = {
   use: jest.fn(),
   get: jest.fn(),
   post: jest.fn(),
+  all: jest.fn(),
   listen: jest.fn()
 };
 
@@ -106,25 +107,21 @@ describe('server', () => {
   });
 
   describe('transport mode detection', () => {
-    it('should select SSE mode when sse argument is provided', async () => {
-      process.argv = ['node', 'server.js', 'sse'];
+    it('should select stdio mode when stdio argument is provided', async () => {
+      process.argv = ['node', 'server.js', 'stdio'];
+      delete process.env.PORT;
 
       await startServer();
 
-      expect(mockLogger.info).toHaveBeenCalledWith('Selected SSE mode');
-      expect(mockApp.get).toHaveBeenCalledWith('/sse', expect.any(Function));
-      expect(mockApp.post).toHaveBeenCalledWith('/messages', expect.any(Function));
-      expect(mockApp.listen).toHaveBeenCalledWith(3000, 'localhost', expect.any(Function));
+      expect(mockLogger.info).toHaveBeenCalledWith('Selected stdio mode (explicit argument)');
     });
 
-    it('should select SSE mode when SSE environment variable is set', async () => {
-      process.env.SSE = 'true';
+    it('should select dual transport mode when PORT environment variable is set', async () => {
+      process.env.PORT = '3000';
 
       // Re-import to pick up new env vars
       jest.resetModules();
       jest.doMock('../../src/config', () => ({
-        SSE: true,
-        STREAMABLE_HTTP: false,
         HOST: 'localhost',
         PORT: '3000',
         packageName: 'test-package',
@@ -134,58 +131,32 @@ describe('server', () => {
       const { startServer: newStartServer } = await import('../../src/server');
       await newStartServer();
 
-      expect(mockLogger.info).toHaveBeenCalledWith('Selected SSE mode');
+      expect(mockLogger.info).toHaveBeenCalledWith('Selected dual transport mode (SSE + StreamableHTTP) - PORT environment variable detected');
     });
 
-    it('should select streamable-http mode when streamable-http argument is provided', async () => {
-      process.argv = ['node', 'server.js', 'streamable-http'];
+    it('should select stdio mode when no PORT is set', async () => {
+      delete process.env.PORT;
+      process.argv = ['node', 'server.js'];
 
       await startServer();
 
-      expect(mockLogger.info).toHaveBeenCalledWith('Selected streamable-http mode');
-      expect(mockApp.post).toHaveBeenCalledWith('/mcp', expect.any(Function));
-      expect(mockApp.listen).toHaveBeenCalledWith(3000, 'localhost', expect.any(Function));
-    });
-
-    it('should select streamable-http mode when STREAMABLE_HTTP environment variable is set', async () => {
-      process.env.STREAMABLE_HTTP = 'true';
-
-      // Re-import to pick up new env vars
-      jest.resetModules();
-      jest.doMock('../../src/config', () => ({
-        SSE: false,
-        STREAMABLE_HTTP: true,
-        HOST: 'localhost',
-        PORT: '3000',
-        packageName: 'test-package',
-        packageVersion: '1.0.0'
-      }));
-
-      const { startServer: newStartServer } = await import('../../src/server');
-      await newStartServer();
-
-      expect(mockLogger.info).toHaveBeenCalledWith('Selected streamable-http mode');
-    });
-
-    it('should default to stdio mode when no arguments or env vars are provided', async () => {
-      await startServer();
-
-      expect(mockLogger.info).toHaveBeenCalledWith('Defaulting to stdio mode');
-      expect(mockServer.connect).toHaveBeenCalled();
+      expect(mockLogger.info).toHaveBeenCalledWith('Selected stdio mode (no PORT environment variable)');
     });
 
     it('should log transport mode detection information', async () => {
+      delete process.env.PORT;
+
       await startServer();
 
       expect(mockLogger.info).toHaveBeenCalledWith(
-        'Transport mode detection: args=[], SSE=false, STREAMABLE_HTTP=false'
+        expect.stringMatching(/Transport mode detection: args=\[\], PORT=/)
       );
     });
   });
 
-  describe('SSE mode', () => {
+  describe('dual transport mode', () => {
     beforeEach(() => {
-      process.argv = ['node', 'server.js', 'sse'];
+      process.env.PORT = '3000';
     });
 
     it('should set up Express app with JSON middleware', async () => {
@@ -197,74 +168,50 @@ describe('server', () => {
       expect(mockApp.use).toHaveBeenCalledWith(express.json());
     });
 
-    it('should set up SSE endpoint that creates transport and connects server', async () => {
+    it('should set up both SSE and StreamableHTTP endpoints', async () => {
       await startServer();
 
-      // Get the SSE endpoint handler
-      const sseHandler = mockApp.get.mock.calls.find(call => call[0] === '/sse')[1];
-
-      // Mock response object
-      const mockRes = {};
-      const mockReq = {};
-
-      // Call the handler
-      await sseHandler(mockReq, mockRes);
-
-      expect(mockServer.connect).toHaveBeenCalledWith(mockTransport);
-    });
-
-    it('should set up messages endpoint for handling JSON-RPC messages', async () => {
-      await startServer();
-
+      expect(mockApp.get).toHaveBeenCalledWith('/sse', expect.any(Function));
       expect(mockApp.post).toHaveBeenCalledWith('/messages', expect.any(Function));
+      expect(mockApp.all).toHaveBeenCalledWith('/mcp', expect.any(Function));
     });
 
-    it('should start HTTP server on configured host and port', async () => {
+    it('should start HTTP server with dual transport endpoints', async () => {
       await startServer();
 
       expect(mockApp.listen).toHaveBeenCalledWith(3000, 'localhost', expect.any(Function));
-      expect(mockLogger.info).toHaveBeenCalledWith('GitLab MCP Server SSE running on http://localhost:3000');
-      expect(mockLogger.info).toHaveBeenCalledWith('SSE server started successfully');
-    });
-  });
-
-  describe('streamable-http mode', () => {
-    beforeEach(() => {
-      process.argv = ['node', 'server.js', 'streamable-http'];
-    });
-
-    it('should set up Express app for streamable HTTP', async () => {
-      const express = require('express');
-
-      await startServer();
-
-      expect(express).toHaveBeenCalled();
-      expect(mockApp.use).toHaveBeenCalledWith(express.json());
-    });
-
-    it('should set up message endpoint for streamable HTTP transport', async () => {
-      await startServer();
-
-      expect(mockApp.post).toHaveBeenCalledWith('/mcp', expect.any(Function));
-    });
-
-    it('should start HTTP server for streamable HTTP mode', async () => {
-      await startServer();
-
-      expect(mockApp.listen).toHaveBeenCalledWith(3000, 'localhost', expect.any(Function));
-      expect(mockLogger.info).toHaveBeenCalledWith('GitLab MCP Server HTTP running on http://localhost:3000');
+      expect(mockLogger.info).toHaveBeenCalledWith('GitLab MCP Server running on http://localhost:3000');
+      expect(mockLogger.info).toHaveBeenCalledWith('🔄 Dual Transport Mode Active:');
     });
   });
 
   describe('stdio mode', () => {
+    beforeEach(() => {
+      // Ensure stdio mode by removing PORT from environment
+      delete process.env.PORT;
+
+      // Re-import config to pick up new env vars
+      jest.resetModules();
+      jest.doMock('../../src/config', () => ({
+        SSE: false,
+        STREAMABLE_HTTP: false,
+        HOST: 'localhost',
+        PORT: undefined, // No PORT means stdio mode
+        packageName: 'test-package',
+        packageVersion: '1.0.0'
+      }));
+    });
+
     it('should connect server with StdioServerTransport', async () => {
-      await startServer();
+      const { startServer: newStartServer } = await import('../../src/server');
+      await newStartServer();
 
       expect(mockServer.connect).toHaveBeenCalledWith(mockTransport);
     });
 
     it('should not set up any HTTP endpoints in stdio mode', async () => {
-      await startServer();
+      const { startServer: newStartServer } = await import('../../src/server');
+      await newStartServer();
 
       expect(mockApp.get).not.toHaveBeenCalled();
       expect(mockApp.post).not.toHaveBeenCalled();
@@ -274,19 +221,49 @@ describe('server', () => {
 
   describe('error handling', () => {
     it('should handle server connection errors in stdio mode', async () => {
+      // Ensure stdio mode by removing PORT from environment
+      delete process.env.PORT;
+
+      // Re-import config to pick up new env vars
+      jest.resetModules();
+      jest.doMock('../../src/config', () => ({
+        SSE: false,
+        STREAMABLE_HTTP: false,
+        HOST: 'localhost',
+        PORT: undefined, // No PORT means stdio mode
+        packageName: 'test-package',
+        packageVersion: '1.0.0'
+      }));
+
       mockServer.connect.mockRejectedValue(new Error('Connection failed'));
 
       // stdio mode should propagate connection errors
-      await expect(startServer()).rejects.toThrow('Connection failed');
+      const { startServer: newStartServer } = await import('../../src/server');
+      await expect(newStartServer()).rejects.toThrow('Connection failed');
     });
 
     it('should handle server.connect rejections gracefully', async () => {
+      // Ensure stdio mode by removing PORT from environment
+      delete process.env.PORT;
+
+      // Re-import config to pick up new env vars
+      jest.resetModules();
+      jest.doMock('../../src/config', () => ({
+        SSE: false,
+        STREAMABLE_HTTP: false,
+        HOST: 'localhost',
+        PORT: undefined, // No PORT means stdio mode
+        packageName: 'test-package',
+        packageVersion: '1.0.0'
+      }));
+
       const originalConnect = mockServer.connect;
       mockServer.connect.mockRejectedValue(new Error('Connection failed'));
 
       try {
-        await startServer();
-      } catch (error) {
+        const { startServer: newStartServer } = await import('../../src/server');
+        await newStartServer();
+      } catch (error: any) {
         expect(error.message).toBe('Connection failed');
       }
 
@@ -298,7 +275,7 @@ describe('server', () => {
   describe('request handlers', () => {
     describe('SSE messages endpoint', () => {
       beforeEach(() => {
-        process.argv = ['node', 'server.js', 'sse'];
+        process.env.PORT = '3000';
       });
 
       it('should handle valid session ID in messages endpoint', async () => {
@@ -324,7 +301,7 @@ describe('server', () => {
         // Now call messages handler
         await messagesHandler(mockReq, mockRes);
 
-        expect(mockLogger.debug).toHaveBeenCalledWith('Messages endpoint hit!');
+        expect(mockLogger.debug).toHaveBeenCalledWith('SSE messages endpoint hit!');
       });
 
       it('should return 404 for invalid session ID', async () => {

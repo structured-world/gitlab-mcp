@@ -1,3 +1,10 @@
+## [4.3.1](https://github.com/structured-world/gitlab-mcp/compare/v4.3.0...v4.3.1) (2025-09-17)
+
+
+### Bug Fixes
+
+* enhance search_repositories with operator parsing and test coverage ([fbc61d5](https://github.com/structured-world/gitlab-mcp/commit/fbc61d579971f6b74c00dcbecfda2ba1be640a14))
+
 # [4.3.0](https://github.com/structured-world/gitlab-mcp/compare/v4.2.1...v4.3.0) (2025-09-17)
 
 

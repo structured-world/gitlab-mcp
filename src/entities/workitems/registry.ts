@@ -13,7 +13,6 @@ import {
   DELETE_WORK_ITEM,
   GET_WORK_ITEM_TYPES,
   GET_GROUP_PROJECTS,
-  GET_NAMESPACE_TYPE,
   WorkItemUpdateInput,
 } from '../../graphql/workItems';
 
@@ -27,7 +26,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'list_work_items',
       description:
-        'COMPREHENSIVE: List ALL work items from namespace. For GROUP: Returns EPICS from group + ALL ISSUES/TASKS/BUGS from ALL projects recursively. For PROJECT: Returns ISSUES/TASKS/BUGS from that project. BEST PRACTICE: Use group path "ps/recipes" to get ALL tasks from entire group hierarchy. Automatically detects namespace type and fetches appropriately. Set includeSubgroups=false to limit scope.',
+        'COMPREHENSIVE: List ALL work items from namespace using unified strategy. ALWAYS tries both GROUP and PROJECT queries and combines results. GROUP query: gets EPICs + recursively fetches ISSUES/TASKS from all subprojects. PROJECT query: gets ISSUES/TASKS directly from project. AUTOMATIC: Works for both groups and projects without type detection. BEST PRACTICE: Use group path "ps/recipes" to get ALL tasks from entire group hierarchy. Set includeSubgroups=false to limit scope.',
       inputSchema: zodToJsonSchema(ListWorkItemsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         console.log('🚀 list_work_items called with args:', JSON.stringify(args, null, 2));
@@ -39,96 +38,96 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         const connectionManager = ConnectionManager.getInstance();
         const client = connectionManager.getClient();
 
-        // Determine namespace type (Group or Project)
-        console.log('🔍 Determining namespace type for:', namespacePath);
-        let namespaceType = 'Group'; // default assumption
-        try {
-          console.log('⏳ Making GraphQL request for namespace type...');
-          const nsResponse = await client.request(GET_NAMESPACE_TYPE, { namespacePath });
-          console.log('✅ Got namespace response:', nsResponse);
-          namespaceType = nsResponse.namespace?.__typename || 'Group';
-        } catch (e) {
-          // If namespace query fails, try to determine from context
-          console.log('❌ Could not determine namespace type, assuming Group. Error:', e);
-        }
-
-        console.log('🎯 Namespace type determined as:', namespaceType);
-
         const allWorkItems: unknown[] = [];
 
-        if (namespaceType === 'Group' || namespaceType === 'Namespace') {
-          // Get Epics from the group (if requested)
+        // Strategy: Always try both GROUP and PROJECT queries, combine results
+        // This is simpler and more reliable than trying to determine namespace type
+        console.log('📋 Using unified strategy: try both group and project queries');
+
+        // 1. Try GROUP query (gets epics + can recursively get projects)
+        try {
+          console.log('📋 Trying GROUP query for:', namespacePath);
+
+          // Get epics from group (if requested)
           if (!types || types.includes('EPIC')) {
-            try {
-              console.log('📋 Fetching EPICs from group:', namespacePath);
-              const epicResponse = await client.request(GET_WORK_ITEMS, {
-                groupPath: namespacePath,
-                types: ['EPIC'], // Use string type instead of GID
-                first: first || 20,
-                after: after,
-              });
-              console.log('📋 Epic response:', JSON.stringify(epicResponse, null, 2));
-              const epics = epicResponse.group?.workItems?.nodes || [];
-              console.log('📋 Found epics count:', epics.length);
-              allWorkItems.push(...epics);
-            } catch (e) {
-              console.log('❌ Could not fetch epics from group:', e);
-            }
+            const epicResponse = await client.request(GET_WORK_ITEMS, {
+              groupPath: namespacePath,
+              types: ['EPIC'],
+              first: first || 20,
+              after: after,
+            });
+            const epics = epicResponse.group?.workItems?.nodes || [];
+            console.log('📋 GROUP epics found:', epics.length);
+            allWorkItems.push(...epics);
           }
 
-          // Get projects in the group (with optional subgroups)
+          // Get projects in the group and fetch their work items
           if (
             !types ||
             types.some((t) => ['ISSUE', 'TASK', 'INCIDENT', 'TEST_CASE', 'REQUIREMENT'].includes(t))
           ) {
-            try {
-              const projectsResponse = await client.request(GET_GROUP_PROJECTS, {
-                groupPath: namespacePath,
-                includeSubgroups: includeSubgroups !== false, // default true
-              });
-              const projects = projectsResponse.group?.projects?.nodes || [];
+            const projectsResponse = await client.request(GET_GROUP_PROJECTS, {
+              groupPath: namespacePath,
+              includeSubgroups: includeSubgroups !== false,
+            });
+            const projects = projectsResponse.group?.projects?.nodes || [];
+            console.log('📋 GROUP projects found:', projects.length);
 
-              // Fetch work items from each project in parallel
+            if (projects.length > 0) {
+              const projectTypes = types?.filter((t) => t !== 'EPIC') ?? [
+                'ISSUE',
+                'TASK',
+                'INCIDENT',
+              ];
               const projectWorkItemPromises = projects.map(async (project) => {
                 try {
-                  const projectTypes = types?.filter((t) => t !== 'EPIC') ?? [
-                    'ISSUE',
-                    'TASK',
-                    'INCIDENT',
-                  ];
                   const projectResponse = await client.request(GET_PROJECT_WORK_ITEMS, {
                     projectPath: project.fullPath,
                     types: projectTypes,
-                    first: Math.floor((first || 20) / Math.max(projects.length, 1)), // Distribute limit
+                    first: Math.floor((first || 20) / Math.max(projects.length, 1)),
                     after: after,
                   });
                   return projectResponse.project?.workItems?.nodes || [];
                 } catch (e) {
-                  console.log(`Could not fetch work items from project ${project.fullPath}:`, e);
+                  console.log(
+                    `📋 Could not fetch work items from project ${project.fullPath}:`,
+                    e instanceof Error ? e.message : String(e),
+                  );
                   return [];
                 }
               });
 
               const projectWorkItems = await Promise.all(projectWorkItemPromises);
-              projectWorkItems.forEach((items) => allWorkItems.push(...items));
-            } catch (e) {
-              console.log('Could not fetch projects from group:', e);
+              const flattenedItems = projectWorkItems.flat();
+              console.log('📋 GROUP recursive project items found:', flattenedItems.length);
+              allWorkItems.push(...flattenedItems);
             }
           }
-        } else if (namespaceType === 'Project') {
-          // For project namespace, just get work items from that project
+        } catch (e) {
+          console.log(
+            "📋 GROUP query failed (this is normal if it's a project):",
+            e instanceof Error ? e.message : String(e),
+          );
+        }
+
+        // 2. Try PROJECT query (gets issues/tasks from specific project)
+        try {
+          console.log('📋 Trying PROJECT query for:', namespacePath);
           const projectTypes = types?.filter((t) => t !== 'EPIC') ?? ['ISSUE', 'TASK', 'INCIDENT'];
-          try {
-            const response = await client.request(GET_PROJECT_WORK_ITEMS, {
-              projectPath: namespacePath,
-              types: projectTypes,
-              first: first || 20,
-              after: after,
-            });
-            allWorkItems.push(...(response.project?.workItems?.nodes || []));
-          } catch (e) {
-            console.log('Could not fetch work items from project:', e);
-          }
+          const response = await client.request(GET_PROJECT_WORK_ITEMS, {
+            projectPath: namespacePath,
+            types: projectTypes,
+            first: first || 20,
+            after: after,
+          });
+          const projectWorkItems = response.project?.workItems?.nodes || [];
+          console.log('📋 PROJECT items found:', projectWorkItems.length);
+          allWorkItems.push(...projectWorkItems);
+        } catch (e) {
+          console.log(
+            "📋 PROJECT query failed (this is normal if it's a group):",
+            e instanceof Error ? e.message : String(e),
+          );
         }
 
         console.log('🎯 Final result - total work items found:', allWorkItems.length);

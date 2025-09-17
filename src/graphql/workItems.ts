@@ -752,8 +752,7 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
               type
             }
             ... on WorkItemWidgetErrorTracking {
-              identifier
-              status
+              type
             }
             ... on WorkItemWidgetLinkedResources {
               linkedResources {
@@ -1085,8 +1084,7 @@ export const GET_PROJECT_WORK_ITEMS: TypedDocumentNode<
               type
             }
             ... on WorkItemWidgetErrorTracking {
-              identifier
-              status
+              type
             }
             ... on WorkItemWidgetLinkedResources {
               linkedResources {

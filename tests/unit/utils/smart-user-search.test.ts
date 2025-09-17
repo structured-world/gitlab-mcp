@@ -4,11 +4,11 @@ import {
   hasNonLatin,
   smartUserSearch,
   type QueryPattern,
-} from '../smart-user-search';
-import { enhancedFetch } from '../fetch';
+} from '../../../src/utils/smart-user-search';
+import { enhancedFetch } from '../../../src/utils/fetch';
 
 // Mock enhancedFetch to avoid actual API calls
-jest.mock('../fetch', () => ({
+jest.mock('../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
 }));
 

@@ -1,3 +1,10 @@
+# [4.3.0](https://github.com/structured-world/gitlab-mcp/compare/v4.2.1...v4.3.0) (2025-09-17)
+
+
+### Features
+
+* optimize work items performance with parallel execution and simplification ([3fda75c](https://github.com/structured-world/gitlab-mcp/commit/3fda75c1525a84e1230ddbbb075df7c9bf8672d0))
+
 ## [4.2.1](https://github.com/structured-world/gitlab-mcp/compare/v4.2.0...v4.2.1) (2025-09-17)
 
 

@@ -195,12 +195,12 @@ docker run -i --rm \
 
 ### Dynamic Tool Description Customization
 
-You can customize tool descriptions at runtime using environment variables following the pattern `GITLAB_TOOL_{TOOL_NAME}`. This is useful for:
+You can customize tool descriptions at runtime using environment variables following the pattern `GITLAB_TOOL_{TOOL_NAME}`. This feature is specifically designed to optimize agentic usage by:
 
-- Providing context-specific descriptions for your team
-- Translating tool descriptions to different languages
-- Adding organization-specific documentation or warnings
-- Simplifying descriptions for non-technical users
+- **Improving AI agent tool selection** - Customize descriptions to match your specific workflows and use cases
+- **Enhancing semantic clarity** - Provide context-specific descriptions that help AI agents understand when to use each tool
+- **Reducing ambiguity** - Replace generic descriptions with precise, workflow-oriented explanations
+- **Optimizing for your domain** - Use terminology and concepts familiar to your AI agents and team
 
 #### Format
 ```bash

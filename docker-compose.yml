@@ -3,10 +3,13 @@
 # This docker-compose.yml provides multiple deployment scenarios for the GitLab MCP Server.
 # Choose the appropriate service based on your needs:
 #
-# 1. gitlab-mcp-http: HTTP Streamable mode (default, recommended for most use cases)
-# 2. gitlab-mcp-sse: Server-Sent Events mode (for specialized SSE clients)
-# 3. gitlab-mcp-stdio: Standard I/O mode (for command-line integration)
-# 4. gitlab-mcp-readonly: Read-only mode (for security-sensitive environments)
+# 1. gitlab-mcp-http: HTTP mode with dual transport (default, provides both /sse and /mcp endpoints)
+# 2. gitlab-mcp-stdio: Standard I/O mode (for command-line integration)
+# 3. gitlab-mcp-readonly: Read-only HTTP mode (for security-sensitive environments)
+#
+# Transport Mode Selection:
+# - PORT environment variable present: HTTP mode with both SSE and StreamableHTTP endpoints
+# - No PORT environment variable: stdio mode for direct MCP communication
 #
 # Quick Start:
 # 1. Copy this file to your project directory
@@ -27,10 +30,10 @@ version: '3.8'
 
 services:
   # ----------------------------------------------------------------------------
-  # HTTP Streamable Mode (Default/Recommended)
+  # HTTP Mode with Dual Transport (Default/Recommended)
   # ----------------------------------------------------------------------------
   # Best for: Web applications, API integrations, most MCP clients
-  # Port: 3000 (HTTP with streaming support)
+  # Port: 3000 (provides both /sse and /mcp endpoints simultaneously)
   gitlab-mcp-http:
     image: ghcr.io/structured-world/gitlab-mcp:latest
     container_name: gitlab-mcp-http
@@ -59,13 +62,8 @@ services:
       # TRANSPORT CONFIGURATION
       # ========================================================================
 
-      # HTTP Streamable mode (recommended for web clients)
-      STREAMABLE_HTTP: true
-
-      # Server-Sent Events mode (disable for HTTP mode)
-      SSE: false
-
       # Server port (default: 3000)
+      # When PORT is set, server runs in HTTP mode with both SSE and StreamableHTTP endpoints
       PORT: 3000
 
       # ========================================================================
@@ -201,78 +199,6 @@ services:
     networks:
       - gitlab-mcp-network
 
-  # ----------------------------------------------------------------------------
-  # Server-Sent Events Mode
-  # ----------------------------------------------------------------------------
-  # Best for: SSE-specific clients, real-time applications
-  # Port: 3001 (SSE endpoint)
-  gitlab-mcp-sse:
-    image: ghcr.io/structured-world/gitlab-mcp:latest
-    container_name: gitlab-mcp-sse
-    restart: unless-stopped
-    ports:
-      - "3001:3000"
-    environment:
-      # Inherit base configuration
-      GITLAB_TOKEN: ${GITLAB_TOKEN:-}
-      GITLAB_API_URL: ${GITLAB_API_URL:-}
-      GITLAB_PROJECT_ID: ${GITLAB_PROJECT_ID:-}
-      GITLAB_GROUP_PATH: ${GITLAB_GROUP_PATH:-}
-
-      # SSE-specific configuration
-      STREAMABLE_HTTP: false
-      SSE: true
-      PORT: 3000
-
-      # Feature flags
-      USE_WORKITEMS: ${USE_WORKITEMS:-true}
-      USE_MILESTONE: ${USE_MILESTONE:-true}
-      USE_PIPELINE: ${USE_PIPELINE:-true}
-      USE_GITLAB_WIKI: ${USE_GITLAB_WIKI:-true}
-      USE_LABELS: ${USE_LABELS:-true}
-      USE_MRS: ${USE_MRS:-true}
-      USE_FILES: ${USE_FILES:-true}
-      USE_VARIABLES: ${USE_VARIABLES:-true}
-
-      # Security
-      GITLAB_READ_ONLY_MODE: ${GITLAB_READ_ONLY_MODE:-false}
-
-      # SSL/TLS Configuration
-      SKIP_TLS_VERIFY: ${SKIP_TLS_VERIFY:-false}
-      GITLAB_AUTH_COOKIE_PATH: ${GITLAB_AUTH_COOKIE_PATH:-}
-
-      # Logging
-      LOG_LEVEL: ${LOG_LEVEL:-info}
-      NODE_ENV: production
-
-    healthcheck:
-      test: ["CMD", "node", "-e", "const http = require('http'); const options = { host: 'localhost', port: 3000, path: '/health', timeout: 2000 }; const req = http.request(options, (res) => { process.exit(res.statusCode === 200 ? 0 : 1); }); req.on('error', () => process.exit(1)); req.end();"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 5s
-
-    deploy:
-      resources:
-        limits:
-          memory: 512M
-          cpus: '0.5'
-        reservations:
-          memory: 256M
-          cpus: '0.25'
-
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "10m"
-        max-file: "3"
-
-    networks:
-      - gitlab-mcp-network
-
-    # SSE mode is typically not the primary service
-    profiles:
-      - sse
 
   # ----------------------------------------------------------------------------
   # Standard I/O Mode
@@ -340,8 +266,6 @@ services:
       GITLAB_GROUP_PATH: ${GITLAB_GROUP_PATH:-}
 
       # Transport configuration
-      STREAMABLE_HTTP: true
-      SSE: false
       PORT: 3000
 
       # Feature flags (read-only compatible)
@@ -424,10 +348,7 @@ networks:
 #   docker-compose up gitlab-mcp-http
 #
 # Start all services:
-#   docker-compose --profile sse --profile stdio --profile readonly up
-#
-# Start only SSE mode:
-#   docker-compose --profile sse up gitlab-mcp-sse
+#   docker-compose --profile stdio --profile readonly up
 #
 # Start read-only mode for security:
 #   docker-compose --profile readonly up gitlab-mcp-readonly

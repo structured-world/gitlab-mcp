@@ -78,6 +78,11 @@ When using with the Claude App, you need to set up your API key and URLs directl
 
 #### Docker
 
+**Transport Mode Selection:**
+- **PORT environment variable present** → Server starts in HTTP mode with both SSE and StreamableHTTP endpoints (`/sse` and `/mcp`)
+- **No PORT environment variable** → Server starts in stdio mode for direct MCP communication
+- **Explicit `stdio` argument** → Forces stdio mode regardless of PORT
+
 - stdio mcp.json
 
 ```json
@@ -119,21 +124,34 @@ When using with the Claude App, you need to set up your API key and URLs directl
 }
 ```
 
-- sse
+- HTTP Server (SSE + StreamableHTTP)
 
 ```shell
 docker run -i --rm \
+  -e PORT=3002 \
   -e GITLAB_TOKEN=your_gitlab_token \
   -e GITLAB_API_URL="https://gitlab.com" \
   -e GITLAB_READ_ONLY_MODE=true \
   -e USE_GITLAB_WIKI=true \
   -e USE_MILESTONE=true \
   -e USE_PIPELINE=true \
-  -e SSE=true \
   -p 3333:3002 \
   ghcr.io/structured-world/gitlab-mcp:latest
 ```
 
+**For modern MCP clients (recommended):**
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "type": "streamable-http",
+      "url": "http://localhost:3333/mcp"
+    }
+  }
+}
+```
+
+**For legacy SSE clients (backwards compatibility):**
 ```json
 {
   "mcpServers": {
@@ -145,31 +163,31 @@ docker run -i --rm \
 }
 ```
 
-- streamable-http
+## Transport Modes
 
-```shell
-docker run -i --rm \
-  -e GITLAB_TOKEN=your_gitlab_token \
-  -e GITLAB_API_URL="https://gitlab.com" \
-  -e GITLAB_READ_ONLY_MODE=true \
-  -e USE_GITLAB_WIKI=true \
-  -e USE_MILESTONE=true \
-  -e USE_PIPELINE=true \
-  -e STREAMABLE_HTTP=true \
-  -p 3333:3002 \
-  ghcr.io/structured-world/gitlab-mcp:latest
-```
+The GitLab MCP Server automatically selects the appropriate transport mode based on your configuration:
 
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "type": "streamable-http",
-      "url": "http://localhost:3333/mcp"
-    }
-  }
-}
-```
+### Automatic Mode Selection
+
+| Configuration | Transport Mode | Endpoints Available | Use Case |
+|--------------|----------------|-------------------|----------|
+| **PORT** env var present | HTTP (Dual) | `/sse` and `/mcp` | Web clients, HTTP-based MCP clients |
+| **No PORT** env var | stdio | N/A | Direct MCP communication, CLI usage |
+| **`stdio` argument** | stdio | N/A | Force stdio mode (overrides PORT) |
+
+### Mode Details
+
+**HTTP Mode (Dual Transport):**
+- Runs Express server on specified PORT
+- Provides both SSE (`/sse`) and StreamableHTTP (`/mcp`) endpoints simultaneously
+- Perfect for web-based MCP clients and backwards compatibility
+- Supports session management and reconnection
+
+**stdio Mode:**
+- Direct stdin/stdout communication
+- No HTTP server required
+- Optimal for command-line tools and direct MCP protocol usage
+- Lower resource usage
 
 ### Environment Variables
 
@@ -190,8 +208,6 @@ docker run -i --rm \
 - `USE_VARIABLES`: When set to 'true', enables the CI/CD variables-related tools (list_variables, get_variable, create_variable, update_variable, delete_variable). Supports both project-level and group-level variables. By default, variables features are enabled.
 - `GITLAB_AUTH_COOKIE_PATH`: Path to an authentication cookie file for GitLab instances that require cookie-based authentication. When provided, the cookie will be included in all GitLab API requests.
 - `SKIP_TLS_VERIFY`: When set to 'true', skips TLS certificate verification for all GitLab API requests (both REST and GraphQL). **WARNING**: This bypasses SSL certificate validation and should only be used for testing with self-signed certificates or trusted internal GitLab instances. Never use this in production environments.
-- `SSE`: When set to 'true', enables the Server-Sent Events transport.
-- `STREAMABLE_HTTP`: When set to 'true', enables the Streamable HTTP transport. If both **SSE** and **STREAMABLE_HTTP** are set to 'true', the server will prioritize Streamable HTTP over SSE transport.
 
 ### Dynamic Tool Description Customization
 

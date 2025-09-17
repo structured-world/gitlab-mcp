@@ -3,6 +3,7 @@ const TransportModeObj = {
   STDIO: 'stdio',
   SSE: 'sse',
   STREAMABLE_HTTP: 'streamable-http',
+  DUAL: 'dual',
 } as const;
 
 export { TransportModeObj as TransportMode };

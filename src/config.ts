@@ -19,10 +19,12 @@ export const USE_LABELS = process.env.USE_LABELS !== 'false';
 export const USE_MRS = process.env.USE_MRS !== 'false';
 export const USE_FILES = process.env.USE_FILES !== 'false';
 export const USE_VARIABLES = process.env.USE_VARIABLES !== 'false';
-export const SSE = process.env.SSE === 'true';
-export const STREAMABLE_HTTP = process.env.STREAMABLE_HTTP === 'true';
 export const HOST = process.env.HOST ?? '0.0.0.0';
 export const PORT = process.env.PORT ?? 3002;
+
+// Transport mode selection:
+// - If PORT env var is present: HTTP mode with dual transport (SSE + StreamableHTTP)
+// - If no PORT env var: stdio mode for direct MCP communication
 
 // TLS/SSL configuration
 export const SKIP_TLS_VERIFY = process.env.SKIP_TLS_VERIFY === 'true';

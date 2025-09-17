@@ -75,7 +75,7 @@ describe('Files Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('get_repository_tree');
-      expect(tool?.description).toContain('repository tree');
+      expect(tool?.description).toContain('BROWSE');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -84,7 +84,7 @@ describe('Files Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('get_file_contents');
-      expect(tool?.description).toContain('contents of a file');
+      expect(tool?.description).toContain('READ');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -93,7 +93,7 @@ describe('Files Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('create_or_update_file');
-      expect(tool?.description).toContain('Create or update');
+      expect(tool?.description).toContain('SINGLE FILE');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -102,7 +102,7 @@ describe('Files Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('push_files');
-      expect(tool?.description).toContain('Push multiple files');
+      expect(tool?.description).toContain('BATCH');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -111,7 +111,7 @@ describe('Files Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('upload_markdown');
-      expect(tool?.description).toContain('Upload a file');
+      expect(tool?.description).toContain('UPLOAD ASSET');
       expect(tool?.inputSchema).toBeDefined();
     });
   });

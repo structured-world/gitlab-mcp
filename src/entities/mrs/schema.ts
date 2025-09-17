@@ -6,14 +6,38 @@ import { ProjectParamsSchema } from '../shared';
 
 // Merge request thread position schema - used for diff notes
 export const MergeRequestThreadPositionCreateSchema = z.object({
-  base_sha: z.string().describe('Base commit SHA in the source branch').optional(),
-  start_sha: z.string().describe('SHA referencing commit in target branch').optional(),
-  head_sha: z.string().describe('SHA referencing HEAD of this merge request').optional(),
-  position_type: z.enum(['text', 'image']).optional().describe('Type of the position reference'),
-  old_path: z.string().optional().describe('Old path of the file'),
-  new_path: z.string().optional().describe('New path of the file'),
-  old_line: z.number().optional().describe('Old line number'),
-  new_line: z.number().optional().describe('New line number'),
+  base_sha: z
+    .string()
+    .describe('Base commit SHA where the MR diverged from target. Used for three-way diff.')
+    .optional(),
+  start_sha: z
+    .string()
+    .describe('Starting commit SHA in target branch for diff comparison context.')
+    .optional(),
+  head_sha: z
+    .string()
+    .describe('Latest commit SHA in the MR source branch. Points to current MR HEAD.')
+    .optional(),
+  position_type: z
+    .enum(['text', 'image'])
+    .optional()
+    .describe('Comment type: text=code/text comment, image=comment on image diff.'),
+  old_path: z
+    .string()
+    .optional()
+    .describe('Original file path before changes. Used for renamed/moved files.'),
+  new_path: z
+    .string()
+    .optional()
+    .describe('Current file path after changes. Same as old_path if not renamed.'),
+  old_line: z
+    .number()
+    .optional()
+    .describe('Line number in original file (left side of diff). For removed/modified lines.'),
+  new_line: z
+    .number()
+    .optional()
+    .describe('Line number in changed file (right side of diff). For added/modified lines.'),
   line_range: z
     .object({
       start: z.object({
@@ -30,38 +54,95 @@ export const MergeRequestThreadPositionCreateSchema = z.object({
       }),
     })
     .optional()
-    .describe('Line range for multi-line comments'),
-  width: z.number().optional().describe('Width of the image (for image type)'),
-  height: z.number().optional().describe('Height of the image (for image type)'),
-  x: z.number().optional().describe('X coordinate (for image type)'),
-  y: z.number().optional().describe('Y coordinate (for image type)'),
+    .describe(
+      'Define start and end points for comments spanning multiple lines. Enables code range discussions.',
+    ),
+  width: z
+    .number()
+    .optional()
+    .describe('Image width in pixels. Required for image position comments.'),
+  height: z
+    .number()
+    .optional()
+    .describe('Image height in pixels. Required for image position comments.'),
+  x: z.number().optional().describe('Horizontal pixel position for image comment. 0 is left edge.'),
+  y: z.number().optional().describe('Vertical pixel position for image comment. 0 is top edge.'),
 });
 
 // Merge request operations (write)
 const MergeRequestOptionsSchema = {
-  source_branch: z.string().min(1).describe('Source branch'),
-  target_branch: z.string().min(1).describe('Target branch'),
-  title: z.string().min(1).describe('Title of MR'),
-  assignee_id: z.number().optional().describe('Assignee user ID'),
-  assignee_ids: z.array(z.number()).optional().describe('Array of assignee user IDs'),
-  reviewer_ids: z.array(z.number()).optional().describe('Array of reviewer user IDs'),
-  description: z.string().optional().describe('Description of MR'),
-  target_project_id: z.coerce.string().optional().describe('Target project ID'),
+  source_branch: z
+    .string()
+    .min(1)
+    .describe(
+      'Branch containing changes to merge. Example: "feature-login". Must exist in repository.',
+    ),
+  target_branch: z
+    .string()
+    .min(1)
+    .describe(
+      'Branch to merge into. Usually "main" or "master". Must exist and be different from source.',
+    ),
+  title: z
+    .string()
+    .min(1)
+    .describe(
+      'MR title/summary. Should clearly describe the changes. Example: "Add user authentication".',
+    ),
+  assignee_id: z
+    .number()
+    .optional()
+    .describe(
+      'Single assignee user ID. Person responsible for MR. Deprecated - use assignee_ids instead.',
+    ),
+  assignee_ids: z
+    .array(z.number())
+    .optional()
+    .describe(
+      'Multiple assignee IDs. People responsible for completing the MR. Overrides assignee_id.',
+    ),
+  reviewer_ids: z
+    .array(z.number())
+    .optional()
+    .describe(
+      'User IDs for code reviewers. Different from assignees - reviewers provide feedback.',
+    ),
+  description: z
+    .string()
+    .optional()
+    .describe('Detailed MR description. Supports Markdown. Explain what changed and why.'),
+  target_project_id: z.coerce
+    .string()
+    .optional()
+    .describe(
+      'Target project for cross-project MRs. Use when merging between forks. Defaults to source project.',
+    ),
   labels: z
     .union([z.string(), z.array(z.string())])
     .optional()
-    .describe('Labels for MR'),
-  milestone_id: z.number().optional().describe('Milestone ID'),
+    .describe(
+      'Labels to categorize MR. Pass single string, comma-separated, or array. Example: ["bug", "priority::high"].',
+    ),
+  milestone_id: z
+    .number()
+    .optional()
+    .describe('Associate MR with milestone for release planning. Use milestone ID, not title.'),
   remove_source_branch: flexibleBoolean
     .optional()
-    .describe('Remove source branch when MR is merged'),
+    .describe('Auto-delete source branch after merge. Keeps repository clean. Default: false.'),
   allow_collaboration: flexibleBoolean
     .optional()
-    .describe('Allow commits from members who can merge to the target branch'),
+    .describe(
+      'Let target branch maintainers push to source branch. Enables collaboration on forks.',
+    ),
   allow_maintainer_to_push: flexibleBoolean
     .optional()
-    .describe('Allow maintainer to push to the source branch'),
-  squash: flexibleBoolean.optional().describe('Squash commits into a single commit when merging'),
+    .describe('Deprecated - use allow_collaboration. Let maintainers push to fork source branch.'),
+  squash: flexibleBoolean
+    .optional()
+    .describe(
+      'Combine all commits into one when merging. Creates cleaner history. Follows project settings if not set.',
+    ),
 };
 
 export const CreateMergeRequestOptionsSchema = z.object(MergeRequestOptionsSchema);
@@ -72,14 +153,34 @@ export const UpdateMergeRequestSchema = z.object({
   merge_request_iid: z.coerce.string().describe('The internal ID of the merge request'),
   target_branch: z.string().optional().describe('Target branch'),
   title: z.string().optional().describe('Title of MR'),
-  assignee_id: z.number().optional().describe('Assignee user ID'),
-  assignee_ids: z.array(z.number()).optional().describe('Array of assignee user IDs'),
-  reviewer_ids: z.array(z.number()).optional().describe('Array of reviewer user IDs'),
-  description: z.string().optional().describe('Description of MR'),
+  assignee_id: z
+    .number()
+    .optional()
+    .describe(
+      'Single assignee user ID. Person responsible for MR. Deprecated - use assignee_ids instead.',
+    ),
+  assignee_ids: z
+    .array(z.number())
+    .optional()
+    .describe(
+      'Multiple assignee IDs. People responsible for completing the MR. Overrides assignee_id.',
+    ),
+  reviewer_ids: z
+    .array(z.number())
+    .optional()
+    .describe(
+      'User IDs for code reviewers. Different from assignees - reviewers provide feedback.',
+    ),
+  description: z
+    .string()
+    .optional()
+    .describe('Detailed MR description. Supports Markdown. Explain what changed and why.'),
   labels: z
     .union([z.string(), z.array(z.string())])
     .optional()
-    .describe('Labels for MR'),
+    .describe(
+      'Labels to categorize MR. Pass single string, comma-separated, or array. Example: ["bug", "priority::high"].',
+    ),
   add_labels: z
     .union([z.string(), z.array(z.string())])
     .optional()
@@ -91,16 +192,25 @@ export const UpdateMergeRequestSchema = z.object({
   state_event: z.enum(['close', 'reopen']).optional().describe('State event for MR'),
   remove_source_branch: flexibleBoolean
     .optional()
-    .describe('Remove source branch when MR is merged'),
-  squash: flexibleBoolean.optional().describe('Squash commits into a single commit when merging'),
+    .describe('Auto-delete source branch after merge. Keeps repository clean. Default: false.'),
+  squash: flexibleBoolean
+    .optional()
+    .describe(
+      'Combine all commits into one when merging. Creates cleaner history. Follows project settings if not set.',
+    ),
   discussion_locked: flexibleBoolean.optional().describe('Lock discussion thread'),
   allow_collaboration: flexibleBoolean
     .optional()
-    .describe('Allow commits from members who can merge to the target branch'),
+    .describe(
+      'Let target branch maintainers push to source branch. Enables collaboration on forks.',
+    ),
   allow_maintainer_to_push: flexibleBoolean
     .optional()
-    .describe('Allow maintainer to push to the source branch'),
-  milestone_id: z.number().optional().describe('Milestone ID'),
+    .describe('Deprecated - use allow_collaboration. Let maintainers push to fork source branch.'),
+  milestone_id: z
+    .number()
+    .optional()
+    .describe('Associate MR with milestone for release planning. Use milestone ID, not title.'),
 });
 
 // Merge operations (write)

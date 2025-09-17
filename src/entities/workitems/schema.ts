@@ -6,7 +6,7 @@ import {
 } from './schema-readonly';
 
 /**
- * 🚨 CRITICAL: GitLab Work Items Hierarchy Rules for MCP Agents
+ * CRITICAL: GitLab Work Items Hierarchy Rules for MCP Agents
  *
  * Work items in GitLab have STRICT level restrictions that CANNOT be violated:
  *
@@ -21,15 +21,15 @@ import {
  * - Use namespacePath like "group/project" or "group/subgroup/project"
  *
  * FORBIDDEN PATTERNS (will always fail):
- * - ❌ Creating Epic with project namespacePath
- * - ❌ Creating Issue/Task/Bug with group namespacePath
+ * - Creating Epic with project namespacePath
+ * - Creating Issue/Task/Bug with group namespacePath
  *
  * EXAMPLES:
- * ✅ Epic: namespacePath="my-group", workItemType="EPIC"
- * ✅ Issue: namespacePath="my-group/my-project", workItemType="ISSUE"
- * ✅ Task: namespacePath="my-group/my-project", workItemType="TASK"
- * ❌ Epic: namespacePath="my-group/my-project" (WRONG - will fail)
- * ❌ Issue: namespacePath="my-group" (WRONG - will fail)
+ * Epic: namespacePath="my-group", workItemType="EPIC"
+ * Issue: namespacePath="my-group/my-project", workItemType="ISSUE"
+ * Task: namespacePath="my-group/my-project", workItemType="TASK"
+ * Epic: namespacePath="my-group/my-project" (WRONG - will fail)
+ * Issue: namespacePath="my-group" (WRONG - will fail)
  */
 export const CreateWorkItemSchema = z.object({
   namespacePath: z

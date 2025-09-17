@@ -79,7 +79,7 @@ describe('Wiki Registry', () => {
       const tool = wikiToolRegistry.get('list_wiki_pages');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('list_wiki_pages');
-      expect(tool!.description).toContain('List wiki pages');
+      expect(tool!.description).toContain('Explore all wiki pages');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -87,7 +87,7 @@ describe('Wiki Registry', () => {
       const tool = wikiToolRegistry.get('get_wiki_page');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('get_wiki_page');
-      expect(tool!.description).toContain('Get details of a specific wiki page');
+      expect(tool!.description).toContain('Get complete wiki page content');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -95,7 +95,7 @@ describe('Wiki Registry', () => {
       const tool = wikiToolRegistry.get('create_wiki_page');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('create_wiki_page');
-      expect(tool!.description).toContain('Create a new wiki page');
+      expect(tool!.description).toContain('Add new documentation page');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -103,7 +103,7 @@ describe('Wiki Registry', () => {
       const tool = wikiToolRegistry.get('update_wiki_page');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('update_wiki_page');
-      expect(tool!.description).toContain('Update an existing wiki page');
+      expect(tool!.description).toContain('Modify existing wiki page');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -111,7 +111,7 @@ describe('Wiki Registry', () => {
       const tool = wikiToolRegistry.get('delete_wiki_page');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('delete_wiki_page');
-      expect(tool!.description).toContain('Delete a wiki page');
+      expect(tool!.description).toContain('Permanently remove wiki page');
       expect(tool!.inputSchema).toBeDefined();
     });
   });

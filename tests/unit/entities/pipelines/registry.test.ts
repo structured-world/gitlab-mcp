@@ -87,7 +87,7 @@ describe('Pipelines Registry', () => {
       const tool = pipelinesToolRegistry.get('list_pipelines');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('list_pipelines');
-      expect(tool!.description).toContain('List pipelines');
+      expect(tool!.description).toContain('Search and monitor CI/CD pipelines');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -95,7 +95,7 @@ describe('Pipelines Registry', () => {
       const tool = pipelinesToolRegistry.get('get_pipeline');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('get_pipeline');
-      expect(tool!.description).toContain('Get details of a specific pipeline');
+      expect(tool!.description).toContain('Get comprehensive details');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -103,7 +103,7 @@ describe('Pipelines Registry', () => {
       const tool = pipelinesToolRegistry.get('list_pipeline_jobs');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('list_pipeline_jobs');
-      expect(tool!.description).toContain('List all jobs in a specific pipeline');
+      expect(tool!.description).toContain('Get all CI/CD jobs');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -111,7 +111,7 @@ describe('Pipelines Registry', () => {
       const tool = pipelinesToolRegistry.get('create_pipeline');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('create_pipeline');
-      expect(tool!.description).toContain('Create a new pipeline');
+      expect(tool!.description).toContain('Trigger a new CI/CD pipeline');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -119,7 +119,7 @@ describe('Pipelines Registry', () => {
       const tool = pipelinesToolRegistry.get('retry_pipeline');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('retry_pipeline');
-      expect(tool!.description).toContain('Retry a failed or canceled pipeline');
+      expect(tool!.description).toContain('Re-run a previously failed');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -127,7 +127,7 @@ describe('Pipelines Registry', () => {
       const tool = pipelinesToolRegistry.get('cancel_pipeline');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('cancel_pipeline');
-      expect(tool!.description).toContain('Cancel a running pipeline');
+      expect(tool!.description).toContain('Stop a currently executing pipeline');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -144,11 +144,11 @@ describe('Pipelines Registry', () => {
       expect(getTool).toBeDefined();
       expect(outputTool).toBeDefined();
 
-      expect(playTool!.description).toContain('Run a manual pipeline job');
-      expect(retryTool!.description).toContain('Retry a failed or canceled pipeline job');
-      expect(cancelTool!.description).toContain('Cancel a running pipeline job');
-      expect(getTool!.description).toContain('Get details of a GitLab pipeline job number');
-      expect(outputTool!.description).toContain('Get the output');
+      expect(playTool!.description).toContain('Trigger a manual job');
+      expect(retryTool!.description).toContain('Re-run a specific failed');
+      expect(cancelTool!.description).toContain('Stop a specific running job');
+      expect(getTool!.description).toContain('Get detailed information');
+      expect(outputTool!.description).toContain('Fetch console output');
     });
   });
 
@@ -347,7 +347,7 @@ describe('Pipelines Registry', () => {
       expect(listTool!.inputSchema).toBeDefined();
 
       // The tool should handle pipeline listing
-      expect(listTool!.description).toContain('List pipelines');
+      expect(listTool!.description).toContain('Search and monitor CI/CD pipelines');
     });
 
     it('should mention pipeline context in descriptions', () => {
@@ -381,7 +381,7 @@ describe('Pipelines Registry', () => {
       expect(pipelinesToolRegistry.has('list_pipeline_trigger_jobs')).toBe(true);
 
       const triggerTool = pipelinesToolRegistry.get('list_pipeline_trigger_jobs');
-      expect(triggerTool!.description).toContain('List all trigger jobs');
+      expect(triggerTool!.description).toContain('List jobs that trigger');
     });
   });
 

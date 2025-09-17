@@ -6,40 +6,66 @@ import { PaginationOptionsSchema, ProjectParamsSchema } from '../shared';
 
 // Get branch diffs (read-only)
 export const GetBranchDiffsSchema = ProjectParamsSchema.extend({
-  from: z.string().describe('The commit SHA or branch name to compare from'),
-  to: z.string().describe('The commit SHA or branch name to compare to'),
+  from: z
+    .string()
+    .describe(
+      'Source reference for comparison: branch name or commit SHA. Example: "feature-branch" or "abc123def".',
+    ),
+  to: z
+    .string()
+    .describe(
+      'Target reference for comparison: branch name or commit SHA. Example: "main" or "def456ghi".',
+    ),
   straight: flexibleBoolean
     .optional()
-    .describe('Comparison method, true for direct comparison, false for merge-base comparison'),
+    .describe(
+      'Comparison type: true=straight diff between refs, false=three-way diff from common ancestor (merge-base).',
+    ),
 });
 
 // Merge request operations (read-only)
 export const GetMergeRequestSchema = ProjectParamsSchema.extend({
-  merge_request_iid: z.coerce.string().optional().describe('The internal ID of the merge request'),
-  branch_name: z.string().optional().describe('Source branch name to find the merge request'),
+  merge_request_iid: z.coerce
+    .string()
+    .optional()
+    .describe(
+      'Internal MR ID unique to project. Incremental number like !42. Preferred over global ID.',
+    ),
+  branch_name: z
+    .string()
+    .optional()
+    .describe(
+      'Find MR by its source branch name. Alternative to using IID. Example: "feature-login".',
+    ),
   include_diverged_commits_count: z
     .boolean()
     .optional()
-    .describe('If true, response includes commits behind the target branch'),
+    .describe(
+      'Include count of commits the source branch is behind target. Shows if rebase needed.',
+    ),
   include_rebase_in_progress: z
     .boolean()
     .optional()
-    .describe('If true, response includes whether a rebase operation is in progress'),
+    .describe('Check if MR is currently being rebased. Useful for showing rebase status in UI.'),
 }).refine((data) => data.merge_request_iid ?? data.branch_name, {
   message: 'Either merge_request_iid or branch_name must be provided',
 });
 
 // Base schema for MR operations with just project and IID (no refinements)
 const BaseMergeRequestSchema = ProjectParamsSchema.extend({
-  merge_request_iid: z.coerce.string().describe('The internal ID of the merge request'),
+  merge_request_iid: z.coerce
+    .string()
+    .describe('Internal MR ID unique to project. Example: 42 for MR !42.'),
   include_diverged_commits_count: z
     .boolean()
     .optional()
-    .describe('If true, response includes commits behind the target branch'),
+    .describe(
+      'Include count of commits the source branch is behind target. Shows if rebase needed.',
+    ),
   include_rebase_in_progress: z
     .boolean()
     .optional()
-    .describe('If true, response includes whether a rebase operation is in progress'),
+    .describe('Check if MR is currently being rebased. Useful for showing rebase status in UI.'),
 });
 
 export const GetMergeRequestDiffsSchema = BaseMergeRequestSchema.extend({
@@ -54,17 +80,27 @@ export const ListMergeRequestDiffsSchema = BaseMergeRequestSchema.extend({
 
 // List merge request discussions (read-only)
 export const ListMergeRequestDiscussionsSchema = ProjectParamsSchema.extend({
-  merge_request_iid: z.coerce.string().describe('The internal ID of the merge request'),
+  merge_request_iid: z.coerce
+    .string()
+    .describe('Internal MR ID unique to project. Example: 42 for MR !42.'),
 }).merge(PaginationOptionsSchema);
 
 // Draft notes (read-only)
 export const GetDraftNoteSchema = ProjectParamsSchema.extend({
-  merge_request_iid: z.coerce.string().describe('The internal ID of the merge request'),
-  draft_note_id: z.coerce.string().describe('The ID of the draft note'),
+  merge_request_iid: z.coerce
+    .string()
+    .describe('Internal MR ID unique to project. Example: 42 for MR !42.'),
+  draft_note_id: z.coerce
+    .string()
+    .describe(
+      'Unique identifier of the draft note/comment. Draft notes are unpublished review comments.',
+    ),
 });
 
 export const ListDraftNotesSchema = ProjectParamsSchema.extend({
-  merge_request_iid: z.coerce.string().describe('The internal ID of the merge request'),
+  merge_request_iid: z.coerce
+    .string()
+    .describe('Internal MR ID unique to project. Example: 42 for MR !42.'),
 });
 
 // List merge requests (read-only)
@@ -73,165 +109,218 @@ export const ListMergeRequestsSchema = z
     project_id: z.coerce
       .string()
       .optional()
-      .describe('Project ID to filter merge requests by project (optional for global search)'),
+      .describe(
+        'Project identifier for filtering. Use numeric ID or URL-encoded path. Optional for cross-project search.',
+      ),
     state: z
       .enum(['opened', 'closed', 'locked', 'merged', 'all'])
       .optional()
-      .describe('Return all merge requests or filter by state'),
+      .describe(
+        'MR state filter: opened=active, closed=rejected, merged=accepted, locked=read-only, all=everything.',
+      ),
     order_by: z
       .enum(['created_at', 'updated_at', 'title', 'priority'])
       .optional()
       .describe(
-        'Return merge requests ordered by created_at, updated_at, title, or priority fields',
+        'Sort field: created_at=creation date, updated_at=last modification, title=alphabetical, priority=importance level.',
       ),
-    sort: z.enum(['asc', 'desc']).optional().describe('Sort order'),
-    milestone: z.string().optional().describe('Filter by milestone title'),
+    sort: z
+      .enum(['asc', 'desc'])
+      .optional()
+      .describe(
+        'Sort direction: asc=ascending (oldest/A-Z first), desc=descending (newest/Z-A first).',
+      ),
+    milestone: z
+      .string()
+      .optional()
+      .describe('Filter by milestone title. Use "None" for no milestone, "Any" for any milestone.'),
     view: z
       .enum(['simple', 'full'])
       .optional()
-      .describe('Return a limited set of merge request attributes'),
+      .describe(
+        'Response detail level: simple=basic fields only for performance, full=complete MR details.',
+      ),
     labels: z
       .union([z.string(), z.array(z.string())])
       .optional()
-      .describe('Label names or comma-separated list of label names'),
+      .describe(
+        'Filter by labels. Pass single label, comma-separated string, or array. Example: "bug,priority::high".',
+      ),
     with_labels_details: flexibleBoolean
       .optional()
-      .describe('Include detailed label information instead of just label names'),
+      .describe('Return full label objects with colors and descriptions instead of just names.'),
     with_merge_status_recheck: flexibleBoolean
       .optional()
       .describe(
-        'Whether merge status for all returned merge requests should be rechecked asynchronously',
+        'Trigger async recheck of merge status for all results. Updates can_be_merged field accuracy.',
       ),
     created_after: z
       .string()
       .optional()
-      .describe('Return merge requests created on or after the given time'),
+      .describe(
+        'Filter MRs created after this date/time. Format: YYYY-MM-DDTHH:mm:ssZ (ISO 8601).',
+      ),
     created_before: z
       .string()
       .optional()
-      .describe('Return merge requests created on or before the given time'),
+      .describe(
+        'Filter MRs created before this date/time. Format: YYYY-MM-DDTHH:mm:ssZ (ISO 8601).',
+      ),
     updated_after: z
       .string()
       .optional()
-      .describe('Return merge requests updated on or after the given time'),
+      .describe(
+        'Filter MRs modified after this date/time. Format: YYYY-MM-DDTHH:mm:ssZ (ISO 8601).',
+      ),
     updated_before: z
       .string()
       .optional()
-      .describe('Return merge requests updated on or before the given time'),
+      .describe(
+        'Filter MRs modified before this date/time. Format: YYYY-MM-DDTHH:mm:ssZ (ISO 8601).',
+      ),
     scope: z
       .enum(['created_by_me', 'assigned_to_me', 'all'])
       .optional()
-      .describe('Return merge requests for the given scope'),
+      .describe(
+        "Filter scope: created_by_me=you authored, assigned_to_me=you're assignee, all=no filter.",
+      ),
     author_id: z
       .number()
       .optional()
-      .describe('Returns merge requests created by the given user id'),
+      .describe("Filter by author's numeric user ID. Use to find MRs from specific user."),
     author_username: z
       .string()
       .optional()
-      .describe('Returns merge requests created by the given username'),
+      .describe('Filter by author\'s username. Alternative to author_id. Example: "johndoe".'),
     assignee_id: z
       .number()
       .optional()
-      .describe('Returns merge requests assigned to the given user id'),
+      .describe("Filter by assignee's numeric user ID. Find MRs assigned to specific user."),
     assignee_username: z
       .string()
       .optional()
-      .describe('Returns merge requests assigned to the given username'),
+      .describe(
+        'Filter by assignee\'s username. Alternative to assignee_id. Use "None" for unassigned.',
+      ),
     my_reaction_emoji: z
       .string()
       .optional()
-      .describe('Return merge requests reacted by the authenticated user by the given emoji'),
+      .describe(
+        'Filter MRs you\'ve reacted to with specific emoji. Example: "thumbsup" or "heart".',
+      ),
     source_branch: z
       .string()
       .optional()
-      .describe('Return merge requests with the given source branch'),
+      .describe('Filter by source branch name. Find MRs from specific feature branch.'),
     target_branch: z
       .string()
       .optional()
-      .describe('Return merge requests with the given target branch'),
+      .describe(
+        'Filter by target branch name. Usually "main" or "master". Find MRs targeting specific branch.',
+      ),
     search: z
       .string()
       .optional()
-      .describe('Search merge requests against their title and description'),
+      .describe(
+        'Text search in MR title and/or description. Partial matches supported. Case-insensitive.',
+      ),
     in: z
       .enum(['title', 'description', 'title,description'])
       .optional()
-      .describe('Modify the scope of the search attribute'),
+      .describe(
+        'Search scope: title=title only, description=body only, title,description=both (default).',
+      ),
     wip: z
       .enum(['yes', 'no'])
       .optional()
-      .describe('Filter merge requests against their wip status'),
+      .describe(
+        'Draft/WIP filter: yes=draft MRs only, no=ready MRs only. Draft MRs start with "Draft:" or "WIP:".',
+      ),
     not: z
       .object({
         labels: z
           .union([z.string(), z.array(z.string())])
           .optional()
-          .describe('Return merge requests that do not match the parameters supplied'),
+          .describe('Exclude MRs with these labels. Inverse filter for labels.'),
         milestone: z
           .string()
           .optional()
-          .describe('Return merge requests that do not match the milestone'),
+          .describe('Exclude MRs with this milestone. Use for "not in milestone X" queries.'),
         author_id: z
           .number()
           .optional()
-          .describe('Return merge requests that do not match the author id'),
+          .describe('Exclude MRs created by this user ID. Find MRs NOT from specific author.'),
         author_username: z
           .string()
           .optional()
-          .describe('Return merge requests that do not match the author username'),
+          .describe('Exclude MRs created by this username. Alternative to not.author_id.'),
         assignee_id: z
           .number()
           .optional()
-          .describe('Return merge requests that do not match the assignee id'),
+          .describe(
+            'Exclude MRs assigned to this user ID. Find unassigned or differently assigned MRs.',
+          ),
         assignee_username: z
           .string()
           .optional()
-          .describe('Return merge requests that do not match the assignee username'),
+          .describe('Exclude MRs assigned to this username. Alternative to not.assignee_id.'),
         my_reaction_emoji: z
           .string()
           .optional()
-          .describe(
-            'Return merge requests not reacted by the authenticated user by the given emoji',
-          ),
+          .describe("Exclude MRs you've reacted to with this emoji. Inverse of my_reaction_emoji."),
       })
       .optional(),
     environment: z
       .string()
       .optional()
-      .describe('Returns merge requests deployed to the given environment'),
+      .describe(
+        'Filter by deployment environment name. Example: "production", "staging". Requires deployments.',
+      ),
     deployed_before: z
       .string()
       .optional()
-      .describe('Return merge requests deployed before the given date/time'),
+      .describe(
+        'Filter MRs deployed before this date/time. Format: YYYY-MM-DDTHH:mm:ssZ (ISO 8601).',
+      ),
     deployed_after: z
       .string()
       .optional()
-      .describe('Return merge requests deployed after the given date/time'),
+      .describe(
+        'Filter MRs deployed after this date/time. Format: YYYY-MM-DDTHH:mm:ssZ (ISO 8601).',
+      ),
     approved_by_ids: z
       .array(z.number())
       .optional()
       .describe(
-        'Returns merge requests which have been approved by all the users with the given ids',
+        'Filter MRs approved by ALL specified user IDs. Pass array of IDs. Requires all approvals.',
       ),
     approved_by_usernames: z
       .array(z.string())
       .optional()
       .describe(
-        'Returns merge requests which have been approved by all the users with the given usernames',
+        'Filter MRs approved by ALL specified usernames. Pass array. Alternative to approved_by_ids.',
       ),
     reviewer_id: z
       .number()
       .optional()
-      .describe('Returns merge requests which have the user as a reviewer with the given user id'),
+      .describe(
+        'Filter MRs where this user ID is a reviewer. Different from assignee - reviewers provide feedback.',
+      ),
     reviewer_username: z
       .string()
       .optional()
-      .describe('Returns merge requests which have the user as a reviewer with the given username'),
+      .describe('Filter MRs where this username is a reviewer. Alternative to reviewer_id.'),
     with_api_entity_associations: flexibleBoolean
       .optional()
-      .describe('Include associations that are normally only returned with the merge request API'),
-    min_access_level: z.number().optional().describe('Limit by current user minimal access level'),
+      .describe(
+        'Include extra API associations like head_pipeline. Adds more data but slower response.',
+      ),
+    min_access_level: z
+      .number()
+      .optional()
+      .describe(
+        'Minimum access level filter. 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.',
+      ),
   })
   .merge(PaginationOptionsSchema);
 

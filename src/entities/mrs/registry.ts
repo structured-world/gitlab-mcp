@@ -36,7 +36,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'get_branch_diffs',
     {
       name: 'get_branch_diffs',
-      description: 'Get the changes/diffs between two branches or commits in a GitLab project',
+      description:
+        'COMPARE: Get diffs between two branches or commits in a GitLab project. Use when: Reviewing changes before merging, Analyzing code differences, Generating change reports. Supports both direct comparison and merge-base comparison methods.',
       inputSchema: zodToJsonSchema(GetBranchDiffsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetBranchDiffsSchema.parse(args);
@@ -68,7 +69,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: 'get_merge_request',
       description:
-        'Get details of a merge request (Either mergeRequestIid or branchName must be provided)',
+        'READ: Get comprehensive details of a merge request including status, discussions, and approvals. Use when: Reviewing MR details, Checking merge status, Gathering information for automation. Accepts either MR IID or source branch name for flexibility.',
       inputSchema: zodToJsonSchema(GetMergeRequestSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetMergeRequestSchema.parse(args);
@@ -115,7 +116,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'list_merge_requests',
     {
       name: 'list_merge_requests',
-      description: 'List merge requests in a GitLab project with filtering options',
+      description:
+        'BROWSE: List merge requests in a GitLab project with extensive filtering capabilities. Use when: Finding MRs by state/author/assignee, Complex queries for MR management, Reporting on merge requests. Can search globally or within specific projects.',
       inputSchema: zodToJsonSchema(ListMergeRequestsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = ListMergeRequestsSchema.parse(args);
@@ -152,7 +154,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: 'get_merge_request_diffs',
       description:
-        'Get the changes/diffs of a merge request (Either mergeRequestIid or branchName must be provided)',
+        'READ: Get all file changes and diffs included in a merge request. Use when: Reviewing code changes, Analyzing modifications, Automating code review processes. Shows actual file differences that would be applied if merged.',
       inputSchema: zodToJsonSchema(GetMergeRequestDiffsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetMergeRequestDiffsSchema.parse(args);
@@ -187,7 +189,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: 'list_merge_request_diffs',
       description:
-        'List merge request diffs with pagination support (Either mergeRequestIid or branchName must be provided)',
+        'BROWSE: List all diffs in a merge request with pagination for large changesets. Use when: Dealing with MRs containing many changes, Managing memory usage, Processing large diffs efficiently. Provides paginated access to file modifications.',
       inputSchema: zodToJsonSchema(ListMergeRequestDiffsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = ListMergeRequestDiffsSchema.parse(args);
@@ -221,7 +223,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'mr_discussions',
     {
       name: 'mr_discussions',
-      description: 'List discussion items for a merge request',
+      description:
+        'DISCUSS: List all discussion threads and comments on a merge request. Use when: Tracking code review feedback, Managing conversations, Extracting review insights. Includes both resolved and unresolved discussions with full context.',
       inputSchema: zodToJsonSchema(ListMergeRequestDiscussionsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = ListMergeRequestDiscussionsSchema.parse(args);
@@ -254,7 +257,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'get_draft_note',
     {
       name: 'get_draft_note',
-      description: 'Get a single draft note from a merge request',
+      description:
+        'DRAFT: Retrieve a specific draft note (unpublished comment) from a merge request. Use when: Reviewing pending feedback before publishing, Managing draft review comments. Draft notes are only visible to their author until published.',
       inputSchema: zodToJsonSchema(GetDraftNoteSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetDraftNoteSchema.parse(args);
@@ -280,7 +284,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'list_draft_notes',
     {
       name: 'list_draft_notes',
-      description: 'List draft notes for a merge request',
+      description:
+        'DRAFT: List all draft notes (unpublished comments) for a merge request. Use when: Reviewing all pending feedback before publishing, Managing batch review comments. Draft notes allow reviewers to prepare comprehensive feedback before sharing.',
       inputSchema: zodToJsonSchema(ListDraftNotesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = ListDraftNotesSchema.parse(args);
@@ -314,7 +319,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'create_merge_request',
     {
       name: 'create_merge_request',
-      description: 'Create a new merge request in a GitLab project',
+      description:
+        'CREATE: Create a new merge request to propose code changes for review and merging. Use when: Initiating code review process, Proposing features, Submitting fixes. For labels: Use list_labels FIRST to discover existing project taxonomy. Requires source and target branches, supports setting assignees, reviewers, and labels.',
       inputSchema: zodToJsonSchema(CreateMergeRequestSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateMergeRequestSchema.parse(args);
@@ -353,7 +359,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'merge_merge_request',
     {
       name: 'merge_merge_request',
-      description: 'Merge a merge request in a GitLab project',
+      description:
+        'MERGE: Merge an approved merge request into the target branch. Use when: Completing the code review process, Integrating changes. Supports various merge methods (merge commit, squash, rebase) and can delete source branch after merging.',
       inputSchema: zodToJsonSchema(MergeMergeRequestSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = MergeMergeRequestSchema.parse(args);
@@ -388,7 +395,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'create_note',
     {
       name: 'create_note',
-      description: 'Create a new note (comment) to an issue or merge request',
+      description:
+        'COMMENT: Add a comment to an issue or merge request for discussion or feedback. Use when: Providing code review comments, Asking questions, Documenting decisions. Supports markdown formatting and can trigger notifications to participants.',
       inputSchema: zodToJsonSchema(CreateNoteSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateNoteSchema.parse(args);
@@ -429,7 +437,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'create_draft_note',
     {
       name: 'create_draft_note',
-      description: 'Create a draft note for a merge request',
+      description:
+        'DRAFT: Create a draft note (unpublished comment) on a merge request. Use when: Preparing review feedback that can be refined before publishing. Draft notes are ideal for comprehensive reviews where all comments are published together.',
       inputSchema: zodToJsonSchema(CreateDraftNoteSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateDraftNoteSchema.parse(args);
@@ -463,7 +472,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'publish_draft_note',
     {
       name: 'publish_draft_note',
-      description: 'Publish a single draft note',
+      description:
+        'DRAFT: Publish a previously created draft note to make it visible to all participants. Use when: Selectively sharing specific review comments when ready. Once published, the note becomes a regular comment and triggers notifications.',
       inputSchema: zodToJsonSchema(PublishDraftNoteSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = PublishDraftNoteSchema.parse(args);
@@ -489,7 +499,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'bulk_publish_draft_notes',
     {
       name: 'bulk_publish_draft_notes',
-      description: 'Publish all draft notes for a merge request',
+      description:
+        'Publish all pending draft notes for a merge request simultaneously. Use to share comprehensive review feedback in one action. Ideal for thorough code reviews where all comments should be seen together for context.',
       inputSchema: zodToJsonSchema(BulkPublishDraftNotesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = BulkPublishDraftNotesSchema.parse(args);
@@ -515,7 +526,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'update_merge_request',
     {
       name: 'update_merge_request',
-      description: 'Update a merge request (Either mergeRequestIid or branchName must be provided)',
+      description:
+        'UPDATE: Update properties of an existing merge request such as title, description, or assignees. Use when: Refining MR details, Changing reviewers, Updating labels. For labels: Use list_labels FIRST to discover existing taxonomy before updating. Accepts either MR IID or source branch name for identification.',
       inputSchema: zodToJsonSchema(UpdateMergeRequestSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = UpdateMergeRequestSchema.parse(args);
@@ -554,7 +566,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'create_merge_request_thread',
     {
       name: 'create_merge_request_thread',
-      description: 'Create a new thread on a merge request',
+      description:
+        'Start a new discussion thread on a merge request for focused conversation. Use to raise specific concerns, ask questions about code sections, or initiate design discussions. Threads can be resolved when addressed.',
       inputSchema: zodToJsonSchema(CreateMergeRequestThreadSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateMergeRequestThreadSchema.parse(args);
@@ -591,7 +604,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'update_merge_request_note',
     {
       name: 'update_merge_request_note',
-      description: 'Modify an existing merge request thread note',
+      description:
+        'Edit an existing comment within a merge request discussion thread. Use to correct mistakes, clarify points, or update information in previous comments. Maintains discussion history while allowing content refinement.',
       inputSchema: zodToJsonSchema(UpdateMergeRequestNoteSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = UpdateMergeRequestNoteSchema.parse(args);
@@ -622,7 +636,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'create_merge_request_note',
     {
       name: 'create_merge_request_note',
-      description: 'Add a new note to an existing merge request thread',
+      description:
+        'Reply to an existing discussion thread in a merge request. Use to continue conversations, provide answers, or add context to ongoing discussions. Keeps related comments organized in threaded format.',
       inputSchema: zodToJsonSchema(CreateMergeRequestNoteSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateMergeRequestNoteSchema.parse(args);
@@ -656,7 +671,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'update_draft_note',
     {
       name: 'update_draft_note',
-      description: 'Update an existing draft note',
+      description:
+        'Modify a draft note before publishing to refine review feedback. Use to edit, improve, or correct draft comments based on further code examination. Changes are only visible to the author until the note is published.',
       inputSchema: zodToJsonSchema(UpdateDraftNoteSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = UpdateDraftNoteSchema.parse(args);
@@ -690,7 +706,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     'delete_draft_note',
     {
       name: 'delete_draft_note',
-      description: 'Delete a draft note',
+      description:
+        "Remove a draft note that is no longer needed or relevant. Use to clean up draft feedback that won't be published or to start fresh with review comments. Only the author can delete their own draft notes.",
       inputSchema: zodToJsonSchema(DeleteDraftNoteSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = DeleteDraftNoteSchema.parse(args);

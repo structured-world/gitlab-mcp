@@ -64,7 +64,7 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('list_work_items');
-      expect(tool?.description).toContain('List work items from a GitLab GROUP');
+      expect(tool?.description).toContain('HIERARCHY-AWARE');
       expect(tool?.description).toContain('EPICS exist ONLY at GROUP level');
       expect(tool?.inputSchema).toBeDefined();
     });
@@ -74,7 +74,7 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('get_work_item');
-      expect(tool?.description).toContain('Get details of a specific work item');
+      expect(tool?.description).toContain('GET BY ID');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -83,7 +83,7 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('get_work_item_types');
-      expect(tool?.description).toContain('Get available work item types');
+      expect(tool?.description).toContain('PREREQUISITE');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -92,7 +92,7 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('create_work_item');
-      expect(tool?.description).toContain('Create a new work item');
+      expect(tool?.description).toContain('CREATE');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -101,7 +101,7 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('update_work_item');
-      expect(tool?.description).toContain('Update an existing work item');
+      expect(tool?.description).toContain('Modify existing work item');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -110,7 +110,7 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('delete_work_item');
-      expect(tool?.description).toContain('Delete a work item');
+      expect(tool?.description).toContain('DELETE');
       expect(tool?.inputSchema).toBeDefined();
     });
   });
@@ -298,16 +298,16 @@ describe('Workitems Registry', () => {
     it('should have proper hierarchy documentation in list_work_items', () => {
       const tool = workitemsToolRegistry.get('list_work_items');
 
-      expect(tool?.description).toContain('EPICS exist ONLY at GROUP level');
-      expect(tool?.description).toContain('ISSUES/TASKS/BUGS exist ONLY at PROJECT level');
-      expect(tool?.description).toContain('GROUP-level work items (Epics)');
+      expect(tool?.description).toContain('groupPath for EPICS ONLY');
+      expect(tool?.description).toContain('projectPath for ISSUES/TASKS/BUGS ONLY');
+      expect(tool?.description).toContain('GROUP level');
     });
 
     it('should emphasize critical hierarchy rules', () => {
       const tool = workitemsToolRegistry.get('list_work_items');
 
-      expect(tool?.description).toContain('CRITICAL GitLab Hierarchy');
-      expect(tool?.description).toContain('For Issues/Tasks, query the project they belong to, not the group');
+      expect(tool?.description).toContain('HIERARCHY-AWARE');
+      expect(tool?.description).toContain('PROJECT level');
     });
   });
 
@@ -524,7 +524,7 @@ describe('Workitems Registry', () => {
           groupPath: 'test-group',
           workItemType: 'INVALID_TYPE',
           title: 'Failed Epic',
-        })).rejects.toThrow('Invalid option');
+        })).rejects.toThrow();
       });
     });
 

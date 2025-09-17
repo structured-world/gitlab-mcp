@@ -25,7 +25,8 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
     'list_milestones',
     {
       name: 'list_milestones',
-      description: 'List milestones in a GitLab project or group with filtering options',
+      description:
+        'Browse release milestones for planning and tracking. Use to see upcoming releases, sprint cycles, or project phases. Supports filtering by state (active/closed) and timeframe. Returns milestone titles, dates, progress statistics. Group milestones apply across all projects.',
       inputSchema: zodToJsonSchema(ListProjectMilestonesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = ListProjectMilestonesSchema.parse(args);
@@ -63,7 +64,8 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
     'get_milestone',
     {
       name: 'get_milestone',
-      description: 'Get details of a specific project or group milestone',
+      description:
+        'Retrieve comprehensive milestone information including dates, description, and progress metrics. Use to track release status, see associated work, or analyze milestone completion. Shows open/closed issue counts and completion percentage.',
       inputSchema: zodToJsonSchema(GetProjectMilestoneSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetProjectMilestoneSchema.parse(args);
@@ -94,7 +96,8 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
     'get_milestone_issue',
     {
       name: 'get_milestone_issue',
-      description: 'Get issues associated with a specific project or group milestone',
+      description:
+        'List all issues targeted for a milestone release. Use to track milestone progress, identify blockers, or plan work. Returns issue details with status, assignees, and labels. Essential for release management and sprint planning.',
       inputSchema: zodToJsonSchema(GetMilestoneIssuesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetMilestoneIssuesSchema.parse(args);
@@ -138,7 +141,8 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
     'get_milestone_merge_requests',
     {
       name: 'get_milestone_merge_requests',
-      description: 'Get merge requests associated with a specific project or group milestone',
+      description:
+        'List merge requests scheduled for a milestone. Use to track feature completion, review code changes for release, or identify pending work. Shows MR status, approvals, and pipeline status. Critical for release readiness assessment.',
       inputSchema: zodToJsonSchema(GetMilestoneMergeRequestsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetMilestoneMergeRequestsSchema.parse(args);
@@ -182,7 +186,8 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
     'get_milestone_burndown_events',
     {
       name: 'get_milestone_burndown_events',
-      description: 'Get burndown events for a specific project or group milestone',
+      description:
+        'Track milestone progress with burndown chart data. Use for agile metrics, velocity tracking, and sprint analysis. Returns time-series events showing work completion rate. Premium/Ultimate feature for advanced project analytics.',
       inputSchema: zodToJsonSchema(GetMilestoneBurndownEventsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetMilestoneBurndownEventsSchema.parse(args);
@@ -214,7 +219,8 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
     'create_milestone',
     {
       name: 'create_milestone',
-      description: 'Create a new milestone in a GitLab project or group',
+      description:
+        'Define a new release milestone or sprint cycle. Use to establish delivery targets, organize work phases, or plan releases. Set title, description, start/due dates. Group milestones coordinate releases across multiple projects.',
       inputSchema: zodToJsonSchema(CreateProjectMilestoneSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateProjectMilestoneSchema.parse(args);
@@ -255,7 +261,8 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
     'edit_milestone',
     {
       name: 'edit_milestone',
-      description: 'Edit an existing milestone in a GitLab project or group',
+      description:
+        'Update milestone properties like dates, description, or state. Use to adjust release schedules, extend sprints, or close completed milestones. Changes apply immediately to all associated issues and MRs.',
       inputSchema: zodToJsonSchema(EditProjectMilestoneSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = EditProjectMilestoneSchema.parse(args);
@@ -302,7 +309,8 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
     'delete_milestone',
     {
       name: 'delete_milestone',
-      description: 'Delete a milestone from a GitLab project or group',
+      description:
+        'Remove a milestone permanently. Use to clean up cancelled releases or obsolete milestones. Warning: removes milestone association from all issues and MRs. Consider closing instead of deleting for historical tracking.',
       inputSchema: zodToJsonSchema(DeleteProjectMilestoneSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = DeleteProjectMilestoneSchema.parse(args);
@@ -334,7 +342,8 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
     'promote_milestone',
     {
       name: 'promote_milestone',
-      description: 'Promote a project milestone to a group milestone',
+      description:
+        'Elevate project milestone to group level for cross-project coordination. Use when a milestone needs to span multiple projects. Consolidates related project milestones into single group milestone. Useful for organizational release planning.',
       inputSchema: zodToJsonSchema(PromoteProjectMilestoneSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = PromoteProjectMilestoneSchema.parse(args);

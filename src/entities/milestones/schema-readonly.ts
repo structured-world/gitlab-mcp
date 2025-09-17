@@ -58,27 +58,37 @@ export const ListProjectMilestonesSchema = z
     message: 'Exactly one of project_id or group_id must be provided',
   });
 
+// Base schema without refinement
+const GetProjectMilestoneBaseSchema = z.object({
+  project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
+  group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
+  milestone_id: z.coerce.string().describe('The ID of a project or group milestone'),
+});
+
 // Schema for getting a single milestone
-export const GetProjectMilestoneSchema = z
-  .object({
-    project_id: z.coerce.string().optional().describe('Project ID or URL-encoded path'),
-    group_id: z.coerce.string().optional().describe('Group ID or URL-encoded path'),
-    milestone_id: z.coerce.string().describe('The ID of a project or group milestone'),
-  })
-  .refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
+export const GetProjectMilestoneSchema = GetProjectMilestoneBaseSchema.refine(
+  (data) => Boolean(data.project_id) !== Boolean(data.group_id),
+  {
     message: 'Exactly one of project_id or group_id must be provided',
-  });
+  },
+);
 
 // Schema for getting issues assigned to a milestone
 export const GetMilestoneIssuesSchema = GetProjectMilestoneSchema;
 
 // Schema for getting merge requests assigned to a milestone
-export const GetMilestoneMergeRequestsSchema =
-  GetProjectMilestoneSchema.merge(PaginationOptionsSchema);
+export const GetMilestoneMergeRequestsSchema = GetProjectMilestoneBaseSchema.merge(
+  PaginationOptionsSchema,
+).refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
+  message: 'Exactly one of project_id or group_id must be provided',
+});
 
 // Schema for getting burndown chart events for a milestone
-export const GetMilestoneBurndownEventsSchema =
-  GetProjectMilestoneSchema.merge(PaginationOptionsSchema);
+export const GetMilestoneBurndownEventsSchema = GetProjectMilestoneBaseSchema.merge(
+  PaginationOptionsSchema,
+).refine((data) => Boolean(data.project_id) !== Boolean(data.group_id), {
+  message: 'Exactly one of project_id or group_id must be provided',
+});
 
 // Type exports
 export type GitLabMilestones = z.infer<typeof GitLabMilestonesSchema>;

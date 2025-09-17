@@ -283,6 +283,77 @@ class RegistryManager {
   }
 
   /**
+   * Get tool definitions without GitLab tier/version filtering (for CLI tools, documentation, etc.)
+   * Dynamically checks environment filters at runtime to respect CLI-time environment variables
+   * but bypasses ToolAvailability tier/version checks since no GitLab connection exists
+   */
+  public getAllToolDefinitionsTierless(): EnhancedToolDefinition[] {
+    const allTools: EnhancedToolDefinition[] = [];
+
+    // Dynamically check environment variables at runtime
+    const isReadOnly = process.env.GITLAB_READ_ONLY_MODE === 'true';
+    const deniedRegex = process.env.GITLAB_DENIED_TOOLS_REGEX
+      ? new RegExp(process.env.GITLAB_DENIED_TOOLS_REGEX)
+      : undefined;
+
+    // Dynamically check USE_* flags at runtime
+    const useLabels = process.env.USE_LABELS !== 'false';
+    const useMrs = process.env.USE_MRS !== 'false';
+    const useFiles = process.env.USE_FILES !== 'false';
+    const useMilestone = process.env.USE_MILESTONE !== 'false';
+    const usePipeline = process.env.USE_PIPELINE !== 'false';
+    const useVariables = process.env.USE_VARIABLES !== 'false';
+    const useWiki = process.env.USE_GITLAB_WIKI !== 'false';
+    const useWorkitems = process.env.USE_WORKITEMS !== 'false';
+
+    // Build registries map based on dynamic feature flags
+    const registriesToUse = new Map<string, ToolRegistry>();
+
+    // Always add core tools
+    registriesToUse.set('core', coreToolRegistry);
+
+    // Add tools based on dynamically checked feature flags
+    if (useLabels) registriesToUse.set('labels', labelsToolRegistry);
+    if (useMrs) registriesToUse.set('mrs', mrsToolRegistry);
+    if (useFiles) registriesToUse.set('files', filesToolRegistry);
+    if (useMilestone) registriesToUse.set('milestones', milestonesToolRegistry);
+    if (usePipeline) registriesToUse.set('pipelines', pipelinesToolRegistry);
+    if (useVariables) registriesToUse.set('variables', variablesToolRegistry);
+    if (useWiki) registriesToUse.set('wiki', wikiToolRegistry);
+    if (useWorkitems) registriesToUse.set('workitems', workitemsToolRegistry);
+
+    // Dynamically load description overrides
+    const descOverrides = getToolDescriptionOverrides();
+
+    for (const registry of registriesToUse.values()) {
+      for (const [toolName, tool] of registry) {
+        // Apply dynamically checked GITLAB_READ_ONLY_MODE filtering
+        if (isReadOnly && !this.getReadOnlyTools().includes(toolName)) {
+          continue;
+        }
+
+        // Apply dynamically checked GITLAB_DENIED_TOOLS_REGEX filtering
+        if (deniedRegex?.test(toolName)) {
+          continue;
+        }
+
+        // Apply dynamically loaded description override if available
+        let finalTool = tool;
+        const customDescription = descOverrides.get(toolName);
+        if (customDescription) {
+          finalTool = {
+            ...tool,
+            description: customDescription,
+          };
+        }
+        allTools.push(finalTool);
+      }
+    }
+
+    return allTools;
+  }
+
+  /**
    * Check if a tool exists in any registry - O(1) lookup using cache
    */
   public hasToolHandler(toolName: string): boolean {

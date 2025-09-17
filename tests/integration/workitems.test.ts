@@ -64,6 +64,42 @@ describe('Work Items Integration - Using Handler Functions', () => {
       }
     }, 30000);
 
+    it('should list PROJECT-level work items (Issues/Tasks/Bugs) using list_work_items handler', async () => {
+      // 🚨 CRITICAL: This uses the ACTUAL list_work_items handler with projectPath
+      // Tests the production code path for PROJECT-level work items (Issues/Tasks/Bugs)
+      const testData = requireTestData();
+      const testProjectPath = testData.project.path_with_namespace;
+
+      console.log(`🔧 Testing list_work_items handler with project: ${testProjectPath}`);
+
+      // Use handler function with projectPath for Issues/Tasks/Bugs
+      const workItems = await helper.listWorkItems({
+        projectPath: testProjectPath,
+        first: 10,
+      }) as any[];
+
+      expect(workItems).toBeDefined();
+      expect(Array.isArray(workItems)).toBe(true);
+
+      console.log(`📋 Handler returned ${workItems.length} PROJECT-level work items (Issues/Tasks/Bugs)`);
+
+      if (workItems.length > 0) {
+        const firstWorkItem = workItems[0];
+        expect(firstWorkItem.title).toBeDefined();
+        expect(firstWorkItem.workItemType).toBeDefined();
+
+        console.log(`First work item: ${firstWorkItem.title} (${firstWorkItem.workItemType.name})`);
+
+        // Verify this is NOT an Epic (Epics can't exist at project level)
+        expect(firstWorkItem.workItemType.name).not.toBe('Epic');
+        console.log(`✅ Confirmed work item type "${firstWorkItem.workItemType.name}" is valid for PROJECT level`);
+
+        if (firstWorkItem.widgets) {
+          console.log(`Available widgets: ${firstWorkItem.widgets.map((w: any) => w.type).join(', ')}`);
+        }
+      }
+    }, 30000);
+
     it('should get single work item using get_work_item handler', async () => {
       // First get a list using handler to find a work item ID
       const testData = requireTestData();

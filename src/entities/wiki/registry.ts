@@ -14,7 +14,8 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'list_wiki_pages',
     {
       name: 'list_wiki_pages',
-      description: 'List wiki pages in a GitLab project or group',
+      description:
+        'BROWSE: Explore all wiki pages in project or group documentation. Use when: Discovering available guides and documentation, Understanding project knowledge base structure, Finding existing pages before creating new ones. Wiki provides collaborative documentation separate from code repository. Returns page titles, slugs, content formats, and creation dates.',
       inputSchema: zodToJsonSchema(ListWikiPagesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = ListWikiPagesSchema.parse(args);
@@ -52,7 +53,8 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'get_wiki_page',
     {
       name: 'get_wiki_page',
-      description: 'Get details of a specific wiki page from a project or group',
+      description:
+        'READ: Get complete wiki page content and metadata by slug. Use when: Reading technical documentation and guides, Accessing project knowledge base content, Getting full markdown with formatting. Returns complete page content, metadata, edit history, and author information. Perfect for content analysis and documentation review.',
       inputSchema: zodToJsonSchema(GetWikiPageSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetWikiPageSchema.parse(args);
@@ -97,7 +99,8 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'create_wiki_page',
     {
       name: 'create_wiki_page',
-      description: 'Create a new wiki page in a GitLab project or group',
+      description:
+        'CREATE: Add new documentation page to project or group wiki. Use when: Adding technical documentation, user guides, or FAQs, Creating project knowledge base content, Establishing team documentation standards. Check list_wiki_pages FIRST to avoid duplicate topics. Supports GitLab Flavored Markdown with extensions. Creates version-controlled documentation.',
       inputSchema: zodToJsonSchema(CreateWikiPageSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateWikiPageSchema.parse(args);
@@ -138,7 +141,8 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'update_wiki_page',
     {
       name: 'update_wiki_page',
-      description: 'Update an existing wiki page in a GitLab project or group',
+      description:
+        'UPDATE: Modify existing wiki page content or properties. Use when: Updating documentation with new information, Fixing errors or improving clarity, Reorganizing content structure. Maintains complete version history with change tracking. Supports collaborative editing with author attribution and diff viewing.',
       inputSchema: zodToJsonSchema(UpdateWikiPageSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = UpdateWikiPageSchema.parse(args);
@@ -185,7 +189,8 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     'delete_wiki_page',
     {
       name: 'delete_wiki_page',
-      description: 'Delete a wiki page from a GitLab project or group',
+      description:
+        'DELETE: Permanently remove wiki page from documentation. Use when: Cleaning up outdated or obsolete content, Removing duplicate or incorrect pages, Reorganizing wiki structure. WARNING: Deletes page and ALL version history permanently - cannot be undone. Consider archiving important content first.',
       inputSchema: zodToJsonSchema(DeleteWikiPageSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = DeleteWikiPageSchema.parse(args);

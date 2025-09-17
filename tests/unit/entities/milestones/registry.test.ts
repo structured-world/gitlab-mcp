@@ -84,7 +84,7 @@ describe('Milestones Registry', () => {
       const tool = milestonesToolRegistry.get('list_milestones');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('list_milestones');
-      expect(tool!.description).toContain('List milestones');
+      expect(tool!.description).toContain('Browse release milestones');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -92,7 +92,7 @@ describe('Milestones Registry', () => {
       const tool = milestonesToolRegistry.get('get_milestone');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('get_milestone');
-      expect(tool!.description).toContain('Get details of a specific');
+      expect(tool!.description).toContain('Retrieve comprehensive milestone');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -100,7 +100,7 @@ describe('Milestones Registry', () => {
       const tool = milestonesToolRegistry.get('get_milestone_issue');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('get_milestone_issue');
-      expect(tool!.description).toContain('Get issues associated');
+      expect(tool!.description).toContain('List all issues targeted');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -108,7 +108,7 @@ describe('Milestones Registry', () => {
       const tool = milestonesToolRegistry.get('get_milestone_merge_requests');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('get_milestone_merge_requests');
-      expect(tool!.description).toContain('Get merge requests associated');
+      expect(tool!.description).toContain('List merge requests scheduled');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -116,7 +116,7 @@ describe('Milestones Registry', () => {
       const tool = milestonesToolRegistry.get('get_milestone_burndown_events');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('get_milestone_burndown_events');
-      expect(tool!.description).toContain('Get burndown events');
+      expect(tool!.description).toContain('Track milestone progress');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -124,7 +124,7 @@ describe('Milestones Registry', () => {
       const tool = milestonesToolRegistry.get('create_milestone');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('create_milestone');
-      expect(tool!.description).toContain('Create a new milestone');
+      expect(tool!.description).toContain('Define a new release milestone');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -132,7 +132,7 @@ describe('Milestones Registry', () => {
       const tool = milestonesToolRegistry.get('edit_milestone');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('edit_milestone');
-      expect(tool!.description).toContain('Edit an existing milestone');
+      expect(tool!.description).toContain('Update milestone properties');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -140,7 +140,7 @@ describe('Milestones Registry', () => {
       const tool = milestonesToolRegistry.get('delete_milestone');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('delete_milestone');
-      expect(tool!.description).toContain('Delete a milestone');
+      expect(tool!.description).toContain('Remove a milestone permanently');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -148,7 +148,7 @@ describe('Milestones Registry', () => {
       const tool = milestonesToolRegistry.get('promote_milestone');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('promote_milestone');
-      expect(tool!.description).toContain('Promote a project milestone');
+      expect(tool!.description).toContain('Elevate project milestone to group');
       expect(tool!.inputSchema).toBeDefined();
     });
   });
@@ -344,7 +344,7 @@ describe('Milestones Registry', () => {
       expect(listMilestonesTool!.inputSchema).toBeDefined();
 
       // The tool should handle both project and group contexts
-      expect(listMilestonesTool!.description).toContain('project or group');
+      expect(listMilestonesTool!.description).toContain('Group milestones apply');
     });
 
     it('should mention milestone management context in descriptions', () => {
@@ -364,7 +364,7 @@ describe('Milestones Registry', () => {
     it('should have promote milestone tool for project-to-group promotion', () => {
       const promoteTool = milestonesToolRegistry.get('promote_milestone');
       expect(promoteTool).toBeDefined();
-      expect(promoteTool!.description).toContain('Promote a project milestone to a group milestone');
+      expect(promoteTool!.description).toContain('Elevate project milestone to group level');
     });
   });
 

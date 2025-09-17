@@ -95,7 +95,7 @@ describe('MRS Registry', () => {
       const tool = mrsToolRegistry.get('get_branch_diffs');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('get_branch_diffs');
-      expect(tool!.description).toContain('Get the changes/diffs between two branches');
+      expect(tool!.description).toContain('COMPARE');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -103,7 +103,7 @@ describe('MRS Registry', () => {
       const tool = mrsToolRegistry.get('get_merge_request');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('get_merge_request');
-      expect(tool!.description).toContain('Get details of a merge request');
+      expect(tool!.description).toContain('Get comprehensive details');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -127,7 +127,7 @@ describe('MRS Registry', () => {
       const tool = mrsToolRegistry.get('merge_merge_request');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('merge_merge_request');
-      expect(tool!.description).toContain('Merge a merge request');
+      expect(tool!.description).toContain('Merge an approved merge request');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -149,12 +149,12 @@ describe('MRS Registry', () => {
       expect(deleteTool).toBeDefined();
 
       expect(createTool!.description).toContain('Create a draft note');
-      expect(getTool!.description).toContain('Get a single draft note');
-      expect(listTool!.description).toContain('List draft notes');
-      expect(publishTool!.description).toContain('Publish a single draft note');
-      expect(bulkPublishTool!.description).toContain('Publish all draft notes');
-      expect(updateTool!.description).toContain('Update an existing draft note');
-      expect(deleteTool!.description).toContain('Delete a draft note');
+      expect(getTool!.description).toContain('Retrieve a specific draft note');
+      expect(listTool!.description).toContain('List all draft notes');
+      expect(publishTool!.description).toContain('Publish a previously created draft note');
+      expect(bulkPublishTool!.description).toContain('Publish all pending draft notes');
+      expect(updateTool!.description).toContain('Modify a draft note');
+      expect(deleteTool!.description).toContain('Remove a draft note');
     });
   });
 

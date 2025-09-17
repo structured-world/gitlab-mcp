@@ -257,7 +257,7 @@ export GITLAB_TOOL_CREATE_WORK_ITEM="Create tickets for our sprint planning"
 
 ## Tools 🛠️
 
-**86 Tools Available** - Organized by entity and functionality below.
+**85 Tools Available** - Organized by entity and functionality below.
 
 ### Key Features:
 - **Modular Entity Architecture** - Separate entities for Labels, Merge Requests, Files, Pipelines, etc.
@@ -297,15 +297,14 @@ The following issue-related tools have been removed and replaced by Work Items G
 - 📖 = Read-only tool (available in GITLAB_READ_ONLY_MODE)
 - ✏️ = Read/Write tool (disabled in GITLAB_READ_ONLY_MODE)
 
-### Core Tools (22 tools)
+### Core Tools (21 tools)
 Core GitLab functionality always available.
 
 #### Repository & Project Management
 - ✏️ **`create_repository`**: Create a new GitLab project
 - 📖 **`get_project`**: Get details of a specific project
-- 📖 **`list_projects`**: List projects accessible by the current user
+- 📖 **`list_projects`**: List GitLab projects with flexible scoping. DEFAULT (no group_id): Lists YOUR accessible projects across GitLab (owned/member/starred). GROUP SCOPE (with group_id): Lists all projects within a specific group/organization. Parameters automatically validate based on scope.
 - 📖 **`search_repositories`**: Search for GitLab projects
-- 📖 **`list_group_projects`**: List projects in a GitLab group with filtering options
 - 📖 **`list_project_members`**: List members of a GitLab project
 
 #### Branch Management
@@ -434,6 +433,93 @@ Requires USE_PIPELINE=true environment variable.
 - 📖 **`list_pipelines`**: List pipelines in a GitLab project with filtering options
 - 📖 **`list_pipeline_jobs`**: List all jobs in a specific pipeline
 - 📖 **`list_pipeline_trigger_jobs`**: List all trigger jobs (bridges) in a specific pipeline that trigger downstream pipelines
+
+## CLI Tools 🔧
+
+### list-tools - Browse Available Tools
+
+The `list-tools` CLI utility helps you explore all available GitLab MCP tools, their descriptions, parameters, and tier requirements.
+
+#### Installation
+
+```bash
+# Install dependencies
+yarn install
+
+# Build the project
+yarn build
+```
+
+#### Usage
+
+```bash
+# List all tools with descriptions and tier badges
+yarn list-tools
+
+# Show all tools with full parameter details
+yarn list-tools --detail
+
+# List tools in simple format (names only)
+yarn list-tools --simple
+
+# Show tools for a specific entity
+yarn list-tools --entity workitems
+yarn list-tools --entity "merge requests"
+
+# Get detailed info for a specific tool
+yarn list-tools --tool create_work_item
+
+# Export as JSON for programmatic use
+yarn list-tools --json
+
+# Show environment configuration
+yarn list-tools --env
+
+# Test with different configurations
+GITLAB_READONLY=true yarn list-tools        # Show only read-only tools
+USE_WORKITEMS=false yarn list-tools         # Hide work items tools
+```
+
+#### Features
+
+- **Tier Badges** - Visual indicators for GitLab tier requirements:
+  - 🟢 Free - Available in all GitLab tiers
+  - 🟡 Premium - Requires GitLab Premium or higher
+  - 🔴 Ultimate - Requires GitLab Ultimate
+
+- **Parameter Documentation** - Shows all input parameters with:
+  - Parameter name and type
+  - Required/optional status
+  - Detailed descriptions
+
+- **Environment Filtering** - Respects environment variables:
+  - `GITLAB_READONLY` - Show only read-only tools
+  - `USE_*` flags - Enable/disable tool categories
+  - `GITLAB_DENIED_TOOLS_REGEX` - Filter tools by regex pattern
+
+- **Multiple Output Formats**:
+  - Markdown (default) - Human-readable with formatting
+  - JSON - Machine-readable for automation
+  - Simple - Just tool names for scripting
+
+#### Examples
+
+```bash
+# Find all tools related to merge requests
+yarn list-tools --entity mrs
+
+# Check what parameters are needed for creating a work item
+yarn list-tools --tool create_work_item
+
+# List all available tools with their input schemas (for MCP agents)
+yarn list-tools --detail
+
+# Export tool list for documentation
+yarn list-tools --json > tools.json
+
+# Verify read-only mode configuration
+GITLAB_READONLY=true yarn list-tools --simple | wc -l
+```
 
 ## Testing
 

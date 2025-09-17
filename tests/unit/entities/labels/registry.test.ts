@@ -79,7 +79,7 @@ describe('Labels Registry', () => {
       const tool = labelsToolRegistry.get('list_labels');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('list_labels');
-      expect(tool!.description).toContain('List labels');
+      expect(tool!.description).toContain('Browse all existing labels');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -87,7 +87,7 @@ describe('Labels Registry', () => {
       const tool = labelsToolRegistry.get('get_label');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('get_label');
-      expect(tool!.description).toContain('Get a single label');
+      expect(tool!.description).toContain('Retrieve details of a specific label');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -95,7 +95,7 @@ describe('Labels Registry', () => {
       const tool = labelsToolRegistry.get('create_label');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('create_label');
-      expect(tool!.description).toContain('Create a new label');
+      expect(tool!.description).toContain('Add a new label');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -103,7 +103,7 @@ describe('Labels Registry', () => {
       const tool = labelsToolRegistry.get('update_label');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('update_label');
-      expect(tool!.description).toContain('Update an existing label');
+      expect(tool!.description).toContain('Modify label properties');
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -111,7 +111,7 @@ describe('Labels Registry', () => {
       const tool = labelsToolRegistry.get('delete_label');
       expect(tool).toBeDefined();
       expect(tool!.name).toBe('delete_label');
-      expect(tool!.description).toContain('Delete a label');
+      expect(tool!.description).toContain('Remove a label permanently');
       expect(tool!.inputSchema).toBeDefined();
     });
   });

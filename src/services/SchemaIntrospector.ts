@@ -79,7 +79,7 @@ export class SchemaIntrospector {
     }
 
     try {
-      logger.debug('🔍 Introspecting GitLab GraphQL schema...');
+      logger.debug('Introspecting GitLab GraphQL schema...');
 
       const result = await this.client.request<IntrospectionResult>(INTROSPECTION_QUERY);
       const types = result.__schema.types;
@@ -129,14 +129,14 @@ export class SchemaIntrospector {
           typeDefinitions: typeDefinitions.size,
           features: availableFeatures.size,
         },
-        '✅ GraphQL schema introspection completed',
+        'GraphQL schema introspection completed',
       );
 
       return this.cachedSchema;
     } catch (error) {
       logger.warn(
         { err: error as Error },
-        '⚠️ Schema introspection failed, using fallback schema info',
+        'Schema introspection failed, using fallback schema info',
       );
 
       // Provide fallback schema info when introspection fails

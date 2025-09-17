@@ -759,6 +759,357 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
   }
 `;
 
+export const GET_PROJECT_WORK_ITEMS: TypedDocumentNode<
+  { project: { workItems: { nodes: WorkItem[] } } },
+  { projectPath: string; types?: WorkItemTypeEnum[]; first?: number; after?: string }
+> = gql`
+  query GetProjectWorkItems($projectPath: ID!, $types: [IssueType!], $first: Int, $after: String) {
+    project(fullPath: $projectPath) {
+      workItems(types: $types, first: $first, after: $after) {
+        nodes {
+          id
+          iid
+          title
+          description
+          state
+          workItemType {
+            id
+            name
+          }
+          createdAt
+          updatedAt
+          closedAt
+          webUrl
+          widgets {
+            type
+            ... on WorkItemWidgetAssignees {
+              allowsMultipleAssignees
+              canInviteMembers
+              assignees {
+                nodes {
+                  id
+                  username
+                  name
+                  avatarUrl
+                  webUrl
+                }
+              }
+            }
+            ... on WorkItemWidgetDescription {
+              description
+              descriptionHtml
+              edited
+              lastEditedAt
+              lastEditedBy {
+                id
+                username
+                name
+              }
+            }
+            ... on WorkItemWidgetHierarchy {
+              parent {
+                id
+                iid
+                title
+                workItemType {
+                  name
+                }
+              }
+              children {
+                nodes {
+                  id
+                  iid
+                  title
+                  state
+                  workItemType {
+                    name
+                  }
+                }
+              }
+            }
+            ... on WorkItemWidgetLabels {
+              allowsScopedLabels
+              labels {
+                nodes {
+                  id
+                  title
+                  description
+                  color
+                  textColor
+                }
+              }
+            }
+            ... on WorkItemWidgetMilestone {
+              milestone {
+                id
+                title
+                state
+                dueDate
+                startDate
+                webPath
+              }
+            }
+            ... on WorkItemWidgetNotes {
+              discussions {
+                nodes {
+                  id
+                  resolvable
+                  resolved
+                  notes {
+                    nodes {
+                      id
+                      body
+                      author {
+                        id
+                        username
+                        name
+                        avatarUrl
+                      }
+                      createdAt
+                      updatedAt
+                      system
+                    }
+                  }
+                }
+              }
+            }
+            ... on WorkItemWidgetStartAndDueDate {
+              startDate
+              dueDate
+              isFixed
+              fixed
+              inherited
+            }
+            ... on WorkItemWidgetHealthStatus {
+              healthStatus
+              allowsScopedLabels
+            }
+            ... on WorkItemWidgetWeight {
+              weight
+            }
+            ... on WorkItemWidgetIteration {
+              iteration {
+                id
+                title
+                startDate
+                dueDate
+                webUrl
+                iterationCadence {
+                  id
+                  title
+                }
+              }
+            }
+            ... on WorkItemWidgetProgress {
+              currentValue
+              endValue
+              progress
+              startValue
+            }
+            ... on WorkItemWidgetRequirementLegacy {
+              type
+            }
+            ... on WorkItemWidgetTestReports {
+              testReports {
+                nodes {
+                  id
+                  state
+                  createdAt
+                  author {
+                    id
+                    username
+                  }
+                }
+              }
+            }
+            ... on WorkItemWidgetNotifications {
+              subscribed
+            }
+            ... on WorkItemWidgetCurrentUserTodos {
+              currentUserTodos {
+                nodes {
+                  id
+                  action
+                  author {
+                    id
+                    username
+                  }
+                  createdAt
+                  state
+                }
+              }
+            }
+            ... on WorkItemWidgetAwardEmoji {
+              awardEmoji {
+                nodes {
+                  name
+                  emoji
+                  description
+                  user {
+                    id
+                    username
+                  }
+                }
+              }
+              downvotes
+              upvotes
+            }
+            ... on WorkItemWidgetLinkedItems {
+              linkedItems {
+                nodes {
+                  id
+                  linkType
+                  linkCreatedAt
+                  linkUpdatedAt
+                  workItem {
+                    id
+                    iid
+                    title
+                    state
+                    workItemType {
+                      name
+                    }
+                  }
+                }
+              }
+            }
+            ... on WorkItemWidgetColor {
+              color
+              textColor
+            }
+            ... on WorkItemWidgetParticipants {
+              participants {
+                nodes {
+                  id
+                  username
+                  name
+                  avatarUrl
+                }
+              }
+            }
+            ... on WorkItemWidgetDesigns {
+              designCollection {
+                designs {
+                  nodes {
+                    id
+                    filename
+                    fullPath
+                    image
+                    imageV432x230
+                  }
+                }
+              }
+            }
+            ... on WorkItemWidgetDevelopment {
+              featureFlags {
+                nodes {
+                  id
+                  name
+                  description
+                  active
+                }
+              }
+              mergeRequests {
+                nodes {
+                  id
+                  iid
+                  title
+                  state
+                  webUrl
+                }
+              }
+            }
+            ... on WorkItemWidgetCrmContacts {
+              contacts {
+                nodes {
+                  id
+                  firstName
+                  lastName
+                  email
+                  organization {
+                    id
+                    name
+                  }
+                }
+              }
+            }
+            ... on WorkItemWidgetTimeTracking {
+              timeEstimate
+              totalTimeSpent
+              timelogs {
+                nodes {
+                  id
+                  timeSpent
+                  note
+                  spentAt
+                  user {
+                    id
+                    username
+                  }
+                }
+              }
+            }
+            ... on WorkItemWidgetEmailParticipants {
+              emailParticipants {
+                nodes {
+                  email
+                }
+              }
+            }
+            ... on WorkItemWidgetCustomFields {
+              customFields {
+                nodes {
+                  id
+                  name
+                  value
+                  fieldType
+                }
+              }
+            }
+            ... on WorkItemWidgetErrorTracking {
+              errorTrackingEnabled
+              errors {
+                nodes {
+                  id
+                  status
+                  title
+                  firstSeen
+                  lastSeen
+                }
+              }
+            }
+            ... on WorkItemWidgetLinkedResources {
+              linkedResources {
+                nodes {
+                  id
+                  type
+                  title
+                }
+              }
+            }
+            ... on WorkItemWidgetVulnerabilities {
+              relatedVulnerabilities {
+                nodes {
+                  id
+                  state
+                  severity
+                  name
+                  webUrl
+                }
+                pageInfo {
+                  hasNextPage
+                  endCursor
+                }
+                count
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
 export const GET_WORK_ITEM: TypedDocumentNode<{ workItem: WorkItem }, { id: string }> = gql`
   query GetWorkItem($id: WorkItemID!) {
     workItem(id: $id) {

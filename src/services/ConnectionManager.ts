@@ -55,11 +55,11 @@ export class ConnectionManager {
       const now = Date.now();
 
       if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
-        logger.info('📋 Using cached GraphQL introspection data');
+        logger.info('Using cached GraphQL introspection data');
         this.instanceInfo = cached.instanceInfo;
         this.schemaInfo = cached.schemaInfo;
       } else {
-        logger.debug('🔍 Introspecting GitLab GraphQL schema...');
+        logger.debug('Introspecting GitLab GraphQL schema...');
 
         // Detect instance info and introspect schema in parallel
         const [instanceInfo, schemaInfo] = await Promise.all([
@@ -77,7 +77,7 @@ export class ConnectionManager {
           timestamp: now,
         });
 
-        logger.info('✅ GraphQL schema introspection completed');
+        logger.info('GraphQL schema introspection completed');
       }
 
       this.isInitialized = true;

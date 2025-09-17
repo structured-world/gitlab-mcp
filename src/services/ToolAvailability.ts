@@ -324,6 +324,45 @@ export class ToolAvailability {
     update_feature_flag: { minVersion: 12.5, requiredTier: 'premium' },
     delete_feature_flag: { minVersion: 12.5, requiredTier: 'premium' },
 
+    // Additional Core tools
+    get_users: { minVersion: 8.0, requiredTier: 'free' },
+    verify_namespace: { minVersion: 9.0, requiredTier: 'free' },
+    list_project_members: { minVersion: 8.0, requiredTier: 'free' },
+    list_group_iterations: {
+      minVersion: 13.1,
+      requiredTier: 'premium',
+      notes: 'Iterations/Sprints',
+    },
+    download_attachment: { minVersion: 10.0, requiredTier: 'free' },
+    list_events: { minVersion: 9.0, requiredTier: 'free' },
+    get_project_events: { minVersion: 9.0, requiredTier: 'free' },
+    create_repository: { minVersion: 8.0, requiredTier: 'free' },
+    fork_repository: { minVersion: 8.0, requiredTier: 'free' },
+
+    // Additional MR tools
+    create_note: { minVersion: 8.0, requiredTier: 'free' },
+    create_merge_request_thread: { minVersion: 11.0, requiredTier: 'free' },
+
+    // Additional Files tools
+    push_files: { minVersion: 13.0, requiredTier: 'free', notes: 'Multi-file commit API' },
+
+    // Additional Milestone tools
+    get_milestone_issue: { minVersion: 9.0, requiredTier: 'free' },
+    get_milestone_merge_requests: { minVersion: 9.0, requiredTier: 'free' },
+    get_milestone_burndown_events: {
+      minVersion: 12.0,
+      requiredTier: 'premium',
+      notes: 'Burndown charts',
+    },
+    edit_milestone: { minVersion: 8.0, requiredTier: 'free' },
+
+    // CI/CD Variables
+    list_variables: { minVersion: 9.0, requiredTier: 'free' },
+    get_variable: { minVersion: 9.0, requiredTier: 'free' },
+    create_variable: { minVersion: 9.0, requiredTier: 'free' },
+    update_variable: { minVersion: 9.0, requiredTier: 'free' },
+    delete_variable: { minVersion: 9.0, requiredTier: 'free' },
+
     // Code Quality - Available in Free Tier
     get_code_quality_report: { minVersion: 11.4, requiredTier: 'free' },
 
@@ -381,7 +420,7 @@ export class ToolAvailability {
 
       if (!requirement) {
         // Unknown tool, check if it exists in the codebase but not in our requirements
-        logger.warn(`Tool '${toolName}' not found in requirements database`);
+        logger.debug(`Tool '${toolName}' not found in requirements database`);
         // Default to allowing it if version is recent enough
         return this.parseVersion(instanceInfo.version) >= 15.0;
       }

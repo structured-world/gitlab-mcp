@@ -75,7 +75,7 @@ describe('Variables Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('list_variables');
-      expect(tool?.description).toContain('CI/CD variables');
+      expect(tool?.description).toContain('CI/CD environment variables');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -93,7 +93,7 @@ describe('Variables Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('create_variable');
-      expect(tool?.description).toContain('Create');
+      expect(tool?.description).toContain('Add new CI/CD');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -102,7 +102,7 @@ describe('Variables Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('update_variable');
-      expect(tool?.description).toContain('Update');
+      expect(tool?.description).toContain('Modify CI/CD variable');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -111,7 +111,7 @@ describe('Variables Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('delete_variable');
-      expect(tool?.description).toContain('Remove');
+      expect(tool?.description).toContain('Delete CI/CD variable');
       expect(tool?.inputSchema).toBeDefined();
     });
   });
@@ -194,8 +194,8 @@ describe('Variables Registry', () => {
       const listTool = variablesToolRegistry.get('list_variables');
       const getTool = variablesToolRegistry.get('get_variable');
 
-      expect(listTool?.description).toContain('project or group');
-      expect(getTool?.description).toContain('project or group');
+      expect(listTool?.description).toContain('Group variables are inherited');
+      expect(getTool?.description).toContain('specific CI/CD variable');
     });
 
     it('should mention CI/CD context in descriptions', () => {

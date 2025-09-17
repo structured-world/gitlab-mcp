@@ -82,7 +82,7 @@ describe('Core Registry Handlers', () => {
       await handler?.({ visibility: 'public', per_page: 20 });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        'https://test-gitlab.com/api/v4/projects?active=true&visibility=public&order_by=created_at&sort=desc&simple=true&per_page=20',
+        'https://test-gitlab.com/api/v4/projects?active=true&order_by=created_at&sort=desc&simple=true&per_page=20&visibility=public',
         {
           headers: {
             Authorization: 'Bearer test-token-123',
@@ -284,10 +284,56 @@ describe('Core Registry Handlers', () => {
     });
   });
 
-  describe('list_group_projects handler', () => {
+  describe('list_projects handler with user scope', () => {
+
+    it('should list user projects with defaults', async () => {
+      const handler = coreToolRegistry.get('list_projects')?.handler;
+      mockEnhancedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue([
+          { id: 10, name: 'user-project-1' },
+          { id: 11, name: 'user-project-2' }
+        ])
+      } as any);
+
+      await handler?.({});
+
+      expect(mockEnhancedFetch).toHaveBeenCalledWith(
+        'https://test-gitlab.com/api/v4/projects?active=true&order_by=created_at&sort=desc&simple=true&per_page=20',
+        {
+          headers: {
+            Authorization: 'Bearer test-token-123',
+          },
+        }
+      );
+    });
+
+    it('should list user projects with custom parameters', async () => {
+      const handler = coreToolRegistry.get('list_projects')?.handler;
+      mockEnhancedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: jest.fn().mockResolvedValue([
+          { id: 12, name: 'user-project-3' }
+        ])
+      } as any);
+
+      await handler?.({ visibility: 'public', per_page: 5 });
+
+      expect(mockEnhancedFetch).toHaveBeenCalledWith(
+        'https://test-gitlab.com/api/v4/projects?active=true&order_by=created_at&sort=desc&simple=true&per_page=5&visibility=public',
+        {
+          headers: {
+            Authorization: 'Bearer test-token-123',
+          },
+        }
+      );
+    });
+  });
+
+  describe('list_projects handler with group scope', () => {
 
     it('should list group projects correctly', async () => {
-      const handler = coreToolRegistry.get('list_group_projects')?.handler;
+      const handler = coreToolRegistry.get('list_projects')?.handler;
       mockEnhancedFetch.mockResolvedValueOnce({
         ok: true,
         json: jest.fn().mockResolvedValue([
@@ -299,7 +345,7 @@ describe('Core Registry Handlers', () => {
       await handler?.({ group_id: '456' });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        'https://test-gitlab.com/api/v4/groups/456/projects?per_page=20',
+        'https://test-gitlab.com/api/v4/groups/456/projects?order_by=created_at&sort=desc&simple=true&per_page=20',
         {
           headers: {
             Authorization: 'Bearer test-token-123',
@@ -677,7 +723,6 @@ describe('Core Registry Handlers', () => {
         { handler: 'get_namespace', invalidArgs: {} }, // missing namespace_id
         { handler: 'verify_namespace', invalidArgs: {} }, // missing namespace
         { handler: 'list_project_members', invalidArgs: {} }, // missing project_id
-        { handler: 'list_group_projects', invalidArgs: {} }, // missing group_id
         { handler: 'list_commits', invalidArgs: {} }, // missing project_id
         { handler: 'get_commit', invalidArgs: { project_id: '123' } }, // missing commit_sha
         { handler: 'get_commit_diff', invalidArgs: { project_id: '123' } }, // missing commit_sha

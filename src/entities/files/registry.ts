@@ -14,7 +14,8 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
     'get_repository_tree',
     {
       name: 'get_repository_tree',
-      description: 'Get the repository tree for a GitLab project (list files and directories)',
+      description:
+        'BROWSE: List files/folders WITHOUT reading content. Use when: Exploring project structure, Finding file locations, Checking what exists. Returns: names, types (blob=file, tree=folder), sizes. Set recursive=true for full tree. Does NOT return file contents! See also: get_file_contents to READ actual content.',
       inputSchema: zodToJsonSchema(GetRepositoryTreeSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetRepositoryTreeSchema.parse(args);
@@ -47,7 +48,8 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
     'get_file_contents',
     {
       name: 'get_file_contents',
-      description: 'Get the contents of a file or directory from a GitLab project',
+      description:
+        'READ: Get actual file content from repository. Use when: Reading source code, Viewing configs/docs, Getting file data. Returns base64-encoded content (decode required!) plus metadata. For browsing structure use get_repository_tree instead. Supports any branch/tag/commit via ref param.',
       inputSchema: zodToJsonSchema(GetFileContentsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetFileContentsSchema.parse(args);
@@ -79,7 +81,8 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
     'create_or_update_file',
     {
       name: 'create_or_update_file',
-      description: 'Create or update a single file in a GitLab project',
+      description:
+        'SINGLE FILE: Create new OR update existing file in one commit. Use when: Changing ONE file only, Quick edits, Adding single document. Auto-detects create vs update. Content must be base64-encoded! For multiple files use push_files instead. Creates commit with your message.',
       inputSchema: zodToJsonSchema(CreateOrUpdateFileSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateOrUpdateFileSchema.parse(args);
@@ -115,7 +118,8 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
     'push_files',
     {
       name: 'push_files',
-      description: 'Push multiple files to a GitLab project in a single commit',
+      description:
+        'BATCH: Commit MULTIPLE file changes atomically. Use when: Changing 2+ files together, Refactoring across files, Coordinated updates. More efficient than multiple single commits. Supports: create/update/delete/move operations. All changes in ONE commit. For single file use create_or_update_file.',
       inputSchema: zodToJsonSchema(PushFilesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = PushFilesSchema.parse(args);
@@ -169,7 +173,8 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
     'upload_markdown',
     {
       name: 'upload_markdown',
-      description: 'Upload a file to a GitLab project for use in markdown content',
+      description:
+        'UPLOAD ASSET: Add images/docs for markdown embedding. Use when: Adding screenshots to issues/MRs, Uploading diagrams for wikis, Attaching files to documentation. Returns markdown-ready URL like ![](url). Stored in uploads, NOT repository. Supports: images, PDFs, any binary files.',
       inputSchema: zodToJsonSchema(MarkdownUploadSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = MarkdownUploadSchema.parse(args);

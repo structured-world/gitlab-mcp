@@ -23,14 +23,23 @@ export const WorkItemStateEventSchema = z
   .describe('State event for updating work item');
 
 // Read-only schemas
-export const ListWorkItemsSchema = z.object({
-  groupPath: z
-    .string()
-    .describe('Group path for listing work items (epics only exist at group level)'),
-  types: z.array(WorkItemTypeEnumSchema).optional().describe('Filter by work item types'),
-  first: z.number().optional().default(20).describe('Number of items to fetch'),
-  after: z.string().optional().describe('Cursor for pagination'),
-});
+export const ListWorkItemsSchema = z
+  .object({
+    groupPath: z
+      .string()
+      .optional()
+      .describe('Group path for listing Epics (group-level work items only)'),
+    projectPath: z
+      .string()
+      .optional()
+      .describe('Project path for listing Issues/Tasks/Bugs (project-level work items only)'),
+    types: z.array(WorkItemTypeEnumSchema).optional().describe('Filter by work item types'),
+    first: z.number().optional().default(20).describe('Number of items to fetch'),
+    after: z.string().optional().describe('Cursor for pagination'),
+  })
+  .refine((data) => Boolean(data.groupPath) !== Boolean(data.projectPath), {
+    message: 'Exactly one of groupPath or projectPath is required',
+  });
 
 export const GetWorkItemSchema = z.object({
   id: WorkItemIdSchema,

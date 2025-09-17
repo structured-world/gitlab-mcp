@@ -57,7 +57,7 @@ describe('Core Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('search_repositories');
-      expect(tool?.description).toContain('Search for GitLab projects');
+      expect(tool?.description).toContain('DISCOVER projects');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -66,7 +66,7 @@ describe('Core Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('list_projects');
-      expect(tool?.description).toContain('List projects accessible');
+      expect(tool?.description).toContain('List GitLab projects with flexible scoping');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -75,7 +75,7 @@ describe('Core Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('get_project');
-      expect(tool?.description).toContain('Get details of a specific project');
+      expect(tool?.description).toContain('GET DETAILS');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -84,7 +84,7 @@ describe('Core Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('create_repository');
-      expect(tool?.description).toContain('Create a new GitLab project');
+      expect(tool?.description).toContain('CREATE NEW');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -93,7 +93,7 @@ describe('Core Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('fork_repository');
-      expect(tool?.description).toContain('Fork a GitLab project');
+      expect(tool?.description).toContain('FORK');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -102,7 +102,7 @@ describe('Core Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('verify_namespace');
-      expect(tool?.description).toContain('Verify if a namespace path exists');
+      expect(tool?.description).toContain('CHECK EXISTS');
       expect(tool?.inputSchema).toBeDefined();
     });
   });

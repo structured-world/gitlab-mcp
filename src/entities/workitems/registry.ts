@@ -7,6 +7,7 @@ import {
   CREATE_WORK_ITEM,
   CREATE_WORK_ITEM_WITH_DESCRIPTION,
   GET_WORK_ITEMS,
+  GET_PROJECT_WORK_ITEMS,
   GET_WORK_ITEM,
   UPDATE_WORK_ITEM,
   DELETE_WORK_ITEM,
@@ -24,25 +25,39 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'list_work_items',
       description:
-        'List work items from a GitLab GROUP. CRITICAL GitLab Hierarchy: EPICS exist ONLY at GROUP level. ISSUES/TASKS/BUGS exist ONLY at PROJECT level. This tool queries GROUP-level work items (Epics). For Issues/Tasks, query the project they belong to, not the group.',
+        'HIERARCHY-AWARE: List work items from correct namespace level. CRITICAL: Use groupPath for EPICS ONLY (group-level), projectPath for ISSUES/TASKS/BUGS ONLY (project-level). Wrong level = empty results. EPICS exist ONLY at GROUP level. ISSUES/TASKS/BUGS exist ONLY at PROJECT level. Returns work items with widgets. INHERITANCE: Group labels/milestones cascade to project items.',
       inputSchema: zodToJsonSchema(ListWorkItemsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = ListWorkItemsSchema.parse(args);
-        const { groupPath } = options;
+        const { groupPath, projectPath, types, first, after } = options;
 
         // Get GraphQL client from ConnectionManager
         const connectionManager = ConnectionManager.getInstance();
         const client = connectionManager.getClient();
 
-        // Use GraphQL query for listing work items
-        const response = await client.request(GET_WORK_ITEMS, {
-          groupPath: groupPath,
-          first: options.first || 20,
-          after: options.after,
-        });
+        // Determine which query to use based on input
+        const isProject = !!projectPath;
+        const path = isProject ? projectPath : groupPath;
 
-        // Return the work items in the expected format
-        return response.group?.workItems?.nodes || [];
+        if (isProject) {
+          // Use project query for Issues/Tasks/Bugs
+          const response = await client.request(GET_PROJECT_WORK_ITEMS, {
+            projectPath: path as string,
+            types: types,
+            first: first || 20,
+            after: after,
+          });
+          return response.project?.workItems?.nodes || [];
+        } else {
+          // Use group query for Epics
+          const response = await client.request(GET_WORK_ITEMS, {
+            groupPath: path as string,
+            types: types,
+            first: first || 20,
+            after: after,
+          });
+          return response.group?.workItems?.nodes || [];
+        }
       },
     },
   ],
@@ -51,7 +66,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'get_work_item',
       description:
-        'Get details of a specific work item by ID. Works for both GROUP-level (Epics) and PROJECT-level (Issues/Tasks) work items.',
+        'GET BY ID: Retrieve complete work item details using GraphQL global ID. Use when: Getting full work item data, Checking widgets (assignees/labels/milestones), Works for ANY type (Epic/Issue/Task/Bug). Requires GraphQL ID format: "gid://gitlab/WorkItem/123". Get ID from list_work_items or create_work_item response.',
       inputSchema: zodToJsonSchema(GetWorkItemSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetWorkItemSchema.parse(args);
@@ -77,7 +92,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'get_work_item_types',
       description:
-        'Get available work item types for a GROUP. Returns Epic types and other group-level types. Note: Issue/Task/Bug types exist at project level, not group level.',
+        'PREREQUISITE: Discover available work item types - RUN THIS FIRST! CRITICAL: Type IDs are DYNAMIC per GitLab instance - NEVER hardcode! GROUP path shows: Epic types ONLY. PROJECT path shows: Issue/Task/Bug types ONLY. Returns: type names, IDs, supported widgets. ALWAYS query types before create_work_item to get correct type ID. Custom types supported.',
       inputSchema: zodToJsonSchema(GetWorkItemTypesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetWorkItemTypesSchema.parse(args);
@@ -103,7 +118,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'create_work_item',
       description:
-        'Create a new work item using namespacePath (group or project). CRITICAL GitLab Hierarchy: EPICS can only be created in GROUPS, ISSUES/TASKS can only be created in PROJECTS. Use the correct namespace type for your work item type.',
+        'CREATE: Add new work item at CORRECT hierarchy level. CRITICAL RULES: For EPIC: namespacePath=GROUP ("my-group"), For ISSUE/TASK/BUG: namespacePath=PROJECT ("my-group/my-project"). Wrong level = ERROR! Auto-discovers type ID from name. RUN get_work_item_types FIRST to see valid types! LABELS WARNING: Use list_labels FIRST to discover existing taxonomy - label widget auto-creates labels that don\'t exist, potentially creating unwanted duplicates!',
       inputSchema: zodToJsonSchema(CreateWorkItemSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateWorkItemSchema.parse(args);
@@ -157,7 +172,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     'update_work_item',
     {
       name: 'update_work_item',
-      description: "Update an existing work item's properties",
+      description:
+        'UPDATE: Modify existing work item properties. Use when: Changing title/description, Updating assignees/labels/milestone, Closing/reopening items. For labels: Use list_labels FIRST to discover existing project/group taxonomy before adding label IDs. Supports PARTIAL updates - only send fields to change. State events: "CLOSE" to close, "REOPEN" to open. Requires GraphQL ID (gid://...). Widgets auto-included when data provided.',
       inputSchema: zodToJsonSchema(UpdateWorkItemSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = UpdateWorkItemSchema.parse(args);
@@ -210,7 +226,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     'delete_work_item',
     {
       name: 'delete_work_item',
-      description: 'Delete a work item',
+      description:
+        'DELETE: Permanently remove work item - CANNOT BE UNDONE! Use when: Removing obsolete items, Cleaning up test data. CAUTION: Deletes ALL associated data, removes from epics/milestones, breaks all references. Requires GraphQL ID (gid://...). Needs Maintainer+ permissions. Works for ANY type (Epic/Issue/Task/Bug).',
       inputSchema: zodToJsonSchema(DeleteWorkItemSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = DeleteWorkItemSchema.parse(args);

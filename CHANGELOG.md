@@ -1,3 +1,16 @@
+# [4.2.0](https://github.com/structured-world/gitlab-mcp/compare/v4.1.1...v4.2.0) (2025-09-17)
+
+
+### Bug Fixes
+
+* update unit tests for dual transport mode architecture ([a70a726](https://github.com/structured-world/gitlab-mcp/commit/a70a726a50acefc74b2f6c5f910d052092880648))
+
+
+### Features
+
+* implement PORT-based transport mode selection with dual endpoints ([8a42e67](https://github.com/structured-world/gitlab-mcp/commit/8a42e67e27f4f0e86622edb41461e6fd7cffb560))
+* implement smart user search with pattern detection and transliteration ([50b7c5e](https://github.com/structured-world/gitlab-mcp/commit/50b7c5e0a4762c9c8565ffa93c3ea6795ad7ad6a))
+
 ## [4.1.1](https://github.com/structured-world/gitlab-mcp/compare/v4.1.0...v4.1.1) (2025-09-17)
 
 

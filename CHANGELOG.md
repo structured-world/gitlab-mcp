@@ -1,3 +1,11 @@
+## [4.1.1](https://github.com/structured-world/gitlab-mcp/compare/v4.1.0...v4.1.1) (2025-09-17)
+
+
+### Bug Fixes
+
+* improve dual environment testing support and code quality ([55588a3](https://github.com/structured-world/gitlab-mcp/commit/55588a300561fbc2ce7d375c2e592b763a8728f2))
+* resolve unit test failures by adding namespace detection mocks ([b856d46](https://github.com/structured-world/gitlab-mcp/commit/b856d460058fbbcc320e3c6883c215db773e20dd))
+
 # [4.1.0](https://github.com/structured-world/gitlab-mcp/compare/v4.0.0...v4.1.0) (2025-09-17)
 
 

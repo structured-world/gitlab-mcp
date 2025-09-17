@@ -32,18 +32,69 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: 'search_repositories',
       description:
-        "DISCOVER projects across ALL of GitLab using search criteria. Use when: You DON'T know the project name/path, Looking for ANY project (not just yours), Searching by language/keywords/topics. Supports operators like language:javascript. See also: Use list_projects for YOUR accessible projects only.",
+        "DISCOVER projects across ALL of GitLab using search criteria. Use when: You DON'T know the project name/path, Looking for ANY project (not just yours), Searching by language/keywords/topics. Use with_programming_language parameter for efficient language filtering. See also: Use list_projects for YOUR accessible projects only.",
       inputSchema: zodToJsonSchema(SearchRepositoriesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = SearchRepositoriesSchema.parse(args);
 
-        // Build query parameters
+        // Extract parameters
+        const { q, with_programming_language, ...otherOptions } = options;
         const queryParams = new URLSearchParams();
-        Object.entries(options).forEach(([key, value]) => {
+
+        // Handle programming language filtering
+        let finalLanguage = with_programming_language;
+        let finalSearchTerms = q ?? '';
+
+        // Parse operators from q parameter
+        if (q && !with_programming_language) {
+          const languageMatch = q.match(/language:(\w+)/);
+          if (languageMatch) {
+            finalLanguage = languageMatch[1];
+            finalSearchTerms = q.replace(/language:\w+/g, '').trim();
+          }
+        }
+
+        // Parse user: operator
+        if (q) {
+          const userMatch = q.match(/user:(\w+)/);
+          if (userMatch) {
+            // For now, we'll use owned=true as a proxy since we can't easily map username to user_id
+            // This is a limitation of GitLab API requiring user_id rather than username
+            queryParams.set('owned', 'true');
+            finalSearchTerms = finalSearchTerms.replace(/user:\w+/g, '').trim();
+          }
+        }
+
+        // Parse topic: operator
+        if (q) {
+          const topicMatches = q.match(/topic:(\w+)/g);
+          if (topicMatches) {
+            const topics = topicMatches.map((match) => match.replace('topic:', ''));
+            queryParams.set('topic', topics.join(','));
+            finalSearchTerms = finalSearchTerms.replace(/topic:\w+/g, '').trim();
+          }
+        }
+
+        // Set programming language filter
+        if (finalLanguage) {
+          queryParams.set('with_programming_language', finalLanguage);
+        }
+
+        // Set search terms
+        if (finalSearchTerms) {
+          // Convert spaces to + for GitLab API
+          queryParams.set('search', finalSearchTerms.replace(/\s+/g, '+'));
+        }
+
+        // Add other options
+        Object.entries(otherOptions).forEach(([key, value]) => {
           if (value !== undefined) {
             queryParams.set(key, String(value));
           }
         });
+
+        // Only return active projects (exclude archived and marked for deletion)
+        queryParams.set('active', 'true');
 
         // Make REAL GitLab API call to search projects
         const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
@@ -58,7 +109,23 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         }
 
         const projects = await response.json();
-        return projects;
+
+        // Return only essential fields for minimal token usage
+        interface Project {
+          id: number;
+          name: string;
+          path_with_namespace: string;
+          description: string | null;
+        }
+
+        const minimalProjects = (projects as Project[]).map((project: Project) => ({
+          id: project.id,
+          name: project.name,
+          path_with_namespace: project.path_with_namespace,
+          description: project.description,
+        }));
+
+        return minimalProjects;
       },
     },
   ],

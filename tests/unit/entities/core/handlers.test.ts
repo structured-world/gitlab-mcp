@@ -44,7 +44,7 @@ describe('Core Registry Handlers', () => {
       await handler?.({ q: 'nodejs', per_page: 10 });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        'https://test-gitlab.com/api/v4/projects?q=nodejs&per_page=10',
+        'https://test-gitlab.com/api/v4/projects?search=nodejs&per_page=10&active=true',
         {
           headers: {
             Authorization: 'Bearer test-token-123',

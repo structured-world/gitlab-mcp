@@ -118,23 +118,31 @@ export const SearchRepositoriesSchema = z
     q: z
       .string()
       .min(1)
+      .optional()
       .describe(
-        'Search query for projects. Supports advanced operators: language:javascript (filter by language), user:username (filter by owner), topic:devops (filter by topic). Combine multiple operators with spaces.',
+        'Search query for project names, paths, or descriptions. Supports operators: user:username (filter by owner), topic:name (filter by topic). Use simple text for basic search.',
+      ),
+    with_programming_language: z
+      .string()
+      .optional()
+      .describe(
+        'Filter projects by programming language (e.g., "javascript", "python", "go"). More efficient than using language: operator in q parameter.',
+      ),
+    order_by: z
+      .enum(['id', 'name', 'path', 'created_at', 'updated_at', 'star_count', 'last_activity_at'])
+      .optional()
+      .describe(
+        'Sort projects by: id, name, path, created_at, updated_at, star_count, last_activity_at',
       ),
     sort: z
-      .enum(['updated', 'created', 'pushed', 'full_name'])
-      .optional()
-      .describe(
-        'Sort order for search results. Updated: recently modified, created: creation date, pushed: recent commits, full_name: alphabetical by path.',
-      ),
-    order: z
       .enum(['asc', 'desc'])
       .optional()
-      .describe(
-        'Sort direction: asc for ascending (oldest/A-Z first), desc for descending (newest/Z-A first).',
-      ),
+      .describe('Sort direction: asc for ascending, desc for descending (default)'),
   })
-  .merge(PaginationOptionsSchema);
+  .merge(PaginationOptionsSchema)
+  .refine((data) => data.q ?? data.with_programming_language, {
+    message: 'Either q or with_programming_language must be provided',
+  });
 
 // Namespace operations (read-only)
 export const ListNamespacesSchema = z

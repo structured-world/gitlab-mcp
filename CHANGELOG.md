@@ -1,3 +1,10 @@
+## [4.2.1](https://github.com/structured-world/gitlab-mcp/compare/v4.2.0...v4.2.1) (2025-09-17)
+
+
+### Bug Fixes
+
+* improve work items registry with unified strategy and enhance test coverage ([ec5f139](https://github.com/structured-world/gitlab-mcp/commit/ec5f139d7041194e00b03ae03796b8f52ada22d5))
+
 # [4.2.0](https://github.com/structured-world/gitlab-mcp/compare/v4.1.1...v4.2.0) (2025-09-17)
 
 

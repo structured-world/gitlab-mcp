@@ -1,3 +1,10 @@
+# [4.1.0](https://github.com/structured-world/gitlab-mcp/compare/v4.0.0...v4.1.0) (2025-09-17)
+
+
+### Features
+
+* add missing 'active' parameter to list_projects schema and fix dual environment testing ([1f56e33](https://github.com/structured-world/gitlab-mcp/commit/1f56e33923ce2c5f95f6d48128c768cc5a1ee16a))
+
 # [4.0.0](https://github.com/structured-world/gitlab-mcp/compare/v3.2.0...v4.0.0) (2025-09-16)
 
 

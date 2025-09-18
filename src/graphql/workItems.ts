@@ -1466,3 +1466,184 @@ export const GET_WORK_ITEM_TYPES: TypedDocumentNode<
     }
   }
 `;
+
+// Work item creation input interface for widgets
+export interface WorkItemCreateInput {
+  namespacePath: string;
+  title: string;
+  workItemTypeId: string;
+  description?: string;
+  assigneesWidget?: {
+    assigneeIds: string[];
+  };
+  labelsWidget?: {
+    labelIds: string[];
+  };
+  milestoneWidget?: {
+    milestoneId: string;
+  };
+}
+
+// Comprehensive work item creation with widget support (GitLab 18.3 API)
+export const CREATE_WORK_ITEM_WITH_WIDGETS: TypedDocumentNode<
+  { workItemCreate: { workItem: WorkItem; errors: string[] } },
+  { input: WorkItemCreateInput }
+> = gql`
+  mutation CreateWorkItemWithWidgets($input: WorkItemCreateInput!) {
+    workItemCreate(input: $input) {
+      workItem {
+        id
+        iid
+        title
+        description
+        state
+        workItemType {
+          id
+          name
+        }
+        createdAt
+        updatedAt
+        closedAt
+        webUrl
+        widgets {
+          type
+          ... on WorkItemWidgetAssignees {
+            allowsMultipleAssignees
+            canInviteMembers
+            assignees {
+              nodes {
+                id
+                username
+                name
+                avatarUrl
+                webUrl
+              }
+            }
+          }
+          ... on WorkItemWidgetLabels {
+            allowsScopedLabels
+            labels {
+              nodes {
+                id
+                title
+                description
+                color
+                textColor
+              }
+            }
+          }
+          ... on WorkItemWidgetDescription {
+            description
+            descriptionHtml
+            edited
+            lastEditedAt
+            lastEditedBy {
+              id
+              username
+              name
+            }
+          }
+          ... on WorkItemWidgetHierarchy {
+            parent {
+              id
+              iid
+              title
+              workItemType {
+                name
+              }
+            }
+            children {
+              nodes {
+                id
+                iid
+                title
+                workItemType {
+                  name
+                }
+              }
+            }
+            hasChildren
+          }
+          ... on WorkItemWidgetMilestone {
+            milestone {
+              id
+              title
+              description
+              state
+              dueDate
+              startDate
+              webPath
+            }
+          }
+          ... on WorkItemWidgetStartAndDueDate {
+            startDate
+            dueDate
+          }
+          ... on WorkItemWidgetHealthStatus {
+            healthStatus
+          }
+          ... on WorkItemWidgetNotifications {
+            subscribed
+          }
+          ... on WorkItemWidgetCurrentUserTodos {
+            currentUserTodos {
+              nodes {
+                id
+                state
+              }
+            }
+          }
+          ... on WorkItemWidgetAwardEmoji {
+            upvotes
+            downvotes
+            awardEmoji {
+              nodes {
+                name
+                emoji
+                user {
+                  id
+                  username
+                  name
+                }
+              }
+            }
+          }
+          ... on WorkItemWidgetColor {
+            color
+          }
+          ... on WorkItemWidgetParticipants {
+            participants {
+              nodes {
+                id
+                username
+                name
+                avatarUrl
+              }
+            }
+          }
+          ... on WorkItemWidgetWeight {
+            weight
+          }
+          ... on WorkItemWidgetVerificationStatus {
+            verificationStatus
+          }
+          ... on WorkItemWidgetTimeTracking {
+            timeEstimate
+            totalTimeSpent
+          }
+          ... on WorkItemWidgetIteration {
+            iteration {
+              id
+              title
+              description
+              state
+              startDate
+              dueDate
+            }
+          }
+        }
+      }
+      errors
+    }
+  }
+`;

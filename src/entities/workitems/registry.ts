@@ -17,8 +17,8 @@ interface WorkItemType {
   name: string;
 }
 import {
-  CREATE_WORK_ITEM,
-  CREATE_WORK_ITEM_WITH_DESCRIPTION,
+  CREATE_WORK_ITEM_WITH_WIDGETS,
+  WorkItemCreateInput,
   GET_NAMESPACE_WORK_ITEMS,
   GET_WORK_ITEM,
   UPDATE_WORK_ITEM,
@@ -318,7 +318,15 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       inputSchema: zodToJsonSchema(CreateWorkItemSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateWorkItemSchema.parse(args);
-        const { namespacePath, title, workItemType, description } = options;
+        const {
+          namespacePath,
+          title,
+          workItemType,
+          description,
+          assigneeIds,
+          labelIds,
+          milestoneId,
+        } = options;
 
         // Get GraphQL client from ConnectionManager
         const connectionManager = ConnectionManager.getInstance();
@@ -336,19 +344,33 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           );
         }
 
-        // Use appropriate mutation based on whether description is provided
-        const response = description
-          ? await client.request(CREATE_WORK_ITEM_WITH_DESCRIPTION, {
-              namespacePath,
-              title,
-              workItemTypeId: workItemTypeObj.id,
-              description,
-            })
-          : await client.request(CREATE_WORK_ITEM, {
-              namespacePath,
-              title,
-              workItemTypeId: workItemTypeObj.id,
-            });
+        // Build input with widgets support for GitLab 18.3 API
+        const input: WorkItemCreateInput = {
+          namespacePath,
+          title,
+          workItemTypeId: workItemTypeObj.id,
+        };
+
+        // Add optional description
+        if (description !== undefined) {
+          input.description = description;
+        }
+
+        // Add widgets only if data is provided
+        if (assigneeIds !== undefined && assigneeIds.length > 0) {
+          input.assigneesWidget = { assigneeIds: toGids(assigneeIds, 'User') };
+        }
+
+        if (labelIds !== undefined && labelIds.length > 0) {
+          input.labelsWidget = { labelIds: toGids(labelIds, 'Label') };
+        }
+
+        if (milestoneId !== undefined) {
+          input.milestoneWidget = { milestoneId: toGid(milestoneId, 'Milestone') };
+        }
+
+        // Use comprehensive mutation with widgets support
+        const response = await client.request(CREATE_WORK_ITEM_WITH_WIDGETS, { input });
 
         if (response.workItemCreate?.errors?.length && response.workItemCreate.errors.length > 0) {
           throw new Error(`GitLab GraphQL errors: ${response.workItemCreate.errors.join(', ')}`);
@@ -392,13 +414,13 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           input.descriptionWidget = { description };
         }
 
-        if (assigneeIds !== undefined && assigneeIds.length > 0) {
-          // Convert assignee IDs to GIDs
+        if (assigneeIds !== undefined) {
+          // Convert assignee IDs to GIDs (empty array clears assignees)
           input.assigneesWidget = { assigneeIds: toGids(assigneeIds, 'User') };
         }
 
-        if (labelIds !== undefined && labelIds.length > 0) {
-          // Convert label IDs to GIDs
+        if (labelIds !== undefined) {
+          // Convert label IDs to GIDs (empty array clears labels)
           input.labelsWidget = { addLabelIds: toGids(labelIds, 'Label') };
         }
 

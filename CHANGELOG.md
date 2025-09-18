@@ -1,3 +1,10 @@
+## [4.3.2](https://github.com/structured-world/gitlab-mcp/compare/v4.3.1...v4.3.2) (2025-09-18)
+
+
+### Bug Fixes
+
+* improve TypeScript typing and eliminate unnecessary ESLint disables ([6b82412](https://github.com/structured-world/gitlab-mcp/commit/6b82412fd33ee3b25c9ec9f1b400047cfe9dff05))
+
 ## [4.3.1](https://github.com/structured-world/gitlab-mcp/compare/v4.3.0...v4.3.1) (2025-09-17)
 
 

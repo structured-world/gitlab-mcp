@@ -27,18 +27,21 @@ export const ListWorkItemsSchema = z.object({
   namespacePath: z
     .string()
     .describe(
-      'Namespace path (group or project) to list work items from. Use group path to get ALL work items recursively',
+      'Namespace path (group or project) to list work items from. Returns epics for groups, issues/tasks for projects.',
     ),
   types: z.array(WorkItemTypeEnumSchema).optional().describe('Filter by work item types'),
-  includeSubgroups: z
-    .boolean()
+  state: z
+    .array(WorkItemStateSchema)
     .optional()
-    .default(true)
+    .default(['OPEN'])
     .describe(
-      'Include work items from subgroups and their projects (only applies to group namespaces)',
+      'Filter by work item state. Defaults to OPEN items only. Use ["OPEN", "CLOSED"] for all items.',
     ),
-  first: z.number().optional().default(20).describe('Number of items to fetch'),
-  after: z.string().optional().describe('Cursor for pagination'),
+  first: z.number().optional().default(20).describe('Number of items to return'),
+  after: z
+    .string()
+    .optional()
+    .describe('Cursor for pagination (use endCursor from previous response)'),
   simple: z
     .boolean()
     .optional()

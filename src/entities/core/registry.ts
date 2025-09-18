@@ -17,9 +17,15 @@ import {
   ListGroupIterationsSchema,
   DownloadAttachmentSchema,
 } from './schema-readonly';
-import { CreateRepositorySchema, ForkRepositorySchema, CreateBranchSchema } from './schema';
+import {
+  CreateRepositorySchema,
+  ForkRepositorySchema,
+  CreateBranchSchema,
+  CreateGroupSchema,
+} from './schema';
 import { enhancedFetch } from '../../utils/fetch';
 import { smartUserSearch, type UserSearchParams } from '../../utils/smart-user-search';
+import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
@@ -198,7 +204,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           }
 
           const projects = await response.json();
-          return projects;
+          return cleanGidsFromObject(projects);
         } else {
           // USER SCOPE: Validate no group-only parameters
           const groupOnlyParams = [
@@ -252,7 +258,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           }
 
           const projects = await response.json();
-          return projects;
+          return cleanGidsFromObject(projects);
         }
       },
     },
@@ -286,7 +292,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         }
 
         const namespaces = await response.json();
-        return namespaces;
+        return cleanGidsFromObject(namespaces);
       },
     },
   ],
@@ -346,7 +352,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           }
 
           const users = await response.json();
-          return users;
+          return cleanGidsFromObject(users);
         }
       },
     },
@@ -381,7 +387,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         }
 
         const project = await response.json();
-        return project;
+        return cleanGidsFromObject(project);
       },
     },
   ],
@@ -409,7 +415,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         }
 
         const namespace = await response.json();
-        return namespace;
+        return cleanGidsFromObject(namespace);
       },
     },
   ],
@@ -470,7 +476,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         }
 
         const members = await response.json();
-        return members;
+        return cleanGidsFromObject(members);
       },
     },
   ],
@@ -895,6 +901,51 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
         const branch = await response.json();
         return branch;
+      },
+    },
+  ],
+  [
+    'create_group',
+    {
+      name: 'create_group',
+      description:
+        'CREATE GROUP: Create a new GitLab group/namespace for organizing projects and teams. Use when: Setting up team spaces, Creating organizational structure, Establishing project hierarchies. Groups can contain projects and subgroups.',
+      inputSchema: zodToJsonSchema(CreateGroupSchema),
+      handler: async (args: unknown): Promise<unknown> => {
+        const options = CreateGroupSchema.parse(args);
+        const body = new URLSearchParams();
+
+        // Add required fields
+        body.set('name', options.name);
+        body.set('path', options.path);
+
+        // Add optional fields
+        if (options.description) body.set('description', options.description);
+        if (options.visibility) body.set('visibility', options.visibility);
+        if (options.parent_id !== undefined) body.set('parent_id', String(options.parent_id));
+        if (options.lfs_enabled !== undefined) body.set('lfs_enabled', String(options.lfs_enabled));
+        if (options.request_access_enabled !== undefined)
+          body.set('request_access_enabled', String(options.request_access_enabled));
+        if (options.default_branch_protection !== undefined)
+          body.set('default_branch_protection', String(options.default_branch_protection));
+        if (options.avatar) body.set('avatar', options.avatar);
+
+        const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups`;
+        const response = await enhancedFetch(apiUrl, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: body.toString(),
+        });
+
+        if (!response.ok) {
+          throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+        }
+
+        const group = await response.json();
+        return group;
       },
     },
   ],

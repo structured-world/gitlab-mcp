@@ -4,6 +4,7 @@ import { ListLabelsSchema, GetLabelSchema } from './schema-readonly';
 import { CreateLabelSchema, UpdateLabelSchema, DeleteLabelSchema } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
 import { resolveNamespaceForAPI } from '../../utils/namespace';
+import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
@@ -47,7 +48,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
         }
 
         const labels = await response.json();
-        return labels;
+        return cleanGidsFromObject(labels);
       },
     },
   ],
@@ -77,7 +78,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
         }
 
         const label = await response.json();
-        return label;
+        return cleanGidsFromObject(label);
       },
     },
   ],
@@ -121,7 +122,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
         }
 
         const label = await response.json();
-        return label;
+        return cleanGidsFromObject(label);
       },
     },
   ],
@@ -161,7 +162,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
         }
 
         const label = await response.json();
-        return label;
+        return cleanGidsFromObject(label);
       },
     },
   ],

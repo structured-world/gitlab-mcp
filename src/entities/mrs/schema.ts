@@ -90,19 +90,19 @@ const MergeRequestOptionsSchema = {
       'MR title/summary. Should clearly describe the changes. Example: "Add user authentication".',
     ),
   assignee_id: z
-    .number()
+    .string()
     .optional()
     .describe(
       'Single assignee user ID. Person responsible for MR. Deprecated - use assignee_ids instead.',
     ),
   assignee_ids: z
-    .array(z.number())
+    .array(z.string())
     .optional()
     .describe(
       'Multiple assignee IDs. People responsible for completing the MR. Overrides assignee_id.',
     ),
   reviewer_ids: z
-    .array(z.number())
+    .array(z.string())
     .optional()
     .describe(
       'User IDs for code reviewers. Different from assignees - reviewers provide feedback.',
@@ -124,7 +124,7 @@ const MergeRequestOptionsSchema = {
       'Labels to categorize MR. Pass single string, comma-separated, or array. Example: ["bug", "priority::high"].',
     ),
   milestone_id: z
-    .number()
+    .string()
     .optional()
     .describe('Associate MR with milestone for release planning. Use milestone ID, not title.'),
   remove_source_branch: flexibleBoolean
@@ -154,19 +154,19 @@ export const UpdateMergeRequestSchema = z.object({
   target_branch: z.string().optional().describe('Target branch'),
   title: z.string().optional().describe('Title of MR'),
   assignee_id: z
-    .number()
+    .string()
     .optional()
     .describe(
       'Single assignee user ID. Person responsible for MR. Deprecated - use assignee_ids instead.',
     ),
   assignee_ids: z
-    .array(z.number())
+    .array(z.string())
     .optional()
     .describe(
       'Multiple assignee IDs. People responsible for completing the MR. Overrides assignee_id.',
     ),
   reviewer_ids: z
-    .array(z.number())
+    .array(z.string())
     .optional()
     .describe(
       'User IDs for code reviewers. Different from assignees - reviewers provide feedback.',
@@ -208,7 +208,7 @@ export const UpdateMergeRequestSchema = z.object({
     .optional()
     .describe('Deprecated - use allow_collaboration. Let maintainers push to fork source branch.'),
   milestone_id: z
-    .number()
+    .string()
     .optional()
     .describe('Associate MR with milestone for release planning. Use milestone ID, not title.'),
 });

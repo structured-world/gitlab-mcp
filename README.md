@@ -402,14 +402,13 @@ Requires USE_VARIABLES=true environment variable (enabled by default). Supports 
 - ✏️ **`update_variable`**: Update an existing CI/CD variable's value, security settings, or configuration in a project or group
 - ✏️ **`delete_variable`**: Remove a CI/CD variable from a project or group
 
-### Work Items (6 tools)
+### Work Items (5 tools)
 Modern GraphQL API for issues, epics, tasks, and more. Requires USE_WORKITEMS=true (enabled by default).
 
 - ✏️ **`create_work_item`**: Create a new work item (epic, issue, task, etc.) in a GitLab group
 - ✏️ **`update_work_item`**: Update an existing work item
 - ✏️ **`delete_work_item`**: Delete a work item
 - 📖 **`get_work_item`**: Get details of a specific work item by ID
-- 📖 **`get_work_item_types`**: Get available work item types for a group
 - 📖 **`list_work_items`**: List work items from a GitLab group with optional filtering by type
 
 ### Wiki Management (5 tools)

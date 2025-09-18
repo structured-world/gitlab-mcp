@@ -465,6 +465,104 @@ export const GET_NAMESPACE_TYPE: TypedDocumentNode<
   }
 `;
 
+export const GET_NAMESPACE_WORK_ITEMS: TypedDocumentNode<
+  {
+    namespace: {
+      __typename: string;
+      fullPath: string;
+      workItems?: {
+        nodes: WorkItem[];
+        pageInfo: {
+          hasNextPage: boolean;
+          endCursor?: string;
+        };
+      } | null;
+    } | null;
+  },
+  { namespacePath: string; types?: string[]; first?: number; after?: string }
+> = gql`
+  query GetNamespaceWorkItems(
+    $namespacePath: ID!
+    $types: [IssueType!]
+    $first: Int
+    $after: String
+  ) {
+    namespace(fullPath: $namespacePath) {
+      __typename
+      fullPath
+      workItems(types: $types, first: $first, after: $after) {
+        nodes {
+          id
+          iid
+          title
+          description
+          state
+          workItemType {
+            id
+            name
+          }
+          createdAt
+          updatedAt
+          closedAt
+          webUrl
+          widgets {
+            type
+            ... on WorkItemWidgetAssignees {
+              allowsMultipleAssignees
+              canInviteMembers
+              assignees {
+                nodes {
+                  id
+                  username
+                  name
+                  webUrl
+                  avatarUrl
+                }
+              }
+            }
+            ... on WorkItemWidgetLabels {
+              allowsScopedLabels
+              labels {
+                nodes {
+                  id
+                  title
+                  color
+                  textColor
+                  description
+                }
+              }
+            }
+            ... on WorkItemWidgetMilestone {
+              milestone {
+                id
+                title
+                description
+                state
+              }
+            }
+            ... on WorkItemWidgetHierarchy {
+              hasChildren
+              parent {
+                id
+                iid
+                title
+                workItemType {
+                  id
+                  name
+                }
+              }
+            }
+          }
+        }
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
+      }
+    }
+  }
+`;
+
 export const GET_WORK_ITEMS: TypedDocumentNode<
   { group: { workItems: { nodes: WorkItem[] } } },
   { groupPath: string; types?: string[]; first?: number; after?: string }
@@ -787,12 +885,26 @@ export const GET_WORK_ITEMS: TypedDocumentNode<
 `;
 
 export const GET_PROJECT_WORK_ITEMS: TypedDocumentNode<
-  { project: { workItems: { nodes: WorkItem[] } } },
+  {
+    project: {
+      workItems: {
+        nodes: WorkItem[];
+        pageInfo: {
+          hasNextPage: boolean;
+          endCursor?: string;
+        };
+      };
+    };
+  },
   { projectPath: string; types?: string[]; first?: number; after?: string }
 > = gql`
   query GetProjectWorkItems($projectPath: ID!, $types: [IssueType!], $first: Int, $after: String) {
     project(fullPath: $projectPath) {
       workItems(types: $types, first: $first, after: $after) {
+        pageInfo {
+          hasNextPage
+          endCursor
+        }
         nodes {
           id
           iid

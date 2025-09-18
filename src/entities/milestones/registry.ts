@@ -15,6 +15,7 @@ import {
 } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
 import { resolveNamespaceForAPI } from '../../utils/namespace';
+import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
@@ -55,7 +56,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         }
 
         const milestones = await response.json();
-        return milestones;
+        return cleanGidsFromObject(milestones);
       },
     },
   ],
@@ -85,7 +86,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         }
 
         const milestone = await response.json();
-        return milestone;
+        return cleanGidsFromObject(milestone);
       },
     },
   ],
@@ -127,7 +128,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         }
 
         const issues = await response.json();
-        return issues;
+        return cleanGidsFromObject(issues);
       },
     },
   ],
@@ -169,7 +170,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         }
 
         const mergeRequests = await response.json();
-        return mergeRequests;
+        return cleanGidsFromObject(mergeRequests);
       },
     },
   ],
@@ -199,7 +200,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         }
 
         const burndownEvents = await response.json();
-        return burndownEvents;
+        return cleanGidsFromObject(burndownEvents);
       },
     },
   ],
@@ -240,7 +241,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         }
 
         const milestone = await response.json();
-        return milestone;
+        return cleanGidsFromObject(milestone);
       },
     },
   ],
@@ -285,7 +286,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         }
 
         const milestone = await response.json();
-        return milestone;
+        return cleanGidsFromObject(milestone);
       },
     },
   ],
@@ -316,7 +317,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         }
 
         const result = await response.json();
-        return result;
+        return cleanGidsFromObject(result);
       },
     },
   ],
@@ -351,7 +352,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         }
 
         const milestone = await response.json();
-        return milestone;
+        return cleanGidsFromObject(milestone);
       },
     },
   ],

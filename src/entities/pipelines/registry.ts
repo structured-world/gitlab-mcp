@@ -16,6 +16,7 @@ import {
   CancelPipelineJobSchema,
 } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
+import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
@@ -52,7 +53,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const pipelines = await response.json();
-        return pipelines;
+        return cleanGidsFromObject(pipelines);
       },
     },
   ],
@@ -79,7 +80,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const pipeline = await response.json();
-        return pipeline;
+        return cleanGidsFromObject(pipeline);
       },
     },
   ],
@@ -118,7 +119,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const jobs = await response.json();
-        return jobs;
+        return cleanGidsFromObject(jobs);
       },
     },
   ],
@@ -157,7 +158,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const bridges = await response.json();
-        return bridges;
+        return cleanGidsFromObject(bridges);
       },
     },
   ],
@@ -184,7 +185,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const job = await response.json();
-        return job;
+        return cleanGidsFromObject(job);
       },
     },
   ],
@@ -268,7 +269,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const pipeline = await response.json();
-        return pipeline;
+        return cleanGidsFromObject(pipeline);
       },
     },
   ],
@@ -296,7 +297,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const pipeline = await response.json();
-        return pipeline;
+        return cleanGidsFromObject(pipeline);
       },
     },
   ],
@@ -324,7 +325,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const pipeline = await response.json();
-        return pipeline;
+        return cleanGidsFromObject(pipeline);
       },
     },
   ],
@@ -361,7 +362,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const job = await response.json();
-        return job;
+        return cleanGidsFromObject(job);
       },
     },
   ],
@@ -389,7 +390,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const job = await response.json();
-        return job;
+        return cleanGidsFromObject(job);
       },
     },
   ],
@@ -417,7 +418,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const job = await response.json();
-        return job;
+        return cleanGidsFromObject(job);
       },
     },
   ],

@@ -3,6 +3,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ListWikiPagesSchema, GetWikiPageSchema } from './schema-readonly';
 import { CreateWikiPageSchema, UpdateWikiPageSchema, DeleteWikiPageSchema } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
+import { cleanGidsFromObject } from '../../utils/idConversion';
 import { resolveNamespaceForAPI } from '../../utils/namespace';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
@@ -44,7 +45,7 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         }
 
         const wikiPages = await response.json();
-        return wikiPages;
+        return cleanGidsFromObject(wikiPages);
       },
     },
   ],
@@ -81,7 +82,7 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         }
 
         const wikiPage = await response.json();
-        return wikiPage;
+        return cleanGidsFromObject(wikiPage);
       },
     },
   ],
@@ -122,7 +123,7 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         }
 
         const wikiPage = await response.json();
-        return wikiPage;
+        return cleanGidsFromObject(wikiPage);
       },
     },
   ],
@@ -162,7 +163,7 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         }
 
         const wikiPage = await response.json();
-        return wikiPage;
+        return cleanGidsFromObject(wikiPage);
       },
     },
   ],
@@ -194,7 +195,7 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
         // Wiki deletion may return empty response
         const result = response.status === 204 ? { deleted: true } : await response.json();
-        return result;
+        return cleanGidsFromObject(result);
       },
     },
   ],

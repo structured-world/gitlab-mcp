@@ -278,7 +278,42 @@ export const CreateBranchSchema = z.object({
     ),
 });
 
+export const CreateGroupSchema = z.object({
+  name: z
+    .string()
+    .describe('Group display name. Can contain spaces and special characters. Example: "My Team".'),
+  path: z
+    .string()
+    .describe(
+      'Group path for URLs. Must be unique, URL-safe (letters, numbers, dash, underscore only). Example: "my-team".',
+    ),
+  description: z
+    .string()
+    .optional()
+    .describe('Group description shown on overview page. Supports Markdown formatting.'),
+  visibility: z
+    .enum(['private', 'internal', 'public'])
+    .optional()
+    .default('private')
+    .describe('Group visibility: private=members only, internal=logged-in users, public=everyone.'),
+  parent_id: z
+    .number()
+    .optional()
+    .describe('Parent group ID to create subgroup. Omit for root-level group.'),
+  lfs_enabled: z.boolean().optional().describe('Enable Git LFS for all projects in this group.'),
+  request_access_enabled: z
+    .boolean()
+    .optional()
+    .describe('Allow non-members to request group access.'),
+  default_branch_protection: z
+    .number()
+    .optional()
+    .describe('Default branch protection level: 0=no protection, 1=partial, 2=full protection.'),
+  avatar: z.string().optional().describe('Group avatar image file path or URL.'),
+});
+
 // Export type definitions
 export type CreateRepositoryOptions = z.infer<typeof CreateRepositorySchema>;
 export type ForkRepositoryOptions = z.infer<typeof ForkRepositorySchema>;
 export type CreateBranchOptions = z.infer<typeof CreateBranchSchema>;
+export type CreateGroupOptions = z.infer<typeof CreateGroupSchema>;

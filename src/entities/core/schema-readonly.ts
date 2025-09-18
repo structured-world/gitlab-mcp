@@ -424,7 +424,7 @@ export const ListProjectMembersSchema = z
       .optional()
       .describe('Search project members by name or username. Partial matches supported.'),
     user_ids: z
-      .array(z.number())
+      .array(z.string())
       .optional()
       .describe(
         'Filter to specific user IDs. Pass array of numeric user IDs to get specific members.',

@@ -16,6 +16,7 @@
 
 import { IntegrationTestHelper } from './helpers/registry-helper';
 import { getTestData, requireTestData } from '../setup/testConfig';
+import { getWorkItemTypes } from '../../src/utils/workItemTypes';
 
 describe('Work Items Integration - Using Handler Functions', () => {
   let helper: IntegrationTestHelper;
@@ -41,22 +42,24 @@ describe('Work Items Integration - Using Handler Functions', () => {
       console.log(`🔧 Testing list_work_items handler with group: ${testGroupPath}`);
 
       // Use handler function instead of direct GraphQL
-      const workItems = await helper.listWorkItems({
+      const response = await helper.listWorkItems({
         namespacePath: testGroupPath,
         first: 10,
-      }) as any[];
+      }) as any;
 
-      expect(workItems).toBeDefined();
-      expect(Array.isArray(workItems)).toBe(true);
+      expect(response).toBeDefined();
+      expect(response.items).toBeDefined();
+      expect(Array.isArray(response.items)).toBe(true);
 
-      console.log(`📋 Handler returned ${workItems.length} GROUP-level work items (Epics)`);
+      const workItems = response.items;
+      console.log(`Handler returned ${workItems.length} GROUP-level work items (Epics)`);
 
       if (workItems.length > 0) {
         const firstWorkItem = workItems[0];
         expect(firstWorkItem.title).toBeDefined();
         expect(firstWorkItem.workItemType).toBeDefined();
 
-        console.log(`First work item: ${firstWorkItem.title} (${firstWorkItem.workItemType.name})`);
+        console.log(`First work item: ${firstWorkItem.title} (${firstWorkItem.workItemType})`);
 
         if (firstWorkItem.widgets) {
           console.log(`Available widgets: ${firstWorkItem.widgets.map((w: any) => w.type).join(', ')}`);
@@ -73,26 +76,28 @@ describe('Work Items Integration - Using Handler Functions', () => {
       console.log(`🔧 Testing list_work_items handler with project: ${testProjectPath}`);
 
       // Use handler function with namespacePath for Issues/Tasks/Bugs
-      const workItems = await helper.listWorkItems({
+      const response = await helper.listWorkItems({
         namespacePath: testProjectPath,
         first: 10,
-      }) as any[];
+      }) as any;
 
-      expect(workItems).toBeDefined();
-      expect(Array.isArray(workItems)).toBe(true);
+      expect(response).toBeDefined();
+      expect(response.items).toBeDefined();
+      expect(Array.isArray(response.items)).toBe(true);
 
-      console.log(`📋 Handler returned ${workItems.length} PROJECT-level work items (Issues/Tasks/Bugs)`);
+      const workItems = response.items;
+      console.log(`Handler returned ${workItems.length} PROJECT-level work items (Issues/Tasks/Bugs)`);
 
       if (workItems.length > 0) {
         const firstWorkItem = workItems[0];
         expect(firstWorkItem.title).toBeDefined();
         expect(firstWorkItem.workItemType).toBeDefined();
 
-        console.log(`First work item: ${firstWorkItem.title} (${firstWorkItem.workItemType.name})`);
+        console.log(`First work item: ${firstWorkItem.title} (${firstWorkItem.workItemType})`);
 
         // Verify this is NOT an Epic (Epics can't exist at project level)
-        expect(firstWorkItem.workItemType.name).not.toBe('Epic');
-        console.log(`✅ Confirmed work item type "${firstWorkItem.workItemType.name}" is valid for PROJECT level`);
+        expect(firstWorkItem.workItemType).not.toBe('Epic');
+        console.log(`✅ Confirmed work item type "${firstWorkItem.workItemType}" is valid for PROJECT level`);
 
         if (firstWorkItem.widgets) {
           console.log(`Available widgets: ${firstWorkItem.widgets.map((w: any) => w.type).join(', ')}`);
@@ -105,16 +110,17 @@ describe('Work Items Integration - Using Handler Functions', () => {
       const testData = requireTestData();
       const testGroupPath = testData.group.path;
 
-      const workItems = await helper.listWorkItems({
+      const response = await helper.listWorkItems({
         namespacePath: testGroupPath,
         first: 1,
-      }) as any[];
+      }) as any;
 
-      if (!workItems || workItems.length === 0) {
+      if (!response || !response.items || response.items.length === 0) {
         console.warn('No GROUP-level work items (Epics) found - skipping single work item test');
         return;
       }
 
+      const workItems = response.items;
       const workItemId = workItems[0].id;
       console.log(`🔧 Testing get_work_item handler with ID: ${workItemId}`);
 
@@ -145,15 +151,17 @@ describe('Work Items Integration - Using Handler Functions', () => {
       const testGroupPath = testData.group.path;
 
       // Use handler function instead of direct GraphQL
-      const workItems = await helper.listWorkItems({
+      const response = await helper.listWorkItems({
         namespacePath: testGroupPath,
         first: 10,
-      }) as any[];
+      }) as any;
 
-      if (!workItems || workItems.length === 0) {
+      if (!response || !response.items || response.items.length === 0) {
         console.warn('No GROUP-level work items (Epics) found - skipping widget validation test');
         return;
       }
+
+      const workItems = response.items;
 
       const allWidgets = workItems.flatMap((item: any) => item.widgets || []);
       const widgetTypes = new Set(allWidgets.map((w: any) => w.type));
@@ -187,11 +195,9 @@ describe('Work Items Integration - Using Handler Functions', () => {
         const testData = requireTestData();
         const testGroupPath = testData.group.path;
 
-        // 🚨 CRITICAL: Get work item types using handler function
-        console.log('🔍 Getting Epic work item type using get_work_item_types handler...');
-        const workItemTypes = await helper.getWorkItemTypes({
-          namespacePath: testGroupPath,
-        }) as any[];
+        // 🚨 CRITICAL: Get work item types using internal utility function
+        console.log('🔍 Getting Epic work item type using internal utility function...');
+        const workItemTypes = await getWorkItemTypes(testGroupPath);
 
         const epicType = workItemTypes.find((t: any) => t.name === 'Epic');
 

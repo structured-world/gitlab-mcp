@@ -25,6 +25,7 @@ import {
   BulkPublishDraftNotesSchema,
 } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
+import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
@@ -60,7 +61,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const diff = await response.json();
-        return diff;
+        return cleanGidsFromObject(diff);
       },
     },
   ],
@@ -108,7 +109,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
           }
         }
 
-        return result;
+        return cleanGidsFromObject(result);
       },
     },
   ],
@@ -145,7 +146,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const mergeRequests = await response.json();
-        return mergeRequests;
+        return cleanGidsFromObject(mergeRequests);
       },
     },
   ],
@@ -180,7 +181,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const diffs = await response.json();
-        return diffs;
+        return cleanGidsFromObject(diffs);
       },
     },
   ],
@@ -215,7 +216,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const diffs = await response.json();
-        return diffs;
+        return cleanGidsFromObject(diffs);
       },
     },
   ],
@@ -249,7 +250,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const discussions = await response.json();
-        return discussions;
+        return cleanGidsFromObject(discussions);
       },
     },
   ],
@@ -276,7 +277,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const draftNote = await response.json();
-        return draftNote;
+        return cleanGidsFromObject(draftNote);
       },
     },
   ],
@@ -310,7 +311,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const draftNotes = await response.json();
-        return draftNotes;
+        return cleanGidsFromObject(draftNotes);
       },
     },
   ],
@@ -351,7 +352,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const mergeRequest = await response.json();
-        return mergeRequest;
+        return cleanGidsFromObject(mergeRequest);
       },
     },
   ],
@@ -387,7 +388,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const result = await response.json();
-        return result;
+        return cleanGidsFromObject(result);
       },
     },
   ],
@@ -429,7 +430,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const note = await response.json();
-        return note;
+        return cleanGidsFromObject(note);
       },
     },
   ],
@@ -464,7 +465,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const draftNote = await response.json();
-        return draftNote;
+        return cleanGidsFromObject(draftNote);
       },
     },
   ],
@@ -491,7 +492,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const result = await response.json();
-        return result;
+        return cleanGidsFromObject(result);
       },
     },
   ],
@@ -518,7 +519,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const result = await response.json();
-        return result;
+        return cleanGidsFromObject(result);
       },
     },
   ],
@@ -558,7 +559,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const mergeRequest = await response.json();
-        return mergeRequest;
+        return cleanGidsFromObject(mergeRequest);
       },
     },
   ],
@@ -596,7 +597,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const discussion = await response.json();
-        return discussion;
+        return cleanGidsFromObject(discussion);
       },
     },
   ],
@@ -628,7 +629,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const note = await response.json();
-        return note;
+        return cleanGidsFromObject(note);
       },
     },
   ],
@@ -663,7 +664,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const note = await response.json();
-        return note;
+        return cleanGidsFromObject(note);
       },
     },
   ],
@@ -698,7 +699,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
         }
 
         const draftNote = await response.json();
-        return draftNote;
+        return cleanGidsFromObject(draftNote);
       },
     },
   ],

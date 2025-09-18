@@ -27,7 +27,7 @@ export const ListProjectMilestonesSchema = z
   .object({
     namespacePath: z.string().describe('Namespace path (group or project) to list milestones from'),
     iids: z
-      .array(z.number())
+      .array(z.string())
       .optional()
       .describe('Return only the milestones having the given iid'),
     state: z

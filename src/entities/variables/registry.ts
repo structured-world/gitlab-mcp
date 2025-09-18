@@ -3,6 +3,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { ListVariablesSchema, GetVariableSchema } from './schema-readonly';
 import { CreateVariableSchema, UpdateVariableSchema, DeleteVariableSchema } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
+import { cleanGidsFromObject } from '../../utils/idConversion';
 import { resolveNamespaceForAPI } from '../../utils/namespace';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
@@ -37,7 +38,7 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const variables = await response.json();
-        return variables;
+        return cleanGidsFromObject(variables);
       },
     },
   ],
@@ -72,7 +73,7 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const variable = await response.json();
-        return variable;
+        return cleanGidsFromObject(variable);
       },
     },
   ],
@@ -113,7 +114,7 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const variable = await response.json();
-        return variable;
+        return cleanGidsFromObject(variable);
       },
     },
   ],
@@ -165,7 +166,7 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const variable = await response.json();
-        return variable;
+        return cleanGidsFromObject(variable);
       },
     },
   ],
@@ -202,7 +203,7 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         }
 
         const result = await response.json();
-        return result;
+        return cleanGidsFromObject(result);
       },
     },
   ],

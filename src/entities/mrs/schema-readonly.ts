@@ -289,7 +289,7 @@ export const ListMergeRequestsSchema = z
         'Filter MRs deployed after this date/time. Format: YYYY-MM-DDTHH:mm:ssZ (ISO 8601).',
       ),
     approved_by_ids: z
-      .array(z.number())
+      .array(z.string())
       .optional()
       .describe(
         'Filter MRs approved by ALL specified user IDs. Pass array of IDs. Requires all approvals.',

@@ -584,7 +584,7 @@ describe('MRS Registry', () => {
           source_branch: 'feature',
           target_branch: 'main',
           title: 'New MR',
-          assignee_ids: [1, 2]
+          assignee_ids: ['1', '2']
         });
 
         const call = mockEnhancedFetch.mock.calls[0];

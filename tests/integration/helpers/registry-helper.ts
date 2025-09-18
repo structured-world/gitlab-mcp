@@ -159,18 +159,15 @@ export class IntegrationTestHelper {
   async listWorkItems(args: {
     namespacePath: string;
     types?: string[];
-    includeSubgroups?: boolean;
+    state?: ('OPEN' | 'CLOSED')[];
     first?: number;
     after?: string;
+    simple?: boolean;
+    active?: boolean;
   }): Promise<unknown> {
     return this.executeTool('list_work_items', args);
   }
 
-  async getWorkItemTypes(args: {
-    namespacePath: string;
-  }): Promise<unknown> {
-    return this.executeTool('get_work_item_types', args);
-  }
 
   // ========================================
   // LABELS - Project & Group Operations

@@ -1,9 +1,9 @@
 /**
  * Work Items Schema Integration Tests
- * Tests ListWorkItemsSchema, GetWorkItemSchema, and GetWorkItemTypesSchema against real GitLab 18.3 API responses
+ * Tests ListWorkItemsSchema and GetWorkItemSchema against real GitLab 18.3 API responses
  */
 
-import { ListWorkItemsSchema, GetWorkItemSchema, GetWorkItemTypesSchema } from '../../../src/entities/workitems/schema-readonly';
+import { ListWorkItemsSchema, GetWorkItemSchema } from '../../../src/entities/workitems/schema-readonly';
 import { CreateWorkItemSchema, UpdateWorkItemSchema, DeleteWorkItemSchema } from '../../../src/entities/workitems/schema';
 import { getTestData } from '../../setup/testConfig';
 import { IntegrationTestHelper } from '../helpers/registry-helper';
@@ -18,56 +18,6 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
     console.log('✅ Integration test helper initialized for work items testing');
   });
 
-  describe('GetWorkItemTypesSchema', () => {
-    it('should validate get work item types parameters', async () => {
-      const testData = getTestData();
-      expect(testData.project?.path_with_namespace).toBeDefined();
-
-      const validParams = {
-        namespacePath: testData.project!.path_with_namespace,
-      };
-
-      const result = GetWorkItemTypesSchema.safeParse(validParams);
-      expect(result.success).toBe(true);
-
-      if (result.success) {
-        expect(result.data.namespacePath).toBe(testData.project!.path_with_namespace);
-      }
-
-      console.log('✅ GetWorkItemTypesSchema validates parameters correctly');
-    });
-
-    it('should make successful GraphQL request for work item types using handler function', async () => {
-      const testData = getTestData();
-      expect(testData.project?.path_with_namespace).toBeDefined();
-
-      const params = {
-        namespacePath: testData.project!.path_with_namespace,
-      };
-
-      // Validate parameters first
-      const paramResult = GetWorkItemTypesSchema.safeParse(params);
-      expect(paramResult.success).toBe(true);
-
-      if (!paramResult.success) return;
-
-      console.log('🔍 Getting work item types using handler function...');
-      const workItemTypes = await helper.executeTool('get_work_item_types', paramResult.data) as any[];
-
-      expect(Array.isArray(workItemTypes)).toBe(true);
-      expect(workItemTypes.length).toBeGreaterThan(0);
-
-      // Validate structure of work item types
-      for (const workItemType of workItemTypes.slice(0, 3)) {
-        expect(workItemType).toHaveProperty('id');
-        expect(workItemType).toHaveProperty('name');
-        expect(typeof workItemType.name).toBe('string');
-        console.log(`  ✅ Work item type: ${workItemType.name} (ID: ${workItemType.id})`);
-      }
-
-      console.log(`✅ GetWorkItemTypesSchema API request successful via handler, found ${workItemTypes.length} work item types`);
-    }, 15000);
-  });
 
   describe('ListWorkItemsSchema', () => {
     it('should validate basic list work items parameters', async () => {
@@ -109,14 +59,16 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       if (!paramResult.success) return;
 
       console.log('🔍 ListWorkItemsSchema - Testing list work items using handler function...');
-      const workItems = await helper.executeTool('list_work_items', paramResult.data) as any[];
+      const result = await helper.executeTool('list_work_items', paramResult.data) as any;
 
-      expect(Array.isArray(workItems)).toBe(true);
-      console.log(`📋 Found ${workItems.length} work items via handler`);
+      expect(result).toBeDefined();
+      expect(result.items).toBeDefined();
+      expect(Array.isArray(result.items)).toBe(true);
+      console.log(`📋 Found ${result.items.length} work items via handler`);
 
       // Validate structure if work items exist
-      if (workItems.length > 0) {
-        const firstWorkItem = workItems[0];
+      if (result.items.length > 0) {
+        const firstWorkItem = result.items[0];
         expect(firstWorkItem).toHaveProperty('id');
         expect(firstWorkItem).toHaveProperty('iid');
         expect(firstWorkItem).toHaveProperty('title');
@@ -124,7 +76,7 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
         console.log(`  ✅ Work item: ${firstWorkItem.title} (IID: ${firstWorkItem.iid})`);
       }
 
-      console.log(`✅ ListWorkItemsSchema API request successful via handler, found ${workItems.length} work items`);
+      console.log(`✅ ListWorkItemsSchema API request successful via handler, found ${result.items.length} work items`);
     }, 15000);
   });
 

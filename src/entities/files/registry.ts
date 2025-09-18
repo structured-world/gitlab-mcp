@@ -3,6 +3,7 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import { GetRepositoryTreeSchema, GetFileContentsSchema } from './schema-readonly';
 import { CreateOrUpdateFileSchema, PushFilesSchema, MarkdownUploadSchema } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
+import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
@@ -40,7 +41,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
         }
 
         const tree = await response.json();
-        return tree;
+        return cleanGidsFromObject(tree);
       },
     },
   ],
@@ -72,7 +73,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
         }
 
         const file = await response.json();
-        return file;
+        return cleanGidsFromObject(file);
       },
     },
   ],
@@ -110,7 +111,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
         }
 
         const result = await response.json();
-        return result;
+        return cleanGidsFromObject(result);
       },
     },
   ],
@@ -165,7 +166,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
         }
 
         const commit = await response.json();
-        return commit;
+        return cleanGidsFromObject(commit);
       },
     },
   ],
@@ -213,7 +214,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
         }
 
         const upload = await response.json();
-        return upload;
+        return cleanGidsFromObject(upload);
       },
     },
   ],

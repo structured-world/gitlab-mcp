@@ -16,8 +16,9 @@
 
 import { GITLAB_TOKEN, GITLAB_API_URL, updateTestData, getTestData } from '../setup/testConfig';
 import { GraphQLClient } from '../../src/graphql/client';
-import { CREATE_WORK_ITEM, GET_WORK_ITEM_TYPES } from '../../src/graphql/workItems';
+import { CREATE_WORK_ITEM } from '../../src/graphql/workItems';
 import { ConnectionManager } from '../../src/services/ConnectionManager';
+import { getWorkItemTypes } from '../../src/utils/workItemTypes';
 import { gql } from 'graphql-tag';
 import { IntegrationTestHelper } from './helpers/registry-helper';
 
@@ -350,11 +351,9 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       expect(testData.project?.id).toBeDefined();
       console.log('🔧 Creating PROJECT-level work items (Issues, Tasks) using GraphQL with dynamic type discovery...');
 
-      // 🚨 CRITICAL: Get work item types using handler function instead of direct GraphQL
-      console.log('🔍 Getting work item types for project namespace using get_work_item_types handler...');
-      const projectWorkItemTypes = await helper.getWorkItemTypes({
-        namespacePath: testData.project!.path_with_namespace,
-      }) as any[];
+      // Get work item types directly using utility function (not exposed as tool)
+      console.log('🔍 Getting work item types for project namespace using internal utility...');
+      const projectWorkItemTypes = await getWorkItemTypes(testData.project!.path_with_namespace);
       console.log('📋 Available project work item types:', projectWorkItemTypes.map(t => `${t.name}(${t.id})`).join(', '));
 
       const issueType = projectWorkItemTypes.find(t => t.name === 'Issue');
@@ -509,11 +508,9 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       expect(testData.group?.id).toBeDefined();
       console.log('🔧 Creating GROUP-level work items (Epics) using GraphQL with dynamic type discovery...');
 
-      // 🚨 CRITICAL: Get work item types using handler function instead of direct GraphQL
-      console.log('🔍 Getting work item types for group namespace using get_work_item_types handler...');
-      const groupWorkItemTypes = await helper.getWorkItemTypes({
-        namespacePath: testData.group!.path,
-      }) as any[];
+      // Get work item types directly using utility function (not exposed as tool)
+      console.log('🔍 Getting work item types for group namespace using internal utility...');
+      const groupWorkItemTypes = await getWorkItemTypes(testData.group!.path);
       console.log('📋 Available group work item types:', groupWorkItemTypes.map(t => `${t.name}(${t.id})`).join(', '));
 
       const epicType = groupWorkItemTypes.find(t => t.name === 'Epic');
@@ -964,7 +961,166 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
     });
   });
 
-  describe('✅ Step 7: Infrastructure Validation', () => {
+  describe('🔍 Step 7: Work Items Tools Validation', () => {
+    it('should test list_work_items with group namespace (Epics)', async () => {
+      const testData = getTestData();
+      expect(testData.group?.id).toBeDefined();
+      expect(testData.groupWorkItems?.length).toBeGreaterThan(0);
+      console.log('🔍 Testing list_work_items with group namespace...');
+
+      // Test group work items (Epics)
+      const groupResult = await helper.listWorkItems({
+        namespacePath: testData.group!.path,
+        state: ['OPEN', 'CLOSED'],
+        simple: true
+      }) as any;
+
+      expect(groupResult).toBeDefined();
+      expect(groupResult.items).toBeDefined();
+      expect(Array.isArray(groupResult.items)).toBe(true);
+      expect(groupResult.items.length).toBeGreaterThan(0);
+
+      // Validate structure matches our simplified schema
+      expect(groupResult).toHaveProperty('hasMore');
+      expect(groupResult).toHaveProperty('endCursor');
+
+      console.log(`  📋 Found ${groupResult.items.length} group work items`);
+
+      // Verify we get Epics from group
+      const firstItem = groupResult.items[0];
+      expect(firstItem.workItemType).toBe('Epic');
+      console.log(`  ✅ Confirmed group returns Epics: ${firstItem.title}`);
+    });
+
+    it('should test list_work_items with project namespace (Issues/Tasks)', async () => {
+      const testData = getTestData();
+      expect(testData.project?.id).toBeDefined();
+      expect(testData.workItems?.length).toBeGreaterThan(0);
+      console.log('🔍 Testing list_work_items with project namespace...');
+
+      // Test project work items (Issues/Tasks)
+      const projectResult = await helper.listWorkItems({
+        namespacePath: testData.project!.path_with_namespace,
+        state: ['OPEN', 'CLOSED'],
+        simple: true
+      }) as any;
+
+      expect(projectResult).toBeDefined();
+      expect(projectResult.items).toBeDefined();
+      expect(Array.isArray(projectResult.items)).toBe(true);
+      expect(projectResult.items.length).toBeGreaterThan(0);
+
+      // Validate structure matches our simplified schema
+      expect(projectResult).toHaveProperty('hasMore');
+      expect(projectResult).toHaveProperty('endCursor');
+
+      console.log(`  📋 Found ${projectResult.items.length} project work items`);
+
+      // Verify we get Issues/Tasks from project
+      const firstItem = projectResult.items[0];
+      expect(['Issue', 'Task']).toContain(firstItem.workItemType);
+      console.log(`  ✅ Confirmed project returns Issues/Tasks: ${firstItem.title} (${firstItem.workItemType})`);
+    });
+
+    it('should test list_work_items with type filtering', async () => {
+      const testData = getTestData();
+      console.log('🔍 Testing list_work_items with type filtering...');
+
+      // Test filtering for EPIC type in group
+      const epicResult = await helper.listWorkItems({
+        namespacePath: testData.group!.path,
+        types: ['EPIC'],
+        simple: true
+      }) as any;
+
+      expect(epicResult.items.length).toBeGreaterThan(0);
+      for (const item of epicResult.items) {
+        expect(item.workItemType).toBe('Epic');
+      }
+      console.log(`  ✅ Epic filtering works: ${epicResult.items.length} epics found`);
+
+      // Test filtering for ISSUE type in project
+      const issueResult = await helper.listWorkItems({
+        namespacePath: testData.project!.path_with_namespace,
+        types: ['ISSUE'],
+        simple: true
+      }) as any;
+
+      expect(issueResult.items.length).toBeGreaterThan(0);
+      for (const item of issueResult.items) {
+        expect(item.workItemType).toBe('Issue');
+      }
+      console.log(`  ✅ Issue filtering works: ${issueResult.items.length} issues found`);
+    });
+
+    it('should test list_work_items with state filtering', async () => {
+      const testData = getTestData();
+      console.log('🔍 Testing list_work_items with state filtering...');
+
+      // Test OPEN only
+      const openResult = await helper.listWorkItems({
+        namespacePath: testData.project!.path_with_namespace,
+        state: ['OPEN'],
+        simple: true
+      }) as any;
+
+      expect(openResult.items.length).toBeGreaterThan(0);
+      for (const item of openResult.items) {
+        expect(item.state).toBe('OPEN');
+      }
+      console.log(`  ✅ OPEN state filtering: ${openResult.items.length} open items`);
+
+      // Test ALL states
+      const allResult = await helper.listWorkItems({
+        namespacePath: testData.project!.path_with_namespace,
+        state: ['OPEN', 'CLOSED'],
+        simple: true
+      }) as any;
+
+      expect(allResult.items.length).toBeGreaterThanOrEqual(openResult.items.length);
+      console.log(`  ✅ All states filtering: ${allResult.items.length} total items`);
+    });
+
+    it('should test list_work_items simple vs full structure', async () => {
+      const testData = getTestData();
+      console.log('🔍 Testing list_work_items simple vs full structure...');
+
+      // Test with simple=true (default)
+      const simpleResult = await helper.listWorkItems({
+        namespacePath: testData.project!.path_with_namespace,
+        simple: true,
+        first: 1
+      }) as any;
+
+      // Test with simple=false
+      const fullResult = await helper.listWorkItems({
+        namespacePath: testData.project!.path_with_namespace,
+        simple: false,
+        first: 1
+      }) as any;
+
+      expect(simpleResult.items.length).toBe(1);
+      expect(fullResult.items.length).toBe(1);
+
+      const simpleItem = simpleResult.items[0];
+      const fullItem = fullResult.items[0];
+
+      // Simple structure should have basic fields
+      expect(simpleItem).toHaveProperty('id');
+      expect(simpleItem).toHaveProperty('title');
+      expect(simpleItem).toHaveProperty('state');
+
+      // Full structure should have all fields including complex widgets
+      expect(fullItem).toHaveProperty('id');
+      expect(fullItem).toHaveProperty('title');
+      expect(fullItem).toHaveProperty('widgets');
+
+      console.log(`  ✅ Simple structure works: ${Object.keys(simpleItem).length} fields`);
+      console.log(`  ✅ Full structure works: ${Object.keys(fullItem).length} fields`);
+    });
+  });
+
+  describe('✅ Step 8: Infrastructure Validation', () => {
     it('should validate complete test infrastructure is ready', async () => {
       console.log('🔍 Validating complete test infrastructure...');
 

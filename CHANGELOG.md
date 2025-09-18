@@ -1,3 +1,10 @@
+# [4.4.0](https://github.com/structured-world/gitlab-mcp/compare/v4.3.3...v4.4.0) (2025-09-18)
+
+
+### Features
+
+* **workitems:** enhance agentic label workflow guidance and case-insensitive type handling ([ac6d970](https://github.com/structured-world/gitlab-mcp/commit/ac6d9702e047f828dcb7961c7d9c2ff4e7f0c35c))
+
 ## [4.3.3](https://github.com/structured-world/gitlab-mcp/compare/v4.3.2...v4.3.3) (2025-09-18)
 
 

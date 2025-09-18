@@ -1,3 +1,10 @@
+## [4.3.3](https://github.com/structured-world/gitlab-mcp/compare/v4.3.2...v4.3.3) (2025-09-18)
+
+
+### Bug Fixes
+
+* **workitems:** resolve critical widget and assignee bugs in work item operations ([9b4c830](https://github.com/structured-world/gitlab-mcp/commit/9b4c8301ab48bb816a5052ec24af075d6248c798))
+
 ## [4.3.2](https://github.com/structured-world/gitlab-mcp/compare/v4.3.1...v4.3.2) (2025-09-18)
 
 

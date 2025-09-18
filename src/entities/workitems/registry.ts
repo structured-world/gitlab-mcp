@@ -37,7 +37,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'list_work_items',
       description:
-        'List work items from a namespace. Returns open work items by default. Supports filtering by type and state, with pagination for large result sets.',
+        'List work items from a namespace (groups or projects). Core tool for tracking issues, epics, tasks, and incidents. Shows existing label usage patterns for better labeling decisions. Supports 9 work item types including Test Cases and Requirements. Returns open items by default. Filter by type, state, with pagination. Groups contain Epics; projects contain Issues/Tasks/Incidents. Use with list_labels to understand complete taxonomy.',
       inputSchema: zodToJsonSchema(ListWorkItemsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         console.log('list_work_items called with args:', JSON.stringify(args, null, 2));
@@ -284,7 +284,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'get_work_item',
       description:
-        'Get detailed information about a specific work item by ID. Returns complete work item data including assignees, labels, milestones, and other metadata.',
+        'Get complete work item details by ID. Returns full data including widgets (assignees, labels, milestones, hierarchy, time tracking, custom fields). Essential for issue/epic management and tracking project progress. Each work item type has different widget capabilities.',
       inputSchema: zodToJsonSchema(GetWorkItemSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = GetWorkItemSchema.parse(args);
@@ -314,7 +314,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'create_work_item',
       description:
-        'Create a new work item in the specified namespace. Automatically resolves work item type ID from the provided type name. Supports creating epics, issues, tasks, and other work item types.',
+        'Create work items for issue tracking and project management. LABEL WORKFLOW: Run list_labels first to discover existing labels, then use label IDs from response. CRITICAL: Epics require GROUP namespace, Issues/Tasks/Incidents require PROJECT namespace. Supports 9 types: Epic, Issue, Task, Incident, Test Case, Requirement, Objective, Key Result, Ticket. NOTE: Test Cases and Requirements do not support labels widget. Automatically assigns widgets (assignees, labels, milestones) based on type capabilities.',
       inputSchema: zodToJsonSchema(CreateWorkItemSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = CreateWorkItemSchema.parse(args);
@@ -335,7 +335,9 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
         // Convert simple type name to work item type GID
         const workItemTypes = await getWorkItemTypes(namespacePath);
         const workItemTypeObj = workItemTypes.find(
-          (t: WorkItemType) => t.name.toUpperCase() === workItemType.toUpperCase(),
+          (t: WorkItemType) =>
+            t.name.toUpperCase().replace(/\s+/g, '_') ===
+            workItemType.toUpperCase().replace(/\s+/g, '_'),
         );
 
         if (!workItemTypeObj) {
@@ -389,7 +391,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'update_work_item',
       description:
-        'Update properties of an existing work item. Supports modifying title, description, assignees, labels, milestones, and state. Only specified fields will be changed.',
+        'Update work item properties for issue/epic management. LABEL WORKFLOW: Run list_labels first to discover existing labels, then use label IDs from response. Modify title, description, assignees, labels, milestones, and state (open/close). Supports widget updates including clearing assignees with empty arrays. NOTE: Test Cases and Requirements do not support labels widget. Essential for project workflow and status tracking.',
       inputSchema: zodToJsonSchema(UpdateWorkItemSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = UpdateWorkItemSchema.parse(args);
@@ -449,7 +451,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'delete_work_item',
       description:
-        'Permanently delete a work item. This action cannot be undone and will remove all associated data and references.',
+        'Permanently delete work items. WARNING: Cannot be undone. Removes all data, comments, time tracking, and references. Use for cleanup or removing invalid issues/epics. Consider closing instead of deleting for audit trails.',
       inputSchema: zodToJsonSchema(DeleteWorkItemSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const options = DeleteWorkItemSchema.parse(args);

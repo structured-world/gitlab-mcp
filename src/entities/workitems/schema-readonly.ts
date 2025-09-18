@@ -4,22 +4,32 @@ import { z } from 'zod';
 export const WorkItemIdSchema = z.string().min(1).describe('Work item ID');
 
 export const WorkItemTypeEnumSchema = z
-  .enum([
-    'EPIC',
-    'ISSUE',
-    'TASK',
-    'INCIDENT',
-    'TEST_CASE',
-    'REQUIREMENT',
-    'OBJECTIVE',
-    'KEY_RESULT',
-  ])
+  .string()
+  .transform((val) => val.toUpperCase().replace(/\s+/g, '_'))
+  .pipe(
+    z.enum([
+      'EPIC',
+      'ISSUE',
+      'TASK',
+      'INCIDENT',
+      'TEST_CASE',
+      'REQUIREMENT',
+      'OBJECTIVE',
+      'KEY_RESULT',
+    ]),
+  )
   .describe('Type of work item');
 
-export const WorkItemStateSchema = z.enum(['OPEN', 'CLOSED']).describe('State of work item');
+export const WorkItemStateSchema = z
+  .string()
+  .transform((val) => val.toUpperCase())
+  .pipe(z.enum(['OPEN', 'CLOSED']))
+  .describe('State of work item');
 
 export const WorkItemStateEventSchema = z
-  .enum(['CLOSE', 'REOPEN'])
+  .string()
+  .transform((val) => val.toUpperCase())
+  .pipe(z.enum(['CLOSE', 'REOPEN']))
   .describe('State event for updating work item');
 
 // Read-only schemas

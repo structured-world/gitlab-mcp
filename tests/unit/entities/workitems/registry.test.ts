@@ -73,7 +73,7 @@ describe('Workitems Registry', () => {
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('list_work_items');
       expect(tool?.description).toContain('List work items from a namespace');
-      expect(tool?.description).toContain('Returns open work items by default');
+      expect(tool?.description).toContain('Returns open items by default');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -82,7 +82,7 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('get_work_item');
-      expect(tool?.description).toContain('Get detailed information about a specific work item');
+      expect(tool?.description).toContain('Get complete work item details by ID');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -92,7 +92,7 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('create_work_item');
-      expect(tool?.description).toContain('Create a new work item');
+      expect(tool?.description).toContain('Create work items for issue tracking');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -101,7 +101,7 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('update_work_item');
-      expect(tool?.description).toContain('Update properties of an existing work item');
+      expect(tool?.description).toContain('Update work item properties for issue/epic management');
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -110,7 +110,7 @@ describe('Workitems Registry', () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe('delete_work_item');
-      expect(tool?.description).toContain('Permanently delete a work item');
+      expect(tool?.description).toContain('Permanently delete work items');
       expect(tool?.inputSchema).toBeDefined();
     });
   });
@@ -297,7 +297,7 @@ describe('Workitems Registry', () => {
       const tool = workitemsToolRegistry.get('list_work_items');
 
       expect(tool?.description).toContain('List work items from a namespace');
-      expect(tool?.description).toContain('Returns open work items by default');
+      expect(tool?.description).toContain('Returns open items by default');
     });
   });
 
@@ -541,6 +541,106 @@ describe('Workitems Registry', () => {
 
         // Missing namespacePath should throw validation error
         await expect(tool?.handler({})).rejects.toThrow();
+      });
+
+      it('should use simplified structure when simple=true', async () => {
+        const mockWorkItem = {
+          id: 'gid://gitlab/WorkItem/1',
+          iid: '1',
+          title: 'Test Work Item',
+          state: 'OPEN',
+          workItemType: { name: 'Issue' },
+          webUrl: 'https://gitlab.com/test/1',
+          createdAt: '2023-01-01T00:00:00Z',
+          updatedAt: '2023-01-01T00:00:00Z',
+          description: 'Test description',
+          widgets: [
+            {
+              type: 'ASSIGNEES',
+              assignees: {
+                nodes: [{ id: 'gid://gitlab/User/1', username: 'test', name: 'Test User' }]
+              }
+            },
+            {
+              type: 'LABELS',
+              labels: {
+                nodes: [{ id: 'gid://gitlab/Label/1', title: 'bug', color: '#ff0000' }]
+              }
+            }
+          ]
+        };
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            __typename: 'Project',
+            workItems: {
+              nodes: [mockWorkItem],
+              pageInfo: { hasNextPage: false, endCursor: null }
+            }
+          }
+        });
+
+        const tool = workitemsToolRegistry.get('list_work_items');
+        const result: any = await tool?.handler({
+          namespacePath: 'test-project',
+          simple: true
+        });
+
+        expect(result.items[0]).toEqual({
+          id: '1',
+          iid: '1',
+          title: 'Test Work Item',
+          state: 'OPEN',
+          workItemType: 'Issue',
+          webUrl: 'https://gitlab.com/test/1',
+          createdAt: '2023-01-01T00:00:00Z',
+          updatedAt: '2023-01-01T00:00:00Z',
+          description: 'Test description',
+          widgets: [
+            {
+              type: 'ASSIGNEES',
+              assignees: [{ id: '1', username: 'test', name: 'Test User' }]
+            },
+            {
+              type: 'LABELS',
+              labels: [{ id: '1', title: 'bug', color: '#ff0000' }]
+            }
+          ]
+        });
+      });
+
+      it('should truncate long descriptions in simplified mode', async () => {
+        const longDescription = 'A'.repeat(250); // 250 characters
+        const mockWorkItem = {
+          id: 'gid://gitlab/WorkItem/1',
+          iid: '1',
+          title: 'Test Work Item',
+          state: 'OPEN',
+          workItemType: { name: 'Issue' },
+          webUrl: 'https://gitlab.com/test/1',
+          createdAt: '2023-01-01T00:00:00Z',
+          updatedAt: '2023-01-01T00:00:00Z',
+          description: longDescription,
+          widgets: []
+        };
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            __typename: 'Project',
+            workItems: {
+              nodes: [mockWorkItem],
+              pageInfo: { hasNextPage: false, endCursor: null }
+            }
+          }
+        });
+
+        const tool = workitemsToolRegistry.get('list_work_items');
+        const result: any = await tool?.handler({
+          namespacePath: 'test-project',
+          simple: true
+        });
+
+        expect(result.items[0].description).toBe('A'.repeat(200) + '...');
       });
 
     });

@@ -1,3 +1,10 @@
+# [4.5.0](https://github.com/structured-world/gitlab-mcp/compare/v4.4.0...v4.5.0) (2025-09-19)
+
+
+### Features
+
+* enhance schema validation with case normalization and test coverage improvements ([4c40087](https://github.com/structured-world/gitlab-mcp/commit/4c400876fae474c8ea4d1096db9756f0cc365d46))
+
 # [4.4.0](https://github.com/structured-world/gitlab-mcp/compare/v4.3.3...v4.4.0) (2025-09-18)
 
 

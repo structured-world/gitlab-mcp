@@ -19,7 +19,9 @@ export const EditProjectMilestoneSchema = z.object({
   due_date: z.string().optional().describe('The due date of the milestone (YYYY-MM-DD)'),
   start_date: z.string().optional().describe('The start date of the milestone (YYYY-MM-DD)'),
   state_event: z
-    .enum(['close', 'activate'])
+    .string()
+    .transform((val) => val.toLowerCase())
+    .pipe(z.enum(['close', 'activate']))
     .optional()
     .describe('The state event of the milestone'),
 });

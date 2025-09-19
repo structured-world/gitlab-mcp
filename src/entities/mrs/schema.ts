@@ -189,7 +189,12 @@ export const UpdateMergeRequestSchema = z.object({
     .union([z.string(), z.array(z.string())])
     .optional()
     .describe('Labels to remove from MR'),
-  state_event: z.enum(['close', 'reopen']).optional().describe('State event for MR'),
+  state_event: z
+    .string()
+    .transform((val) => val.toLowerCase())
+    .pipe(z.enum(['close', 'reopen']))
+    .optional()
+    .describe('State event for MR'),
   remove_source_branch: flexibleBoolean
     .optional()
     .describe('Auto-delete source branch after merge. Keeps repository clean. Default: false.'),
@@ -230,7 +235,11 @@ export const MergeMergeRequestSchema = z.object({
 // Note operations (write)
 export const CreateNoteSchema = z.object({
   project_id: z.coerce.string().describe('Project ID or URL-encoded path'),
-  noteable_type: z.enum(['issue', 'merge_request']).describe('Type of noteable object'),
+  noteable_type: z
+    .string()
+    .transform((val) => val.toLowerCase())
+    .pipe(z.enum(['issue', 'merge_request']))
+    .describe('Type of noteable object'),
   noteable_id: z.coerce.string().describe('ID of the noteable object'),
   body: z.string().describe('The content of a note'),
   created_at: z.string().optional().describe('Date time string, ISO 8601 formatted'),

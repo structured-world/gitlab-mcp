@@ -111,6 +111,8 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
 
 /**
  * Get read-only tool names from the registry
+ * Note: manage_integration is included because it supports a read-only action ('get').
+ * Write actions ('update', 'disable') are blocked at the handler level when GITLAB_READ_ONLY_MODE is enabled.
  */
 export function getIntegrationsReadOnlyToolNames(): string[] {
   return ["list_integrations", "manage_integration"];

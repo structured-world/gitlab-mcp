@@ -90,16 +90,12 @@ export const ManageIntegrationSchema = z
     merge_requests_events: flexibleBoolean
       .optional()
       .describe("Trigger integration on merge request events"),
-    tag_push_events: flexibleBoolean
-      .optional()
-      .describe("Trigger integration on tag push events"),
+    tag_push_events: flexibleBoolean.optional().describe("Trigger integration on tag push events"),
     note_events: flexibleBoolean.optional().describe("Trigger integration on note events"),
     confidential_issues_events: flexibleBoolean
       .optional()
       .describe("Trigger integration on confidential issue events"),
-    pipeline_events: flexibleBoolean
-      .optional()
-      .describe("Trigger integration on pipeline events"),
+    pipeline_events: flexibleBoolean.optional().describe("Trigger integration on pipeline events"),
     wiki_page_events: flexibleBoolean
       .optional()
       .describe("Trigger integration on wiki page events"),
@@ -107,9 +103,7 @@ export const ManageIntegrationSchema = z
     deployment_events: flexibleBoolean
       .optional()
       .describe("Trigger integration on deployment events"),
-    releases_events: flexibleBoolean
-      .optional()
-      .describe("Trigger integration on release events"),
+    releases_events: flexibleBoolean.optional().describe("Trigger integration on release events"),
     vulnerability_events: flexibleBoolean
       .optional()
       .describe("Trigger integration on vulnerability events"),

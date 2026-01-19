@@ -2,7 +2,7 @@ import * as z from "zod";
 import { ListIntegrationsSchema } from "./schema-readonly";
 import { ManageIntegrationSchema } from "./schema";
 import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { getEffectiveProjectId, GITLAB_READ_ONLY_MODE } from "../../config";
+import { getEffectiveProjectId } from "../../config";
 import { ToolRegistry, EnhancedToolDefinition } from "../../types";
 
 /**
@@ -54,10 +54,11 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
         const projectId = getEffectiveProjectId(input.project_id);
         const integrationSlug = input.integration;
 
-        // Enforce read-only mode for write actions
-        if (GITLAB_READ_ONLY_MODE && (input.action === "update" || input.action === "disable")) {
+        // Enforce read-only mode for write actions (check dynamically for testability)
+        const isReadOnly = process.env.GITLAB_READ_ONLY_MODE === "true";
+        if (isReadOnly && (input.action === "update" || input.action === "disable")) {
           throw new Error(
-            `Action '${input.action}' is not allowed in GITLAB_READ_ONLY_MODE. Only 'get' action is permitted.`
+            `Action '${input.action}' is not allowed in read-only mode. Only 'get' action is permitted.`
           );
         }
 

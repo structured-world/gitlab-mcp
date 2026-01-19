@@ -50,10 +50,7 @@ describe("Integrations Schema - GitLab Integration", () => {
 
       if (result.success) {
         // Test actual handler function
-        const integrations = (await helper.executeTool(
-          "list_integrations",
-          result.data
-        )) as {
+        const integrations = (await helper.executeTool("list_integrations", result.data)) as {
           slug: string;
           title: string;
           active: boolean;
@@ -304,6 +301,190 @@ describe("Integrations Schema - GitLab Integration", () => {
       expect(result.success).toBe(false);
 
       console.log("ManageIntegrationSchema rejects invalid integration type");
+    });
+  });
+
+  /**
+   * Integration Lifecycle Tests
+   * Tests actual enable/update/disable operations against real GitLab instance
+   * Using emails-on-push integration as recommended in issue #7
+   */
+  describe("Integration Lifecycle - emails-on-push", () => {
+    let testProjectId: string;
+
+    beforeAll(async () => {
+      // Get a test project for lifecycle testing
+      const projects = (await helper.listProjects({ per_page: 1 })) as {
+        id: number;
+        path_with_namespace: string;
+      }[];
+
+      if (projects.length === 0) {
+        console.log("No projects available for lifecycle testing");
+        return;
+      }
+
+      testProjectId = projects[0].id.toString();
+      console.log(
+        `Lifecycle test using project: ${projects[0].path_with_namespace} (ID: ${testProjectId})`
+      );
+    });
+
+    it("should get integration settings (even when disabled)", async () => {
+      if (!testProjectId) {
+        console.log("Skipping: no test project available");
+        return;
+      }
+
+      try {
+        // Get current state of emails-on-push integration
+        const result = (await helper.executeTool("manage_integration", {
+          action: "get",
+          project_id: testProjectId,
+          integration: "emails-on-push",
+        })) as {
+          id: number;
+          slug: string;
+          title: string;
+          active: boolean;
+        };
+
+        expect(result).toBeDefined();
+        expect(result.slug).toBe("emails-on-push");
+        expect(result).toHaveProperty("title");
+        expect(typeof result.active).toBe("boolean");
+
+        console.log(`emails-on-push integration status: ${result.active ? "active" : "inactive"}`);
+      } catch (error) {
+        // Some GitLab instances may not have this integration available
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes("404") || errorMsg.includes("Not Found")) {
+          console.log("emails-on-push integration not available on this GitLab instance");
+          return;
+        }
+        throw error;
+      }
+    });
+
+    it("should enable/update emails-on-push integration", async () => {
+      if (!testProjectId) {
+        console.log("Skipping: no test project available");
+        return;
+      }
+
+      try {
+        // Enable emails-on-push with test configuration
+        const updateResult = (await helper.executeTool("manage_integration", {
+          action: "update",
+          project_id: testProjectId,
+          integration: "emails-on-push",
+          push_events: true,
+          tag_push_events: false,
+          // emails-on-push requires 'recipients' field
+          recipients: "test@example.com",
+        })) as {
+          id: number;
+          slug: string;
+          active: boolean;
+          push_events: boolean;
+          tag_push_events: boolean;
+        };
+
+        expect(updateResult).toBeDefined();
+        expect(updateResult.slug).toBe("emails-on-push");
+        expect(updateResult.active).toBe(true);
+        expect(updateResult.push_events).toBe(true);
+        expect(updateResult.tag_push_events).toBe(false);
+
+        console.log("emails-on-push integration enabled successfully");
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes("404") || errorMsg.includes("Not Found")) {
+          console.log("emails-on-push integration not available on this GitLab instance");
+          return;
+        }
+        throw error;
+      }
+    });
+
+    it("should update integration settings", async () => {
+      if (!testProjectId) {
+        console.log("Skipping: no test project available");
+        return;
+      }
+
+      try {
+        // Update with modified settings
+        const updateResult = (await helper.executeTool("manage_integration", {
+          action: "update",
+          project_id: testProjectId,
+          integration: "emails-on-push",
+          push_events: true,
+          tag_push_events: true, // Changed from false
+          branches_to_be_notified: "all",
+          recipients: "test@example.com, updated@example.com",
+        })) as {
+          id: number;
+          slug: string;
+          active: boolean;
+          tag_push_events: boolean;
+        };
+
+        expect(updateResult).toBeDefined();
+        expect(updateResult.active).toBe(true);
+        expect(updateResult.tag_push_events).toBe(true);
+
+        console.log("emails-on-push integration settings updated successfully");
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes("404") || errorMsg.includes("Not Found")) {
+          console.log("emails-on-push integration not available on this GitLab instance");
+          return;
+        }
+        throw error;
+      }
+    });
+
+    it("should disable emails-on-push integration", async () => {
+      if (!testProjectId) {
+        console.log("Skipping: no test project available");
+        return;
+      }
+
+      try {
+        // Disable the integration
+        const disableResult = (await helper.executeTool("manage_integration", {
+          action: "disable",
+          project_id: testProjectId,
+          integration: "emails-on-push",
+        })) as {
+          deleted: boolean;
+        };
+
+        expect(disableResult).toBeDefined();
+        expect(disableResult.deleted).toBe(true);
+
+        console.log("emails-on-push integration disabled successfully");
+
+        // Verify it's disabled
+        const verifyResult = (await helper.executeTool("manage_integration", {
+          action: "get",
+          project_id: testProjectId,
+          integration: "emails-on-push",
+        })) as {
+          active: boolean;
+        };
+
+        expect(verifyResult.active).toBe(false);
+        console.log("Verified: emails-on-push integration is now inactive");
+      } catch (error) {
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        if (errorMsg.includes("404") || errorMsg.includes("Not Found")) {
+          console.log("emails-on-push integration not available on this GitLab instance");
+          return;
+        }
+        throw error;
+      }
     });
   });
 });

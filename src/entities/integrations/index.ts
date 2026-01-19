@@ -11,10 +11,7 @@ export * from "./schema";
 export * from "./registry";
 
 // Import from the registry
-import {
-  getFilteredIntegrationsTools,
-  getIntegrationsReadOnlyToolNames,
-} from "./registry";
+import { getFilteredIntegrationsTools, getIntegrationsReadOnlyToolNames } from "./registry";
 import type { ToolDefinition } from "../../types";
 
 // Conditional exports based on GITLAB_READONLY environment variable

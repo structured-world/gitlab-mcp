@@ -31,8 +31,6 @@ afterAll(() => {
 beforeEach(() => {
   jest.clearAllMocks();
   jest.resetAllMocks();
-  // Ensure mockEnhancedFetch is properly reset
-  mockEnhancedFetch.mockReset();
 });
 
 describe("Snippets Registry", () => {

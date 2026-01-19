@@ -3,7 +3,6 @@
  * Tests environment variable handling, URL normalization, and package info loading
  */
 
-import * as path from "path";
 import * as fs from "fs";
 
 // Mock fs module

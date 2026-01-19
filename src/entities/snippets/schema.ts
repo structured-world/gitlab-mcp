@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { flexibleBoolean } from "../utils";
 
 // WRITE OPERATION SCHEMAS for GitLab Snippets
 

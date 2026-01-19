@@ -129,7 +129,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
           }
 
           default:
-            throw new Error(`Unknown action: ${action}`);
+            throw new Error(`Unknown action: ${action as string}`);
         }
       },
     },

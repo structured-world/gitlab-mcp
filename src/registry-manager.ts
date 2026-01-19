@@ -20,10 +20,7 @@ import {
   workitemsToolRegistry,
   getWorkitemsReadOnlyToolNames,
 } from "./entities/workitems/registry";
-import {
-  webhooksToolRegistry,
-  getWebhooksReadOnlyToolNames,
-} from "./entities/webhooks/registry";
+import { webhooksToolRegistry, getWebhooksReadOnlyToolNames } from "./entities/webhooks/registry";
 import {
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,

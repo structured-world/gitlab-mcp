@@ -55,7 +55,9 @@ export const ManageWebhookSchema = z
       .optional()
       .describe("Enable confidential issue events"),
     note_events: flexibleBoolean.optional().describe("Enable note/comment events"),
-    confidential_note_events: flexibleBoolean.optional().describe("Enable confidential note events"),
+    confidential_note_events: flexibleBoolean
+      .optional()
+      .describe("Enable confidential note events"),
     job_events: flexibleBoolean.optional().describe("Enable job/build events"),
     pipeline_events: flexibleBoolean.optional().describe("Enable pipeline events"),
     wiki_page_events: flexibleBoolean.optional().describe("Enable wiki page events"),
@@ -67,10 +69,14 @@ export const ManageWebhookSchema = z
       .optional()
       .describe("Enable resource access token events"),
     member_events: flexibleBoolean.optional().describe("Enable member events"),
-    subgroup_events: flexibleBoolean.optional().describe("Enable subgroup events (group webhooks only)"),
+    subgroup_events: flexibleBoolean
+      .optional()
+      .describe("Enable subgroup events (group webhooks only)"),
 
     // SSL verification
-    enable_ssl_verification: flexibleBoolean.optional().describe("Enable SSL certificate verification"),
+    enable_ssl_verification: flexibleBoolean
+      .optional()
+      .describe("Enable SSL certificate verification"),
   })
   .refine(
     data => {

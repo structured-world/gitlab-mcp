@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { PaginationOptionsSchema } from "../shared";
+import { validateScopeId } from "../utils";
 
 // READ-ONLY WEBHOOKS OPERATION SCHEMAS
 
@@ -13,20 +14,9 @@ export const ListWebhooksSchema = z
     groupId: z.string().optional().describe("Group ID or path (required if scope=group)"),
   })
   .merge(PaginationOptionsSchema)
-  .refine(
-    data => {
-      if (data.scope === "project") {
-        return !!data.projectId;
-      }
-      if (data.scope === "group") {
-        return !!data.groupId;
-      }
-      return true;
-    },
-    {
-      message: "projectId is required when scope=project, groupId is required when scope=group",
-    }
-  );
+  .refine(validateScopeId, {
+    message: "projectId is required when scope=project, groupId is required when scope=group",
+  });
 
 // Export type definitions
 export type ListWebhooksOptions = z.infer<typeof ListWebhooksSchema>;

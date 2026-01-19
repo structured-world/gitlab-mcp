@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { flexibleBoolean } from "../utils";
+import { flexibleBoolean, validateScopeId } from "../utils";
 
 // WRITE WEBHOOK OPERATION SCHEMAS
 
@@ -108,20 +108,9 @@ export const ManageWebhookSchema = z
       .optional()
       .describe("Enable SSL certificate verification"),
   })
-  .refine(
-    data => {
-      if (data.scope === "project") {
-        return !!data.projectId;
-      }
-      if (data.scope === "group") {
-        return !!data.groupId;
-      }
-      return true;
-    },
-    {
-      message: "projectId is required when scope=project, groupId is required when scope=group",
-    }
-  )
+  .refine(validateScopeId, {
+    message: "projectId is required when scope=project, groupId is required when scope=group",
+  })
   .refine(
     data => {
       if (["read", "update", "delete", "test"].includes(data.action)) {

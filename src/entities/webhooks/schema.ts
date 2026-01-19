@@ -56,12 +56,15 @@ export const ManageWebhookSchema = z
         "tag_push_events",
         "merge_requests_events",
         "issues_events",
+        "confidential_issues_events",
         "note_events",
         "job_events",
         "pipeline_events",
         "wiki_page_events",
         "releases_events",
+        "milestone_events",
         "emoji_events",
+        "resource_access_token_events",
       ])
       .optional()
       .describe("Event type to test (required for test action)"),
@@ -102,6 +105,9 @@ export const ManageWebhookSchema = z
     subgroup_events: flexibleBoolean
       .optional()
       .describe("Enable subgroup events (group webhooks only)"),
+    project_events: flexibleBoolean
+      .optional()
+      .describe("Enable project events (group webhooks only)"),
 
     // SSL verification
     enable_ssl_verification: flexibleBoolean

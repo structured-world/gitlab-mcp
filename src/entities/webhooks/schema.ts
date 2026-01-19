@@ -4,7 +4,37 @@ import { flexibleBoolean } from "../utils";
 // WRITE WEBHOOK OPERATION SCHEMAS
 
 /**
- * Schema for managing webhooks (create, read, update, delete, test)
+ * Schema for managing webhooks with full CRUD + testing capabilities.
+ *
+ * @remarks
+ * This schema supports five actions:
+ * - `create`: Add a new webhook (requires `url`)
+ * - `read`: Retrieve webhook details (requires `hookId`)
+ * - `update`: Modify webhook configuration (requires `hookId`)
+ * - `delete`: Remove webhook permanently (requires `hookId`)
+ * - `test`: Trigger test delivery for an event type (requires `hookId` and `trigger`)
+ *
+ * @example Create a webhook
+ * ```typescript
+ * {
+ *   action: "create",
+ *   scope: "project",
+ *   projectId: "my-project",
+ *   url: "https://example.com/webhook",
+ *   push_events: true
+ * }
+ * ```
+ *
+ * @example Test a webhook
+ * ```typescript
+ * {
+ *   action: "test",
+ *   scope: "project",
+ *   projectId: "my-project",
+ *   hookId: 123,
+ *   trigger: "push_events"
+ * }
+ * ```
  */
 export const ManageWebhookSchema = z
   .object({

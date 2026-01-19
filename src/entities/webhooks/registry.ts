@@ -64,19 +64,22 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
           throw new Error("Invalid scope or missing project/group ID");
         }
 
+        // Helper to filter webhook data for API requests
+        const buildRequestBody = (data: Record<string, unknown>): Record<string, unknown> => {
+          const body: Record<string, unknown> = {};
+          for (const [key, value] of Object.entries(data)) {
+            if (value !== undefined && !["scope", "projectId", "groupId"].includes(key)) {
+              body[key] = value;
+            }
+          }
+          return body;
+        };
+
         // Handle different actions
         switch (action) {
           case "create": {
-            // Filter out undefined values and action-specific fields
-            const body: Record<string, unknown> = {};
-            for (const [key, value] of Object.entries(webhookData)) {
-              if (value !== undefined && !["scope", "projectId", "groupId"].includes(key)) {
-                body[key] = value;
-              }
-            }
-
             return gitlab.post(basePath, {
-              body,
+              body: buildRequestBody(webhookData),
               contentType: "json",
             });
           }
@@ -93,16 +96,8 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
               throw new Error("hookId is required for update action");
             }
 
-            // Filter out undefined values and action-specific fields
-            const body: Record<string, unknown> = {};
-            for (const [key, value] of Object.entries(webhookData)) {
-              if (value !== undefined && !["scope", "projectId", "groupId"].includes(key)) {
-                body[key] = value;
-              }
-            }
-
             return gitlab.put(`${basePath}/${hookId}`, {
-              body,
+              body: buildRequestBody(webhookData),
               contentType: "json",
             });
           }
@@ -137,8 +132,11 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
 ]);
 
 export function getWebhooksReadOnlyToolNames(): string[] {
-  // In read-only mode, list_webhooks is truly read-only
-  // manage_webhook with action='read' is allowed but enforced in handler
+  // In read-only mode, both tools are exposed:
+  // - list_webhooks: Fully read-only, lists webhooks
+  // - manage_webhook: Handler enforces read-only at runtime, only allows action='read'
+  // This design allows the tool to be present for webhook inspection while blocking
+  // write operations (create/update/delete/test) at the handler level.
   return ["list_webhooks", "manage_webhook"];
 }
 

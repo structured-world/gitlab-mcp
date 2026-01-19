@@ -14,8 +14,8 @@ export * from "./registry";
 import { getFilteredWebhooksTools, getWebhooksReadOnlyToolNames } from "./registry";
 import type { ToolDefinition } from "../../types";
 
-// Conditional exports based on GITLAB_READONLY environment variable
-const isReadOnly = process.env.GITLAB_READONLY === "true";
+// Conditional exports based on GITLAB_READ_ONLY_MODE environment variable
+const isReadOnly = process.env.GITLAB_READ_ONLY_MODE === "true";
 
 // Get tools from the new registry (with backward compatibility)
 const webhooksToolsFromRegistry = getFilteredWebhooksTools(isReadOnly);

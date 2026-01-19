@@ -3,6 +3,7 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express, { Express } from "express";
+import * as http from "http";
 import * as https from "https";
 import * as fs from "fs";
 import {
@@ -172,7 +173,7 @@ function startHttpServer(app: Express, callback: () => void): void {
   const tlsOptions = loadTLSOptions();
 
   if (tlsOptions) {
-    const httpsServer = https.createServer(tlsOptions, app);
+    const httpsServer = https.createServer(tlsOptions, app as http.RequestListener);
     httpsServer.listen(Number(PORT), HOST, callback);
   } else {
     app.listen(Number(PORT), HOST, callback);

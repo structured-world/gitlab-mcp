@@ -1,10 +1,6 @@
 import * as z from "zod";
 import { ListSnippetsSchema, GetSnippetSchema } from "./schema-readonly";
-import {
-  CreateSnippetSchema,
-  UpdateSnippetSchema,
-  DeleteSnippetSchema,
-} from "./schema";
+import { CreateSnippetSchema, UpdateSnippetSchema, DeleteSnippetSchema } from "./schema";
 import { gitlab, toQuery } from "../../utils/gitlab-api";
 import { ToolRegistry, EnhancedToolDefinition } from "../../types";
 
@@ -39,8 +35,11 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
         } else if (options.scope === "public") {
           path = "snippets/public";
         } else {
-          // project scope
-          const encodedProjectId = encodeURIComponent(options.projectId!);
+          // project scope - projectId is validated by schema refine
+          if (!options.projectId) {
+            throw new Error("projectId is required for project scope");
+          }
+          const encodedProjectId = encodeURIComponent(options.projectId);
           path = `projects/${encodedProjectId}/snippets`;
         }
 
@@ -170,9 +169,7 @@ export function getSnippetsToolDefinitions(): EnhancedToolDefinition[] {
   return Array.from(snippetsToolRegistry.values());
 }
 
-export function getFilteredSnippetsTools(
-  readOnlyMode: boolean = false
-): EnhancedToolDefinition[] {
+export function getFilteredSnippetsTools(readOnlyMode: boolean = false): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getSnippetsReadOnlyToolNames();
     return Array.from(snippetsToolRegistry.values()).filter(tool =>

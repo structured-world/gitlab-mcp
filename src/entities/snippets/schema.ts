@@ -3,21 +3,24 @@ import { z } from "zod";
 // WRITE OPERATION SCHEMAS for GitLab Snippets
 
 // Visibility level schema with flexible coercion
-const flexibleVisibility = z.preprocess(val => {
-  if (typeof val === "string") {
-    const normalized = val.toLowerCase().trim();
-    if (["private", "priv"].includes(normalized)) {
-      return "private";
+const flexibleVisibility = z.preprocess(
+  val => {
+    if (typeof val === "string") {
+      const normalized = val.toLowerCase().trim();
+      if (["private", "priv"].includes(normalized)) {
+        return "private";
+      }
+      if (["internal", "intern"].includes(normalized)) {
+        return "internal";
+      }
+      if (["public", "pub"].includes(normalized)) {
+        return "public";
+      }
     }
-    if (["internal", "intern"].includes(normalized)) {
-      return "internal";
-    }
-    if (["public", "pub"].includes(normalized)) {
-      return "public";
-    }
-  }
-  return val;
-}, z.enum(["private", "internal", "public"]));
+    return val;
+  },
+  z.enum(["private", "internal", "public"])
+);
 
 // Snippet file schema for multi-file support
 const SnippetFileSchema = z.object({
@@ -124,7 +127,9 @@ export const UpdateSnippetSchema = z
       .string()
       .optional()
       .describe("Update the description of the snippet. Supports markdown formatting"),
-    visibility: flexibleVisibility.optional().describe("Update the visibility level of the snippet"),
+    visibility: flexibleVisibility
+      .optional()
+      .describe("Update the visibility level of the snippet"),
     files: z
       .array(SnippetFileSchema)
       .optional()
@@ -158,9 +163,7 @@ export const DeleteSnippetSchema = z.object({
     .number()
     .int()
     .positive()
-    .describe(
-      "The ID of the snippet to delete. This operation is permanent and cannot be undone"
-    ),
+    .describe("The ID of the snippet to delete. This operation is permanent and cannot be undone"),
   projectId: z
     .string()
     .optional()

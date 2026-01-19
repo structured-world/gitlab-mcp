@@ -138,7 +138,8 @@ describe("Milestones Schema - GitLab Integration", () => {
       const result = BrowseMilestonesSchema.safeParse(searchParams);
       expect(result.success).toBe(true);
 
-      if (result.success) {
+      // Type narrowing: check action to access action-specific properties
+      if (result.success && result.data.action === "list") {
         expect(result.data.namespace).toBe(projects[0].path_with_namespace);
         expect(result.data.state).toBe("closed");
         expect(result.data.search).toBe("v1.0");
@@ -200,7 +201,8 @@ describe("Milestones Schema - GitLab Integration", () => {
       const result = BrowseMilestonesSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
-      if (result.success) {
+      // Type narrowing: check action to access action-specific properties
+      if (result.success && result.data.action === "get") {
         expect(result.data.namespace).toBe(testProject.path_with_namespace);
         expect(result.data.milestone_id).toBe(testMilestone.id.toString());
       }

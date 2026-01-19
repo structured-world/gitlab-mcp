@@ -4,7 +4,7 @@ import { ManageMilestoneSchema } from "./schema";
 import { gitlab, toQuery } from "../../utils/gitlab-api";
 import { resolveNamespaceForAPI } from "../../utils/namespace";
 import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { assertDefined } from "../utils";
+// assertDefined no longer needed - discriminated union provides type safety
 import { isActionDenied } from "../../config";
 
 /**
@@ -15,7 +15,8 @@ import { isActionDenied } from "../../config";
  */
 export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
   // ============================================================================
-  // browse_milestones - CQRS Query Tool
+  // browse_milestones - CQRS Query Tool (discriminated union schema)
+  // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
     "browse_milestones",
@@ -43,14 +44,12 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           }
 
           case "get": {
-            // milestone_id is required for get action (validated by .refine())
-            assertDefined(input.milestone_id, "milestone_id");
+            // TypeScript knows: input has milestone_id (required)
             return gitlab.get(`${entityType}/${encodedPath}/milestones/${input.milestone_id}`);
           }
 
           case "issues": {
-            // milestone_id is required for issues action (validated by .refine())
-            assertDefined(input.milestone_id, "milestone_id");
+            // TypeScript knows: input has milestone_id (required), per_page, page (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
             const query = toQuery(rest, []);
 
@@ -60,8 +59,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           }
 
           case "merge_requests": {
-            // milestone_id is required for merge_requests action (validated by .refine())
-            assertDefined(input.milestone_id, "milestone_id");
+            // TypeScript knows: input has milestone_id (required), per_page, page (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
             const query = toQuery(rest, []);
 
@@ -72,8 +70,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           }
 
           case "burndown": {
-            // milestone_id is required for burndown action (validated by .refine())
-            assertDefined(input.milestone_id, "milestone_id");
+            // TypeScript knows: input has milestone_id (required), per_page, page (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
             const query = toQuery(rest, []);
 

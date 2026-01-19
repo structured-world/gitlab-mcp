@@ -1,3 +1,16 @@
+## [6.6.0](https://github.com/structured-world/gitlab-mcp/compare/v6.5.0...v6.6.0) (2026-01-19)
+
+### Features
+
+* **variables:** consolidate 5 CI/CD variable tools into 2 CQRS tools ([#43](https://github.com/structured-world/gitlab-mcp/issues/43)) ([4b6b82a](https://github.com/structured-world/gitlab-mcp/commit/4b6b82a79d2388ffde045db1f9dcc106cc16ac4d)), closes [#9](https://github.com/structured-world/gitlab-mcp/issues/9)
+
+## [6.5.0](https://github.com/structured-world/gitlab-mcp/compare/v6.4.1...v6.5.0) (2026-01-19)
+
+### Features
+
+* **labels:** consolidate 5 label tools into 2 CQRS tools ([fc18e60](https://github.com/structured-world/gitlab-mcp/commit/fc18e60cac2bdaedf88710bf2308b0cbbc8e2664)), closes [#8](https://github.com/structured-world/gitlab-mcp/issues/8)
+* **webhooks:** Add webhooks management entity with action-based CRUD ([#35](https://github.com/structured-world/gitlab-mcp/issues/35)) ([2b7761d](https://github.com/structured-world/gitlab-mcp/commit/2b7761d2845b4415d09100e8c437d79048a9e4ff))
+
 ## [6.4.1](https://github.com/structured-world/gitlab-mcp/compare/v6.4.0...v6.4.1) (2026-01-19)
 
 ### Bug Fixes

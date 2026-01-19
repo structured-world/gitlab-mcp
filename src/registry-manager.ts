@@ -20,6 +20,8 @@ import {
   workitemsToolRegistry,
   getWorkitemsReadOnlyToolNames,
 } from "./entities/workitems/registry";
+import { webhooksToolRegistry, getWebhooksReadOnlyToolNames } from "./entities/webhooks/registry";
+import { snippetsToolRegistry, getSnippetsReadOnlyToolNames } from "./entities/snippets/registry";
 import {
   integrationsToolRegistry,
   getIntegrationsReadOnlyToolNames,
@@ -35,6 +37,8 @@ import {
   USE_MRS,
   USE_FILES,
   USE_VARIABLES,
+  USE_SNIPPETS,
+  USE_WEBHOOKS,
   USE_INTEGRATIONS,
   getToolDescriptionOverrides,
 } from "./config";
@@ -113,6 +117,14 @@ class RegistryManager {
       this.registries.set("workitems", workitemsToolRegistry);
     }
 
+    if (USE_SNIPPETS) {
+      this.registries.set("snippets", snippetsToolRegistry);
+    }
+
+    if (USE_WEBHOOKS) {
+      this.registries.set("webhooks", webhooksToolRegistry);
+    }
+
     if (USE_INTEGRATIONS) {
       this.registries.set("integrations", integrationsToolRegistry);
     }
@@ -174,6 +186,14 @@ class RegistryManager {
 
     if (USE_VARIABLES) {
       readOnlyTools.push(...getVariablesReadOnlyToolNames());
+    }
+
+    if (USE_SNIPPETS) {
+      readOnlyTools.push(...getSnippetsReadOnlyToolNames());
+    }
+
+    if (USE_WEBHOOKS) {
+      readOnlyTools.push(...getWebhooksReadOnlyToolNames());
     }
 
     if (USE_INTEGRATIONS) {
@@ -318,6 +338,8 @@ class RegistryManager {
     const useVariables = process.env.USE_VARIABLES !== "false";
     const useWiki = process.env.USE_GITLAB_WIKI !== "false";
     const useWorkitems = process.env.USE_WORKITEMS !== "false";
+    const useSnippets = process.env.USE_SNIPPETS !== "false";
+    const useWebhooks = process.env.USE_WEBHOOKS !== "false";
     const useIntegrations = process.env.USE_INTEGRATIONS !== "false";
 
     // Build registries map based on dynamic feature flags
@@ -335,6 +357,8 @@ class RegistryManager {
     if (useVariables) registriesToUse.set("variables", variablesToolRegistry);
     if (useWiki) registriesToUse.set("wiki", wikiToolRegistry);
     if (useWorkitems) registriesToUse.set("workitems", workitemsToolRegistry);
+    if (useSnippets) registriesToUse.set("snippets", snippetsToolRegistry);
+    if (useWebhooks) registriesToUse.set("webhooks", webhooksToolRegistry);
     if (useIntegrations) registriesToUse.set("integrations", integrationsToolRegistry);
 
     // Dynamically load description overrides

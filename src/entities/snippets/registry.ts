@@ -44,25 +44,10 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
           path = `projects/${encodedProjectId}/snippets`;
         }
 
-        // Build query parameters
-        const query: Record<string, string | number | undefined> = {};
-        if (options.visibility) {
-          query.visibility = options.visibility;
-        }
-        if (options.created_after) {
-          query.created_after = options.created_after;
-        }
-        if (options.created_before) {
-          query.created_before = options.created_before;
-        }
-        if (options.page) {
-          query.page = options.page;
-        }
-        if (options.per_page) {
-          query.per_page = options.per_page;
-        }
-
-        return gitlab.get(path, { query });
+        // Use toQuery to build query parameters, excluding scope and projectId
+        return gitlab.get(path, {
+          query: toQuery(options, ["scope", "projectId"]),
+        });
       },
     },
   ],

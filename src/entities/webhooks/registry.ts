@@ -38,7 +38,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
     {
       name: "manage_webhook",
       description:
-        "Manage webhooks with full CRUD operations plus testing. Actions: 'create' (add new webhook with URL and event types), 'read' (get webhook details), 'update' (modify URL, events, or settings), 'delete' (remove webhook), 'test' (trigger test delivery for specific event type). Use for setting up CI/CD automation, configuring notifications, integrating external systems, debugging deliveries, or managing event subscriptions. Test action sends actual HTTP request to configured URL. Group webhooks require Premium tier.",
+        "Manage webhooks with full CRUD operations plus testing. Actions: 'create' (add new webhook with URL and event types), 'read' (get webhook details - SAFE FOR READ-ONLY MODE), 'update' (modify URL, events, or settings), 'delete' (remove webhook), 'test' (trigger test delivery for specific event type). Use for setting up CI/CD automation, configuring notifications, integrating external systems, debugging deliveries, or managing event subscriptions. Test action sends actual HTTP request to configured URL. Group webhooks require Premium tier. NOTE: In read-only mode, only 'read' action is allowed; write operations are blocked at handler level.",
       inputSchema: z.toJSONSchema(ManageWebhookSchema),
       handler: async (args: unknown) => {
         const options = ManageWebhookSchema.parse(args);

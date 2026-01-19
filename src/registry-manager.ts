@@ -422,10 +422,10 @@ class RegistryManager {
   }
 
   /**
-   * Returns ALL tool definitions without any filtering.
-   * Used for documentation generation (--export) where we need the complete tool catalog
-   * regardless of environment configuration.
-   * Applies schema transformation to flatten discriminated unions into readable JSON Schema.
+   * Returns ALL tool definitions without any filtering or transformation.
+   * Used for documentation generation (--export) where we need:
+   * - Complete tool catalog regardless of environment configuration
+   * - Original discriminated union schemas for rich action descriptions
    */
   public getAllToolDefinitionsUnfiltered(): EnhancedToolDefinition[] {
     const allTools: EnhancedToolDefinition[] = [];
@@ -447,14 +447,10 @@ class RegistryManager {
     ];
 
     for (const registry of allRegistries) {
-      for (const [toolName, tool] of registry) {
-        // Transform schema to flatten discriminated unions for documentation
-        const transformedSchema = transformToolSchema(toolName, tool.inputSchema);
-
-        allTools.push({
-          ...tool,
-          inputSchema: transformedSchema,
-        });
+      for (const [, tool] of registry) {
+        // Return original schema without transformation
+        // This preserves discriminated union structure for documentation
+        allTools.push(tool);
       }
     }
 

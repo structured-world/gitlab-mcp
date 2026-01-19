@@ -317,50 +317,67 @@ interface ParameterInfo {
   description: string;
 }
 
+// Action descriptions for documentation generation
+const ACTION_DESCRIPTIONS: Record<string, string> = {
+  list: "List items with filtering and pagination",
+  get: "Get a single item by ID",
+  create: "Create a new item",
+  update: "Update an existing item",
+  delete: "Delete an item",
+  search: "Search for items",
+  diffs: "Get file changes/diffs",
+  compare: "Compare two branches or commits",
+  merge: "Merge a merge request",
+  approve: "Approve a merge request",
+  unapprove: "Remove approval from a merge request",
+  rebase: "Rebase a merge request",
+  cancel: "Cancel a running operation",
+  retry: "Retry a failed operation",
+  play: "Run a manual job",
+  publish: "Publish draft notes",
+  drafts: "List draft notes",
+  draft: "Get a single draft note",
+  resolve: "Resolve a discussion thread",
+  unresolve: "Unresolve a discussion thread",
+  note: "Add a note/comment",
+  mark_done: "Mark as done",
+  mark_pending: "Mark as pending",
+  disable: "Disable the integration",
+  test: "Test a webhook",
+  read: "Read item details",
+};
+
 /**
  * Extract actions from a CQRS schema.
- * Looks for action enum in properties.action.enum
+ * Tries oneOf branches first (discriminated union), falls back to action.enum (flat schema)
  */
 function extractActions(schema: JsonSchemaProperty): ActionInfo[] {
   const actions: ActionInfo[] = [];
 
-  // Check for action enum in properties
+  // Try discriminated union (oneOf) first - has richer descriptions
+  if (schema.oneOf && Array.isArray(schema.oneOf)) {
+    for (const branch of schema.oneOf) {
+      const actionProp = branch.properties?.action;
+      // In discriminated union, action has "const" instead of "enum"
+      const actionName = actionProp?.const as string | undefined;
+      if (actionName) {
+        // Use description from schema, fallback to ACTION_DESCRIPTIONS
+        const description =
+          (actionProp?.description as string) ??
+          ACTION_DESCRIPTIONS[actionName] ??
+          `Perform ${actionName} operation`;
+        actions.push({ name: actionName, description });
+      }
+    }
+    return actions;
+  }
+
+  // Fallback: flat schema with action enum
   const actionProp = schema.properties?.action;
   if (actionProp?.enum && Array.isArray(actionProp.enum)) {
     for (const actionName of actionProp.enum) {
       if (typeof actionName === "string") {
-        // Try to find description for this action from descriptions in field descriptions
-        let description = "";
-
-        // Look through all properties for hints about what this action does
-        if (actionName === "list") description = "List items with filtering and pagination";
-        else if (actionName === "get") description = "Get a single item by ID";
-        else if (actionName === "create") description = "Create a new item";
-        else if (actionName === "update") description = "Update an existing item";
-        else if (actionName === "delete") description = "Delete an item";
-        else if (actionName === "search") description = "Search for items";
-        else if (actionName === "diffs") description = "Get file changes/diffs";
-        else if (actionName === "compare") description = "Compare two branches or commits";
-        else if (actionName === "merge") description = "Merge a merge request";
-        else if (actionName === "approve") description = "Approve a merge request";
-        else if (actionName === "unapprove") description = "Remove approval from a merge request";
-        else if (actionName === "rebase") description = "Rebase a merge request";
-        else if (actionName === "cancel") description = "Cancel a running operation";
-        else if (actionName === "retry") description = "Retry a failed operation";
-        else if (actionName === "play") description = "Run a manual job";
-        else if (actionName === "publish") description = "Publish draft notes";
-        else if (actionName === "drafts") description = "List draft notes";
-        else if (actionName === "draft") description = "Get a single draft note";
-        else if (actionName === "resolve") description = "Resolve a discussion thread";
-        else if (actionName === "unresolve") description = "Unresolve a discussion thread";
-        else if (actionName === "note") description = "Add a note/comment";
-        else if (actionName === "mark_done") description = "Mark as done";
-        else if (actionName === "mark_pending") description = "Mark as pending";
-        else if (actionName === "disable") description = "Disable the integration";
-        else if (actionName === "test") description = "Test a webhook";
-        else if (actionName === "read") description = "Read item details";
-        else description = `Perform ${actionName} operation`;
-
+        const description = ACTION_DESCRIPTIONS[actionName] ?? `Perform ${actionName} operation`;
         actions.push({ name: actionName, description });
       }
     }
@@ -370,39 +387,92 @@ function extractActions(schema: JsonSchemaProperty): ActionInfo[] {
 }
 
 /**
- * Extract parameters with their action applicability from schema
+ * Extract parameters from schema.
+ * Handles both discriminated union (oneOf) and flat schemas.
+ * For oneOf, merges parameters from all branches with action hints.
  */
 function extractParameters(schema: JsonSchemaProperty): ParameterInfo[] {
-  const params: ParameterInfo[] = [];
+  const paramMap = new Map<string, ParameterInfo & { actions: Set<string> }>();
 
-  if (!schema.properties) return params;
+  // Handle discriminated union (oneOf)
+  if (schema.oneOf && Array.isArray(schema.oneOf)) {
+    for (const branch of schema.oneOf) {
+      const actionName = branch.properties?.action?.const as string | undefined;
+      const requiredFields = branch.required ?? [];
+
+      if (branch.properties) {
+        for (const [name, prop] of Object.entries(branch.properties)) {
+          const type = resolveJsonSchemaType(prop, branch);
+          const required = requiredFields.includes(name);
+          const description = prop.description ?? "";
+
+          if (paramMap.has(name)) {
+            // Merge with existing - track which actions use this param
+            const existing = paramMap.get(name)!;
+            if (actionName) existing.actions.add(actionName);
+            // Use longer description if available
+            if (description.length > existing.description.length) {
+              existing.description = description;
+            }
+            // Mark as required if required in any branch
+            if (required) existing.required = true;
+          } else {
+            paramMap.set(name, {
+              name,
+              type,
+              required,
+              description,
+              actions: new Set(actionName ? [actionName] : []),
+            });
+          }
+        }
+      }
+    }
+
+    // Convert to array and format action hints
+    const params = Array.from(paramMap.values()).map(p => {
+      // Add action hints to description for non-shared params
+      let desc = p.description;
+      if (
+        p.actions.size > 0 &&
+        p.actions.size < (schema.oneOf?.length ?? 0) &&
+        p.name !== "action"
+      ) {
+        const actionList = Array.from(p.actions).sort().join(", ");
+        desc = desc ? `${desc} (${actionList})` : `(${actionList})`;
+      }
+      return { name: p.name, type: p.type, required: p.required, description: desc };
+    });
+
+    return sortParameters(params);
+  }
+
+  // Flat schema fallback
+  if (!schema.properties) return [];
 
   const requiredFields = schema.required ?? [];
+  const params: ParameterInfo[] = [];
 
   for (const [name, prop] of Object.entries(schema.properties)) {
-    const type = resolveJsonSchemaType(prop, schema);
-    const required = requiredFields.includes(name);
-    const description = prop.description ?? "";
-
     params.push({
       name,
-      type,
-      required,
-      description,
+      type: resolveJsonSchemaType(prop, schema),
+      required: requiredFields.includes(name),
+      description: prop.description ?? "",
     });
   }
 
-  // Sort: required first, then alphabetically
-  params.sort((a, b) => {
+  return sortParameters(params);
+}
+
+function sortParameters(params: ParameterInfo[]): ParameterInfo[] {
+  return params.sort((a, b) => {
     if (a.required && !b.required) return -1;
     if (!a.required && b.required) return 1;
-    // Action field always first
     if (a.name === "action") return -1;
     if (b.name === "action") return 1;
     return a.name.localeCompare(b.name);
   });
-
-  return params;
 }
 
 /**
@@ -417,11 +487,22 @@ function generateExample(toolName: string, schema: JsonSchemaProperty): Record<s
     example.action = actions[0].name;
   }
 
-  if (!schema.properties) return example;
+  // For oneOf, use first branch for example
+  let targetSchema = schema;
+  let requiredFields: string[] = [];
 
-  const requiredFields = schema.required ?? [];
+  if (schema.oneOf && Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
+    targetSchema = schema.oneOf[0];
+    requiredFields = targetSchema.required ?? [];
+  } else if (schema.properties) {
+    requiredFields = schema.required ?? [];
+  } else {
+    return example;
+  }
 
-  for (const [name, prop] of Object.entries(schema.properties)) {
+  if (!targetSchema.properties) return example;
+
+  for (const [name, prop] of Object.entries(targetSchema.properties)) {
     if (name === "action") continue; // Already handled
 
     const isRequired = requiredFields.includes(name);
@@ -620,7 +701,7 @@ export async function main() {
   if (options.entity) {
     const grouped = groupToolsByEntity(tools);
     const entityKey = Array.from(grouped.keys()).find(
-      k => k.toLowerCase().replace(" ", "") === options.entity!.toLowerCase().replace(" ", "")
+      k => k.toLowerCase().replace(/ /g, "") === options.entity!.toLowerCase().replace(/ /g, "")
     );
     filteredTools = entityKey ? (grouped.get(entityKey) ?? []) : [];
 

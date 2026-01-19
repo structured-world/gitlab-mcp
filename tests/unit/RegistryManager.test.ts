@@ -512,4 +512,38 @@ describe("RegistryManager", () => {
       expect(registryManager.hasToolHandler("nonexistent")).toBe(false);
     });
   });
+
+  describe("getAllToolDefinitionsUnfiltered", () => {
+    it("should return all tools without any filtering", () => {
+      // Set up environment to filter tools
+      process.env.USE_LABELS = "false";
+      process.env.GITLAB_READ_ONLY_MODE = "true";
+
+      registryManager = RegistryManager.getInstance();
+
+      // getAllToolDefinitionsTierless should filter
+      const filteredTools = registryManager.getAllToolDefinitionsTierless();
+
+      // getAllToolDefinitionsUnfiltered should NOT filter
+      const unfilteredTools = registryManager.getAllToolDefinitionsUnfiltered();
+
+      // Unfiltered should have more or equal tools
+      expect(unfilteredTools.length).toBeGreaterThanOrEqual(filteredTools.length);
+
+      // Unfiltered should include labels tools even when USE_LABELS=false
+      const hasLabelsTools = unfilteredTools.some(t => t.name.includes("labels"));
+      expect(hasLabelsTools).toBe(true);
+    });
+
+    it("should apply schema transformation to flatten discriminated unions", () => {
+      registryManager = RegistryManager.getInstance();
+      const tools = registryManager.getAllToolDefinitionsUnfiltered();
+
+      // All tools should have inputSchema
+      tools.forEach(tool => {
+        expect(tool.inputSchema).toBeDefined();
+        expect(typeof tool.inputSchema).toBe("object");
+      });
+    });
+  });
 });

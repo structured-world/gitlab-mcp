@@ -13,7 +13,7 @@
  * - Ignored in OAuth mode (server-side)
  */
 
-import * as fs from "fs";
+import * as fs from "fs/promises";
 import * as path from "path";
 import * as yaml from "yaml";
 import {
@@ -53,14 +53,14 @@ export async function loadProjectConfig(repoPath: string): Promise<ProjectConfig
   const configDir = path.join(repoPath, PROJECT_CONFIG_DIR);
 
   // Check if .gitlab-mcp/ directory exists
-  if (!fs.existsSync(configDir)) {
+  try {
+    const stat = await fs.stat(configDir);
+    if (!stat.isDirectory()) {
+      logger.warn({ path: configDir }, "Project config path exists but is not a directory");
+      return null;
+    }
+  } catch {
     logger.debug({ path: configDir }, "No project config directory found");
-    return null;
-  }
-
-  const stat = fs.statSync(configDir);
-  if (!stat.isDirectory()) {
-    logger.warn({ path: configDir }, "Project config path exists but is not a directory");
     return null;
   }
 
@@ -70,13 +70,14 @@ export async function loadProjectConfig(repoPath: string): Promise<ProjectConfig
 
   // Load preset.yaml (restrictions)
   const presetPath = path.join(configDir, PROJECT_PRESET_FILE);
-  if (fs.existsSync(presetPath)) {
-    try {
-      const content = fs.readFileSync(presetPath, "utf8");
-      const parsed = yaml.parse(content) as unknown;
-      config.preset = ProjectPresetSchema.parse(parsed);
-      logger.debug({ path: presetPath }, "Loaded project preset");
-    } catch (error) {
+  try {
+    const content = await fs.readFile(presetPath, "utf8");
+    const parsed = yaml.parse(content) as unknown;
+    config.preset = ProjectPresetSchema.parse(parsed);
+    logger.debug({ path: presetPath }, "Loaded project preset");
+  } catch (error) {
+    // File doesn't exist - that's OK
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       const message = error instanceof Error ? error.message : String(error);
       logger.error({ error: message, path: presetPath }, "Failed to parse project preset");
       throw new Error(`Invalid project preset at ${presetPath}: ${message}`);
@@ -85,13 +86,14 @@ export async function loadProjectConfig(repoPath: string): Promise<ProjectConfig
 
   // Load profile.yaml (tool selection)
   const profilePath = path.join(configDir, PROJECT_PROFILE_FILE);
-  if (fs.existsSync(profilePath)) {
-    try {
-      const content = fs.readFileSync(profilePath, "utf8");
-      const parsed = yaml.parse(content) as unknown;
-      config.profile = ProjectProfileSchema.parse(parsed);
-      logger.debug({ path: profilePath }, "Loaded project profile");
-    } catch (error) {
+  try {
+    const content = await fs.readFile(profilePath, "utf8");
+    const parsed = yaml.parse(content) as unknown;
+    config.profile = ProjectProfileSchema.parse(parsed);
+    logger.debug({ path: profilePath }, "Loaded project profile");
+  } catch (error) {
+    // File doesn't exist - that's OK
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       const message = error instanceof Error ? error.message : String(error);
       logger.error({ error: message, path: profilePath }, "Failed to parse project profile");
       throw new Error(`Invalid project profile at ${profilePath}: ${message}`);
@@ -135,15 +137,21 @@ export async function findProjectConfig(startPath: string): Promise<ProjectConfi
   while (currentPath !== root) {
     // Check if .gitlab-mcp/ exists at this level
     const configDir = path.join(currentPath, PROJECT_CONFIG_DIR);
-    if (fs.existsSync(configDir)) {
+    try {
+      await fs.access(configDir);
       return loadProjectConfig(currentPath);
+    } catch {
+      // Directory doesn't exist, continue searching
     }
 
     // Stop if we hit a .git directory without finding .gitlab-mcp
     const gitDir = path.join(currentPath, ".git");
-    if (fs.existsSync(gitDir)) {
+    try {
+      await fs.access(gitDir);
       logger.debug({ path: currentPath }, "Found .git without .gitlab-mcp, stopping search");
       return null;
+    } catch {
+      // .git doesn't exist, continue up the tree
     }
 
     // Move up one directory

@@ -147,17 +147,19 @@ describe("ScopeEnforcer", () => {
     it("should include scope info in error", () => {
       const enforcer = new ScopeEnforcer({ project: "myteam/backend" });
 
+      let thrownError: ScopeViolationError | undefined;
       try {
         enforcer.enforce("other/project");
-        fail("Expected ScopeViolationError");
       } catch (error) {
-        expect(error).toBeInstanceOf(ScopeViolationError);
-        const scopeError = error as ScopeViolationError;
-        expect(scopeError.attemptedTarget).toBe("other/project");
-        expect(scopeError.allowedScope.project).toBe("myteam/backend");
-        expect(scopeError.message).toContain("other/project");
-        expect(scopeError.message).toContain("myteam/backend");
+        thrownError = error as ScopeViolationError;
       }
+
+      expect(thrownError).toBeDefined();
+      expect(thrownError).toBeInstanceOf(ScopeViolationError);
+      expect(thrownError!.attemptedTarget).toBe("other/project");
+      expect(thrownError!.allowedScope.project).toBe("myteam/backend");
+      expect(thrownError!.message).toContain("other/project");
+      expect(thrownError!.message).toContain("myteam/backend");
     });
   });
 

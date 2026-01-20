@@ -3,7 +3,7 @@
  * Tests CLI argument parsing and project config display
  */
 
-import { parseCliArgs, displayProjectConfig, CliArgs } from "../../src/cli-utils";
+import { parseCliArgs, displayProjectConfig } from "../../src/cli-utils";
 import { ProjectConfig } from "../../src/profiles";
 
 // Mock logger

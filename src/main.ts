@@ -60,8 +60,9 @@ async function main(): Promise<void> {
           "Loaded project configuration"
         );
 
-        // TODO: Apply project config restrictions to tool registry
-        // This will be implemented when integrating with the tool execution layer
+        // Note: Project config is loaded and logged but not yet enforced.
+        // Scope restrictions require integration with tool execution layer.
+        // See: https://github.com/structured-world/gitlab-mcp/issues/61
       }
     } catch (error) {
       // Project config errors are warnings, not fatal

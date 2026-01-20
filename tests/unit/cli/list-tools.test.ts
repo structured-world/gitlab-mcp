@@ -5,6 +5,8 @@ const mockManager = {
 };
 
 const mockGetToolRequirement = jest.fn();
+const mockGetHighestTier = jest.fn();
+const mockGetTierRestrictedActions = jest.fn();
 
 const mockConsoleLog = jest.fn();
 const mockConsoleError = jest.fn();
@@ -18,7 +20,10 @@ jest.mock("../../../src/registry-manager", () => ({
 
 jest.mock("../../../src/services/ToolAvailability", () => ({
   ToolAvailability: {
-    getToolRequirement: (name: string) => mockGetToolRequirement(name),
+    getToolRequirement: (name: string, action?: string) => mockGetToolRequirement(name, action),
+    getHighestTier: (name: string) => mockGetHighestTier(name),
+    getTierRestrictedActions: (name: string, tier: string) =>
+      mockGetTierRestrictedActions(name, tier),
   },
 }));
 
@@ -54,8 +59,10 @@ describe("list-tools script", () => {
     jest.clearAllMocks();
     originalArgv = process.argv;
 
-    // Reset tier requirement mock to return null by default
+    // Reset tier requirement mocks to return defaults
     mockGetToolRequirement.mockReturnValue(null);
+    mockGetHighestTier.mockReturnValue("free");
+    mockGetTierRestrictedActions.mockReturnValue([]);
 
     // Reset profile loader mocks
     mockProfileLoader.listProfiles.mockResolvedValue([]);
@@ -315,6 +322,13 @@ describe("list-tools script", () => {
         return { requiredTier: "free", minVersion: 8.0 };
       }
       return null;
+    });
+
+    // Mock getHighestTier for tool-level tier display
+    mockGetHighestTier.mockImplementation((name: string) => {
+      if (name === "premium_tool") return "premium";
+      if (name === "ultimate_tool") return "ultimate";
+      return "free";
     });
 
     const { main } = await import("../../../src/cli/list-tools");
@@ -655,13 +669,13 @@ describe("list-tools script", () => {
       const { main } = await import("../../../src/cli/list-tools");
       await main();
 
-      // Check actions table
+      // Check actions table (now includes Tier column)
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("#### Actions"));
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("| `list` | List items |")
+        expect.stringContaining("| `list` | Free | List items |")
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("| `get` | Get single item |")
+        expect.stringContaining("| `get` | Free | Get single item |")
       );
     });
 

@@ -8,6 +8,25 @@ interface ToolRequirement {
   notes?: string;
 }
 
+/**
+ * Action-level tier requirement
+ */
+interface ActionRequirement {
+  tier: "free" | "premium" | "ultimate";
+  minVersion: number;
+  notes?: string;
+}
+
+/**
+ * Tool with action-level requirements (for consolidated tools)
+ */
+interface ToolActionRequirements {
+  /** Default requirement when action is not specified */
+  default: ActionRequirement;
+  /** Action-specific requirements (override default) */
+  actions?: Record<string, ActionRequirement>;
+}
+
 export class ToolAvailability {
   // Comprehensive tool requirements based on GitLab documentation
   private static toolRequirements: Record<string, ToolRequirement> = {
@@ -413,7 +432,235 @@ export class ToolAvailability {
     unprotect_repository_tag: { minVersion: 11.3, requiredTier: "free" },
   };
 
-  public static isToolAvailable(toolName: string): boolean {
+  // ============================================================================
+  // Consolidated Tools with Action-Level Requirements
+  // ============================================================================
+
+  private static actionRequirements: Record<string, ToolActionRequirements> = {
+    // Core tools
+    browse_projects: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    browse_namespaces: {
+      default: { tier: "free", minVersion: 9.0 },
+    },
+    browse_commits: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    browse_events: {
+      default: { tier: "free", minVersion: 9.0 },
+    },
+    create_branch: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    create_group: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    manage_repository: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    get_users: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+
+    // Merge Requests
+    browse_merge_requests: {
+      default: { tier: "free", minVersion: 8.0 },
+      actions: {
+        approvals: { tier: "premium", minVersion: 10.6, notes: "MR approvals" },
+      },
+    },
+    browse_mr_discussions: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    manage_merge_request: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    manage_mr_discussion: {
+      default: { tier: "free", minVersion: 8.0 },
+      actions: {
+        comment: { tier: "free", minVersion: 8.0 },
+        thread: { tier: "free", minVersion: 11.0 },
+        reply: { tier: "free", minVersion: 11.0 },
+        update: { tier: "free", minVersion: 8.0 },
+        apply_suggestion: { tier: "free", minVersion: 13.0 },
+        apply_suggestions: { tier: "free", minVersion: 13.0 },
+      },
+    },
+    manage_draft_notes: {
+      default: { tier: "free", minVersion: 13.2 },
+    },
+
+    // Work Items
+    browse_work_items: {
+      default: { tier: "free", minVersion: 15.0 },
+    },
+    manage_work_item: {
+      default: { tier: "free", minVersion: 15.0 },
+    },
+
+    // Labels
+    browse_labels: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    manage_label: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+
+    // Wiki
+    browse_wiki: {
+      default: { tier: "free", minVersion: 9.0 },
+    },
+    manage_wiki: {
+      default: { tier: "free", minVersion: 9.0 },
+    },
+
+    // Pipelines
+    browse_pipelines: {
+      default: { tier: "free", minVersion: 9.0 },
+    },
+    manage_pipeline: {
+      default: { tier: "free", minVersion: 9.0 },
+    },
+    manage_pipeline_job: {
+      default: { tier: "free", minVersion: 9.0 },
+    },
+
+    // Variables
+    browse_variables: {
+      default: { tier: "free", minVersion: 9.0 },
+    },
+    manage_variable: {
+      default: { tier: "free", minVersion: 9.0 },
+    },
+
+    // Milestones
+    browse_milestones: {
+      default: { tier: "free", minVersion: 8.0 },
+      actions: {
+        burndown: { tier: "premium", minVersion: 12.0, notes: "Burndown charts" },
+      },
+    },
+    manage_milestone: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+
+    // Files
+    browse_files: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    manage_files: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+
+    // Snippets
+    browse_snippets: {
+      default: { tier: "free", minVersion: 8.15 },
+    },
+    manage_snippet: {
+      default: { tier: "free", minVersion: 8.15 },
+    },
+
+    // Webhooks
+    list_webhooks: {
+      default: { tier: "free", minVersion: 8.0, notes: "Project webhooks" },
+    },
+    manage_webhook: {
+      default: { tier: "free", minVersion: 8.0, notes: "Project webhooks" },
+      actions: {
+        create_group: { tier: "premium", minVersion: 10.4, notes: "Group webhooks" },
+        update_group: { tier: "premium", minVersion: 10.4, notes: "Group webhooks" },
+        delete_group: { tier: "premium", minVersion: 10.4, notes: "Group webhooks" },
+      },
+    },
+
+    // Integrations
+    list_integrations: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    manage_integration: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+
+    // Todos
+    list_todos: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    manage_todos: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+
+    // Additional tools
+    list_project_members: {
+      default: { tier: "free", minVersion: 8.0 },
+    },
+    list_group_iterations: {
+      default: { tier: "premium", minVersion: 13.1, notes: "Iterations/Sprints" },
+    },
+    download_attachment: {
+      default: { tier: "free", minVersion: 10.0 },
+    },
+  };
+
+  /**
+   * Get requirement for a tool, optionally with action
+   */
+  public static getActionRequirement(
+    toolName: string,
+    action?: string
+  ): ActionRequirement | undefined {
+    const toolReq = this.actionRequirements[toolName];
+    if (!toolReq) return undefined;
+
+    // If action specified, check action-specific requirement first
+    if (action && toolReq.actions?.[action]) {
+      return toolReq.actions[action];
+    }
+
+    return toolReq.default;
+  }
+
+  /**
+   * Get the highest tier required by any action of a tool
+   */
+  public static getHighestTier(toolName: string): "free" | "premium" | "ultimate" {
+    const toolReq = this.actionRequirements[toolName];
+    if (!toolReq) {
+      // Fallback to legacy requirements
+      const legacy = this.toolRequirements[toolName];
+      return legacy?.requiredTier ?? "free";
+    }
+
+    const tierOrder = { free: 0, premium: 1, ultimate: 2 };
+    let highest = toolReq.default.tier;
+
+    if (toolReq.actions) {
+      for (const actionReq of Object.values(toolReq.actions)) {
+        if (tierOrder[actionReq.tier] > tierOrder[highest]) {
+          highest = actionReq.tier;
+        }
+      }
+    }
+
+    return highest;
+  }
+
+  /**
+   * Get all actions that require a specific tier or higher
+   */
+  public static getTierRestrictedActions(toolName: string, tier: "premium" | "ultimate"): string[] {
+    const toolReq = this.actionRequirements[toolName];
+    if (!toolReq?.actions) return [];
+
+    const tierOrder = { free: 0, premium: 1, ultimate: 2 };
+    const minLevel = tierOrder[tier];
+
+    return Object.entries(toolReq.actions)
+      .filter(([, req]) => tierOrder[req.tier] >= minLevel)
+      .map(([action]) => action);
+  }
+
+  public static isToolAvailable(toolName: string, action?: string): boolean {
     const connectionManager = ConnectionManager.getInstance();
 
     // Add null check as extra safety
@@ -424,6 +671,18 @@ export class ToolAvailability {
 
     try {
       const instanceInfo = connectionManager.getInstanceInfo();
+
+      // Check action requirements first (consolidated tools)
+      const actionReq = this.getActionRequirement(toolName, action);
+      if (actionReq) {
+        const version = this.parseVersion(instanceInfo.version);
+        if (version < actionReq.minVersion) {
+          return false;
+        }
+        return this.isTierSufficient(instanceInfo.tier, actionReq.tier);
+      }
+
+      // Fallback to legacy requirements
       const requirement = this.toolRequirements[toolName];
 
       if (!requirement) {
@@ -462,7 +721,18 @@ export class ToolAvailability {
     return Object.keys(this.toolRequirements).filter(tool => this.isToolAvailable(tool));
   }
 
-  public static getToolRequirement(toolName: string): ToolRequirement | undefined {
+  public static getToolRequirement(toolName: string, action?: string): ToolRequirement | undefined {
+    // Check action requirements first (consolidated tools)
+    const actionReq = this.getActionRequirement(toolName, action);
+    if (actionReq) {
+      return {
+        minVersion: actionReq.minVersion,
+        requiredTier: actionReq.tier,
+        notes: actionReq.notes,
+      };
+    }
+
+    // Fallback to legacy requirements
     return this.toolRequirements[toolName];
   }
 

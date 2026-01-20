@@ -294,16 +294,38 @@ function printEnvironmentInfo(): void {
   console.log();
 }
 
-function getToolTierInfo(toolName: string): string {
-  const requirement = ToolAvailability.getToolRequirement(toolName);
-  if (!requirement) return "";
+function getToolTierInfo(toolName: string, action?: string): string {
+  // For action-specific queries, get exact tier
+  if (action) {
+    const requirement = ToolAvailability.getToolRequirement(toolName, action);
+    if (!requirement) return "";
 
+    const tierBadge =
+      {
+        free: "Free",
+        premium: "Premium",
+        ultimate: "Ultimate",
+      }[requirement.requiredTier] ?? requirement.requiredTier;
+
+    return `[tier: ${tierBadge}]`;
+  }
+
+  // For tool-level queries, show highest tier required by any action
+  const highestTier = ToolAvailability.getHighestTier(toolName);
   const tierBadge =
     {
       free: "Free",
       premium: "Premium",
       ultimate: "Ultimate",
-    }[requirement.requiredTier] ?? requirement.requiredTier;
+    }[highestTier] ?? highestTier;
+
+  // Mark if tool has mixed tiers (some actions require higher tier)
+  const premiumActions = ToolAvailability.getTierRestrictedActions(toolName, "premium");
+  const hasMixedTiers = premiumActions.length > 0 && highestTier !== "free";
+
+  if (hasMixedTiers) {
+    return `[tier: ${tierBadge}*]`;
+  }
 
   return `[tier: ${tierBadge}]`;
 }
@@ -793,10 +815,12 @@ function generateExportMarkdown(
       if (actions.length > 0) {
         lines.push("#### Actions");
         lines.push("");
-        lines.push("| Action | Description |");
-        lines.push("|--------|-------------|");
+        lines.push("| Action | Tier | Description |");
+        lines.push("|--------|------|-------------|");
         for (const action of actions) {
-          lines.push(`| \`${action.name}\` | ${action.description} |`);
+          const actionTierInfo = getToolTierInfo(tool.name, action.name);
+          const tierDisplay = actionTierInfo.replace("[tier: ", "").replace("]", "") || "Free";
+          lines.push(`| \`${action.name}\` | ${tierDisplay} | ${action.description} |`);
         }
         lines.push("");
       }

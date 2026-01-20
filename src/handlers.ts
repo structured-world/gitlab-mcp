@@ -2,6 +2,11 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { ConnectionManager } from "./services/ConnectionManager";
 import { logger } from "./logger";
+import {
+  handleGitLabError,
+  GitLabStructuredError,
+  isStructuredToolError,
+} from "./utils/error-handler";
 
 interface JsonSchemaProperty {
   type?: string;
@@ -18,6 +23,47 @@ type JsonSchema = JsonSchemaProperty & {
   $schema?: string;
   properties?: Record<string, JsonSchemaProperty>;
 };
+
+/**
+ * Extract HTTP status code and message from GitLab API error string
+ * Matches patterns like "GitLab API error: 403 Forbidden - message"
+ */
+function parseGitLabApiError(errorMessage: string): { status: number; message: string } | null {
+  const match = errorMessage.match(/GitLab API error: (\d+)\s+([^-]+)(?:\s*-\s*(.*))?$/);
+  if (!match) return null;
+
+  const status = parseInt(match[1], 10);
+  const statusText = match[2].trim();
+  const details = match[3]?.trim() ?? "";
+
+  return {
+    status,
+    message: details ? `${status} ${statusText} - ${details}` : `${status} ${statusText}`,
+  };
+}
+
+/**
+ * Convert an error to a structured GitLab error response
+ * Extracts tool name and action from context, parses API errors
+ */
+function toStructuredError(error: unknown, toolName: string): GitLabStructuredError | null {
+  // If already a structured error, return it
+  if (isStructuredToolError(error)) {
+    return error.structuredError;
+  }
+
+  if (!(error instanceof Error)) return null;
+
+  // Try to parse GitLab API error from message
+  const parsed = parseGitLabApiError(error.message);
+  if (!parsed) return null;
+
+  // Extract action from tool args if possible (stored in error cause or similar)
+  // For now, use "unknown" as action - handlers should pass action explicitly
+  const action = "unknown";
+
+  return handleGitLabError({ status: parsed.status, message: parsed.message }, toolName, action);
+}
 
 export async function setupHandlers(server: Server): Promise<void> {
   // Initialize connection and detect GitLab instance on startup
@@ -221,6 +267,25 @@ export async function setupHandlers(server: Server): Promise<void> {
       logger.error(
         `Error in tool handler: ${error instanceof Error ? error.message : String(error)}`
       );
+
+      // Try to convert to structured error for better LLM feedback
+      const toolName = request.params.name;
+      const structuredError = toStructuredError(error, toolName);
+
+      if (structuredError) {
+        logger.debug({ structuredError }, "Returning structured error response");
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(structuredError, null, 2),
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      // Fallback to original error format
       const errorMessage = error instanceof Error ? error.message : String(error);
       return {
         content: [

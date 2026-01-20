@@ -1333,6 +1333,40 @@ describe("list-tools script", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("| 1 |"));
     });
 
+    it("should warn when preset has invalid denied_tools_regex", async () => {
+      const mockConsoleWarn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        { name: "browse_projects", description: "Browse", inputSchema: { type: "object" } },
+      ]);
+
+      mockProfileLoader.listProfiles.mockResolvedValue([
+        {
+          name: "invalid-regex",
+          readOnly: false,
+          isBuiltIn: true,
+          isPreset: true,
+          description: "Invalid regex",
+        },
+      ]);
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: "Invalid regex",
+        read_only: false,
+        denied_tools_regex: "[invalid(regex",
+      });
+
+      process.argv = ["node", "list-tools.ts", "--presets"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleWarn).toHaveBeenCalledWith(
+        expect.stringContaining('Warning: invalid denied_tools_regex "[invalid(regex"')
+      );
+
+      mockConsoleWarn.mockRestore();
+    });
+
     it("should show user profiles count when defined", async () => {
       mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
         { name: "browse_projects", description: "Browse", inputSchema: { type: "object" } },
@@ -1575,6 +1609,27 @@ describe("list-tools script", () => {
 
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("INVALID"));
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("Invalid regex"));
+    });
+
+    it("should warn when showing preset details with invalid denied_tools_regex", async () => {
+      const mockConsoleWarn = jest.spyOn(console, "warn").mockImplementation(() => {});
+
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: "Test preset with invalid regex",
+        read_only: false,
+        denied_tools_regex: "(unclosed[group",
+      });
+
+      process.argv = ["node", "list-tools.ts", "--preset", "test"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleWarn).toHaveBeenCalledWith(
+        expect.stringContaining('Warning: invalid denied_tools_regex "(unclosed[group"')
+      );
+
+      mockConsoleWarn.mockRestore();
     });
 
     it("should error when --preset flag has no value", async () => {

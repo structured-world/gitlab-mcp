@@ -991,6 +991,12 @@ const FEATURE_TO_TOOLS: Record<string, string[]> = {
 };
 
 /**
+ * List of all feature names, derived from FEATURE_TO_TOOLS keys.
+ * Used for feature display in preset details and comparisons.
+ */
+const FEATURE_NAMES = Object.keys(FEATURE_TO_TOOLS) as readonly string[];
+
+/**
  * Count tools enabled for a preset by simulating its application
  */
 function countToolsForPreset(preset: Preset, allToolNames: string[]): number {
@@ -1006,8 +1012,10 @@ function countToolsForPreset(preset: Preset, allToolNames: string[]): number {
     try {
       const regex = new RegExp(preset.denied_tools_regex);
       enabledTools = enabledTools.filter(name => !regex.test(name));
-    } catch {
-      // Invalid regex - ignore
+    } catch (error) {
+      console.warn(
+        `Warning: invalid denied_tools_regex "${preset.denied_tools_regex}": ${error instanceof Error ? error.message : "unknown error"}`
+      );
     }
   }
 
@@ -1055,8 +1063,10 @@ function getToolsForPreset(
       const denied = enabledTools.filter(name => regex.test(name));
       disabledTools.push(...denied);
       enabledTools = enabledTools.filter(name => !regex.test(name));
-    } catch {
-      // Invalid regex - ignore
+    } catch (error) {
+      console.warn(
+        `Warning: invalid denied_tools_regex "${preset.denied_tools_regex}": ${error instanceof Error ? error.message : "unknown error"}`
+      );
     }
   }
 
@@ -1251,22 +1261,14 @@ async function printPresetDetails(
     console.log("## Features\n");
     console.log("| Feature | Status |");
     console.log("|---------|--------|");
-    const featureNames = [
-      "wiki",
-      "milestones",
-      "pipelines",
-      "labels",
-      "mrs",
-      "files",
-      "variables",
-      "workitems",
-      "webhooks",
-      "snippets",
-      "integrations",
-    ] as const;
-    for (const f of featureNames) {
+    for (const f of FEATURE_NAMES) {
+      const featureKey = f as keyof typeof preset.features;
       const status =
-        preset.features[f] === true ? "Enabled" : preset.features[f] === false ? "Disabled" : "-";
+        preset.features[featureKey] === true
+          ? "Enabled"
+          : preset.features[featureKey] === false
+            ? "Disabled"
+            : "-";
       console.log(`| ${f} | ${status} |`);
     }
     console.log();
@@ -1548,22 +1550,12 @@ async function comparePresets(
     console.log("## Feature Comparison\n");
     console.log("| Feature | " + presetA + " | " + presetB + " |");
     console.log("|---------|---|---|");
-    const featureNames = [
-      "wiki",
-      "milestones",
-      "pipelines",
-      "labels",
-      "mrs",
-      "files",
-      "variables",
-      "workitems",
-      "webhooks",
-      "snippets",
-      "integrations",
-    ] as const;
-    for (const f of featureNames) {
-      const statusA = a.features?.[f] === true ? "Yes" : a.features?.[f] === false ? "No" : "-";
-      const statusB = b.features?.[f] === true ? "Yes" : b.features?.[f] === false ? "No" : "-";
+    for (const f of FEATURE_NAMES) {
+      const featureKey = f as keyof typeof a.features;
+      const statusA =
+        a.features?.[featureKey] === true ? "Yes" : a.features?.[featureKey] === false ? "No" : "-";
+      const statusB =
+        b.features?.[featureKey] === true ? "Yes" : b.features?.[featureKey] === false ? "No" : "-";
       if (statusA !== statusB) {
         console.log(`| **${f}** | ${statusA} | ${statusB} |`);
       } else {
@@ -1608,55 +1600,63 @@ export async function main() {
     return;
   }
 
-  // Handle profile/preset inspection flags
-  const loader = new ProfileLoader();
-  const allToolNames = registryManager.getAllToolDefinitionsUnfiltered().map(t => t.name);
+  // Handle profile/preset inspection flags (only instantiate when needed)
+  const needsProfileLoader =
+    Boolean(options.showPresets) ||
+    Boolean(options.showProfiles) ||
+    Boolean(options.preset) ||
+    Boolean(options.profile);
 
-  // --presets: List all presets
-  if (options.showPresets) {
-    await printPresetsList(loader, allToolNames, options.format === "json" ? "json" : "markdown");
-    return;
-  }
+  if (needsProfileLoader) {
+    const loader = new ProfileLoader();
+    const allToolNames = registryManager.getAllToolDefinitionsUnfiltered().map(t => t.name);
 
-  // --profiles: List user profiles
-  if (options.showProfiles) {
-    await printProfilesList(loader, options.format === "json" ? "json" : "markdown");
-    return;
-  }
+    // --presets: List all presets
+    if (options.showPresets) {
+      await printPresetsList(loader, allToolNames, options.format === "json" ? "json" : "markdown");
+      return;
+    }
 
-  // --preset <name> --compare <other>: Compare two presets
-  if (options.preset && options.compare) {
-    await comparePresets(
-      loader,
-      options.preset,
-      options.compare,
-      allToolNames,
-      options.format === "json" ? "json" : "markdown"
-    );
-    return;
-  }
+    // --profiles: List user profiles
+    if (options.showProfiles) {
+      await printProfilesList(loader, options.format === "json" ? "json" : "markdown");
+      return;
+    }
 
-  // --preset <name>: Inspect a preset
-  if (options.preset) {
-    await printPresetDetails(
-      loader,
-      options.preset,
-      allToolNames,
-      options.format === "json" ? "json" : "markdown",
-      options.validate ?? false
-    );
-    return;
-  }
+    // --preset <name> --compare <other>: Compare two presets
+    if (options.preset && options.compare) {
+      await comparePresets(
+        loader,
+        options.preset,
+        options.compare,
+        allToolNames,
+        options.format === "json" ? "json" : "markdown"
+      );
+      return;
+    }
 
-  // --profile <name>: Inspect a profile
-  if (options.profile) {
-    await printProfileDetails(
-      loader,
-      options.profile,
-      options.format === "json" ? "json" : "markdown",
-      options.validate ?? false
-    );
-    return;
+    // --preset <name>: Inspect a preset
+    if (options.preset) {
+      await printPresetDetails(
+        loader,
+        options.preset,
+        allToolNames,
+        options.format === "json" ? "json" : "markdown",
+        options.validate ?? false
+      );
+      return;
+    }
+
+    // --profile <name>: Inspect a profile
+    if (options.profile) {
+      await printProfileDetails(
+        loader,
+        options.profile,
+        options.format === "json" ? "json" : "markdown",
+        options.validate ?? false
+      );
+      return;
+    }
   }
 
   // For export mode: get ALL tools without filtering (for documentation)

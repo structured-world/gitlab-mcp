@@ -411,7 +411,7 @@ describe("handlers", () => {
         },
       };
 
-      const result = await callToolHandler(mockRequest);
+      await callToolHandler(mockRequest);
 
       expect(mockRegistryManager.executeTool).toHaveBeenCalledWith("test_tool", {});
     });

@@ -6,6 +6,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { setupHandlers, parseGitLabApiError } from "../../src/handlers";
+import { StructuredToolError } from "../../src/utils/error-handler";
 
 // Mock ConnectionManager
 const mockConnectionManager = {
@@ -620,6 +621,166 @@ describe("handlers", () => {
       expect(result).toEqual({
         status: 503,
         message: "503 Service Unavailable",
+      });
+    });
+  });
+
+  describe("structured error handling - additional paths", () => {
+    beforeEach(async () => {
+      await setupHandlers(mockServer);
+      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1];
+    });
+
+    it("should extract action from error cause via wrapper", async () => {
+      // Test extractActionFromError when wrapped error's cause has action property (line 88)
+      // The error gets wrapped on line 320: throw new Error(..., { cause: error })
+      // So the wrapper's cause (original error) needs the action property
+      const errorWithAction = new Error("GitLab API error: 403 Forbidden");
+      (errorWithAction as any).action = "custom_action";
+      mockRegistryManager.executeTool.mockRejectedValue(errorWithAction);
+
+      const mockRequest = {
+        params: {
+          name: "test_tool",
+          arguments: { action: "ignored_action" },
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      // Action is extracted from the cause chain (line 88)
+      expect(parsed.action).toBe("custom_action");
+    });
+
+    it("should pass through StructuredToolError via cause chain", async () => {
+      // Test toStructuredError when error.cause is StructuredToolError (lines 109-111)
+      // The error gets wrapped, so we check the cause for StructuredToolError
+      const structuredError = new StructuredToolError({
+        error_code: "API_ERROR",
+        tool: "original_tool",
+        action: "original_action",
+        message: "Pre-structured error",
+        http_status: 418,
+      });
+      mockRegistryManager.executeTool.mockRejectedValue(structuredError);
+
+      const mockRequest = {
+        params: {
+          name: "test_tool",
+          arguments: {},
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      // Should preserve the original structured error
+      expect(parsed.error_code).toBe("API_ERROR");
+      expect(parsed.tool).toBe("original_tool");
+      expect(parsed.action).toBe("original_action");
+      expect(parsed.http_status).toBe(418);
+    });
+  });
+
+  describe("list tools handler - resolveRefs edge cases", () => {
+    beforeEach(async () => {
+      await setupHandlers(mockServer);
+      listToolsHandler = mockServer.setRequestHandler.mock.calls[0][1];
+    });
+
+    it("should resolve $ref references in input schemas", () => {
+      // Test resolveRefs with $ref (lines 164-173)
+      const toolWithRef = {
+        name: "test_tool",
+        description: "Test tool",
+        inputSchema: {
+          type: "object",
+          properties: {
+            sharedProp: { type: "string", description: "Shared property" },
+            refProp: { $ref: "#/properties/sharedProp" },
+          },
+        },
+      };
+
+      mockRegistryManager.getAllToolDefinitions.mockReturnValue([toolWithRef]);
+
+      return listToolsHandler({ method: "tools/list" }, {}).then((result: any) => {
+        // The $ref should be resolved
+        expect(result.tools[0].inputSchema.properties.refProp).not.toHaveProperty("$ref");
+        expect(result.tools[0].inputSchema.properties.refProp.type).toBe("string");
+      });
+    });
+
+    it("should handle unresolvable $ref by removing it", () => {
+      // Test resolveRefs with unresolvable $ref (lines 175-178)
+      const toolWithBadRef = {
+        name: "test_tool",
+        description: "Test tool",
+        inputSchema: {
+          type: "object",
+          properties: {
+            badRef: { $ref: "#/properties/nonExistent", description: "Has bad ref" },
+          },
+        },
+      };
+
+      mockRegistryManager.getAllToolDefinitions.mockReturnValue([toolWithBadRef]);
+
+      return listToolsHandler({ method: "tools/list" }, {}).then((result: any) => {
+        // The $ref should be removed, but description preserved
+        expect(result.tools[0].inputSchema.properties.badRef).not.toHaveProperty("$ref");
+        expect(result.tools[0].inputSchema.properties.badRef.description).toBe("Has bad ref");
+      });
+    });
+
+    it("should handle array schemas in resolveRefs", () => {
+      // Test resolveRefs with array (line 159)
+      const toolWithArray = {
+        name: "test_tool",
+        description: "Test tool",
+        inputSchema: {
+          type: "object",
+          properties: {
+            items: {
+              oneOf: [{ type: "string" }, { type: "number" }],
+            },
+          },
+        },
+      };
+
+      mockRegistryManager.getAllToolDefinitions.mockReturnValue([toolWithArray]);
+
+      return listToolsHandler({ method: "tools/list" }, {}).then((result: any) => {
+        // The array should be preserved
+        expect(result.tools[0].inputSchema.properties.items.oneOf).toHaveLength(2);
+      });
+    });
+
+    it("should handle nested objects in resolveRefs", () => {
+      // Test resolveRefs with nested object (line 194)
+      const toolWithNested = {
+        name: "test_tool",
+        description: "Test tool",
+        inputSchema: {
+          type: "object",
+          properties: {
+            nested: {
+              type: "object",
+              additionalProperties: { type: "string" },
+            },
+          },
+        },
+      };
+
+      mockRegistryManager.getAllToolDefinitions.mockReturnValue([toolWithNested]);
+
+      return listToolsHandler({ method: "tools/list" }, {}).then((result: any) => {
+        expect(result.tools[0].inputSchema.properties.nested.additionalProperties.type).toBe(
+          "string"
+        );
       });
     });
   });

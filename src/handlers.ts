@@ -105,6 +105,12 @@ function toStructuredError(
     return error.structuredError;
   }
 
+  // Check if the error cause is a structured error (for wrapped errors)
+  const cause = (error as Error & { cause?: unknown }).cause;
+  if (isStructuredToolError(cause)) {
+    return cause.structuredError;
+  }
+
   if (!(error instanceof Error)) return null;
 
   // Try to parse GitLab API error from message
@@ -317,7 +323,8 @@ export async function setupHandlers(server: Server): Promise<void> {
         };
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
-        throw new Error(`Failed to execute tool '${toolName}': ${errorMessage}`);
+        // Preserve original error as cause to allow action extraction and structured error detection
+        throw new Error(`Failed to execute tool '${toolName}': ${errorMessage}`, { cause: error });
       }
     } catch (error) {
       logger.error(

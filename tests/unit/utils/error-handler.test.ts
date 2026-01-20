@@ -186,6 +186,21 @@ describe("Error Handler", () => {
         }
       });
 
+      it("should extract 4+ digit ID without keyword context (fallback)", () => {
+        // Test the fallback regex that matches 4+ digit numbers when no keyword context exists
+        // This triggers line 338 in error-handler.ts
+        const error: GitLabApiErrorResponse = {
+          status: 404,
+          message: "404 The requested item 12345678 was not found",
+        };
+
+        const result = handleGitLabError(error, "get_resource", "get");
+
+        if (result.error_code === "NOT_FOUND") {
+          expect(result.resource_id).toBe("12345678");
+        }
+      });
+
       it("should detect branch resource type", () => {
         const error: GitLabApiErrorResponse = {
           status: 404,

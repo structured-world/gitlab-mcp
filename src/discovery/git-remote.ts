@@ -111,7 +111,6 @@ export function parseGitConfig(content: string): Map<string, string> {
   const remotes = new Map<string, string>();
 
   // Match [remote "name"] sections and their url = ... lines
-  // Using [^[] instead of [^\[] to avoid unnecessary escape
   const remoteRegex = /\[remote "([^"]+)"\][^[]*?url\s*=\s*(.+)/g;
   let match: RegExpExecArray | null;
 

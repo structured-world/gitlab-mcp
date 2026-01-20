@@ -345,6 +345,58 @@ describe("schema-utils", () => {
       );
       expect(result.properties?.action?.enum).not.toContain("delete");
     });
+
+    it("should preserve oneOf when GITLAB_SCHEMA_MODE is discriminated", () => {
+      // Override schema mode to discriminated
+      const configModule = jest.requireMock("../../../src/config");
+      const originalMode = configModule.GITLAB_SCHEMA_MODE;
+      configModule.GITLAB_SCHEMA_MODE = "discriminated";
+
+      try {
+        const result = transformToolSchema("manage_milestone", discriminatedUnionSchema);
+
+        // Should NOT be flattened - oneOf should be preserved
+        expect(result.oneOf).toBeDefined();
+        expect(Array.isArray(result.oneOf)).toBe(true);
+        expect(result.oneOf!.length).toBeGreaterThan(0);
+
+        // Flat schema properties should NOT exist at root level
+        expect(result.properties?.action?.enum).toBeUndefined();
+      } finally {
+        // Restore original mode
+        configModule.GITLAB_SCHEMA_MODE = originalMode;
+      }
+    });
+
+    it("should filter denied actions but preserve oneOf in discriminated mode", () => {
+      // Override schema mode to discriminated
+      const configModule = jest.requireMock("../../../src/config");
+      const originalMode = configModule.GITLAB_SCHEMA_MODE;
+      configModule.GITLAB_SCHEMA_MODE = "discriminated";
+
+      (GITLAB_DENIED_ACTIONS as Map<string, Set<string>>).set(
+        "manage_milestone",
+        new Set(["delete", "promote"])
+      );
+
+      try {
+        const result = transformToolSchema("manage_milestone", discriminatedUnionSchema);
+
+        // Should preserve oneOf structure
+        expect(result.oneOf).toBeDefined();
+
+        // But with fewer branches (delete and promote filtered out)
+        const actionValues = result.oneOf!.map(
+          branch => branch.properties?.action?.const || branch.properties?.action?.enum?.[0]
+        );
+        expect(actionValues).toContain("create");
+        expect(actionValues).toContain("update");
+        expect(actionValues).not.toContain("delete");
+        expect(actionValues).not.toContain("promote");
+      } finally {
+        configModule.GITLAB_SCHEMA_MODE = originalMode;
+      }
+    });
   });
 
   describe("shouldRemoveTool", () => {

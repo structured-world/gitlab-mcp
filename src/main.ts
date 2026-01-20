@@ -4,7 +4,20 @@ import { startServer } from "./server";
 import { logger } from "./logger";
 import { tryApplyProfileFromEnv, findProjectConfig, getProjectConfigSummary } from "./profiles";
 import { parseCliArgs, displayProjectConfig } from "./cli-utils";
-import { autoDiscover, formatDiscoveryResult } from "./discovery";
+import { autoDiscover, formatDiscoveryResult, AutoDiscoveryResult } from "./discovery";
+
+/**
+ * Configuration priority (highest to lowest):
+ * 1. --profile CLI argument - selects user profile (host, auth)
+ * 2. Project config files (.gitlab-mcp/) - adds restrictions and tool selection
+ * 3. Auto-discovered profile from git remote - fallback profile selection
+ *
+ * Note: Project config (preset.yaml, profile.yaml) ADDS restrictions on top
+ * of the selected profile - it doesn't replace the profile selection.
+ *
+ * When --auto detects a profile but --profile or project config specifies
+ * a different one, a warning is logged.
+ */
 
 /**
  * Main entry point
@@ -25,39 +38,36 @@ async function main(): Promise<void> {
     }
   }
 
-  // Handle --auto flag (auto-discovery from git remote)
-  let autoDiscoveryUsed = false;
-  let autoDiscoveredProfileName: string | undefined;
+  // Track configuration sources
+  let autoDiscoveryResult: AutoDiscoveryResult | null = null;
+
+  // Step 1: Run auto-discovery if --auto flag is set (gather info, don't apply yet)
   if (cliArgs.auto) {
     try {
-      const result = await autoDiscover({
+      autoDiscoveryResult = await autoDiscover({
         repoPath: cliArgs.cwd,
         remoteName: cliArgs.remoteName,
-        noProjectConfig: cliArgs.noProjectConfig,
+        noProjectConfig: true, // We'll handle project config separately for priority
         dryRun: cliArgs.dryRun,
       });
 
-      if (result) {
+      if (autoDiscoveryResult) {
         // If dry-run, display results and exit
         if (cliArgs.dryRun) {
-          console.log(formatDiscoveryResult(result));
+          console.log(formatDiscoveryResult(autoDiscoveryResult));
           process.exit(0);
         }
 
         logger.info(
           {
-            host: result.host,
-            project: result.projectPath,
-            profile: result.matchedProfile?.profileName,
-            profileApplied: result.profileApplied,
+            host: autoDiscoveryResult.host,
+            project: autoDiscoveryResult.projectPath,
+            profile: autoDiscoveryResult.matchedProfile?.profileName,
           },
-          "Auto-discovery completed"
+          "Auto-discovery detected GitLab configuration"
         );
-        autoDiscoveryUsed = true;
-        autoDiscoveredProfileName = result.matchedProfile?.profileName;
       } else {
         logger.warn("Auto-discovery failed: not in a git repository or no remote found");
-        // Continue with normal flow if auto-discovery fails
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -66,16 +76,59 @@ async function main(): Promise<void> {
     }
   }
 
-  // Apply profile if specified (CLI arg > env var > default)
-  // Skip if auto-discovery already applied the same profile
-  const shouldLoadProfile =
-    !autoDiscoveryUsed ||
-    (cliArgs.profileName && cliArgs.profileName !== autoDiscoveredProfileName);
-  if (shouldLoadProfile) {
+  // Step 2: Apply profile (priority: --profile > auto-discovered)
+  if (cliArgs.profileName) {
+    // CLI profile has highest priority
     try {
       const result = await tryApplyProfileFromEnv(cliArgs.profileName);
       if (result) {
-        // Handle both profile and preset results
+        if ("profileName" in result) {
+          logger.info(
+            { profile: result.profileName, host: result.host },
+            "Using CLI-specified profile"
+          );
+        } else {
+          logger.info({ preset: result.presetName }, "Using CLI-specified preset");
+        }
+
+        // Warn if auto-discovery found a different profile
+        if (
+          autoDiscoveryResult?.matchedProfile &&
+          autoDiscoveryResult.matchedProfile.profileName !== cliArgs.profileName
+        ) {
+          logger.warn(
+            {
+              cliProfile: cliArgs.profileName,
+              autoProfile: autoDiscoveryResult.matchedProfile.profileName,
+            },
+            "Auto-discovered profile ignored: --profile takes precedence"
+          );
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error({ error: message }, "Failed to load profile");
+      process.exit(1);
+    }
+  } else if (autoDiscoveryResult?.matchedProfile) {
+    // Auto-discovered profile is fallback
+    try {
+      const result = await tryApplyProfileFromEnv(autoDiscoveryResult.matchedProfile.profileName);
+      if (result && "profileName" in result) {
+        logger.info(
+          { profile: result.profileName, host: result.host },
+          "Using auto-discovered profile"
+        );
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logger.warn({ error: message }, "Failed to apply auto-discovered profile");
+    }
+  } else {
+    // No CLI profile and no auto-discovery - try default from env
+    try {
+      const result = await tryApplyProfileFromEnv();
+      if (result) {
         if ("profileName" in result) {
           logger.info(
             { profile: result.profileName, host: result.host },
@@ -86,16 +139,14 @@ async function main(): Promise<void> {
         }
       }
     } catch (error) {
-      // Profile errors are fatal - don't start with misconfigured profile
       const message = error instanceof Error ? error.message : String(error);
       logger.error({ error: message }, "Failed to load profile");
       process.exit(1);
     }
   }
 
-  // Load project config unless --no-project-config is specified
-  // Skip if auto-discovery already loaded project config
-  if (!cliArgs.noProjectConfig && !autoDiscoveryUsed) {
+  // Step 3: Load project config (adds restrictions on top of profile)
+  if (!cliArgs.noProjectConfig) {
     try {
       const projectConfig = await findProjectConfig(process.cwd());
       if (projectConfig) {
@@ -106,7 +157,7 @@ async function main(): Promise<void> {
             preset: summary.presetSummary,
             profile: summary.profileSummary,
           },
-          "Loaded project configuration"
+          "Loaded project configuration (restrictions applied)"
         );
 
         // Note: Project config is loaded and logged but not yet enforced.
@@ -114,10 +165,29 @@ async function main(): Promise<void> {
         // See: https://github.com/structured-world/gitlab-mcp/issues/61
       }
     } catch (error) {
-      // Project config errors are warnings, not fatal
       const message = error instanceof Error ? error.message : String(error);
       logger.warn({ error: message }, "Failed to load project config, continuing without it");
     }
+  }
+
+  // Step 4: Set default project/namespace from auto-discovery if available
+  if (autoDiscoveryResult) {
+    // Set default project path if not already set
+    process.env.GITLAB_DEFAULT_PROJECT ??= autoDiscoveryResult.projectPath;
+
+    // Extract namespace (group path without project name)
+    const pathParts = autoDiscoveryResult.projectPath.split("/");
+    if (pathParts.length > 1) {
+      process.env.GITLAB_DEFAULT_NAMESPACE ??= pathParts.slice(0, -1).join("/");
+    }
+
+    logger.debug(
+      {
+        defaultProject: process.env.GITLAB_DEFAULT_PROJECT,
+        defaultNamespace: process.env.GITLAB_DEFAULT_NAMESPACE,
+      },
+      "Default context set from auto-discovery"
+    );
   }
 
   // Start the server

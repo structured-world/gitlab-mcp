@@ -23,11 +23,14 @@ function getProfileFromArgs(): string | undefined {
       profileCount++;
       if (profileCount === 1) {
         profileName = value;
-      } else if (profileCount === 2) {
-        logger.warn("Multiple --profile flags detected, using first value");
       }
     }
   }
+
+  if (profileCount > 1) {
+    logger.warn({ count: profileCount }, "Multiple --profile flags detected, using first value");
+  }
+
   return profileName;
 }
 

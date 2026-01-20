@@ -335,11 +335,18 @@ export class ProfileLoader {
       }
     }
 
-    // Validate denied_actions format
+    // Validate denied_actions format (must be 'tool:action' with non-empty parts)
     if (profile.denied_actions) {
       for (const action of profile.denied_actions) {
-        if (!action.includes(":")) {
+        const colonIndex = action.indexOf(":");
+        if (colonIndex === -1) {
           errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
+        } else {
+          const tool = action.slice(0, colonIndex).trim();
+          const act = action.slice(colonIndex + 1).trim();
+          if (!tool || !act) {
+            errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
+          }
         }
       }
     }
@@ -367,11 +374,18 @@ export class ProfileLoader {
       }
     }
 
-    // Validate denied_actions format
+    // Validate denied_actions format (must be 'tool:action' with non-empty parts)
     if (preset.denied_actions) {
       for (const action of preset.denied_actions) {
-        if (!action.includes(":")) {
+        const colonIndex = action.indexOf(":");
+        if (colonIndex === -1) {
           errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
+        } else {
+          const tool = action.slice(0, colonIndex).trim();
+          const act = action.slice(colonIndex + 1).trim();
+          if (!tool || !act) {
+            errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
+          }
         }
       }
     }
@@ -431,7 +445,7 @@ export async function loadPreset(name: string): Promise<Preset> {
 }
 
 /**
- * Get profile name from CLI args or environment
+ * Get profile name from GITLAB_PROFILE environment variable
  */
 export function getProfileNameFromEnv(): string | undefined {
   return process.env.GITLAB_PROFILE;

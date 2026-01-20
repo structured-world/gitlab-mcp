@@ -493,6 +493,45 @@ describe("ProfileLoader", () => {
       expect(result.errors.some(e => e.includes("Invalid denied_action format"))).toBe(true);
     });
 
+    it("should error on denied_actions with empty tool part", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        denied_actions: [":action"], // Empty tool
+      };
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.includes("Invalid denied_action format"))).toBe(true);
+    });
+
+    it("should error on denied_actions with empty action part", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        denied_actions: ["tool:"], // Empty action
+      };
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.includes("Invalid denied_action format"))).toBe(true);
+    });
+
+    it("should error on denied_actions with only colon", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        denied_actions: [":"], // Both empty
+      };
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.includes("Invalid denied_action format"))).toBe(true);
+    });
+
     it("should error when SSL cert path does not exist", async () => {
       const profile: Profile = {
         host: "gitlab.example.com",
@@ -658,6 +697,23 @@ describe("ProfileLoader", () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.some(e => e.includes("Invalid denied_action format"))).toBe(true);
+    });
+
+    it("should error on preset denied_actions with empty parts", async () => {
+      // Test all edge cases: empty tool, empty action, both empty
+      const testCases = [":action", "tool:", ":"];
+
+      for (const action of testCases) {
+        const preset: Preset = {
+          denied_actions: [action],
+          features: {},
+        };
+
+        const result = await loader.validatePreset(preset);
+
+        expect(result.valid).toBe(false);
+        expect(result.errors.some(e => e.includes("Invalid denied_action format"))).toBe(true);
+      }
     });
   });
 

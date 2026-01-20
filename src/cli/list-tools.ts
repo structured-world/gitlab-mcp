@@ -97,6 +97,13 @@ function parseArgs(): CliOptions {
         printHelp();
         process.exit(0);
         break;
+      default:
+        if (arg.startsWith("-")) {
+          console.error(`Error: Unrecognized option '${arg}'.`);
+          console.error("Use '--help' to see available options.");
+          process.exit(1);
+        }
+        break;
     }
   }
 

@@ -57,7 +57,7 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "echo ${nextRelease.version} > .semantic-release-version && yarn list-tools --export --toc > docs/TOOLS.md"
+        "prepareCmd": "mkdir -p docs && echo ${nextRelease.version} > .semantic-release-version && yarn list-tools --export --toc > docs/TOOLS.md"
       }
     ],
     [

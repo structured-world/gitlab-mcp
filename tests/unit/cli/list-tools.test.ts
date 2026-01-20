@@ -369,6 +369,18 @@ describe("list-tools script", () => {
     expect(mockProcessExit).toHaveBeenCalledWith(1);
   });
 
+  it("should error on unrecognized flags", async () => {
+    // Test that unknown flags are rejected with helpful error message
+    process.argv = ["node", "list-tools.ts", "--unknown-flag"];
+
+    const { main } = await import("../../../src/cli/list-tools");
+
+    await expect(main()).resolves.toBeUndefined();
+    expect(mockConsoleError).toHaveBeenCalledWith("Error: Unrecognized option '--unknown-flag'.");
+    expect(mockConsoleError).toHaveBeenCalledWith("Use '--help' to see available options.");
+    expect(mockProcessExit).toHaveBeenCalledWith(1);
+  });
+
   it("should handle tools with no parameters", async () => {
     process.argv = ["node", "list-tools.ts", "--tool", "no_params_tool"];
 

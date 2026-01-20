@@ -79,6 +79,35 @@ describe("ProfileLoader", () => {
       expect(mockFs.readFileSync).toHaveBeenCalledTimes(1);
     });
 
+    it("should use config cache when loading multiple different profiles", async () => {
+      const profileConfig = {
+        profiles: {
+          first: {
+            host: "gitlab.first.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+          second: {
+            host: "gitlab.second.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(yaml.stringify(profileConfig));
+
+      // Load two different profiles
+      const profile1 = await loader.loadProfile("first");
+      const profile2 = await loader.loadProfile("second");
+
+      // Different profiles should have different hosts
+      expect(profile1.host).toBe("gitlab.first.com");
+      expect(profile2.host).toBe("gitlab.second.com");
+
+      // Config file should only be read once (config cache hit on second load)
+      expect(mockFs.readFileSync).toHaveBeenCalledTimes(1);
+    });
+
     it("should throw error for non-existent profile", async () => {
       const profileConfig = {
         profiles: {
@@ -355,6 +384,41 @@ describe("ProfileLoader", () => {
       expect(profiles[0].isPreset).toBe(false);
       expect(profiles[1].name).toBe("aaa");
       expect(profiles[1].isPreset).toBe(true);
+    });
+
+    it("should sort profiles alphabetically within the same category", async () => {
+      const profileConfig = {
+        profiles: {
+          zebra: {
+            host: "gitlab.zebra.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+          alpha: {
+            host: "gitlab.alpha.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+          mike: {
+            host: "gitlab.mike.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockImplementation((p: fs.PathLike) => {
+        const pathStr = p.toString();
+        if (pathStr === testUserConfigPath) return true;
+        if (pathStr === testBuiltinDir) return false;
+        return false;
+      });
+      mockFs.readFileSync.mockReturnValue(yaml.stringify(profileConfig));
+
+      const profiles = await loader.listProfiles();
+
+      // Should be sorted alphabetically: alpha, mike, zebra
+      expect(profiles.length).toBe(3);
+      expect(profiles[0].name).toBe("alpha");
+      expect(profiles[1].name).toBe("mike");
+      expect(profiles[2].name).toBe("zebra");
     });
 
     it("should handle empty profiles list when no user config exists", async () => {

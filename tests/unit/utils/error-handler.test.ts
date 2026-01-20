@@ -88,6 +88,32 @@ describe("Error Handler", () => {
         expect(result.message).toContain("permission");
         expect(result.suggested_fix).toBeDefined();
       });
+
+      it("should include GitLab message in suggested_fix when available", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 403,
+          message: "You must be a project member to perform this action",
+        };
+
+        const result = handleGitLabError(error, "browse_merge_requests", "list");
+
+        expect(result.error_code).toBe("PERMISSION_DENIED");
+        expect(result.suggested_fix).toContain("GitLab message:");
+        expect(result.suggested_fix).toContain("project member");
+      });
+
+      it("should not include GitLab message in suggested_fix for generic 403 messages", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 403,
+          message: "403 Forbidden",
+        };
+
+        const result = handleGitLabError(error, "browse_merge_requests", "list");
+
+        expect(result.error_code).toBe("PERMISSION_DENIED");
+        // Should not include "GitLab message:" for generic 403 errors
+        expect(result.suggested_fix).not.toContain("GitLab message:");
+      });
     });
 
     describe("404 Not Found", () => {
@@ -131,6 +157,84 @@ describe("Error Handler", () => {
 
         if (result.error_code === "NOT_FOUND") {
           expect(result.resource_type).toBe("project");
+        }
+      });
+
+      it("should extract numeric resource ID from message", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 404,
+          message: "404 Project 12345 Not Found",
+        };
+
+        const result = handleGitLabError(error, "get_project", "get");
+
+        if (result.error_code === "NOT_FOUND") {
+          expect(result.resource_id).toBe("12345");
+        }
+      });
+
+      it("should extract path-like resource ID from message", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 404,
+          message: "404 Project 'my-group/my-project' Not Found",
+        };
+
+        const result = handleGitLabError(error, "get_project", "get");
+
+        if (result.error_code === "NOT_FOUND") {
+          expect(result.resource_id).toBe("my-group/my-project");
+        }
+      });
+
+      it("should detect branch resource type", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 404,
+          message: "404 Branch Not Found",
+        };
+
+        const result = handleGitLabError(error, "browse_branches", "get");
+
+        if (result.error_code === "NOT_FOUND") {
+          expect(result.resource_type).toBe("branch");
+        }
+      });
+
+      it("should detect user resource type", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 404,
+          message: "404 User Not Found",
+        };
+
+        const result = handleGitLabError(error, "get_users", "get");
+
+        if (result.error_code === "NOT_FOUND") {
+          expect(result.resource_type).toBe("user");
+        }
+      });
+
+      it("should detect issue resource type", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 404,
+          message: "404 Issue Not Found",
+        };
+
+        const result = handleGitLabError(error, "browse_issues", "get");
+
+        if (result.error_code === "NOT_FOUND") {
+          expect(result.resource_type).toBe("issue");
+        }
+      });
+
+      it("should detect pipeline resource type", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 404,
+          message: "404 Pipeline Not Found",
+        };
+
+        const result = handleGitLabError(error, "browse_pipelines", "get");
+
+        if (result.error_code === "NOT_FOUND") {
+          expect(result.resource_type).toBe("pipeline");
         }
       });
     });

@@ -254,16 +254,24 @@ function createPermissionDeniedError(
   tool: string,
   action: string,
   status: number,
-  _rawMessage: string
+  rawMessage: string
 ): PermissionDeniedError {
+  const baseSuggestedFix =
+    "Check your access level for this project/group. Reporter access or higher may be required.";
+
+  // Include raw message if it provides additional context
+  const suggestedFix =
+    rawMessage && rawMessage !== "Unknown error" && !rawMessage.includes("403")
+      ? `${baseSuggestedFix} GitLab message: ${rawMessage}`
+      : baseSuggestedFix;
+
   return {
     error_code: "PERMISSION_DENIED",
     tool,
     action,
     http_status: status,
     message: "You don't have permission for this action",
-    suggested_fix:
-      "Check your access level for this project/group. Reporter access or higher may be required.",
+    suggested_fix: suggestedFix,
     alternatives: [
       {
         action: "Verify your access level",
@@ -287,17 +295,35 @@ function createNotFoundError(
   let resourceType: string | undefined;
   let resourceId: string | undefined;
 
-  if (rawMessage.toLowerCase().includes("project")) {
+  const lowerMessage = rawMessage.toLowerCase();
+
+  if (lowerMessage.includes("project")) {
     resourceType = "project";
-  } else if (
-    rawMessage.toLowerCase().includes("merge request") ||
-    rawMessage.toLowerCase().includes("mr")
-  ) {
+  } else if (lowerMessage.includes("merge request") || lowerMessage.includes("mr")) {
     resourceType = "merge_request";
-  } else if (rawMessage.toLowerCase().includes("issue")) {
+  } else if (lowerMessage.includes("issue")) {
     resourceType = "issue";
-  } else if (rawMessage.toLowerCase().includes("pipeline")) {
+  } else if (lowerMessage.includes("pipeline")) {
     resourceType = "pipeline";
+  } else if (lowerMessage.includes("branch")) {
+    resourceType = "branch";
+  } else if (lowerMessage.includes("user")) {
+    resourceType = "user";
+  }
+
+  // Try to extract path-like identifier first (e.g., "'group/project'")
+  const pathMatch = rawMessage.match(/['"]([a-zA-Z0-9_-]+(?:\/[a-zA-Z0-9_-]+)+)['"]/);
+  if (pathMatch) {
+    resourceId = pathMatch[1];
+  }
+
+  // Try to extract numeric ID from the message (e.g., "Project 12345 not found")
+  // Skip common HTTP status codes (3xx, 4xx, 5xx patterns like 404, 500)
+  if (!resourceId) {
+    const idMatch = rawMessage.match(/\b(?!(?:3|4|5)\d{2}\b)(\d+)\b/);
+    if (idMatch) {
+      resourceId = idMatch[1];
+    }
   }
 
   return {

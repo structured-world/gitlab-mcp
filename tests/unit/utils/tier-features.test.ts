@@ -27,14 +27,14 @@ describe("Tier Features", () => {
     });
 
     it("should have docs URLs for all features", () => {
-      for (const [key, feature] of Object.entries(TIER_FEATURES)) {
+      for (const feature of Object.values(TIER_FEATURES)) {
         expect(feature.docs).toBeDefined();
         expect(feature.docs).toContain("https://");
       }
     });
 
     it("should have tools array for all features", () => {
-      for (const [key, feature] of Object.entries(TIER_FEATURES)) {
+      for (const feature of Object.values(TIER_FEATURES)) {
         expect(Array.isArray(feature.tools)).toBe(true);
         expect(feature.tools.length).toBeGreaterThan(0);
       }
@@ -42,7 +42,7 @@ describe("Tier Features", () => {
 
     it("should have valid tier values", () => {
       const validTiers: GitLabTier[] = ["Free", "Premium", "Ultimate"];
-      for (const [key, feature] of Object.entries(TIER_FEATURES)) {
+      for (const feature of Object.values(TIER_FEATURES)) {
         expect(validTiers).toContain(feature.tier);
       }
     });

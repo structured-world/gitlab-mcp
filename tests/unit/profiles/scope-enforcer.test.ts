@@ -220,19 +220,6 @@ describe("ScopeEnforcer", () => {
     });
   });
 
-  describe("single project scope without projects list", () => {
-    it("should use single project check when allowedProjectsSet is empty", () => {
-      // This specifically tests the branch where allowedProjectsSet.size is 0
-      // but single project is defined
-      const enforcer = new ScopeEnforcer({ project: "myteam/backend" });
-
-      // The project is added to allowedProjectsSet in constructor,
-      // so let's test with namespace only
-      const namespaceEnforcer = new ScopeEnforcer({ namespace: "myteam" });
-      expect(namespaceEnforcer.isAllowed("myteam/project")).toBe(true);
-    });
-  });
-
   describe("getScopeDescription()", () => {
     it("should describe project scope", () => {
       const enforcer = new ScopeEnforcer({ project: "myteam/backend" });

@@ -15,7 +15,12 @@ import {
   PROJECT_PRESET_FILE,
   PROJECT_PROFILE_FILE,
 } from "../../../src/profiles/project-loader";
-import { ProjectConfig, ProjectPreset, ProjectProfile } from "../../../src/profiles/types";
+import {
+  ProjectConfig,
+  ProjectPreset,
+  ProjectProfile,
+  ScopeConfigSchema,
+} from "../../../src/profiles/types";
 
 describe("project-loader", () => {
   let testDir: string;
@@ -322,18 +327,19 @@ features:
       expect(result.warnings[0]).toContain("namespace 'myteam'");
     });
 
-    it("should error when scope combines project with projects", () => {
-      const preset: ProjectPreset = {
-        scope: {
-          project: "single/project",
-          projects: ["list/project1", "list/project2"],
-        },
+    it("should error when scope combines project with projects (schema validation)", () => {
+      // This validation is handled by the Zod schema refinement, not validateProjectPreset
+      const invalidScope = {
+        project: "single/project",
+        projects: ["list/project1", "list/project2"],
       };
 
-      const result = validateProjectPreset(preset);
+      const result = ScopeConfigSchema.safeParse(invalidScope);
 
-      expect(result.valid).toBe(false);
-      expect(result.errors).toContain("Scope cannot combine 'project' with 'projects'");
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.message).toContain("Cannot combine 'project' with 'projects'");
+      }
     });
   });
 

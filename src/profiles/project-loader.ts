@@ -161,15 +161,9 @@ export function validateProjectPreset(preset: ProjectPreset): ProfileValidationR
   const warnings: string[] = [];
 
   // Validate scope configuration
+  // Note: Combining 'project' with 'projects' is already prevented by the Zod schema refinement
   if (preset.scope) {
     const { project, namespace, projects } = preset.scope;
-    const definedCount = [project, namespace, projects?.length ? true : false].filter(
-      Boolean
-    ).length;
-
-    if (definedCount > 1 && project && projects?.length) {
-      errors.push("Scope cannot combine 'project' with 'projects'");
-    }
 
     // Warn about broad namespace scope
     if (namespace && !project && !projects?.length) {

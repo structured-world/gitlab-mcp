@@ -151,7 +151,7 @@ export const ProfilesConfigSchema = z.object({
  * Scope configuration for project-level restrictions.
  * Determines which projects/namespaces operations are allowed on.
  */
-const ScopeConfigSchema = z
+export const ScopeConfigSchema = z
   .object({
     /** Single project restriction */
     project: z.string().optional().describe("Single project path (e.g., group/project)"),

@@ -142,13 +142,8 @@ export class ScopeEnforcer {
   isAllowed(projectPath: string): boolean {
     const normalized = normalizeProjectPath(projectPath);
 
-    // Check explicit project list
+    // Check explicit project list (includes single project from scope.project if set)
     if (this.allowedProjectsSet.size > 0 && this.allowedProjectsSet.has(normalized)) {
-      return true;
-    }
-
-    // Check single project
-    if (this.scope.project && normalizeProjectPath(this.scope.project) === normalized) {
       return true;
     }
 

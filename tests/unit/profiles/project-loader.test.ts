@@ -373,6 +373,18 @@ features:
       expect(result.warnings.length).toBeGreaterThan(0);
       expect(result.warnings[0]).toContain("browse_wiki");
     });
+
+    it("should not warn when additional_tools and denied_tools have no overlap", () => {
+      const profile: ProjectProfile = {
+        additional_tools: ["browse_wiki", "browse_files"],
+        denied_tools: ["browse_commits", "browse_pipelines"],
+      };
+
+      const result = validateProjectProfile(profile, []);
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings).toHaveLength(0);
+    });
   });
 
   describe("getProjectConfigSummary", () => {
@@ -464,6 +476,71 @@ features:
       const summary = getProjectConfigSummary(config);
 
       expect(summary.presetSummary).toBe("custom restrictions");
+    });
+
+    it("should generate summary for profile with description only", () => {
+      const config: ProjectConfig = {
+        configPath: "/test/.gitlab-mcp",
+        profile: {
+          description: "Simple profile",
+        },
+      };
+
+      const summary = getProjectConfigSummary(config);
+
+      expect(summary.profileSummary).toBe("Simple profile");
+    });
+
+    it("should generate summary for profile with extends only", () => {
+      const config: ProjectConfig = {
+        configPath: "/test/.gitlab-mcp",
+        profile: {
+          extends: "senior-dev",
+        },
+      };
+
+      const summary = getProjectConfigSummary(config);
+
+      expect(summary.profileSummary).toBe("extends: senior-dev");
+    });
+
+    it("should generate summary for profile with additional_tools only", () => {
+      const config: ProjectConfig = {
+        configPath: "/test/.gitlab-mcp",
+        profile: {
+          additional_tools: ["tool1", "tool2", "tool3"],
+        },
+      };
+
+      const summary = getProjectConfigSummary(config);
+
+      expect(summary.profileSummary).toBe("+3 tools");
+    });
+
+    it("should generate summary for profile with denied_tools only", () => {
+      const config: ProjectConfig = {
+        configPath: "/test/.gitlab-mcp",
+        profile: {
+          denied_tools: ["tool1", "tool2"],
+        },
+      };
+
+      const summary = getProjectConfigSummary(config);
+
+      expect(summary.profileSummary).toBe("-2 tools");
+    });
+
+    it("should generate fallback summary for minimal profile", () => {
+      const config: ProjectConfig = {
+        configPath: "/test/.gitlab-mcp",
+        profile: {
+          // Empty profile
+        },
+      };
+
+      const summary = getProjectConfigSummary(config);
+
+      expect(summary.profileSummary).toBe("custom tool selection");
     });
   });
 });

@@ -9,7 +9,7 @@
 #
 # NOTE: This is a PRESET - host/auth come from environment variables.
 
-description: "Junior/Middle Developer - code, MRs, basic issue tracking"
+description: "Junior Developer - code, MRs, basic issue tracking"
 
 read_only: false
 
@@ -27,4 +27,4 @@ features:
   integrations: false
 
 # Block pipeline and admin operations
-denied_tools_regex: "^manage_pipeline|^manage_variable|^manage_webhook"
+denied_tools_regex: "^manage_(pipeline|variable|webhook)"

@@ -27,4 +27,4 @@ features:
   integrations: false
 
 # Block workflow-related operations
-denied_tools_regex: "^manage_work_item|^manage_mr|^manage_label|^manage_milestone|^manage_wiki"
+denied_tools_regex: "^manage_(work_item|mr|label|milestone|wiki)"

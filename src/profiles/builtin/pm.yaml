@@ -28,4 +28,4 @@ features:
   integrations: false
 
 # Block code and pipeline operations
-denied_tools_regex: "^manage_files|^manage_pipeline|^manage_variable"
+denied_tools_regex: "^manage_(files|pipeline|variable)"

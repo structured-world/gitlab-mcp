@@ -146,6 +146,16 @@ export async function applyProfile(
     appliedSettings.push(`GITLAB_ALLOWED_PROJECT_IDS=${profile.allowed_projects.join(",")}`);
   }
 
+  if (profile.allowed_groups && profile.allowed_groups.length > 0) {
+    process.env.GITLAB_ALLOWED_GROUP_IDS = profile.allowed_groups.join(",");
+    appliedSettings.push(`GITLAB_ALLOWED_GROUP_IDS=${profile.allowed_groups.join(",")}`);
+  }
+
+  if (profile.allowed_tools && profile.allowed_tools.length > 0) {
+    process.env.GITLAB_ALLOWED_TOOLS = profile.allowed_tools.join(",");
+    appliedSettings.push(`GITLAB_ALLOWED_TOOLS=${profile.allowed_tools.join(",")}`);
+  }
+
   if (profile.denied_tools_regex) {
     process.env.GITLAB_DENIED_TOOLS_REGEX = profile.denied_tools_regex;
     appliedSettings.push(`GITLAB_DENIED_TOOLS_REGEX=${profile.denied_tools_regex}`);
@@ -198,6 +208,11 @@ export async function applyProfile(
   if (profile.default_project) {
     process.env.GITLAB_PROJECT_ID = profile.default_project;
     appliedSettings.push(`GITLAB_PROJECT_ID=${profile.default_project}`);
+  }
+
+  if (profile.default_namespace) {
+    process.env.GITLAB_DEFAULT_NAMESPACE = profile.default_namespace;
+    appliedSettings.push(`GITLAB_DEFAULT_NAMESPACE=${profile.default_namespace}`);
   }
 
   logger.info(

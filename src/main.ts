@@ -9,6 +9,9 @@ import { tryApplyProfileFromEnv } from "./profiles";
  */
 function getProfileFromArgs(): string | undefined {
   const args = process.argv.slice(2);
+  let profileName: string | undefined;
+  let profileCount = 0;
+
   for (let i = 0; i < args.length; i++) {
     if (args[i] === "--profile") {
       const value = args[i + 1];
@@ -17,10 +20,15 @@ function getProfileFromArgs(): string | undefined {
         logger.error("--profile requires a profile name (e.g., --profile work)");
         process.exit(1);
       }
-      return value;
+      profileCount++;
+      if (profileCount === 1) {
+        profileName = value;
+      } else if (profileCount === 2) {
+        logger.warn("Multiple --profile flags detected, using first value");
+      }
     }
   }
-  return undefined;
+  return profileName;
 }
 
 /**

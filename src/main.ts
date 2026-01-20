@@ -176,8 +176,11 @@ async function main(): Promise<void> {
     process.env.GITLAB_DEFAULT_PROJECT ??= autoDiscoveryResult.projectPath;
 
     // Extract namespace (group path without project name)
+    // For single-segment paths, namespace equals the project path (root-level project)
     const pathParts = autoDiscoveryResult.projectPath.split("/");
-    if (pathParts.length > 1) {
+    if (pathParts.length === 1) {
+      process.env.GITLAB_DEFAULT_NAMESPACE ??= autoDiscoveryResult.projectPath;
+    } else if (pathParts.length > 1) {
       process.env.GITLAB_DEFAULT_NAMESPACE ??= pathParts.slice(0, -1).join("/");
     }
 

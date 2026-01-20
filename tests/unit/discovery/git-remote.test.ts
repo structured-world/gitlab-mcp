@@ -223,6 +223,45 @@ describe("parseGitConfig", () => {
 
     expect(remotes.get("origin")).toBe("https://gitlab.com/myteam/project.git");
   });
+
+  it("should handle multiline config with url not immediately after remote header", () => {
+    const config = `
+[remote "origin"]
+  fetch = +refs/heads/*:refs/remotes/origin/*
+  prune = true
+  url = git@gitlab.com:myteam/project.git
+[branch "main"]
+  remote = origin
+  merge = refs/heads/main
+`;
+
+    const remotes = parseGitConfig(config);
+
+    expect(remotes.size).toBe(1);
+    expect(remotes.get("origin")).toBe("git@gitlab.com:myteam/project.git");
+  });
+
+  it("should handle config with multiple entries between remote header and url", () => {
+    const config = `
+[core]
+  repositoryformatversion = 0
+[remote "origin"]
+  fetch = +refs/heads/*:refs/remotes/origin/*
+  pushurl = git@gitlab.com:myteam/project.git
+  prune = true
+  url = git@gitlab.com:myteam/project.git
+[remote "upstream"]
+  prune = false
+  url = https://gitlab.com/original/project.git
+  fetch = +refs/heads/*:refs/remotes/upstream/*
+`;
+
+    const remotes = parseGitConfig(config);
+
+    expect(remotes.size).toBe(2);
+    expect(remotes.get("origin")).toBe("git@gitlab.com:myteam/project.git");
+    expect(remotes.get("upstream")).toBe("https://gitlab.com/original/project.git");
+  });
 });
 
 describe("selectBestRemote", () => {

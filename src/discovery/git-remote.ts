@@ -110,20 +110,49 @@ function normalizeProjectPath(projectPath: string): string {
 /**
  * Parse git config file content to extract remote URLs
  *
+ * Uses a state-based line-by-line parser to correctly handle multiline
+ * configurations where url may not immediately follow the remote header.
+ *
  * @param content Git config file content
  * @returns Map of remote name to URL
  */
 export function parseGitConfig(content: string): Map<string, string> {
   const remotes = new Map<string, string>();
+  const lines = content.split(/\r?\n/);
+  let currentRemote: string | null = null;
 
-  // Match [remote "name"] sections and their url = ... lines
-  const remoteRegex = /\[remote "([^"]+)"\][^[]*?url\s*=\s*(.+)/g;
-  let match: RegExpExecArray | null;
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
 
-  while ((match = remoteRegex.exec(content)) !== null) {
-    const remoteName = match[1];
-    const url = match[2].trim();
-    remotes.set(remoteName, url);
+    if (line.length === 0) {
+      continue;
+    }
+
+    // Detect start of a [remote "name"] section
+    const remoteHeaderMatch = line.match(/^\[remote\s+"([^"]+)"\]\s*$/);
+    if (remoteHeaderMatch) {
+      currentRemote = remoteHeaderMatch[1];
+      continue;
+    }
+
+    // Any other section header ends the current remote section
+    if (line.startsWith("[") && line.endsWith("]")) {
+      currentRemote = null;
+      continue;
+    }
+
+    if (currentRemote === null) {
+      continue;
+    }
+
+    // Capture url = ... lines within the current remote section
+    const urlMatch = line.match(/^url\s*=\s*(.+)$/);
+    if (urlMatch) {
+      const url = urlMatch[1].trim();
+      if (url !== "") {
+        remotes.set(currentRemote, url);
+      }
+    }
   }
 
   return remotes;

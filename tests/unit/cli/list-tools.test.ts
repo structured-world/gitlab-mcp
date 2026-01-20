@@ -1214,6 +1214,153 @@ describe("list-tools script", () => {
       expect(output.builtIn).toHaveLength(2);
       expect(output.builtIn[0].name).toBe("admin");
     });
+
+    it("should count tools correctly for read_only preset", async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        { name: "browse_projects", description: "Browse", inputSchema: { type: "object" } },
+        { name: "manage_files", description: "Manage", inputSchema: { type: "object" } },
+      ]);
+
+      mockProfileLoader.listProfiles.mockResolvedValue([
+        {
+          name: "readonly",
+          readOnly: true,
+          isBuiltIn: true,
+          isPreset: true,
+          description: "Read-only",
+        },
+      ]);
+      mockProfileLoader.loadPreset.mockResolvedValue({ description: "Read-only", read_only: true });
+
+      process.argv = ["node", "list-tools.ts", "--presets"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      // read_only should filter out manage_* tools, leaving only 1 tool
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("| 1 |"));
+    });
+
+    it("should count tools correctly for preset with denied_tools_regex", async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        { name: "browse_projects", description: "Browse", inputSchema: { type: "object" } },
+        { name: "browse_wiki", description: "Wiki", inputSchema: { type: "object" } },
+      ]);
+
+      mockProfileLoader.listProfiles.mockResolvedValue([
+        {
+          name: "no-wiki",
+          readOnly: false,
+          isBuiltIn: true,
+          isPreset: true,
+          description: "No wiki",
+        },
+      ]);
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: "No wiki",
+        read_only: false,
+        denied_tools_regex: "wiki",
+      });
+
+      process.argv = ["node", "list-tools.ts", "--presets"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      // denied_tools_regex should filter out wiki tools, leaving only 1 tool
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("| 1 |"));
+    });
+
+    it("should count tools correctly for preset with allowed_tools whitelist", async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        { name: "browse_projects", description: "Browse", inputSchema: { type: "object" } },
+        { name: "browse_wiki", description: "Wiki", inputSchema: { type: "object" } },
+        { name: "manage_files", description: "Files", inputSchema: { type: "object" } },
+      ]);
+
+      mockProfileLoader.listProfiles.mockResolvedValue([
+        {
+          name: "minimal",
+          readOnly: false,
+          isBuiltIn: true,
+          isPreset: true,
+          description: "Minimal",
+        },
+      ]);
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: "Minimal",
+        read_only: false,
+        allowed_tools: ["browse_projects"],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--presets"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      // allowed_tools whitelist should keep only specified tools
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("| 1 |"));
+    });
+
+    it("should count tools correctly for preset with feature flags", async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        { name: "browse_projects", description: "Browse", inputSchema: { type: "object" } },
+        { name: "browse_wiki", description: "Wiki", inputSchema: { type: "object" } },
+        { name: "manage_wiki", description: "Manage wiki", inputSchema: { type: "object" } },
+      ]);
+
+      mockProfileLoader.listProfiles.mockResolvedValue([
+        {
+          name: "no-wiki",
+          readOnly: false,
+          isBuiltIn: true,
+          isPreset: true,
+          description: "No wiki",
+        },
+      ]);
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: "No wiki",
+        read_only: false,
+        features: { wiki: false },
+      });
+
+      process.argv = ["node", "list-tools.ts", "--presets"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      // features.wiki: false should filter out wiki tools
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("| 1 |"));
+    });
+
+    it("should show user profiles count when defined", async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        { name: "browse_projects", description: "Browse", inputSchema: { type: "object" } },
+      ]);
+
+      mockProfileLoader.listProfiles.mockResolvedValue([
+        { name: "admin", readOnly: false, isBuiltIn: true, isPreset: true, description: "Admin" },
+        {
+          name: "work",
+          host: "gitlab.example.com",
+          authType: "pat",
+          readOnly: false,
+          isBuiltIn: false,
+          isPreset: false,
+        },
+      ]);
+      mockProfileLoader.loadPreset.mockResolvedValue({ description: "Admin", read_only: false });
+
+      process.argv = ["node", "list-tools.ts", "--presets"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("## User Profiles"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("1 user profile(s) defined")
+      );
+    });
   });
 
   describe("--profiles flag", () => {
@@ -1491,6 +1638,254 @@ describe("list-tools script", () => {
       expect(mockConsoleError).toHaveBeenCalledWith("Error: --profile flag requires a value.");
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
+
+    it("should show profile details in JSON format", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.company.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: true,
+        features: { wiki: true },
+        denied_tools_regex: "^manage_",
+        allowed_tools: ["browse_projects"],
+        denied_actions: ["delete"],
+        allowed_projects: ["mygroup/myproject"],
+        allowed_groups: ["mygroup"],
+        default_project: "default-project",
+        default_namespace: "default-namespace",
+        timeout_ms: 30000,
+        skip_tls_verify: true,
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "work", "--json"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      const jsonCall = mockConsoleLog.mock.calls.find(call => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.name === "work" && parsed.type === "user";
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonCall).toBeDefined();
+      const output = JSON.parse(jsonCall![0] as string);
+      expect(output.host).toBe("gitlab.company.com");
+      expect(output.authType).toBe("pat");
+      expect(output.readOnly).toBe(true);
+      expect(output.deniedToolsRegex).toBe("^manage_");
+      expect(output.allowedTools).toEqual(["browse_projects"]);
+      expect(output.deniedActions).toEqual(["delete"]);
+      expect(output.allowedProjects).toEqual(["mygroup/myproject"]);
+      expect(output.allowedGroups).toEqual(["mygroup"]);
+      expect(output.defaultProject).toBe("default-project");
+      expect(output.defaultNamespace).toBe("default-namespace");
+      expect(output.timeoutMs).toBe(30000);
+      expect(output.skipTlsVerify).toBe(true);
+    });
+
+    it("should show profile with default_project and default_namespace settings", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.company.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: false,
+        default_project: "team/main-project",
+        default_namespace: "team",
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "work"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("| Default Project | team/main-project |")
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("| Default Namespace | team |")
+      );
+    });
+
+    it("should show profile with access restrictions (allowed_projects)", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.company.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: false,
+        allowed_projects: ["team/project1", "team/project2"],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "work"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("## Access Restrictions\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("**Allowed Projects:** team/project1, team/project2")
+      );
+    });
+
+    it("should show profile with access restrictions (allowed_groups)", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.company.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: false,
+        allowed_groups: ["team-a", "team-b"],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "work"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("## Access Restrictions\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("**Allowed Groups:** team-a, team-b")
+      );
+    });
+
+    it("should show profile with tool restrictions (denied_tools_regex)", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.company.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: false,
+        denied_tools_regex: "^manage_pipeline",
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "work"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("## Tool Restrictions\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("**Denied tools regex:** `^manage_pipeline`")
+      );
+    });
+
+    it("should show profile with tool restrictions (allowed_tools whitelist)", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.company.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: false,
+        allowed_tools: ["browse_projects", "browse_wiki", "browse_commits"],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "work"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("## Tool Restrictions\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("**Allowed tools (whitelist):** 3 tools")
+      );
+    });
+
+    it("should show profile with tool restrictions (denied_actions)", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.company.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: false,
+        denied_actions: ["delete", "force_push", "rebase"],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "work"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("## Tool Restrictions\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("**Denied actions:** delete, force_push, rebase")
+      );
+    });
+
+    it("should show profile validation with warnings", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.company.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: false,
+      });
+      mockProfileLoader.validateProfile.mockResolvedValue({
+        valid: true,
+        errors: [],
+        warnings: ["GITLAB_TOKEN env var not set", "Unknown feature flag"],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "work", "--validate"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("## Validation\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("**Status: VALID** (2 warning(s))")
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith("### Warnings\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith("- GITLAB_TOKEN env var not set");
+      expect(mockConsoleLog).toHaveBeenCalledWith("- Unknown feature flag");
+    });
+
+    it("should show profile validation with errors", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.company.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: false,
+      });
+      mockProfileLoader.validateProfile.mockResolvedValue({
+        valid: false,
+        errors: ["Invalid host URL", "Missing required auth field"],
+        warnings: [],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "work", "--validate"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("## Validation\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("**Status: INVALID** (2 error(s))")
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith("### Errors\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith("- Invalid host URL");
+      expect(mockConsoleLog).toHaveBeenCalledWith("- Missing required auth field");
+    });
+
+    it("should show profile validation with JSON format including validation", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.company.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: false,
+      });
+      mockProfileLoader.validateProfile.mockResolvedValue({
+        valid: true,
+        errors: [],
+        warnings: ["Some warning"],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "work", "--json", "--validate"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      const jsonCall = mockConsoleLog.mock.calls.find(call => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.name === "work" && parsed.validation !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonCall).toBeDefined();
+      const output = JSON.parse(jsonCall![0] as string);
+      expect(output.validation.valid).toBe(true);
+      expect(output.validation.warnings).toContain("Some warning");
+    });
   });
 
   describe("--compare flag", () => {
@@ -1592,6 +1987,83 @@ describe("list-tools script", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith("Error: --compare flag requires a value.");
       expect(mockProcessExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should error when --compare is used without --preset", async () => {
+      process.argv = ["node", "list-tools.ts", "--compare", "admin"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        "Error: --compare flag must be used with --preset."
+      );
+      expect(mockProcessExit).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe("--validate flag validation", () => {
+    beforeEach(() => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: "browse_projects",
+          description: "Browse projects",
+          inputSchema: { type: "object" },
+        },
+      ]);
+    });
+
+    it("should error when --validate is used without --preset or --profile", async () => {
+      process.argv = ["node", "list-tools.ts", "--validate"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        "Error: --validate flag must be used with --preset or --profile."
+      );
+      expect(mockProcessExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should work when --validate is used with --preset", async () => {
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: "Test preset",
+        read_only: false,
+      });
+      mockProfileLoader.validatePreset.mockResolvedValue({
+        valid: true,
+        errors: [],
+        warnings: [],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--preset", "test", "--validate"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("## Validation\n");
+      expect(mockProcessExit).not.toHaveBeenCalledWith(1);
+    });
+
+    it("should work when --validate is used with --profile", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: false,
+      });
+      mockProfileLoader.validateProfile.mockResolvedValue({
+        valid: true,
+        errors: [],
+        warnings: [],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "test", "--validate"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("## Validation\n");
+      expect(mockProcessExit).not.toHaveBeenCalledWith(1);
     });
   });
 });

@@ -967,6 +967,30 @@ function printEnvGatesMarkdown(
 // ============================================================================
 
 /**
+ * Mapping of feature flags to their corresponding tools.
+ * Used by countToolsForPreset and getToolsForPreset to filter tools based on features.
+ */
+const FEATURE_TO_TOOLS: Record<string, string[]> = {
+  wiki: ["browse_wiki", "manage_wiki"],
+  milestones: ["browse_milestones", "manage_milestone"],
+  pipelines: ["browse_pipelines", "manage_pipeline", "manage_pipeline_job"],
+  labels: ["browse_labels", "manage_label"],
+  mrs: [
+    "browse_merge_requests",
+    "browse_mr_discussions",
+    "manage_merge_request",
+    "manage_mr_discussion",
+    "manage_draft_notes",
+  ],
+  files: ["browse_files", "manage_files"],
+  variables: ["browse_variables", "manage_variable"],
+  workitems: ["browse_work_items", "manage_work_item"],
+  webhooks: ["list_webhooks", "manage_webhook"],
+  snippets: ["browse_snippets", "manage_snippet"],
+  integrations: ["list_integrations", "manage_integration"],
+};
+
+/**
  * Count tools enabled for a preset by simulating its application
  */
 function countToolsForPreset(preset: Preset, allToolNames: string[]): number {
@@ -995,27 +1019,7 @@ function countToolsForPreset(preset: Preset, allToolNames: string[]): number {
 
   // Apply feature flags
   if (preset.features) {
-    const featureToTools: Record<string, string[]> = {
-      wiki: ["browse_wiki", "manage_wiki"],
-      milestones: ["browse_milestones", "manage_milestone"],
-      pipelines: ["browse_pipelines", "manage_pipeline", "manage_pipeline_job"],
-      labels: ["browse_labels", "manage_label"],
-      mrs: [
-        "browse_merge_requests",
-        "browse_mr_discussions",
-        "manage_merge_request",
-        "manage_mr_discussion",
-        "manage_draft_notes",
-      ],
-      files: ["browse_files", "manage_files"],
-      variables: ["browse_variables", "manage_variable"],
-      workitems: ["browse_work_items", "manage_work_item"],
-      webhooks: ["list_webhooks", "manage_webhook"],
-      snippets: ["browse_snippets", "manage_snippet"],
-      integrations: ["list_integrations", "manage_integration"],
-    };
-
-    for (const [feature, tools] of Object.entries(featureToTools)) {
+    for (const [feature, tools] of Object.entries(FEATURE_TO_TOOLS)) {
       const featureKey = feature as keyof typeof preset.features;
       if (preset.features[featureKey] === false) {
         const toolSet = new Set(tools);
@@ -1066,27 +1070,7 @@ function getToolsForPreset(
 
   // Apply feature flags
   if (preset.features) {
-    const featureToTools: Record<string, string[]> = {
-      wiki: ["browse_wiki", "manage_wiki"],
-      milestones: ["browse_milestones", "manage_milestone"],
-      pipelines: ["browse_pipelines", "manage_pipeline", "manage_pipeline_job"],
-      labels: ["browse_labels", "manage_label"],
-      mrs: [
-        "browse_merge_requests",
-        "browse_mr_discussions",
-        "manage_merge_request",
-        "manage_mr_discussion",
-        "manage_draft_notes",
-      ],
-      files: ["browse_files", "manage_files"],
-      variables: ["browse_variables", "manage_variable"],
-      workitems: ["browse_work_items", "manage_work_item"],
-      webhooks: ["list_webhooks", "manage_webhook"],
-      snippets: ["browse_snippets", "manage_snippet"],
-      integrations: ["list_integrations", "manage_integration"],
-    };
-
-    for (const [feature, tools] of Object.entries(featureToTools)) {
+    for (const [feature, tools] of Object.entries(FEATURE_TO_TOOLS)) {
       const featureKey = feature as keyof typeof preset.features;
       if (preset.features[featureKey] === false) {
         const toolSet = new Set(tools);
@@ -1591,6 +1575,22 @@ async function comparePresets(
 
 export async function main() {
   const options = parseArgs();
+
+  // Validate flag combinations
+  if (options.compare && !options.preset) {
+    console.error("Error: --compare flag must be used with --preset.");
+    console.error("Usage: yarn list-tools --preset <name> --compare <other_name>");
+    process.exit(1);
+    return;
+  }
+
+  if (options.validate && !options.preset && !options.profile) {
+    console.error("Error: --validate flag must be used with --preset or --profile.");
+    console.error("Usage: yarn list-tools --preset <name> --validate");
+    console.error("   or: yarn list-tools --profile <name> --validate");
+    process.exit(1);
+    return;
+  }
 
   if (options.showEnv) {
     printEnvironmentInfo();

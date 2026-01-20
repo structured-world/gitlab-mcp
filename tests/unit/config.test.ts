@@ -777,6 +777,7 @@ describe("config.ts", () => {
       expect(config.detectSchemaMode("mcp-inspector")).toBe("discriminated");
       expect(config.detectSchemaMode("MCP-Inspector")).toBe("discriminated");
       expect(config.detectSchemaMode("inspector")).toBe("discriminated");
+      expect(config.detectSchemaMode("inspector-v2")).toBe("discriminated"); // inspector-* variant
       expect(config.detectSchemaMode("mcp-inspector-v2")).toBe("discriminated");
     });
 

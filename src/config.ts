@@ -103,7 +103,8 @@ export function detectSchemaMode(clientName?: string): "flat" | "discriminated" 
   }
 
   // Known clients that support discriminated unions
-  if (name === "inspector" || name === "mcp-inspector" || name.startsWith("mcp-inspector")) {
+  // Use same pattern as above: exact match or prefix
+  if (name === "inspector" || name.startsWith("inspector-") || name.startsWith("mcp-inspector")) {
     return "discriminated";
   }
 

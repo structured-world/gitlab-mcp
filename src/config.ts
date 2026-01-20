@@ -60,17 +60,50 @@ export const GITLAB_DENIED_ACTIONS = parseDeniedActions(process.env.GITLAB_DENIE
 // Schema mode configuration
 // - 'flat' (default): Flatten discriminated unions for AI clients that don't support oneOf well
 // - 'discriminated': Keep oneOf structure for clients that properly support JSON Schema
-export type SchemaMode = "flat" | "discriminated";
+// - 'auto': Detect schema mode from clientInfo during MCP initialize (future default)
+export type SchemaMode = "flat" | "discriminated" | "auto";
 
 function parseSchemaMode(value?: string): SchemaMode {
   const mode = value?.toLowerCase();
   if (mode === "discriminated") {
     return "discriminated";
   }
+  if (mode === "auto") {
+    return "auto";
+  }
   return "flat"; // Default - best compatibility with current AI clients
 }
 
 export const GITLAB_SCHEMA_MODE: SchemaMode = parseSchemaMode(process.env.GITLAB_SCHEMA_MODE);
+
+/**
+ * Detect effective schema mode based on clientInfo from MCP initialize
+ * Called during initialize to determine per-session schema mode when GITLAB_SCHEMA_MODE=auto
+ *
+ * @param clientName - Client name from clientInfo (e.g., "claude-code", "mcp-inspector")
+ * @returns Effective schema mode for this client
+ */
+export function detectSchemaMode(clientName?: string): "flat" | "discriminated" {
+  const name = clientName?.toLowerCase() ?? "";
+
+  // Known clients that need flat schemas (don't support oneOf well)
+  if (
+    name.includes("claude-code") ||
+    name.includes("claude-desktop") ||
+    name.includes("claude") ||
+    name.includes("cursor")
+  ) {
+    return "flat";
+  }
+
+  // Known clients that support discriminated unions
+  if (name.includes("inspector") || name.includes("mcp-inspector")) {
+    return "discriminated";
+  }
+
+  // Safe default for unknown clients
+  return "flat";
+}
 
 export const USE_GITLAB_WIKI = process.env.USE_GITLAB_WIKI !== "false";
 export const USE_MILESTONE = process.env.USE_MILESTONE !== "false";

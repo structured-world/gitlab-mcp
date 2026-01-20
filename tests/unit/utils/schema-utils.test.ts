@@ -10,6 +10,8 @@ import {
   transformToolSchema,
   shouldRemoveTool,
   extractActionsFromSchema,
+  setDetectedSchemaMode,
+  clearDetectedSchemaMode,
 } from "../../../src/utils/schema-utils";
 
 // Mock config module
@@ -18,6 +20,11 @@ jest.mock("../../../src/config", () => ({
   GITLAB_SCHEMA_MODE: "flat", // Default to flat for tests expecting flattened output
   getActionDescriptionOverrides: jest.fn(() => new Map()),
   getParamDescriptionOverrides: jest.fn(() => new Map()),
+  detectSchemaMode: jest.fn((clientName?: string) => {
+    const name = clientName?.toLowerCase() ?? "";
+    if (name.includes("inspector")) return "discriminated";
+    return "flat";
+  }),
 }));
 
 // Mock logger
@@ -517,6 +524,65 @@ describe("schema-utils", () => {
       expect(result.properties?.action?.enum).toHaveLength(3);
       expect(result.properties).toHaveProperty("milestone_id"); // Still used by update, promote
       expect(result.properties).toHaveProperty("namespace"); // Shared by all
+    });
+  });
+
+  describe("Auto-detection schema mode (GITLAB_SCHEMA_MODE=auto)", () => {
+    beforeEach(() => {
+      clearDetectedSchemaMode();
+    });
+
+    afterEach(() => {
+      clearDetectedSchemaMode();
+    });
+
+    it("should use flat mode by default when auto mode not configured", () => {
+      // With default mock (GITLAB_SCHEMA_MODE=flat), setDetectedSchemaMode should be no-op
+      setDetectedSchemaMode("mcp-inspector");
+
+      // Should still flatten because mode is not 'auto'
+      const result = transformToolSchema("manage_milestone", discriminatedUnionSchema);
+      expect(result.oneOf).toBeUndefined();
+      expect(result.properties?.action?.enum).toBeDefined();
+    });
+
+    it("should use detected mode when GITLAB_SCHEMA_MODE is auto", () => {
+      // Override to auto mode
+      const configModule = jest.requireMock("../../../src/config");
+      const originalMode = configModule.GITLAB_SCHEMA_MODE;
+      configModule.GITLAB_SCHEMA_MODE = "auto";
+
+      try {
+        // Simulate detection of inspector client
+        setDetectedSchemaMode("mcp-inspector");
+
+        const result = transformToolSchema("manage_milestone", discriminatedUnionSchema);
+
+        // Should preserve oneOf because inspector supports discriminated unions
+        expect(result.oneOf).toBeDefined();
+      } finally {
+        configModule.GITLAB_SCHEMA_MODE = originalMode;
+        clearDetectedSchemaMode();
+      }
+    });
+
+    it("should fall back to flat when auto mode but no client detected", () => {
+      // Override to auto mode
+      const configModule = jest.requireMock("../../../src/config");
+      const originalMode = configModule.GITLAB_SCHEMA_MODE;
+      configModule.GITLAB_SCHEMA_MODE = "auto";
+
+      try {
+        // Don't call setDetectedSchemaMode - simulates pre-initialization
+
+        const result = transformToolSchema("manage_milestone", discriminatedUnionSchema);
+
+        // Should flatten because no client detected yet (fallback to flat)
+        expect(result.oneOf).toBeUndefined();
+        expect(result.properties?.action?.enum).toBeDefined();
+      } finally {
+        configModule.GITLAB_SCHEMA_MODE = originalMode;
+      }
     });
   });
 });

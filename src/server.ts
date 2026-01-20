@@ -40,6 +40,9 @@ import {
 // Middleware imports
 import { oauthAuthMiddleware, rateLimiterMiddleware } from "./middleware/index";
 
+// Schema mode auto-detection
+import { setDetectedSchemaMode } from "./utils/schema-utils";
+
 // Create server instance
 export const server = new Server(
   {
@@ -52,6 +55,13 @@ export const server = new Server(
     },
   }
 );
+
+// Auto-detect schema mode from clientInfo after initialization
+// Used when GITLAB_SCHEMA_MODE=auto to determine flat vs discriminated
+server.oninitialized = () => {
+  const clientVersion = server.getClientVersion();
+  setDetectedSchemaMode(clientVersion?.name);
+};
 
 // Terminal colors for logging (currently unused)
 // const colorGreen = '\x1b[32m';

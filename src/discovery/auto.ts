@@ -12,6 +12,7 @@ import { parseGitRemote, GitRemoteInfo, listGitRemotes } from "./git-remote";
 import { findProfileByHost, ProfileMatchResult } from "./profile-matcher";
 import { findProjectConfig, ProjectConfig, loadAndApplyProfile } from "../profiles";
 import { logger } from "../logger";
+import { extractNamespaceFromPath } from "../utils/namespace";
 
 // ============================================================================
 // Types
@@ -175,11 +176,12 @@ function setDefaultContext(projectPath: string): void {
   }
 
   if (!process.env.GITLAB_DEFAULT_NAMESPACE) {
-    // Namespace is the parent path (without the project name)
-    const parts = projectPath.split("/");
-    const namespace = parts.length > 1 ? parts.slice(0, -1).join("/") : projectPath;
-    process.env.GITLAB_DEFAULT_NAMESPACE = namespace;
-    logger.debug({ namespace }, "Set default namespace context");
+    // Use shared utility to extract namespace
+    const namespace = extractNamespaceFromPath(projectPath);
+    if (namespace) {
+      process.env.GITLAB_DEFAULT_NAMESPACE = namespace;
+      logger.debug({ namespace }, "Set default namespace context");
+    }
   }
 }
 

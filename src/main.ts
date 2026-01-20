@@ -5,6 +5,7 @@ import { logger } from "./logger";
 import { tryApplyProfileFromEnv, findProjectConfig, getProjectConfigSummary } from "./profiles";
 import { parseCliArgs, displayProjectConfig } from "./cli-utils";
 import { autoDiscover, formatDiscoveryResult, AutoDiscoveryResult } from "./discovery";
+import { extractNamespaceFromPath } from "./utils/namespace";
 
 /**
  * Configuration priority (highest to lowest):
@@ -175,13 +176,10 @@ async function main(): Promise<void> {
     // Set default project path if not already set
     process.env.GITLAB_DEFAULT_PROJECT ??= autoDiscoveryResult.projectPath;
 
-    // Extract namespace (group path without project name)
-    // For single-segment paths, namespace equals the project path (root-level project)
-    const pathParts = autoDiscoveryResult.projectPath.split("/");
-    if (pathParts.length === 1) {
-      process.env.GITLAB_DEFAULT_NAMESPACE ??= autoDiscoveryResult.projectPath;
-    } else if (pathParts.length > 1) {
-      process.env.GITLAB_DEFAULT_NAMESPACE ??= pathParts.slice(0, -1).join("/");
+    // Extract namespace using shared utility
+    const namespace = extractNamespaceFromPath(autoDiscoveryResult.projectPath);
+    if (namespace) {
+      process.env.GITLAB_DEFAULT_NAMESPACE ??= namespace;
     }
 
     logger.debug(

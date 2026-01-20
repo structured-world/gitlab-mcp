@@ -65,22 +65,28 @@ export function parseRemoteUrl(url: string): Omit<GitRemoteInfo, "remoteName"> |
   }
 
   // SSH with explicit protocol: ssh://git@host/path.git or ssh://git@host:port/path.git
-  const sshProtocolMatch = normalizedUrl.match(/^ssh:\/\/git@([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?$/);
+  const sshProtocolMatch = normalizedUrl.match(
+    /^ssh:\/\/git@([^/:]+)(?::(\d+))?\/(.+?)(?:\.git)?$/
+  );
   if (sshProtocolMatch) {
+    const sshHost = sshProtocolMatch[2]
+      ? `${sshProtocolMatch[1]}:${sshProtocolMatch[2]}`
+      : sshProtocolMatch[1];
     return {
-      host: sshProtocolMatch[1],
-      projectPath: normalizeProjectPath(sshProtocolMatch[2]),
+      host: sshHost,
+      projectPath: normalizeProjectPath(sshProtocolMatch[3]),
       protocol: "ssh",
       url: normalizedUrl,
     };
   }
 
   // HTTPS format: https://host/path.git or https://host:port/path.git
-  const httpsMatch = normalizedUrl.match(/^https?:\/\/([^/:]+)(?::\d+)?\/(.+?)(?:\.git)?$/);
+  const httpsMatch = normalizedUrl.match(/^https?:\/\/([^/:]+)(?::(\d+))?\/(.+?)(?:\.git)?$/);
   if (httpsMatch) {
+    const httpsHost = httpsMatch[2] ? `${httpsMatch[1]}:${httpsMatch[2]}` : httpsMatch[1];
     return {
-      host: httpsMatch[1],
-      projectPath: normalizeProjectPath(httpsMatch[2]),
+      host: httpsHost,
+      projectPath: normalizeProjectPath(httpsMatch[3]),
       protocol: "https",
       url: normalizedUrl,
     };

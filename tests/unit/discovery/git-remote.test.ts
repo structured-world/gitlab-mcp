@@ -89,7 +89,7 @@ describe("parseRemoteUrl", () => {
       const result = parseRemoteUrl("ssh://git@gitlab.company.com:2222/myteam/backend.git");
 
       expect(result).toEqual({
-        host: "gitlab.company.com",
+        host: "gitlab.company.com:2222",
         projectPath: "myteam/backend",
         protocol: "ssh",
         url: "ssh://git@gitlab.company.com:2222/myteam/backend.git",
@@ -124,7 +124,7 @@ describe("parseRemoteUrl", () => {
       const result = parseRemoteUrl("https://gitlab.company.com:8443/myteam/backend.git");
 
       expect(result).toEqual({
-        host: "gitlab.company.com",
+        host: "gitlab.company.com:8443",
         projectPath: "myteam/backend",
         protocol: "https",
         url: "https://gitlab.company.com:8443/myteam/backend.git",

@@ -27,6 +27,7 @@ async function main(): Promise<void> {
 
   // Handle --auto flag (auto-discovery from git remote)
   let autoDiscoveryUsed = false;
+  let autoDiscoveredProfileName: string | undefined;
   if (cliArgs.auto) {
     try {
       const result = await autoDiscover({
@@ -53,6 +54,7 @@ async function main(): Promise<void> {
           "Auto-discovery completed"
         );
         autoDiscoveryUsed = true;
+        autoDiscoveredProfileName = result.matchedProfile?.profileName;
       } else {
         logger.warn("Auto-discovery failed: not in a git repository or no remote found");
         // Continue with normal flow if auto-discovery fails
@@ -65,8 +67,11 @@ async function main(): Promise<void> {
   }
 
   // Apply profile if specified (CLI arg > env var > default)
-  // Skip if auto-discovery already applied a profile
-  if (!autoDiscoveryUsed || cliArgs.profileName) {
+  // Skip if auto-discovery already applied the same profile
+  const shouldLoadProfile =
+    !autoDiscoveryUsed ||
+    (cliArgs.profileName && cliArgs.profileName !== autoDiscoveredProfileName);
+  if (shouldLoadProfile) {
     try {
       const result = await tryApplyProfileFromEnv(cliArgs.profileName);
       if (result) {

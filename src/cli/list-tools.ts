@@ -413,67 +413,11 @@ function extractActions(schema: JsonSchemaProperty): ActionInfo[] {
 }
 
 /**
- * Extract parameters from schema.
- * Handles both discriminated union (oneOf) and flat schemas.
- * For oneOf, merges parameters from all branches with action hints.
+ * Extract parameters from flat schema.
+ * Only called for schemas without oneOf (flat schemas).
+ * For oneOf schemas, use extractParametersGrouped which handles them directly.
  */
 function extractParameters(schema: JsonSchemaProperty): ParameterInfo[] {
-  const paramMap = new Map<string, ParameterInfo & { actions: Set<string> }>();
-
-  // Handle discriminated union (oneOf)
-  if (schema.oneOf && Array.isArray(schema.oneOf)) {
-    for (const branch of schema.oneOf) {
-      const actionName = branch.properties?.action?.const as string | undefined;
-      const requiredFields = branch.required ?? [];
-
-      if (branch.properties) {
-        for (const [name, prop] of Object.entries(branch.properties)) {
-          const type = resolveJsonSchemaType(prop, branch);
-          const required = requiredFields.includes(name);
-          const description = prop.description ?? "";
-
-          if (paramMap.has(name)) {
-            // Merge with existing - track which actions use this param
-            const existing = paramMap.get(name)!;
-            if (actionName) existing.actions.add(actionName);
-            // Use longer description if available
-            if (description.length > existing.description.length) {
-              existing.description = description;
-            }
-            // Mark as required if required in any branch
-            if (required) existing.required = true;
-          } else {
-            paramMap.set(name, {
-              name,
-              type,
-              required,
-              description,
-              actions: new Set(actionName ? [actionName] : []),
-            });
-          }
-        }
-      }
-    }
-
-    // Convert to array and format action hints
-    const params = Array.from(paramMap.values()).map(p => {
-      // Add action hints to description for non-shared params
-      let desc = p.description;
-      if (
-        p.actions.size > 0 &&
-        p.actions.size < (schema.oneOf?.length ?? 0) &&
-        p.name !== "action"
-      ) {
-        const actionList = Array.from(p.actions).sort().join(", ");
-        desc = desc ? `${desc} (${actionList})` : `(${actionList})`;
-      }
-      return { name: p.name, type: p.type, required: p.required, description: desc };
-    });
-
-    return sortParameters(params);
-  }
-
-  // Flat schema fallback
   if (!schema.properties) return [];
 
   const requiredFields = schema.required ?? [];

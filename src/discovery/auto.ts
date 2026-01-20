@@ -272,8 +272,7 @@ export function formatDiscoveryResult(result: AutoDiscoveryResult): string {
   // Default Context
   lines.push("Default Context:");
   lines.push(`  Project: ${result.projectPath}`);
-  const parts = result.projectPath.split("/");
-  const namespace = parts.length > 1 ? parts.slice(0, -1).join("/") : result.projectPath;
+  const namespace = extractNamespaceFromPath(result.projectPath) ?? result.projectPath;
   lines.push(`  Namespace: ${namespace}`);
 
   return lines.join("\n");

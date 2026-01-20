@@ -22,7 +22,15 @@ jest.mock("../../../src/config", () => ({
   getParamDescriptionOverrides: jest.fn(() => new Map()),
   detectSchemaMode: jest.fn((clientName?: string) => {
     const name = clientName?.toLowerCase() ?? "";
-    if (name.includes("inspector")) return "discriminated";
+    // Match actual implementation: exact match or dash-prefix
+    if (
+      name === "inspector" ||
+      name.startsWith("inspector-") ||
+      name === "mcp-inspector" ||
+      name.startsWith("mcp-inspector-")
+    ) {
+      return "discriminated";
+    }
     return "flat";
   }),
 }));

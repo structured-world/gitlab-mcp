@@ -233,31 +233,30 @@ describe("Profile Types and Schemas", () => {
     });
 
     it("should reject preset with host field (security)", () => {
-      // Presets should never have host - that's why we use separate schemas
+      // Presets use .strict() to reject unknown fields like host for security
       const invalidPreset = {
         host: "gitlab.example.com", // This field should not exist on Preset
         features: {},
       };
       const result = PresetSchema.safeParse(invalidPreset);
-      // PresetSchema will strip unknown fields (strict mode not enabled)
-      // The point is it should not be part of the type definition
-      expect(result.success).toBe(true);
-      if (result.success) {
-        // Verify host is not in the parsed result
-        expect("host" in result.data).toBe(false);
+      // With .strict() mode, unknown fields cause validation failure
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0].code).toBe("unrecognized_keys");
       }
     });
 
     it("should reject preset with auth field (security)", () => {
+      // Presets use .strict() to reject unknown fields like auth for security
       const invalidPreset = {
         auth: { type: "pat", token_env: "TOKEN" },
         features: {},
       };
       const result = PresetSchema.safeParse(invalidPreset);
-      // Like host, auth should not be part of preset
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect("auth" in result.data).toBe(false);
+      // With .strict() mode, unknown fields cause validation failure
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0].code).toBe("unrecognized_keys");
       }
     });
   });

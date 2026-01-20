@@ -10,8 +10,14 @@ import { tryApplyProfileFromEnv } from "./profiles";
 function getProfileFromArgs(): string | undefined {
   const args = process.argv.slice(2);
   for (let i = 0; i < args.length; i++) {
-    if (args[i] === "--profile" && args[i + 1]) {
-      return args[i + 1];
+    if (args[i] === "--profile") {
+      const value = args[i + 1];
+      // Validate that value exists and is not another flag
+      if (!value || value.startsWith("--")) {
+        logger.error("--profile requires a profile name (e.g., --profile work)");
+        process.exit(1);
+      }
+      return value;
     }
   }
   return undefined;
@@ -26,10 +32,15 @@ async function main(): Promise<void> {
   try {
     const result = await tryApplyProfileFromEnv(profileName);
     if (result) {
-      logger.info(
-        { profile: result.profileName, host: result.host },
-        "Using configuration profile"
-      );
+      // Handle both profile and preset results
+      if ("profileName" in result) {
+        logger.info(
+          { profile: result.profileName, host: result.host },
+          "Using configuration profile"
+        );
+      } else {
+        logger.info({ preset: result.presetName }, "Using configuration preset");
+      }
     }
   } catch (error) {
     // Profile errors are fatal - don't start with misconfigured profile

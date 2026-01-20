@@ -5,7 +5,7 @@
  * that the rest of the application understands.
  */
 
-import { Profile, ProfileValidationResult } from "./types";
+import { Profile, Preset, ProfileValidationResult } from "./types";
 import { ProfileLoader } from "./loader";
 import { logger } from "../logger";
 
@@ -38,6 +38,13 @@ export interface ApplyProfileResult {
   success: boolean;
   profileName: string;
   host: string;
+  appliedSettings: string[];
+  validation: ProfileValidationResult;
+}
+
+export interface ApplyPresetResult {
+  success: boolean;
+  presetName: string;
   appliedSettings: string[];
   validation: ProfileValidationResult;
 }
@@ -214,7 +221,106 @@ export async function applyProfile(
 }
 
 // ============================================================================
-// Load and Apply Profile
+// Apply Preset
+// ============================================================================
+
+/**
+ * Apply a preset's settings to environment variables
+ *
+ * Presets are applied ON TOP of existing environment configuration.
+ * They do NOT set host or auth - those must already be configured via
+ * GITLAB_API_URL and GITLAB_TOKEN environment variables.
+ *
+ * @param preset - The preset to apply
+ * @param presetName - Name of the preset (for logging)
+ * @returns Result of applying the preset
+ */
+export async function applyPreset(preset: Preset, presetName: string): Promise<ApplyPresetResult> {
+  const appliedSettings: string[] = [];
+  const loader = new ProfileLoader();
+  const validation = await loader.validatePreset(preset);
+
+  // Log warnings but continue
+  for (const warning of validation.warnings) {
+    logger.warn({ preset: presetName }, warning);
+  }
+
+  // Stop on errors
+  if (!validation.valid) {
+    logger.error({ preset: presetName, errors: validation.errors }, "Preset validation failed");
+    return {
+      success: false,
+      presetName,
+      appliedSettings,
+      validation,
+    };
+  }
+
+  // Verify that host/auth are already configured (presets require existing connection)
+  if (!process.env.GITLAB_API_URL && !process.env.GITLAB_TOKEN) {
+    logger.warn(
+      { preset: presetName },
+      "Preset applied but GITLAB_API_URL/GITLAB_TOKEN not set - connection may fail"
+    );
+  }
+
+  // Apply access control
+  if (preset.read_only) {
+    process.env.GITLAB_READ_ONLY_MODE = "true";
+    appliedSettings.push("GITLAB_READ_ONLY_MODE=true");
+  }
+
+  if (preset.denied_tools_regex) {
+    process.env.GITLAB_DENIED_TOOLS_REGEX = preset.denied_tools_regex;
+    appliedSettings.push(`GITLAB_DENIED_TOOLS_REGEX=${preset.denied_tools_regex}`);
+  }
+
+  if (preset.denied_actions && preset.denied_actions.length > 0) {
+    process.env.GITLAB_DENIED_ACTIONS = preset.denied_actions.join(",");
+    appliedSettings.push(`GITLAB_DENIED_ACTIONS=${preset.denied_actions.join(",")}`);
+  }
+
+  if (preset.allowed_tools && preset.allowed_tools.length > 0) {
+    process.env.GITLAB_ALLOWED_TOOLS = preset.allowed_tools.join(",");
+    appliedSettings.push(`GITLAB_ALLOWED_TOOLS=${preset.allowed_tools.join(",")}`);
+  }
+
+  // Apply feature flags
+  if (preset.features) {
+    for (const [feature, envVar] of Object.entries(FEATURE_ENV_MAP)) {
+      const value = preset.features[feature as keyof typeof preset.features];
+      if (value !== undefined) {
+        process.env[envVar] = value ? "true" : "false";
+        appliedSettings.push(`${envVar}=${value}`);
+      }
+    }
+  }
+
+  // Apply timeout
+  if (preset.timeout_ms) {
+    process.env.GITLAB_API_TIMEOUT_MS = String(preset.timeout_ms);
+    appliedSettings.push(`GITLAB_API_TIMEOUT_MS=${preset.timeout_ms}`);
+  }
+
+  logger.info(
+    {
+      preset: presetName,
+      readOnly: preset.read_only ?? false,
+      settingsCount: appliedSettings.length,
+    },
+    "Preset applied successfully"
+  );
+
+  return {
+    success: true,
+    presetName,
+    appliedSettings,
+    validation,
+  };
+}
+
+// ============================================================================
+// Load and Apply Profile/Preset
 // ============================================================================
 
 /**
@@ -232,28 +338,51 @@ export async function loadAndApplyProfile(profileName: string): Promise<ApplyPro
 }
 
 /**
- * Try to apply profile from environment or CLI args
+ * Load and apply a preset by name
  *
- * @param cliProfileName - Profile name from CLI argument (optional)
- * @returns Result if a profile was applied, undefined otherwise
+ * Convenience function that combines loading and applying.
+ *
+ * @param presetName - Name of the preset to load and apply
+ * @returns Result of applying the preset
+ */
+export async function loadAndApplyPreset(presetName: string): Promise<ApplyPresetResult> {
+  const loader = new ProfileLoader();
+  const preset = await loader.loadPreset(presetName);
+  return applyPreset(preset, presetName);
+}
+
+/**
+ * Try to apply profile or preset from environment or CLI args
+ *
+ * Tries user profile first, then falls back to built-in preset.
+ * This allows using built-in presets like "readonly" with --profile flag.
+ *
+ * @param cliProfileName - Profile/preset name from CLI argument (optional)
+ * @returns Result if a profile/preset was applied, undefined otherwise
  */
 export async function tryApplyProfileFromEnv(
   cliProfileName?: string
-): Promise<ApplyProfileResult | undefined> {
+): Promise<ApplyProfileResult | ApplyPresetResult | undefined> {
   // Priority: CLI arg > env var > default profile
-  const profileName =
-    cliProfileName ?? process.env.GITLAB_PROFILE ?? (await getDefaultProfileName());
+  const name = cliProfileName ?? process.env.GITLAB_PROFILE ?? (await getDefaultProfileName());
 
-  if (!profileName) {
+  if (!name) {
     logger.debug("No profile specified, using environment variables directly");
     return undefined;
   }
 
   try {
-    return await loadAndApplyProfile(profileName);
+    const loader = new ProfileLoader();
+    const loaded = await loader.loadAny(name);
+
+    if (loaded.type === "profile") {
+      return await applyProfile(loaded.data, name);
+    } else {
+      return await applyPreset(loaded.data, name);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error({ profile: profileName, error: message }, "Failed to apply profile");
+    logger.error({ profile: name, error: message }, "Failed to apply profile/preset");
     throw error;
   }
 }

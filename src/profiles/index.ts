@@ -37,7 +37,10 @@ export { ProfileLoader, loadProfile, getProfileNameFromEnv } from "./loader";
 // Applicator
 export {
   applyProfile,
+  applyPreset,
   loadAndApplyProfile,
+  loadAndApplyPreset,
   tryApplyProfileFromEnv,
   ApplyProfileResult,
+  ApplyPresetResult,
 } from "./applicator";

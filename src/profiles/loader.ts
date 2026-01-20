@@ -281,6 +281,23 @@ export class ProfileLoader {
       }
     }
 
+    if (profile.auth.type === "oauth" && profile.auth.client_secret_env) {
+      if (!process.env[profile.auth.client_secret_env]) {
+        warnings.push(`Environment variable '${profile.auth.client_secret_env}' is not set`);
+      }
+    }
+
+    // Validate cookie auth path
+    if (
+      profile.auth.type === "cookie" &&
+      "cookie_path" in profile.auth &&
+      profile.auth.cookie_path
+    ) {
+      if (!fs.existsSync(profile.auth.cookie_path)) {
+        errors.push(`Cookie file not found: ${profile.auth.cookie_path}`);
+      }
+    }
+
     // Validate TLS paths
     if (profile.ssl_cert_path && !fs.existsSync(profile.ssl_cert_path)) {
       errors.push(`SSL certificate not found: ${profile.ssl_cert_path}`);

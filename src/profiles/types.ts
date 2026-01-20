@@ -112,22 +112,27 @@ export const ProfileSchema = z.object({
  * These are applied ON TOP of existing environment configuration.
  * They NEVER contain host or auth - those come from env vars or user profiles.
  */
-export const PresetSchema = z.object({
-  // Description for documentation
-  description: z.string().optional().describe("Human-readable description of the preset"),
+export const PresetSchema = z
+  .object({
+    // Description for documentation
+    description: z.string().optional().describe("Human-readable description of the preset"),
 
-  // Access Control
-  read_only: z.boolean().optional().describe("Enable read-only mode"),
-  denied_tools_regex: z.string().optional().describe("Regex pattern to exclude tools"),
-  allowed_tools: z.array(z.string()).optional().describe("Explicit tool whitelist"),
-  denied_actions: z.array(z.string()).optional().describe("Denied actions in format 'tool:action'"),
+    // Access Control
+    read_only: z.boolean().optional().describe("Enable read-only mode"),
+    denied_tools_regex: z.string().optional().describe("Regex pattern to exclude tools"),
+    allowed_tools: z.array(z.string()).optional().describe("Explicit tool whitelist"),
+    denied_actions: z
+      .array(z.string())
+      .optional()
+      .describe("Denied actions in format 'tool:action'"),
 
-  // Feature Flags
-  features: FeatureFlagsSchema,
+    // Feature Flags
+    features: FeatureFlagsSchema,
 
-  // Behavior
-  timeout_ms: z.number().int().positive().optional().describe("API timeout in milliseconds"),
-});
+    // Behavior
+    timeout_ms: z.number().int().positive().optional().describe("API timeout in milliseconds"),
+  })
+  .strict(); // Reject unknown fields like host/auth for security
 
 // ============================================================================
 // Profiles Config File Schema

@@ -378,7 +378,9 @@ describe("Profile Applicator", () => {
       const result = await tryApplyProfileFromEnv("work");
 
       expect(result).toBeDefined();
-      expect(result?.profileName).toBe("work");
+      // Check it's a profile result (has profileName, not presetName)
+      expect("profileName" in result!).toBe(true);
+      expect((result as { profileName: string }).profileName).toBe("work");
       expect(process.env.GITLAB_API_URL).toBe("https://gitlab.work.com");
     });
 
@@ -404,7 +406,9 @@ describe("Profile Applicator", () => {
       const result = await tryApplyProfileFromEnv(); // No CLI arg
 
       expect(result).toBeDefined();
-      expect(result?.profileName).toBe("personal");
+      // Check it's a profile result (has profileName, not presetName)
+      expect("profileName" in result!).toBe(true);
+      expect((result as { profileName: string }).profileName).toBe("personal");
     });
 
     it("should throw error for non-existent profile", async () => {

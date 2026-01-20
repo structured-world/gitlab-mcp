@@ -770,4 +770,36 @@ describe("ProfileLoader", () => {
       expect(mockFs.mkdirSync).not.toHaveBeenCalled();
     });
   });
+
+  describe("standalone functions", () => {
+    it("getProfileNameFromEnv should return GITLAB_PROFILE env var", async () => {
+      const originalEnv = process.env.GITLAB_PROFILE;
+      process.env.GITLAB_PROFILE = "my-profile";
+
+      const { getProfileNameFromEnv } = await import("../../../src/profiles/loader");
+      const result = getProfileNameFromEnv();
+
+      expect(result).toBe("my-profile");
+
+      if (originalEnv !== undefined) {
+        process.env.GITLAB_PROFILE = originalEnv;
+      } else {
+        delete process.env.GITLAB_PROFILE;
+      }
+    });
+
+    it("getProfileNameFromEnv should return undefined when env var not set", async () => {
+      const originalEnv = process.env.GITLAB_PROFILE;
+      delete process.env.GITLAB_PROFILE;
+
+      const { getProfileNameFromEnv } = await import("../../../src/profiles/loader");
+      const result = getProfileNameFromEnv();
+
+      expect(result).toBeUndefined();
+
+      if (originalEnv !== undefined) {
+        process.env.GITLAB_PROFILE = originalEnv;
+      }
+    });
+  });
 });

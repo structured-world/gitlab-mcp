@@ -41,8 +41,11 @@ describe("Profile Applicator", () => {
       "GITLAB_AUTH_COOKIE_PATH",
       "GITLAB_READ_ONLY_MODE",
       "GITLAB_ALLOWED_PROJECT_IDS",
+      "GITLAB_ALLOWED_GROUP_IDS",
+      "GITLAB_ALLOWED_TOOLS",
       "GITLAB_DENIED_TOOLS_REGEX",
       "GITLAB_DENIED_ACTIONS",
+      "GITLAB_DEFAULT_NAMESPACE",
       "USE_GITLAB_WIKI",
       "USE_MILESTONE",
       "USE_PIPELINE",
@@ -60,7 +63,6 @@ describe("Profile Applicator", () => {
       "SSL_KEY_PATH",
       "GITLAB_CA_CERT_PATH",
       "GITLAB_PROJECT_ID",
-      "GITLAB_ALLOWED_TOOLS",
       "GITLAB_PROFILE",
     ];
     for (const envVar of profileEnvVars) {
@@ -309,6 +311,58 @@ describe("Profile Applicator", () => {
       expect(process.env.GITLAB_PROJECT_ID).toBe("myteam/frontend");
     });
 
+    it("should apply allowed_groups setting", async () => {
+      process.env.TOKEN = "token";
+
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        allowed_groups: ["group1", "group2", "nested/group3"],
+      };
+
+      const { applyProfile } = await import("../../../src/profiles/applicator");
+      const result = await applyProfile(profile, "groups-restricted");
+
+      expect(process.env.GITLAB_ALLOWED_GROUP_IDS).toBe("group1,group2,nested/group3");
+      expect(result.appliedSettings).toContain(
+        "GITLAB_ALLOWED_GROUP_IDS=group1,group2,nested/group3"
+      );
+    });
+
+    it("should apply allowed_tools setting", async () => {
+      process.env.TOKEN = "token";
+
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        allowed_tools: ["browse_projects", "browse_commits", "get_users"],
+      };
+
+      const { applyProfile } = await import("../../../src/profiles/applicator");
+      const result = await applyProfile(profile, "tools-whitelist");
+
+      expect(process.env.GITLAB_ALLOWED_TOOLS).toBe("browse_projects,browse_commits,get_users");
+      expect(result.appliedSettings).toContain(
+        "GITLAB_ALLOWED_TOOLS=browse_projects,browse_commits,get_users"
+      );
+    });
+
+    it("should apply default_namespace setting", async () => {
+      process.env.TOKEN = "token";
+
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        default_namespace: "myteam",
+      };
+
+      const { applyProfile } = await import("../../../src/profiles/applicator");
+      const result = await applyProfile(profile, "namespace-default");
+
+      expect(process.env.GITLAB_DEFAULT_NAMESPACE).toBe("myteam");
+      expect(result.appliedSettings).toContain("GITLAB_DEFAULT_NAMESPACE=myteam");
+    });
+
     it("should return validation errors for invalid profile", async () => {
       process.env.TOKEN = "token";
 
@@ -324,6 +378,26 @@ describe("Profile Applicator", () => {
       expect(result.success).toBe(false);
       expect(result.validation.valid).toBe(false);
       expect(result.validation.errors.length).toBeGreaterThan(0);
+    });
+
+    it("should log warnings but continue when profile has validation warnings", async () => {
+      // Token env var is NOT set, which should trigger a warning
+      // (but not an error since the token could be set later)
+      delete process.env.MISSING_TOKEN;
+
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "MISSING_TOKEN" },
+      };
+
+      const { logger } = await import("../../../src/logger");
+      const { applyProfile } = await import("../../../src/profiles/applicator");
+      const result = await applyProfile(profile, "warning-profile");
+
+      // Should succeed despite warnings
+      expect(result.success).toBe(true);
+      expect(result.validation.warnings.length).toBeGreaterThan(0);
+      expect(logger.warn).toHaveBeenCalled();
     });
 
     it("should track all applied settings", async () => {

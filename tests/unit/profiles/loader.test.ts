@@ -356,6 +356,80 @@ describe("ProfileLoader", () => {
       expect(profiles[1].name).toBe("aaa");
       expect(profiles[1].isPreset).toBe(true);
     });
+
+    it("should handle empty profiles list when no user config exists", async () => {
+      mockFs.existsSync.mockImplementation((p: fs.PathLike) => {
+        const pathStr = p.toString();
+        // User config doesn't exist, builtin dir exists
+        if (pathStr === testUserConfigPath) return false;
+        if (pathStr === testBuiltinDir) return true;
+        return pathStr.endsWith(".yaml");
+      });
+
+      const presetContent = yaml.stringify({
+        description: "Test preset",
+        features: {},
+      });
+      mockFs.readFileSync.mockReturnValue(presetContent);
+      (mockFs.readdirSync as jest.Mock).mockReturnValue(["test.yaml"]);
+
+      const profiles = await loader.listProfiles();
+
+      // Should only have preset, no user profiles
+      expect(profiles.length).toBe(1);
+      expect(profiles[0].isPreset).toBe(true);
+    });
+
+    it("should handle empty presets when builtin dir does not exist", async () => {
+      const profileConfig = {
+        profiles: {
+          work: {
+            host: "gitlab.example.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockImplementation((p: fs.PathLike) => {
+        const pathStr = p.toString();
+        // User config exists, builtin dir doesn't
+        if (pathStr === testUserConfigPath) return true;
+        if (pathStr === testBuiltinDir) return false;
+        return false;
+      });
+      mockFs.readFileSync.mockReturnValue(yaml.stringify(profileConfig));
+
+      const profiles = await loader.listProfiles();
+
+      // Should only have user profile, no presets
+      expect(profiles.length).toBe(1);
+      expect(profiles[0].isPreset).toBe(false);
+    });
+
+    it("should skip invalid presets and continue", async () => {
+      mockFs.existsSync.mockImplementation((p: fs.PathLike) => {
+        const pathStr = p.toString();
+        if (pathStr === testUserConfigPath) return false;
+        return true; // Builtin dir and all files exist
+      });
+
+      // First preset is valid, second is invalid
+      let callCount = 0;
+      mockFs.readFileSync.mockImplementation(() => {
+        callCount++;
+        if (callCount === 1) {
+          return yaml.stringify({ description: "Valid preset", features: {} });
+        }
+        return "invalid: yaml: content:"; // Invalid YAML
+      });
+      (mockFs.readdirSync as jest.Mock).mockReturnValue(["valid.yaml", "invalid.yaml"]);
+
+      const profiles = await loader.listProfiles();
+
+      // Should only have the valid preset
+      expect(profiles.length).toBe(1);
+      expect(profiles[0].name).toBe("valid");
+    });
   });
 
   describe("validateProfile", () => {
@@ -432,6 +506,119 @@ describe("ProfileLoader", () => {
 
       expect(result.valid).toBe(false);
       expect(result.errors.some(e => e.includes("SSL certificate not found"))).toBe(true);
+    });
+
+    it("should error when SSL key path does not exist", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        ssl_key_path: "/nonexistent/key.pem",
+      };
+
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.includes("SSL key not found"))).toBe(true);
+    });
+
+    it("should error when CA cert path does not exist", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        ca_cert_path: "/nonexistent/ca.pem",
+      };
+
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.includes("CA certificate not found"))).toBe(true);
+    });
+
+    it("should warn when OAuth client_id_env is not set", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: {
+          type: "oauth",
+          client_id_env: "MISSING_CLIENT_ID",
+          client_secret_env: "OAUTH_SECRET",
+        },
+      };
+
+      // Set secret but not client ID
+      process.env.OAUTH_SECRET = "secret";
+      delete process.env.MISSING_CLIENT_ID;
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings).toContain("Environment variable 'MISSING_CLIENT_ID' is not set");
+
+      delete process.env.OAUTH_SECRET;
+    });
+
+    it("should warn when OAuth client_secret_env is not set", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: {
+          type: "oauth",
+          client_id_env: "OAUTH_CLIENT_ID",
+          client_secret_env: "MISSING_SECRET",
+        },
+      };
+
+      // Set client ID but not secret
+      process.env.OAUTH_CLIENT_ID = "client-id";
+      delete process.env.MISSING_SECRET;
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings).toContain("Environment variable 'MISSING_SECRET' is not set");
+
+      delete process.env.OAUTH_CLIENT_ID;
+    });
+
+    it("should error when cookie path does not exist", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: {
+          type: "cookie",
+          cookie_path: "/nonexistent/cookies.txt",
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.includes("Cookie file not found"))).toBe(true);
+    });
+
+    it("should pass validation when all OAuth env vars are set", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: {
+          type: "oauth",
+          client_id_env: "OAUTH_ID",
+          client_secret_env: "OAUTH_SECRET",
+        },
+      };
+
+      process.env.OAUTH_ID = "id";
+      process.env.OAUTH_SECRET = "secret";
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings).toHaveLength(0);
+
+      delete process.env.OAUTH_ID;
+      delete process.env.OAUTH_SECRET;
     });
   });
 

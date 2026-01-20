@@ -39,15 +39,30 @@ const USER_PROFILES_PATH = path.join(USER_CONFIG_DIR, "profiles.yaml");
  * Get the built-in presets directory path.
  * Works in both compiled (dist/) and development (src/) environments.
  * Tests always provide their own paths, so this is only used at runtime.
+ *
+ * Resolution order:
+ * 1. __dirname/builtin - works when installed from npm (dist/src/profiles/builtin)
+ * 2. process.cwd()/dist/src/profiles/builtin - compiled location from project root
+ * 3. process.cwd()/src/profiles/builtin - source location for development
  */
 function getBuiltinDir(): string {
-  // Try compiled location first (dist/profiles/builtin)
-  const distPath = path.join(process.cwd(), "dist", "profiles", "builtin");
-  if (fs.existsSync(distPath)) {
-    return distPath;
+  const candidates = [
+    // Primary: relative to this module (works when installed from npm)
+    path.join(__dirname, "builtin"),
+    // Fallback: compiled location from project root
+    path.join(process.cwd(), "dist", "src", "profiles", "builtin"),
+    // Fallback: source location for development
+    path.join(process.cwd(), "src", "profiles", "builtin"),
+  ];
+
+  for (const dir of candidates) {
+    if (fs.existsSync(dir)) {
+      return dir;
+    }
   }
-  // Fallback to source location (src/profiles/builtin)
-  return path.join(process.cwd(), "src", "profiles", "builtin");
+
+  // Return first candidate path for error message clarity
+  return candidates[0];
 }
 
 // ============================================================================

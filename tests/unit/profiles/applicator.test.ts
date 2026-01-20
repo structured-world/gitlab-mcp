@@ -3,7 +3,7 @@
  * Tests applying profile settings to environment variables
  */
 
-import { Profile } from "../../../src/profiles/types";
+import { Profile, Preset } from "../../../src/profiles/types";
 
 // Mock logger
 jest.mock("../../../src/logger", () => ({
@@ -60,6 +60,8 @@ describe("Profile Applicator", () => {
       "SSL_KEY_PATH",
       "GITLAB_CA_CERT_PATH",
       "GITLAB_PROJECT_ID",
+      "GITLAB_ALLOWED_TOOLS",
+      "GITLAB_PROFILE",
     ];
     for (const envVar of profileEnvVars) {
       delete process.env[envVar];
@@ -418,6 +420,275 @@ describe("Profile Applicator", () => {
       const { tryApplyProfileFromEnv } = await import("../../../src/profiles/applicator");
 
       await expect(tryApplyProfileFromEnv("nonexistent")).rejects.toThrow();
+    });
+
+    it("should apply preset from CLI argument when no matching profile", async () => {
+      // Set up env for preset (presets require existing connection config)
+      process.env.GITLAB_API_URL = "https://gitlab.example.com";
+      process.env.GITLAB_TOKEN = "existing-token";
+
+      const yaml = require("yaml");
+      const fs = require("fs");
+
+      // First call to existsSync checks user config - return false
+      // Second call checks builtin preset dir - return true
+      // Third call checks preset file - return true
+      fs.existsSync
+        .mockReturnValueOnce(false) // User config doesn't exist
+        .mockReturnValueOnce(true) // Builtin dir exists
+        .mockReturnValueOnce(true); // Preset file exists
+
+      // readFileSync for preset YAML
+      fs.readFileSync.mockReturnValue(
+        yaml.stringify({
+          description: "Test preset",
+          read_only: true,
+          features: {
+            wiki: true,
+            pipelines: false,
+          },
+        })
+      );
+
+      const { tryApplyProfileFromEnv } = await import("../../../src/profiles/applicator");
+      const result = await tryApplyProfileFromEnv("testpreset");
+
+      expect(result).toBeDefined();
+      // Check it's a preset result (has presetName, not profileName)
+      expect("presetName" in result!).toBe(true);
+      expect((result as { presetName: string }).presetName).toBe("testpreset");
+      expect(process.env.GITLAB_READ_ONLY_MODE).toBe("true");
+    });
+  });
+
+  describe("applyPreset", () => {
+    it("should apply preset with read_only setting", async () => {
+      const preset: Preset = {
+        read_only: true,
+        features: {},
+      };
+
+      const { applyPreset } = await import("../../../src/profiles/applicator");
+      const result = await applyPreset(preset, "readonly-preset");
+
+      expect(result.success).toBe(true);
+      expect(result.presetName).toBe("readonly-preset");
+      expect(process.env.GITLAB_READ_ONLY_MODE).toBe("true");
+      expect(result.appliedSettings).toContain("GITLAB_READ_ONLY_MODE=true");
+    });
+
+    it("should apply preset with denied_tools_regex", async () => {
+      const preset: Preset = {
+        denied_tools_regex: "^manage_|^create_",
+        features: {},
+      };
+
+      const { applyPreset } = await import("../../../src/profiles/applicator");
+      const result = await applyPreset(preset, "limited-preset");
+
+      expect(result.success).toBe(true);
+      expect(process.env.GITLAB_DENIED_TOOLS_REGEX).toBe("^manage_|^create_");
+    });
+
+    it("should apply preset with denied_actions", async () => {
+      const preset: Preset = {
+        denied_actions: ["manage_repository:delete", "manage_webhook:create"],
+        features: {},
+      };
+
+      const { applyPreset } = await import("../../../src/profiles/applicator");
+      const result = await applyPreset(preset, "safe-preset");
+
+      expect(result.success).toBe(true);
+      expect(process.env.GITLAB_DENIED_ACTIONS).toBe(
+        "manage_repository:delete,manage_webhook:create"
+      );
+    });
+
+    it("should apply preset with allowed_tools whitelist", async () => {
+      const preset: Preset = {
+        allowed_tools: ["browse_projects", "browse_commits", "get_users"],
+        features: {},
+      };
+
+      const { applyPreset } = await import("../../../src/profiles/applicator");
+      const result = await applyPreset(preset, "whitelist-preset");
+
+      expect(result.success).toBe(true);
+      expect(process.env.GITLAB_ALLOWED_TOOLS).toBe("browse_projects,browse_commits,get_users");
+    });
+
+    it("should apply preset with feature flags", async () => {
+      const preset: Preset = {
+        features: {
+          wiki: true,
+          milestones: false,
+          pipelines: true,
+          variables: false,
+        },
+      };
+
+      const { applyPreset } = await import("../../../src/profiles/applicator");
+      const result = await applyPreset(preset, "features-preset");
+
+      expect(result.success).toBe(true);
+      expect(process.env.USE_GITLAB_WIKI).toBe("true");
+      expect(process.env.USE_MILESTONE).toBe("false");
+      expect(process.env.USE_PIPELINE).toBe("true");
+      expect(process.env.USE_VARIABLES).toBe("false");
+    });
+
+    it("should apply preset with timeout_ms", async () => {
+      const preset: Preset = {
+        timeout_ms: 45000,
+        features: {},
+      };
+
+      const { applyPreset } = await import("../../../src/profiles/applicator");
+      const result = await applyPreset(preset, "timeout-preset");
+
+      expect(result.success).toBe(true);
+      expect(process.env.GITLAB_API_TIMEOUT_MS).toBe("45000");
+    });
+
+    it("should return validation errors for invalid preset", async () => {
+      const preset: Preset = {
+        denied_tools_regex: "[invalid(",
+        features: {},
+      };
+
+      const { applyPreset } = await import("../../../src/profiles/applicator");
+      const result = await applyPreset(preset, "invalid-preset");
+
+      expect(result.success).toBe(false);
+      expect(result.validation.valid).toBe(false);
+      expect(result.validation.errors.length).toBeGreaterThan(0);
+    });
+
+    it("should warn when GITLAB_API_URL and GITLAB_TOKEN not set", async () => {
+      // Ensure env vars are not set
+      delete process.env.GITLAB_API_URL;
+      delete process.env.GITLAB_TOKEN;
+
+      const preset: Preset = {
+        read_only: true,
+        features: {},
+      };
+
+      const { applyPreset } = await import("../../../src/profiles/applicator");
+      const { logger } = await import("../../../src/logger");
+
+      await applyPreset(preset, "no-auth-preset");
+
+      // Verify warning was logged
+      expect(logger.warn).toHaveBeenCalledWith(
+        { preset: "no-auth-preset" },
+        "Preset applied but GITLAB_API_URL/GITLAB_TOKEN not set - connection may fail"
+      );
+    });
+
+    it("should apply full preset with all settings", async () => {
+      const preset: Preset = {
+        description: "Full test preset",
+        read_only: true,
+        denied_tools_regex: "^delete_",
+        allowed_tools: ["browse_projects"],
+        denied_actions: ["manage_repository:delete"],
+        timeout_ms: 30000,
+        features: {
+          wiki: true,
+          pipelines: false,
+        },
+      };
+
+      const { applyPreset } = await import("../../../src/profiles/applicator");
+      const result = await applyPreset(preset, "full-preset");
+
+      expect(result.success).toBe(true);
+      expect(result.appliedSettings.length).toBeGreaterThan(5);
+      expect(process.env.GITLAB_READ_ONLY_MODE).toBe("true");
+      expect(process.env.GITLAB_DENIED_TOOLS_REGEX).toBe("^delete_");
+      expect(process.env.GITLAB_ALLOWED_TOOLS).toBe("browse_projects");
+      expect(process.env.GITLAB_DENIED_ACTIONS).toBe("manage_repository:delete");
+      expect(process.env.GITLAB_API_TIMEOUT_MS).toBe("30000");
+    });
+  });
+
+  describe("loadAndApplyProfile", () => {
+    it("should load and apply a profile by name", async () => {
+      process.env.WORK_TOKEN = "work-token-value";
+
+      const yaml = require("yaml");
+      const fs = require("fs");
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue(
+        yaml.stringify({
+          profiles: {
+            work: {
+              host: "gitlab.work.com",
+              auth: { type: "pat", token_env: "WORK_TOKEN" },
+              read_only: true,
+            },
+          },
+        })
+      );
+
+      const { loadAndApplyProfile } = await import("../../../src/profiles/applicator");
+      const result = await loadAndApplyProfile("work");
+
+      expect(result.success).toBe(true);
+      expect(result.profileName).toBe("work");
+      expect(result.host).toBe("gitlab.work.com");
+      expect(process.env.GITLAB_API_URL).toBe("https://gitlab.work.com");
+      expect(process.env.GITLAB_TOKEN).toBe("work-token-value");
+      expect(process.env.GITLAB_READ_ONLY_MODE).toBe("true");
+    });
+
+    it("should throw error for non-existent profile", async () => {
+      const fs = require("fs");
+      fs.existsSync.mockReturnValue(false);
+
+      const { loadAndApplyProfile } = await import("../../../src/profiles/applicator");
+
+      await expect(loadAndApplyProfile("nonexistent")).rejects.toThrow();
+    });
+  });
+
+  describe("loadAndApplyPreset", () => {
+    it("should load and apply a preset by name", async () => {
+      const yaml = require("yaml");
+      const fs = require("fs");
+
+      // Mock file system for preset loading
+      fs.existsSync.mockReturnValue(true);
+      fs.readFileSync.mockReturnValue(
+        yaml.stringify({
+          description: "Readonly preset",
+          read_only: true,
+          denied_tools_regex: "^manage_",
+          features: {
+            wiki: true,
+            variables: false,
+          },
+        })
+      );
+
+      const { loadAndApplyPreset } = await import("../../../src/profiles/applicator");
+      const result = await loadAndApplyPreset("readonly");
+
+      expect(result.success).toBe(true);
+      expect(result.presetName).toBe("readonly");
+      expect(process.env.GITLAB_READ_ONLY_MODE).toBe("true");
+      expect(process.env.GITLAB_DENIED_TOOLS_REGEX).toBe("^manage_");
+    });
+
+    it("should throw error for non-existent preset", async () => {
+      const fs = require("fs");
+      fs.existsSync.mockReturnValue(false);
+
+      const { loadAndApplyPreset } = await import("../../../src/profiles/applicator");
+
+      await expect(loadAndApplyPreset("nonexistent")).rejects.toThrow();
     });
   });
 });

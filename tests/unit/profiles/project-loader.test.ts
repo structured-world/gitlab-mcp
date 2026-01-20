@@ -46,6 +46,15 @@ describe("project-loader", () => {
       expect(result).toBeNull();
     });
 
+    it("should return null when .gitlab-mcp/ exists but is a file, not a directory", async () => {
+      const configPath = path.join(testDir, PROJECT_CONFIG_DIR);
+      // Create .gitlab-mcp as a file instead of directory
+      fs.writeFileSync(configPath, "this is a file, not a directory");
+
+      const result = await loadProjectConfig(testDir);
+      expect(result).toBeNull();
+    });
+
     it("should load preset.yaml when it exists", async () => {
       const configDir = path.join(testDir, PROJECT_CONFIG_DIR);
       fs.mkdirSync(configDir);
@@ -312,6 +321,20 @@ features:
       expect(result.warnings.length).toBeGreaterThan(0);
       expect(result.warnings[0]).toContain("namespace 'myteam'");
     });
+
+    it("should error when scope combines project with projects", () => {
+      const preset: ProjectPreset = {
+        scope: {
+          project: "single/project",
+          projects: ["list/project1", "list/project2"],
+        },
+      };
+
+      const result = validateProjectPreset(preset);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors).toContain("Scope cannot combine 'project' with 'projects'");
+    });
   });
 
   describe("validateProjectProfile", () => {
@@ -415,6 +438,32 @@ features:
       const summary = getProjectConfigSummary(config);
 
       expect(summary.presetSummary).toContain("scope: 3 projects");
+    });
+
+    it("should generate summary with denied_actions", () => {
+      const config: ProjectConfig = {
+        configPath: "/test/.gitlab-mcp",
+        preset: {
+          denied_actions: ["manage_files:delete", "manage_variable:delete"],
+        },
+      };
+
+      const summary = getProjectConfigSummary(config);
+
+      expect(summary.presetSummary).toContain("2 denied actions");
+    });
+
+    it("should generate fallback summary for minimal preset", () => {
+      const config: ProjectConfig = {
+        configPath: "/test/.gitlab-mcp",
+        preset: {
+          // Empty preset - no description, no scope, no restrictions
+        },
+      };
+
+      const summary = getProjectConfigSummary(config);
+
+      expect(summary.presetSummary).toBe("custom restrictions");
     });
   });
 });

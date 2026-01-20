@@ -11,6 +11,9 @@ import * as gitRemote from "../../../src/discovery/git-remote";
 import * as profileMatcher from "../../../src/discovery/profile-matcher";
 import * as profiles from "../../../src/profiles";
 
+// Import from index to ensure it's covered
+import * as discovery from "../../../src/discovery";
+
 // Mock dependencies
 jest.mock("../../../src/discovery/git-remote");
 jest.mock("../../../src/discovery/profile-matcher");
@@ -254,6 +257,53 @@ describe("autoDiscover", () => {
 
     expect(result?.profileApplied).toBe(false);
   });
+
+  it("should not override existing default context", async () => {
+    process.env.GITLAB_DEFAULT_PROJECT = "existing/project";
+    process.env.GITLAB_DEFAULT_NAMESPACE = "existing";
+
+    mockGitRemote.parseGitRemote.mockResolvedValue(mockRemoteInfo);
+    mockGitRemote.listGitRemotes.mockResolvedValue([mockRemoteInfo]);
+    mockProfileMatcher.findProfileByHost.mockResolvedValue(null);
+    mockProfiles.findProjectConfig.mockResolvedValue(null);
+
+    await autoDiscover({ repoPath: "/test/repo" });
+
+    expect(process.env.GITLAB_DEFAULT_PROJECT).toBe("existing/project");
+    expect(process.env.GITLAB_DEFAULT_NAMESPACE).toBe("existing");
+  });
+
+  it("should handle single-segment project path", async () => {
+    const singleSegmentRemote: gitRemote.GitRemoteInfo = {
+      ...mockRemoteInfo,
+      projectPath: "standalone-project",
+    };
+
+    mockGitRemote.parseGitRemote.mockResolvedValue(singleSegmentRemote);
+    mockGitRemote.listGitRemotes.mockResolvedValue([singleSegmentRemote]);
+    mockProfileMatcher.findProfileByHost.mockResolvedValue(null);
+    mockProfiles.findProjectConfig.mockResolvedValue(null);
+
+    await autoDiscover({ repoPath: "/test/repo" });
+
+    // For single-segment path, namespace equals project path
+    expect(process.env.GITLAB_DEFAULT_PROJECT).toBe("standalone-project");
+    expect(process.env.GITLAB_DEFAULT_NAMESPACE).toBe("standalone-project");
+  });
+
+  it("should use current directory when repoPath not specified", async () => {
+    mockGitRemote.parseGitRemote.mockResolvedValue(mockRemoteInfo);
+    mockGitRemote.listGitRemotes.mockResolvedValue([mockRemoteInfo]);
+    mockProfileMatcher.findProfileByHost.mockResolvedValue(null);
+    mockProfiles.findProjectConfig.mockResolvedValue(null);
+
+    await autoDiscover();
+
+    expect(mockGitRemote.parseGitRemote).toHaveBeenCalledWith({
+      repoPath: process.cwd(),
+      remoteName: undefined,
+    });
+  });
 });
 
 describe("formatDiscoveryResult", () => {
@@ -415,5 +465,112 @@ describe("formatDiscoveryResult", () => {
 
     expect(output).toContain("Project: org/team/subteam/project");
     expect(output).toContain("Namespace: org/team/subteam");
+  });
+
+  it("should handle single segment project path", () => {
+    const result: AutoDiscoveryResult = {
+      ...baseResult,
+      projectPath: "standalone",
+    };
+
+    const output = formatDiscoveryResult(result);
+
+    expect(output).toContain("Project: standalone");
+    expect(output).toContain("Namespace: standalone");
+  });
+
+  it("should show profile without authType", () => {
+    const result: AutoDiscoveryResult = {
+      ...baseResult,
+      matchedProfile: {
+        profileName: "work",
+        profile: {
+          name: "work",
+          host: "gitlab.company.com",
+          authType: undefined,
+          readOnly: false,
+          isBuiltIn: false,
+          isPreset: false,
+        },
+        matchType: "subdomain",
+      },
+    };
+
+    const output = formatDiscoveryResult(result);
+
+    expect(output).toContain("Profile: work");
+    expect(output).toContain("Match Type: subdomain");
+    expect(output).not.toContain("Auth:");
+    expect(output).not.toContain("Mode: read-only");
+  });
+
+  it("should show preset without description", () => {
+    const result: AutoDiscoveryResult = {
+      ...baseResult,
+      projectConfig: {
+        configPath: "/test/.gitlab-mcp",
+        preset: {
+          scope: { project: "myteam/backend" },
+        },
+      },
+    };
+
+    const output = formatDiscoveryResult(result);
+
+    expect(output).toContain("Preset: custom restrictions");
+  });
+
+  it("should show profile without description or extends", () => {
+    const result: AutoDiscoveryResult = {
+      ...baseResult,
+      projectConfig: {
+        configPath: "/test/.gitlab-mcp",
+        profile: {},
+      },
+    };
+
+    const output = formatDiscoveryResult(result);
+
+    expect(output).toContain("Profile: custom tool selection");
+    expect(output).not.toContain("Extends:");
+  });
+
+  it("should show no project config message", () => {
+    const output = formatDiscoveryResult(baseResult);
+
+    expect(output).toContain("No .gitlab-mcp/ directory found");
+  });
+
+  it("should show preset without scope or read_only", () => {
+    const result: AutoDiscoveryResult = {
+      ...baseResult,
+      projectConfig: {
+        configPath: "/test/.gitlab-mcp",
+        preset: {
+          description: "Simple preset",
+        },
+      },
+    };
+
+    const output = formatDiscoveryResult(result);
+
+    expect(output).toContain("Preset: Simple preset");
+    expect(output).not.toContain("Scope:");
+    expect(output).not.toContain("Mode: read-only");
+  });
+});
+
+describe("discovery module index exports", () => {
+  it("should export all necessary functions and types", () => {
+    // Verify index.ts exports are accessible
+    expect(discovery.autoDiscover).toBeDefined();
+    expect(discovery.formatDiscoveryResult).toBeDefined();
+    expect(discovery.parseGitRemote).toBeDefined();
+    expect(discovery.parseRemoteUrl).toBeDefined();
+    expect(discovery.parseGitConfig).toBeDefined();
+    expect(discovery.selectBestRemote).toBeDefined();
+    expect(discovery.listGitRemotes).toBeDefined();
+    expect(discovery.matchProfileByHost).toBeDefined();
+    expect(discovery.findProfileByHost).toBeDefined();
   });
 });

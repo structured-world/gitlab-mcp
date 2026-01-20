@@ -365,6 +365,29 @@ describe("parseGitRemote", () => {
 
     expect(mockFs.access).toHaveBeenCalledWith(path.join(process.cwd(), ".git", "config"));
   });
+
+  it("should return null when reading config fails", async () => {
+    mockFs.access.mockResolvedValue(undefined);
+    mockFs.readFile.mockRejectedValue(new Error("Permission denied"));
+
+    const result = await parseGitRemote({ repoPath: "/test/repo" });
+
+    expect(result).toBeNull();
+  });
+
+  it("should return null when remote URL cannot be parsed", async () => {
+    const gitConfig = `
+[remote "origin"]
+  url = /local/path/to/repo
+`;
+
+    mockFs.access.mockResolvedValue(undefined);
+    mockFs.readFile.mockResolvedValue(gitConfig);
+
+    const result = await parseGitRemote({ repoPath: "/test/repo" });
+
+    expect(result).toBeNull();
+  });
 });
 
 describe("listGitRemotes", () => {

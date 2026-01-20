@@ -277,6 +277,34 @@ export class ProfileLoader {
   }
 
   /**
+   * Validate denied_actions format (shared between profile and preset validation)
+   */
+  private validateDeniedActions(
+    deniedActions: string[] | undefined,
+    errors: string[],
+    warnings: string[]
+  ): void {
+    if (!deniedActions) return;
+
+    for (const action of deniedActions) {
+      const colonIndex = action.indexOf(":");
+      if (colonIndex === -1) {
+        errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
+      } else {
+        const tool = action.slice(0, colonIndex).trim();
+        const act = action.slice(colonIndex + 1).trim();
+        if (!tool || !act) {
+          errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
+        } else if (action !== `${tool}:${act}`) {
+          warnings.push(
+            `denied_action '${action}' has extra whitespace, normalized to '${tool}:${act}'`
+          );
+        }
+      }
+    }
+  }
+
+  /**
    * Validate a full profile configuration
    */
   async validateProfile(profile: Profile): Promise<ProfileValidationResult> {
@@ -335,25 +363,8 @@ export class ProfileLoader {
       }
     }
 
-    // Validate denied_actions format (must be 'tool:action' with non-empty parts)
-    if (profile.denied_actions) {
-      for (const action of profile.denied_actions) {
-        const colonIndex = action.indexOf(":");
-        if (colonIndex === -1) {
-          errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
-        } else {
-          const tool = action.slice(0, colonIndex).trim();
-          const act = action.slice(colonIndex + 1).trim();
-          if (!tool || !act) {
-            errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
-          } else if (action !== `${tool}:${act}`) {
-            warnings.push(
-              `denied_action '${action}' has extra whitespace, normalized to '${tool}:${act}'`
-            );
-          }
-        }
-      }
-    }
+    // Validate denied_actions format
+    this.validateDeniedActions(profile.denied_actions, errors, warnings);
 
     return {
       valid: errors.length === 0,
@@ -378,25 +389,8 @@ export class ProfileLoader {
       }
     }
 
-    // Validate denied_actions format (must be 'tool:action' with non-empty parts)
-    if (preset.denied_actions) {
-      for (const action of preset.denied_actions) {
-        const colonIndex = action.indexOf(":");
-        if (colonIndex === -1) {
-          errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
-        } else {
-          const tool = action.slice(0, colonIndex).trim();
-          const act = action.slice(colonIndex + 1).trim();
-          if (!tool || !act) {
-            errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
-          } else if (action !== `${tool}:${act}`) {
-            warnings.push(
-              `denied_action '${action}' has extra whitespace, normalized to '${tool}:${act}'`
-            );
-          }
-        }
-      }
-    }
+    // Validate denied_actions format
+    this.validateDeniedActions(preset.denied_actions, errors, warnings);
 
     return {
       valid: errors.length === 0,

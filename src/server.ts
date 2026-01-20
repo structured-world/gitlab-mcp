@@ -58,6 +58,9 @@ export const server = new Server(
 
 // Auto-detect schema mode from clientInfo after initialization
 // Used when GITLAB_SCHEMA_MODE=auto to determine flat vs discriminated
+// NOTE: This works correctly for stdio mode (single client). For HTTP/SSE with multiple
+// concurrent sessions, auto-detection will use the most recent client's preference for
+// all sessions. Use explicit GITLAB_SCHEMA_MODE=flat|discriminated for multi-session deployments.
 server.oninitialized = () => {
   const clientVersion = server.getClientVersion();
   setDetectedSchemaMode(clientVersion?.name);

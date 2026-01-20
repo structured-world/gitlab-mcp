@@ -28,6 +28,10 @@ import { logger } from "../logger";
 // ============================================================================
 
 // Detected schema mode from clientInfo during initialize (used when GITLAB_SCHEMA_MODE=auto)
+// NOTE: This module-level variable works correctly for stdio mode (single client per process).
+// For HTTP/SSE modes with multiple concurrent sessions, this is a known limitation -
+// all sessions will share the same detected mode. Use explicit GITLAB_SCHEMA_MODE for
+// multi-session deployments where different clients may connect simultaneously.
 let detectedSchemaMode: "flat" | "discriminated" | null = null;
 
 /**

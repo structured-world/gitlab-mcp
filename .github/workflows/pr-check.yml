@@ -1,5 +1,7 @@
 name: Pull Request Checks
 
+# Uses pull_request (not pull_request_target) to run workflow from PR branch
+# and ensure PR changes to workflow take effect immediately
 on:
   pull_request:
     branches: [main]

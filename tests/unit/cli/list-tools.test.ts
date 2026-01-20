@@ -4,6 +4,8 @@ const mockManager = {
   getAllToolDefinitionsUnfiltered: jest.fn(),
 };
 
+const mockGetToolRequirement = jest.fn();
+
 const mockConsoleLog = jest.fn();
 const mockConsoleError = jest.fn();
 const mockProcessExit = jest.fn() as unknown as jest.MockedFunction<typeof process.exit>;
@@ -11,6 +13,12 @@ const mockProcessExit = jest.fn() as unknown as jest.MockedFunction<typeof proce
 jest.mock("../../../src/registry-manager", () => ({
   RegistryManager: {
     getInstance: () => mockManager,
+  },
+}));
+
+jest.mock("../../../src/services/ToolAvailability", () => ({
+  ToolAvailability: {
+    getToolRequirement: (name: string) => mockGetToolRequirement(name),
   },
 }));
 
@@ -32,6 +40,9 @@ describe("list-tools script", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     originalArgv = process.argv;
+
+    // Reset tier requirement mock to return null by default
+    mockGetToolRequirement.mockReturnValue(null);
 
     // Set up default mock return value
     mockManager.getAllToolDefinitionsTierless.mockReturnValue([
@@ -226,6 +237,73 @@ describe("list-tools script", () => {
     expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("**Parameters**:"));
   });
 
+  it("should handle verbose flag with no parameters", async () => {
+    // This test covers the "(no parameters)" branch in verbose mode (line 953)
+    process.argv = ["node", "list-tools.ts", "--verbose"];
+
+    mockManager.getAllToolDefinitionsTierless.mockReturnValue([
+      {
+        name: "no_params_verbose_tool",
+        description: "Tool with empty schema for verbose testing",
+        inputSchema: {
+          type: "object",
+          // No properties defined
+        },
+      },
+    ]);
+
+    const { main } = await import("../../../src/cli/list-tools");
+    await main();
+
+    expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("no_params_verbose_tool"));
+    expect(mockConsoleLog).toHaveBeenCalledWith("  (no parameters)");
+  });
+
+  it("should display tier info badges for premium/ultimate tools", async () => {
+    // This test covers lines 226-232 - getToolTierInfo with tier requirements
+    process.argv = ["node", "list-tools.ts", "--verbose"];
+
+    mockManager.getAllToolDefinitionsTierless.mockReturnValue([
+      {
+        name: "premium_tool",
+        description: "Tool that requires premium tier",
+        inputSchema: { type: "object" },
+      },
+      {
+        name: "ultimate_tool",
+        description: "Tool that requires ultimate tier",
+        inputSchema: { type: "object" },
+      },
+      {
+        name: "free_tool",
+        description: "Tool that requires free tier",
+        inputSchema: { type: "object" },
+      },
+    ]);
+
+    // Mock tier requirements for different tools
+    mockGetToolRequirement.mockImplementation((name: string) => {
+      if (name === "premium_tool") {
+        return { requiredTier: "premium", minVersion: 10.0 };
+      }
+      if (name === "ultimate_tool") {
+        return { requiredTier: "ultimate", minVersion: 12.0 };
+      }
+      if (name === "free_tool") {
+        return { requiredTier: "free", minVersion: 8.0 };
+      }
+      return null;
+    });
+
+    const { main } = await import("../../../src/cli/list-tools");
+    await main();
+
+    // Verify tier badges are displayed
+    expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("[tier: Premium]"));
+    expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("[tier: Ultimate]"));
+    expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("[tier: Free]"));
+  });
+
   it("should handle detail flag", async () => {
     process.argv = ["node", "list-tools.ts", "--detail"];
 
@@ -387,6 +465,34 @@ describe("list-tools script", () => {
     await main();
 
     expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("ref_tool"));
+  });
+
+  it("should handle unresolved $ref returning 'reference' type", async () => {
+    // This test covers line 152 - unresolved $ref fallback
+    process.argv = ["node", "list-tools.ts", "--tool", "unresolved_ref_tool"];
+
+    mockManager.getAllToolDefinitionsTierless.mockReturnValue([
+      {
+        name: "unresolved_ref_tool",
+        description: "Tool with unresolved $ref",
+        inputSchema: {
+          type: "object",
+          properties: {
+            unresolvedParam: {
+              $ref: "#/properties/NonExistentType",
+              description: "Unresolved reference parameter",
+            },
+            // NonExistentType is NOT defined, so $ref won't resolve
+          },
+        },
+      },
+    ]);
+
+    const { main } = await import("../../../src/cli/list-tools");
+    await main();
+
+    // Should show "reference" as the type since it can't be resolved
+    expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("reference"));
   });
 
   it("should handle schema with enum-only type (no explicit type)", async () => {
@@ -630,6 +736,107 @@ describe("list-tools script", () => {
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("example_tool"));
     });
 
+    it("should generate examples with ALL required parameter patterns", async () => {
+      // This test covers lines 647-677 - example value generation for required params
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: "all_required_patterns_tool",
+          description: "Tool with all required parameter naming patterns",
+          inputSchema: {
+            $schema: "https://json-schema.org/draft/2020-12/schema",
+            oneOf: [
+              {
+                type: "object",
+                properties: {
+                  action: { type: "string", const: "create", description: "Create item" },
+                  // Line 647: enum
+                  status: { type: "string", enum: ["active", "inactive"], description: "Status" },
+                  // Line 649: project_id
+                  project_id: { type: "string", description: "Project ID" },
+                  // Line 651: group_id
+                  group_id: { type: "string", description: "Group ID" },
+                  // Line 653: namespace
+                  namespace: { type: "string", description: "Namespace" },
+                  // Line 655: _iid
+                  merge_request_iid: { type: "string", description: "MR IID" },
+                  // Line 657: _id
+                  user_id: { type: "string", description: "User ID" },
+                  // Line 659: title
+                  title: { type: "string", description: "Title" },
+                  // Line 661: description
+                  description: { type: "string", description: "Description" },
+                  // Line 663: url
+                  url: { type: "string", description: "URL" },
+                  // Line 665: content
+                  content: { type: "string", description: "Content" },
+                  // Line 667: file_path
+                  file_path: { type: "string", description: "File path" },
+                  // Line 669: ref
+                  ref: { type: "string", description: "Git ref" },
+                  // Line 671: from/to
+                  from: { type: "string", description: "From ref" },
+                  to: { type: "string", description: "To ref" },
+                  // Line 673: boolean
+                  enabled: { type: "boolean", description: "Enabled" },
+                  // Line 675: integer
+                  count: { type: "integer", description: "Count" },
+                  // Line 677: array
+                  items: { type: "array", description: "Items" },
+                },
+                // Mark ALL params as required to exercise all example generation paths
+                required: [
+                  "action",
+                  "status",
+                  "project_id",
+                  "group_id",
+                  "namespace",
+                  "merge_request_iid",
+                  "user_id",
+                  "title",
+                  "description",
+                  "url",
+                  "content",
+                  "file_path",
+                  "ref",
+                  "from",
+                  "to",
+                  "enabled",
+                  "count",
+                  "items",
+                ],
+              },
+            ],
+          },
+        },
+      ]);
+
+      process.argv = ["node", "list-tools.ts", "--export"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      const allOutput = mockConsoleLog.mock.calls.flat().join("\n");
+
+      // Verify example values are generated correctly for each pattern
+      expect(allOutput).toContain('"status": "active"'); // enum first value
+      expect(allOutput).toContain('"project_id": "my-group/my-project"');
+      expect(allOutput).toContain('"group_id": "my-group"');
+      expect(allOutput).toContain('"namespace": "my-group/my-project"');
+      expect(allOutput).toContain('"merge_request_iid": "1"');
+      expect(allOutput).toContain('"user_id": "123"');
+      expect(allOutput).toContain('"title": "Example title"');
+      expect(allOutput).toContain('"description": "Example description"');
+      expect(allOutput).toContain('"url": "https://example.com/webhook"');
+      expect(allOutput).toContain('"content": "File content here"');
+      expect(allOutput).toContain('"file_path": "path/to/file.txt"');
+      expect(allOutput).toContain('"ref": "main"');
+      expect(allOutput).toContain('"from": "main"');
+      expect(allOutput).toContain('"to": "feature-branch"');
+      expect(allOutput).toContain('"enabled": true');
+      expect(allOutput).toContain('"count": 10');
+      expect(allOutput).toContain('"items": []');
+    });
+
     it("should handle tool with unknown schema type", async () => {
       mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
         {
@@ -655,6 +862,105 @@ describe("list-tools script", () => {
       await main();
 
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("unknown_type_tool"));
+    });
+
+    it("should show 'Common (all actions)' header when both common and action-specific params exist", async () => {
+      // This test covers lines 795-796, 559, 569-570, 599-601
+      // Common params appear in ALL actions, action-specific in some
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: "mixed_params_tool",
+          description: "Tool with both common and action-specific parameters",
+          inputSchema: {
+            $schema: "https://json-schema.org/draft/2020-12/schema",
+            oneOf: [
+              {
+                type: "object",
+                properties: {
+                  action: { type: "string", const: "list", description: "List items" },
+                  // Common param - appears in all actions
+                  project_id: { type: "string", description: "Project ID" },
+                  // Action-specific - only in list
+                  page: { type: "integer", description: "Page number" },
+                  // Required action-specific
+                  filter: { type: "string", description: "Filter query" },
+                },
+                required: ["action", "project_id", "filter"],
+              },
+              {
+                type: "object",
+                properties: {
+                  action: { type: "string", const: "get", description: "Get single item" },
+                  // Common param - same in all actions
+                  project_id: { type: "string", description: "Project identifier for lookup" }, // Longer description
+                  // Action-specific - only in get
+                  id: { type: "string", description: "Item ID" },
+                },
+                required: ["action", "project_id", "id"],
+              },
+            ],
+          },
+        },
+      ]);
+
+      process.argv = ["node", "list-tools.ts", "--export"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      // Should show "Common (all actions)" header when there are both common and action-specific
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("**Common** (all actions):")
+      );
+      // Common param should use the longer description from the "get" action
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("Project identifier for lookup")
+      );
+      // Action-specific sections
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("**Action `list`**:"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("**Action `get`**:"));
+    });
+
+    it("should sort action-specific params with required first", async () => {
+      // This test covers lines 599-601 - sorting by requiredForAction
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: "sorted_params_tool",
+          description: "Tool with params that need sorting",
+          inputSchema: {
+            $schema: "https://json-schema.org/draft/2020-12/schema",
+            oneOf: [
+              {
+                type: "object",
+                properties: {
+                  action: { type: "string", const: "create", description: "Create item" },
+                  // z_optional comes before a_required alphabetically, but required should be first
+                  z_optional: { type: "string", description: "Optional param Z" },
+                  a_required: { type: "string", description: "Required param A" },
+                  m_optional: { type: "string", description: "Optional param M" },
+                },
+                required: ["action", "a_required"],
+              },
+            ],
+          },
+        },
+      ]);
+
+      process.argv = ["node", "list-tools.ts", "--export"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      const allCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      // a_required should appear before z_optional and m_optional
+      const aRequiredPos = allCalls.indexOf("`a_required`");
+      const zOptionalPos = allCalls.indexOf("`z_optional`");
+      const mOptionalPos = allCalls.indexOf("`m_optional`");
+
+      expect(aRequiredPos).toBeGreaterThan(-1);
+      expect(zOptionalPos).toBeGreaterThan(-1);
+      expect(aRequiredPos).toBeLessThan(zOptionalPos);
+      expect(aRequiredPos).toBeLessThan(mOptionalPos);
     });
   });
 });

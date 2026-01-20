@@ -596,6 +596,23 @@ describe("ProfileLoader", () => {
       expect(result.errors.some(e => e.includes("Invalid denied_action format"))).toBe(true);
     });
 
+    it("should warn on denied_actions with extra whitespace", async () => {
+      process.env.TOKEN = "test-token";
+
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        denied_actions: ["tool : action", " tool:action ", "tool:action"], // Various whitespace
+      };
+
+      const result = await loader.validateProfile(profile);
+
+      // Should be valid but with warnings
+      expect(result.valid).toBe(true);
+      expect(result.warnings.length).toBe(2); // Two entries have extra whitespace
+      expect(result.warnings.some(w => w.includes("extra whitespace"))).toBe(true);
+    });
+
     it("should error when SSL cert path does not exist", async () => {
       const profile: Profile = {
         host: "gitlab.example.com",

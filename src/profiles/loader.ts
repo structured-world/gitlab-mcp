@@ -346,6 +346,10 @@ export class ProfileLoader {
           const act = action.slice(colonIndex + 1).trim();
           if (!tool || !act) {
             errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
+          } else if (action !== `${tool}:${act}`) {
+            warnings.push(
+              `denied_action '${action}' has extra whitespace, normalized to '${tool}:${act}'`
+            );
           }
         }
       }
@@ -385,6 +389,10 @@ export class ProfileLoader {
           const act = action.slice(colonIndex + 1).trim();
           if (!tool || !act) {
             errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
+          } else if (action !== `${tool}:${act}`) {
+            warnings.push(
+              `denied_action '${action}' has extra whitespace, normalized to '${tool}:${act}'`
+            );
           }
         }
       }

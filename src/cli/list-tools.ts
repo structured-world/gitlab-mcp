@@ -319,9 +319,10 @@ function getToolTierInfo(toolName: string, action?: string): string {
       ultimate: "Ultimate",
     }[highestTier] ?? highestTier;
 
-  // Mark if tool has mixed tiers (some actions require higher tier)
-  const premiumActions = ToolAvailability.getTierRestrictedActions(toolName, "premium");
-  const hasMixedTiers = premiumActions.length > 0 && highestTier !== "free";
+  // Mark if tool has mixed tiers (default tier differs from highest tier)
+  const toolReq = ToolAvailability.getActionRequirement(toolName);
+  const defaultTier = toolReq?.tier ?? "free";
+  const hasMixedTiers = highestTier !== defaultTier;
 
   if (hasMixedTiers) {
     return `[tier: ${tierBadge}*]`;
@@ -819,7 +820,7 @@ function generateExportMarkdown(
         lines.push("|--------|------|-------------|");
         for (const action of actions) {
           const actionTierInfo = getToolTierInfo(tool.name, action.name);
-          const tierDisplay = actionTierInfo.replace("[tier: ", "").replace("]", "") || "Free";
+          const tierDisplay = actionTierInfo.replace("[tier: ", "").replaceAll("]", "") || "Free";
           lines.push(`| \`${action.name}\` | ${tierDisplay} | ${action.description} |`);
         }
         lines.push("");

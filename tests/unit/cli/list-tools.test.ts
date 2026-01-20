@@ -7,6 +7,7 @@ const mockManager = {
 const mockGetToolRequirement = jest.fn();
 const mockGetHighestTier = jest.fn();
 const mockGetTierRestrictedActions = jest.fn();
+const mockGetActionRequirement = jest.fn();
 
 const mockConsoleLog = jest.fn();
 const mockConsoleError = jest.fn();
@@ -24,6 +25,7 @@ jest.mock("../../../src/services/ToolAvailability", () => ({
     getHighestTier: (name: string) => mockGetHighestTier(name),
     getTierRestrictedActions: (name: string, tier: string) =>
       mockGetTierRestrictedActions(name, tier),
+    getActionRequirement: (name: string, action?: string) => mockGetActionRequirement(name, action),
   },
 }));
 
@@ -63,6 +65,7 @@ describe("list-tools script", () => {
     mockGetToolRequirement.mockReturnValue(null);
     mockGetHighestTier.mockReturnValue("free");
     mockGetTierRestrictedActions.mockReturnValue([]);
+    mockGetActionRequirement.mockReturnValue({ tier: "free", minVersion: 8.0 });
 
     // Reset profile loader mocks
     mockProfileLoader.listProfiles.mockResolvedValue([]);
@@ -329,6 +332,13 @@ describe("list-tools script", () => {
       if (name === "premium_tool") return "premium";
       if (name === "ultimate_tool") return "ultimate";
       return "free";
+    });
+
+    // Mock getActionRequirement for default tier check (used in mixed tier detection)
+    mockGetActionRequirement.mockImplementation((name: string) => {
+      if (name === "premium_tool") return { tier: "premium", minVersion: 10.0 };
+      if (name === "ultimate_tool") return { tier: "ultimate", minVersion: 12.0 };
+      return { tier: "free", minVersion: 8.0 };
     });
 
     const { main } = await import("../../../src/cli/list-tools");

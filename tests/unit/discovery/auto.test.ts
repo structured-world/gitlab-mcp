@@ -258,6 +258,29 @@ describe("autoDiscover", () => {
     expect(result?.profileApplied).toBe(false);
   });
 
+  it("should handle non-Error rejection when loading profile", async () => {
+    mockGitRemote.parseGitRemote.mockResolvedValue(mockRemoteInfo);
+    mockGitRemote.listGitRemotes.mockResolvedValue([mockRemoteInfo]);
+    mockProfileMatcher.findProfileByHost.mockResolvedValue({
+      profileName: "work",
+      profile: {
+        name: "work",
+        host: "gitlab.company.com",
+        readOnly: false,
+        isBuiltIn: false,
+        isPreset: false,
+      },
+      matchType: "exact",
+    });
+    mockProfiles.findProjectConfig.mockResolvedValue(null);
+    // Reject with a string instead of Error to cover String(error) branch
+    mockProfiles.loadAndApplyProfile.mockRejectedValue("Connection refused");
+
+    const result = await autoDiscover({ repoPath: "/test/repo" });
+
+    expect(result?.profileApplied).toBe(false);
+  });
+
   it("should not override existing default context", async () => {
     process.env.GITLAB_DEFAULT_PROJECT = "existing/project";
     process.env.GITLAB_DEFAULT_NAMESPACE = "existing";
@@ -423,6 +446,25 @@ describe("formatDiscoveryResult", () => {
     const output = formatDiscoveryResult(result);
 
     expect(output).toContain("Scope: 3 projects");
+  });
+
+  it("should handle preset with empty scope object", () => {
+    const result: AutoDiscoveryResult = {
+      ...baseResult,
+      projectConfig: {
+        configPath: "/test/.gitlab-mcp",
+        preset: {
+          // scope exists but has no project/namespace/projects
+          scope: {} as { project?: string; namespace?: string; projects?: string[] },
+        },
+      },
+    };
+
+    const output = formatDiscoveryResult(result);
+
+    // Should show preset info but not scope line since all scope properties are undefined
+    expect(output).toContain("Preset:");
+    expect(output).not.toContain("Scope:");
   });
 
   it("should show multiple remotes when available", () => {

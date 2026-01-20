@@ -31,10 +31,17 @@ type JsonSchema = JsonSchemaProperty & {
  *   - "GitLab API error: 403 Forbidden"
  *   - "GitLab API error: 403"
  *   - "Failed to execute tool 'name': GitLab API error: 403 Forbidden"
+ *
+ * Exported for direct unit testing.
  */
-function parseGitLabApiError(errorMessage: string): { status: number; message: string } | null {
+export function parseGitLabApiError(
+  errorMessage: string
+): { status: number; message: string } | null {
   // Match GitLab API error anywhere in the string (handles wrapped errors)
-  const match = errorMessage.match(/GitLab API error:\s*(\d+)(?:\s*([^-]+?))?(?:\s*-\s*(.*))?$/);
+  // Pattern: "GitLab API error: <status> [<statusText>] [- <details>]"
+  // Status text uses [\w\s]+? to match word chars and spaces (non-greedy)
+  // Separator is " - " (space-hyphen-space) to avoid matching hyphens in status text
+  const match = errorMessage.match(/GitLab API error:\s*(\d+)(?:\s+([\w\s]+?))?(?:\s+-\s+(.*))?$/);
   if (!match) return null;
 
   const status = parseInt(match[1], 10);

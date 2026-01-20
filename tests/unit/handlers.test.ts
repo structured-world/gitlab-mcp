@@ -5,11 +5,7 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { setupHandlers } from "../../src/handlers";
-import { ConnectionManager } from "../../src/services/ConnectionManager";
-
-// Mock dependencies
-const mockEnhancedFetch = require("../__mocks__/enhancedFetch").mockEnhancedFetch;
+import { setupHandlers, parseGitLabApiError } from "../../src/handlers";
 
 // Mock ConnectionManager
 const mockConnectionManager = {
@@ -547,6 +543,84 @@ describe("handlers", () => {
       // Should be plain error format, not structured
       expect(parsed.error).toContain("Some other error");
       expect(parsed.error_code).toBeUndefined();
+    });
+  });
+
+  describe("parseGitLabApiError", () => {
+    // Tests for the parseGitLabApiError helper function
+    // Validates that GitLab API error strings are correctly parsed into status and message
+
+    it("should parse standard GitLab API error format", () => {
+      const result = parseGitLabApiError("GitLab API error: 403 Forbidden");
+      expect(result).toEqual({
+        status: 403,
+        message: "403 Forbidden",
+      });
+    });
+
+    it("should parse error with status text and details", () => {
+      const result = parseGitLabApiError(
+        "GitLab API error: 404 Not Found - Project does not exist"
+      );
+      expect(result).toEqual({
+        status: 404,
+        message: "404 Not Found - Project does not exist",
+      });
+    });
+
+    it("should parse error with only status code", () => {
+      const result = parseGitLabApiError("GitLab API error: 429");
+      expect(result).toEqual({
+        status: 429,
+        message: "429",
+      });
+    });
+
+    it("should parse error with details but no status text", () => {
+      const result = parseGitLabApiError("GitLab API error: 500 - Server error message");
+      expect(result).toEqual({
+        status: 500,
+        message: "500 - Server error message",
+      });
+    });
+
+    it("should parse wrapped error (from tool execution)", () => {
+      const result = parseGitLabApiError(
+        "Failed to execute tool 'test': GitLab API error: 403 Forbidden - Access denied"
+      );
+      expect(result).toEqual({
+        status: 403,
+        message: "403 Forbidden - Access denied",
+      });
+    });
+
+    it("should handle multi-word status text", () => {
+      const result = parseGitLabApiError("GitLab API error: 502 Bad Gateway");
+      expect(result).toEqual({
+        status: 502,
+        message: "502 Bad Gateway",
+      });
+    });
+
+    it("should return null for non-GitLab API errors", () => {
+      expect(parseGitLabApiError("Some random error")).toBeNull();
+      expect(parseGitLabApiError("Connection refused")).toBeNull();
+      expect(parseGitLabApiError("Timeout")).toBeNull();
+    });
+
+    it("should return null for malformed GitLab API errors", () => {
+      // Missing status code
+      expect(parseGitLabApiError("GitLab API error: Forbidden")).toBeNull();
+      // Just the prefix
+      expect(parseGitLabApiError("GitLab API error:")).toBeNull();
+    });
+
+    it("should handle 5xx server errors", () => {
+      const result = parseGitLabApiError("GitLab API error: 503 Service Unavailable");
+      expect(result).toEqual({
+        status: 503,
+        message: "503 Service Unavailable",
+      });
     });
   });
 });

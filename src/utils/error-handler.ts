@@ -53,13 +53,17 @@ export interface ActionValidationError extends StructuredError {
 
 /**
  * Alternative action available on a different tier
+ *
+ * Note: This interface uses snake_case for JSON serialization in API responses.
+ * The internal TierFeature interface uses camelCase (availableOn).
+ * Mapping between the two happens in createTierRestrictedError.
  */
 export interface TierAlternative {
   /** Action description */
   action: string;
   /** Detailed description of the alternative */
   description: string;
-  /** Tier where this alternative is available */
+  /** Tier where this alternative is available (snake_case for JSON output) */
   available_on: GitLabTier;
 }
 
@@ -67,7 +71,7 @@ export interface TierAlternative {
  * Error for tier-restricted features
  */
 export interface TierRestrictedError extends StructuredError {
-  error_code: "TIER_RESTRICTED" | "FEATURE_UNAVAILABLE";
+  error_code: "TIER_RESTRICTED";
   /** HTTP status code from GitLab */
   http_status: number;
   /** Required tier for this feature */
@@ -318,11 +322,21 @@ function createNotFoundError(
   }
 
   // Try to extract numeric ID from the message (e.g., "Project 12345 not found")
-  // Skip common HTTP status codes (3xx, 4xx, 5xx patterns like 404, 500)
+  // Strategy: Look for numbers that appear after resource keywords, or are > 3 digits
+  // This avoids matching HTTP status codes like "404 Not Found"
   if (!resourceId) {
-    const idMatch = rawMessage.match(/\b(?!(?:3|4|5)\d{2}\b)(\d+)\b/);
-    if (idMatch) {
-      resourceId = idMatch[1];
+    // First try: look for ID after resource type keyword (e.g., "Project 123")
+    const contextMatch = rawMessage.match(
+      /(?:project|issue|merge.?request|mr|pipeline|branch|user|group)\s+#?(\d+)/i
+    );
+    if (contextMatch) {
+      resourceId = contextMatch[1];
+    } else {
+      // Fallback: match numbers with 4+ digits (unlikely to be status codes)
+      const longIdMatch = rawMessage.match(/\b(\d{4,})\b/);
+      if (longIdMatch) {
+        resourceId = longIdMatch[1];
+      }
     }
   }
 

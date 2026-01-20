@@ -1,0 +1,530 @@
+/**
+ * Unit tests for ProfileLoader class
+ * Tests loading profiles from user config and presets from built-in directory
+ */
+
+import * as fs from "fs";
+import * as path from "path";
+import * as yaml from "yaml";
+import { ProfileLoader } from "../../../src/profiles/loader";
+import { Profile, Preset } from "../../../src/profiles/types";
+
+// Mock logger
+jest.mock("../../../src/logger", () => ({
+  logger: {
+    info: jest.fn(),
+    warn: jest.fn(),
+    error: jest.fn(),
+    debug: jest.fn(),
+  },
+}));
+
+// Mock fs module
+jest.mock("fs");
+const mockFs = fs as jest.Mocked<typeof fs>;
+
+describe("ProfileLoader", () => {
+  const testUserConfigPath = "/test/config/profiles.yaml";
+  const testBuiltinDir = "/test/builtin";
+
+  let loader: ProfileLoader;
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    loader = new ProfileLoader(testUserConfigPath, testBuiltinDir);
+  });
+
+  describe("loadProfile", () => {
+    it("should load a valid user profile", async () => {
+      const profileConfig = {
+        profiles: {
+          work: {
+            host: "gitlab.company.com",
+            auth: { type: "pat", token_env: "WORK_TOKEN" },
+            read_only: false,
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(yaml.stringify(profileConfig));
+
+      const profile = await loader.loadProfile("work");
+
+      expect(profile.host).toBe("gitlab.company.com");
+      expect(profile.auth.type).toBe("pat");
+      expect(profile.read_only).toBe(false);
+    });
+
+    it("should cache loaded profiles", async () => {
+      const profileConfig = {
+        profiles: {
+          cached: {
+            host: "gitlab.example.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(yaml.stringify(profileConfig));
+
+      // Load twice
+      const profile1 = await loader.loadProfile("cached");
+      const profile2 = await loader.loadProfile("cached");
+
+      // Should be same reference (cached)
+      expect(profile1).toBe(profile2);
+      // readFileSync should only be called once for config
+      expect(mockFs.readFileSync).toHaveBeenCalledTimes(1);
+    });
+
+    it("should throw error for non-existent profile", async () => {
+      const profileConfig = {
+        profiles: {
+          existing: {
+            host: "gitlab.example.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(yaml.stringify(profileConfig));
+
+      await expect(loader.loadProfile("nonexistent")).rejects.toThrow(
+        "Profile 'nonexistent' not found"
+      );
+    });
+
+    it("should throw error when user config file does not exist", async () => {
+      mockFs.existsSync.mockReturnValue(false);
+
+      await expect(loader.loadProfile("any")).rejects.toThrow("Profile 'any' not found");
+    });
+
+    it("should throw error for invalid YAML", async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue("invalid: yaml: content:");
+
+      await expect(loader.loadProfile("any")).rejects.toThrow("Invalid profiles config");
+    });
+  });
+
+  describe("loadPreset", () => {
+    it("should load a valid built-in preset", async () => {
+      const presetContent = yaml.stringify({
+        description: "Read-only preset",
+        read_only: true,
+        denied_tools_regex: "^manage_",
+        features: { wiki: true, variables: false },
+      });
+
+      mockFs.existsSync.mockImplementation((p: fs.PathLike) => {
+        return p === path.join(testBuiltinDir, "readonly.yaml");
+      });
+      mockFs.readFileSync.mockReturnValue(presetContent);
+
+      const preset = await loader.loadPreset("readonly");
+
+      expect(preset.description).toBe("Read-only preset");
+      expect(preset.read_only).toBe(true);
+      expect(preset.denied_tools_regex).toBe("^manage_");
+    });
+
+    it("should cache loaded presets", async () => {
+      const presetContent = yaml.stringify({
+        description: "Cached preset",
+        features: { wiki: true },
+      });
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(presetContent);
+
+      const preset1 = await loader.loadPreset("cached");
+      const preset2 = await loader.loadPreset("cached");
+
+      expect(preset1).toBe(preset2);
+    });
+
+    it("should throw error for non-existent preset", async () => {
+      mockFs.existsSync.mockReturnValue(false);
+
+      await expect(loader.loadPreset("nonexistent")).rejects.toThrow(
+        "Preset 'nonexistent' not found in built-in presets"
+      );
+    });
+
+    it("should throw error for invalid preset YAML", async () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue("invalid: yaml: content:");
+
+      await expect(loader.loadPreset("invalid")).rejects.toThrow(
+        "Invalid built-in preset 'invalid'"
+      );
+    });
+  });
+
+  describe("loadAny", () => {
+    it("should return profile when name matches user profile", async () => {
+      const profileConfig = {
+        profiles: {
+          work: {
+            host: "gitlab.company.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(yaml.stringify(profileConfig));
+
+      const result = await loader.loadAny("work");
+
+      expect(result.type).toBe("profile");
+      expect((result.data as Profile).host).toBe("gitlab.company.com");
+    });
+
+    it("should return preset when name matches built-in preset", async () => {
+      // First call: user config does not exist
+      // Second call: preset exists
+      mockFs.existsSync.mockImplementation((p: fs.PathLike) => {
+        const pathStr = p.toString();
+        if (pathStr === testUserConfigPath) return false;
+        if (pathStr === path.join(testBuiltinDir, "readonly.yaml")) return true;
+        return false;
+      });
+
+      const presetContent = yaml.stringify({
+        description: "Readonly preset",
+        read_only: true,
+        features: { wiki: true },
+      });
+      mockFs.readFileSync.mockReturnValue(presetContent);
+
+      const result = await loader.loadAny("readonly");
+
+      expect(result.type).toBe("preset");
+      expect((result.data as Preset).read_only).toBe(true);
+    });
+
+    it("should throw error when name not found as profile or preset", async () => {
+      mockFs.existsSync.mockReturnValue(false);
+
+      await expect(loader.loadAny("unknown")).rejects.toThrow(
+        "'unknown' not found as user profile or built-in preset"
+      );
+    });
+  });
+
+  describe("getDefaultProfileName", () => {
+    it("should return default_profile from config", async () => {
+      const profileConfig = {
+        profiles: {
+          work: {
+            host: "gitlab.company.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+        },
+        default_profile: "work",
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(yaml.stringify(profileConfig));
+
+      const defaultName = await loader.getDefaultProfileName();
+
+      expect(defaultName).toBe("work");
+    });
+
+    it("should return undefined when no default_profile set", async () => {
+      const profileConfig = {
+        profiles: {
+          work: {
+            host: "gitlab.company.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(yaml.stringify(profileConfig));
+
+      const defaultName = await loader.getDefaultProfileName();
+
+      expect(defaultName).toBeUndefined();
+    });
+
+    it("should return undefined when config file does not exist", async () => {
+      mockFs.existsSync.mockReturnValue(false);
+
+      const defaultName = await loader.getDefaultProfileName();
+
+      expect(defaultName).toBeUndefined();
+    });
+  });
+
+  describe("listProfiles", () => {
+    it("should list user profiles and built-in presets", async () => {
+      // User profiles config
+      const profileConfig = {
+        profiles: {
+          work: {
+            host: "gitlab.company.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+            read_only: false,
+          },
+        },
+      };
+
+      // Built-in presets
+      const readonlyPreset = yaml.stringify({
+        description: "Readonly preset",
+        read_only: true,
+        features: {},
+      });
+
+      mockFs.existsSync.mockImplementation((p: fs.PathLike) => {
+        const pathStr = p.toString();
+        return (
+          pathStr === testUserConfigPath ||
+          pathStr === testBuiltinDir ||
+          pathStr.endsWith("readonly.yaml")
+        );
+      });
+
+      mockFs.readFileSync.mockImplementation((p: fs.PathOrFileDescriptor) => {
+        const pathStr = p.toString();
+        if (pathStr === testUserConfigPath) {
+          return yaml.stringify(profileConfig);
+        }
+        return readonlyPreset;
+      });
+
+      (mockFs.readdirSync as jest.Mock).mockReturnValue(["readonly.yaml"]);
+
+      const profiles = await loader.listProfiles();
+
+      // Should have user profile first, then preset
+      expect(profiles.length).toBe(2);
+
+      // User profile
+      const workProfile = profiles.find(p => p.name === "work");
+      expect(workProfile).toBeDefined();
+      expect(workProfile?.isPreset).toBe(false);
+      expect(workProfile?.isBuiltIn).toBe(false);
+      expect(workProfile?.host).toBe("gitlab.company.com");
+
+      // Built-in preset
+      const readonlyProfile = profiles.find(p => p.name === "readonly");
+      expect(readonlyProfile).toBeDefined();
+      expect(readonlyProfile?.isPreset).toBe(true);
+      expect(readonlyProfile?.isBuiltIn).toBe(true);
+      expect(readonlyProfile?.host).toBeUndefined(); // Presets don't have host
+    });
+
+    it("should sort user profiles before presets", async () => {
+      const profileConfig = {
+        profiles: {
+          zzz: {
+            host: "gitlab.example.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+        },
+      };
+
+      const presetContent = yaml.stringify({
+        description: "AAA preset",
+        features: {},
+      });
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockImplementation((p: fs.PathOrFileDescriptor) => {
+        const pathStr = p.toString();
+        if (pathStr === testUserConfigPath) {
+          return yaml.stringify(profileConfig);
+        }
+        return presetContent;
+      });
+      (mockFs.readdirSync as jest.Mock).mockReturnValue(["aaa.yaml"]);
+
+      const profiles = await loader.listProfiles();
+
+      // User profile (zzz) should come before preset (aaa)
+      expect(profiles[0].name).toBe("zzz");
+      expect(profiles[0].isPreset).toBe(false);
+      expect(profiles[1].name).toBe("aaa");
+      expect(profiles[1].isPreset).toBe(true);
+    });
+  });
+
+  describe("validateProfile", () => {
+    it("should validate profile with existing env vars", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "MY_TOKEN" },
+      };
+
+      // Set the env var
+      process.env.MY_TOKEN = "test-token";
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+      expect(result.warnings).toHaveLength(0);
+
+      // Cleanup
+      delete process.env.MY_TOKEN;
+    });
+
+    it("should warn when token env var is not set", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "MISSING_TOKEN" },
+      };
+
+      // Ensure env var is not set
+      delete process.env.MISSING_TOKEN;
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(true); // Warnings don't invalidate
+      expect(result.warnings).toContain("Environment variable 'MISSING_TOKEN' is not set");
+    });
+
+    it("should error on invalid denied_tools_regex", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        denied_tools_regex: "[invalid(",
+      };
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.includes("Invalid regex"))).toBe(true);
+    });
+
+    it("should error on invalid denied_actions format", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        denied_actions: ["manage_repository:delete", "invalid_action"], // Missing colon
+      };
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.includes("Invalid denied_action format"))).toBe(true);
+    });
+
+    it("should error when SSL cert path does not exist", async () => {
+      const profile: Profile = {
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "TOKEN" },
+        ssl_cert_path: "/nonexistent/cert.pem",
+      };
+
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = await loader.validateProfile(profile);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.includes("SSL certificate not found"))).toBe(true);
+    });
+  });
+
+  describe("validatePreset", () => {
+    it("should validate valid preset", async () => {
+      const preset: Preset = {
+        description: "Test preset",
+        read_only: true,
+        features: { wiki: true },
+      };
+
+      const result = await loader.validatePreset(preset);
+
+      expect(result.valid).toBe(true);
+      expect(result.errors).toHaveLength(0);
+    });
+
+    it("should error on invalid denied_tools_regex", async () => {
+      const preset: Preset = {
+        denied_tools_regex: "[invalid(",
+        features: {},
+      };
+
+      const result = await loader.validatePreset(preset);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.includes("Invalid regex"))).toBe(true);
+    });
+
+    it("should error on invalid denied_actions format", async () => {
+      const preset: Preset = {
+        denied_actions: ["no_colon_here"],
+        features: {},
+      };
+
+      const result = await loader.validatePreset(preset);
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some(e => e.includes("Invalid denied_action format"))).toBe(true);
+    });
+  });
+
+  describe("clearCache", () => {
+    it("should clear all caches", async () => {
+      // Load something to populate cache
+      const profileConfig = {
+        profiles: {
+          test: {
+            host: "gitlab.example.com",
+            auth: { type: "pat", token_env: "TOKEN" },
+          },
+        },
+      };
+
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(yaml.stringify(profileConfig));
+
+      await loader.loadProfile("test");
+
+      // Clear and reload
+      loader.clearCache();
+
+      // Should read from file again
+      await loader.loadProfile("test");
+
+      // readFileSync should be called twice now (once before clear, once after)
+      expect(mockFs.readFileSync).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe("static methods", () => {
+    it("getUserConfigPath should return expected path", () => {
+      const configPath = ProfileLoader.getUserConfigPath();
+      expect(configPath).toContain(".config");
+      expect(configPath).toContain("gitlab-mcp");
+      expect(configPath).toContain("profiles.yaml");
+    });
+
+    it("ensureConfigDir should create directory if not exists", () => {
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+
+      ProfileLoader.ensureConfigDir();
+
+      expect(mockFs.mkdirSync).toHaveBeenCalled();
+    });
+
+    it("ensureConfigDir should not create directory if exists", () => {
+      mockFs.existsSync.mockReturnValue(true);
+
+      ProfileLoader.ensureConfigDir();
+
+      expect(mockFs.mkdirSync).not.toHaveBeenCalled();
+    });
+  });
+});

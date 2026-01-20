@@ -67,6 +67,7 @@
     "socks-proxy-agent": "^8.0.5",
     "transliteration": "^2.6.0",
     "undici": "^7.18.2",
+    "yaml": "^2.8.2",
     "zod": "^4.3.5"
   },
   "devDependencies": {

@@ -22,6 +22,19 @@ jest.mock("../../../src/services/ToolAvailability", () => ({
   },
 }));
 
+// Mock ProfileLoader
+const mockProfileLoader = {
+  listProfiles: jest.fn(),
+  loadPreset: jest.fn(),
+  loadProfile: jest.fn(),
+  validatePreset: jest.fn(),
+  validateProfile: jest.fn(),
+};
+
+jest.mock("../../../src/profiles", () => ({
+  ProfileLoader: jest.fn().mockImplementation(() => mockProfileLoader),
+}));
+
 // Mock console methods
 beforeAll(() => {
   jest.spyOn(console, "log").mockImplementation(mockConsoleLog);
@@ -44,14 +57,23 @@ describe("list-tools script", () => {
     // Reset tier requirement mock to return null by default
     mockGetToolRequirement.mockReturnValue(null);
 
-    // Set up default mock return value
-    mockManager.getAllToolDefinitionsTierless.mockReturnValue([
+    // Reset profile loader mocks
+    mockProfileLoader.listProfiles.mockResolvedValue([]);
+    mockProfileLoader.loadPreset.mockRejectedValue(new Error("Not found"));
+    mockProfileLoader.loadProfile.mockRejectedValue(new Error("Not found"));
+    mockProfileLoader.validatePreset.mockResolvedValue({ valid: true, errors: [], warnings: [] });
+    mockProfileLoader.validateProfile.mockResolvedValue({ valid: true, errors: [], warnings: [] });
+
+    // Set up default mock return value for both methods
+    const defaultTools = [
       {
         name: "test_tool",
         description: "Test tool description",
         inputSchema: { type: "object" },
       },
-    ]);
+    ];
+    mockManager.getAllToolDefinitionsTierless.mockReturnValue(defaultTools);
+    mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue(defaultTools);
   });
 
   afterEach(() => {
@@ -1114,6 +1136,462 @@ describe("list-tools script", () => {
       expect(mrsGate.tools).toContain("browse_merge_requests");
       expect(mrsGate.tools).toContain("manage_merge_request");
       expect(mrsGate.tools).toContain("browse_mr_discussions");
+    });
+  });
+
+  describe("--presets flag", () => {
+    beforeEach(() => {
+      // Setup mock tools for preset testing
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: "browse_projects",
+          description: "Browse projects",
+          inputSchema: { type: "object" },
+        },
+        { name: "manage_files", description: "Manage files", inputSchema: { type: "object" } },
+        { name: "browse_wiki", description: "Browse wiki", inputSchema: { type: "object" } },
+        { name: "manage_wiki", description: "Manage wiki", inputSchema: { type: "object" } },
+      ]);
+
+      // Setup mock presets
+      mockProfileLoader.listProfiles.mockResolvedValue([
+        {
+          name: "admin",
+          readOnly: false,
+          isBuiltIn: true,
+          isPreset: true,
+          description: "Full admin access",
+        },
+        {
+          name: "readonly",
+          readOnly: true,
+          isBuiltIn: true,
+          isPreset: true,
+          description: "Read-only access",
+        },
+      ]);
+
+      mockProfileLoader.loadPreset.mockImplementation(async (name: string) => {
+        if (name === "admin") {
+          return { description: "Full admin access", read_only: false };
+        }
+        if (name === "readonly") {
+          return { description: "Read-only access", read_only: true };
+        }
+        throw new Error(`Preset '${name}' not found`);
+      });
+    });
+
+    it("should list all presets in markdown format", async () => {
+      process.argv = ["node", "list-tools.ts", "--presets"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("# Available Presets"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("## Built-in Presets"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("`admin`"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("`readonly`"));
+    });
+
+    it("should list all presets in JSON format", async () => {
+      process.argv = ["node", "list-tools.ts", "--presets", "--json"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      const jsonCall = mockConsoleLog.mock.calls.find(call => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.builtIn !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonCall).toBeDefined();
+      const output = JSON.parse(jsonCall![0] as string);
+      expect(output.builtIn).toHaveLength(2);
+      expect(output.builtIn[0].name).toBe("admin");
+    });
+  });
+
+  describe("--profiles flag", () => {
+    beforeEach(() => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: "browse_projects",
+          description: "Browse projects",
+          inputSchema: { type: "object" },
+        },
+      ]);
+    });
+
+    it("should show empty profiles message when none defined", async () => {
+      mockProfileLoader.listProfiles.mockResolvedValue([]);
+
+      process.argv = ["node", "list-tools.ts", "--profiles"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("# User Profiles\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith("No user profiles defined.\n");
+    });
+
+    it("should list user profiles when defined", async () => {
+      mockProfileLoader.listProfiles.mockResolvedValue([
+        {
+          name: "work",
+          host: "gitlab.company.com",
+          authType: "pat",
+          readOnly: false,
+          isBuiltIn: false,
+          isPreset: false,
+        },
+      ]);
+
+      process.argv = ["node", "list-tools.ts", "--profiles"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("# User Profiles\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("`work`"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("gitlab.company.com"));
+    });
+
+    it("should list profiles in JSON format", async () => {
+      mockProfileLoader.listProfiles.mockResolvedValue([
+        {
+          name: "work",
+          host: "gitlab.company.com",
+          authType: "pat",
+          readOnly: false,
+          isBuiltIn: false,
+          isPreset: false,
+        },
+      ]);
+
+      process.argv = ["node", "list-tools.ts", "--profiles", "--json"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      const jsonCall = mockConsoleLog.mock.calls.find(call => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return Array.isArray(parsed) && parsed.length > 0 && parsed[0].name === "work";
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonCall).toBeDefined();
+    });
+  });
+
+  describe("--preset <name> flag", () => {
+    beforeEach(() => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: "browse_projects",
+          description: "Browse projects",
+          inputSchema: { type: "object" },
+        },
+        { name: "manage_files", description: "Manage files", inputSchema: { type: "object" } },
+        { name: "browse_wiki", description: "Browse wiki", inputSchema: { type: "object" } },
+        { name: "manage_wiki", description: "Manage wiki", inputSchema: { type: "object" } },
+        {
+          name: "browse_pipelines",
+          description: "Browse pipelines",
+          inputSchema: { type: "object" },
+        },
+        {
+          name: "manage_pipeline",
+          description: "Manage pipeline",
+          inputSchema: { type: "object" },
+        },
+      ]);
+    });
+
+    it("should show preset details", async () => {
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: "Junior Developer preset",
+        read_only: false,
+        features: { wiki: false, pipelines: false },
+        denied_tools_regex: "^manage_pipeline",
+      });
+
+      process.argv = ["node", "list-tools.ts", "--preset", "junior-dev"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("# Preset: junior-dev\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("**Type:** Built-in"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("## Features"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("## Enabled Tools"));
+    });
+
+    it("should show preset details in JSON format", async () => {
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: "Test preset",
+        read_only: false,
+        features: { wiki: true },
+      });
+
+      process.argv = ["node", "list-tools.ts", "--preset", "test", "--json"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      const jsonCall = mockConsoleLog.mock.calls.find(call => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.name === "test" && parsed.type === "builtin";
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonCall).toBeDefined();
+    });
+
+    it("should error when preset not found", async () => {
+      mockProfileLoader.loadPreset.mockRejectedValue(new Error("Preset not found"));
+
+      process.argv = ["node", "list-tools.ts", "--preset", "nonexistent"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleError).toHaveBeenCalledWith("Error: Preset 'nonexistent' not found");
+      expect(mockProcessExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should validate preset with --validate flag", async () => {
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: "Test preset",
+        read_only: false,
+      });
+      mockProfileLoader.validatePreset.mockResolvedValue({
+        valid: true,
+        errors: [],
+        warnings: [],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--preset", "test", "--validate"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("## Validation\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith("**Status: VALID**\n");
+    });
+
+    it("should show validation warnings", async () => {
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: "Test preset",
+        read_only: false,
+      });
+      mockProfileLoader.validatePreset.mockResolvedValue({
+        valid: true,
+        errors: [],
+        warnings: ["Some warning"],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--preset", "test", "--validate"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("VALID"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("1 warning"));
+    });
+
+    it("should show validation errors", async () => {
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: "Test preset",
+        read_only: false,
+      });
+      mockProfileLoader.validatePreset.mockResolvedValue({
+        valid: false,
+        errors: ["Invalid regex"],
+        warnings: [],
+      });
+
+      process.argv = ["node", "list-tools.ts", "--preset", "test", "--validate"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("INVALID"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("Invalid regex"));
+    });
+
+    it("should error when --preset flag has no value", async () => {
+      process.argv = ["node", "list-tools.ts", "--preset"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleError).toHaveBeenCalledWith("Error: --preset flag requires a value.");
+      expect(mockProcessExit).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe("--profile <name> flag", () => {
+    beforeEach(() => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: "browse_projects",
+          description: "Browse projects",
+          inputSchema: { type: "object" },
+        },
+      ]);
+    });
+
+    it("should show profile details", async () => {
+      mockProfileLoader.loadProfile.mockResolvedValue({
+        host: "gitlab.company.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+        read_only: false,
+      });
+
+      process.argv = ["node", "list-tools.ts", "--profile", "work"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith("# Profile: work\n");
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("**Host:** gitlab.company.com")
+      );
+    });
+
+    it("should error when profile not found", async () => {
+      mockProfileLoader.loadProfile.mockRejectedValue(new Error("Profile not found"));
+
+      process.argv = ["node", "list-tools.ts", "--profile", "nonexistent"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleError).toHaveBeenCalledWith("Error: Profile 'nonexistent' not found");
+      expect(mockProcessExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should error when --profile flag has no value", async () => {
+      process.argv = ["node", "list-tools.ts", "--profile"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleError).toHaveBeenCalledWith("Error: --profile flag requires a value.");
+      expect(mockProcessExit).toHaveBeenCalledWith(1);
+    });
+  });
+
+  describe("--compare flag", () => {
+    beforeEach(() => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: "browse_projects",
+          description: "Browse projects",
+          inputSchema: { type: "object" },
+        },
+        { name: "browse_wiki", description: "Browse wiki", inputSchema: { type: "object" } },
+        { name: "manage_wiki", description: "Manage wiki", inputSchema: { type: "object" } },
+        {
+          name: "browse_pipelines",
+          description: "Browse pipelines",
+          inputSchema: { type: "object" },
+        },
+      ]);
+    });
+
+    it("should compare two presets", async () => {
+      mockProfileLoader.loadPreset.mockImplementation(async (name: string) => {
+        if (name === "junior-dev") {
+          return { description: "Junior dev", read_only: false, features: { wiki: false } };
+        }
+        if (name === "senior-dev") {
+          return { description: "Senior dev", read_only: false, features: { wiki: true } };
+        }
+        throw new Error("Not found");
+      });
+
+      process.argv = ["node", "list-tools.ts", "--preset", "junior-dev", "--compare", "senior-dev"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining("# Comparison: junior-dev vs senior-dev")
+      );
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("## Summary"));
+    });
+
+    it("should compare presets in JSON format", async () => {
+      mockProfileLoader.loadPreset.mockImplementation(async (name: string) => {
+        if (name === "a") return { description: "A", read_only: false };
+        if (name === "b") return { description: "B", read_only: true };
+        throw new Error("Not found");
+      });
+
+      process.argv = ["node", "list-tools.ts", "--preset", "a", "--compare", "b", "--json"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      const jsonCall = mockConsoleLog.mock.calls.find(call => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.presetA !== undefined && parsed.presetB !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonCall).toBeDefined();
+    });
+
+    it("should error when first preset not found", async () => {
+      mockProfileLoader.loadPreset.mockRejectedValue(new Error("Not found"));
+
+      process.argv = ["node", "list-tools.ts", "--preset", "nonexistent", "--compare", "admin"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleError).toHaveBeenCalledWith("Error: Preset 'nonexistent' not found");
+      expect(mockProcessExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should error when second preset not found", async () => {
+      mockProfileLoader.loadPreset.mockImplementation(async (name: string) => {
+        if (name === "admin") return { description: "Admin" };
+        throw new Error("Not found");
+      });
+
+      process.argv = ["node", "list-tools.ts", "--preset", "admin", "--compare", "nonexistent"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleError).toHaveBeenCalledWith("Error: Preset 'nonexistent' not found");
+      expect(mockProcessExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should error when --compare flag has no value", async () => {
+      process.argv = ["node", "list-tools.ts", "--preset", "admin", "--compare"];
+
+      const { main } = await import("../../../src/cli/list-tools");
+      await main();
+
+      expect(mockConsoleError).toHaveBeenCalledWith("Error: --compare flag requires a value.");
+      expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
   });
 });

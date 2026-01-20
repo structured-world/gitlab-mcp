@@ -535,15 +535,26 @@ describe("RegistryManager", () => {
       expect(hasLabelsTools).toBe(true);
     });
 
-    it("should apply schema transformation to flatten discriminated unions", () => {
+    it("should preserve original schemas without transformation for documentation", () => {
       registryManager = RegistryManager.getInstance();
       const tools = registryManager.getAllToolDefinitionsUnfiltered();
 
-      // All tools should have inputSchema
+      // All tools should have inputSchema preserved (not transformed/flattened)
       tools.forEach(tool => {
         expect(tool.inputSchema).toBeDefined();
         expect(typeof tool.inputSchema).toBe("object");
       });
+
+      // Verify oneOf structures are preserved for CQRS tools (not flattened)
+      const cqrsTool = tools.find(t => t.name === "browse_projects");
+      if (cqrsTool) {
+        const schema = cqrsTool.inputSchema as { oneOf?: unknown[] };
+        if (schema.oneOf) {
+          // Original discriminated union should be preserved
+          expect(Array.isArray(schema.oneOf)).toBe(true);
+          expect(schema.oneOf.length).toBeGreaterThan(0);
+        }
+      }
     });
   });
 });

@@ -3,8 +3,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-non-null-assertion, no-case-declarations */
 import * as fs from "fs";
 import * as path from "path";
-import { RegistryManager } from "./registry-manager";
-import { ToolAvailability } from "./services/ToolAvailability";
+import { RegistryManager } from "../registry-manager";
+import { ToolAvailability } from "../services/ToolAvailability";
 
 interface JsonSchemaProperty {
   type?: string;
@@ -61,9 +61,19 @@ function parseArgs(): CliOptions {
         options.format = "export";
         break;
       case "--entity":
+        if (i + 1 >= args.length) {
+          console.error("Error: --entity flag requires a value.");
+          console.error("Usage: yarn list-tools --entity <entity_name>");
+          process.exit(1);
+        }
         options.entity = args[++i];
         break;
       case "--tool":
+        if (i + 1 >= args.length) {
+          console.error("Error: --tool flag requires a value.");
+          console.error("Usage: yarn list-tools --tool <tool_name>");
+          process.exit(1);
+        }
         options.tool = args[++i];
         break;
       case "--env":
@@ -222,7 +232,14 @@ function getToolTierInfo(toolName: string): string {
   return `[tier: ${tierBadge}]`;
 }
 
-// Map of entity names to their CQRS tool names
+/**
+ * Map of entity names to their CQRS tool names.
+ * Organization notes:
+ * - Core: Project/namespace/commit/event tools (consolidated from 18 to ~11 tools)
+ * - Todos: Separate category for list_todos and manage_todos (originally part of core registry
+ *   but categorized separately for documentation clarity)
+ * - Each entity maps to browse_ and manage_ prefixed tools (or legacy list_ and get_ prefixed)
+ */
 const ENTITY_TOOLS: Record<string, string[]> = {
   Core: [
     "browse_projects",
@@ -315,6 +332,15 @@ interface ParameterInfo {
   type: string;
   required: boolean;
   description: string;
+}
+
+interface ActionParameter extends ParameterInfo {
+  requiredForAction: boolean; // Required specifically for this action
+}
+
+interface GroupedParameters {
+  common: ParameterInfo[]; // Shared across all actions
+  byAction: Map<string, ActionParameter[]>; // Action-specific parameters
 }
 
 // Action descriptions for documentation generation
@@ -476,9 +502,114 @@ function sortParameters(params: ParameterInfo[]): ParameterInfo[] {
 }
 
 /**
- * Generate example JSON for a tool
+ * Extract parameters grouped by common (all actions) vs action-specific.
+ * Returns structured data for human-readable documentation.
  */
-function generateExample(toolName: string, schema: JsonSchemaProperty): Record<string, unknown> {
+function extractParametersGrouped(schema: JsonSchemaProperty): GroupedParameters {
+  const result: GroupedParameters = {
+    common: [],
+    byAction: new Map(),
+  };
+
+  // Only works with discriminated unions (oneOf)
+  if (!schema.oneOf || !Array.isArray(schema.oneOf)) {
+    // Flat schema - all params are "common"
+    result.common = extractParameters(schema);
+    return result;
+  }
+
+  const totalActions = schema.oneOf.length;
+
+  // Track parameter occurrences across actions
+  const paramOccurrences = new Map<
+    string,
+    {
+      actions: Map<string, { required: boolean; type: string; description: string }>;
+      type: string;
+      description: string;
+    }
+  >();
+
+  // Collect all parameters from all action branches
+  for (const branch of schema.oneOf) {
+    const actionName = branch.properties?.action?.const as string | undefined;
+    if (!actionName || !branch.properties) continue;
+
+    const requiredFields = branch.required ?? [];
+
+    for (const [name, prop] of Object.entries(branch.properties)) {
+      if (name === "action") continue; // Skip action field itself
+
+      const type = resolveJsonSchemaType(prop, branch);
+      const required = requiredFields.includes(name);
+      const description = prop.description ?? "";
+
+      if (!paramOccurrences.has(name)) {
+        paramOccurrences.set(name, {
+          actions: new Map(),
+          type,
+          description,
+        });
+      }
+
+      const occurrence = paramOccurrences.get(name)!;
+      occurrence.actions.set(actionName, { required, type, description });
+      // Use longer description
+      if (description.length > occurrence.description.length) {
+        occurrence.description = description;
+      }
+    }
+  }
+
+  // Separate into common vs action-specific
+  for (const [name, data] of paramOccurrences) {
+    if (data.actions.size === totalActions) {
+      // Parameter appears in ALL actions - it's common
+      // Required only if required in all actions
+      const requiredInAll = Array.from(data.actions.values()).every(a => a.required);
+      result.common.push({
+        name,
+        type: data.type,
+        required: requiredInAll,
+        description: data.description,
+      });
+    } else {
+      // Parameter is action-specific
+      for (const [actionName, actionData] of data.actions) {
+        if (!result.byAction.has(actionName)) {
+          result.byAction.set(actionName, []);
+        }
+        result.byAction.get(actionName)!.push({
+          name,
+          type: actionData.type,
+          required: actionData.required,
+          requiredForAction: actionData.required,
+          description: actionData.description || data.description,
+        });
+      }
+    }
+  }
+
+  // Sort parameters
+  result.common = sortParameters(result.common);
+  for (const [action, params] of result.byAction) {
+    result.byAction.set(
+      action,
+      params.sort((a, b) => {
+        if (a.requiredForAction && !b.requiredForAction) return -1;
+        if (!a.requiredForAction && b.requiredForAction) return 1;
+        return a.name.localeCompare(b.name);
+      })
+    );
+  }
+
+  return result;
+}
+
+/**
+ * Generate example JSON for a tool based on its schema
+ */
+function generateExample(schema: JsonSchemaProperty): Record<string, unknown> {
   const example: Record<string, unknown> = {};
   const actions = extractActions(schema);
 
@@ -554,17 +685,26 @@ function generateExample(toolName: string, schema: JsonSchemaProperty): Record<s
 
 /**
  * Get package version from package.json
+ * Looks for exact package name first, falls back to first package.json found
  */
 function getPackageVersion(): string {
   try {
     // Find package.json by looking for it from cwd upwards
     let dir = process.cwd();
+    let fallbackVersion: string | null = null;
+
     for (let i = 0; i < 5; i++) {
       const pkgPath = path.join(dir, "package.json");
       if (fs.existsSync(pkgPath)) {
         const content = fs.readFileSync(pkgPath, "utf8");
         const pkg = JSON.parse(content) as { version?: string; name?: string };
-        // Verify it's our package
+
+        // Store first found version as fallback
+        if (fallbackVersion === null && pkg.version) {
+          fallbackVersion = pkg.version;
+        }
+
+        // Verify it's our package (exact match preferred)
         if (pkg.name === "@structured-world/gitlab-mcp") {
           return pkg.version ?? "unknown";
         }
@@ -573,7 +713,9 @@ function getPackageVersion(): string {
       if (parent === dir) break;
       dir = parent;
     }
-    return "unknown";
+
+    // Use fallback version if exact package not found (dev/testing scenarios)
+    return fallbackVersion ?? "unknown";
   } catch {
     return "unknown";
   }
@@ -639,24 +781,54 @@ function generateExportMarkdown(
         lines.push("");
       }
 
-      // Parameters table
-      const params = extractParameters(tool.inputSchema);
-      if (params.length > 0) {
+      // Parameters - grouped by common vs action-specific
+      const groupedParams = extractParametersGrouped(tool.inputSchema);
+      const hasParams = groupedParams.common.length > 0 || groupedParams.byAction.size > 0;
+
+      if (hasParams) {
         lines.push("#### Parameters");
         lines.push("");
-        lines.push("| Parameter | Type | Required | Description |");
-        lines.push("|-----------|------|----------|-------------|");
-        for (const param of params) {
-          const req = param.required ? "Yes" : "No";
-          const desc = param.description || "-";
-          lines.push(`| \`${param.name}\` | ${param.type} | ${req} | ${desc} |`);
+
+        // Common parameters (shared across all actions)
+        if (groupedParams.common.length > 0) {
+          if (groupedParams.byAction.size > 0) {
+            lines.push("**Common** (all actions):");
+            lines.push("");
+          }
+          lines.push("| Parameter | Type | Required | Description |");
+          lines.push("|-----------|------|----------|-------------|");
+          for (const param of groupedParams.common) {
+            const req = param.required ? "Yes" : "No";
+            const desc = param.description || "-";
+            lines.push(`| \`${param.name}\` | ${param.type} | ${req} | ${desc} |`);
+          }
+          lines.push("");
         }
-        lines.push("");
+
+        // Action-specific parameters
+        if (groupedParams.byAction.size > 0) {
+          const sortedActions = Array.from(groupedParams.byAction.keys()).sort();
+          for (const actionName of sortedActions) {
+            const actionParams = groupedParams.byAction.get(actionName)!;
+            if (actionParams.length === 0) continue;
+
+            lines.push(`**Action \`${actionName}\`**:`);
+            lines.push("");
+            lines.push("| Parameter | Type | Required | Description |");
+            lines.push("|-----------|------|----------|-------------|");
+            for (const param of actionParams) {
+              const req = param.requiredForAction ? "Yes" : "No";
+              const desc = param.description || "-";
+              lines.push(`| \`${param.name}\` | ${param.type} | ${req} | ${desc} |`);
+            }
+            lines.push("");
+          }
+        }
       }
 
       // Example
       if (!options.noExamples && tool.inputSchema) {
-        const example = generateExample(tool.name, tool.inputSchema);
+        const example = generateExample(tool.inputSchema);
         if (Object.keys(example).length > 0) {
           lines.push("#### Example");
           lines.push("");

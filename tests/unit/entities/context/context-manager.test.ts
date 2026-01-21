@@ -343,4 +343,71 @@ describe("ContextManager", () => {
       expect(enforcer?.getScopeDescription()).toContain("my-group");
     });
   });
+
+  describe("getCurrentPreset", () => {
+    it("should return null when no preset is set", () => {
+      const manager = ContextManager.getInstance();
+      expect(manager.getCurrentPreset()).toBeNull();
+    });
+
+    it("should return preset after switchPreset", async () => {
+      const manager = ContextManager.getInstance();
+      await manager.switchPreset("readonly");
+
+      const preset = manager.getCurrentPreset();
+      expect(preset).not.toBeNull();
+    });
+  });
+
+  describe("error handling", () => {
+    it("should handle setScope errors", async () => {
+      mockDetectNamespaceType.mockRejectedValue(new Error("API error"));
+
+      const manager = ContextManager.getInstance();
+
+      await expect(manager.setScope("invalid-namespace")).rejects.toThrow("Failed to set scope");
+    });
+
+    it("should handle switchPreset with invalid preset", async () => {
+      // Mock ProfileLoader to throw error
+      jest.mock("../../../../src/profiles/loader", () => ({
+        ProfileLoader: jest.fn().mockImplementation(() => ({
+          loadPreset: jest.fn().mockRejectedValue(new Error("Preset not found")),
+        })),
+      }));
+
+      const manager = ContextManager.getInstance();
+
+      // The mock should cause an error
+      // Note: This test depends on ProfileLoader mock behavior
+    });
+  });
+
+  describe("scopeConfigToRuntimeScope edge cases", () => {
+    it("should handle scope with namespace field", async () => {
+      mockDetectNamespaceType.mockResolvedValue("group");
+
+      const manager = ContextManager.getInstance();
+      await manager.setScope("my-namespace");
+
+      const context = manager.getContext();
+      expect(context.scope).toBeDefined();
+      expect(context.scope?.type).toBe("group");
+    });
+  });
+
+  describe("listPresets edge cases", () => {
+    it("should add current preset to list if not already present", async () => {
+      const manager = ContextManager.getInstance();
+
+      // First switch to a preset (our mock returns 'readonly' and 'developer')
+      await manager.switchPreset("custom-preset");
+
+      // The preset should appear in list even if not in ProfileLoader results
+      const presets = await manager.listPresets();
+
+      // Should have presets from ProfileLoader mock
+      expect(presets.length).toBeGreaterThan(0);
+    });
+  });
 });

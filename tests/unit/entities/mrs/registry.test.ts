@@ -3,6 +3,7 @@ import {
   getMrsReadOnlyToolNames,
   getMrsToolDefinitions,
   getFilteredMrsTools,
+  flattenPositionToFormFields,
 } from "../../../../src/entities/mrs/registry";
 import { gitlab } from "../../../../src/utils/gitlab-api";
 
@@ -48,6 +49,214 @@ beforeEach(() => {
   jest.clearAllMocks();
   // Note: Don't use resetAllMocks() here because it would remove the custom toQuery
   // mock implementation defined above, which is intended to mirror the real helper.
+});
+
+describe("flattenPositionToFormFields", () => {
+  it("should flatten flat position object to bracket notation", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      head_sha: "def456",
+      new_line: 10,
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[head_sha]": "def456",
+      "position[new_line]": 10,
+    });
+  });
+
+  it("should handle nested objects (2 levels)", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      line_range: {
+        start: "line_code_1",
+        end: "line_code_2",
+      },
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[line_range][start]": "line_code_1",
+      "position[line_range][end]": "line_code_2",
+    });
+  });
+
+  it("should handle deeply nested objects (3 levels - line_range.start.line_code)", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      line_range: {
+        start: {
+          line_code: "abc_10_10",
+          type: "new",
+          new_line: 10,
+        },
+        end: {
+          line_code: "abc_15_15",
+          type: "new",
+          new_line: 15,
+        },
+      },
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[line_range][start][line_code]": "abc_10_10",
+      "position[line_range][start][type]": "new",
+      "position[line_range][start][new_line]": 10,
+      "position[line_range][end][line_code]": "abc_15_15",
+      "position[line_range][end][type]": "new",
+      "position[line_range][end][new_line]": 15,
+    });
+  });
+
+  it("should skip null values", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      head_sha: null,
+      old_line: null,
+      new_line: 10,
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[new_line]": 10,
+    });
+  });
+
+  it("should skip undefined values", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      head_sha: undefined,
+      new_line: 10,
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[new_line]": 10,
+    });
+  });
+
+  it("should skip null/undefined in nested objects", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      line_range: {
+        start: {
+          line_code: "abc_10_10",
+          type: null,
+          old_line: undefined,
+        },
+      },
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[line_range][start][line_code]": "abc_10_10",
+    });
+  });
+
+  it("should pass arrays as-is at top level (not expand them)", () => {
+    // Note: GitLab position schema doesn't have top-level arrays,
+    // but if passed, they are added as-is (not expanded to bracket notation)
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      some_array: [1, 2, 3],
+      new_line: 10,
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[some_array]": [1, 2, 3],
+      "position[new_line]": 10,
+    });
+  });
+
+  it("should not expand nested arrays", () => {
+    // Arrays inside nested objects should be passed as-is
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      line_range: {
+        values: [1, 2, 3],
+        start: "code_1",
+      },
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[line_range][values]": [1, 2, 3],
+      "position[line_range][start]": "code_1",
+    });
+  });
+
+  it("should preserve existing body fields", () => {
+    const body: Record<string, unknown> = {
+      body: "Test comment",
+      commit_id: "xyz789",
+    };
+    const position = {
+      base_sha: "abc123",
+      new_line: 10,
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      body: "Test comment",
+      commit_id: "xyz789",
+      "position[base_sha]": "abc123",
+      "position[new_line]": 10,
+    });
+  });
+
+  it("should handle empty position object", () => {
+    const body: Record<string, unknown> = { body: "Test" };
+    const position = {};
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({ body: "Test" });
+  });
+
+  it("should handle boolean and number values correctly", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      new_line: 0,
+      old_line: 42,
+      position_type: "text",
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[new_line]": 0,
+      "position[old_line]": 42,
+      "position[position_type]": "text",
+    });
+  });
 });
 
 describe("MRS Registry", () => {

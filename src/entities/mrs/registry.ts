@@ -17,7 +17,7 @@ import { isActionDenied } from "../../config";
  *
  * @see https://docs.gitlab.com/ee/api/discussions.html#create-a-new-thread-in-the-merge-request-diff
  */
-function flattenPositionToFormFields(
+export function flattenPositionToFormFields(
   body: Record<string, unknown>,
   position: Record<string, unknown>
 ): void {

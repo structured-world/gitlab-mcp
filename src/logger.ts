@@ -17,6 +17,7 @@ export const createLogger = (name?: string) => {
         colorize: true,
         translateTime: true,
         ignore: "pid,hostname",
+        destination: 2, // stderr - keeps stdout clean for CLI tools (list-tools --export)
       },
     };
   }

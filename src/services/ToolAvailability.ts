@@ -657,6 +657,30 @@ export class ToolAvailability {
         unprotect_tag: { tier: "premium", minVersion: 11.3, notes: "Protected tags" },
       },
     },
+
+    // Members (team management)
+    browse_members: {
+      default: { tier: "free", minVersion: 8.0 },
+      actions: {
+        list_project: { tier: "free", minVersion: 8.0 },
+        list_group: { tier: "free", minVersion: 8.0 },
+        get_project: { tier: "free", minVersion: 8.0 },
+        get_group: { tier: "free", minVersion: 8.0 },
+        list_all_project: { tier: "free", minVersion: 12.4, notes: "Includes inherited members" },
+        list_all_group: { tier: "free", minVersion: 12.4, notes: "Includes inherited members" },
+      },
+    },
+    manage_member: {
+      default: { tier: "free", minVersion: 8.0 },
+      actions: {
+        add_to_project: { tier: "free", minVersion: 8.0 },
+        add_to_group: { tier: "free", minVersion: 8.0 },
+        remove_from_project: { tier: "free", minVersion: 8.0 },
+        remove_from_group: { tier: "free", minVersion: 8.0 },
+        update_project: { tier: "free", minVersion: 8.0 },
+        update_group: { tier: "free", minVersion: 8.0, notes: "member_role_id requires Ultimate" },
+      },
+    },
   };
 
   /**

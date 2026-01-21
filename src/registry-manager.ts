@@ -28,6 +28,7 @@ import {
 } from "./entities/integrations/registry";
 import { releasesToolRegistry, getReleasesReadOnlyToolNames } from "./entities/releases/registry";
 import { refsToolRegistry, getRefsReadOnlyToolNames } from "./entities/refs/registry";
+import { membersToolRegistry, getMembersReadOnlyToolNames } from "./entities/members/registry";
 import {
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
@@ -44,6 +45,7 @@ import {
   USE_INTEGRATIONS,
   USE_RELEASES,
   USE_REFS,
+  USE_MEMBERS,
   getToolDescriptionOverrides,
 } from "./config";
 import { ToolAvailability } from "./services/ToolAvailability";
@@ -146,6 +148,10 @@ class RegistryManager {
       this.registries.set("refs", refsToolRegistry);
     }
 
+    if (USE_MEMBERS) {
+      this.registries.set("members", membersToolRegistry);
+    }
+
     // All entity registries have been migrated to the new pattern!
   }
 
@@ -223,6 +229,10 @@ class RegistryManager {
 
     if (USE_REFS) {
       readOnlyTools.push(...getRefsReadOnlyToolNames());
+    }
+
+    if (USE_MEMBERS) {
+      readOnlyTools.push(...getMembersReadOnlyToolNames());
     }
 
     return readOnlyTools;
@@ -383,6 +393,7 @@ class RegistryManager {
     const useIntegrations = process.env.USE_INTEGRATIONS !== "false";
     const useReleases = process.env.USE_RELEASES !== "false";
     const useRefs = process.env.USE_REFS !== "false";
+    const useMembers = process.env.USE_MEMBERS !== "false";
 
     // Build registries map based on dynamic feature flags
     const registriesToUse = new Map<string, ToolRegistry>();
@@ -404,6 +415,7 @@ class RegistryManager {
     if (useIntegrations) registriesToUse.set("integrations", integrationsToolRegistry);
     if (useReleases) registriesToUse.set("releases", releasesToolRegistry);
     if (useRefs) registriesToUse.set("refs", refsToolRegistry);
+    if (useMembers) registriesToUse.set("members", membersToolRegistry);
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -470,6 +482,7 @@ class RegistryManager {
       integrationsToolRegistry,
       releasesToolRegistry,
       refsToolRegistry,
+      membersToolRegistry,
     ];
 
     for (const registry of allRegistries) {

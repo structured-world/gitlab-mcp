@@ -735,7 +735,7 @@ Per-client capability detection may be added, allowing the server to automatical
 
 ## Tools 🛠️
 
-**61 Tools Available** - Organized by entity and functionality below.
+**62 Tools Available** - Organized by entity and functionality below.
 
 ### Key Features:
 - **CQRS Pattern** - Consolidated action-based tools: `browse_*` for reads, `manage_*` for writes
@@ -752,7 +752,7 @@ Per-client capability detection may be added, allowing the server to automatical
 - 📖 = Read-only tool (available in GITLAB_READ_ONLY_MODE)
 - ✏️ = Read/Write tool (disabled in GITLAB_READ_ONLY_MODE)
 
-### Core Tools (13 tools)
+### Core Tools (14 tools)
 Core GitLab functionality always available. Uses CQRS pattern with consolidated action-based tools.
 
 #### Repository & Project Management
@@ -779,6 +779,9 @@ Core GitLab functionality always available. Uses CQRS pattern with consolidated 
 #### Todos (Task Queue)
 - 📖 **`list_todos`**: View your GitLab todos (notifications requiring action). Filter by state, action type, or target type.
 - ✏️ **`manage_todos`**: Manage todo items. Actions: "mark_done" completes single todo, "mark_all_done" clears queue, "restore" undoes completed todo.
+
+#### Context Management
+- 📖 **`manage_context`**: CONTEXT: Manage runtime session context. Actions: "show" returns current context (host, preset, scope, mode); "list_presets" lists available presets; "list_profiles" lists OAuth profiles (OAuth mode only); "switch_preset" changes active preset; "switch_profile" changes OAuth profile (OAuth mode only); "set_scope" restricts operations to a namespace with auto-detection (group vs project); "reset" restores initial context.
 
 ### Labels Management (5 tools)
 Requires USE_LABELS=true environment variable (enabled by default). Supports both project and group labels.

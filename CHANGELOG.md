@@ -1,3 +1,9 @@
+## [6.23.1](https://github.com/structured-world/gitlab-mcp/compare/v6.23.0...v6.23.1) (2026-01-21)
+
+### Bug Fixes
+
+* **workitems:** normalize legacy GIDs and improve ID field descriptions ([#92](https://github.com/structured-world/gitlab-mcp/issues/92)) ([54db7de](https://github.com/structured-world/gitlab-mcp/commit/54db7de2f75b4d653b39296d9121d7ad5e86cef1)), closes [#90](https://github.com/structured-world/gitlab-mcp/issues/90)
+
 ## [6.23.0](https://github.com/structured-world/gitlab-mcp/compare/v6.22.0...v6.23.0) (2026-01-21)
 
 ### Features

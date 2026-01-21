@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-21 | Tools: 46 | Version: 6.23.0
+> Generated: 2026-01-21 | Tools: 46 | Version: 6.23.1
 
 ## Table of Contents
 
@@ -468,7 +468,7 @@ CREATE GROUP: Create a new GitLab group/namespace. Groups organize projects and 
 
 ### browse_work_items [tier: Free]
 
-BROWSE work items. Actions: "list" shows work items with filtering (groups return epics, projects return issues/tasks), "get" retrieves single work item by ID with full widget details.
+BROWSE work items. Actions: "list" returns work items with numeric IDs (groups return epics, projects return issues/tasks), "get" retrieves single work item - use the numeric ID from list results (e.g., "5953"). Legacy GIDs like gid://gitlab/Issue/X are auto-normalized.
 
 #### Actions
 
@@ -483,7 +483,7 @@ BROWSE work items. Actions: "list" shows work items with filtering (groups retur
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `id` | string | Yes | Work item ID to retrieve |
+| `id` | string | Yes | Work item ID to retrieve - use numeric ID from list results (e.g., '5953') |
 
 **Action `list`**:
 
@@ -512,7 +512,7 @@ BROWSE work items. Actions: "list" shows work items with filtering (groups retur
 
 ### manage_work_item [tier: Free]
 
-MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets, "delete" permanently removes.
+MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets using numeric ID from list, "delete" permanently removes. Legacy GIDs auto-normalized.
 
 #### Actions
 
@@ -540,13 +540,13 @@ MANAGE work items. Actions: "create" creates new work item (Epics need GROUP nam
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `id` | string | Yes | Work item ID |
+| `id` | string | Yes | Work item ID - use numeric ID from list results (e.g., '5953') |
 
 **Action `update`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `id` | string | Yes | Work item ID |
+| `id` | string | Yes | Work item ID - use numeric ID from list results (e.g., '5953') |
 | `assigneeIds` | string[] | No | Array of assignee user IDs |
 | `description` | string | No | Description of the work item |
 | `labelIds` | string[] | No | Array of label IDs |

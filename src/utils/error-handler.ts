@@ -170,7 +170,8 @@ export function handleGitLabError(
 
   // 403 Forbidden - could be tier restriction or permission issue
   if (status === 403) {
-    if (tierFeature && tierFeature.tier !== "Free") {
+    // tierFeature is only returned for Premium/Ultimate features (TIER_FEATURES map has no Free entries)
+    if (tierFeature) {
       return createTierRestrictedError(tool, action, status, tierFeature);
     }
 

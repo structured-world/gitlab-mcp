@@ -1,5 +1,7 @@
 /**
  * Unit tests for error-handler.ts
+ *
+ * Tests structured error handling with ConnectionManager integration
  */
 
 import {
@@ -13,10 +15,48 @@ import {
   GitLabApiErrorResponse,
 } from "../../../src/utils/error-handler";
 
+// Mock functions that we'll configure per-test
+const mockGetTier = jest.fn(() => "free");
+const mockIsFeatureAvailable = jest.fn((feature: string) => {
+  // Default: Free tier - Premium/Ultimate features unavailable
+  const premiumFeatures = ["epics", "iterations", "serviceDesk", "weight"];
+  const ultimateFeatures = ["okrs", "requirements", "securityDashboard"];
+  return !premiumFeatures.includes(feature) && !ultimateFeatures.includes(feature);
+});
+
+// Mock ConnectionManager
+jest.mock("../../../src/services/ConnectionManager", () => ({
+  ConnectionManager: {
+    getInstance: jest.fn(() => ({
+      getTier: mockGetTier,
+      isFeatureAvailable: mockIsFeatureAvailable,
+    })),
+  },
+}));
+
+// Also mock GitLabVersionDetector for the type import
+jest.mock("../../../src/services/GitLabVersionDetector", () => ({
+  GitLabFeatures: {},
+}));
+
+// Import after mocks are set up
+import { ConnectionManager } from "../../../src/services/ConnectionManager";
+
 describe("Error Handler", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    // Reset to Free tier defaults
+    mockGetTier.mockReturnValue("free");
+    mockIsFeatureAvailable.mockImplementation((feature: string) => {
+      const premiumFeatures = ["epics", "iterations", "serviceDesk", "weight"];
+      const ultimateFeatures = ["okrs", "requirements", "securityDashboard"];
+      return !premiumFeatures.includes(feature) && !ultimateFeatures.includes(feature);
+    });
+  });
+
   describe("handleGitLabError", () => {
     describe("403 Forbidden - Tier Restricted", () => {
-      it("should create tier-restricted error for Premium features", () => {
+      it("should create tier-restricted error for iterations on Free tier", () => {
         const error: GitLabApiErrorResponse = {
           status: 403,
           message: "403 Forbidden",
@@ -32,19 +72,20 @@ describe("Error Handler", () => {
           expect(result.http_status).toBe(403);
           expect(result.tier_required).toBe("Premium");
           expect(result.feature_name).toBe("Iterations");
+          expect(result.current_tier).toBe("Free");
           expect(result.docs_url).toContain("iterations");
           expect(result.upgrade_url).toBe("https://about.gitlab.com/pricing/");
         }
       });
 
-      it("should create tier-restricted error for Premium tool:action combinations", () => {
+      it("should create tier-restricted error for group webhooks via toolArgs.scope", () => {
         const error: GitLabApiErrorResponse = {
           status: 403,
           message: "403 Forbidden",
         };
 
-        // list_webhooks:group is a Premium-only feature
-        const result = handleGitLabError(error, "list_webhooks", "group");
+        // Group webhooks require Premium - scope is in toolArgs
+        const result = handleGitLabError(error, "list_webhooks", "list", { scope: "group" });
 
         expect(result.error_code).toBe("TIER_RESTRICTED");
         if (result.error_code === "TIER_RESTRICTED") {
@@ -59,8 +100,8 @@ describe("Error Handler", () => {
           message: "403 Forbidden",
         };
 
-        // Group webhooks have alternatives
-        const result = handleGitLabError(error, "list_webhooks", "group");
+        // Iterations have alternatives
+        const result = handleGitLabError(error, "list_group_iterations", "list");
 
         expect(result.error_code).toBe("TIER_RESTRICTED");
         if (result.error_code === "TIER_RESTRICTED") {
@@ -70,6 +111,94 @@ describe("Error Handler", () => {
           expect(result.alternatives![0]).toHaveProperty("description");
           expect(result.alternatives![0]).toHaveProperty("available_on");
         }
+      });
+
+      it("should detect EPIC work item type restriction", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 403,
+          message: "403 Forbidden",
+        };
+
+        // browse_work_items with types: ["EPIC"] should trigger tier restriction
+        const result = handleGitLabError(error, "browse_work_items", "list", {
+          types: ["EPIC"],
+        });
+
+        expect(result.error_code).toBe("TIER_RESTRICTED");
+        if (result.error_code === "TIER_RESTRICTED") {
+          expect(result.tier_required).toBe("Premium");
+          expect(result.feature_name).toBe("Epics");
+        }
+      });
+
+      it("should detect EPIC work item type via workItemType parameter", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 403,
+          message: "403 Forbidden",
+        };
+
+        // manage_work_item with workItemType: "EPIC"
+        const result = handleGitLabError(error, "manage_work_item", "create", {
+          workItemType: "EPIC",
+        });
+
+        expect(result.error_code).toBe("TIER_RESTRICTED");
+        if (result.error_code === "TIER_RESTRICTED") {
+          expect(result.tier_required).toBe("Premium");
+          expect(result.feature_name).toBe("Epics");
+        }
+      });
+
+      it("should detect OKR work item types restriction", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 403,
+          message: "403 Forbidden",
+        };
+
+        const result = handleGitLabError(error, "browse_work_items", "list", {
+          types: ["OBJECTIVE"],
+        });
+
+        expect(result.error_code).toBe("TIER_RESTRICTED");
+        if (result.error_code === "TIER_RESTRICTED") {
+          expect(result.tier_required).toBe("Ultimate");
+          expect(result.feature_name).toBe("OKRs (Objectives and Key Results)");
+        }
+      });
+
+      it("should detect REQUIREMENT work item type restriction", () => {
+        const error: GitLabApiErrorResponse = {
+          status: 403,
+          message: "403 Forbidden",
+        };
+
+        const result = handleGitLabError(error, "manage_work_item", "create", {
+          workItemType: "REQUIREMENT",
+        });
+
+        expect(result.error_code).toBe("TIER_RESTRICTED");
+        if (result.error_code === "TIER_RESTRICTED") {
+          expect(result.tier_required).toBe("Ultimate");
+          expect(result.feature_name).toBe("Requirements Management");
+        }
+      });
+
+      it("should not trigger tier restriction when feature is available", () => {
+        // Simulate Premium tier - features are available
+        mockIsFeatureAvailable.mockReturnValue(true);
+        mockGetTier.mockReturnValue("premium");
+
+        const error: GitLabApiErrorResponse = {
+          status: 403,
+          message: "403 Forbidden",
+        };
+
+        const result = handleGitLabError(error, "browse_work_items", "list", {
+          types: ["EPIC"],
+        });
+
+        // Should be PERMISSION_DENIED, not TIER_RESTRICTED (since epics are available)
+        expect(result.error_code).toBe("PERMISSION_DENIED");
       });
     });
 
@@ -190,8 +319,6 @@ describe("Error Handler", () => {
       });
 
       it("should extract 4+ digit ID without keyword context (fallback)", () => {
-        // Test the fallback regex that matches 4+ digit numbers when no keyword context exists
-        // This triggers line 338 in error-handler.ts
         const error: GitLabApiErrorResponse = {
           status: 404,
           message: "404 The requested item 12345678 was not found",
@@ -375,6 +502,29 @@ describe("Error Handler", () => {
           expect(result.http_status).toBe(401);
         }
         expect(result.message).toBe("Token has expired");
+      });
+    });
+
+    describe("ConnectionManager integration", () => {
+      it("should handle ConnectionManager not initialized gracefully", () => {
+        // Simulate ConnectionManager.getInstance() throwing
+        const originalGetInstance = ConnectionManager.getInstance;
+        (ConnectionManager.getInstance as jest.Mock).mockImplementationOnce(() => {
+          throw new Error("Connection not initialized");
+        });
+
+        const error: GitLabApiErrorResponse = {
+          status: 403,
+          message: "403 Forbidden",
+        };
+
+        // Should fall back to PERMISSION_DENIED when ConnectionManager unavailable
+        const result = handleGitLabError(error, "list_group_iterations", "list");
+
+        expect(result.error_code).toBe("PERMISSION_DENIED");
+
+        // Restore
+        ConnectionManager.getInstance = originalGetInstance;
       });
     });
   });

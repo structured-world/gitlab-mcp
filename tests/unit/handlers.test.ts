@@ -13,6 +13,8 @@ const mockConnectionManager = {
   initialize: jest.fn(),
   getClient: jest.fn(),
   getInstanceInfo: jest.fn(),
+  getTier: jest.fn(),
+  isFeatureAvailable: jest.fn(),
 };
 
 jest.mock("../../src/services/ConnectionManager", () => ({
@@ -64,6 +66,9 @@ describe("handlers", () => {
       version: "16.0.0",
       tier: "ultimate",
     });
+    // Tier detection methods used by error-handler.ts
+    mockConnectionManager.getTier.mockReturnValue("ultimate");
+    mockConnectionManager.isFeatureAvailable.mockReturnValue(true);
 
     // Mock RegistryManager methods
     mockRegistryManager.getAllToolDefinitions.mockReturnValue([

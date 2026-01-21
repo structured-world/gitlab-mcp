@@ -124,7 +124,12 @@ function toStructuredError(
   }
   action ??= "unknown";
 
-  return handleGitLabError({ status: parsed.status, message: parsed.message }, toolName, action);
+  return handleGitLabError(
+    { status: parsed.status, message: parsed.message },
+    toolName,
+    action,
+    toolArgs
+  );
 }
 
 export async function setupHandlers(server: Server): Promise<void> {

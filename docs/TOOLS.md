@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-21 | Tools: 46 | Version: 6.23.1
+> Generated: 2026-01-21 | Tools: 46 | Version: 6.23.2
 
 ## Table of Contents
 

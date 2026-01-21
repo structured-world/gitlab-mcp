@@ -1,3 +1,9 @@
+## [6.23.2](https://github.com/structured-world/gitlab-mcp/compare/v6.23.1...v6.23.2) (2026-01-21)
+
+### Bug Fixes
+
+* **mrs:** use bracket notation for position in form-encoded requests ([#95](https://github.com/structured-world/gitlab-mcp/issues/95)) ([02b9ae7](https://github.com/structured-world/gitlab-mcp/commit/02b9ae75b3b3cf17f4ef5b626768f81e68217ba5))
+
 ## [6.23.1](https://github.com/structured-world/gitlab-mcp/compare/v6.23.0...v6.23.1) (2026-01-21)
 
 ### Bug Fixes

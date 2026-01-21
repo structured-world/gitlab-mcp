@@ -112,6 +112,15 @@ describe("idConversion utils", () => {
       const result = toGids(["123", "gid://gitlab/User/456"], "User");
       expect(result).toEqual(["gid://gitlab/User/123", "gid://gitlab/User/456"]);
     });
+
+    it("should normalize legacy GIDs when entityType is WorkItem", () => {
+      const result = toGids(["gid://gitlab/Issue/123", "gid://gitlab/Epic/456", "789"], "WorkItem");
+      expect(result).toEqual([
+        "gid://gitlab/WorkItem/123",
+        "gid://gitlab/WorkItem/456",
+        "gid://gitlab/WorkItem/789",
+      ]);
+    });
   });
 
   describe("extractSimpleIds", () => {

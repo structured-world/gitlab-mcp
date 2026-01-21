@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-21 | Tools: 46 | Version: 6.23.2
+> Generated: 2026-01-21 | Tools: 47 | Version: 6.24.0
 
 ## Table of Contents
 
@@ -18,7 +18,7 @@
 - [Webhooks (2)](#webhooks)
 - [Integrations (2)](#integrations)
 - [Todos (2)](#todos)
-- [Other (7)](#other)
+- [Other (8)](#other)
 
 ---
 
@@ -2169,6 +2169,53 @@ TODO ACTIONS: Manage your GitLab todo items. Use 'mark_done' with id to complete
 ---
 
 ## Other
+
+### manage_context [tier: Free]
+
+CONTEXT: Manage runtime session context. Actions: 'show' returns current context (host, preset, scope, mode); 'list_presets' lists available presets with descriptions; 'list_profiles' lists OAuth profiles (OAuth mode only); 'switch_preset' changes active preset by name; 'switch_profile' changes OAuth profile (OAuth mode only); 'set_scope' restricts operations to a namespace (auto-detects group vs project); 'reset' restores initial context from session start.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `show` | Free | Display current context including host, preset, scope, and mode |
+| `list_presets` | Free | List all available presets with descriptions |
+| `list_profiles` | Free | List available OAuth profiles - only works in OAuth mode |
+| `switch_preset` | Free | Switch to a different preset configuration |
+| `switch_profile` | Free | Switch to a different OAuth profile - OAuth mode only |
+| `set_scope` | Free | Set scope to restrict operations to a namespace |
+| `reset` | Free | Reset context to initial state from session start |
+
+#### Parameters
+
+**Action `set_scope`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `includeSubgroups` | boolean | Yes | Include subgroups when scope is a group (default: true) |
+| `namespace` | string | Yes | Namespace path (e.g., 'my-group' or 'group/project') - type is auto-detected |
+
+**Action `switch_preset`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `preset` | string | Yes | Name of the preset to activate |
+
+**Action `switch_profile`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `profile` | string | Yes | Name of the profile to activate |
+
+#### Example
+
+```json
+{
+  "action": "show"
+}
+```
+
+---
 
 ### browse_releases [tier: Free]
 

@@ -1,3 +1,9 @@
+## [6.24.0](https://github.com/structured-world/gitlab-mcp/compare/v6.23.2...v6.24.0) (2026-01-21)
+
+### Features
+
+* **context:** add manage_context CQRS tool for runtime session management ([#96](https://github.com/structured-world/gitlab-mcp/issues/96)) ([5108186](https://github.com/structured-world/gitlab-mcp/commit/5108186688ae43fa29f39a7aabf8af3276866978)), closes [#58](https://github.com/structured-world/gitlab-mcp/issues/58)
+
 ## [6.23.2](https://github.com/structured-world/gitlab-mcp/compare/v6.23.1...v6.23.2) (2026-01-21)
 
 ### Bug Fixes

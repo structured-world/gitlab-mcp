@@ -62,8 +62,6 @@ export interface ActionValidationError extends StructuredError {
  * Alternative action available on a different tier
  *
  * Note: This interface uses snake_case for JSON serialization in API responses.
- * The internal TierFeature interface uses camelCase (availableOn).
- * Mapping between the two happens in createTierRestrictedError.
  */
 export interface TierAlternative {
   /** Action description */

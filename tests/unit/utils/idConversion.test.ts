@@ -1,5 +1,6 @@
 import {
   extractSimpleId,
+  normalizeWorkItemGid,
   toGid,
   toGids,
   extractSimpleIds,
@@ -30,6 +31,52 @@ describe("idConversion utils", () => {
     });
   });
 
+  describe("normalizeWorkItemGid", () => {
+    it("should normalize Issue GID to WorkItem GID", () => {
+      expect(normalizeWorkItemGid("gid://gitlab/Issue/5953")).toBe("gid://gitlab/WorkItem/5953");
+    });
+
+    it("should normalize Epic GID to WorkItem GID", () => {
+      expect(normalizeWorkItemGid("gid://gitlab/Epic/123")).toBe("gid://gitlab/WorkItem/123");
+    });
+
+    it("should normalize Task GID to WorkItem GID", () => {
+      expect(normalizeWorkItemGid("gid://gitlab/Task/456")).toBe("gid://gitlab/WorkItem/456");
+    });
+
+    it("should normalize Incident GID to WorkItem GID", () => {
+      expect(normalizeWorkItemGid("gid://gitlab/Incident/789")).toBe("gid://gitlab/WorkItem/789");
+    });
+
+    it("should normalize TestCase GID to WorkItem GID", () => {
+      expect(normalizeWorkItemGid("gid://gitlab/TestCase/111")).toBe("gid://gitlab/WorkItem/111");
+    });
+
+    it("should normalize Requirement GID to WorkItem GID", () => {
+      expect(normalizeWorkItemGid("gid://gitlab/Requirement/222")).toBe(
+        "gid://gitlab/WorkItem/222"
+      );
+    });
+
+    it("should keep WorkItem GID unchanged", () => {
+      expect(normalizeWorkItemGid("gid://gitlab/WorkItem/5953")).toBe("gid://gitlab/WorkItem/5953");
+    });
+
+    it("should keep simple ID unchanged", () => {
+      expect(normalizeWorkItemGid("5953")).toBe("5953");
+    });
+
+    it("should keep other entity GIDs unchanged", () => {
+      expect(normalizeWorkItemGid("gid://gitlab/User/123")).toBe("gid://gitlab/User/123");
+      expect(normalizeWorkItemGid("gid://gitlab/Project/456")).toBe("gid://gitlab/Project/456");
+    });
+
+    it("should handle non-string inputs", () => {
+      expect(normalizeWorkItemGid(null as any)).toBe(null);
+      expect(normalizeWorkItemGid(undefined as any)).toBe(undefined);
+    });
+  });
+
   describe("toGid", () => {
     it("should convert simple ID to GID", () => {
       expect(toGid("123", "WorkItem")).toBe("gid://gitlab/WorkItem/123");
@@ -40,6 +87,18 @@ describe("idConversion utils", () => {
     it("should return GID as-is if already a GID", () => {
       const gid = "gid://gitlab/WorkItem/123";
       expect(toGid(gid, "WorkItem")).toBe(gid);
+    });
+
+    it("should normalize legacy Issue GID to WorkItem GID", () => {
+      expect(toGid("gid://gitlab/Issue/5953", "WorkItem")).toBe("gid://gitlab/WorkItem/5953");
+    });
+
+    it("should normalize legacy Epic GID to WorkItem GID", () => {
+      expect(toGid("gid://gitlab/Epic/123", "WorkItem")).toBe("gid://gitlab/WorkItem/123");
+    });
+
+    it("should not normalize GIDs for non-WorkItem entity types", () => {
+      expect(toGid("gid://gitlab/User/123", "User")).toBe("gid://gitlab/User/123");
     });
   });
 
@@ -52,6 +111,15 @@ describe("idConversion utils", () => {
     it("should handle mixed simple IDs and existing GIDs", () => {
       const result = toGids(["123", "gid://gitlab/User/456"], "User");
       expect(result).toEqual(["gid://gitlab/User/123", "gid://gitlab/User/456"]);
+    });
+
+    it("should normalize legacy GIDs when entityType is WorkItem", () => {
+      const result = toGids(["gid://gitlab/Issue/123", "gid://gitlab/Epic/456", "789"], "WorkItem");
+      expect(result).toEqual([
+        "gid://gitlab/WorkItem/123",
+        "gid://gitlab/WorkItem/456",
+        "gid://gitlab/WorkItem/789",
+      ]);
     });
   });
 

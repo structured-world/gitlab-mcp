@@ -82,14 +82,45 @@ export function extractSimpleId(gid: string): string {
 }
 
 /**
+ * Normalize various work item GID formats to WorkItem GID
+ * Handles legacy types: Issue, Epic, Task, Incident, TestCase, Requirement
+ *
+ * AI agents may construct GIDs using legacy type names from general GitLab knowledge.
+ * This function converts them to the correct WorkItem GID format for GraphQL queries.
+ *
+ * @param gid - GID that might use legacy type (e.g., "gid://gitlab/Issue/5953")
+ * @returns Normalized WorkItem GID (e.g., "gid://gitlab/WorkItem/5953")
+ */
+export function normalizeWorkItemGid(gid: string): string {
+  if (!gid || typeof gid !== "string") {
+    return gid;
+  }
+
+  // Legacy work item types that should be normalized to WorkItem
+  const legacyTypes = ["Issue", "Epic", "Task", "Incident", "TestCase", "Requirement"];
+
+  for (const type of legacyTypes) {
+    const prefix = `gid://gitlab/${type}/`;
+    if (gid.startsWith(prefix)) {
+      return gid.replace(prefix, "gid://gitlab/WorkItem/");
+    }
+  }
+
+  return gid;
+}
+
+/**
  * Convert simple ID to GitLab Global ID (GID)
  * @param id - Simple ID like "123"
  * @param entityType - Type of entity (WorkItem, User, Project, etc.)
  * @returns GitLab Global ID like "gid://gitlab/WorkItem/123"
  */
 export function toGid(id: string, entityType: EntityType): string {
-  // If it's already a GID, return as-is
+  // If it's already a GID, normalize for WorkItem type or return as-is
   if (id.startsWith("gid://gitlab/")) {
+    if (entityType === "WorkItem") {
+      return normalizeWorkItemGid(id);
+    }
     return id;
   }
   return GID_PREFIXES[entityType] + id;

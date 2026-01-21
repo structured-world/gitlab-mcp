@@ -40,7 +40,9 @@ import {
  */
 
 // --- Shared fields ---
-const workItemIdField = WorkItemIdSchema.describe("Work item ID");
+const workItemIdField = WorkItemIdSchema.describe(
+  "Work item ID - use numeric ID from list results (e.g., '5953')"
+);
 
 // --- Action: create ---
 const CreateWorkItemSchema = z.object({

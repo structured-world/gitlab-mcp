@@ -9,9 +9,12 @@
  */
 
 import { ConnectionManager } from "../services/ConnectionManager.js";
-import { GitLabFeatures } from "../services/GitLabVersionDetector.js";
+import { GitLabFeatures, GitLabTier as InternalTier } from "../services/GitLabVersionDetector.js";
 
-// Re-export GitLabTier for backwards compatibility
+/**
+ * Display-friendly tier type with capitalized values for API responses.
+ * Distinct from InternalTier (lowercase) - converted via normalizeTier().
+ */
 export type GitLabTier = "Free" | "Premium" | "Ultimate";
 
 // ============================================================================
@@ -540,9 +543,11 @@ function createRestrictionInfo(
 }
 
 /**
- * Normalize tier string to GitLabTier type
+ * Normalize tier string to display GitLabTier type.
+ * Converts InternalTier (lowercase: "free", "premium", "ultimate")
+ * to display GitLabTier (capitalized: "Free", "Premium", "Ultimate").
  */
-function normalizeTier(tier: string): GitLabTier {
+function normalizeTier(tier: string | InternalTier): GitLabTier {
   const lower = tier.toLowerCase();
   if (lower === "ultimate" || lower === "gold") return "Ultimate";
   if (lower === "premium" || lower === "silver") return "Premium";

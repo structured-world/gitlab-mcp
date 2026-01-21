@@ -3,7 +3,9 @@ import {
   getMrsReadOnlyToolNames,
   getMrsToolDefinitions,
   getFilteredMrsTools,
+  flattenPositionToFormFields,
 } from "../../../../src/entities/mrs/registry";
+import { mrsTools, mrsReadOnlyTools } from "../../../../src/entities/mrs/index";
 import { gitlab } from "../../../../src/utils/gitlab-api";
 
 // Mock the gitlab API helper
@@ -48,6 +50,234 @@ beforeEach(() => {
   jest.clearAllMocks();
   // Note: Don't use resetAllMocks() here because it would remove the custom toQuery
   // mock implementation defined above, which is intended to mirror the real helper.
+});
+
+describe("MRS Index exports", () => {
+  it("should export mrsTools array with tool definitions", () => {
+    expect(Array.isArray(mrsTools)).toBe(true);
+    expect(mrsTools.length).toBeGreaterThan(0);
+
+    // Each tool should have name, description, inputSchema
+    mrsTools.forEach(tool => {
+      expect(tool.name).toBeDefined();
+      expect(tool.description).toBeDefined();
+      expect(tool.inputSchema).toBeDefined();
+    });
+  });
+
+  it("should export mrsReadOnlyTools array", () => {
+    expect(Array.isArray(mrsReadOnlyTools)).toBe(true);
+    expect(mrsReadOnlyTools).toContain("browse_merge_requests");
+    expect(mrsReadOnlyTools).toContain("browse_mr_discussions");
+  });
+});
+
+describe("flattenPositionToFormFields", () => {
+  it("should flatten flat position object to bracket notation", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      head_sha: "def456",
+      new_line: 10,
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[head_sha]": "def456",
+      "position[new_line]": 10,
+    });
+  });
+
+  it("should handle nested objects (2 levels)", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      line_range: {
+        start: "line_code_1",
+        end: "line_code_2",
+      },
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[line_range][start]": "line_code_1",
+      "position[line_range][end]": "line_code_2",
+    });
+  });
+
+  it("should handle deeply nested objects (3 levels - line_range.start.line_code)", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      line_range: {
+        start: {
+          line_code: "abc_10_10",
+          type: "new",
+          new_line: 10,
+        },
+        end: {
+          line_code: "abc_15_15",
+          type: "new",
+          new_line: 15,
+        },
+      },
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[line_range][start][line_code]": "abc_10_10",
+      "position[line_range][start][type]": "new",
+      "position[line_range][start][new_line]": 10,
+      "position[line_range][end][line_code]": "abc_15_15",
+      "position[line_range][end][type]": "new",
+      "position[line_range][end][new_line]": 15,
+    });
+  });
+
+  it("should skip null values", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      head_sha: null,
+      old_line: null,
+      new_line: 10,
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[new_line]": 10,
+    });
+  });
+
+  it("should skip undefined values", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      head_sha: undefined,
+      new_line: 10,
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[new_line]": 10,
+    });
+  });
+
+  it("should skip null/undefined in nested objects", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      line_range: {
+        start: {
+          line_code: "abc_10_10",
+          type: null,
+          old_line: undefined,
+        },
+      },
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[line_range][start][line_code]": "abc_10_10",
+    });
+  });
+
+  it("should pass arrays as-is at top level (not expand them)", () => {
+    // Note: GitLab position schema doesn't have top-level arrays,
+    // but if passed, they are added as-is (not expanded to bracket notation)
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      some_array: [1, 2, 3],
+      new_line: 10,
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[some_array]": [1, 2, 3],
+      "position[new_line]": 10,
+    });
+  });
+
+  it("should not expand nested arrays", () => {
+    // Arrays inside nested objects should be passed as-is
+    const body: Record<string, unknown> = {};
+    const position = {
+      base_sha: "abc123",
+      line_range: {
+        values: [1, 2, 3],
+        start: "code_1",
+      },
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[base_sha]": "abc123",
+      "position[line_range][values]": [1, 2, 3],
+      "position[line_range][start]": "code_1",
+    });
+  });
+
+  it("should preserve existing body fields", () => {
+    const body: Record<string, unknown> = {
+      body: "Test comment",
+      commit_id: "xyz789",
+    };
+    const position = {
+      base_sha: "abc123",
+      new_line: 10,
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      body: "Test comment",
+      commit_id: "xyz789",
+      "position[base_sha]": "abc123",
+      "position[new_line]": 10,
+    });
+  });
+
+  it("should handle empty position object", () => {
+    const body: Record<string, unknown> = { body: "Test" };
+    const position = {};
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({ body: "Test" });
+  });
+
+  it("should handle boolean and number values correctly", () => {
+    const body: Record<string, unknown> = {};
+    const position = {
+      new_line: 0,
+      old_line: 42,
+      position_type: "text",
+    };
+
+    flattenPositionToFormFields(body, position);
+
+    expect(body).toEqual({
+      "position[new_line]": 0,
+      "position[old_line]": 42,
+      "position[position_type]": "text",
+    });
+  });
 });
 
 describe("MRS Registry", () => {
@@ -1089,7 +1319,11 @@ describe("MRS Registry", () => {
             expect.objectContaining({
               body: {
                 body: "```suggestion\nconst x = 1;\n```",
-                position: expect.any(String),
+                "position[base_sha]": "abc123",
+                "position[head_sha]": "def456",
+                "position[start_sha]": "ghi789",
+                "position[new_path]": "src/file.ts",
+                "position[new_line]": 10,
               },
               contentType: "form",
             })
@@ -1123,7 +1357,11 @@ describe("MRS Registry", () => {
             expect.objectContaining({
               body: {
                 body: "```suggestion:-2+1\nconst x = 1;\nconst y = 2;\n```",
-                position: expect.any(String),
+                "position[base_sha]": "abc123",
+                "position[head_sha]": "def456",
+                "position[start_sha]": "ghi789",
+                "position[new_path]": "src/file.ts",
+                "position[new_line]": 10,
               },
               contentType: "form",
             })
@@ -1156,7 +1394,11 @@ describe("MRS Registry", () => {
             expect.objectContaining({
               body: {
                 body: "Consider using const instead of let\n\n```suggestion\nconst x = 1;\n```",
-                position: expect.any(String),
+                "position[base_sha]": "abc123",
+                "position[head_sha]": "def456",
+                "position[start_sha]": "ghi789",
+                "position[new_path]": "src/file.ts",
+                "position[new_line]": 10,
               },
               contentType: "form",
             })
@@ -1339,6 +1581,63 @@ describe("MRS Registry", () => {
             merge_request_iid: 1,
           })
         ).rejects.toThrow("Network error");
+      });
+    });
+
+    describe("Schema validation - superRefine checks", () => {
+      it("should reject list-only fields in get action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using 'state' (list-only field) with 'get' action should fail
+        await expect(
+          tool.handler({
+            action: "get",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            state: "opened", // list-only field
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should reject compare-only fields in list action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using 'from' (compare-only field) with 'list' action should fail
+        await expect(
+          tool.handler({
+            action: "list",
+            project_id: "test/project",
+            from: "main", // compare-only field
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should reject get-only fields in list action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using 'merge_request_iid' (get-only field) with 'list' action should fail
+        await expect(
+          tool.handler({
+            action: "list",
+            project_id: "test/project",
+            merge_request_iid: 1, // get-only field
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should accept valid combination of action and fields", async () => {
+        mockGitlab.get.mockResolvedValueOnce([{ id: 1, iid: 1 }]);
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // list action with list-only fields should work
+        const result = await tool.handler({
+          action: "list",
+          project_id: "test/project",
+          state: "opened",
+          per_page: 10,
+        });
+
+        expect(result).toBeDefined();
       });
     });
   });

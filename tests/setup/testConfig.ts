@@ -33,6 +33,7 @@ export interface TestDataState {
   labels?: any[];
   todos?: any[];
   discussionThread?: any;
+  diffNoteThread?: any;
 }
 
 import * as fs from "fs";

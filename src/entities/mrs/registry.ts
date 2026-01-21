@@ -11,6 +11,44 @@ import { ToolRegistry, EnhancedToolDefinition } from "../../types";
 import { isActionDenied } from "../../config";
 
 /**
+ * Flattens a position object into form-encoded fields with bracket notation.
+ * GitLab API expects: position[base_sha]=xxx, position[head_sha]=xxx, etc.
+ * NOT: position={"base_sha":"xxx","head_sha":"xxx"}
+ *
+ * @see https://docs.gitlab.com/ee/api/discussions.html#create-a-new-thread-in-the-merge-request-diff
+ */
+export function flattenPositionToFormFields(
+  body: Record<string, unknown>,
+  position: Record<string, unknown>
+): void {
+  for (const [key, value] of Object.entries(position)) {
+    if (value === undefined || value === null) continue;
+
+    if (typeof value === "object" && !Array.isArray(value)) {
+      // Handle nested objects like line_range.start, line_range.end
+      for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
+        if (nestedValue === undefined || nestedValue === null) continue;
+
+        if (typeof nestedValue === "object" && !Array.isArray(nestedValue)) {
+          // Handle deeply nested (line_range.start.line_code, etc.)
+          for (const [deepKey, deepValue] of Object.entries(
+            nestedValue as Record<string, unknown>
+          )) {
+            if (deepValue !== undefined && deepValue !== null) {
+              body[`position[${key}][${nestedKey}][${deepKey}]`] = deepValue;
+            }
+          }
+        } else {
+          body[`position[${key}][${nestedKey}]`] = nestedValue;
+        }
+      }
+    } else {
+      body[`position[${key}]`] = value;
+    }
+  }
+}
+
+/**
  * MRS (Merge Requests) tools registry - 5 CQRS tools replacing 20 individual tools
  *
  * browse_merge_requests (Query): list, get, diffs, compare
@@ -340,7 +378,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const { project_id, merge_request_iid, body: noteBody, position, commit_id } = input;
 
             const body: Record<string, unknown> = { body: noteBody };
-            if (position) body.position = JSON.stringify(position);
+            if (position) flattenPositionToFormFields(body, position);
             if (commit_id) body.commit_id = commit_id;
 
             return gitlab.post(
@@ -444,8 +482,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             // Create discussion thread with position (same as thread action)
             const body: Record<string, unknown> = {
               body: noteBody,
-              position: JSON.stringify(position),
             };
+            flattenPositionToFormFields(body, position);
 
             return gitlab.post(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/discussions`,
@@ -494,7 +532,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             } = input;
 
             const body: Record<string, unknown> = { note };
-            if (position) body.position = JSON.stringify(position);
+            if (position) flattenPositionToFormFields(body, position);
             if (in_reply_to_discussion_id)
               body.in_reply_to_discussion_id = in_reply_to_discussion_id;
             if (commit_id) body.commit_id = commit_id;
@@ -510,7 +548,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const { project_id, merge_request_iid, draft_note_id, note, position } = input;
 
             const body: Record<string, unknown> = { note };
-            if (position) body.position = JSON.stringify(position);
+            if (position) flattenPositionToFormFields(body, position);
 
             return gitlab.put(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}`,

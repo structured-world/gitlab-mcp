@@ -1,3 +1,9 @@
+## [6.24.1](https://github.com/structured-world/gitlab-mcp/compare/v6.24.0...v6.24.1) (2026-01-21)
+
+### Bug Fixes
+
+* **mrs:** add default per_page=20 to browse_mr_discussions ([#98](https://github.com/structured-world/gitlab-mcp/issues/98)) ([4819a8c](https://github.com/structured-world/gitlab-mcp/commit/4819a8c58016bd3cf929a5ef0eeb7bfe57e7a97d)), closes [#97](https://github.com/structured-world/gitlab-mcp/issues/97)
+
 ## [6.24.0](https://github.com/structured-world/gitlab-mcp/compare/v6.23.2...v6.24.0) (2026-01-21)
 
 ### Features

@@ -353,7 +353,7 @@ describe("Milestones Registry - CQRS Tools", () => {
     });
 
     describe("browse_milestones handler - get action", () => {
-      it("should get milestone by ID", async () => {
+      it("should get milestone by milestone_id", async () => {
         mockEnhancedFetch.mockResolvedValueOnce(
           mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
         );
@@ -376,6 +376,64 @@ describe("Milestones Registry - CQRS Tools", () => {
         expect(result).toEqual(mockMilestone);
       });
 
+      // --- IID support tests ---
+      it("should get milestone by iid (new functionality)", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(
+          mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
+        );
+        const mockMilestone = {
+          id: 1,
+          iid: 3,
+          title: "v1.0",
+          state: "active",
+        };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestone) as never);
+
+        const tool = milestonesToolRegistry.get("browse_milestones")!;
+        const result = await tool.handler({
+          action: "get",
+          namespace: "test/project",
+          iid: "3",
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+        // Verify the API was called with the IID
+        const apiCall = mockEnhancedFetch.mock.calls[1][0];
+        expect(apiCall).toContain("/milestones/3");
+        expect(result).toEqual(mockMilestone);
+      });
+
+      it("should prefer iid over milestone_id when both are provided", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(
+          mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
+        );
+        const mockMilestone = { id: 1, iid: 5, title: "v1.0" };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestone) as never);
+
+        const tool = milestonesToolRegistry.get("browse_milestones")!;
+        await tool.handler({
+          action: "get",
+          namespace: "test/project",
+          iid: "5",
+          milestone_id: "1", // This should be ignored
+        });
+
+        // Verify IID (5) was used, not milestone_id (1)
+        const apiCall = mockEnhancedFetch.mock.calls[1][0];
+        expect(apiCall).toContain("/milestones/5");
+      });
+
+      it("should reject get action when neither milestone_id nor iid is provided", async () => {
+        const tool = milestonesToolRegistry.get("browse_milestones")!;
+
+        await expect(
+          tool.handler({
+            action: "get",
+            namespace: "test/project",
+          })
+        ).rejects.toThrow();
+      });
+
       it("should handle milestone not found", async () => {
         mockEnhancedFetch.mockResolvedValueOnce(
           mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
@@ -395,7 +453,7 @@ describe("Milestones Registry - CQRS Tools", () => {
     });
 
     describe("browse_milestones handler - issues action", () => {
-      it("should list issues in milestone", async () => {
+      it("should list issues in milestone by milestone_id", async () => {
         mockEnhancedFetch.mockResolvedValueOnce(
           mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
         );
@@ -415,10 +473,30 @@ describe("Milestones Registry - CQRS Tools", () => {
         expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
         expect(result).toEqual(mockIssues);
       });
+
+      // --- IID support tests ---
+      it("should list issues in milestone by iid (new functionality)", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(
+          mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
+        );
+        const mockIssues = [{ id: 1, title: "Fix bug", state: "opened" }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockIssues) as never);
+
+        const tool = milestonesToolRegistry.get("browse_milestones")!;
+        const result = await tool.handler({
+          action: "issues",
+          namespace: "test/project",
+          iid: "7",
+        });
+
+        const apiCall = mockEnhancedFetch.mock.calls[1][0];
+        expect(apiCall).toContain("/milestones/7/issues");
+        expect(result).toEqual(mockIssues);
+      });
     });
 
     describe("browse_milestones handler - merge_requests action", () => {
-      it("should list merge requests in milestone", async () => {
+      it("should list merge requests in milestone by milestone_id", async () => {
         mockEnhancedFetch.mockResolvedValueOnce(
           mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
         );
@@ -438,10 +516,30 @@ describe("Milestones Registry - CQRS Tools", () => {
         expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
         expect(result).toEqual(mockMRs);
       });
+
+      // --- IID support tests ---
+      it("should list merge requests in milestone by iid (new functionality)", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(
+          mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
+        );
+        const mockMRs = [{ id: 1, title: "Feature MR", state: "merged" }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMRs) as never);
+
+        const tool = milestonesToolRegistry.get("browse_milestones")!;
+        const result = await tool.handler({
+          action: "merge_requests",
+          namespace: "test/project",
+          iid: "8",
+        });
+
+        const apiCall = mockEnhancedFetch.mock.calls[1][0];
+        expect(apiCall).toContain("/milestones/8/merge_requests");
+        expect(result).toEqual(mockMRs);
+      });
     });
 
     describe("browse_milestones handler - burndown action", () => {
-      it("should get burndown events", async () => {
+      it("should get burndown events by milestone_id", async () => {
         mockEnhancedFetch.mockResolvedValueOnce(
           mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
         );
@@ -459,6 +557,26 @@ describe("Milestones Registry - CQRS Tools", () => {
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+        expect(result).toEqual(mockEvents);
+      });
+
+      // --- IID support tests ---
+      it("should get burndown events by iid (new functionality)", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(
+          mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
+        );
+        const mockEvents = [{ date: "2024-01-01", scope_count: 10 }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockEvents) as never);
+
+        const tool = milestonesToolRegistry.get("browse_milestones")!;
+        const result = await tool.handler({
+          action: "burndown",
+          namespace: "test/project",
+          iid: "9",
+        });
+
+        const apiCall = mockEnhancedFetch.mock.calls[1][0];
+        expect(apiCall).toContain("/milestones/9/burndown_events");
         expect(result).toEqual(mockEvents);
       });
     });
@@ -512,7 +630,7 @@ describe("Milestones Registry - CQRS Tools", () => {
     });
 
     describe("manage_milestone handler - update action", () => {
-      it("should update milestone", async () => {
+      it("should update milestone by milestone_id", async () => {
         mockEnhancedFetch.mockResolvedValueOnce(
           mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
         );
@@ -535,6 +653,27 @@ describe("Milestones Registry - CQRS Tools", () => {
         expect(result).toEqual(mockMilestone);
       });
 
+      // --- IID support tests ---
+      it("should update milestone by iid (new functionality)", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(
+          mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
+        );
+        const mockMilestone = { id: 1, iid: 10, title: "Updated via IID" };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestone) as never);
+
+        const tool = milestonesToolRegistry.get("manage_milestone")!;
+        const result = await tool.handler({
+          action: "update",
+          namespace: "test/project",
+          iid: "10",
+          title: "Updated via IID",
+        });
+
+        const apiCall = mockEnhancedFetch.mock.calls[1][0];
+        expect(apiCall).toContain("/milestones/10");
+        expect(result).toEqual(mockMilestone);
+      });
+
       it("should close milestone with state_event", async () => {
         mockEnhancedFetch.mockResolvedValueOnce(
           mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
@@ -554,10 +693,22 @@ describe("Milestones Registry - CQRS Tools", () => {
         const body = JSON.parse(call[1]?.body as string);
         expect(body.state_event).toBe("close");
       });
+
+      it("should reject update action when neither milestone_id nor iid is provided", async () => {
+        const tool = milestonesToolRegistry.get("manage_milestone")!;
+
+        await expect(
+          tool.handler({
+            action: "update",
+            namespace: "test/project",
+            title: "New Title",
+          })
+        ).rejects.toThrow();
+      });
     });
 
     describe("manage_milestone handler - delete action", () => {
-      it("should delete milestone", async () => {
+      it("should delete milestone by milestone_id", async () => {
         mockEnhancedFetch.mockResolvedValueOnce(
           mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
         );
@@ -573,10 +724,40 @@ describe("Milestones Registry - CQRS Tools", () => {
         expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
         expect(result).toEqual({ deleted: true });
       });
+
+      // --- IID support tests ---
+      it("should delete milestone by iid (new functionality)", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(
+          mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
+        );
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null) as never);
+
+        const tool = milestonesToolRegistry.get("manage_milestone")!;
+        const result = await tool.handler({
+          action: "delete",
+          namespace: "test/project",
+          iid: "11",
+        });
+
+        const apiCall = mockEnhancedFetch.mock.calls[1][0];
+        expect(apiCall).toContain("/milestones/11");
+        expect(result).toEqual({ deleted: true });
+      });
+
+      it("should reject delete action when neither milestone_id nor iid is provided", async () => {
+        const tool = milestonesToolRegistry.get("manage_milestone")!;
+
+        await expect(
+          tool.handler({
+            action: "delete",
+            namespace: "test/project",
+          })
+        ).rejects.toThrow();
+      });
     });
 
     describe("manage_milestone handler - promote action", () => {
-      it("should promote project milestone to group", async () => {
+      it("should promote project milestone to group by milestone_id", async () => {
         mockEnhancedFetch.mockResolvedValueOnce(
           mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
         );
@@ -598,6 +779,26 @@ describe("Milestones Registry - CQRS Tools", () => {
         expect(result).toEqual(mockMilestone);
       });
 
+      // --- IID support tests ---
+      it("should promote project milestone to group by iid (new functionality)", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(
+          mockResponse({ id: 1, path: "test-project", kind: "project" }) as never
+        );
+        const mockMilestone = { id: 1, iid: 12, title: "v1.0", group_id: 1 };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockMilestone) as never);
+
+        const tool = milestonesToolRegistry.get("manage_milestone")!;
+        const result = await tool.handler({
+          action: "promote",
+          namespace: "test/project",
+          iid: "12",
+        });
+
+        const apiCall = mockEnhancedFetch.mock.calls[1][0];
+        expect(apiCall).toContain("/milestones/12/promote");
+        expect(result).toEqual(mockMilestone);
+      });
+
       it("should throw error when promoting group milestone", async () => {
         mockEnhancedFetch.mockResolvedValueOnce(
           mockResponse({ id: 1, path: "test-group", kind: "group" }) as never
@@ -612,6 +813,17 @@ describe("Milestones Registry - CQRS Tools", () => {
             milestone_id: "1",
           })
         ).rejects.toThrow("Milestone promotion is only available for projects, not groups");
+      });
+
+      it("should reject promote action when neither milestone_id nor iid is provided", async () => {
+        const tool = milestonesToolRegistry.get("manage_milestone")!;
+
+        await expect(
+          tool.handler({
+            action: "promote",
+            namespace: "test/project",
+          })
+        ).rejects.toThrow();
       });
     });
 

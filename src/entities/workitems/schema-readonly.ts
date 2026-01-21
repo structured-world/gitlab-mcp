@@ -53,6 +53,15 @@ const workItemIdField = WorkItemIdSchema.describe(
   "Work item ID to retrieve - use numeric ID from list results (e.g., '5953')"
 );
 
+const workItemIidField = z
+  .string()
+  .min(1)
+  .describe("Internal ID from URL (e.g., '95' from /issues/95). Use with namespace parameter.");
+
+const namespaceField = z
+  .string()
+  .describe("Namespace path containing the work item (e.g., 'group/project')");
+
 // --- Action: list ---
 const ListWorkItemsSchema = z.object({
   action: z.literal("list").describe("List work items with filtering"),
@@ -84,16 +93,41 @@ const ListWorkItemsSchema = z.object({
 });
 
 // --- Action: get ---
+// Supports two lookup methods:
+// 1. By namespace + iid (preferred for URL-based lookups)
+// 2. By global id (for items from list results)
 const GetWorkItemSchema = z.object({
   action: z.literal("get").describe("Get single work item details"),
-  id: workItemIdField,
+  // Lookup by namespace + IID (preferred for URL-based requests)
+  namespace: namespaceField.optional(),
+  iid: workItemIidField.optional(),
+  // Lookup by global ID (backward compatible)
+  id: workItemIdField.optional(),
 });
 
 // --- Discriminated union combining all actions ---
-export const BrowseWorkItemsSchema = z.discriminatedUnion("action", [
+// Base union for type narrowing
+const BrowseWorkItemsBaseSchema = z.discriminatedUnion("action", [
   ListWorkItemsSchema,
   GetWorkItemSchema,
 ]);
+
+// Add validation for "get" action: must have either (namespace + iid) or (id)
+export const BrowseWorkItemsSchema = BrowseWorkItemsBaseSchema.superRefine((data, ctx) => {
+  if (data.action === "get") {
+    const hasNamespaceIid = data.namespace !== undefined && data.iid !== undefined;
+    const hasId = data.id !== undefined;
+
+    if (!hasNamespaceIid && !hasId) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message:
+          "Either 'id' (global ID) or both 'namespace' and 'iid' (from URL) must be provided",
+        path: ["id"],
+      });
+    }
+  }
+});
 
 // ============================================================================
 // Type exports

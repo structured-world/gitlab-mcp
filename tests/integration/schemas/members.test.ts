@@ -234,7 +234,7 @@ describe("Members Schema - GitLab Integration", () => {
         group_id: "my-group",
         user_id: "789",
         access_level: 40,
-        expires_at: "2025-12-31",
+        expires_at: "2027-12-31",
       };
 
       const result = ManageMemberSchema.safeParse(params);
@@ -242,7 +242,7 @@ describe("Members Schema - GitLab Integration", () => {
 
       if (result.success && result.data.action === "add_to_group") {
         expect(result.data.group_id).toBe("my-group");
-        expect(result.data.expires_at).toBe("2025-12-31");
+        expect(result.data.expires_at).toBe("2027-12-31");
       }
     });
 

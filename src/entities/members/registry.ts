@@ -22,7 +22,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
     {
       name: "browse_members",
       description:
-        'BROWSE team members in projects and groups. Actions: "list_project" lists project members, "list_group" lists group members, "get_project" gets project member details, "get_group" gets group member details, "list_all_project" includes inherited members, "list_all_group" includes inherited members. Access levels: 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.',
+        'BROWSE team members in projects and groups. Actions: "list_project" lists project members, "list_group" lists group members, "get_project" gets project member details, "get_group" gets group member details, "list_all_project" includes inherited members, "list_all_group" includes inherited members. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.',
       inputSchema: z.toJSONSchema(BrowseMembersSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseMembersSchema.parse(args);
@@ -101,7 +101,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
     {
       name: "manage_member",
       description:
-        'MANAGE team members in projects and groups. Actions: "add_to_project" adds member to project, "add_to_group" adds member to group, "remove_from_project" removes from project, "remove_from_group" removes from group, "update_project" changes project member access level, "update_group" changes group member access level. Access levels: 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.',
+        'MANAGE team members in projects and groups. Actions: "add_to_project" adds member to project, "add_to_group" adds member to group, "remove_from_project" removes from project, "remove_from_group" removes from group, "update_project" changes project member access level, "update_group" changes group member access level. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.',
       inputSchema: z.toJSONSchema(ManageMemberSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageMemberSchema.parse(args);

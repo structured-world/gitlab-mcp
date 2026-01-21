@@ -4,6 +4,8 @@ import { PaginationOptionsSchema } from "../shared";
 
 /**
  * Access levels for GitLab members
+ * - 0: No access
+ * - 5: Minimal access
  * - 10: Guest (view only)
  * - 20: Reporter (view + comment)
  * - 30: Developer (push code)
@@ -17,7 +19,9 @@ const AccessLevelSchema = z
     message:
       "Access level must be 0 (No access), 5 (Minimal), 10 (Guest), 20 (Reporter), 30 (Developer), 40 (Maintainer), or 50 (Owner)",
   })
-  .describe("Access level: 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner");
+  .describe(
+    "Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner"
+  );
 
 // =============================================================================
 // Browse Members Actions (Query)

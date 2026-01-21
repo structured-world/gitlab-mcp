@@ -13,8 +13,10 @@ import { ProfileInfo, Preset, ScopeConfig } from "../../profiles/types";
 export interface RuntimeScope {
   /** Detected type of the namespace */
   type: "project" | "group";
-  /** The namespace path */
+  /** The primary namespace path (for single scope) */
   path: string;
+  /** Additional paths when multiple projects/groups are configured */
+  additionalPaths?: string[];
   /** Whether subgroups are included (for group scope) */
   includeSubgroups: boolean;
   /** Whether this scope was auto-detected */

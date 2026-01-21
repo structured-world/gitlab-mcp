@@ -6,6 +6,7 @@ import {
   ScopeEnforcer,
   ScopeViolationError,
   extractProjectsFromArgs,
+  extractGroupsFromArgs,
   enforceArgsScope,
 } from "../../../src/profiles/scope-enforcer";
 import { ProjectPreset } from "../../../src/profiles/types";
@@ -111,6 +112,162 @@ describe("ScopeEnforcer", () => {
       expect(enforcer.isAllowed("special/project")).toBe(true);
       expect(enforcer.isAllowed("myteam/any-project")).toBe(true);
       expect(enforcer.isAllowed("other/project")).toBe(false);
+    });
+  });
+
+  describe("single group scope", () => {
+    it("should allow exact group match via isGroupAllowed", () => {
+      const enforcer = new ScopeEnforcer({ group: "myteam" });
+
+      expect(enforcer.isGroupAllowed("myteam")).toBe(true);
+    });
+
+    it("should allow case-insensitive group match", () => {
+      const enforcer = new ScopeEnforcer({ group: "MyTeam" });
+
+      expect(enforcer.isGroupAllowed("myteam")).toBe(true);
+      expect(enforcer.isGroupAllowed("MYTEAM")).toBe(true);
+    });
+
+    it("should deny different group", () => {
+      const enforcer = new ScopeEnforcer({ group: "myteam" });
+
+      expect(enforcer.isGroupAllowed("other-team")).toBe(false);
+      expect(enforcer.isGroupAllowed("other/nested")).toBe(false);
+    });
+
+    it("should allow subgroups when includeSubgroups is true", () => {
+      const enforcer = new ScopeEnforcer({
+        group: "myteam",
+        includeSubgroups: true,
+      });
+
+      expect(enforcer.isGroupAllowed("myteam")).toBe(true);
+      expect(enforcer.isGroupAllowed("myteam/subgroup")).toBe(true);
+      expect(enforcer.isGroupAllowed("myteam/deep/nested")).toBe(true);
+    });
+
+    it("should deny subgroups when includeSubgroups is false", () => {
+      const enforcer = new ScopeEnforcer({
+        group: "myteam",
+        includeSubgroups: false,
+      });
+
+      expect(enforcer.isGroupAllowed("myteam")).toBe(true);
+      expect(enforcer.isGroupAllowed("myteam/subgroup")).toBe(false);
+    });
+
+    it("should handle numeric group IDs", () => {
+      const enforcer = new ScopeEnforcer({
+        groups: ["myteam", "12345"],
+      });
+
+      expect(enforcer.isGroupAllowed("12345")).toBe(true);
+    });
+  });
+
+  describe("groups list scope", () => {
+    it("should allow groups in list via isGroupAllowed", () => {
+      const enforcer = new ScopeEnforcer({
+        groups: ["team1", "team2", "other-team"],
+      });
+
+      expect(enforcer.isGroupAllowed("team1")).toBe(true);
+      expect(enforcer.isGroupAllowed("team2")).toBe(true);
+      expect(enforcer.isGroupAllowed("other-team")).toBe(true);
+    });
+
+    it("should deny groups not in list", () => {
+      const enforcer = new ScopeEnforcer({
+        groups: ["team1", "team2"],
+      });
+
+      expect(enforcer.isGroupAllowed("team3")).toBe(false);
+      expect(enforcer.isGroupAllowed("unknown")).toBe(false);
+    });
+  });
+
+  describe("enforceGroup()", () => {
+    it("should not throw for allowed group", () => {
+      const enforcer = new ScopeEnforcer({ group: "myteam" });
+
+      expect(() => enforcer.enforceGroup("myteam")).not.toThrow();
+    });
+
+    it("should throw ScopeViolationError for denied group", () => {
+      const enforcer = new ScopeEnforcer({ group: "myteam" });
+
+      expect(() => enforcer.enforceGroup("other-team")).toThrow(ScopeViolationError);
+    });
+
+    it("should include scope info in error for group violation", () => {
+      const enforcer = new ScopeEnforcer({ group: "myteam" });
+
+      let thrownError: ScopeViolationError | undefined;
+      try {
+        enforcer.enforceGroup("other-team");
+      } catch (error) {
+        thrownError = error as ScopeViolationError;
+      }
+
+      expect(thrownError).toBeDefined();
+      expect(thrownError).toBeInstanceOf(ScopeViolationError);
+      expect(thrownError!.attemptedTarget).toBe("other-team");
+      expect(thrownError!.message).toContain("other-team");
+    });
+  });
+
+  describe("hasGroupRestrictions()", () => {
+    it("should return true when group is set", () => {
+      const enforcer = new ScopeEnforcer({ group: "myteam" });
+      expect(enforcer.hasGroupRestrictions()).toBe(true);
+    });
+
+    it("should return true when groups list is set", () => {
+      const enforcer = new ScopeEnforcer({ groups: ["team1", "team2"] });
+      expect(enforcer.hasGroupRestrictions()).toBe(true);
+    });
+
+    it("should return true when namespace is set", () => {
+      const enforcer = new ScopeEnforcer({ namespace: "myteam" });
+      expect(enforcer.hasGroupRestrictions()).toBe(true);
+    });
+
+    it("should return false for empty scope", () => {
+      const enforcer = new ScopeEnforcer({});
+      expect(enforcer.hasGroupRestrictions()).toBe(false);
+    });
+
+    it("should return false for project-only scope", () => {
+      const enforcer = new ScopeEnforcer({ project: "team/project" });
+      expect(enforcer.hasGroupRestrictions()).toBe(false);
+    });
+
+    it("should return false for empty groups array", () => {
+      const enforcer = new ScopeEnforcer({ groups: [] });
+      expect(enforcer.hasGroupRestrictions()).toBe(false);
+    });
+  });
+
+  describe("getScopeDescription() with groups", () => {
+    it("should describe group scope", () => {
+      const enforcer = new ScopeEnforcer({ group: "myteam" });
+      // Group scope includes /* wildcard to indicate subgroups
+      expect(enforcer.getScopeDescription()).toBe("group: myteam/*");
+    });
+
+    it("should describe short groups list", () => {
+      const enforcer = new ScopeEnforcer({
+        groups: ["g1", "g2", "g3"],
+      });
+      expect(enforcer.getScopeDescription()).toBe("groups: g1, g2, g3");
+    });
+
+    it("should describe long groups list with count", () => {
+      const enforcer = new ScopeEnforcer({
+        groups: ["g1", "g2", "g3", "g4", "g5"],
+      });
+      expect(enforcer.getScopeDescription()).toBe("5 allowed groups");
     });
   });
 
@@ -328,5 +485,89 @@ describe("enforceArgsScope", () => {
     const args = { action: "list", page: 1 };
 
     expect(() => enforceArgsScope(enforcer, args)).not.toThrow();
+  });
+
+  it("should throw on invalid group", () => {
+    const enforcer = new ScopeEnforcer({ group: "allowed-group" });
+    const args = { group_id: "other-group", action: "list" };
+
+    expect(() => enforceArgsScope(enforcer, args)).toThrow(ScopeViolationError);
+  });
+
+  it("should allow valid group args", () => {
+    const enforcer = new ScopeEnforcer({ group: "allowed-group" });
+    const args = { group_id: "allowed-group", action: "list" };
+
+    expect(() => enforceArgsScope(enforcer, args)).not.toThrow();
+  });
+
+  it("should check both project and group fields", () => {
+    const enforcer = new ScopeEnforcer({
+      project: "allowed/project",
+      group: "allowed-group",
+    });
+    const args = {
+      project_id: "allowed/project",
+      group_id: "other-group", // This should trigger violation
+    };
+
+    expect(() => enforceArgsScope(enforcer, args)).toThrow(ScopeViolationError);
+  });
+});
+
+describe("extractGroupsFromArgs", () => {
+  it("should extract group_id", () => {
+    const args = { group_id: "myteam" };
+    const groups = extractGroupsFromArgs(args);
+    expect(groups).toContain("myteam");
+  });
+
+  it("should extract groupId", () => {
+    const args = { groupId: "myteam" };
+    const groups = extractGroupsFromArgs(args);
+    expect(groups).toContain("myteam");
+  });
+
+  it("should extract group", () => {
+    const args = { group: "myteam" };
+    const groups = extractGroupsFromArgs(args);
+    expect(groups).toContain("myteam");
+  });
+
+  it("should extract multiple group fields", () => {
+    const args = {
+      group_id: "group1",
+      groupId: "group2",
+    };
+    const groups = extractGroupsFromArgs(args);
+    expect(groups).toContain("group1");
+    expect(groups).toContain("group2");
+  });
+
+  it("should ignore numeric group IDs (not supported)", () => {
+    // Note: extractGroupsFromArgs only handles string values
+    // Numeric IDs should be converted to strings by the caller if needed
+    const args = { group_id: 12345 };
+    const groups = extractGroupsFromArgs(args);
+    expect(groups).toHaveLength(0);
+  });
+
+  it("should ignore non-string values", () => {
+    const args = {
+      group_id: null,
+      groupId: undefined,
+      group: { nested: "object" },
+    };
+    const groups = extractGroupsFromArgs(args);
+    expect(groups).toHaveLength(0);
+  });
+
+  it("should ignore empty strings", () => {
+    const args = {
+      group_id: "",
+      groupId: "  ",
+    };
+    const groups = extractGroupsFromArgs(args);
+    expect(groups).toHaveLength(0);
   });
 });

@@ -136,20 +136,23 @@ export class ContextManager {
       };
     }
 
-    // Multiple projects or groups - use first one for display
+    // Multiple projects - first one as primary, rest as additional
     if (scope.projects && scope.projects.length > 0) {
       return {
         type: "project",
         path: scope.projects[0],
+        additionalPaths: scope.projects.length > 1 ? scope.projects.slice(1) : undefined,
         includeSubgroups: false,
         detected,
       };
     }
 
+    // Multiple groups - first one as primary, rest as additional
     if (scope.groups && scope.groups.length > 0) {
       return {
         type: "group",
         path: scope.groups[0],
+        additionalPaths: scope.groups.length > 1 ? scope.groups.slice(1) : undefined,
         includeSubgroups: scope.includeSubgroups !== false,
         detected,
       };

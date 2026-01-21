@@ -7,6 +7,7 @@ import {
   ProfileSchema,
   PresetSchema,
   ProfilesConfigSchema,
+  ScopeConfigSchema,
   Profile,
   Preset,
 } from "../../../src/profiles/types";
@@ -324,6 +325,191 @@ describe("Profile Types and Schemas", () => {
 
       const result = ProfilesConfigSchema.safeParse(config);
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe("ScopeConfigSchema", () => {
+    describe("group field", () => {
+      it("should validate single group path", () => {
+        const scope = { group: "my-team" };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.group).toBe("my-team");
+        }
+      });
+
+      it("should validate nested group path", () => {
+        const scope = { group: "parent/child/grandchild" };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.group).toBe("parent/child/grandchild");
+        }
+      });
+
+      it("should reject combining group with groups", () => {
+        const scope = { group: "my-team", groups: ["other-team"] };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.issues[0].message).toContain("Cannot combine 'group' with 'groups'");
+        }
+      });
+    });
+
+    describe("groups field", () => {
+      it("should validate list of groups", () => {
+        const scope = { groups: ["team-a", "team-b", "team-c"] };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.groups).toEqual(["team-a", "team-b", "team-c"]);
+        }
+      });
+
+      it("should validate single group in array", () => {
+        const scope = { groups: ["only-team"] };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(true);
+      });
+
+      it("should reject empty groups array as sole scope", () => {
+        // Empty groups array doesn't satisfy "at least one scope field"
+        const scope = { groups: [] };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.issues[0].message).toContain("at least one");
+        }
+      });
+    });
+
+    describe("includeSubgroups field", () => {
+      it("should accept includeSubgroups with group", () => {
+        const scope = { group: "my-team", includeSubgroups: true };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.includeSubgroups).toBe(true);
+        }
+      });
+
+      it("should accept includeSubgroups=false with group", () => {
+        const scope = { group: "my-team", includeSubgroups: false };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.includeSubgroups).toBe(false);
+        }
+      });
+
+      it("should allow undefined includeSubgroups (defaults to true at runtime)", () => {
+        const scope = { group: "my-team" };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          // Schema allows undefined; runtime treats as true
+          expect(result.data.includeSubgroups).toBeUndefined();
+        }
+      });
+
+      it("should accept includeSubgroups with groups array", () => {
+        const scope = { groups: ["team-a", "team-b"], includeSubgroups: false };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.includeSubgroups).toBe(false);
+        }
+      });
+
+      it("should accept includeSubgroups with namespace", () => {
+        const scope = { namespace: "my-namespace", includeSubgroups: true };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(true);
+      });
+    });
+
+    describe("validation refinements", () => {
+      it("should reject empty scope object", () => {
+        const scope = {};
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.issues[0].message).toContain("at least one");
+        }
+      });
+
+      it("should reject combining project with projects", () => {
+        const scope = { project: "group/project", projects: ["another/project"] };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.issues[0].message).toContain(
+            "Cannot combine 'project' with 'projects'"
+          );
+        }
+      });
+
+      it("should allow combining group with project (different scopes)", () => {
+        // This is valid - allows operations on a specific project AND its parent group
+        const scope = { group: "my-team", project: "my-team/my-project" };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(true);
+      });
+
+      it("should allow combining namespace with groups", () => {
+        const scope = { namespace: "primary-ns", groups: ["secondary-team"] };
+        const result = ScopeConfigSchema.safeParse(scope);
+        expect(result.success).toBe(true);
+      });
+    });
+
+    describe("integration with PresetSchema", () => {
+      it("should validate preset with group scope", () => {
+        const preset = {
+          description: "Team-scoped preset",
+          read_only: true,
+          scope: {
+            group: "my-team",
+            includeSubgroups: true,
+          },
+          features: { wiki: true },
+        };
+        const result = PresetSchema.safeParse(preset);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.scope?.group).toBe("my-team");
+          expect(result.data.scope?.includeSubgroups).toBe(true);
+        }
+      });
+
+      it("should validate preset with groups list scope", () => {
+        const preset = {
+          description: "Multi-team preset",
+          scope: {
+            groups: ["team-a", "team-b"],
+          },
+          features: {},
+        };
+        const result = PresetSchema.safeParse(preset);
+        expect(result.success).toBe(true);
+        if (result.success) {
+          expect(result.data.scope?.groups).toEqual(["team-a", "team-b"]);
+        }
+      });
+
+      it("should reject preset with invalid scope", () => {
+        const preset = {
+          scope: {
+            group: "my-team",
+            groups: ["other-team"], // Invalid combination
+          },
+          features: {},
+        };
+        const result = PresetSchema.safeParse(preset);
+        expect(result.success).toBe(false);
+      });
     });
   });
 });

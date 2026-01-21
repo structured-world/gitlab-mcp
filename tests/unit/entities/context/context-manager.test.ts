@@ -27,6 +27,33 @@ jest.mock("../../../../src/server", () => ({
   sendToolsListChangedNotification: jest.fn().mockResolvedValue(undefined),
 }));
 
+// Mock preset responses for different test scenarios
+const mockPresets: Record<string, unknown> = {
+  readonly: {
+    description: "Read-only preset",
+    read_only: true,
+  },
+  developer: {
+    description: "Developer preset",
+    read_only: false,
+  },
+  "multi-projects": {
+    description: "Multi-project preset",
+    read_only: false,
+    scope: {
+      projects: ["team/project1", "team/project2", "team/project3"],
+    },
+  },
+  "multi-groups": {
+    description: "Multi-group preset",
+    read_only: false,
+    scope: {
+      groups: ["team-a", "team-b"],
+      includeSubgroups: true,
+    },
+  },
+};
+
 jest.mock("../../../../src/profiles/loader", () => ({
   ProfileLoader: jest.fn().mockImplementation(() => ({
     listProfiles: jest.fn().mockResolvedValue([
@@ -45,9 +72,12 @@ jest.mock("../../../../src/profiles/loader", () => ({
         isPreset: true,
       },
     ]),
-    loadPreset: jest.fn().mockResolvedValue({
-      description: "Test preset",
-      read_only: false,
+    loadPreset: jest.fn().mockImplementation((name: string) => {
+      const preset = mockPresets[name] || {
+        description: "Test preset",
+        read_only: false,
+      };
+      return Promise.resolve(preset);
     }),
     loadProfile: jest.fn().mockResolvedValue({
       host: "gitlab.example.com",
@@ -419,6 +449,57 @@ describe("ContextManager", () => {
       const context = manager.getContext();
       expect(context.scope).toBeDefined();
       expect(context.scope?.type).toBe("group");
+    });
+
+    it("should not have additionalPaths for single project scope", async () => {
+      mockDetectNamespaceType.mockResolvedValue("project");
+
+      const manager = ContextManager.getInstance();
+      await manager.setScope("group/project");
+
+      const context = manager.getContext();
+      expect(context.scope).toBeDefined();
+      expect(context.scope?.path).toBe("group/project");
+      expect(context.scope?.additionalPaths).toBeUndefined();
+    });
+
+    it("should not have additionalPaths for single group scope", async () => {
+      mockDetectNamespaceType.mockResolvedValue("group");
+
+      const manager = ContextManager.getInstance();
+      await manager.setScope("my-group");
+
+      const context = manager.getContext();
+      expect(context.scope).toBeDefined();
+      expect(context.scope?.path).toBe("my-group");
+      expect(context.scope?.additionalPaths).toBeUndefined();
+    });
+
+    it("should include additionalPaths for multiple projects from preset", async () => {
+      const manager = ContextManager.getInstance();
+
+      // Switch to preset with multiple projects
+      await manager.switchPreset("multi-projects");
+
+      const context = manager.getContext();
+      expect(context.scope).toBeDefined();
+      expect(context.scope?.type).toBe("project");
+      expect(context.scope?.path).toBe("team/project1");
+      expect(context.scope?.additionalPaths).toEqual(["team/project2", "team/project3"]);
+    });
+
+    it("should include additionalPaths for multiple groups from preset", async () => {
+      const manager = ContextManager.getInstance();
+
+      // Switch to preset with multiple groups
+      await manager.switchPreset("multi-groups");
+
+      const context = manager.getContext();
+      expect(context.scope).toBeDefined();
+      expect(context.scope?.type).toBe("group");
+      expect(context.scope?.path).toBe("team-a");
+      expect(context.scope?.additionalPaths).toEqual(["team-b"]);
+      expect(context.scope?.includeSubgroups).toBe(true);
     });
   });
 

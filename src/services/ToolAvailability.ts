@@ -681,6 +681,16 @@ export class ToolAvailability {
         update_group: { tier: "free", minVersion: 8.0, notes: "member_role_id requires Ultimate" },
       },
     },
+
+    // Search (read-only)
+    browse_search: {
+      default: { tier: "free", minVersion: 8.0 },
+      actions: {
+        global: { tier: "free", minVersion: 8.0, notes: "Global search across GitLab instance" },
+        project: { tier: "free", minVersion: 8.0, notes: "Project-scoped search" },
+        group: { tier: "free", minVersion: 10.5, notes: "Group-scoped search" },
+      },
+    },
   };
 
   /**

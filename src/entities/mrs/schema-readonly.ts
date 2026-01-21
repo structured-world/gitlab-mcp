@@ -255,7 +255,7 @@ const ListMrDiscussionsSchema = z.object({
   action: z.literal("list").describe("List all discussion threads on an MR"),
   project_id: projectIdField,
   merge_request_iid: mergeRequestIidField,
-  per_page: z.number().optional().describe("Number of items per page"),
+  per_page: z.number().optional().default(20).describe("Number of items per page (default: 20)"),
   page: z.number().optional().describe("Page number"),
 });
 

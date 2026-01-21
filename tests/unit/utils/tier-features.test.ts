@@ -13,17 +13,12 @@ import {
 describe("Tier Features", () => {
   describe("TIER_FEATURES map", () => {
     it("should contain Premium features", () => {
-      expect(TIER_FEATURES.protected_branches_api).toBeDefined();
-      expect(TIER_FEATURES.protected_branches_api.tier).toBe("Premium");
-      expect(TIER_FEATURES.merge_request_approvals).toBeDefined();
-      expect(TIER_FEATURES.merge_request_approvals.tier).toBe("Premium");
-    });
-
-    it("should contain Ultimate features", () => {
-      expect(TIER_FEATURES.code_owners).toBeDefined();
-      expect(TIER_FEATURES.code_owners.tier).toBe("Ultimate");
-      expect(TIER_FEATURES.security_dashboard).toBeDefined();
-      expect(TIER_FEATURES.security_dashboard.tier).toBe("Ultimate");
+      expect(TIER_FEATURES.group_webhooks).toBeDefined();
+      expect(TIER_FEATURES.group_webhooks.tier).toBe("Premium");
+      expect(TIER_FEATURES.epics).toBeDefined();
+      expect(TIER_FEATURES.epics.tier).toBe("Premium");
+      expect(TIER_FEATURES.iterations).toBeDefined();
+      expect(TIER_FEATURES.iterations.tier).toBe("Premium");
     });
 
     it("should have docs URLs for all features", () => {
@@ -50,16 +45,23 @@ describe("Tier Features", () => {
 
   describe("findTierFeature", () => {
     it("should find feature by tool name", () => {
-      const feature = findTierFeature("browse_protected_branches");
+      const feature = findTierFeature("list_group_iterations");
       expect(feature).not.toBeNull();
-      expect(feature?.name).toBe("Protected Branches API");
+      expect(feature?.name).toBe("Iterations");
       expect(feature?.tier).toBe("Premium");
     });
 
     it("should find feature by tool:action", () => {
-      const feature = findTierFeature("manage_merge_request", "approve");
+      const feature = findTierFeature("list_webhooks", "group");
       expect(feature).not.toBeNull();
-      expect(feature?.name).toBe("Merge Request Approvals API");
+      expect(feature?.name).toBe("Group Webhooks");
+    });
+
+    it("should find epic feature by tool:action", () => {
+      const feature = findTierFeature("browse_work_items", "epic");
+      expect(feature).not.toBeNull();
+      expect(feature?.name).toBe("Epics");
+      expect(feature?.tier).toBe("Premium");
     });
 
     it("should return null for Free tier tools", () => {
@@ -73,25 +75,24 @@ describe("Tier Features", () => {
     });
 
     it("should prefer tool:action match over tool-only match", () => {
-      // If a feature has both tool and tool:action in its list,
-      // tool:action should be matched when action is provided
-      const featureWithAction = findTierFeature("manage_merge_request", "approve");
-      const featureWithoutAction = findTierFeature("manage_merge_request");
+      // browse_work_items:epic is in the list, so it should match
+      const featureWithAction = findTierFeature("browse_work_items", "epic");
+      // browse_work_items alone is not tier-restricted
+      const featureWithoutAction = findTierFeature("browse_work_items");
 
-      // manage_merge_request:approve is in the list, so it should match
       expect(featureWithAction).not.toBeNull();
-      // manage_merge_request alone is not in any feature list
       expect(featureWithoutAction).toBeNull();
     });
   });
 
   describe("getRequiredTier", () => {
     it("should return Premium for Premium features", () => {
-      expect(getRequiredTier("browse_protected_branches")).toBe("Premium");
+      expect(getRequiredTier("list_group_iterations")).toBe("Premium");
     });
 
-    it("should return Ultimate for Ultimate features", () => {
-      expect(getRequiredTier("browse_code_owners")).toBe("Ultimate");
+    it("should return Premium for group webhooks", () => {
+      expect(getRequiredTier("list_webhooks", "group")).toBe("Premium");
+      expect(getRequiredTier("manage_webhook", "group")).toBe("Premium");
     });
 
     it("should return Free for tools not in the map", () => {
@@ -100,15 +101,15 @@ describe("Tier Features", () => {
     });
 
     it("should check tool:action combination", () => {
-      expect(getRequiredTier("manage_merge_request", "approve")).toBe("Premium");
-      expect(getRequiredTier("manage_merge_request", "create")).toBe("Free");
+      expect(getRequiredTier("browse_work_items", "epic")).toBe("Premium");
+      expect(getRequiredTier("browse_work_items", "issue")).toBe("Free");
     });
   });
 
   describe("getFeatureDocsUrl", () => {
     it("should return specific docs URL for known features", () => {
-      const url = getFeatureDocsUrl("browse_protected_branches");
-      expect(url).toBe("https://docs.gitlab.com/ee/api/protected_branches.html");
+      const url = getFeatureDocsUrl("list_group_iterations");
+      expect(url).toBe("https://docs.gitlab.com/ee/user/group/iterations/");
     });
 
     it("should return generic docs URL for unknown features", () => {
@@ -117,14 +118,14 @@ describe("Tier Features", () => {
     });
 
     it("should check tool:action combination for docs URL", () => {
-      const url = getFeatureDocsUrl("manage_merge_request", "approve");
-      expect(url).toContain("approvals");
+      const url = getFeatureDocsUrl("browse_work_items", "epic");
+      expect(url).toContain("epics");
     });
   });
 
   describe("alternatives", () => {
     it("should provide alternatives for Premium features", () => {
-      const feature = TIER_FEATURES.protected_branches_api;
+      const feature = TIER_FEATURES.group_webhooks;
       expect(feature.alternatives).toBeDefined();
       expect(feature.alternatives!.length).toBeGreaterThan(0);
 
@@ -136,20 +137,19 @@ describe("Tier Features", () => {
     });
 
     it("should have Free tier alternatives for Premium features", () => {
-      const feature = TIER_FEATURES.protected_branches_api;
+      const feature = TIER_FEATURES.group_webhooks;
       const freeAlternatives = feature.alternatives?.filter(a => a.availableOn === "Free");
       expect(freeAlternatives?.length).toBeGreaterThan(0);
     });
 
-    it("should provide alternatives for Ultimate features", () => {
-      const feature = TIER_FEATURES.code_owners;
+    it("should provide alternatives for epics feature", () => {
+      const feature = TIER_FEATURES.epics;
       expect(feature.alternatives).toBeDefined();
       expect(feature.alternatives!.length).toBeGreaterThan(0);
 
-      // Should have both Free and Premium alternatives
+      // Should have Free alternative
       const hasFree = feature.alternatives?.some(a => a.availableOn === "Free");
-      const hasPremium = feature.alternatives?.some(a => a.availableOn === "Premium");
-      expect(hasFree || hasPremium).toBe(true);
+      expect(hasFree).toBe(true);
     });
   });
 });

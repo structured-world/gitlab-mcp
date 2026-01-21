@@ -22,32 +22,34 @@ describe("Error Handler", () => {
           message: "403 Forbidden",
         };
 
-        const result = handleGitLabError(error, "browse_protected_branches", "list");
+        // list_group_iterations is a Premium-only feature
+        const result = handleGitLabError(error, "list_group_iterations", "list");
 
         expect(result.error_code).toBe("TIER_RESTRICTED");
-        expect(result.tool).toBe("browse_protected_branches");
+        expect(result.tool).toBe("list_group_iterations");
         expect(result.action).toBe("list");
         if (result.error_code === "TIER_RESTRICTED") {
           expect(result.http_status).toBe(403);
           expect(result.tier_required).toBe("Premium");
-          expect(result.feature_name).toBe("Protected Branches API");
-          expect(result.docs_url).toContain("protected_branches");
+          expect(result.feature_name).toBe("Iterations");
+          expect(result.docs_url).toContain("iterations");
           expect(result.upgrade_url).toBe("https://about.gitlab.com/pricing/");
         }
       });
 
-      it("should create tier-restricted error for Ultimate features", () => {
+      it("should create tier-restricted error for Premium tool:action combinations", () => {
         const error: GitLabApiErrorResponse = {
           status: 403,
           message: "403 Forbidden",
         };
 
-        const result = handleGitLabError(error, "browse_code_owners", "get");
+        // list_webhooks:group is a Premium-only feature
+        const result = handleGitLabError(error, "list_webhooks", "group");
 
         expect(result.error_code).toBe("TIER_RESTRICTED");
         if (result.error_code === "TIER_RESTRICTED") {
-          expect(result.tier_required).toBe("Ultimate");
-          expect(result.feature_name).toBe("Code Owners");
+          expect(result.tier_required).toBe("Premium");
+          expect(result.feature_name).toBe("Group Webhooks");
         }
       });
 
@@ -57,7 +59,8 @@ describe("Error Handler", () => {
           message: "403 Forbidden",
         };
 
-        const result = handleGitLabError(error, "browse_protected_branches", "list");
+        // Group webhooks have alternatives
+        const result = handleGitLabError(error, "list_webhooks", "group");
 
         expect(result.error_code).toBe("TIER_RESTRICTED");
         if (result.error_code === "TIER_RESTRICTED") {

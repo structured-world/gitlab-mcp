@@ -31,49 +31,20 @@ export interface TierFeature {
  *
  * Key: feature identifier
  * Value: feature details including tier requirement and alternatives
+ *
+ * NOTE: This map only includes features for which tools have been implemented.
+ * As new tools are added, their tier restrictions should be added here.
  */
 export const TIER_FEATURES: Record<string, TierFeature> = {
   // ============================================================================
   // Premium Features
   // ============================================================================
 
-  protected_branches_api: {
-    name: "Protected Branches API",
-    tier: "Premium",
-    tools: ["browse_protected_branches", "manage_protected_branch"],
-    alternatives: [
-      {
-        action: "Configure via UI",
-        description: "Use Settings > Repository > Protected branches in GitLab UI",
-        availableOn: "Free",
-      },
-      {
-        action: "Check branch via browse_commits",
-        description: "List commits to verify branch exists and see recent activity",
-        availableOn: "Free",
-      },
-    ],
-    docs: "https://docs.gitlab.com/ee/api/protected_branches.html",
-  },
-
-  merge_request_approvals: {
-    name: "Merge Request Approvals API",
-    tier: "Premium",
-    tools: ["manage_merge_request:approve", "browse_merge_requests:approvals"],
-    alternatives: [
-      {
-        action: "Use comments for informal approval",
-        description: "Add a comment like 'LGTM' or 'Approved' to indicate review",
-        availableOn: "Free",
-      },
-    ],
-    docs: "https://docs.gitlab.com/ee/user/project/merge_requests/approvals/",
-  },
-
+  // Group webhooks require Premium tier
   group_webhooks: {
     name: "Group Webhooks",
     tier: "Premium",
-    tools: ["manage_webhook:group"],
+    tools: ["list_webhooks:group", "manage_webhook:group"],
     alternatives: [
       {
         action: "Use project-level webhooks",
@@ -84,89 +55,49 @@ export const TIER_FEATURES: Record<string, TierFeature> = {
     docs: "https://docs.gitlab.com/ee/user/project/integrations/webhooks.html",
   },
 
-  merge_trains: {
-    name: "Merge Trains",
+  // Epics require Premium tier (available via browse_work_items with type=epic)
+  epics: {
+    name: "Epics",
     tier: "Premium",
-    tools: ["manage_merge_request:merge_train"],
+    tools: ["browse_work_items:epic", "manage_work_item:epic"],
     alternatives: [
       {
-        action: "Use standard merge",
-        description: "Merge requests manually without merge train",
+        action: "Use issues for tracking",
+        description: "Create issues to track work items instead of epics",
         availableOn: "Free",
       },
     ],
-    docs: "https://docs.gitlab.com/ee/ci/pipelines/merge_trains.html",
+    docs: "https://docs.gitlab.com/ee/user/group/epics/",
+  },
+
+  // Iterations require Premium tier
+  iterations: {
+    name: "Iterations",
+    tier: "Premium",
+    tools: ["list_group_iterations"],
+    alternatives: [
+      {
+        action: "Use milestones",
+        description: "Use browse_milestones to track time-boxed work",
+        availableOn: "Free",
+      },
+    ],
+    docs: "https://docs.gitlab.com/ee/user/group/iterations/",
   },
 
   // ============================================================================
   // Ultimate Features
   // ============================================================================
 
-  code_owners: {
-    name: "Code Owners",
-    tier: "Ultimate",
-    tools: ["browse_code_owners"],
-    alternatives: [
-      {
-        action: "Read CODEOWNERS file directly",
-        description: "Use browse_files to read .gitlab/CODEOWNERS or CODEOWNERS file",
-        availableOn: "Free",
-      },
-      {
-        action: "Use merge request approvers",
-        description: "Configure approvers in MR settings",
-        availableOn: "Premium",
-      },
-    ],
-    docs: "https://docs.gitlab.com/ee/user/project/codeowners/",
-  },
-
-  security_dashboard: {
-    name: "Security Dashboard",
-    tier: "Ultimate",
-    tools: ["browse_vulnerabilities", "browse_security_findings"],
-    alternatives: [
-      {
-        action: "Use CI job artifacts",
-        description: "Check security scanner job artifacts in pipeline",
-        availableOn: "Free",
-      },
-    ],
-    docs: "https://docs.gitlab.com/ee/user/application_security/security_dashboard/",
-  },
-
-  epic_boards: {
-    name: "Epic Boards",
-    tier: "Ultimate",
-    tools: ["browse_epics:board"],
-    alternatives: [
-      {
-        action: "Use issue boards",
-        description: "Create boards for issues instead of epics",
-        availableOn: "Free",
-      },
-      {
-        action: "List epics without board view",
-        description: "Use browse_work_items with type=epic to list epics",
-        availableOn: "Premium",
-      },
-    ],
-    docs: "https://docs.gitlab.com/ee/user/group/epics/",
-  },
-
-  dependency_scanning: {
-    name: "Dependency Scanning",
-    tier: "Ultimate",
-    tools: ["browse_dependency_list"],
-    alternatives: [
-      {
-        action: "Check package files directly",
-        description: "Use browse_files to read package.json, Gemfile, etc.",
-        availableOn: "Free",
-      },
-    ],
-    docs: "https://docs.gitlab.com/ee/user/application_security/dependency_scanning/",
-  },
+  // NOTE: The following Ultimate features do not have implemented tools yet:
+  // - Code Owners API (browse_code_owners)
+  // - Security Dashboard (browse_vulnerabilities, browse_security_findings)
+  // - Dependency Scanning (browse_dependency_list)
+  // - Protected Branches API (browse_protected_branches, manage_protected_branch)
+  // - MR Approvals API (manage_merge_request:approve, browse_merge_requests:approvals)
+  // - Merge Trains (manage_merge_request:merge_train)
+  //
+  // When these tools are implemented, add their tier restrictions here.
 };
 
 /**

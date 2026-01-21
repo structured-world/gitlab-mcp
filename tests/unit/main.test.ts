@@ -33,10 +33,12 @@ const mockParseCliArgs = jest.fn().mockReturnValue({
   cwd: undefined,
   dryRun: false,
   remoteName: undefined,
+  init: false,
 });
 const mockDisplayProjectConfig = jest.fn();
 const mockAutoDiscover = jest.fn().mockResolvedValue(null);
 const mockFormatDiscoveryResult = jest.fn().mockReturnValue("Discovery output");
+const mockRunWizard = jest.fn().mockResolvedValue(undefined);
 
 // Helper to run main() with isolated modules
 async function runMain(): Promise<void> {
@@ -61,6 +63,9 @@ async function runMain(): Promise<void> {
       jest.doMock("../../src/discovery", () => ({
         autoDiscover: mockAutoDiscover,
         formatDiscoveryResult: mockFormatDiscoveryResult,
+      }));
+      jest.doMock("../../src/cli/init", () => ({
+        runWizard: mockRunWizard,
       }));
 
       // Import main.ts - this triggers main() execution
@@ -98,6 +103,7 @@ describe("main", () => {
       cwd: undefined,
       dryRun: false,
       remoteName: undefined,
+      init: false,
     });
   });
 
@@ -137,6 +143,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockFindProjectConfig.mockResolvedValue({
         configPath: "/test/.gitlab-mcp",
@@ -158,6 +165,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockFindProjectConfig.mockRejectedValue(new Error("Config parse error"));
 
@@ -181,6 +189,7 @@ describe("main", () => {
         cwd: "/test/repo",
         dryRun: false,
         remoteName: "origin",
+        init: false,
       });
       mockAutoDiscover.mockResolvedValue({
         host: "gitlab.company.com",
@@ -224,6 +233,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: true,
         remoteName: undefined,
+        init: false,
       });
       mockAutoDiscover.mockResolvedValue({
         host: "gitlab.com",
@@ -261,6 +271,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockAutoDiscover.mockResolvedValue(null);
 
@@ -280,6 +291,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockAutoDiscover.mockRejectedValue(new Error("Git error"));
 
@@ -303,6 +315,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockTryApplyProfileFromEnv.mockResolvedValue({
         success: true,
@@ -330,6 +343,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockTryApplyProfileFromEnv.mockResolvedValue({
         success: true,
@@ -355,6 +369,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockAutoDiscover.mockResolvedValue({
         host: "gitlab.personal.com",
@@ -408,6 +423,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockAutoDiscover.mockResolvedValue({
         host: "gitlab.work.com",
@@ -462,6 +478,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockAutoDiscover.mockResolvedValue({
         host: "gitlab.work.com",
@@ -543,6 +560,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockTryApplyProfileFromEnv.mockRejectedValue(new Error("Profile not found"));
 
@@ -597,6 +615,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
 
       await runMain();
@@ -631,6 +650,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockAutoDiscover.mockResolvedValue({
         host: "gitlab.com",
@@ -665,6 +685,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockAutoDiscover.mockResolvedValue({
         host: "gitlab.com",
@@ -700,6 +721,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockAutoDiscover.mockResolvedValue({
         host: "gitlab.com",
@@ -734,6 +756,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockAutoDiscover.mockResolvedValue({
         host: "gitlab.com",
@@ -767,6 +790,7 @@ describe("main", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
       mockAutoDiscover.mockResolvedValue({
         host: "gitlab.com",

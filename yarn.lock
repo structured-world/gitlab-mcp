@@ -452,6 +452,27 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@clack/core@npm:0.5.0":
+  version: 0.5.0
+  resolution: "@clack/core@npm:0.5.0"
+  dependencies:
+    picocolors: "npm:^1.0.0"
+    sisteransi: "npm:^1.0.5"
+  checksum: 10c0/ef55dce4b0a4802171b71fe595865a6452c7cf823d162df7fa9afe2ea5a594b9d97e0b8e2880c2a805f2ce1d2f782cb1637d9f8d2ab8b99010af3a20816fae5a
+  languageName: node
+  linkType: hard
+
+"@clack/prompts@npm:^0.11.0":
+  version: 0.11.0
+  resolution: "@clack/prompts@npm:0.11.0"
+  dependencies:
+    "@clack/core": "npm:0.5.0"
+    picocolors: "npm:^1.0.0"
+    sisteransi: "npm:^1.0.5"
+  checksum: 10c0/4c573f2adec3b9109fe861e36312be8ae7cc6e80a5128aa784b9aeafeda5001b23f66c08eca50f4491119b435d9587ec9862956be8c5be472ec3373275003ba8
+  languageName: node
+  linkType: hard
+
 "@colors/colors@npm:1.5.0":
   version: 1.5.0
   resolution: "@colors/colors@npm:1.5.0"
@@ -1888,6 +1909,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@structured-world/gitlab-mcp@workspace:."
   dependencies:
+    "@clack/prompts": "npm:^0.11.0"
     "@eslint/js": "npm:^9.39.2"
     "@graphql-typed-document-node/core": "npm:^3.2.0"
     "@modelcontextprotocol/sdk": "npm:^1.25.3"
@@ -1915,6 +1937,7 @@ __metadata:
     http-proxy-agent: "npm:^7.0.2"
     https-proxy-agent: "npm:^7.0.6"
     jest: "npm:^30.2.0"
+    open: "npm:^11.0.0"
     pino: "npm:^10.2.1"
     pino-pretty: "npm:^13.1.3"
     prettier: "npm:^3.8.1"
@@ -2972,6 +2995,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"bundle-name@npm:^4.1.0":
+  version: 4.1.0
+  resolution: "bundle-name@npm:4.1.0"
+  dependencies:
+    run-applescript: "npm:^7.0.0"
+  checksum: 10c0/8e575981e79c2bcf14d8b1c027a3775c095d362d1382312f444a7c861b0e21513c0bd8db5bd2b16e50ba0709fa622d4eab6b53192d222120305e68359daece29
+  languageName: node
+  linkType: hard
+
 "bytes@npm:^3.1.2, bytes@npm:~3.1.2":
   version: 3.1.2
   resolution: "bytes@npm:3.1.2"
@@ -3613,6 +3645,30 @@ __metadata:
   version: 4.3.1
   resolution: "deepmerge@npm:4.3.1"
   checksum: 10c0/e53481aaf1aa2c4082b5342be6b6d8ad9dfe387bc92ce197a66dea08bd4265904a087e75e464f14d1347cf2ac8afe1e4c16b266e0561cc5df29382d3c5f80044
+  languageName: node
+  linkType: hard
+
+"default-browser-id@npm:^5.0.0":
+  version: 5.0.1
+  resolution: "default-browser-id@npm:5.0.1"
+  checksum: 10c0/5288b3094c740ef3a86df9b999b04ff5ba4dee6b64e7b355c0fff5217752c8c86908d67f32f6cba9bb4f9b7b61a1b640c0a4f9e34c57e0ff3493559a625245ee
+  languageName: node
+  linkType: hard
+
+"default-browser@npm:^5.4.0":
+  version: 5.4.0
+  resolution: "default-browser@npm:5.4.0"
+  dependencies:
+    bundle-name: "npm:^4.1.0"
+    default-browser-id: "npm:^5.0.0"
+  checksum: 10c0/a49ddd0c7b1a319163f64a5fc68ebb45a98548ea23a3155e04518f026173d85cfa2f451b646366c36c8f70b01e4cb773e23d1d22d2c61d8b84e5fbf151b4b609
+  languageName: node
+  linkType: hard
+
+"define-lazy-prop@npm:^3.0.0":
+  version: 3.0.0
+  resolution: "define-lazy-prop@npm:3.0.0"
+  checksum: 10c0/5ab0b2bf3fa58b3a443140bbd4cd3db1f91b985cc8a246d330b9ac3fc0b6a325a6d82bddc0b055123d745b3f9931afeea74a5ec545439a1630b9c8512b0eeb49
   languageName: node
   linkType: hard
 
@@ -5198,6 +5254,15 @@ __metadata:
   languageName: node
   linkType: hard
 
+"is-docker@npm:^3.0.0":
+  version: 3.0.0
+  resolution: "is-docker@npm:3.0.0"
+  bin:
+    is-docker: cli.js
+  checksum: 10c0/d2c4f8e6d3e34df75a5defd44991b6068afad4835bb783b902fa12d13ebdb8f41b2a199dcb0b5ed2cb78bfee9e4c0bbdb69c2d9646f4106464674d3e697a5856
+  languageName: node
+  linkType: hard
+
 "is-extglob@npm:^2.1.1":
   version: 2.1.1
   resolution: "is-extglob@npm:2.1.1"
@@ -5225,6 +5290,24 @@ __metadata:
   dependencies:
     is-extglob: "npm:^2.1.1"
   checksum: 10c0/17fb4014e22be3bbecea9b2e3a76e9e34ff645466be702f1693e8f1ee1adac84710d0be0bd9f967d6354036fd51ab7c2741d954d6e91dae6bb69714de92c197a
+  languageName: node
+  linkType: hard
+
+"is-in-ssh@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "is-in-ssh@npm:1.0.0"
+  checksum: 10c0/fbb4c25d85c543df09997fbe7aeca410ae0c839c5825bba2d4c672df765e9ce0e7558e781b371c0a21d6ef9bbac39b31875617a68eaaea5504438d07db9a2ffa
+  languageName: node
+  linkType: hard
+
+"is-inside-container@npm:^1.0.0":
+  version: 1.0.0
+  resolution: "is-inside-container@npm:1.0.0"
+  dependencies:
+    is-docker: "npm:^3.0.0"
+  bin:
+    is-inside-container: cli.js
+  checksum: 10c0/a8efb0e84f6197e6ff5c64c52890fa9acb49b7b74fed4da7c95383965da6f0fa592b4dbd5e38a79f87fc108196937acdbcd758fcefc9b140e479b39ce1fcd1cd
   languageName: node
   linkType: hard
 
@@ -5288,6 +5371,15 @@ __metadata:
   version: 2.1.0
   resolution: "is-unicode-supported@npm:2.1.0"
   checksum: 10c0/a0f53e9a7c1fdbcf2d2ef6e40d4736fdffff1c9f8944c75e15425118ff3610172c87bf7bc6c34d3903b04be59790bb2212ddbe21ee65b5a97030fc50370545a5
+  languageName: node
+  linkType: hard
+
+"is-wsl@npm:^3.1.0":
+  version: 3.1.0
+  resolution: "is-wsl@npm:3.1.0"
+  dependencies:
+    is-inside-container: "npm:^1.0.0"
+  checksum: 10c0/d3317c11995690a32c362100225e22ba793678fe8732660c6de511ae71a0ff05b06980cf21f98a6bf40d7be0e9e9506f859abe00a1118287d63e53d0a3d06947
   languageName: node
   linkType: hard
 
@@ -7091,6 +7183,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"open@npm:^11.0.0":
+  version: 11.0.0
+  resolution: "open@npm:11.0.0"
+  dependencies:
+    default-browser: "npm:^5.4.0"
+    define-lazy-prop: "npm:^3.0.0"
+    is-in-ssh: "npm:^1.0.0"
+    is-inside-container: "npm:^1.0.0"
+    powershell-utils: "npm:^0.1.0"
+    wsl-utils: "npm:^0.3.0"
+  checksum: 10c0/7aeeda4131268ed90f90e7728dda5c46bb0c6205b27a4be3e86ea33593e30dd393423e20e31c00802a8e635ef59becaee33ef9749a8ceb027567cd253e9e7b1e
+  languageName: node
+  linkType: hard
+
 "optionator@npm:^0.9.3":
   version: 0.9.4
   resolution: "optionator@npm:0.9.4"
@@ -7449,7 +7555,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"picocolors@npm:^1.1.1":
+"picocolors@npm:^1.0.0, picocolors@npm:^1.1.1":
   version: 1.1.1
   resolution: "picocolors@npm:1.1.1"
   checksum: 10c0/e2e3e8170ab9d7c7421969adaa7e1b31434f789afb9b3f115f6b96d91945041ac3ceb02e9ec6fe6510ff036bcc0bf91e69a1772edc0b707e12b19c0f2d6bcf58
@@ -7595,6 +7701,13 @@ __metadata:
   version: 3.4.7
   resolution: "postgres@npm:3.4.7"
   checksum: 10c0/b2e61b1064d38e7e1df8291f6d5a7e11f892a3240e00cf2b5e5542bf9abbfe97f3963164aeb56b42c1ab6b8aae3454c57f5bbc1791df0769375542740a7cde72
+  languageName: node
+  linkType: hard
+
+"powershell-utils@npm:^0.1.0":
+  version: 0.1.0
+  resolution: "powershell-utils@npm:0.1.0"
+  checksum: 10c0/a64713cf3583259c9ed6be211c06b4b19e8608bcb0f7f6287ffac0a95b8c7582b6b662eea0e201fd659492c8e9f9c5fd0bfc4579645c5add9c1a600075621c95
   languageName: node
   linkType: hard
 
@@ -8035,6 +8148,13 @@ __metadata:
   languageName: node
   linkType: hard
 
+"run-applescript@npm:^7.0.0":
+  version: 7.1.0
+  resolution: "run-applescript@npm:7.1.0"
+  checksum: 10c0/ab826c57c20f244b2ee807704b1ef4ba7f566aa766481ae5922aac785e2570809e297c69afcccc3593095b538a8a77d26f2b2e9a1d9dffee24e0e039502d1a03
+  languageName: node
+  linkType: hard
+
 "safe-buffer@npm:5.2.1":
   version: 5.2.1
   resolution: "safe-buffer@npm:5.2.1"
@@ -8288,6 +8408,13 @@ __metadata:
     "@sigstore/tuf": "npm:^4.0.1"
     "@sigstore/verify": "npm:^3.1.0"
   checksum: 10c0/6a62601b75c5b0336c15b62d41be6d07e750a2ebd93a49856401cff201aaab4af8304f3edeaffb4777409385c828c11c09b94b721be5932c1335de2292cceadd
+  languageName: node
+  linkType: hard
+
+"sisteransi@npm:^1.0.5":
+  version: 1.0.5
+  resolution: "sisteransi@npm:1.0.5"
+  checksum: 10c0/230ac975cca485b7f6fe2b96a711aa62a6a26ead3e6fb8ba17c5a00d61b8bed0d7adc21f5626b70d7c33c62ff4e63933017a6462942c719d1980bb0b1207ad46
   languageName: node
   linkType: hard
 
@@ -9457,6 +9584,16 @@ __metadata:
     imurmurhash: "npm:^0.1.4"
     signal-exit: "npm:^4.0.1"
   checksum: 10c0/f5dd7c0324ae03b399974484fbe56363654c3884920e3c4f4d59b690596f113f60f4061a3c0aa5e6f4c22e5b9e7e0608954fd8131a916c9123b68a17ba886345
+  languageName: node
+  linkType: hard
+
+"wsl-utils@npm:^0.3.0":
+  version: 0.3.1
+  resolution: "wsl-utils@npm:0.3.1"
+  dependencies:
+    is-wsl: "npm:^3.1.0"
+    powershell-utils: "npm:^0.1.0"
+  checksum: 10c0/b3ba99cc6b71f66457eef598d529beeb8cb57a72646877fe25993894b808c60b82f6d47df5463f0b6e54632272f62f5eaea105c12784fd09b06f500f3f53aa2e
   languageName: node
   linkType: hard
 

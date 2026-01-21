@@ -6,6 +6,7 @@ import { tryApplyProfileFromEnv, findProjectConfig, getProjectConfigSummary } fr
 import { parseCliArgs, displayProjectConfig } from "./cli-utils";
 import { autoDiscover, formatDiscoveryResult, AutoDiscoveryResult } from "./discovery";
 import { extractNamespaceFromPath } from "./utils/namespace";
+import { runWizard } from "./cli/init";
 
 /**
  * Configuration priority (highest to lowest):
@@ -25,6 +26,12 @@ import { extractNamespaceFromPath } from "./utils/namespace";
  */
 async function main(): Promise<void> {
   const cliArgs = parseCliArgs();
+
+  // Handle init subcommand (run wizard and exit)
+  if (cliArgs.init) {
+    await runWizard();
+    process.exit(0);
+  }
 
   // Handle --show-project-config flag (display and exit)
   if (cliArgs.showProjectConfig) {

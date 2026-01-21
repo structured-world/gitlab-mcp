@@ -19,6 +19,11 @@ jest.mock("../../src/profiles", () => ({
   tryApplyProfileFromEnv: jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined),
 }));
 
+// Mock cli/init to prevent ESM 'open' package from being imported
+jest.mock("../../src/cli/init", () => ({
+  runWizard: jest.fn<() => Promise<void>>().mockResolvedValue(undefined),
+}));
+
 const mockStartServer = jest.fn<() => Promise<void>>();
 const mockLogger = { error: jest.fn() };
 

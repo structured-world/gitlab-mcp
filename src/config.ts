@@ -130,6 +130,8 @@ export const USE_WEBHOOKS = process.env.USE_WEBHOOKS !== "false";
 export const USE_INTEGRATIONS = process.env.USE_INTEGRATIONS !== "false";
 export const USE_RELEASES = process.env.USE_RELEASES !== "false";
 export const USE_REFS = process.env.USE_REFS !== "false";
+export const USE_MEMBERS = process.env.USE_MEMBERS !== "false";
+export const USE_SEARCH = process.env.USE_SEARCH !== "false";
 export const HOST = process.env.HOST ?? "0.0.0.0";
 export const PORT = process.env.PORT ?? 3002;
 

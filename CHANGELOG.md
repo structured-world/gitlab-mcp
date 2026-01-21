@@ -1,3 +1,21 @@
+## [6.23.1](https://github.com/structured-world/gitlab-mcp/compare/v6.23.0...v6.23.1) (2026-01-21)
+
+### Bug Fixes
+
+* **workitems:** normalize legacy GIDs and improve ID field descriptions ([#92](https://github.com/structured-world/gitlab-mcp/issues/92)) ([54db7de](https://github.com/structured-world/gitlab-mcp/commit/54db7de2f75b4d653b39296d9121d7ad5e86cef1)), closes [#90](https://github.com/structured-world/gitlab-mcp/issues/90)
+
+## [6.23.0](https://github.com/structured-world/gitlab-mcp/compare/v6.22.0...v6.23.0) (2026-01-21)
+
+### Features
+
+* **search:** add global search entity with CQRS browse_search tool ([#93](https://github.com/structured-world/gitlab-mcp/issues/93)) ([90aecdc](https://github.com/structured-world/gitlab-mcp/commit/90aecdcc2f4b36672a2fa093e15a5e69eaef02be)), closes [#82](https://github.com/structured-world/gitlab-mcp/issues/82)
+
+## [6.22.0](https://github.com/structured-world/gitlab-mcp/compare/v6.21.0...v6.22.0) (2026-01-21)
+
+### Features
+
+* **members:** add members management entity with CQRS tools ([#89](https://github.com/structured-world/gitlab-mcp/issues/89)) ([aa0924d](https://github.com/structured-world/gitlab-mcp/commit/aa0924d774b262ebc76a997a1400b7b1b694308e)), closes [#81](https://github.com/structured-world/gitlab-mcp/issues/81)
+
 ## [6.21.0](https://github.com/structured-world/gitlab-mcp/compare/v6.20.0...v6.21.0) (2026-01-21)
 
 ### Features

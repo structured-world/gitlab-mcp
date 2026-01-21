@@ -25,6 +25,11 @@ features:
   webhooks: false   # Admin only
   snippets: true
   integrations: false  # Admin only
+  # New entities
+  releases: true    # Can create releases
+  refs: false       # No branch protection management
+  members: false    # No team management
+  search: true      # Code search enabled
 
 # Block dangerous actions
 denied_actions:

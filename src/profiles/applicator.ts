@@ -28,6 +28,11 @@ const FEATURE_ENV_MAP: Record<string, string> = {
   webhooks: "USE_WEBHOOKS",
   snippets: "USE_SNIPPETS",
   integrations: "USE_INTEGRATIONS",
+  // New entities (#78, #81, #82, #83)
+  releases: "USE_RELEASES",
+  refs: "USE_REFS",
+  members: "USE_MEMBERS",
+  search: "USE_SEARCH",
 };
 
 // ============================================================================

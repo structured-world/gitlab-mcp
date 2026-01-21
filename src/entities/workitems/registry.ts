@@ -214,7 +214,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "browse_work_items",
       description:
-        'BROWSE work items. Actions: "list" shows work items with filtering (groups return epics, projects return issues/tasks), "get" retrieves single work item by ID with full widget details.',
+        'BROWSE work items. Actions: "list" returns work items with numeric IDs (groups return epics, projects return issues/tasks), "get" retrieves single work item - use the numeric ID from list results (e.g., "5953"). Legacy GIDs like gid://gitlab/Issue/X are auto-normalized.',
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),
       gate: { envVar: "USE_WORKITEMS", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -329,7 +329,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "manage_work_item",
       description:
-        'MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets, "delete" permanently removes.',
+        'MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets using numeric ID from list, "delete" permanently removes. Legacy GIDs auto-normalized.',
       inputSchema: z.toJSONSchema(ManageWorkItemSchema),
       gate: { envVar: "USE_WORKITEMS", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {

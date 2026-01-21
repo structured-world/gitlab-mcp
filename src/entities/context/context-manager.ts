@@ -17,6 +17,7 @@ import { logger } from "../../logger";
 import { ProfileLoader } from "../../profiles/loader";
 import { ScopeEnforcer } from "../../profiles/scope-enforcer";
 import { Preset, ProfileInfo, ScopeConfig } from "../../profiles/types";
+import { sendToolsListChangedNotification } from "../../server";
 import { detectNamespaceType } from "../../utils/namespace";
 import {
   PresetInfo,
@@ -231,6 +232,10 @@ export class ContextManager {
 
   /**
    * Switch to a different preset
+   *
+   * After a successful switch, sends a tools/list_changed notification
+   * to inform connected clients that available tools may have changed
+   * (e.g., read-only presets disable write tools).
    */
   async switchPreset(presetName: string): Promise<SwitchResult> {
     const previousPreset = this.currentPresetName;
@@ -248,6 +253,10 @@ export class ContextManager {
       }
 
       logger.info({ previous: previousPreset, current: presetName }, "Switched preset");
+
+      // Notify clients that tool list may have changed
+      // (e.g., read-only presets disable write tools)
+      await sendToolsListChangedNotification();
 
       return {
         success: true,

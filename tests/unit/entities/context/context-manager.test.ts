@@ -22,6 +22,11 @@ jest.mock("../../../../src/utils/namespace", () => ({
   detectNamespaceType: jest.fn(),
 }));
 
+// Mock server module for tools list changed notification
+jest.mock("../../../../src/server", () => ({
+  sendToolsListChangedNotification: jest.fn().mockResolvedValue(undefined),
+}));
+
 jest.mock("../../../../src/profiles/loader", () => ({
   ProfileLoader: jest.fn().mockImplementation(() => ({
     listProfiles: jest.fn().mockResolvedValue([
@@ -56,10 +61,14 @@ import {
   getContextManager,
 } from "../../../../src/entities/context/context-manager";
 import { detectNamespaceType } from "../../../../src/utils/namespace";
+import { sendToolsListChangedNotification } from "../../../../src/server";
 
 const mockDetectNamespaceType = detectNamespaceType as jest.MockedFunction<
   typeof detectNamespaceType
 >;
+
+const mockSendToolsListChangedNotification =
+  sendToolsListChangedNotification as jest.MockedFunction<typeof sendToolsListChangedNotification>;
 
 describe("ContextManager", () => {
   const originalEnv = process.env;
@@ -207,6 +216,29 @@ describe("ContextManager", () => {
       await manager.switchPreset("readonly");
 
       expect(manager.getCurrentPresetName()).toBe("readonly");
+    });
+
+    it("should send tools/list_changed notification after successful switch", async () => {
+      // Reset mock to track calls in this test
+      mockSendToolsListChangedNotification.mockClear();
+
+      const manager = ContextManager.getInstance();
+      await manager.switchPreset("readonly");
+
+      // Verify notification was sent
+      expect(mockSendToolsListChangedNotification).toHaveBeenCalledTimes(1);
+    });
+
+    it("should send notification on each preset switch", async () => {
+      mockSendToolsListChangedNotification.mockClear();
+
+      const manager = ContextManager.getInstance();
+
+      await manager.switchPreset("readonly");
+      await manager.switchPreset("developer");
+
+      // Should be called twice - once for each switch
+      expect(mockSendToolsListChangedNotification).toHaveBeenCalledTimes(2);
     });
   });
 

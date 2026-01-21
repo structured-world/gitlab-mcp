@@ -294,6 +294,20 @@ function printEnvironmentInfo(): void {
   console.log();
 }
 
+/**
+ * Get tier information badge for a tool or action.
+ *
+ * @param toolName - The tool name
+ * @param action - Optional action name for action-specific tier
+ * @returns Tier badge string, e.g., "[tier: Premium]" or "[tier: Premium*]"
+ *
+ * Badge format:
+ * - `[tier: Free]` - All actions available in Free tier
+ * - `[tier: Premium]` - All actions require Premium tier
+ * - `[tier: Premium*]` - Asterisk (*) indicates mixed tiers: the tool has some
+ *   actions requiring a higher tier than the default. For example, a tool with
+ *   default Free tier but some Premium-only actions shows "Premium*".
+ */
 function getToolTierInfo(toolName: string, action?: string): string {
   // For action-specific queries, get exact tier
   if (action) {
@@ -820,7 +834,7 @@ function generateExportMarkdown(
         lines.push("|--------|------|-------------|");
         for (const action of actions) {
           const actionTierInfo = getToolTierInfo(tool.name, action.name);
-          const tierDisplay = actionTierInfo.replace("[tier: ", "").replaceAll("]", "") || "Free";
+          const tierDisplay = actionTierInfo.replace("[tier: ", "").replace(/]/g, "") || "Free";
           lines.push(`| \`${action.name}\` | ${tierDisplay} | ${action.description} |`);
         }
         lines.push("");

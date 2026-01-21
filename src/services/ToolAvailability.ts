@@ -28,6 +28,13 @@ interface ToolActionRequirements {
 }
 
 export class ToolAvailability {
+  /** Tier hierarchy for comparison: free < premium < ultimate */
+  private static readonly TIER_ORDER: Record<string, number> = {
+    free: 0,
+    premium: 1,
+    ultimate: 2,
+  };
+
   // Comprehensive tool requirements based on GitLab documentation
   private static toolRequirements: Record<string, ToolRequirement> = {
     // Core Tools - Available in Free Tier
@@ -631,12 +638,11 @@ export class ToolAvailability {
       return legacy?.requiredTier ?? "free";
     }
 
-    const tierOrder = { free: 0, premium: 1, ultimate: 2 };
     let highest = toolReq.default.tier;
 
     if (toolReq.actions) {
       for (const actionReq of Object.values(toolReq.actions)) {
-        if (tierOrder[actionReq.tier] > tierOrder[highest]) {
+        if (this.TIER_ORDER[actionReq.tier] > this.TIER_ORDER[highest]) {
           highest = actionReq.tier;
         }
       }
@@ -652,11 +658,10 @@ export class ToolAvailability {
     const toolReq = this.actionRequirements[toolName];
     if (!toolReq?.actions) return [];
 
-    const tierOrder = { free: 0, premium: 1, ultimate: 2 };
-    const minLevel = tierOrder[tier];
+    const minLevel = this.TIER_ORDER[tier];
 
     return Object.entries(toolReq.actions)
-      .filter(([, req]) => tierOrder[req.tier] >= minLevel)
+      .filter(([, req]) => this.TIER_ORDER[req.tier] >= minLevel)
       .map(([action]) => action);
   }
 
@@ -718,7 +723,12 @@ export class ToolAvailability {
   }
 
   public static getAvailableTools(): string[] {
-    return Object.keys(this.toolRequirements).filter(tool => this.isToolAvailable(tool));
+    // Combine tools from both legacy toolRequirements and new actionRequirements
+    const allTools = new Set([
+      ...Object.keys(this.toolRequirements),
+      ...Object.keys(this.actionRequirements),
+    ]);
+    return Array.from(allTools).filter(tool => this.isToolAvailable(tool));
   }
 
   public static getToolRequirement(toolName: string, action?: string): ToolRequirement | undefined {

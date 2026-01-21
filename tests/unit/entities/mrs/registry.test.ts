@@ -5,6 +5,7 @@ import {
   getFilteredMrsTools,
   flattenPositionToFormFields,
 } from "../../../../src/entities/mrs/registry";
+import { mrsTools, mrsReadOnlyTools } from "../../../../src/entities/mrs/index";
 import { gitlab } from "../../../../src/utils/gitlab-api";
 
 // Mock the gitlab API helper
@@ -49,6 +50,26 @@ beforeEach(() => {
   jest.clearAllMocks();
   // Note: Don't use resetAllMocks() here because it would remove the custom toQuery
   // mock implementation defined above, which is intended to mirror the real helper.
+});
+
+describe("MRS Index exports", () => {
+  it("should export mrsTools array with tool definitions", () => {
+    expect(Array.isArray(mrsTools)).toBe(true);
+    expect(mrsTools.length).toBeGreaterThan(0);
+
+    // Each tool should have name, description, inputSchema
+    mrsTools.forEach(tool => {
+      expect(tool.name).toBeDefined();
+      expect(tool.description).toBeDefined();
+      expect(tool.inputSchema).toBeDefined();
+    });
+  });
+
+  it("should export mrsReadOnlyTools array", () => {
+    expect(Array.isArray(mrsReadOnlyTools)).toBe(true);
+    expect(mrsReadOnlyTools).toContain("browse_merge_requests");
+    expect(mrsReadOnlyTools).toContain("browse_mr_discussions");
+  });
 });
 
 describe("flattenPositionToFormFields", () => {
@@ -1560,6 +1581,63 @@ describe("MRS Registry", () => {
             merge_request_iid: 1,
           })
         ).rejects.toThrow("Network error");
+      });
+    });
+
+    describe("Schema validation - superRefine checks", () => {
+      it("should reject list-only fields in get action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using 'state' (list-only field) with 'get' action should fail
+        await expect(
+          tool.handler({
+            action: "get",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            state: "opened", // list-only field
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should reject compare-only fields in list action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using 'from' (compare-only field) with 'list' action should fail
+        await expect(
+          tool.handler({
+            action: "list",
+            project_id: "test/project",
+            from: "main", // compare-only field
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should reject get-only fields in list action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using 'merge_request_iid' (get-only field) with 'list' action should fail
+        await expect(
+          tool.handler({
+            action: "list",
+            project_id: "test/project",
+            merge_request_iid: 1, // get-only field
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should accept valid combination of action and fields", async () => {
+        mockGitlab.get.mockResolvedValueOnce([{ id: 1, iid: 1 }]);
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // list action with list-only fields should work
+        const result = await tool.handler({
+          action: "list",
+          project_id: "test/project",
+          state: "opened",
+          per_page: 10,
+        });
+
+        expect(result).toBeDefined();
       });
     });
   });

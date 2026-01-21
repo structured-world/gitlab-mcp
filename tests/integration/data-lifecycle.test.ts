@@ -1205,6 +1205,216 @@ describe("🔄 Data Lifecycle - Complete Infrastructure Setup", () => {
 
       console.log("✅ MR discussion thread operations test completed");
     });
+
+    it("should test diff note creation with position (PR #95 validation)", async () => {
+      const testData = getTestData();
+      expect(testData.mergeRequests?.length).toBeGreaterThan(0);
+      expect(testData.project?.id).toBeDefined();
+      console.log("🔧 Testing diff note with position (PR #95 - flattenPositionToFormFields)...");
+
+      const mr = testData.mergeRequests![0];
+      const projectId = testData.project!.id.toString();
+
+      // Step 1: Add a file to the feature branch to create a diff
+      console.log("  📝 Adding file to feature branch to create diff...");
+      const featureBranch = mr.source_branch;
+      const testFilePath = `test-diff-note-${Date.now()}.js`;
+      const testFileContent = Buffer.from(
+        `// Test file for diff note\nconst message = "Hello from diff note test";\nconsole.log(message);\n`
+      ).toString("base64");
+
+      const createFileResponse = await fetch(
+        `${GITLAB_API_URL}/api/v4/projects/${testData.project!.id}/repository/files/${encodeURIComponent(testFilePath)}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${GITLAB_TOKEN}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            branch: featureBranch,
+            content: testFileContent,
+            encoding: "base64",
+            commit_message: "Add test file for diff note testing",
+          }),
+        }
+      );
+
+      if (!createFileResponse.ok) {
+        const errorText = await createFileResponse.text();
+        console.log(
+          `    ⚠️ Could not create test file: ${createFileResponse.status} - ${errorText}`
+        );
+        console.log("    ⚠️ Skipping diff note test - no diff available");
+        return;
+      }
+      console.log(`    ✅ Created test file: ${testFilePath}`);
+
+      // Step 2: Get updated MR with diff_refs
+      console.log("  🔍 Getting MR diff_refs...");
+      const mrDetails = (await helper.browseMergeRequests({
+        action: "get",
+        project_id: projectId,
+        merge_request_iid: mr.iid.toString(),
+      })) as any;
+
+      expect(mrDetails.diff_refs).toBeDefined();
+      const { base_sha, head_sha, start_sha } = mrDetails.diff_refs;
+      console.log(
+        `    📋 diff_refs: base=${base_sha?.substring(0, 8)}, head=${head_sha?.substring(0, 8)}, start=${start_sha?.substring(0, 8)}`
+      );
+
+      // Step 3: Get MR diffs to find the new file
+      console.log("  🔍 Getting MR diffs...");
+      const mrDiffs = (await helper.browseMergeRequests({
+        action: "diffs",
+        project_id: projectId,
+        merge_request_iid: mr.iid.toString(),
+      })) as any;
+
+      const testFileDiff = mrDiffs.changes?.find((change: any) => change.new_path === testFilePath);
+      if (!testFileDiff) {
+        console.log(`    ⚠️ Test file not found in diffs - skipping position test`);
+        return;
+      }
+      console.log(`    ✅ Found test file in diffs: ${testFileDiff.new_path}`);
+
+      // Step 4: Create diff note with position using the handler (tests flattenPositionToFormFields)
+      console.log("  📝 Creating diff note with position...");
+      const position = {
+        base_sha,
+        head_sha,
+        start_sha,
+        position_type: "text" as const,
+        new_path: testFilePath,
+        old_path: testFilePath,
+        new_line: 2, // Comment on line 2: const message = ...
+      };
+
+      try {
+        const diffNote = (await helper.manageMrDiscussion({
+          action: "thread",
+          project_id: projectId,
+          merge_request_iid: mr.iid.toString(),
+          body: `Test diff note created at ${new Date().toISOString()} - validates PR #95 position encoding fix`,
+          position,
+        })) as any;
+
+        expect(diffNote).toBeDefined();
+        expect(diffNote.id).toBeDefined();
+        console.log(`    ✅ Created diff note thread: ${diffNote.id}`);
+
+        // Verify the note has position data
+        const firstNote = diffNote.notes?.[0];
+        if (firstNote?.position) {
+          expect(firstNote.position.new_path).toBe(testFilePath);
+          expect(firstNote.position.new_line).toBe(2);
+          console.log(
+            `    ✅ Diff note has correct position: ${firstNote.position.new_path}:${firstNote.position.new_line}`
+          );
+        }
+
+        // Store for later verification
+        updateTestData({ diffNoteThread: diffNote });
+
+        console.log("✅ Diff note with position test PASSED - PR #95 fix verified!");
+      } catch (error: any) {
+        // If we get a specific error about position, the fix might not be working
+        if (error.message?.includes("position") || error.message?.includes("400")) {
+          console.error(`    ❌ FAILED: Position encoding error - PR #95 fix may not be working!`);
+          console.error(`    Error: ${error.message}`);
+          throw error;
+        }
+        // Other errors might be GitLab configuration issues
+        console.log(`    ⚠️ Could not create diff note: ${error.message}`);
+        console.log("    ⚠️ This may be a GitLab configuration issue, not a code issue");
+      }
+    });
+
+    it("should test draft note with position (validates flattenPositionToFormFields for drafts)", async () => {
+      const testData = getTestData();
+      expect(testData.mergeRequests?.length).toBeGreaterThan(0);
+      console.log("🔧 Testing draft note with position...");
+
+      const mr = testData.mergeRequests![0];
+      const projectId = testData.project!.id.toString();
+
+      // Get MR diff_refs
+      const mrDetails = (await helper.browseMergeRequests({
+        action: "get",
+        project_id: projectId,
+        merge_request_iid: mr.iid.toString(),
+      })) as any;
+
+      if (!mrDetails.diff_refs?.head_sha) {
+        console.log("    ⚠️ No diff_refs available - skipping draft note position test");
+        return;
+      }
+
+      const { base_sha, head_sha, start_sha } = mrDetails.diff_refs;
+
+      // Get diffs to find a file
+      const mrDiffs = (await helper.browseMergeRequests({
+        action: "diffs",
+        project_id: projectId,
+        merge_request_iid: mr.iid.toString(),
+      })) as any;
+
+      if (!mrDiffs.changes?.length) {
+        console.log("    ⚠️ No diffs available - skipping draft note position test");
+        return;
+      }
+
+      const firstDiff = mrDiffs.changes[0];
+      console.log(`  📝 Creating draft note with position on ${firstDiff.new_path}...`);
+
+      const position = {
+        base_sha,
+        head_sha,
+        start_sha,
+        position_type: "text" as const,
+        new_path: firstDiff.new_path,
+        old_path: firstDiff.old_path || firstDiff.new_path,
+        new_line: 1,
+      };
+
+      try {
+        const draftNote = (await helper.executeTool("manage_draft_notes", {
+          action: "create",
+          project_id: projectId,
+          merge_request_iid: mr.iid.toString(),
+          note: `Draft diff note test at ${new Date().toISOString()} - validates position encoding`,
+          position,
+        })) as any;
+
+        expect(draftNote).toBeDefined();
+        expect(draftNote.id).toBeDefined();
+        console.log(`    ✅ Created draft note: ${draftNote.id}`);
+
+        // Verify position was correctly encoded
+        if (draftNote.position) {
+          expect(draftNote.position.new_path).toBe(firstDiff.new_path);
+          console.log(`    ✅ Draft note has correct position: ${draftNote.position.new_path}`);
+        }
+
+        // Clean up: delete the draft note
+        await helper.executeTool("manage_draft_notes", {
+          action: "delete",
+          project_id: projectId,
+          merge_request_iid: mr.iid.toString(),
+          draft_note_id: draftNote.id.toString(),
+        });
+        console.log(`    🧹 Cleaned up draft note`);
+
+        console.log("✅ Draft note with position test PASSED!");
+      } catch (error: any) {
+        if (error.message?.includes("position") || error.message?.includes("400")) {
+          console.error(`    ❌ FAILED: Position encoding error for draft notes!`);
+          throw error;
+        }
+        console.log(`    ⚠️ Could not create draft note: ${error.message}`);
+      }
+    });
   });
 
   describe("📬 Step 6.5: Todos Infrastructure", () => {

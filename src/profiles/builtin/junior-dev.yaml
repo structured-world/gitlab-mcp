@@ -25,6 +25,11 @@ features:
   webhooks: false
   snippets: true
   integrations: false
+  # New entities - minimal access
+  releases: false   # No release management
+  refs: false       # No branch management
+  members: false    # No team management
+  search: true      # Code search enabled
 
 # Block pipeline and admin operations
 denied_tools_regex: "^manage_(pipeline|variable|webhook)"

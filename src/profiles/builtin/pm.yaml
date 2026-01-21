@@ -26,6 +26,11 @@ features:
   webhooks: false
   snippets: false
   integrations: false
+  # New entities - planning focused
+  releases: false   # No release management
+  refs: false       # No branch management
+  members: false    # No team management
+  search: true      # Can search issues/MRs
 
 # Block code and pipeline operations
 denied_tools_regex: "^manage_(files|pipeline|variable)"

@@ -26,3 +26,8 @@ features:
   webhooks: false   # Webhooks are admin-level
   snippets: true
   integrations: false  # Integrations are admin-level
+  # New entities - all browsing enabled (read_only=true blocks writes)
+  releases: true
+  refs: true
+  members: true
+  search: true

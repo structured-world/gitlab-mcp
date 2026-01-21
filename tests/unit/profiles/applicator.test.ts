@@ -57,6 +57,11 @@ describe("Profile Applicator", () => {
       "USE_WEBHOOKS",
       "USE_SNIPPETS",
       "USE_INTEGRATIONS",
+      // New entities (#78, #81, #82, #83)
+      "USE_RELEASES",
+      "USE_REFS",
+      "USE_MEMBERS",
+      "USE_SEARCH",
       "GITLAB_API_TIMEOUT_MS",
       "SKIP_TLS_VERIFY",
       "SSL_CERT_PATH",
@@ -233,6 +238,11 @@ describe("Profile Applicator", () => {
           webhooks: false,
           snippets: true,
           integrations: false,
+          // New entities (#78, #81, #82, #83)
+          releases: true,
+          refs: false,
+          members: true,
+          search: false,
         },
       };
 
@@ -250,10 +260,17 @@ describe("Profile Applicator", () => {
       expect(process.env.USE_WEBHOOKS).toBe("false");
       expect(process.env.USE_SNIPPETS).toBe("true");
       expect(process.env.USE_INTEGRATIONS).toBe("false");
+      // New entities (#78, #81, #82, #83)
+      expect(process.env.USE_RELEASES).toBe("true");
+      expect(process.env.USE_REFS).toBe("false");
+      expect(process.env.USE_MEMBERS).toBe("true");
+      expect(process.env.USE_SEARCH).toBe("false");
 
       // All feature flags should be in appliedSettings
       expect(result.appliedSettings).toContain("USE_GITLAB_WIKI=true");
       expect(result.appliedSettings).toContain("USE_VARIABLES=false");
+      expect(result.appliedSettings).toContain("USE_RELEASES=true");
+      expect(result.appliedSettings).toContain("USE_SEARCH=false");
     });
 
     it("should apply timeout_ms setting", async () => {

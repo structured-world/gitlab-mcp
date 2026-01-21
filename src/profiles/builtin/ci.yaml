@@ -25,6 +25,11 @@ features:
   webhooks: false
   snippets: false
   integrations: false
+  # New entities - automation focused
+  releases: true    # Automated releases
+  refs: false       # No branch management
+  members: false    # No team management
+  search: false     # No search needed for CI
 
 # Block workflow-related operations
 denied_tools_regex: "^manage_(work_item|mr|label|milestone|wiki)"

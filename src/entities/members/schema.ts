@@ -1,22 +1,6 @@
 import { z } from "zod";
 import { requiredId } from "../utils";
-
-/**
- * Access levels for GitLab members
- * - 10: Guest (view only)
- * - 20: Reporter (view + comment)
- * - 30: Developer (push code)
- * - 40: Maintainer (manage settings)
- * - 50: Owner (full control)
- */
-const AccessLevelSchema = z
-  .number()
-  .int()
-  .refine(val => [0, 5, 10, 20, 30, 40, 50].includes(val), {
-    message:
-      "Access level must be 0 (No access), 5 (Minimal), 10 (Guest), 20 (Reporter), 30 (Developer), 40 (Maintainer), or 50 (Owner)",
-  })
-  .describe("Access level: 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner");
+import { AccessLevelSchema } from "./schema-readonly";
 
 // =============================================================================
 // Manage Member Actions (Command)

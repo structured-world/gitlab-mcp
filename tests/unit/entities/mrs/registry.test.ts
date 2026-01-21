@@ -1089,7 +1089,11 @@ describe("MRS Registry", () => {
             expect.objectContaining({
               body: {
                 body: "```suggestion\nconst x = 1;\n```",
-                position: expect.any(String),
+                "position[base_sha]": "abc123",
+                "position[head_sha]": "def456",
+                "position[start_sha]": "ghi789",
+                "position[new_path]": "src/file.ts",
+                "position[new_line]": 10,
               },
               contentType: "form",
             })
@@ -1123,7 +1127,11 @@ describe("MRS Registry", () => {
             expect.objectContaining({
               body: {
                 body: "```suggestion:-2+1\nconst x = 1;\nconst y = 2;\n```",
-                position: expect.any(String),
+                "position[base_sha]": "abc123",
+                "position[head_sha]": "def456",
+                "position[start_sha]": "ghi789",
+                "position[new_path]": "src/file.ts",
+                "position[new_line]": 10,
               },
               contentType: "form",
             })
@@ -1156,7 +1164,11 @@ describe("MRS Registry", () => {
             expect.objectContaining({
               body: {
                 body: "Consider using const instead of let\n\n```suggestion\nconst x = 1;\n```",
-                position: expect.any(String),
+                "position[base_sha]": "abc123",
+                "position[head_sha]": "def456",
+                "position[start_sha]": "ghi789",
+                "position[new_path]": "src/file.ts",
+                "position[new_line]": 10,
               },
               contentType: "form",
             })

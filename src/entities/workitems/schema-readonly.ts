@@ -4,7 +4,13 @@ import { z } from "zod";
 // Base schemas for work items
 // ============================================================================
 
-export const WorkItemIdSchema = z.string().min(1).describe("Work item ID");
+export const WorkItemIdSchema = z
+  .string()
+  .min(1)
+  .describe(
+    "Work item ID - use numeric ID from list results (e.g., '5953'). " +
+      "GID format also accepted and auto-normalized (e.g., 'gid://gitlab/WorkItem/5953')."
+  );
 
 export const WorkItemTypeEnumSchema = z
   .string()
@@ -43,7 +49,9 @@ export const WorkItemStateEventSchema = z
 // ============================================================================
 
 // --- Shared fields ---
-const workItemIdField = WorkItemIdSchema.describe("Work item ID to retrieve");
+const workItemIdField = WorkItemIdSchema.describe(
+  "Work item ID to retrieve - use numeric ID from list results (e.g., '5953')"
+);
 
 // --- Action: list ---
 const ListWorkItemsSchema = z.object({

@@ -158,13 +158,11 @@ export class ContextManager {
       };
     }
 
-    // Fallback (should not happen with valid scope)
-    return {
-      type: "group",
-      path: "",
-      includeSubgroups: true,
-      detected,
-    };
+    // Invalid scope - should not happen with valid ScopeConfig (validated by Zod)
+    logger.error({ scope }, "Invalid scope configuration: no usable scope fields found");
+    throw new Error(
+      "Invalid scope configuration: expected project, group, namespace, projects, or groups to be defined"
+    );
   }
 
   /**
@@ -249,10 +247,13 @@ export class ContextManager {
       this.currentPreset = preset;
       this.currentPresetName = presetName;
 
-      // Apply scope from preset if defined
+      // Apply scope from preset if defined; otherwise clear any previous scope
       if (preset.scope) {
         this.currentScope = preset.scope;
         this.currentScopeEnforcer = new ScopeEnforcer(preset.scope);
+      } else {
+        this.currentScope = null;
+        this.currentScopeEnforcer = null;
       }
 
       logger.info({ previous: previousPreset, current: presetName }, "Switched preset");

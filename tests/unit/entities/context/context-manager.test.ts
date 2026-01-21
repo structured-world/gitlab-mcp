@@ -320,6 +320,19 @@ describe("ContextManager", () => {
         "Failed to switch to preset 'invalid-preset'"
       );
     });
+
+    it("should clear scope when switching to preset without scope", async () => {
+      const manager = ContextManager.getInstance();
+
+      // First switch to preset with scope
+      await manager.switchPreset("multi-groups");
+      expect(manager.hasScope()).toBe(true);
+
+      // Then switch to preset without scope - should clear
+      await manager.switchPreset("readonly");
+      expect(manager.hasScope()).toBe(false);
+      expect(manager.getScopeEnforcer()).toBeNull();
+    });
   });
 
   describe("switchProfile", () => {

@@ -115,11 +115,20 @@ export function validateGitLabUrl(url: string): { valid: boolean; error?: string
 }
 
 /**
- * Check if URL looks like GitLab SaaS
+ * Check if URL is GitLab SaaS (gitlab.com)
+ * Uses strict hostname matching to avoid false positives from URLs like:
+ * - notgitlab.com (contains "gitlab.com" as substring)
+ * - gitlab.company.com (contains "gitlab.com" as substring)
  */
 export function isGitLabSaas(url: string): boolean {
-  const lowerUrl = url.toLowerCase();
-  return lowerUrl.includes("gitlab.com");
+  try {
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.toLowerCase();
+    // Strict match: exactly gitlab.com or subdomain of gitlab.com
+    return hostname === "gitlab.com" || hostname.endsWith(".gitlab.com");
+  } catch {
+    return false;
+  }
 }
 
 /**

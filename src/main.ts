@@ -6,7 +6,6 @@ import { tryApplyProfileFromEnv, findProjectConfig, getProjectConfigSummary } fr
 import { parseCliArgs, displayProjectConfig } from "./cli-utils";
 import { autoDiscover, formatDiscoveryResult, AutoDiscoveryResult } from "./discovery";
 import { extractNamespaceFromPath } from "./utils/namespace";
-import { runWizard } from "./cli/init";
 
 /**
  * Configuration priority (highest to lowest):
@@ -28,7 +27,9 @@ async function main(): Promise<void> {
   const cliArgs = parseCliArgs();
 
   // Handle init subcommand (run wizard and exit)
+  // Lazy import to avoid loading wizard dependencies (clack, open) when not needed
   if (cliArgs.init) {
+    const { runWizard } = await import("./cli/init");
     await runWizard();
     process.exit(0);
   }

@@ -3,7 +3,6 @@
  */
 
 import * as p from "@clack/prompts";
-import open from "open";
 import {
   WizardConfig,
   UserRole,
@@ -93,8 +92,16 @@ export async function runWizard(): Promise<void> {
     }
 
     if (openBrowser) {
-      await open(patUrl);
-      p.log.info("Browser opened. Create your token and copy it.");
+      try {
+        // Dynamic import for ESM-only 'open' package in CommonJS context
+        const { default: open } = await import("open");
+        await open(patUrl);
+        p.log.info("Browser opened. Create your token and copy it.");
+      } catch {
+        // Gracefully handle headless environments or browser launch failures
+        p.log.warn("Could not open browser automatically");
+        p.note(patUrl, "Open this URL manually:");
+      }
     }
   }
 
@@ -243,9 +250,12 @@ export async function runWizard(): Promise<void> {
 
     if (!p.isCancel(useDeepLink) && useDeepLink) {
       try {
+        // Dynamic import for ESM-only 'open' package in CommonJS context
+        const { default: open } = await import("open");
         await open(deepLink);
         p.log.success("Claude Desktop should open with the configuration");
       } catch {
+        // Gracefully handle headless environments or browser launch failures
         p.log.warn("Could not open Claude Desktop automatically");
         p.note(deepLink, "Copy this link and open in browser:");
       }

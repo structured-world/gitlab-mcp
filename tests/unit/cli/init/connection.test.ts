@@ -107,19 +107,39 @@ describe("connection", () => {
       expect(isGitLabSaas("https://gitlab.com/group/project")).toBe(true);
     });
 
+    it("should return true for gitlab.com subdomains", () => {
+      // GitLab SaaS subdomains like customers, about, etc.
+      expect(isGitLabSaas("https://about.gitlab.com")).toBe(true);
+    });
+
     it("should return false for self-hosted", () => {
       expect(isGitLabSaas("https://gitlab.example.com")).toBe(false);
     });
 
     it("should return false for self-hosted with gitlab in name", () => {
-      // Note: current implementation uses simple "contains gitlab.com" check
       expect(isGitLabSaas("https://mygitlab.internal")).toBe(false);
       expect(isGitLabSaas("https://git.example.com")).toBe(false);
+    });
+
+    it("should return false for hosts that contain gitlab.com as substring", () => {
+      // Security: prevent matching hosts like notgitlab.com
+      expect(isGitLabSaas("https://notgitlab.com")).toBe(false);
+      expect(isGitLabSaas("https://fakegitlab.com")).toBe(false);
+    });
+
+    it("should return false for hosts ending with gitlab.com substring", () => {
+      // Security: prevent matching hosts like gitlab.company.com
+      expect(isGitLabSaas("https://gitlab.company.com")).toBe(false);
     });
 
     it("should be case insensitive", () => {
       expect(isGitLabSaas("https://GITLAB.COM")).toBe(true);
       expect(isGitLabSaas("https://GitLab.Com")).toBe(true);
+    });
+
+    it("should return false for invalid URLs", () => {
+      expect(isGitLabSaas("not-a-url")).toBe(false);
+      expect(isGitLabSaas("")).toBe(false);
     });
   });
 

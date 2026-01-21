@@ -191,21 +191,38 @@ describe("config-generator", () => {
   });
 
   describe("generateClaudeDeepLink", () => {
+    /**
+     * Helper to decode URL-safe Base64
+     * URL-safe Base64 uses - instead of +, _ instead of /, and no padding
+     */
+    function decodeUrlSafeBase64(encoded: string): string {
+      // Convert URL-safe Base64 back to standard Base64
+      let base64 = encoded.replace(/-/g, "+").replace(/_/g, "/");
+      // Add padding if needed
+      const padding = base64.length % 4;
+      if (padding) {
+        base64 += "=".repeat(4 - padding);
+      }
+      return Buffer.from(base64, "base64").toString("utf-8");
+    }
+
     it("should generate valid deep link URL", () => {
       const result = generateClaudeDeepLink(baseConfig);
 
       expect(result).toMatch(/^claude:\/\/settings\/mcp\/add\?config=/);
     });
 
-    it("should contain base64 encoded config", () => {
+    it("should contain URL-safe base64 encoded config", () => {
       const result = generateClaudeDeepLink(baseConfig);
       const base64Part = result.split("config=")[1];
 
-      // Should be valid base64
-      expect(() => Buffer.from(base64Part, "base64")).not.toThrow();
+      // Should not contain standard base64 special chars that need URL encoding
+      expect(base64Part).not.toContain("+");
+      expect(base64Part).not.toContain("/");
+      expect(base64Part).not.toContain("=");
 
-      // Decoded should contain server config
-      const decoded = JSON.parse(Buffer.from(base64Part, "base64").toString());
+      // Should be decodable
+      const decoded = JSON.parse(decodeUrlSafeBase64(base64Part));
       expect(decoded.name).toBe("gitlab");
       expect(decoded.command).toBe("npx");
       expect(decoded.env.GITLAB_API_URL).toBe("https://gitlab.example.com");
@@ -214,7 +231,7 @@ describe("config-generator", () => {
     it("should use custom server name in deep link", () => {
       const result = generateClaudeDeepLink(baseConfig, "my-server");
       const base64Part = result.split("config=")[1];
-      const decoded = JSON.parse(Buffer.from(base64Part, "base64").toString());
+      const decoded = JSON.parse(decodeUrlSafeBase64(base64Part));
 
       expect(decoded.name).toBe("my-server");
     });

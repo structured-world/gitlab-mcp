@@ -101,6 +101,9 @@ export function generateClientConfig(config: WizardConfig): {
 /**
  * Generate Claude Deep Link for one-click installation
  * Format: claude://settings/mcp/add?config=BASE64
+ *
+ * Uses URL-safe Base64 encoding to handle characters that may be
+ * problematic in query strings (+, /, =)
  */
 export function generateClaudeDeepLink(config: WizardConfig, serverName = "gitlab"): string {
   const serverConfig = generateServerConfig(config);
@@ -110,17 +113,12 @@ export function generateClaudeDeepLink(config: WizardConfig, serverName = "gitla
     ...serverConfig,
   };
 
-  const base64Config = Buffer.from(JSON.stringify(configObject)).toString("base64");
+  // URL-safe Base64: replace + with -, / with _, and remove = padding
+  const base64Config = Buffer.from(JSON.stringify(configObject))
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
   return `claude://settings/mcp/add?config=${base64Config}`;
-}
-
-/**
- * Generate environment variable export commands (for shell)
- */
-export function generateEnvExports(config: WizardConfig): string {
-  const serverConfig = generateServerConfig(config);
-
-  return Object.entries(serverConfig.env)
-    .map(([key, value]) => `export ${key}="${value}"`)
-    .join("\n");
 }

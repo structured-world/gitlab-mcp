@@ -12,5 +12,6 @@ export * from "./webhooks";
 export * from "./releases";
 export * from "./refs";
 export * from "./members";
+export * from "./search";
 
 // All entities now use the registry pattern with embedded handlers

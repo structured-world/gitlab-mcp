@@ -29,6 +29,7 @@ import {
 import { releasesToolRegistry, getReleasesReadOnlyToolNames } from "./entities/releases/registry";
 import { refsToolRegistry, getRefsReadOnlyToolNames } from "./entities/refs/registry";
 import { membersToolRegistry, getMembersReadOnlyToolNames } from "./entities/members/registry";
+import { searchToolRegistry, getSearchReadOnlyToolNames } from "./entities/search/registry";
 import {
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
@@ -46,6 +47,7 @@ import {
   USE_RELEASES,
   USE_REFS,
   USE_MEMBERS,
+  USE_SEARCH,
   getToolDescriptionOverrides,
 } from "./config";
 import { ToolAvailability } from "./services/ToolAvailability";
@@ -152,6 +154,10 @@ class RegistryManager {
       this.registries.set("members", membersToolRegistry);
     }
 
+    if (USE_SEARCH) {
+      this.registries.set("search", searchToolRegistry);
+    }
+
     // All entity registries have been migrated to the new pattern!
   }
 
@@ -233,6 +239,10 @@ class RegistryManager {
 
     if (USE_MEMBERS) {
       readOnlyTools.push(...getMembersReadOnlyToolNames());
+    }
+
+    if (USE_SEARCH) {
+      readOnlyTools.push(...getSearchReadOnlyToolNames());
     }
 
     return readOnlyTools;
@@ -394,6 +404,7 @@ class RegistryManager {
     const useReleases = process.env.USE_RELEASES !== "false";
     const useRefs = process.env.USE_REFS !== "false";
     const useMembers = process.env.USE_MEMBERS !== "false";
+    const useSearch = process.env.USE_SEARCH !== "false";
 
     // Build registries map based on dynamic feature flags
     const registriesToUse = new Map<string, ToolRegistry>();
@@ -416,6 +427,7 @@ class RegistryManager {
     if (useReleases) registriesToUse.set("releases", releasesToolRegistry);
     if (useRefs) registriesToUse.set("refs", refsToolRegistry);
     if (useMembers) registriesToUse.set("members", membersToolRegistry);
+    if (useSearch) registriesToUse.set("search", searchToolRegistry);
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -483,6 +495,7 @@ class RegistryManager {
       releasesToolRegistry,
       refsToolRegistry,
       membersToolRegistry,
+      searchToolRegistry,
     ];
 
     for (const registry of allRegistries) {

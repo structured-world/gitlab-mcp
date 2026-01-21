@@ -12,7 +12,23 @@ import {
   ROLE_PRESETS,
 } from "./types";
 import { testConnection, validateGitLabUrl, getPatCreationUrl } from "./connection";
-import { generateClientConfig, generateClaudeDeepLink } from "./config-generator";
+import {
+  generateClientConfig,
+  generateClaudeDeepLink,
+  generateServerConfig,
+} from "./config-generator";
+import { openUrl } from "./browser";
+
+/**
+ * Mask sensitive values in JSON content for display
+ */
+function maskSensitiveContent(content: string): string {
+  // Mask GITLAB_TOKEN value in JSON
+  return content.replace(
+    /("GITLAB_TOKEN"\s*:\s*")([^"]+)(")/g,
+    (_match, prefix, _token, suffix) => `${prefix}****${suffix}`
+  );
+}
 
 /**
  * Run the interactive init wizard
@@ -92,13 +108,10 @@ export async function runWizard(): Promise<void> {
     }
 
     if (openBrowser) {
-      try {
-        // Dynamic import for ESM-only 'open' package in CommonJS context
-        const { default: open } = await import("open");
-        await open(patUrl);
+      const opened = await openUrl(patUrl);
+      if (opened) {
         p.log.info("Browser opened. Create your token and copy it.");
-      } catch {
-        // Gracefully handle headless environments or browser launch failures
+      } else {
         p.log.warn("Could not open browser automatically");
         p.note(patUrl, "Open this URL manually:");
       }
@@ -211,7 +224,8 @@ export async function runWizard(): Promise<void> {
 
   if (generatedConfig.type === "cli" && generatedConfig.cliCommand) {
     // Claude Code - offer CLI installation
-    p.note(generatedConfig.cliCommand, "Run this command to install:");
+    // Mask token in displayed command for security (actual command uses real token)
+    p.note(maskSensitiveContent(generatedConfig.cliCommand), "Run this command to install:");
 
     const runNow = await p.confirm({
       message: "Run this command now?",
@@ -219,20 +233,37 @@ export async function runWizard(): Promise<void> {
     });
 
     if (!p.isCancel(runNow) && runNow) {
-      // Execute claude mcp add command
-      const { execSync } = await import("child_process");
+      // Execute claude mcp add command using spawnSync with argument array
+      // to prevent command injection vulnerabilities
+      const { spawnSync } = await import("child_process");
+      const serverConfig = generateServerConfig(wizardConfig);
+      const args = [
+        "mcp",
+        "add",
+        "gitlab",
+        serverConfig.command,
+        ...serverConfig.args,
+        ...Object.entries(serverConfig.env).flatMap(([key, value]) => ["--env", `${key}=${value}`]),
+      ];
+
       try {
         spinner.start("Installing MCP server...");
-        execSync(generatedConfig.cliCommand, { stdio: "inherit" });
-        spinner.stop("MCP server installed!");
+        const result = spawnSync("claude", args, { stdio: "inherit" });
+        if (result.status === 0) {
+          spinner.stop("MCP server installed!");
+        } else {
+          spinner.stop("Installation failed");
+          p.log.error("Failed to run command. You can run it manually.");
+        }
       } catch {
         spinner.stop("Installation failed");
         p.log.error("Failed to run command. You can run it manually.");
       }
     }
   } else {
-    // JSON configuration
-    p.note(generatedConfig.content, "Add to your MCP configuration:");
+    // JSON configuration - mask PAT in terminal output for security
+    p.note(maskSensitiveContent(generatedConfig.content), "Add to your MCP configuration:");
+    p.log.warn("Note: Replace **** with your actual token in the config file");
 
     if (generatedConfig.configPath) {
       p.log.info(`Config file: ${generatedConfig.configPath}`);
@@ -249,13 +280,10 @@ export async function runWizard(): Promise<void> {
     });
 
     if (!p.isCancel(useDeepLink) && useDeepLink) {
-      try {
-        // Dynamic import for ESM-only 'open' package in CommonJS context
-        const { default: open } = await import("open");
-        await open(deepLink);
+      const opened = await openUrl(deepLink);
+      if (opened) {
         p.log.success("Claude Desktop should open with the configuration");
-      } catch {
-        // Gracefully handle headless environments or browser launch failures
+      } else {
         p.log.warn("Could not open Claude Desktop automatically");
         p.note(deepLink, "Copy this link and open in browser:");
       }

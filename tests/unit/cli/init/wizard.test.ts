@@ -7,6 +7,7 @@ import * as p from "@clack/prompts";
 import { runWizard } from "../../../../src/cli/init/wizard";
 import * as connection from "../../../../src/cli/init/connection";
 import * as configGenerator from "../../../../src/cli/init/config-generator";
+import * as browser from "../../../../src/cli/init/browser";
 
 // Mock all @clack/prompts functions
 jest.mock("@clack/prompts", () => ({
@@ -32,8 +33,11 @@ jest.mock("@clack/prompts", () => ({
   isCancel: jest.fn(() => false),
 }));
 
-// Mock open package
-jest.mock("open", () => jest.fn());
+// Mock browser module
+jest.mock("../../../../src/cli/init/browser", () => ({
+  openUrl: jest.fn().mockResolvedValue(true),
+}));
+const mockOpenUrl = browser.openUrl as jest.Mock;
 
 // Mock connection module
 jest.mock("../../../../src/cli/init/connection", () => ({
@@ -50,6 +54,15 @@ jest.mock("../../../../src/cli/init/config-generator", () => ({
     configPath: "~/.config/test",
   })),
   generateClaudeDeepLink: jest.fn(() => "claude://test"),
+  generateServerConfig: jest.fn(() => ({
+    command: "npx",
+    args: ["-y", "@structured-world/gitlab-mcp@latest"],
+    env: {
+      GITLAB_API_URL: "https://gitlab.com",
+      GITLAB_TOKEN: "test-token",
+      GITLAB_MCP_PRESET: "developer",
+    },
+  })),
 }));
 
 // Mock process.exit
@@ -171,8 +184,6 @@ describe("wizard", () => {
     });
 
     it("should offer to open browser for PAT creation", async () => {
-      const mockOpen = jest.requireMock("open");
-
       (p.select as jest.Mock)
         .mockResolvedValueOnce("saas")
         .mockResolvedValueOnce("developer")
@@ -193,7 +204,7 @@ describe("wizard", () => {
       await runWizard();
 
       expect(p.note).toHaveBeenCalled();
-      expect(mockOpen).toHaveBeenCalled();
+      expect(mockOpenUrl).toHaveBeenCalled();
     });
 
     it("should handle read-only mode selection", async () => {
@@ -378,8 +389,8 @@ describe("wizard", () => {
     });
 
     it("should handle deep link open failure gracefully", async () => {
-      const mockOpen = jest.requireMock<jest.Mock>("open");
-      mockOpen.mockRejectedValueOnce(new Error("Failed to open"));
+      // openUrl returns false when browser open fails
+      mockOpenUrl.mockResolvedValueOnce(false);
 
       (configGenerator.generateClaudeDeepLink as jest.Mock).mockReturnValueOnce(
         "claude://test-deep-link"
@@ -413,8 +424,8 @@ describe("wizard", () => {
     });
 
     it("should open deep link successfully for claude-desktop", async () => {
-      const mockOpen = jest.requireMock<jest.Mock>("open");
-      mockOpen.mockResolvedValueOnce(undefined);
+      // openUrl returns true when browser opens successfully
+      mockOpenUrl.mockResolvedValueOnce(true);
 
       (configGenerator.generateClaudeDeepLink as jest.Mock).mockReturnValueOnce(
         "claude://test-deep-link"
@@ -439,7 +450,7 @@ describe("wizard", () => {
 
       await runWizard();
 
-      expect(mockOpen).toHaveBeenCalledWith("claude://test-deep-link");
+      expect(mockOpenUrl).toHaveBeenCalledWith("claude://test-deep-link");
       expect(p.log.success).toHaveBeenCalledWith(
         "Claude Desktop should open with the configuration"
       );
@@ -709,9 +720,8 @@ describe("wizard", () => {
 
       await runWizard();
 
-      const mockOpen = jest.requireMock<jest.Mock>("open");
       // Should not have called open with deep link
-      expect(mockOpen).not.toHaveBeenCalledWith("claude://test-deep-link");
+      expect(mockOpenUrl).not.toHaveBeenCalledWith("claude://test-deep-link");
     });
   });
 });

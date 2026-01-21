@@ -24,7 +24,7 @@ import { IntegrationTestHelper } from "./helpers/registry-helper";
 describe("🔄 Data Lifecycle - Complete Infrastructure Setup", () => {
   const timestamp = Date.now();
   const baseTestName = `lifecycle-test-${timestamp}`;
-  let client: GraphQLClient;
+  let _client: GraphQLClient;
   let connectionManager: ConnectionManager;
   let helper: IntegrationTestHelper;
 
@@ -38,7 +38,7 @@ describe("🔄 Data Lifecycle - Complete Infrastructure Setup", () => {
     console.log("🔍 Initializing GraphQL schema introspection...");
     connectionManager = ConnectionManager.getInstance();
     await connectionManager.initialize();
-    client = connectionManager.getClient();
+    _client = connectionManager.getClient();
     console.log("✅ GraphQL schema introspection completed");
 
     // Initialize integration test helper
@@ -778,7 +778,7 @@ describe("🔄 Data Lifecycle - Complete Infrastructure Setup", () => {
               expect(labelsWidget.labels?.nodes?.length || 0).toBeGreaterThanOrEqual(0);
             }
 
-            if (milestoneWidget && milestoneWidget.milestone) {
+            if (milestoneWidget?.milestone) {
               console.log(`    📅 Milestone widget:`, milestoneWidget.milestone.title);
               expect(milestoneWidget.milestone).toBeDefined();
             }
@@ -842,7 +842,7 @@ describe("🔄 Data Lifecycle - Complete Infrastructure Setup", () => {
               expect(labelsWidget.labels?.nodes?.length || 0).toBeGreaterThanOrEqual(0);
             }
 
-            if (milestoneWidget && milestoneWidget.milestone) {
+            if (milestoneWidget?.milestone) {
               console.log(`    📅 Milestone widget:`, milestoneWidget.milestone.title);
               expect(milestoneWidget.milestone).toBeDefined();
             }
@@ -929,7 +929,7 @@ describe("🔄 Data Lifecycle - Complete Infrastructure Setup", () => {
       console.log(`🔧 Setting due date: ${dueDate}...`);
 
       // Create a separate curl command to set due date and parent as GitLab's widget system is complex
-      const curlUpdateCommand = `curl -X POST "${GITLAB_API_URL}/api/v4/graphql" \\
+      const _curlUpdateCommand = `curl -X POST "${GITLAB_API_URL}/api/v4/graphql" \\
         -H "Authorization: Bearer ${GITLAB_TOKEN}" \\
         -H "Content-Type: application/json" \\
         -d '{
@@ -1389,7 +1389,7 @@ describe("🔄 Data Lifecycle - Complete Infrastructure Setup", () => {
 
         expect(pendingTodos.length).toBe(0);
         console.log("  ✅ Verified no pending todos remain");
-      } catch (error) {
+      } catch (_error) {
         // Some GitLab instances may not support bulk mark_all_as_done
         // Fall back to marking individually
         console.log("  ⚠️ Bulk mark_all_done not available, marking individually...");

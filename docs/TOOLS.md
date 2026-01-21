@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-21 | Tools: 45 | Version: 6.22.0
+> Generated: 2026-01-21 | Tools: 46 | Version: 6.23.0
 
 ## Table of Contents
 
@@ -18,7 +18,7 @@
 - [Webhooks (2)](#webhooks)
 - [Integrations (2)](#integrations)
 - [Todos (2)](#todos)
-- [Other (6)](#other)
+- [Other (7)](#other)
 
 ---
 
@@ -2662,6 +2662,59 @@ MANAGE team members in projects and groups. Actions: "add_to_project" adds membe
   "project_id": "my-group/my-project",
   "user_id": "123",
   "access_level": 10
+}
+```
+
+---
+
+### browse_search [tier: Free]
+
+SEARCH GitLab resources. Actions: "global" searches entire instance, "project" searches within a project, "group" searches within a group. Scopes: projects, issues, merge_requests, milestones, users, groups, blobs (code), commits, wiki_blobs, notes.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `global` | Free | Search across entire GitLab instance |
+| `project` | Free | Search within a specific project |
+| `group` | Free | Search within a specific group and its subgroups |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `scope` | string | Yes | Search scope determining what type of resources to search |
+| `search` | string | Yes | Search query string (minimum 1 character) |
+| `confidential` | boolean | No | Filter by confidentiality (for issues scope, Premium only) |
+| `order_by` | string | No | Sort results by field |
+| `page` | integer | No | Page number |
+| `sort` | string | No | Sort direction |
+| `state` | string | No | Filter by state (for issues and merge_requests scopes) |
+
+**Action `group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path (e.g., 'my-group' or '123') |
+
+**Action `project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path (e.g., 'group/project' or '123') |
+| `ref` | string | No | Branch/tag reference for code search (blobs, commits) |
+
+#### Example
+
+```json
+{
+  "action": "global",
+  "scope": "projects",
+  "search": "example_search",
+  "per_page": 10
 }
 ```
 

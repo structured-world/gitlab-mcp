@@ -1,3 +1,9 @@
+## [6.23.0](https://github.com/structured-world/gitlab-mcp/compare/v6.22.0...v6.23.0) (2026-01-21)
+
+### Features
+
+* **search:** add global search entity with CQRS browse_search tool ([#93](https://github.com/structured-world/gitlab-mcp/issues/93)) ([90aecdc](https://github.com/structured-world/gitlab-mcp/commit/90aecdcc2f4b36672a2fa093e15a5e69eaef02be)), closes [#82](https://github.com/structured-world/gitlab-mcp/issues/82)
+
 ## [6.22.0](https://github.com/structured-world/gitlab-mcp/compare/v6.21.0...v6.22.0) (2026-01-21)
 
 ### Features

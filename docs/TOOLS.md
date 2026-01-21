@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-21 | Tools: 43 | Version: 6.21.0
+> Generated: 2026-01-21 | Tools: 45 | Version: 6.22.0
 
 ## Table of Contents
 
@@ -18,7 +18,7 @@
 - [Webhooks (2)](#webhooks)
 - [Integrations (2)](#integrations)
 - [Todos (2)](#todos)
-- [Other (4)](#other)
+- [Other (6)](#other)
 
 ---
 
@@ -2495,4 +2495,175 @@ MANAGE Git refs (branches and tags). Actions: "create_branch" creates branch fro
 
 ---
 
-[16:26:16.378] [32mINFO[39m (gitlab-mcp): [36mUsing in-memory session storage (sessions will be lost on restart)[39m
+### browse_members [tier: Free]
+
+BROWSE team members in projects and groups. Actions: "list_project" lists project members, "list_group" lists group members, "get_project" gets project member details, "get_group" gets group member details, "list_all_project" includes inherited members, "list_all_group" includes inherited members. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `list_project` | Free | List all members of a project |
+| `list_group` | Free | List all members of a group |
+| `get_project` | Free | Get a specific member of a project |
+| `get_group` | Free | Get a specific member of a group |
+| `list_all_project` | Free | List all project members including inherited from parent groups |
+| `list_all_group` | Free | List all group members including inherited from parent groups |
+
+#### Parameters
+
+**Action `get_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `user_id` | string | Yes | User ID of the member |
+| `include_inherited` | boolean | No | Include members inherited from parent groups |
+
+**Action `get_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `user_id` | string | Yes | User ID of the member |
+| `include_inherited` | boolean | No | Include members inherited from parent groups |
+
+**Action `list_all_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `page` | integer | No | Page number |
+| `query` | string | No | Search members by name or username |
+| `state` | string | No | Filter by member state |
+| `user_ids` | string[] | No | Filter to specific user IDs |
+
+**Action `list_all_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `page` | integer | No | Page number |
+| `query` | string | No | Search members by name or username |
+| `state` | string | No | Filter by member state |
+| `user_ids` | string[] | No | Filter to specific user IDs |
+
+**Action `list_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `page` | integer | No | Page number |
+| `query` | string | No | Search members by name or username |
+| `user_ids` | string[] | No | Filter to specific user IDs |
+
+**Action `list_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `page` | integer | No | Page number |
+| `query` | string | No | Search members by name or username |
+| `user_ids` | string[] | No | Filter to specific user IDs |
+
+#### Example
+
+```json
+{
+  "action": "list_project",
+  "project_id": "my-group/my-project",
+  "per_page": 10
+}
+```
+
+---
+
+### manage_member [tier: Free]
+
+MANAGE team members in projects and groups. Actions: "add_to_project" adds member to project, "add_to_group" adds member to group, "remove_from_project" removes from project, "remove_from_group" removes from group, "update_project" changes project member access level, "update_group" changes group member access level. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `add_to_project` | Free | Add a user as member to a project |
+| `add_to_group` | Free | Add a user as member to a group |
+| `remove_from_project` | Free | Remove a member from a project |
+| `remove_from_group` | Free | Remove a member from a group |
+| `update_project` | Free | Update access level of a project member |
+| `update_group` | Free | Update access level of a group member |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `user_id` | string | Yes | User ID to remove |
+
+**Action `add_to_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
+
+**Action `add_to_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
+
+**Action `remove_from_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `skip_subresources` | boolean | No | Skip removing from subgroups and projects |
+| `unassign_issuables` | boolean | No | Unassign member from issues and merge requests |
+
+**Action `remove_from_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `skip_subresources` | boolean | No | Skip removing from subprojects and forks |
+| `unassign_issuables` | boolean | No | Unassign member from issues and merge requests |
+
+**Action `update_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
+| `member_role_id` | integer | No | ID of a custom member role (Ultimate only) |
+
+**Action `update_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
+
+#### Example
+
+```json
+{
+  "action": "add_to_project",
+  "project_id": "my-group/my-project",
+  "user_id": "123",
+  "access_level": 10
+}
+```
+
+---
+

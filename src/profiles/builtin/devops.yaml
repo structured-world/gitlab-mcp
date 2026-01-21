@@ -26,3 +26,8 @@ features:
   webhooks: true
   snippets: false
   integrations: true
+  # New entities - infrastructure focused
+  releases: true    # Release management
+  refs: true        # Branch/tag management
+  members: false    # No team management
+  search: true      # Code search for debugging

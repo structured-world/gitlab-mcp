@@ -108,6 +108,11 @@ describe("Built-in Presets", () => {
       expect(parsed.features?.variables).toBe(true);
       expect(parsed.features?.webhooks).toBe(true);
       expect(parsed.features?.integrations).toBe(true);
+      // New entities (#78, #81, #82, #83)
+      expect(parsed.features?.releases).toBe(true);
+      expect(parsed.features?.refs).toBe(true);
+      expect(parsed.features?.members).toBe(true);
+      expect(parsed.features?.search).toBe(true);
     });
 
     it("junior-dev.yaml should have pipelines disabled", () => {
@@ -117,6 +122,11 @@ describe("Built-in Presets", () => {
 
       expect(parsed.features?.pipelines).toBe(false);
       expect(parsed.features?.variables).toBe(false);
+      // New entities - minimal access
+      expect(parsed.features?.releases).toBe(false);
+      expect(parsed.features?.refs).toBe(false);
+      expect(parsed.features?.members).toBe(false);
+      expect(parsed.features?.search).toBe(true); // Search enabled for junior devs
     });
 
     it("devops.yaml should have pipelines and variables enabled", () => {
@@ -148,6 +158,11 @@ describe("Built-in Presets", () => {
       expect(parsed.features?.variables).toBe(true);
       expect(parsed.features?.wiki).toBe(false);
       expect(parsed.features?.workitems).toBe(false);
+      // New entities - automation focused
+      expect(parsed.features?.releases).toBe(true); // Automated releases
+      expect(parsed.features?.refs).toBe(false);
+      expect(parsed.features?.members).toBe(false);
+      expect(parsed.features?.search).toBe(false);
     });
 
     it("gitlab-com.yaml should have rate-limit friendly restrictions", () => {

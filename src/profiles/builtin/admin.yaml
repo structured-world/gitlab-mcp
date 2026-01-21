@@ -23,3 +23,8 @@ features:
   webhooks: true
   snippets: true
   integrations: true
+  # New entities
+  releases: true
+  refs: true
+  members: true
+  search: true

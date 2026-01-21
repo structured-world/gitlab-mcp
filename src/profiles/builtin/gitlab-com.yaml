@@ -25,6 +25,11 @@ features:
   webhooks: false      # Requires maintainer+ access
   snippets: true
   integrations: false  # Requires admin access
+  # New entities - standard access for gitlab.com
+  releases: true       # Release management
+  refs: true           # Branch/tag browsing
+  members: true        # Team info browsing
+  search: true         # Code search
 
 # Rate-limit friendly restrictions
 denied_actions:

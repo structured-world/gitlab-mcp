@@ -56,6 +56,11 @@ const FeatureFlagsSchema = z
     webhooks: z.boolean().optional(),
     snippets: z.boolean().optional(),
     integrations: z.boolean().optional(),
+    // New entities (#78, #81, #82, #83)
+    releases: z.boolean().optional(),
+    refs: z.boolean().optional(),
+    members: z.boolean().optional(),
+    search: z.boolean().optional(),
   })
   .optional();
 

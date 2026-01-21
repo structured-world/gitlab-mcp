@@ -26,6 +26,11 @@ features:
   webhooks: false
   snippets: true
   integrations: false
+  # New entities - full team management
+  releases: true    # Release planning
+  refs: true        # Branch management
+  members: true     # Team access management
+  search: true      # Code search
 
 # Block sensitive operations
 denied_actions:

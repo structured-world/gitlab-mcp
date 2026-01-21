@@ -45,7 +45,7 @@
     "cleanup:test-groups": "node scripts/cleanup-test-groups.js",
     "cleanup:test-groups:dry-run": "node scripts/cleanup-test-groups.js --dry-run",
     "cleanup:test-groups:force": "node scripts/cleanup-test-groups.js --force",
-    "lint": "eslint \"{src,tests}/**/*.ts\" ",
+    "lint": "tsc --noEmit && eslint \"{src,tests}/**/*.ts\" ",
     "lint:fix": "eslint \"{src,tests}/**/*.ts\" --fix",
     "format": "prettier --write \"**/*.{js,ts,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,ts,json,md}\"",

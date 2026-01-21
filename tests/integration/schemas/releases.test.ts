@@ -99,7 +99,7 @@ describe("Releases Schema - GitLab Integration", () => {
       const result = BrowseReleasesSchema.safeParse(params);
       expect(result.success).toBe(true);
 
-      if (result.success) {
+      if (result.success && result.data.action === "list") {
         expect(result.data.order_by).toBe("created_at");
         expect(result.data.sort).toBe("asc");
       }

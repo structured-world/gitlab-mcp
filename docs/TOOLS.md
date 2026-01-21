@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-21 | Tools: 47 | Version: 6.24.0
+> Generated: 2026-01-21 | Tools: 47 | Version: 6.24.1
 
 ## Table of Contents
 
@@ -669,7 +669,7 @@ BROWSE merge requests. Actions: "list" shows MRs with filtering, "get" retrieves
 
 ### browse_mr_discussions [tier: Free]
 
-BROWSE MR discussions and draft notes. Actions: "list" shows all discussion threads, "drafts" lists unpublished draft notes, "draft" gets single draft note.
+BROWSE MR discussions and draft notes. Actions: "list" shows all discussion threads (default: 20 per page), "drafts" lists unpublished draft notes, "draft" gets single draft note.
 
 #### Actions
 
@@ -698,8 +698,8 @@ BROWSE MR discussions and draft notes. Actions: "list" shows all discussion thre
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | number | Yes | Number of items per page (default: 20) |
 | `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
 
 #### Example
 
@@ -707,7 +707,8 @@ BROWSE MR discussions and draft notes. Actions: "list" shows all discussion thre
 {
   "action": "list",
   "project_id": "my-group/my-project",
-  "merge_request_iid": "1"
+  "merge_request_iid": "1",
+  "per_page": 10
 }
 ```
 

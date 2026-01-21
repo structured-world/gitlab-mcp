@@ -485,9 +485,31 @@ describe("RegistryManager", () => {
       registryManager = RegistryManager.getInstance();
       const tools = registryManager.getAllToolDefinitionsTierless();
 
-      // Should only have core readonly tools (all other features disabled)
+      // Should only have core tools and context tools when all features disabled
+      // Context tools (manage_context) are always available as they only affect session state
       expect(tools.length).toBeGreaterThan(0);
-      expect(tools.every(t => t.name.includes("readonly") || t.name.includes("core"))).toBe(true);
+
+      // Verify no feature-specific tools are present
+      const featureToolPatterns = [
+        /^list_labels$/,
+        /^create_label$/,
+        /merge_request/,
+        /^browse_files$/,
+        /^manage_files$/,
+        /milestone/,
+        /pipeline/,
+        /variable/,
+        /wiki/,
+        /work_item/,
+        /snippet/,
+        /webhook/,
+        /integration/,
+      ];
+
+      const hasFeatureTools = tools.some(t =>
+        featureToolPatterns.some(pattern => pattern.test(t.name))
+      );
+      expect(hasFeatureTools).toBe(false);
     });
   });
 

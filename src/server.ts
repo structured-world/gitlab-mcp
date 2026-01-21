@@ -51,7 +51,9 @@ export const server = new Server(
   },
   {
     capabilities: {
-      tools: {},
+      tools: {
+        listChanged: true,
+      },
     },
   }
 );
@@ -65,6 +67,25 @@ server.oninitialized = () => {
   const clientVersion = server.getClientVersion();
   setDetectedSchemaMode(clientVersion?.name);
 };
+
+/**
+ * Send a tools/list_changed notification to connected clients.
+ *
+ * This notifies clients that the available tools have changed, prompting them
+ * to re-fetch the tool list. Used when switching presets that affect tool availability.
+ *
+ * Per MCP spec, this notification is sent as:
+ * { jsonrpc: "2.0", method: "notifications/tools/list_changed" }
+ */
+export async function sendToolsListChangedNotification(): Promise<void> {
+  try {
+    await server.notification({ method: "notifications/tools/list_changed" });
+    logger.info("Sent tools/list_changed notification to clients");
+  } catch (error) {
+    // Log but don't throw - client may not support this notification
+    logger.debug({ err: error }, "Failed to send tools/list_changed notification");
+  }
+}
 
 // Terminal colors for logging (currently unused)
 // const colorGreen = '\x1b[32m';

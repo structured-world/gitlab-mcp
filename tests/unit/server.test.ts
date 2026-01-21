@@ -6,6 +6,7 @@
 // Mock all external dependencies at the top
 const mockServer = {
   connect: jest.fn(),
+  notification: jest.fn().mockResolvedValue(undefined),
 };
 
 const mockApp = {
@@ -83,7 +84,7 @@ jest.mock("../../src/oauth/index", () => ({
 }));
 
 import type { Server as _Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { startServer } from "../../src/server";
+import { startServer, sendToolsListChangedNotification } from "../../src/server";
 
 describe("server", () => {
   let originalArgv: string[];
@@ -691,4 +692,47 @@ describe("server", () => {
   });
 
   // Note: setupHandlers integration is tested separately in handlers.test.ts
+
+  describe("sendToolsListChangedNotification", () => {
+    beforeEach(() => {
+      mockServer.notification.mockClear();
+      mockServer.notification.mockResolvedValue(undefined);
+    });
+
+    it("should send notification with correct method", async () => {
+      await sendToolsListChangedNotification();
+
+      expect(mockServer.notification).toHaveBeenCalledTimes(1);
+      expect(mockServer.notification).toHaveBeenCalledWith({
+        method: "notifications/tools/list_changed",
+      });
+    });
+
+    it("should log info on successful notification", async () => {
+      await sendToolsListChangedNotification();
+
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        "Sent tools/list_changed notification to clients"
+      );
+    });
+
+    it("should not throw if notification fails", async () => {
+      mockServer.notification.mockRejectedValueOnce(new Error("Client disconnected"));
+
+      // Should not throw
+      await expect(sendToolsListChangedNotification()).resolves.toBeUndefined();
+    });
+
+    it("should log debug on failed notification", async () => {
+      const error = new Error("Transport closed");
+      mockServer.notification.mockRejectedValueOnce(error);
+
+      await sendToolsListChangedNotification();
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        { err: error },
+        "Failed to send tools/list_changed notification"
+      );
+    });
+  });
 });

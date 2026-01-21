@@ -30,6 +30,7 @@ import { releasesToolRegistry, getReleasesReadOnlyToolNames } from "./entities/r
 import { refsToolRegistry, getRefsReadOnlyToolNames } from "./entities/refs/registry";
 import { membersToolRegistry, getMembersReadOnlyToolNames } from "./entities/members/registry";
 import { searchToolRegistry, getSearchReadOnlyToolNames } from "./entities/search/registry";
+import { contextToolRegistry, getContextReadOnlyToolNames } from "./entities/context/registry";
 import {
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
@@ -96,6 +97,9 @@ class RegistryManager {
   private initializeRegistries(): void {
     // Always add core tools
     this.registries.set("core", coreToolRegistry);
+
+    // Always add context tools (runtime context management)
+    this.registries.set("context", contextToolRegistry);
 
     // Add tools based on feature flags
     if (USE_LABELS) {
@@ -183,6 +187,9 @@ class RegistryManager {
 
     // Always add core read-only tools
     readOnlyTools.push(...getCoreReadOnlyToolNames());
+
+    // Always add context read-only tools
+    readOnlyTools.push(...getContextReadOnlyToolNames());
 
     // Add read-only tools from enabled entities
     if (USE_LABELS) {
@@ -412,6 +419,9 @@ class RegistryManager {
     // Always add core tools
     registriesToUse.set("core", coreToolRegistry);
 
+    // Always add context tools
+    registriesToUse.set("context", contextToolRegistry);
+
     // Add tools based on dynamically checked feature flags
     if (useLabels) registriesToUse.set("labels", labelsToolRegistry);
     if (useMrs) registriesToUse.set("mrs", mrsToolRegistry);
@@ -481,6 +491,7 @@ class RegistryManager {
     // All registries without any filtering
     const allRegistries: ToolRegistry[] = [
       coreToolRegistry,
+      contextToolRegistry,
       labelsToolRegistry,
       mrsToolRegistry,
       filesToolRegistry,

@@ -1,3 +1,9 @@
+## [6.22.0](https://github.com/structured-world/gitlab-mcp/compare/v6.21.0...v6.22.0) (2026-01-21)
+
+### Features
+
+* **members:** add members management entity with CQRS tools ([#89](https://github.com/structured-world/gitlab-mcp/issues/89)) ([aa0924d](https://github.com/structured-world/gitlab-mcp/commit/aa0924d774b262ebc76a997a1400b7b1b694308e)), closes [#81](https://github.com/structured-world/gitlab-mcp/issues/81)
+
 ## [6.21.0](https://github.com/structured-world/gitlab-mcp/compare/v6.20.0...v6.21.0) (2026-01-21)
 
 ### Features

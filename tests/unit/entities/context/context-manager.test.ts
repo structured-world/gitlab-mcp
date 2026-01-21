@@ -52,6 +52,28 @@ const mockPresets: Record<string, unknown> = {
       includeSubgroups: true,
     },
   },
+  "namespace-scope": {
+    description: "Namespace scoped preset",
+    read_only: false,
+    scope: {
+      namespace: "my-namespace",
+      includeSubgroups: true,
+    },
+  },
+  "single-project-scope": {
+    description: "Single project in array",
+    read_only: false,
+    scope: {
+      projects: ["only-project"],
+    },
+  },
+  "single-group-scope": {
+    description: "Single group in array",
+    read_only: false,
+    scope: {
+      groups: ["only-group"],
+    },
+  },
 };
 
 jest.mock("../../../../src/profiles/loader", () => ({
@@ -73,15 +95,23 @@ jest.mock("../../../../src/profiles/loader", () => ({
       },
     ]),
     loadPreset: jest.fn().mockImplementation((name: string) => {
+      if (name === "invalid-preset") {
+        return Promise.reject(new Error("Preset not found: invalid-preset"));
+      }
       const preset = mockPresets[name] || {
         description: "Test preset",
         read_only: false,
       };
       return Promise.resolve(preset);
     }),
-    loadProfile: jest.fn().mockResolvedValue({
-      host: "gitlab.example.com",
-      auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+    loadProfile: jest.fn().mockImplementation((name: string) => {
+      if (name === "invalid-profile") {
+        return Promise.reject(new Error("Profile not found: invalid-profile"));
+      }
+      return Promise.resolve({
+        host: "gitlab.example.com",
+        auth: { type: "pat", token_env: "GITLAB_TOKEN" },
+      });
     }),
   })),
 }));
@@ -182,6 +212,18 @@ describe("ContextManager", () => {
       expect(context.initialContext).toBeDefined();
       expect(context.initialContext?.host).toBe("gitlab.example.com");
     });
+
+    it("should handle invalid URL in getHost by returning raw value", () => {
+      // Test the catch branch in getHost() when URL parsing fails
+      mockGitLabBaseUrl = "not-a-valid-url";
+      ContextManager.resetInstance();
+
+      const manager = ContextManager.getInstance();
+      const context = manager.getContext();
+
+      // When URL is invalid, getHost returns the raw value
+      expect(context.host).toBe("not-a-valid-url");
+    });
   });
 
   describe("listPresets", () => {
@@ -270,6 +312,14 @@ describe("ContextManager", () => {
       // Should be called twice - once for each switch
       expect(mockSendToolsListChangedNotification).toHaveBeenCalledTimes(2);
     });
+
+    it("should throw error when preset loading fails", async () => {
+      const manager = ContextManager.getInstance();
+
+      await expect(manager.switchPreset("invalid-preset")).rejects.toThrow(
+        "Failed to switch to preset 'invalid-preset'"
+      );
+    });
   });
 
   describe("switchProfile", () => {
@@ -293,6 +343,17 @@ describe("ContextManager", () => {
 
       expect(result.success).toBe(true);
       expect(result.current).toBe("production");
+    });
+
+    it("should throw error when profile loading fails in OAuth mode", async () => {
+      process.env.OAUTH_ENABLED = "true";
+      ContextManager.resetInstance();
+
+      const manager = ContextManager.getInstance();
+
+      await expect(manager.switchProfile("invalid-profile")).rejects.toThrow(
+        "Failed to switch to profile 'invalid-profile'"
+      );
     });
   });
 
@@ -500,6 +561,45 @@ describe("ContextManager", () => {
       expect(context.scope?.path).toBe("team-a");
       expect(context.scope?.additionalPaths).toEqual(["team-b"]);
       expect(context.scope?.includeSubgroups).toBe(true);
+    });
+
+    it("should handle namespace scope from preset", async () => {
+      const manager = ContextManager.getInstance();
+
+      // Switch to preset with namespace scope
+      await manager.switchPreset("namespace-scope");
+
+      const context = manager.getContext();
+      expect(context.scope).toBeDefined();
+      expect(context.scope?.type).toBe("group");
+      expect(context.scope?.path).toBe("my-namespace");
+      expect(context.scope?.includeSubgroups).toBe(true);
+    });
+
+    it("should not have additionalPaths for single project in array", async () => {
+      const manager = ContextManager.getInstance();
+
+      // Switch to preset with single project in projects array
+      await manager.switchPreset("single-project-scope");
+
+      const context = manager.getContext();
+      expect(context.scope).toBeDefined();
+      expect(context.scope?.type).toBe("project");
+      expect(context.scope?.path).toBe("only-project");
+      expect(context.scope?.additionalPaths).toBeUndefined();
+    });
+
+    it("should not have additionalPaths for single group in array", async () => {
+      const manager = ContextManager.getInstance();
+
+      // Switch to preset with single group in groups array
+      await manager.switchPreset("single-group-scope");
+
+      const context = manager.getContext();
+      expect(context.scope).toBeDefined();
+      expect(context.scope?.type).toBe("group");
+      expect(context.scope?.path).toBe("only-group");
+      expect(context.scope?.additionalPaths).toBeUndefined();
     });
   });
 

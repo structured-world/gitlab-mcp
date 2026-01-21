@@ -1,5 +1,17 @@
-import { refsToolRegistry } from "../../../../src/entities/refs/registry";
+import {
+  refsToolRegistry,
+  getRefsReadOnlyToolNames,
+  getRefsToolDefinitions,
+  getFilteredRefsTools,
+} from "../../../../src/entities/refs/registry";
+// Import from index.ts to cover re-exports
+import {
+  BrowseRefsSchema,
+  ManageRefSchema,
+  refsToolRegistry as indexRefsToolRegistry,
+} from "../../../../src/entities/refs";
 import { gitlab } from "../../../../src/utils/gitlab-api";
+import { isActionDenied } from "../../../../src/config";
 
 // Mock the GitLab API module
 jest.mock("../../../../src/utils/gitlab-api", () => ({
@@ -27,6 +39,7 @@ jest.mock("../../../../src/config", () => ({
 }));
 
 const mockGitlab = gitlab as jest.Mocked<typeof gitlab>;
+const mockIsActionDenied = isActionDenied as jest.MockedFunction<typeof isActionDenied>;
 
 describe("Refs Tool Registry", () => {
   beforeEach(() => {
@@ -451,6 +464,221 @@ describe("Refs Tool Registry", () => {
       expect(refsToolRegistry.has("browse_refs")).toBe(true);
       expect(refsToolRegistry.has("manage_ref")).toBe(true);
       expect(refsToolRegistry.size).toBe(2);
+    });
+  });
+
+  describe("Action denied handling", () => {
+    const browseRefsTool = refsToolRegistry.get("browse_refs");
+    const manageRefTool = refsToolRegistry.get("manage_ref");
+
+    it("should throw error when browse_refs action is denied", async () => {
+      mockIsActionDenied.mockReturnValueOnce(true);
+
+      await expect(
+        browseRefsTool?.handler({
+          action: "list_branches",
+          project_id: "my-project",
+        })
+      ).rejects.toThrow("Action 'list_branches' is not allowed for browse_refs tool");
+    });
+
+    it("should throw error when manage_ref action is denied", async () => {
+      mockIsActionDenied.mockReturnValueOnce(true);
+
+      await expect(
+        manageRefTool?.handler({
+          action: "create_branch",
+          project_id: "my-project",
+          branch: "feature/test",
+          ref: "main",
+        })
+      ).rejects.toThrow("Action 'create_branch' is not allowed for manage_ref tool");
+    });
+  });
+
+  describe("protect_branch with all optional params", () => {
+    const manageRefTool = refsToolRegistry.get("manage_ref");
+
+    it("should protect a branch with unprotect_access_level", async () => {
+      mockGitlab.post.mockResolvedValue({ name: "main" });
+
+      await manageRefTool?.handler({
+        action: "protect_branch",
+        project_id: "my-project",
+        name: "main",
+        unprotect_access_level: 40,
+      });
+
+      expect(mockGitlab.post).toHaveBeenCalledWith("projects/my-project/protected_branches", {
+        body: { name: "main", unprotect_access_level: 40 },
+        contentType: "json",
+      });
+    });
+
+    it("should protect a branch with allowed_to_unprotect (Premium)", async () => {
+      mockGitlab.post.mockResolvedValue({ name: "main" });
+
+      await manageRefTool?.handler({
+        action: "protect_branch",
+        project_id: "my-project",
+        name: "main",
+        allowed_to_unprotect: [{ access_level: 40 }],
+      });
+
+      expect(mockGitlab.post).toHaveBeenCalledWith("projects/my-project/protected_branches", {
+        body: { name: "main", allowed_to_unprotect: [{ access_level: 40 }] },
+        contentType: "json",
+      });
+    });
+
+    it("should protect a branch with code_owner_approval_required", async () => {
+      mockGitlab.post.mockResolvedValue({ name: "main" });
+
+      await manageRefTool?.handler({
+        action: "protect_branch",
+        project_id: "my-project",
+        name: "main",
+        code_owner_approval_required: true,
+      });
+
+      expect(mockGitlab.post).toHaveBeenCalledWith("projects/my-project/protected_branches", {
+        body: { name: "main", code_owner_approval_required: true },
+        contentType: "json",
+      });
+    });
+  });
+
+  describe("update_branch_protection with all optional params", () => {
+    const manageRefTool = refsToolRegistry.get("manage_ref");
+
+    it("should update branch protection with allowed_to_unprotect", async () => {
+      mockGitlab.patch.mockResolvedValue({ name: "main" });
+
+      await manageRefTool?.handler({
+        action: "update_branch_protection",
+        project_id: "my-project",
+        name: "main",
+        allowed_to_unprotect: [{ user_id: 1 }],
+      });
+
+      expect(mockGitlab.patch).toHaveBeenCalledWith("projects/my-project/protected_branches/main", {
+        body: { allowed_to_unprotect: [{ user_id: 1 }] },
+        contentType: "json",
+      });
+    });
+
+    it("should update branch protection with code_owner_approval_required", async () => {
+      mockGitlab.patch.mockResolvedValue({ name: "main" });
+
+      await manageRefTool?.handler({
+        action: "update_branch_protection",
+        project_id: "my-project",
+        name: "main",
+        code_owner_approval_required: true,
+      });
+
+      expect(mockGitlab.patch).toHaveBeenCalledWith("projects/my-project/protected_branches/main", {
+        body: { code_owner_approval_required: true },
+        contentType: "json",
+      });
+    });
+
+    it("should update branch protection with allowed_to_push and allowed_to_merge", async () => {
+      mockGitlab.patch.mockResolvedValue({ name: "main" });
+
+      await manageRefTool?.handler({
+        action: "update_branch_protection",
+        project_id: "my-project",
+        name: "main",
+        allowed_to_push: [{ access_level: 40 }],
+        allowed_to_merge: [{ group_id: 5 }],
+      });
+
+      expect(mockGitlab.patch).toHaveBeenCalledWith("projects/my-project/protected_branches/main", {
+        body: {
+          allowed_to_push: [{ access_level: 40 }],
+          allowed_to_merge: [{ group_id: 5 }],
+        },
+        contentType: "json",
+      });
+    });
+  });
+
+  describe("protect_tag with allowed_to_create", () => {
+    const manageRefTool = refsToolRegistry.get("manage_ref");
+
+    it("should protect a tag with allowed_to_create (Premium)", async () => {
+      mockGitlab.post.mockResolvedValue({ name: "v*" });
+
+      await manageRefTool?.handler({
+        action: "protect_tag",
+        project_id: "my-project",
+        name: "v*",
+        allowed_to_create: [{ user_id: 1 }, { group_id: 2 }],
+      });
+
+      expect(mockGitlab.post).toHaveBeenCalledWith("projects/my-project/protected_tags", {
+        body: { name: "v*", allowed_to_create: [{ user_id: 1 }, { group_id: 2 }] },
+        contentType: "json",
+      });
+    });
+  });
+
+  describe("Index re-exports", () => {
+    it("should export BrowseRefsSchema from index", () => {
+      expect(BrowseRefsSchema).toBeDefined();
+      const result = BrowseRefsSchema.safeParse({
+        action: "list_branches",
+        project_id: "test",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should export ManageRefSchema from index", () => {
+      expect(ManageRefSchema).toBeDefined();
+      const result = ManageRefSchema.safeParse({
+        action: "create_branch",
+        project_id: "test",
+        branch: "feature/test",
+        ref: "main",
+      });
+      expect(result.success).toBe(true);
+    });
+
+    it("should export refsToolRegistry from index", () => {
+      expect(indexRefsToolRegistry).toBeDefined();
+      expect(indexRefsToolRegistry.has("browse_refs")).toBe(true);
+      expect(indexRefsToolRegistry.has("manage_ref")).toBe(true);
+    });
+  });
+
+  describe("Helper functions", () => {
+    it("getRefsReadOnlyToolNames should return browse_refs", () => {
+      const readOnlyNames = getRefsReadOnlyToolNames();
+      expect(readOnlyNames).toEqual(["browse_refs"]);
+    });
+
+    it("getRefsToolDefinitions should return all tool definitions", () => {
+      const definitions = getRefsToolDefinitions();
+      expect(definitions).toHaveLength(2);
+      expect(definitions.map(d => d.name)).toEqual(["browse_refs", "manage_ref"]);
+    });
+
+    it("getFilteredRefsTools should return all tools when readOnlyMode is false", () => {
+      const tools = getFilteredRefsTools(false);
+      expect(tools).toHaveLength(2);
+      expect(tools.map(t => t.name)).toEqual(["browse_refs", "manage_ref"]);
+    });
+
+    it("getFilteredRefsTools should return only read-only tools when readOnlyMode is true", () => {
+      const tools = getFilteredRefsTools(true);
+      expect(tools).toHaveLength(1);
+      expect(tools[0].name).toBe("browse_refs");
+    });
+
+    it("getFilteredRefsTools should default to readOnlyMode false", () => {
+      const tools = getFilteredRefsTools();
+      expect(tools).toHaveLength(2);
     });
   });
 });

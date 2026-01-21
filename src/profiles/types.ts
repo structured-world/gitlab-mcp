@@ -109,6 +109,65 @@ export const ProfileSchema = z.object({
 });
 
 // ============================================================================
+// Scope Config Schema (used by both Preset and ProjectPreset)
+// ============================================================================
+
+/**
+ * Scope configuration for project-level and group-level restrictions.
+ * Determines which projects/namespaces/groups operations are allowed on.
+ */
+export const ScopeConfigSchema = z
+  .object({
+    /** Single project restriction */
+    project: z.string().optional().describe("Single project path (e.g., group/project)"),
+    /** Single group restriction */
+    group: z.string().optional().describe("Single group path (e.g., my-group or parent/child)"),
+    /** Namespace restriction (all projects in group) */
+    namespace: z.string().optional().describe("Namespace/group path"),
+    /** Explicit list of allowed projects */
+    projects: z.array(z.string()).optional().describe("List of allowed project paths"),
+    /** Explicit list of allowed groups */
+    groups: z.array(z.string()).optional().describe("List of allowed group paths"),
+    /** Include subgroups in group scope (default: true when undefined) */
+    includeSubgroups: z
+      .boolean()
+      .optional()
+      .describe("Include subgroups when group scope is set (default: true)"),
+  })
+  .refine(
+    data => {
+      // At least one scope field must be set
+      const hasProject = data.project !== undefined;
+      const hasGroup = data.group !== undefined;
+      const hasNamespace = data.namespace !== undefined;
+      const hasProjects = data.projects !== undefined && data.projects.length > 0;
+      const hasGroups = data.groups !== undefined && data.groups.length > 0;
+      return hasProject || hasGroup || hasNamespace || hasProjects || hasGroups;
+    },
+    { message: "Scope must define at least one of: project, group, namespace, projects, or groups" }
+  )
+  .refine(
+    data => {
+      // Cannot combine project with projects
+      if (data.project && data.projects && data.projects.length > 0) {
+        return false;
+      }
+      return true;
+    },
+    { message: "Cannot combine 'project' with 'projects' - use one or the other" }
+  )
+  .refine(
+    data => {
+      // Cannot combine group with groups
+      if (data.group && data.groups && data.groups.length > 0) {
+        return false;
+      }
+      return true;
+    },
+    { message: "Cannot combine 'group' with 'groups' - use one or the other" }
+  );
+
+// ============================================================================
 // Preset Schema (for built-in profiles - NO host/auth, only settings)
 // ============================================================================
 
@@ -131,6 +190,9 @@ export const PresetSchema = z
       .optional()
       .describe("Denied actions in format 'tool:action'"),
 
+    // Scope restrictions (can be set at runtime via manage_context)
+    scope: ScopeConfigSchema.optional().describe("Runtime scope restrictions for projects/groups"),
+
     // Feature Flags
     features: FeatureFlagsSchema,
 
@@ -151,40 +213,6 @@ export const ProfilesConfigSchema = z.object({
 // ============================================================================
 // Project-Level Configuration Schemas (.gitlab-mcp/)
 // ============================================================================
-
-/**
- * Scope configuration for project-level restrictions.
- * Determines which projects/namespaces operations are allowed on.
- */
-export const ScopeConfigSchema = z
-  .object({
-    /** Single project restriction */
-    project: z.string().optional().describe("Single project path (e.g., group/project)"),
-    /** Namespace restriction (all projects in group) */
-    namespace: z.string().optional().describe("Namespace/group path"),
-    /** Explicit list of allowed projects */
-    projects: z.array(z.string()).optional().describe("List of allowed project paths"),
-  })
-  .refine(
-    data => {
-      // At least one scope field must be set
-      const hasProject = data.project !== undefined;
-      const hasNamespace = data.namespace !== undefined;
-      const hasProjects = data.projects !== undefined && data.projects.length > 0;
-      return hasProject || hasNamespace || hasProjects;
-    },
-    { message: "Scope must define at least one of: project, namespace, or projects" }
-  )
-  .refine(
-    data => {
-      // Cannot combine project with projects
-      if (data.project && data.projects && data.projects.length > 0) {
-        return false;
-      }
-      return true;
-    },
-    { message: "Cannot combine 'project' with 'projects' - use one or the other" }
-  );
 
 /**
  * Project-level preset schema (.gitlab-mcp/preset.yaml)
@@ -263,6 +291,7 @@ export type OAuthAuth = z.infer<typeof OAuthAuthSchema>;
 export type CookieAuth = z.infer<typeof CookieAuthSchema>;
 export type AuthConfig = z.infer<typeof AuthConfigSchema>;
 export type FeatureFlags = z.infer<typeof FeatureFlagsSchema>;
+export type ScopeConfig = z.infer<typeof ScopeConfigSchema>;
 export type Profile = z.infer<typeof ProfileSchema>;
 export type Preset = z.infer<typeof PresetSchema>;
 export type ProfilesConfig = z.infer<typeof ProfilesConfigSchema>;

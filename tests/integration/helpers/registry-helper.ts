@@ -561,4 +561,49 @@ export class IntegrationTestHelper {
   async restoreTodo(id: number): Promise<unknown> {
     return this.executeTool("manage_todos", { action: "restore", id });
   }
+
+  // ========================================
+  // CONTEXT - Session Management Operations
+  // ========================================
+
+  async manageContext(args: {
+    action:
+      | "show"
+      | "list_presets"
+      | "list_profiles"
+      | "switch_preset"
+      | "switch_profile"
+      | "set_scope"
+      | "reset";
+    preset?: string;
+    profile?: string;
+    namespace?: string;
+    includeSubgroups?: boolean;
+  }): Promise<unknown> {
+    return this.executeTool("manage_context", args);
+  }
+
+  async getContext(): Promise<unknown> {
+    return this.executeTool("manage_context", { action: "show" });
+  }
+
+  async listPresets(): Promise<unknown> {
+    return this.executeTool("manage_context", { action: "list_presets" });
+  }
+
+  async switchPreset(preset: string): Promise<unknown> {
+    return this.executeTool("manage_context", { action: "switch_preset", preset });
+  }
+
+  async setScope(namespace: string, includeSubgroups: boolean = true): Promise<unknown> {
+    return this.executeTool("manage_context", {
+      action: "set_scope",
+      namespace,
+      includeSubgroups,
+    });
+  }
+
+  async resetContext(): Promise<unknown> {
+    return this.executeTool("manage_context", { action: "reset" });
+  }
 }

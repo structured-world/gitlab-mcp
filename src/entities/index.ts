@@ -13,5 +13,6 @@ export * from "./releases";
 export * from "./refs";
 export * from "./members";
 export * from "./search";
+export * from "./context";
 
 // All entities now use the registry pattern with embedded handlers

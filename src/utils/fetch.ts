@@ -208,10 +208,27 @@ export interface FetchWithRetryOptions extends RequestInit {
 }
 
 /**
- * Sleep for a specified duration
+ * Sleep for a specified duration with optional abort support
+ * @param ms - Duration to sleep in milliseconds
+ * @param signal - Optional AbortSignal to cancel the sleep early
  */
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) {
+      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+      return;
+    }
+
+    const timeoutId = setTimeout(resolve, ms);
+
+    if (signal) {
+      const abortHandler = () => {
+        clearTimeout(timeoutId);
+        reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+      };
+      signal.addEventListener("abort", abortHandler, { once: true });
+    }
+  });
 }
 
 /**
@@ -325,8 +342,9 @@ function calculateBackoffDelay(attempt: number): number {
  */
 function parseRetryAfter(retryAfter: string): number | null {
   // Try delta-seconds first (most common)
+  // Accept 0 or positive integers per RFC 7231 (0 means "retry immediately")
   const seconds = parseInt(retryAfter, 10);
-  if (!isNaN(seconds) && seconds > 0 && String(seconds) === retryAfter.trim()) {
+  if (!isNaN(seconds) && seconds >= 0 && String(seconds) === retryAfter.trim()) {
     return seconds * 1000;
   }
 
@@ -558,7 +576,7 @@ export async function enhancedFetch(
           // Body already consumed or errored - safe to ignore
         }
 
-        await sleep(retryDelay);
+        await sleep(retryDelay, fetchOptions.signal ?? undefined);
         continue;
       }
 
@@ -582,7 +600,7 @@ export async function enhancedFetch(
           "Retrying request after error"
         );
 
-        await sleep(retryDelay);
+        await sleep(retryDelay, fetchOptions.signal ?? undefined);
         continue;
       }
 

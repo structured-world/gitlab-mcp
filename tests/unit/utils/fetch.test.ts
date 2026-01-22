@@ -738,15 +738,32 @@ describe("Enhanced Fetch Utilities", () => {
 
     it("should NOT retry on caller-initiated AbortError", async () => {
       // Caller aborts are NOT retryable - they should propagate immediately
+      // This test verifies that AbortError from fetch is not retried
       const abortError = new DOMException("The operation was aborted", "AbortError");
       mockFetch.mockRejectedValue(abortError);
 
-      await expect(
-        enhancedFetch("https://example.com", { retry: true, maxRetries: 3 })
-      ).rejects.toThrow("The operation was aborted");
+      // Run with fake timers to prevent internal timeout from interfering
+      const fetchPromise = enhancedFetch("https://example.com", { retry: true, maxRetries: 3 });
+
+      // The promise should reject without needing to advance timers
+      // because AbortError is not retryable
+      await expect(fetchPromise).rejects.toThrow("The operation was aborted");
 
       // Should NOT retry - only 1 call
       expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should propagate caller abort without converting to timeout error", async () => {
+      // This tests that AbortError from fetch is preserved and NOT converted
+      // to "GitLab API timeout" message
+      const abortError = new DOMException("User cancelled", "AbortError");
+      mockFetch.mockRejectedValue(abortError);
+
+      // Verify it's the original AbortError, not converted to timeout
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toMatchObject({
+        name: "AbortError",
+        message: "User cancelled",
+      });
     });
 
     it("should preserve caller abort error instead of converting to timeout", async () => {
@@ -784,6 +801,54 @@ describe("Enhanced Fetch Utilities", () => {
           retry: false,
         })
       ).rejects.toThrow();
+    });
+
+    it("should accept Retry-After: 0 for immediate retry", async () => {
+      // Retry-After: 0 is valid per RFC 7231 and means "retry immediately"
+      const rateLimitHeaders = new Headers();
+      rateLimitHeaders.set("Retry-After", "0");
+
+      const rateLimitResponse = createMockResponse({
+        status: 429,
+        ok: false,
+        headers: rateLimitHeaders,
+      });
+      const successResponse = createMockResponse({ status: 200, ok: true });
+
+      mockFetch.mockResolvedValueOnce(rateLimitResponse).mockResolvedValueOnce(successResponse);
+
+      const fetchPromise = enhancedFetch("https://example.com");
+
+      // With Retry-After: 0, should retry immediately (0ms delay)
+      await jest.advanceTimersByTimeAsync(0);
+
+      const result = await fetchPromise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(200);
+    });
+
+    it("should abort during backoff sleep when caller aborts", async () => {
+      // Test that caller abort during backoff sleep is respected
+      const controller = new AbortController();
+      const errorResponse = createMockResponse({ status: 500, ok: false });
+
+      mockFetch.mockResolvedValue(errorResponse);
+
+      const fetchPromise = enhancedFetch("https://example.com", {
+        signal: controller.signal,
+        retry: true,
+        maxRetries: 3,
+      });
+
+      // First request fails with 500, enters backoff sleep
+      await jest.advanceTimersByTimeAsync(0);
+
+      // Abort during backoff
+      controller.abort("User cancelled");
+
+      // The promise should reject with AbortError
+      await expect(fetchPromise).rejects.toThrow();
     });
   });
 });

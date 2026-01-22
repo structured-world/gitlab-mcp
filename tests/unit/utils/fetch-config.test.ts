@@ -520,7 +520,7 @@ describe("Fetch Configuration Edge Cases", () => {
       );
     });
 
-    it("should extract hostname from partially valid URL on parse error", async () => {
+    it("should redact hostname on URL parse error for security", async () => {
       const { enhancedFetch, resetDispatcherCache } = require("../../../src/utils/fetch");
       resetDispatcherCache();
 
@@ -528,10 +528,10 @@ describe("Fetch Configuration Edge Cases", () => {
       // Using URL with special characters that break parsing
       await enhancedFetch("https://example.com:invalid-port/path");
 
-      // Should extract hostname and show parse error
+      // Should redact hostname (could contain userinfo) and show parse error
       expect(mockLogger.debug).toHaveBeenCalledWith(
         expect.objectContaining({
-          url: expect.stringMatching(/example\.com.*URL_PARSE_ERROR|INVALID_URL/),
+          url: expect.stringMatching(/REDACTED_HOST.*URL_PARSE_ERROR|INVALID_URL/),
         }),
         expect.any(String)
       );

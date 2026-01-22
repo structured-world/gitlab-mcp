@@ -310,7 +310,7 @@ jobs:
       # Step 12: Upload pages artifact (for deployment)
       - name: Upload Pages artifact
         if: steps.should-deploy.outputs.result == 'true'
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v4
         with:
           path: pages-deploy/
 

@@ -149,16 +149,13 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           }
 
           case "promote": {
-            // TypeScript knows: input has milestone_id or iid (at least one required)
+            // TypeScript knows: input has milestone_id or iid (at least one required by schema)
             if (entityType !== "projects") {
               throw new Error("Milestone promotion is only available for projects, not groups");
             }
 
-            const milestoneIdentifier = input.iid ?? input.milestone_id;
-            /* istanbul ignore next -- schema validation ensures this is always defined */
-            if (!milestoneIdentifier) {
-              throw new Error("Either 'milestone_id' or 'iid' must be provided");
-            }
+            // Schema validation guarantees at least one identifier is present
+            const milestoneIdentifier = (input.iid ?? input.milestone_id)!;
             return gitlab.post(
               `projects/${encodedPath}/milestones/${encodeURIComponent(milestoneIdentifier)}/promote`
             );

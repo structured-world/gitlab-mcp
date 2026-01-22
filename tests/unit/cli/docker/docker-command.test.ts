@@ -14,7 +14,10 @@ import {
   dockerLogs,
   dockerRemoveInstance,
   runDockerCommand,
+  initDocker,
+  dockerAddInstance,
 } from "../../../../src/cli/docker/docker-command";
+import * as p from "@clack/prompts";
 
 // Mock docker-utils
 jest.mock("../../../../src/cli/docker/docker-utils", () => ({
@@ -62,9 +65,14 @@ import {
   getLogs,
   tailLogs,
   removeInstance,
+  addInstance,
+  initDockerConfig,
 } from "../../../../src/cli/docker/docker-utils";
 
+const mockP = p as jest.Mocked<typeof p>;
 const mockGetDockerStatus = getDockerStatus as jest.Mock;
+const mockAddInstance = addInstance as jest.Mock;
+const mockInitDockerConfig = initDockerConfig as jest.Mock;
 const mockStartContainer = startContainer as jest.Mock;
 const mockStopContainer = stopContainer as jest.Mock;
 const mockRestartContainer = restartContainer as jest.Mock;
@@ -508,6 +516,315 @@ describe("docker-command", () => {
       await runDockerCommand([]);
 
       expect(consoleLogSpy).toHaveBeenCalledWith("GitLab MCP Docker Commands:\n");
+    });
+
+    it("should call initDocker for init subcommand", async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: false,
+        dockerRunning: false,
+        composeInstalled: false,
+      });
+
+      await runDockerCommand(["init"]);
+
+      expect(mockP.intro).toHaveBeenCalledWith("Initialize GitLab MCP Docker Setup");
+    });
+
+    it("should call dockerAddInstance for add-instance subcommand", async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: true,
+        dockerRunning: true,
+        composeInstalled: true,
+      });
+      mockP.text.mockResolvedValue("gitlab.company.com");
+      mockP.confirm.mockResolvedValue(false);
+      mockP.select.mockResolvedValue("developer");
+
+      await runDockerCommand(["add-instance", "gitlab.example.com"]);
+
+      expect(mockP.intro).toHaveBeenCalledWith("Add GitLab Instance");
+    });
+
+    it("should throw error for remove-instance without host", async () => {
+      await expect(runDockerCommand(["remove-instance"])).rejects.toThrow(
+        "Usage: gitlab-mcp docker remove-instance <host>"
+      );
+    });
+  });
+
+  describe("initDocker", () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockP.isCancel.mockReturnValue(false);
+    });
+
+    it("should exit if Docker is not installed", async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: false,
+        dockerRunning: false,
+        composeInstalled: false,
+      });
+
+      await initDocker();
+
+      expect(mockP.log.error).toHaveBeenCalledWith("Docker is not installed.");
+      expect(mockP.outro).toHaveBeenCalledWith("Setup cancelled.");
+    });
+
+    it("should exit if Docker Compose is not installed", async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: true,
+        dockerRunning: true,
+        composeInstalled: false,
+      });
+
+      await initDocker();
+
+      expect(mockP.log.error).toHaveBeenCalledWith("Docker Compose is not installed.");
+    });
+
+    it("should handle port input cancellation", async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: true,
+        dockerRunning: true,
+        composeInstalled: true,
+      });
+      const cancelSymbol = Symbol.for("cancel");
+      mockP.text.mockResolvedValueOnce(cancelSymbol);
+      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+
+      await initDocker();
+
+      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+    });
+
+    it("should handle OAuth enable cancellation", async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: true,
+        dockerRunning: true,
+        composeInstalled: true,
+      });
+      mockP.text.mockResolvedValueOnce("3333");
+      const cancelSymbol = Symbol.for("cancel");
+      mockP.confirm.mockResolvedValueOnce(cancelSymbol);
+      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+
+      await initDocker();
+
+      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+    });
+
+    it("should create config with OAuth enabled", async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: true,
+        dockerRunning: true,
+        composeInstalled: true,
+      });
+      mockP.text.mockResolvedValueOnce("3333");
+      mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
+      mockP.confirm.mockResolvedValueOnce(false); // don't start now
+      mockP.isCancel.mockReturnValue(false);
+
+      await initDocker();
+
+      expect(mockInitDockerConfig).toHaveBeenCalled();
+      expect(mockP.log.info).toHaveBeenCalledWith(
+        expect.stringContaining("Generated session secret")
+      );
+    });
+
+    it("should start container after init if requested", async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: true,
+        dockerRunning: true,
+        composeInstalled: true,
+      });
+      mockP.text.mockResolvedValueOnce("3333");
+      mockP.confirm.mockResolvedValueOnce(false); // no OAuth
+      mockP.confirm.mockResolvedValueOnce(true); // start now
+      mockP.isCancel.mockReturnValue(false);
+      mockStartContainer.mockReturnValue({ success: true });
+
+      await initDocker();
+
+      expect(mockStartContainer).toHaveBeenCalled();
+    });
+
+    it("should handle container start failure", async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: true,
+        dockerRunning: true,
+        composeInstalled: true,
+      });
+      mockP.text.mockResolvedValueOnce("3333");
+      mockP.confirm.mockResolvedValueOnce(false);
+      mockP.confirm.mockResolvedValueOnce(true);
+      mockP.isCancel.mockReturnValue(false);
+      mockStartContainer.mockReturnValue({ success: false, error: "Failed" });
+
+      await initDocker();
+
+      expect(mockP.log.error).toHaveBeenCalledWith("Failed");
+    });
+
+    it("should handle cancellation when asking to start container", async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: true,
+        dockerRunning: true,
+        composeInstalled: true,
+      });
+      mockP.text.mockResolvedValueOnce("3333");
+      mockP.confirm.mockResolvedValueOnce(false);
+      const cancelSymbol = Symbol.for("cancel");
+      mockP.confirm.mockResolvedValueOnce(cancelSymbol);
+      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+
+      await initDocker();
+
+      expect(mockP.cancel).toHaveBeenCalledWith("Setup complete without starting container");
+    });
+
+    it("should handle initDockerConfig error", async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: true,
+        dockerRunning: true,
+        composeInstalled: true,
+      });
+      mockP.text.mockResolvedValueOnce("3333");
+      mockP.confirm.mockResolvedValueOnce(false);
+      mockP.isCancel.mockReturnValue(false);
+      mockInitDockerConfig.mockImplementation(() => {
+        throw new Error("Config error");
+      });
+
+      await initDocker();
+
+      expect(mockP.log.error).toHaveBeenCalledWith("Config error");
+    });
+  });
+
+  describe("dockerAddInstance", () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockP.isCancel.mockReturnValue(false);
+    });
+
+    it("should add instance with provided host", async () => {
+      mockP.text.mockResolvedValueOnce("Company GitLab"); // name
+      mockP.confirm.mockResolvedValueOnce(false); // no OAuth
+      mockP.select.mockResolvedValueOnce("developer");
+
+      await dockerAddInstance("gitlab.company.com");
+
+      expect(mockAddInstance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          host: "gitlab.company.com",
+          name: "Company GitLab",
+        })
+      );
+    });
+
+    it("should prompt for host if not provided", async () => {
+      mockP.text.mockResolvedValueOnce("gitlab.example.com"); // host
+      mockP.text.mockResolvedValueOnce("Example GitLab"); // name
+      mockP.confirm.mockResolvedValueOnce(false);
+      mockP.select.mockResolvedValueOnce("developer");
+
+      await dockerAddInstance();
+
+      expect(mockP.text).toHaveBeenCalledWith(
+        expect.objectContaining({ message: "GitLab instance host:" })
+      );
+    });
+
+    it("should handle host input cancellation", async () => {
+      const cancelSymbol = Symbol.for("cancel");
+      mockP.text.mockResolvedValueOnce(cancelSymbol);
+      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+
+      await dockerAddInstance();
+
+      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+    });
+
+    it("should handle name input cancellation", async () => {
+      const cancelSymbol = Symbol.for("cancel");
+      mockP.text.mockResolvedValueOnce(cancelSymbol);
+      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+
+      await dockerAddInstance("gitlab.company.com");
+
+      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+    });
+
+    it("should handle OAuth confirmation cancellation", async () => {
+      mockP.text.mockResolvedValueOnce("Name");
+      const cancelSymbol = Symbol.for("cancel");
+      mockP.confirm.mockResolvedValueOnce(cancelSymbol);
+      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+
+      await dockerAddInstance("gitlab.company.com");
+
+      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+    });
+
+    it("should configure OAuth when enabled", async () => {
+      mockP.text.mockResolvedValueOnce("Company GitLab"); // name
+      mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
+      mockP.text.mockResolvedValueOnce("app-id-12345"); // client ID
+      mockP.select.mockResolvedValueOnce("developer");
+
+      await dockerAddInstance("gitlab.company.com");
+
+      expect(mockAddInstance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          oauth: {
+            clientId: "app-id-12345",
+            clientSecretEnv: "GITLAB_COMPANY_COM_SECRET",
+          },
+        })
+      );
+    });
+
+    it("should handle OAuth client ID cancellation", async () => {
+      mockP.text.mockResolvedValueOnce("Name");
+      mockP.confirm.mockResolvedValueOnce(true);
+      const cancelSymbol = Symbol.for("cancel");
+      mockP.text.mockResolvedValueOnce(cancelSymbol);
+      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+
+      await dockerAddInstance("gitlab.company.com");
+
+      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+    });
+
+    it("should handle preset selection cancellation", async () => {
+      mockP.text.mockResolvedValueOnce("Name");
+      mockP.confirm.mockResolvedValueOnce(false);
+      const cancelSymbol = Symbol.for("cancel");
+      mockP.select.mockResolvedValueOnce(cancelSymbol);
+      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+
+      await dockerAddInstance("gitlab.company.com");
+
+      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+    });
+  });
+
+  describe("dockerLogs error handling", () => {
+    it("should handle tailLogs error event", () => {
+      const mockProcess = {
+        on: jest.fn((event: string, callback: (error: Error) => void) => {
+          if (event === "error") {
+            callback(new Error("Connection failed"));
+          }
+        }),
+      };
+      mockTailLogs.mockReturnValue(mockProcess);
+
+      dockerLogs(true, 100);
+
+      expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to get logs: Connection failed");
     });
   });
 });

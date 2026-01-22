@@ -9,12 +9,20 @@ import {
   expandPath,
   getConfigPath,
   isAlreadyConfigured,
+  commandExists,
+  detectClient,
+  detectAllClients,
+  getDetectedClients,
+  getConfiguredClients,
 } from "../../../../src/cli/install/detector";
 import * as fs from "fs";
+import * as childProcess from "child_process";
 
-// Mock fs module
+// Mock modules
 jest.mock("fs");
+jest.mock("child_process");
 const mockFs = fs as jest.Mocked<typeof fs>;
+const mockChildProcess = childProcess as jest.Mocked<typeof childProcess>;
 
 describe("install detector", () => {
   beforeEach(() => {
@@ -153,6 +161,184 @@ describe("install detector", () => {
 
       const result = isAlreadyConfigured("/path/to/config.json");
       expect(result).toBe(false);
+    });
+  });
+
+  describe("commandExists", () => {
+    it("should return true if command exists", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "/usr/bin/claude",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+
+      const result = commandExists("claude");
+      expect(result).toBe(true);
+    });
+
+    it("should return false if command does not exist", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 1,
+        stdout: "",
+        stderr: "not found",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+
+      const result = commandExists("nonexistent");
+      expect(result).toBe(false);
+    });
+
+    it("should return false if spawn throws error", () => {
+      mockChildProcess.spawnSync.mockImplementation(() => {
+        throw new Error("spawn error");
+      });
+
+      const result = commandExists("claude");
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("detectClient", () => {
+    const originalPlatform = process.platform;
+
+    afterEach(() => {
+      Object.defineProperty(process, "platform", { value: originalPlatform });
+    });
+
+    it("should detect claude-code via CLI command", () => {
+      Object.defineProperty(process, "platform", { value: "darwin" });
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "/usr/local/bin/claude",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = detectClient("claude-code");
+      expect(result.detected).toBe(true);
+      expect(result.method).toBe("cli-command");
+    });
+
+    it("should detect cursor via config file", () => {
+      Object.defineProperty(process, "platform", { value: "darwin" });
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 1,
+        stdout: "",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+      // Config dir exists
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue("{}");
+
+      const result = detectClient("cursor");
+      expect(result.detected).toBe(true);
+      expect(result.method).toBe("config-file");
+    });
+
+    it("should mark client as already configured if gitlab found", () => {
+      Object.defineProperty(process, "platform", { value: "darwin" });
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 1,
+        stdout: "",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          mcpServers: { gitlab: { command: "npx" } },
+        })
+      );
+
+      const result = detectClient("cursor");
+      expect(result.alreadyConfigured).toBe(true);
+    });
+
+    it("should return configExists true when config file exists", () => {
+      Object.defineProperty(process, "platform", { value: "darwin" });
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 1,
+        stdout: "",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue("{}");
+
+      const result = detectClient("cursor");
+      expect(result.configExists).toBe(true);
+    });
+  });
+
+  describe("detectAllClients", () => {
+    it("should return results for all installable clients", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 1,
+        stdout: "",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+      mockFs.existsSync.mockReturnValue(false);
+
+      const results = detectAllClients();
+      expect(results.length).toBeGreaterThan(0);
+      expect(results.every(r => "client" in r && "detected" in r)).toBe(true);
+    });
+  });
+
+  describe("getDetectedClients", () => {
+    it("should return only detected clients", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "/usr/local/bin/claude",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+      mockFs.existsSync.mockReturnValue(false);
+
+      const results = getDetectedClients();
+      expect(results.every(r => r.detected === true)).toBe(true);
+    });
+  });
+
+  describe("getConfiguredClients", () => {
+    it("should return only configured clients", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 1,
+        stdout: "",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          mcpServers: { gitlab: { command: "npx" } },
+        })
+      );
+
+      const results = getConfiguredClients();
+      expect(results.every(r => r.alreadyConfigured === true)).toBe(true);
     });
   });
 });

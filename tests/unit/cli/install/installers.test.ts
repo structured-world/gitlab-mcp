@@ -263,6 +263,77 @@ describe("install installers", () => {
       expect(result.success).toBe(true);
       expect(mockChildProcess.spawnSync).toHaveBeenCalledTimes(3);
     });
+
+    it("should return error if mcp remove fails with force", () => {
+      // First call for mcp list
+      mockChildProcess.spawnSync.mockReturnValueOnce({
+        status: 0,
+        stdout: "gitlab - configured",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+      // Second call for mcp remove fails
+      mockChildProcess.spawnSync.mockReturnValueOnce({
+        status: 1,
+        stdout: "",
+        stderr: "Failed to remove gitlab config",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+
+      const result = installToClient("claude-code", mockServerConfig, true);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Failed to remove existing gitlab config");
+    });
+
+    it("should not call mcp remove if gitlab not in list with force", () => {
+      // First call for mcp list (no gitlab)
+      mockChildProcess.spawnSync.mockReturnValueOnce({
+        status: 0,
+        stdout: "github - configured",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+      // Second call for mcp add
+      mockChildProcess.spawnSync.mockReturnValueOnce({
+        status: 0,
+        stdout: "Added",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+
+      const result = installToClient("claude-code", mockServerConfig, true);
+
+      expect(result.success).toBe(true);
+      expect(mockChildProcess.spawnSync).toHaveBeenCalledTimes(2);
+    });
+
+    it("should include env args in mcp add command", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "Success",
+        stderr: "",
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+
+      installToClient("claude-code", mockServerConfig);
+
+      expect(mockChildProcess.spawnSync).toHaveBeenCalledWith(
+        "claude",
+        expect.arrayContaining(["--env", "GITLAB_URL=https://gitlab.com"]),
+        expect.any(Object)
+      );
+    });
   });
 
   describe("installToClients", () => {

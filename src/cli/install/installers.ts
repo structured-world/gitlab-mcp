@@ -179,10 +179,17 @@ export function installClaudeCode(
 
       if (listResult.status === 0 && listResult.stdout.includes("gitlab")) {
         // Remove existing config first
-        spawnSync(metadata.cliCommand, ["mcp", "remove", "gitlab"], {
+        const removeResult = spawnSync(metadata.cliCommand, ["mcp", "remove", "gitlab"], {
           stdio: "pipe",
           encoding: "utf8",
         });
+        if (removeResult.status !== 0) {
+          return {
+            client,
+            success: false,
+            error: `Failed to remove existing gitlab config: ${removeResult.stderr || removeResult.stdout || "Unknown error"}`,
+          };
+        }
       }
     }
 

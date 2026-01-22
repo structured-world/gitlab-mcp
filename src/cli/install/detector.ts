@@ -4,8 +4,6 @@
  */
 
 import { existsSync, readFileSync } from "fs";
-import { homedir } from "os";
-import { join } from "path";
 import { spawnSync } from "child_process";
 import {
   InstallableClient,
@@ -13,27 +11,10 @@ import {
   CLIENT_METADATA,
   INSTALLABLE_CLIENTS,
 } from "./types";
+import { expandPath } from "../utils/path-utils.js";
 
-/**
- * Expand path with environment variables and home directory
- */
-export function expandPath(configPath: string): string {
-  let expanded = configPath;
-
-  // Expand home directory
-  if (expanded.startsWith("~/")) {
-    expanded = join(homedir(), expanded.slice(2));
-  }
-
-  // Expand Windows environment variables
-  if (process.platform === "win32") {
-    expanded = expanded.replace(/%([^%]+)%/g, (_, varName: string) => {
-      return process.env[varName] ?? "";
-    });
-  }
-
-  return expanded;
-}
+// Re-export expandPath for backwards compatibility with existing imports
+export { expandPath } from "../utils/path-utils.js";
 
 /**
  * Get config path for a client on current platform

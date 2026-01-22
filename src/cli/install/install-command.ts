@@ -198,7 +198,7 @@ export async function runInstallWizard(
 
     if (p.isCancel(selectedClients)) {
       p.cancel("Installation cancelled");
-      process.exit(0);
+      return [];
     }
 
     // Type assertion needed because @clack/prompts multiselect returns unknown[]
@@ -228,7 +228,7 @@ export async function runInstallWizard(
 
     if (p.isCancel(overwrite)) {
       p.cancel("Installation cancelled");
-      process.exit(0);
+      return [];
     }
 
     if (!overwrite) {

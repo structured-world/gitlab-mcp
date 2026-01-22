@@ -492,8 +492,7 @@ export async function runDockerCommand(args: string[]): Promise<void> {
 
     case "remove-instance":
       if (!subArgs[0]) {
-        console.error("Usage: gitlab-mcp docker remove-instance <host>");
-        process.exit(1);
+        throw new Error("Usage: gitlab-mcp docker remove-instance <host>");
       }
       dockerRemoveInstance(subArgs[0]);
       break;

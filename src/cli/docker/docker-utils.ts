@@ -4,7 +4,6 @@
 
 import { spawnSync, spawn, ChildProcess } from "child_process";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { homedir } from "os";
 import { join } from "path";
 import YAML from "yaml";
 import {
@@ -19,21 +18,10 @@ import {
   DEFAULT_DOCKER_CONFIG,
   getConfigDir,
 } from "./types";
+import { expandPath } from "../utils/path-utils.js";
 
-/**
- * Expand path with home directory
- */
-export function expandPath(path: string): string {
-  if (path.startsWith("~/")) {
-    return join(homedir(), path.slice(2));
-  }
-  if (process.platform === "win32") {
-    return path.replace(/%([^%]+)%/g, (_, varName: string) => {
-      return process.env[varName] ?? "";
-    });
-  }
-  return path;
-}
+// Re-export expandPath for backwards compatibility with existing imports
+export { expandPath } from "../utils/path-utils.js";
 
 /**
  * Get expanded config directory path
@@ -100,9 +88,22 @@ export function isComposeInstalled(): boolean {
 }
 
 /**
+ * Validate container name format to prevent command injection
+ */
+function isValidContainerName(name: string): boolean {
+  // Docker container names can only contain [a-zA-Z0-9][a-zA-Z0-9_.-]
+  return /^[a-zA-Z0-9][a-zA-Z0-9_.-]*$/.test(name);
+}
+
+/**
  * Get container info
  */
 export function getContainerInfo(containerName: string = "gitlab-mcp"): ContainerInfo | undefined {
+  // Validate container name to prevent command injection
+  if (!isValidContainerName(containerName)) {
+    return undefined;
+  }
+
   try {
     const result = spawnSync(
       "docker",

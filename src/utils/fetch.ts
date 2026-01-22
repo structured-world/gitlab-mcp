@@ -215,24 +215,59 @@ function sleep(ms: number): Promise<void> {
 }
 
 /**
+ * Redact sensitive information from URLs for safe logging
+ * Masks upload secrets, tokens in paths, and sensitive query parameters
+ */
+function redactUrlForLogging(url: string): string {
+  try {
+    const parsed = new URL(url);
+
+    // Redact upload secrets in path: /uploads/<secret>/<filename> -> /uploads/[REDACTED]/<filename>
+    parsed.pathname = parsed.pathname.replace(
+      /\/uploads\/([a-f0-9-]+)\//gi,
+      "/uploads/[REDACTED]/"
+    );
+
+    // Redact any path segment that looks like a secret/token (32+ hex chars)
+    parsed.pathname = parsed.pathname.replace(/\/([a-f0-9]{32,})\//gi, "/[REDACTED]/");
+
+    // Redact sensitive query parameters
+    const sensitiveParams = ["private_token", "token", "secret", "key", "password", "auth"];
+    for (const param of sensitiveParams) {
+      if (parsed.searchParams.has(param)) {
+        parsed.searchParams.set(param, "[REDACTED]");
+      }
+    }
+
+    return parsed.toString();
+  } catch {
+    // If URL parsing fails, return a safe fallback with hostname only
+    const hostMatch = url.match(/^(https?:\/\/[^/]+)/);
+    return hostMatch ? `${hostMatch[1]}/[URL_PARSE_ERROR]` : "[INVALID_URL]";
+  }
+}
+
+/**
  * Determine if an error is retryable
  * Retryable errors: timeouts, network errors, 5xx server errors
  */
 function isRetryableError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
 
+  const message = error.message.toLowerCase();
+
   // Timeout errors are retryable
-  if (error.message.includes("timeout") || error.name === "AbortError") {
+  if (message.includes("timeout") || error.name === "AbortError") {
     return true;
   }
 
   // Network errors (fetch failures) are retryable
   if (
-    error.message.includes("ECONNREFUSED") ||
-    error.message.includes("ECONNRESET") ||
-    error.message.includes("ETIMEDOUT") ||
-    error.message.includes("ENOTFOUND") ||
-    error.message.includes("network")
+    message.includes("econnrefused") ||
+    message.includes("econnreset") ||
+    message.includes("etimedout") ||
+    message.includes("enotfound") ||
+    message.includes("network")
   ) {
     return true;
   }
@@ -297,8 +332,9 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
 
   const method = (options.method ?? "GET").toUpperCase();
 
-  // Debug log at request start
-  logger.debug({ url, method, timeout: API_TIMEOUT_MS }, "Starting GitLab API request");
+  // Debug log at request start (redact sensitive URL parts)
+  const safeUrl = redactUrlForLogging(url);
+  logger.debug({ url: safeUrl, method, timeout: API_TIMEOUT_MS }, "Starting GitLab API request");
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
@@ -320,7 +356,7 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
 
     const duration = Date.now() - startTime;
     logger.debug(
-      { url, method, status: response.status, duration },
+      { url: safeUrl, method, status: response.status, duration },
       "GitLab API request completed"
     );
 
@@ -332,7 +368,7 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
     if (error instanceof Error && error.name === "AbortError") {
       // Log timeout with context
       logger.warn(
-        { url, method, timeout: API_TIMEOUT_MS, duration },
+        { url: safeUrl, method, timeout: API_TIMEOUT_MS, duration },
         "GitLab API request timed out"
       );
       throw new Error(`GitLab API timeout after ${API_TIMEOUT_MS}ms`);
@@ -340,7 +376,12 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
 
     // Log other errors
     logger.warn(
-      { url, method, error: error instanceof Error ? error.message : String(error), duration },
+      {
+        url: safeUrl,
+        method,
+        error: error instanceof Error ? error.message : String(error),
+        duration,
+      },
       "GitLab API request failed"
     );
     throw error;
@@ -355,11 +396,13 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
  * @returns Response from the server
  *
  * Retry behavior:
- * - GET requests retry by default (idempotent)
- * - POST/PUT/DELETE do NOT retry by default (not idempotent)
- * - Override with options.retry = true/false
- * - Retries on: timeouts, network errors, 5xx responses
- * - Uses exponential backoff: 1s, 2s, 4s (configurable)
+ * - By default, safe/read-only methods (GET/HEAD/OPTIONS) may be retried when
+ *   global API retry is enabled.
+ * - Other methods (e.g. POST/PUT/DELETE/PATCH) do NOT retry by default.
+ * - Override per request with options.retry = true or false.
+ * - Retries on: timeouts, network errors, 5xx responses, and 429 Too Many Requests.
+ *   For 429, the Retry-After header is honored when present.
+ * - Uses exponential backoff (configurable via API_RETRY_* settings).
  */
 export async function enhancedFetch(
   url: string,
@@ -367,6 +410,7 @@ export async function enhancedFetch(
 ): Promise<Response> {
   const method = (options.method ?? "GET").toUpperCase();
   const isIdempotent = method === "GET" || method === "HEAD" || method === "OPTIONS";
+  const safeUrl = redactUrlForLogging(url);
 
   // Determine if retry is enabled for this request
   const shouldRetry = options.retry ?? (API_RETRY_ENABLED && isIdempotent);
@@ -400,7 +444,7 @@ export async function enhancedFetch(
 
         logger.warn(
           {
-            url,
+            url: safeUrl,
             method,
             status: response.status,
             attempt: attempt + 1,
@@ -427,7 +471,7 @@ export async function enhancedFetch(
 
         logger.warn(
           {
-            url,
+            url: safeUrl,
             method,
             error: lastError.message,
             attempt: attempt + 1,

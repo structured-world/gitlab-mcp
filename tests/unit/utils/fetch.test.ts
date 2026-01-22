@@ -410,6 +410,15 @@ describe("Enhanced Fetch Utilities", () => {
   });
 
   describe("Retry Logic", () => {
+    // Use fake timers for all retry tests to avoid real backoff delays
+    beforeEach(() => {
+      jest.useFakeTimers();
+    });
+
+    afterEach(() => {
+      jest.useRealTimers();
+    });
+
     it("should retry on 5xx server errors for GET requests", async () => {
       // First call returns 500, second succeeds
       const errorResponse = createMockResponse({ status: 500, ok: false });
@@ -417,7 +426,9 @@ describe("Enhanced Fetch Utilities", () => {
 
       mockFetch.mockResolvedValueOnce(errorResponse).mockResolvedValueOnce(successResponse);
 
-      const result = await enhancedFetch("https://example.com", { method: "GET" });
+      const fetchPromise = enhancedFetch("https://example.com", { method: "GET" });
+      await jest.runAllTimersAsync();
+      const result = await fetchPromise;
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(result.status).toBe(200);
@@ -440,10 +451,12 @@ describe("Enhanced Fetch Utilities", () => {
 
       mockFetch.mockResolvedValueOnce(errorResponse).mockResolvedValueOnce(successResponse);
 
-      const result = await enhancedFetch("https://example.com", {
+      const fetchPromise = enhancedFetch("https://example.com", {
         method: "POST",
         retry: true,
       });
+      await jest.runAllTimersAsync();
+      const result = await fetchPromise;
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(result.status).toBe(200);
@@ -464,42 +477,40 @@ describe("Enhanced Fetch Utilities", () => {
     });
 
     it("should retry on 429 rate limit with Retry-After header", async () => {
-      jest.useFakeTimers();
-      try {
-        const rateLimitHeaders = new Headers();
-        rateLimitHeaders.set("Retry-After", "1"); // 1 second
+      // Fake timers are already enabled by beforeEach
+      const rateLimitHeaders = new Headers();
+      rateLimitHeaders.set("Retry-After", "1"); // 1 second
 
-        const rateLimitResponse = createMockResponse({
-          status: 429,
-          ok: false,
-          headers: rateLimitHeaders,
-        });
-        const successResponse = createMockResponse({ status: 200, ok: true });
+      const rateLimitResponse = createMockResponse({
+        status: 429,
+        ok: false,
+        headers: rateLimitHeaders,
+      });
+      const successResponse = createMockResponse({ status: 200, ok: true });
 
-        mockFetch.mockResolvedValueOnce(rateLimitResponse).mockResolvedValueOnce(successResponse);
+      mockFetch.mockResolvedValueOnce(rateLimitResponse).mockResolvedValueOnce(successResponse);
 
-        const fetchPromise = enhancedFetch("https://example.com");
+      const fetchPromise = enhancedFetch("https://example.com");
 
-        // Advance fake timers to simulate the Retry-After delay without real waiting
-        await jest.advanceTimersByTimeAsync(1000);
+      // Advance fake timers to simulate the Retry-After delay without real waiting
+      await jest.advanceTimersByTimeAsync(1000);
 
-        const result = await fetchPromise;
+      const result = await fetchPromise;
 
-        expect(mockFetch).toHaveBeenCalledTimes(2);
-        expect(result.status).toBe(200);
-      } finally {
-        jest.useRealTimers();
-      }
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(200);
     });
 
     it("should stop retrying after maxRetries attempts", async () => {
       const errorResponse = createMockResponse({ status: 500, ok: false });
       mockFetch.mockResolvedValue(errorResponse);
 
-      const result = await enhancedFetch("https://example.com", {
+      const fetchPromise = enhancedFetch("https://example.com", {
         method: "GET",
         maxRetries: 2,
       });
+      await jest.runAllTimersAsync();
+      const result = await fetchPromise;
 
       // Initial attempt + 2 retries = 3 total calls
       expect(mockFetch).toHaveBeenCalledTimes(3);
@@ -512,7 +523,9 @@ describe("Enhanced Fetch Utilities", () => {
 
       mockFetch.mockRejectedValueOnce(timeoutError).mockResolvedValueOnce(successResponse);
 
-      const result = await enhancedFetch("https://example.com");
+      const fetchPromise = enhancedFetch("https://example.com");
+      await jest.runAllTimersAsync();
+      const result = await fetchPromise;
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(result.status).toBe(200);
@@ -524,7 +537,9 @@ describe("Enhanced Fetch Utilities", () => {
 
       mockFetch.mockRejectedValueOnce(networkError).mockResolvedValueOnce(successResponse);
 
-      const result = await enhancedFetch("https://example.com");
+      const fetchPromise = enhancedFetch("https://example.com");
+      await jest.runAllTimersAsync();
+      const result = await fetchPromise;
 
       expect(mockFetch).toHaveBeenCalledTimes(2);
       expect(result.status).toBe(200);

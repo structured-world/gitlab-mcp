@@ -96,11 +96,14 @@ function extractActionFromError(error: unknown): string | undefined {
 /**
  * Check if a tool operation is idempotent (safe to retry)
  * browse_* tools are always idempotent (read-only)
- * list_* and get_* tools are also idempotent
+ * list_*, get_*, and download_* tools are also idempotent
  */
 function isIdempotentOperation(toolName: string): boolean {
   return (
-    toolName.startsWith("browse_") || toolName.startsWith("list_") || toolName.startsWith("get_")
+    toolName.startsWith("browse_") ||
+    toolName.startsWith("list_") ||
+    toolName.startsWith("get_") ||
+    toolName.startsWith("download_")
   );
 }
 

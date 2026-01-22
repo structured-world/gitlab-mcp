@@ -92,6 +92,8 @@ export async function runWizard(): Promise<void> {
 
   if (!hasToken) {
     // Offer to open browser for PAT creation
+    // Note: We use full API scopes here since readOnly mode isn't determined yet.
+    // Users who want minimal scopes can adjust them manually in GitLab.
     const patUrl = getPatCreationUrl(instanceUrl);
 
     p.note(

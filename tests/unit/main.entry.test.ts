@@ -25,9 +25,14 @@ jest.mock("../../src/cli/init", () => ({
   runWizard: mockRunWizard,
 }));
 
-// Mock cli-utils for parseCliArgs
+// Mock cli-utils for parseCliArgs with full CliArgs shape
 jest.mock("../../src/cli-utils", () => ({
-  parseCliArgs: jest.fn(() => ({ init: false })),
+  parseCliArgs: jest.fn(() => ({
+    init: false,
+    noProjectConfig: false,
+    showProjectConfig: false,
+    auto: false,
+  })),
 }));
 
 const mockStartServer = jest.fn<() => Promise<void>>();
@@ -97,9 +102,14 @@ describe("main entry point", () => {
     // Create mocks first
     const mockWizard = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
 
-    // Re-apply mocks after reset
+    // Re-apply mocks after reset with full CliArgs shape
     jest.doMock("../../src/cli-utils", () => ({
-      parseCliArgs: jest.fn(() => ({ init: true })),
+      parseCliArgs: jest.fn(() => ({
+        init: true,
+        noProjectConfig: false,
+        showProjectConfig: false,
+        auto: false,
+      })),
     }));
     jest.doMock("../../src/server", () => ({
       startServer: jest.fn(),

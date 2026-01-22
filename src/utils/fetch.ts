@@ -446,8 +446,8 @@ export async function enhancedFetch(
     }
   }
 
-  // Should not reach here, but just in case
-  throw lastError ?? new Error("Unknown error during fetch retry");
+  /* istanbul ignore next -- unreachable: loop always exits via return or throw */
+  throw lastError ?? new Error("Unexpected: retry loop exited without result");
 }
 
 export function resetDispatcherCache(): void {

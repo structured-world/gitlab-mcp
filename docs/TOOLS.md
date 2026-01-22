@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-22 | Tools: 47 | Version: 6.27.0
+> Generated: 2026-01-22 | Tools: 47 | Version: 6.27.1
 
 ## Table of Contents
 
@@ -1145,25 +1145,22 @@ BROWSE milestones. Actions: "list" shows milestones with filtering, "get" retrie
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `milestone_id` | string | Yes | The ID of a project or group milestone. Required for 'get', 'issues', 'merge_requests', 'burndown' action(s). |
 | `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
-| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
 | `page` | integer | No | Page number |
 
 **Action `get`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
-| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
+| `milestone_id` | string | Yes | The ID of a project or group milestone. Required for 'get', 'issues', 'merge_requests', 'burndown' action(s). |
 
 **Action `issues`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `milestone_id` | string | Yes | The ID of a project or group milestone. Required for 'get', 'issues', 'merge_requests', 'burndown' action(s). |
 | `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
-| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
 | `page` | integer | No | Page number |
 
 **Action `list`**:
@@ -1184,9 +1181,8 @@ BROWSE milestones. Actions: "list" shows milestones with filtering, "get" retrie
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `milestone_id` | string | Yes | The ID of a project or group milestone. Required for 'get', 'issues', 'merge_requests', 'burndown' action(s). |
 | `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
-| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
 | `page` | integer | No | Page number |
 
 #### Example
@@ -1235,24 +1231,21 @@ MANAGE milestones. Actions: "create" creates new milestone, "update" modifies ex
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
-| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
+| `milestone_id` | string | Yes | The ID of a project or group milestone. Required for 'update', 'delete', 'promote' action(s). |
 
 **Action `promote`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
-| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
+| `milestone_id` | string | Yes | The ID of a project or group milestone. Required for 'update', 'delete', 'promote' action(s). |
 
 **Action `update`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `milestone_id` | string | Yes | The ID of a project or group milestone. Required for 'update', 'delete', 'promote' action(s). |
 | `description` | string | No | The new description of the milestone |
 | `due_date` | string | No | The due date of the milestone (YYYY-MM-DD) |
-| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
-| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
 | `start_date` | string | No | The start date of the milestone (YYYY-MM-DD) |
 | `state_event` | string | No | State event to apply: 'close' or 'activate' |
 | `title` | string | No | The new title of the milestone |

@@ -1,3 +1,9 @@
+## [6.27.1](https://github.com/structured-world/gitlab-mcp/compare/v6.27.0...v6.27.1) (2026-01-22)
+
+### Bug Fixes
+
+* **milestones:** simplify schema to use single milestone_id field ([#121](https://github.com/structured-world/gitlab-mcp/issues/121)) ([00f93d2](https://github.com/structured-world/gitlab-mcp/commit/00f93d268a6c12cc23648d0bb7b562a9708b9d29))
+
 ## [6.27.0](https://github.com/structured-world/gitlab-mcp/compare/v6.26.1...v6.27.0) (2026-01-22)
 
 ### Features

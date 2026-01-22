@@ -14,17 +14,8 @@ process.env.GITLAB_BASE_URL = "";
 process.env.GITLAB_TOKEN = "";
 process.env.GITLAB_API_URL = "";
 
-// Disable all feature flags by default for unit tests
-process.env.USE_WORKITEMS = "false";
-process.env.USE_MILESTONE = "false";
-process.env.USE_PIPELINE = "false";
-process.env.USE_GITLAB_WIKI = "false";
-process.env.USE_LABELS = "false";
-process.env.USE_MRS = "false";
-process.env.USE_FILES = "false";
-process.env.USE_VARIABLES = "false";
-
-// Set read-only mode for unit tests to prevent accidental API calls
-process.env.GITLAB_READONLY = "true";
+// Enable all feature flags for unit tests - we need to test all code paths
+// Unit tests mock API calls, so there's no risk of accidental real API requests
+// Feature flags should only be used for production/integration to disable features
 
 console.log("🧪 Unit test environment initialized - no .env.test loaded");

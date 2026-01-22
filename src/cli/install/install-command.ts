@@ -201,8 +201,18 @@ export async function runInstallWizard(
       return [];
     }
 
-    // Type assertion needed because @clack/prompts multiselect returns unknown[]
-    targetClients = selectedClients as unknown as InstallableClient[];
+    // Validate selected clients at runtime
+    const isInstallableClient = (value: unknown): value is InstallableClient =>
+      typeof value === "string" && INSTALLABLE_CLIENTS.includes(value as InstallableClient);
+
+    const validatedClients = (selectedClients as unknown[]).filter(isInstallableClient);
+    if (validatedClients.length !== (selectedClients as unknown[]).length) {
+      p.log.error("Invalid client selection received.");
+      p.cancel("Installation cancelled");
+      return [];
+    }
+
+    targetClients = validatedClients;
   }
 
   if (targetClients.length === 0) {
@@ -215,6 +225,9 @@ export async function runInstallWizard(
   const alreadyConfigured = targetClients.filter(
     c => detectionResults.find(r => r.client === c)?.alreadyConfigured
   );
+
+  // Track if user confirmed overwrite
+  let userConfirmedOverwrite = false;
 
   if (alreadyConfigured.length > 0 && !flags.force) {
     p.log.warn(
@@ -231,13 +244,15 @@ export async function runInstallWizard(
       return [];
     }
 
-    if (!overwrite) {
+    if (overwrite) {
+      userConfirmedOverwrite = true;
+    } else {
       // Remove already configured clients from target list
       targetClients = targetClients.filter(c => !alreadyConfigured.includes(c));
 
       if (targetClients.length === 0) {
         p.log.info("No new clients to configure.");
-        p.outro("Setup complete.");
+        p.outro("Configuration unchanged.");
         return [];
       }
     }
@@ -246,11 +261,10 @@ export async function runInstallWizard(
   // Install to selected clients
   spinner.start("Installing configuration...");
 
-  const results = installToClients(
-    targetClients,
-    serverConfig,
-    flags.force ?? alreadyConfigured.length > 0
-  );
+  // Force install only if explicitly requested OR if user confirmed overwrite
+  const forceInstall = flags.force === true || userConfirmedOverwrite;
+
+  const results = installToClients(targetClients, serverConfig, forceInstall);
 
   spinner.stop("Installation complete!");
 

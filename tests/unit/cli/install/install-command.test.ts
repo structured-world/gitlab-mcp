@@ -473,8 +473,9 @@ describe("install-command", () => {
       const consoleSpy = jest.spyOn(console, "log").mockImplementation();
       await runInstallWizard(mockServerConfig, { claudeDesktop: true, cursor: true });
 
-      // Note: force is true because alreadyConfigured.length > 0 (claude-desktop was configured)
-      expect(installToClients).toHaveBeenCalledWith(["cursor"], mockServerConfig, true);
+      // forceInstall is false because user declined overwrite (userConfirmedOverwrite = false)
+      // and --force flag was not set
+      expect(installToClients).toHaveBeenCalledWith(["cursor"], mockServerConfig, false);
       consoleSpy.mockRestore();
     });
 
@@ -502,8 +503,8 @@ describe("install-command", () => {
       detectAllClients.mockReturnValueOnce([
         { client: "claude-desktop", detected: true, alreadyConfigured: false },
       ]);
-      // Simulate selecting no clients from detected
-      mockP.multiselect.mockResolvedValueOnce([]);
+      // windsurf flag is passed but windsurf is not detected,
+      // so targetClients will be empty without calling multiselect
 
       const results = await runInstallWizard(mockServerConfig, { windsurf: true });
 
@@ -530,6 +531,136 @@ describe("install-command", () => {
       await runInstallWizard(mockServerConfig, { claudeDesktop: true, force: true });
 
       expect(installToClients).toHaveBeenCalledWith(["claude-desktop"], mockServerConfig, true);
+    });
+
+    it("should pass forceInstall=true when user confirms overwrite", async () => {
+      /**
+       * Tests that when a client is already configured and user confirms overwrite,
+       * forceInstall is set to true (userConfirmedOverwrite = true).
+       */
+      detectAllClients.mockReturnValueOnce([
+        { client: "claude-desktop", detected: true, alreadyConfigured: true },
+      ]);
+      mockP.confirm.mockResolvedValueOnce(true); // user confirms overwrite
+      mockP.isCancel.mockReturnValue(false);
+
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation();
+      await runInstallWizard(mockServerConfig, { claudeDesktop: true });
+
+      // forceInstall should be true because user confirmed overwrite
+      expect(installToClients).toHaveBeenCalledWith(["claude-desktop"], mockServerConfig, true);
+      consoleSpy.mockRestore();
+    });
+
+    it("should pass forceInstall=false when no overwrite needed and no --force flag", async () => {
+      /**
+       * Tests that when clients are not already configured and --force flag is not set,
+       * forceInstall is correctly set to false.
+       */
+      detectAllClients.mockReturnValueOnce([
+        { client: "claude-desktop", detected: true, alreadyConfigured: false },
+        { client: "cursor", detected: true, alreadyConfigured: false },
+      ]);
+      mockP.isCancel.mockReturnValue(false);
+
+      const consoleSpy = jest.spyOn(console, "log").mockImplementation();
+      await runInstallWizard(mockServerConfig, { claudeDesktop: true, cursor: true });
+
+      // forceInstall should be false - no force flag and no overwrite confirmation needed
+      expect(installToClients).toHaveBeenCalledWith(
+        ["claude-desktop", "cursor"],
+        mockServerConfig,
+        false
+      );
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe("type guard validation", () => {
+    /**
+     * Tests for the runtime type guard validation (isInstallableClient)
+     * that filters multiselect results to valid InstallableClient values.
+     * The type guard ensures only valid InstallableClient values are processed.
+     */
+    const mockServerConfig: McpServerConfig = {
+      command: "npx",
+      args: ["-y", "@structured-world/gitlab-mcp"],
+      env: { GITLAB_URL: "https://gitlab.com", GITLAB_TOKEN: "test-token" },
+    };
+
+    let consoleSpy: jest.SpyInstance;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      // Reset mockP.isCancel to always return false
+      mockP.isCancel.mockReturnValue(false);
+      // Re-setup spinner mock (might be affected by previous tests)
+      mockP.spinner.mockReturnValue({
+        start: jest.fn(),
+        stop: jest.fn(),
+        message: jest.fn(),
+      });
+      consoleSpy = jest.spyOn(console, "log").mockImplementation();
+      // Reset installToClients mock to return success
+      installToClients.mockReturnValue([
+        { client: "claude-desktop", success: true, configPath: "/path/to/config" },
+        { client: "cursor", success: true, configPath: "/path/to/config" },
+      ]);
+    });
+
+    afterEach(() => {
+      consoleSpy.mockRestore();
+    });
+
+    it("should accept valid client values from multiselect", async () => {
+      // Setup detected clients
+      detectAllClients.mockReturnValue([
+        { client: "claude-desktop", detected: true, alreadyConfigured: false },
+        { client: "cursor", detected: true, alreadyConfigured: false },
+      ]);
+      // User selects both valid clients from multiselect
+      mockP.multiselect.mockResolvedValueOnce(["claude-desktop", "cursor"]);
+
+      await runInstallWizard(mockServerConfig, {});
+
+      // installToClients should be called with valid clients
+      expect(installToClients).toHaveBeenCalledWith(
+        ["claude-desktop", "cursor"],
+        mockServerConfig,
+        false
+      );
+    });
+
+    it("should filter out invalid client values from multiselect", async () => {
+      // Setup one detected client
+      detectAllClients.mockReturnValue([
+        { client: "claude-desktop", detected: true, alreadyConfigured: false },
+      ]);
+      // Simulate multiselect returning mix of valid and invalid values
+      // This tests the type guard isInstallableClient at install-command.ts:205-206
+      mockP.multiselect.mockResolvedValueOnce(["claude-desktop", "invalid-client"]);
+
+      const results = await runInstallWizard(mockServerConfig, {});
+
+      // Should cancel because length mismatch after filtering
+      expect(mockP.log.error).toHaveBeenCalledWith("Invalid client selection received.");
+      expect(mockP.cancel).toHaveBeenCalledWith("Installation cancelled");
+      expect(results).toEqual([]);
+    });
+
+    it("should reject all invalid client values", async () => {
+      // Setup one detected client (required so we get to multiselect)
+      detectAllClients.mockReturnValue([
+        { client: "claude-desktop", detected: true, alreadyConfigured: false },
+      ]);
+      // Simulate multiselect returning only invalid values
+      mockP.multiselect.mockResolvedValueOnce(["not-a-client", "also-invalid"]);
+
+      const results = await runInstallWizard(mockServerConfig, {});
+
+      expect(mockP.log.error).toHaveBeenCalledWith("Invalid client selection received.");
+      expect(mockP.cancel).toHaveBeenCalledWith("Installation cancelled");
+      expect(results).toEqual([]);
     });
   });
 });

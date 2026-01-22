@@ -101,6 +101,9 @@ function isValidContainerName(name: string): boolean {
 export function getContainerInfo(containerName: string = "gitlab-mcp"): ContainerInfo | undefined {
   // Validate container name to prevent command injection
   if (!isValidContainerName(containerName)) {
+    console.error(
+      `Invalid container name: "${containerName}". Name must match [a-zA-Z0-9][a-zA-Z0-9_.-]*`
+    );
     return undefined;
   }
 

@@ -196,7 +196,7 @@ export async function runWizard(): Promise<void> {
   const clientOptions = (Object.keys(MCP_CLIENT_INFO) as McpClient[]).map(c => ({
     value: c,
     label: MCP_CLIENT_INFO[c].name,
-    hint: MCP_CLIENT_INFO[c].configPath ?? undefined,
+    hint: MCP_CLIENT_INFO[c].configPath ? MCP_CLIENT_INFO[c].configPath : undefined,
   }));
 
   const client = await p.select({

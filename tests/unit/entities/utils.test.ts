@@ -449,6 +449,27 @@ describe("entity utilities", () => {
       expect(perPageDesc).toContain("25");
       expect(perPageDesc).toContain("75");
     });
+
+    it("should throw error when defaultPerPage exceeds maxPerPage", () => {
+      expect(() => paginationFields(100, 50)).toThrow(
+        "Invalid pagination config: defaultPerPage (100) cannot exceed maxPerPage (50)"
+      );
+    });
+
+    it("should allow equal defaultPerPage and maxPerPage", () => {
+      expect(() => paginationFields(50, 50)).not.toThrow();
+      const fields = paginationFields(50, 50);
+      const { z } = require("zod");
+      const schema = z.object(fields);
+      expect(schema.safeParse({ per_page: 50 }).success).toBe(true);
+    });
+
+    it("should not include misleading default in page description", () => {
+      const fields = paginationFields();
+      const pageDesc = fields.page.description;
+      // Page description should NOT mention "default: 1" since there's no actual default
+      expect(pageDesc).not.toContain("default");
+    });
   });
 
   describe("validateScopeId", () => {

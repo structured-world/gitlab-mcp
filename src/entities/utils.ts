@@ -39,6 +39,11 @@ export function paginationFields(
   defaultPerPage: number = GITLAB_DEFAULT_PER_PAGE,
   maxPerPage: number = GITLAB_MAX_PER_PAGE
 ) {
+  if (defaultPerPage > maxPerPage) {
+    throw new Error(
+      `Invalid pagination config: defaultPerPage (${defaultPerPage}) cannot exceed maxPerPage (${maxPerPage})`
+    );
+  }
   return {
     per_page: z
       .number()
@@ -48,7 +53,7 @@ export function paginationFields(
       .optional()
       .default(defaultPerPage)
       .describe(`Number of items per page (default: ${defaultPerPage}, max: ${maxPerPage})`),
-    page: z.number().int().min(1).optional().describe("Page number (default: 1)"),
+    page: z.number().int().min(1).optional().describe("Page number"),
   };
 }
 

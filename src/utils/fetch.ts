@@ -219,10 +219,18 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       return;
     }
 
-    const timeoutId = setTimeout(resolve, ms);
+    let abortHandler: (() => void) | undefined;
+
+    const timeoutId = setTimeout(() => {
+      // Clean up abort listener on normal completion
+      if (abortHandler) {
+        signal?.removeEventListener("abort", abortHandler);
+      }
+      resolve();
+    }, ms);
 
     if (signal) {
-      const abortHandler = () => {
+      abortHandler = () => {
         clearTimeout(timeoutId);
         reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
       };
@@ -405,8 +413,8 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
   const safeUrl = redactUrlForLogging(url);
   logger.debug({ url: safeUrl, method, timeout: API_TIMEOUT_MS }, "Starting GitLab API request");
 
-  // Use a unique symbol to identify internal timeout aborts vs caller aborts
-  const TIMEOUT_REASON = "GitLab API timeout";
+  // Use a unique Symbol to identify internal timeout aborts vs caller aborts
+  const TIMEOUT_REASON = Symbol("GitLab API timeout");
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(TIMEOUT_REASON), API_TIMEOUT_MS);
 
@@ -414,6 +422,7 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
   // Use AbortSignal.any() if available (Node.js 20+), otherwise use listener pattern
   let mergedSignal: AbortSignal = controller.signal;
   const callerSignal = options.signal as AbortSignal | undefined;
+  let callerAbortHandler: (() => void) | undefined;
 
   if (callerSignal) {
     if (typeof AbortSignal.any === "function") {
@@ -424,12 +433,19 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
       if (callerSignal.aborted) {
         controller.abort(callerSignal.reason);
       } else {
-        callerSignal.addEventListener("abort", () => controller.abort(callerSignal.reason), {
-          once: true,
-        });
+        callerAbortHandler = () => controller.abort(callerSignal.reason);
+        callerSignal.addEventListener("abort", callerAbortHandler, { once: true });
       }
     }
   }
+
+  // Helper to clean up listeners
+  const cleanup = () => {
+    clearTimeout(timeoutId);
+    if (callerAbortHandler && callerSignal) {
+      callerSignal.removeEventListener("abort", callerAbortHandler);
+    }
+  };
 
   const fetchOptions: Record<string, unknown> = {
     ...options,
@@ -444,7 +460,7 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
   const startTime = Date.now();
   try {
     const response = await fetch(url, fetchOptions as RequestInit);
-    clearTimeout(timeoutId);
+    cleanup();
 
     const duration = Date.now() - startTime;
     logger.debug(
@@ -454,7 +470,7 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
 
     return response;
   } catch (error) {
-    clearTimeout(timeoutId);
+    cleanup();
     const duration = Date.now() - startTime;
 
     if (error instanceof Error && error.name === "AbortError") {

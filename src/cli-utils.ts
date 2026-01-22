@@ -23,6 +23,14 @@ export interface CliArgs {
   remoteName?: string;
   /** Run init wizard */
   init: boolean;
+  /** Run install command */
+  install: boolean;
+  /** Install command arguments */
+  installArgs: string[];
+  /** Run docker command */
+  docker: boolean;
+  /** Docker command arguments */
+  dockerArgs: string[];
 }
 
 /**
@@ -38,12 +46,27 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
     auto: false,
     dryRun: false,
     init: false,
+    install: false,
+    installArgs: [],
+    docker: false,
+    dockerArgs: [],
   };
 
-  // Check for init subcommand (first positional arg)
-  if (args.length > 0 && args[0] === "init") {
-    result.init = true;
-    return result;
+  // Check for subcommands (first positional arg)
+  if (args.length > 0) {
+    switch (args[0]) {
+      case "init":
+        result.init = true;
+        return result;
+      case "install":
+        result.install = true;
+        result.installArgs = args.slice(1);
+        return result;
+      case "docker":
+        result.docker = true;
+        result.dockerArgs = args.slice(1);
+        return result;
+    }
   }
 
   let profileCount = 0;

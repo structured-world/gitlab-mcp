@@ -5,6 +5,19 @@
 import { McpServerConfig, WizardConfig, MCP_CLIENT_INFO, ROLE_PRESETS } from "./types";
 
 /**
+ * Escape a string for safe use in shell double-quoted context.
+ * Escapes: $ ` " \ and newlines
+ */
+function shellEscape(value: string): string {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\$/g, "\\$")
+    .replace(/`/g, "\\`")
+    .replace(/\n/g, "\\n");
+}
+
+/**
  * Generate MCP server configuration object
  */
 export function generateServerConfig(config: WizardConfig): McpServerConfig {
@@ -52,9 +65,9 @@ export function generateMcpServersJson(config: WizardConfig, serverName = "gitla
 export function generateClaudeCodeCommand(config: WizardConfig, serverName = "gitlab"): string {
   const serverConfig = generateServerConfig(config);
 
-  // Build environment variable flags
+  // Build environment variable flags with proper shell escaping
   const envFlags = Object.entries(serverConfig.env)
-    .map(([key, value]) => `--env ${key}="${value}"`)
+    .map(([key, value]) => `--env ${key}="${shellEscape(value)}"`)
     .join(" ");
 
   // claude mcp add <name> <command> [args...] --env KEY=VALUE

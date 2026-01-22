@@ -152,7 +152,7 @@ export async function runWizard(): Promise<void> {
 
   if (!connectionResult.success) {
     spinner.stop("Connection failed");
-    p.log.error(`Connection error: ${connectionResult.error}`);
+    p.log.error(`Connection error: ${connectionResult.error ?? "Unknown error"}`);
     p.cancel("Please check your URL and token");
     process.exit(1);
   }
@@ -160,7 +160,7 @@ export async function runWizard(): Promise<void> {
   spinner.stop("Connection successful!");
 
   p.log.success(
-    `Connected as ${connectionResult.username}` +
+    `Connected as ${connectionResult.username ?? "unknown user"}` +
       (connectionResult.gitlabVersion ? ` (GitLab ${connectionResult.gitlabVersion})` : "")
   );
 

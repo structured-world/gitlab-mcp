@@ -137,6 +137,20 @@ describe("config-generator", () => {
 
       expect(result).toContain('--env GITLAB_MCP_PRESET="devops"');
     });
+
+    it("should escape shell special characters in env values", () => {
+      const config: WizardConfig = {
+        ...baseConfig,
+        token: 'token"with$special`chars\\and\nnewline',
+      };
+
+      const result = generateClaudeCodeCommand(config);
+
+      // Should escape: " $ ` \ and newlines
+      expect(result).toContain(
+        '--env GITLAB_TOKEN="token\\"with\\$special\\`chars\\\\and\\nnewline"'
+      );
+    });
   });
 
   describe("generateClientConfig", () => {

@@ -385,12 +385,12 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
       throw new Error(`GitLab API timeout after ${API_TIMEOUT_MS}ms`);
     }
 
-    // Log other errors
+    // Log other errors with full error object for stack trace
     logger.warn(
       {
         url: safeUrl,
         method,
-        error: error instanceof Error ? error.message : String(error),
+        err: error instanceof Error ? error : new Error(String(error)),
         duration,
       },
       "GitLab API request failed"

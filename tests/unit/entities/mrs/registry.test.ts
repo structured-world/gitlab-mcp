@@ -747,7 +747,7 @@ describe("MRS Registry", () => {
 
     describe("browse_mr_discussions handler", () => {
       describe("action: list", () => {
-        it("should list MR discussions", async () => {
+        it("should list MR discussions without per_page (uses default)", async () => {
           const mockDiscussions = [{ id: "abc123", notes: [] }];
           mockGitlab.get.mockResolvedValueOnce(mockDiscussions);
 
@@ -760,7 +760,55 @@ describe("MRS Registry", () => {
 
           expect(mockGitlab.get).toHaveBeenCalledWith(
             "projects/test%2Fproject/merge_requests/1/discussions",
-            expect.objectContaining({ query: expect.any(Object) })
+            expect.objectContaining({
+              query: expect.objectContaining({ per_page: 20 }),
+            })
+          );
+          expect(result).toEqual(mockDiscussions);
+        });
+
+        it("should list MR discussions with custom per_page", async () => {
+          const mockDiscussions = [
+            { id: "abc123", notes: [] },
+            { id: "def456", notes: [] },
+          ];
+          mockGitlab.get.mockResolvedValueOnce(mockDiscussions);
+
+          const tool = mrsToolRegistry.get("browse_mr_discussions")!;
+          const result = await tool.handler({
+            action: "list",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            per_page: 50,
+          });
+
+          expect(mockGitlab.get).toHaveBeenCalledWith(
+            "projects/test%2Fproject/merge_requests/1/discussions",
+            expect.objectContaining({
+              query: expect.objectContaining({ per_page: 50 }),
+            })
+          );
+          expect(result).toEqual(mockDiscussions);
+        });
+
+        it("should list MR discussions with pagination (per_page and page)", async () => {
+          const mockDiscussions = [{ id: "ghi789", notes: [] }];
+          mockGitlab.get.mockResolvedValueOnce(mockDiscussions);
+
+          const tool = mrsToolRegistry.get("browse_mr_discussions")!;
+          const result = await tool.handler({
+            action: "list",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            per_page: 10,
+            page: 3,
+          });
+
+          expect(mockGitlab.get).toHaveBeenCalledWith(
+            "projects/test%2Fproject/merge_requests/1/discussions",
+            expect.objectContaining({
+              query: expect.objectContaining({ per_page: 10, page: 3 }),
+            })
           );
           expect(result).toEqual(mockDiscussions);
         });

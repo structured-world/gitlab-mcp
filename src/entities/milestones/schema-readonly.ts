@@ -30,31 +30,19 @@ export const GitLabMilestonesSchema = z.object({
 
 // --- Shared fields ---
 const namespaceField = z.string().describe("Namespace path (group or project)");
-const milestoneIdField = requiredId
-  .optional()
-  .describe("Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3)");
-const milestoneIidField = z
-  .string()
-  .min(1)
-  .optional()
-  .describe("Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id.");
+
+// NOTE on milestone_id:
+// GitLab Milestones REST API uses the IID (Internal ID) in URL paths, NOT the global ID.
+// Example: GET /projects/:id/milestones/:milestone_id where :milestone_id is the IID.
+// When you see a URL like /milestones/3, use '3' as the milestone_id value.
+// The API response contains both 'id' (global unique) and 'iid' (project-scoped).
+const milestoneIdField = requiredId.describe(
+  "The ID of a project or group milestone Required for 'get', 'issues', 'merge_requests', 'burndown' action(s)."
+);
+
 const paginationFields = {
   per_page: z.number().optional().describe("Number of items per page"),
   page: z.number().optional().describe("Page number"),
-};
-
-// Refinement to require either milestone_id or iid
-const requireMilestoneIdentifier = (
-  data: { milestone_id?: string; iid?: string },
-  ctx: z.RefinementCtx
-) => {
-  if (data.milestone_id === undefined && data.iid === undefined) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: "Either 'milestone_id' or 'iid' must be provided",
-      path: ["milestone_id"],
-    });
-  }
 };
 
 // --- Action: list ---
@@ -87,12 +75,10 @@ const ListMilestonesSchema = z.object({
 });
 
 // --- Action: get ---
-// Supports lookup by either milestone_id or iid (both refer to the same value in GitLab)
 const GetMilestoneSchema = z.object({
   action: z.literal("get").describe("Get a single milestone by ID"),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
-  iid: milestoneIidField,
 });
 
 // --- Action: issues ---
@@ -100,7 +86,6 @@ const MilestoneIssuesSchema = z.object({
   action: z.literal("issues").describe("List issues assigned to a milestone"),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
-  iid: milestoneIidField,
   ...paginationFields,
 });
 
@@ -109,7 +94,6 @@ const MilestoneMergeRequestsSchema = z.object({
   action: z.literal("merge_requests").describe("List merge requests assigned to a milestone"),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
-  iid: milestoneIidField,
   ...paginationFields,
 });
 
@@ -118,30 +102,17 @@ const MilestoneBurndownSchema = z.object({
   action: z.literal("burndown").describe("Get burndown chart data for a milestone"),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
-  iid: milestoneIidField,
   ...paginationFields,
 });
 
 // --- Discriminated union combining all actions ---
-// Base union for type narrowing
-const BrowseMilestonesBaseSchema = z.discriminatedUnion("action", [
+export const BrowseMilestonesSchema = z.discriminatedUnion("action", [
   ListMilestonesSchema,
   GetMilestoneSchema,
   MilestoneIssuesSchema,
   MilestoneMergeRequestsSchema,
   MilestoneBurndownSchema,
 ]);
-
-// Add validation for actions that require milestone identifier
-export const BrowseMilestonesSchema = BrowseMilestonesBaseSchema.superRefine((data, ctx) => {
-  // Actions that require milestone_id or iid
-  const actionsRequiringMilestone = ["get", "issues", "merge_requests", "burndown"];
-
-  if (actionsRequiringMilestone.includes(data.action)) {
-    const dataWithIds = data as { milestone_id?: string; iid?: string };
-    requireMilestoneIdentifier(dataWithIds, ctx);
-  }
-});
 
 // ============================================================================
 // Type exports

@@ -1,3 +1,9 @@
+## [6.29.1](https://github.com/structured-world/gitlab-mcp/compare/v6.29.0...v6.29.1) (2026-01-22)
+
+### Bug Fixes
+
+* **cli:** add input validation and security hardening ([#128](https://github.com/structured-world/gitlab-mcp/issues/128)) ([1e6f28c](https://github.com/structured-world/gitlab-mcp/commit/1e6f28c9a1a8bfc3d12e80a57176c32c4a11c9af))
+
 ## [6.29.0](https://github.com/structured-world/gitlab-mcp/compare/v6.28.0...v6.29.0) (2026-01-22)
 
 ### Features

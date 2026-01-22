@@ -20,14 +20,22 @@ import {
 import { openUrl } from "./browser";
 
 /**
- * Mask sensitive values in JSON content for display
+ * Mask sensitive values in content for display (JSON and CLI commands)
  */
 function maskSensitiveContent(content: string): string {
-  // Mask GITLAB_TOKEN value in JSON
-  return content.replace(
+  let masked = content;
+  // Mask GITLAB_TOKEN value in JSON: "GITLAB_TOKEN": "value"
+  masked = masked.replace(
     /("GITLAB_TOKEN"\s*:\s*")([^"]+)(")/g,
     (_match, prefix, _token, suffix) => `${prefix}****${suffix}`
   );
+  // Mask GITLAB_TOKEN in CLI commands: --env GITLAB_TOKEN="value" or GITLAB_TOKEN=value
+  masked = masked.replace(
+    /(GITLAB_TOKEN=")([^"]+)(")/g,
+    (_match, prefix, _token, suffix) => `${prefix}****${suffix}`
+  );
+  masked = masked.replace(/(GITLAB_TOKEN=)([^\s"]+)/g, (_match, prefix, _token) => `${prefix}****`);
+  return masked;
 }
 
 /**
@@ -285,7 +293,11 @@ export async function runWizard(): Promise<void> {
         p.log.success("Claude Desktop should open with the configuration");
       } else {
         p.log.warn("Could not open Claude Desktop automatically");
-        p.note(deepLink, "Copy this link and open in browser:");
+        p.log.warn(
+          "Security: this link contains your GitLab token encoded. " +
+            "Do NOT share or store it in logs/chat."
+        );
+        p.note(deepLink, "Copy this sensitive link (treat like a password):");
       }
     }
   }

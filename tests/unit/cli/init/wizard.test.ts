@@ -348,9 +348,9 @@ describe("wizard", () => {
     });
 
     it("should run CLI command when user confirms", async () => {
-      const mockExecSync = jest.fn();
+      const mockSpawnSync = jest.fn().mockReturnValue({ status: 0 });
       jest.doMock("child_process", () => ({
-        execSync: mockExecSync,
+        spawnSync: mockSpawnSync,
       }));
 
       (configGenerator.generateClientConfig as jest.Mock).mockReturnValueOnce({
@@ -376,8 +376,8 @@ describe("wizard", () => {
         username: "dev",
       });
 
-      // The actual execSync is dynamically imported, we can't easily mock it
-      // but the test covers the code path - execSync will fail silently in test
+      // The spawnSync is dynamically imported, we can't easily mock it
+      // but the test covers the code path - spawnSync will fail silently in test
       await runWizard();
 
       // Verify the flow reached the CLI execution path
@@ -415,11 +415,15 @@ describe("wizard", () => {
 
       await runWizard();
 
-      // Should show warning and note with deep link
+      // Should show warnings and note with deep link
       expect(p.log.warn).toHaveBeenCalledWith("Could not open Claude Desktop automatically");
+      expect(p.log.warn).toHaveBeenCalledWith(
+        "Security: this link contains your GitLab token encoded. " +
+          "Do NOT share or store it in logs/chat."
+      );
       expect(p.note).toHaveBeenCalledWith(
         "claude://test-deep-link",
-        "Copy this link and open in browser:"
+        "Copy this sensitive link (treat like a password):"
       );
     });
 

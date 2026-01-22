@@ -115,7 +115,9 @@ export const MCP_CLIENT_INFO: Record<
     configPath:
       process.platform === "darwin"
         ? "~/Library/Application Support/Claude/claude_desktop_config.json"
-        : "%APPDATA%/Claude/claude_desktop_config.json",
+        : process.platform === "win32"
+          ? "%APPDATA%/Claude/claude_desktop_config.json"
+          : "",
     supportsCliInstall: false,
   },
   "claude-code": {

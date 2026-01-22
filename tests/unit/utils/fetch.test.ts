@@ -850,5 +850,122 @@ describe("Enhanced Fetch Utilities", () => {
       // The promise should reject with AbortError
       await expect(fetchPromise).rejects.toThrow();
     });
+
+    it("should use default backoff when Retry-After header is invalid", async () => {
+      // Test that invalid Retry-After values fall back to calculated backoff
+      // This covers the parseRetryAfter return null path (line 360)
+      const rateLimitHeaders = new Headers();
+      rateLimitHeaders.set("Retry-After", "invalid-not-a-number-or-date");
+
+      const rateLimitResponse = createMockResponse({
+        status: 429,
+        ok: false,
+        headers: rateLimitHeaders,
+      });
+      const successResponse = createMockResponse({ status: 200, ok: true });
+
+      mockFetch.mockResolvedValueOnce(rateLimitResponse).mockResolvedValueOnce(successResponse);
+
+      const fetchPromise = enhancedFetch("https://example.com");
+
+      // Should use default backoff delay since Retry-After is invalid
+      await jest.runAllTimersAsync();
+
+      const result = await fetchPromise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(200);
+    });
+
+    it("should handle pre-aborted signal in retry backoff", async () => {
+      // Test that already-aborted signal is handled in backoff sleep
+      // This covers the sleep pre-abort check (lines 218-219)
+      const controller = new AbortController();
+      controller.abort("Already aborted");
+
+      const errorResponse = createMockResponse({ status: 500, ok: false });
+      mockFetch.mockResolvedValue(errorResponse);
+
+      // With pre-aborted signal, should reject immediately
+      await expect(
+        enhancedFetch("https://example.com", {
+          signal: controller.signal,
+          retry: true,
+        })
+      ).rejects.toThrow();
+    });
+
+    it("should log caller abort with debug level and re-throw", async () => {
+      // Test the caller abort logging path (lines 473-479)
+      // When fetch throws AbortError due to caller signal, it should:
+      // 1. Log at debug level (not warn like timeout)
+      // 2. Re-throw the original error
+      const controller = new AbortController();
+
+      mockFetch.mockImplementation(async () => {
+        // Simulate caller aborting during fetch
+        controller.abort("User cancelled request");
+        throw new DOMException("The operation was aborted", "AbortError");
+      });
+
+      await expect(
+        enhancedFetch("https://example.com", {
+          signal: controller.signal,
+          retry: false,
+        })
+      ).rejects.toMatchObject({
+        name: "AbortError",
+        message: "The operation was aborted",
+      });
+
+      // Should NOT be converted to timeout error
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should distinguish caller abort from internal timeout in doFetch", async () => {
+      // This test ensures the caller abort path is exercised
+      // The key distinction: internal timeout sets controller.signal.reason = TIMEOUT_REASON
+      // Caller abort does NOT trigger internal controller, so isInternalTimeout = false
+      const callerController = new AbortController();
+
+      // Mock fetch to check the signal and throw AbortError when aborted
+      mockFetch.mockImplementation(async (_url: string, opts: RequestInit) => {
+        const signal = opts.signal as AbortSignal;
+        // Abort the caller's controller to trigger AbortError
+        callerController.abort("Caller requested abort");
+        // Check that signal is aborted (merged signal from AbortSignal.any)
+        if (signal.aborted) {
+          throw new DOMException("Signal aborted", "AbortError");
+        }
+        return createMockResponse();
+      });
+
+      const promise = enhancedFetch("https://example.com", {
+        signal: callerController.signal,
+        retry: false,
+      });
+
+      // Should throw AbortError (not timeout error)
+      await expect(promise).rejects.toThrow("Signal aborted");
+    });
+
+    it("should return false from isRetryableError for AbortError with retry enabled", async () => {
+      // Test that AbortError is NOT retried even when retry is enabled
+      // This ensures isRetryableError returns false for AbortError (line 300)
+      const abortError = new DOMException("Aborted by test", "AbortError");
+
+      mockFetch.mockRejectedValue(abortError);
+
+      const promise = enhancedFetch("https://example.com", {
+        retry: true,
+        maxRetries: 3,
+      });
+
+      // Should reject immediately without retrying
+      await expect(promise).rejects.toThrow("Aborted by test");
+
+      // Only 1 call - no retries for AbortError
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -1,3 +1,9 @@
+## [6.26.0](https://github.com/structured-world/gitlab-mcp/compare/v6.25.0...v6.26.0) (2026-01-22)
+
+### Features
+
+* **cli:** add interactive setup wizard (gitlab-mcp init) ([#101](https://github.com/structured-world/gitlab-mcp/issues/101)) ([cb6f080](https://github.com/structured-world/gitlab-mcp/commit/cb6f0800cc45288a5f3bba62d3148dd58e5c6791)), closes [#62](https://github.com/structured-world/gitlab-mcp/issues/62)
+
 ## [6.25.0](https://github.com/structured-world/gitlab-mcp/compare/v6.24.1...v6.25.0) (2026-01-22)
 
 ### Features

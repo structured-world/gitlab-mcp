@@ -21,6 +21,8 @@ export interface CliArgs {
   dryRun: boolean;
   /** Git remote name to use (default: origin) */
   remoteName?: string;
+  /** Run init wizard */
+  init: boolean;
 }
 
 /**
@@ -35,7 +37,14 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
     showProjectConfig: false,
     auto: false,
     dryRun: false,
+    init: false,
   };
+
+  // Check for init subcommand (first positional arg)
+  if (args.length > 0 && args[0] === "init") {
+    result.init = true;
+    return result;
+  }
 
   let profileCount = 0;
 

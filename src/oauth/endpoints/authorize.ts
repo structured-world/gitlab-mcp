@@ -29,7 +29,8 @@ import {
 } from "../token-utils";
 import { getBaseUrl } from "./metadata";
 import { logger } from "../../logger";
-import { DeviceFlowPollResponse } from "../types";
+import { DeviceFlowPollResponse, OAuthErrorResponse } from "../types";
+import { getIpAddress } from "../../utils/request-logger";
 
 /**
  * Authorization endpoint handler
@@ -63,10 +64,7 @@ import { DeviceFlowPollResponse } from "../types";
 export async function authorizeHandler(req: Request, res: Response): Promise<void> {
   const config = loadOAuthConfig();
   if (!config) {
-    res.status(500).json({
-      error: "server_error",
-      error_description: "OAuth not configured",
-    });
+    sendError(req, res, 500, "server_error", "OAuth not configured");
     return;
   }
 
@@ -76,35 +74,23 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
 
   // Validate required parameters
   if (response_type !== "code") {
-    res.status(400).json({
-      error: "unsupported_response_type",
-      error_description: 'Only "code" response type is supported',
-    });
+    sendError(req, res, 400, "unsupported_response_type", 'Only "code" response type is supported');
     return;
   }
 
   if (!client_id) {
-    res.status(400).json({
-      error: "invalid_request",
-      error_description: "client_id is required",
-    });
+    sendError(req, res, 400, "invalid_request", "client_id is required");
     return;
   }
 
   // PKCE is required for OAuth 2.1
   if (!code_challenge) {
-    res.status(400).json({
-      error: "invalid_request",
-      error_description: "code_challenge is required (PKCE)",
-    });
+    sendError(req, res, 400, "invalid_request", "code_challenge is required (PKCE)");
     return;
   }
 
   if (code_challenge_method !== "S256") {
-    res.status(400).json({
-      error: "invalid_request",
-      error_description: 'code_challenge_method must be "S256"',
-    });
+    sendError(req, res, 400, "invalid_request", 'code_challenge_method must be "S256"');
     return;
   }
 
@@ -241,10 +227,7 @@ async function handleDeviceFlow(
     res.send(html);
   } catch (error: unknown) {
     logger.error({ err: error as Error }, "Failed to initiate device flow");
-    res.status(500).json({
-      error: "server_error",
-      error_description: "Failed to initiate authentication",
-    });
+    sendError(req, res, 500, "server_error", "Failed to initiate authentication");
   }
 }
 
@@ -382,6 +365,37 @@ interface DeviceFlowHTMLParams {
   flowState: string;
   pollUrl: string;
   expiresIn: number;
+}
+
+/**
+ * Send an OAuth error response
+ *
+ * Logs the error before sending the response for debugging and monitoring.
+ */
+function sendError(
+  req: Request,
+  res: Response,
+  status: number,
+  error: string,
+  description: string
+): void {
+  // Log OAuth error with structured context
+  logger.warn(
+    {
+      event: "oauth_error",
+      endpoint: "/authorize",
+      ip: getIpAddress(req),
+      error,
+      description,
+    },
+    "OAuth authorize request failed"
+  );
+
+  const response: OAuthErrorResponse = {
+    error,
+    error_description: description,
+  };
+  res.status(status).json(response);
 }
 
 function getDeviceFlowHTML(params: DeviceFlowHTMLParams): string {

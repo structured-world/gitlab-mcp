@@ -222,11 +222,13 @@ function redactUrlForLogging(url: string): string {
   try {
     const parsed = new URL(url);
 
+    // Redact URL userinfo (user:pass@host)
+    if (parsed.username) parsed.username = "[REDACTED]";
+    if (parsed.password) parsed.password = "[REDACTED]";
+
     // Redact upload secrets in path: /uploads/<secret>/<filename> -> /uploads/[REDACTED]/<filename>
-    parsed.pathname = parsed.pathname.replace(
-      /\/uploads\/([a-f0-9-]+)\//gi,
-      "/uploads/[REDACTED]/"
-    );
+    // Secret can be any string (not just hex), so match any path segment after /uploads/
+    parsed.pathname = parsed.pathname.replace(/\/uploads\/([^/]+)\//gi, "/uploads/[REDACTED]/");
 
     // Redact any path segment that looks like a secret/token (32+ hex chars)
     parsed.pathname = parsed.pathname.replace(/\/([a-f0-9]{32,})\//gi, "/[REDACTED]/");
@@ -437,8 +439,9 @@ export async function enhancedFetch(
         const retryAfter = response.headers.get("Retry-After");
         if (retryAfter && response.status === 429) {
           const retryAfterSeconds = parseInt(retryAfter, 10);
-          if (!isNaN(retryAfterSeconds)) {
-            retryDelay = retryAfterSeconds * 1000;
+          if (!isNaN(retryAfterSeconds) && retryAfterSeconds > 0) {
+            // Cap Retry-After to max delay to prevent excessive waits
+            retryDelay = Math.min(retryAfterSeconds * 1000, API_RETRY_MAX_DELAY_MS);
           }
         }
 

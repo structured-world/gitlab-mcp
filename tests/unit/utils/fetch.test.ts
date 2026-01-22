@@ -574,6 +574,32 @@ describe("Enhanced Fetch Utilities", () => {
       expect(result.status).toBe(200);
     });
 
+    it("should cap Retry-After to max delay to prevent excessive waits", async () => {
+      // Test that excessively large Retry-After values are capped
+      const rateLimitHeaders = new Headers();
+      rateLimitHeaders.set("Retry-After", "3600"); // 1 hour - should be capped
+
+      const rateLimitResponse = createMockResponse({
+        status: 429,
+        ok: false,
+        headers: rateLimitHeaders,
+      });
+      const successResponse = createMockResponse({ status: 200, ok: true });
+
+      mockFetch.mockResolvedValueOnce(rateLimitResponse).mockResolvedValueOnce(successResponse);
+
+      const fetchPromise = enhancedFetch("https://example.com");
+
+      // Should be capped to API_RETRY_MAX_DELAY_MS (30000ms = 30 seconds by default)
+      // Not wait 3600 seconds (1 hour)
+      await jest.advanceTimersByTimeAsync(30000);
+
+      const result = await fetchPromise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(200);
+    });
+
     it("should stop retrying after maxRetries attempts", async () => {
       const errorResponse = createMockResponse({ status: 500, ok: false });
       mockFetch.mockResolvedValue(errorResponse);

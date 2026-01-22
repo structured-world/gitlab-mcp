@@ -36,7 +36,7 @@ export interface EnhancedToolDefinition extends ToolDefinition {
   /**
    * Mark the tool as idempotent (safe to retry on failure).
    * If not specified, idempotency is inferred from tool name:
-   * - browse_*, list_*, get_* are considered idempotent (read-only)
+   * - browse_*, list_*, get_*, download_* are considered idempotent (read-only)
    * - manage_* are considered non-idempotent (write operations)
    * Set explicitly to override the default behavior.
    */

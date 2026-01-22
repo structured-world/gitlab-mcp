@@ -4,9 +4,9 @@ import { ManageMilestoneSchema } from "../../../../src/entities/milestones/schem
 /**
  * Milestone Schemas Tests
  *
- * NOTE: milestone_id accepts the IID (Internal ID) from URL paths like /milestones/3
+ * NOTE: milestone_id accepts the global ID, NOT the IID.
  * GitLab API response contains both 'id' (global unique) and 'iid' (project-scoped).
- * When the AI agent sees /milestones/3 in a URL, it should use '3' as milestone_id.
+ * Unlike issues/MRs which use IID in URLs, milestones use the global ID field.
  */
 describe("Milestone Schemas", () => {
   describe("BrowseMilestonesSchema", () => {

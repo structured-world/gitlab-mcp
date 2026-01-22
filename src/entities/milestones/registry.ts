@@ -45,12 +45,12 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           }
 
           case "get": {
-            // TypeScript knows: input has milestone_id (uses IID from URL like /milestones/3)
+            // TypeScript knows: input has milestone_id (uses global ID, not IID)
             return gitlab.get(`${entityType}/${encodedPath}/milestones/${input.milestone_id}`);
           }
 
           case "issues": {
-            // TypeScript knows: input has milestone_id (uses IID from URL), per_page, page (optional)
+            // TypeScript knows: input has milestone_id (uses global ID), per_page, page (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
             const query = toQuery(rest, []);
 
@@ -60,7 +60,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           }
 
           case "merge_requests": {
-            // TypeScript knows: input has milestone_id (uses IID from URL), per_page, page (optional)
+            // TypeScript knows: input has milestone_id (uses global ID), per_page, page (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
             const query = toQuery(rest, []);
 
@@ -71,7 +71,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           }
 
           case "burndown": {
-            // TypeScript knows: input has milestone_id (uses IID from URL), per_page, page (optional)
+            // TypeScript knows: input has milestone_id (uses global ID), per_page, page (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
             const query = toQuery(rest, []);
 
@@ -123,7 +123,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           }
 
           case "update": {
-            // TypeScript knows: input has milestone_id (uses IID from URL), title, description, etc. (optional)
+            // TypeScript knows: input has milestone_id (uses global ID), title, description, etc. (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...body } = input;
 
             return gitlab.put(`${entityType}/${encodedPath}/milestones/${milestone_id}`, {
@@ -133,13 +133,13 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           }
 
           case "delete": {
-            // TypeScript knows: input has milestone_id (uses IID from URL)
+            // TypeScript knows: input has milestone_id (uses global ID)
             await gitlab.delete(`${entityType}/${encodedPath}/milestones/${input.milestone_id}`);
             return { deleted: true };
           }
 
           case "promote": {
-            // TypeScript knows: input has milestone_id (uses IID from URL)
+            // TypeScript knows: input has milestone_id (uses global ID)
             if (entityType !== "projects") {
               throw new Error("Milestone promotion is only available for projects, not groups");
             }

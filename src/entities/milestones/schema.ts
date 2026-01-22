@@ -17,12 +17,12 @@ import { requiredId } from "../utils";
 const namespaceField = z.string().describe("Namespace path (group or project)");
 
 // NOTE on milestone_id:
-// GitLab Milestones REST API uses the IID (Internal ID) in URL paths, NOT the global ID.
-// Example: PUT /projects/:id/milestones/:milestone_id where :milestone_id is the IID.
-// When you see a URL like /milestones/3, use '3' as the milestone_id value.
+// GitLab Milestones REST API uses the global ID in URL paths, NOT the IID.
+// Example: PUT /projects/:id/milestones/:milestone_id where :milestone_id is the global ID.
 // The API response contains both 'id' (global unique) and 'iid' (project-scoped).
+// Unlike issues/MRs which use IID in URLs, milestones use the global ID.
 const milestoneIdField = requiredId.describe(
-  "The ID of a project or group milestone Required for 'update', 'delete', 'promote' action(s)."
+  "The ID of a project or group milestone. Required for 'update', 'delete', 'promote' action(s)."
 );
 
 // --- Create action: creates a new milestone ---

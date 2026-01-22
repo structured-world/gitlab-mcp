@@ -1,3 +1,9 @@
+## [6.25.0](https://github.com/structured-world/gitlab-mcp/compare/v6.24.1...v6.25.0) (2026-01-22)
+
+### Features
+
+* **iid:** add IID support for work items and milestones ([#102](https://github.com/structured-world/gitlab-mcp/issues/102)) ([513e9ce](https://github.com/structured-world/gitlab-mcp/commit/513e9ce299d9539c13d462af45c3626b01ed48f4)), closes [#99](https://github.com/structured-world/gitlab-mcp/issues/99) [#99](https://github.com/structured-world/gitlab-mcp/issues/99) [#99](https://github.com/structured-world/gitlab-mcp/issues/99) [#99](https://github.com/structured-world/gitlab-mcp/issues/99)
+
 ## [6.24.1](https://github.com/structured-world/gitlab-mcp/compare/v6.24.0...v6.24.1) (2026-01-21)
 
 ### Bug Fixes

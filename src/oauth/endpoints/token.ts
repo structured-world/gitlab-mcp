@@ -23,6 +23,7 @@ import { refreshGitLabToken } from "../gitlab-device-flow";
 import { getBaseUrl } from "./metadata";
 import { logger } from "../../logger";
 import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from "../types";
+import { getIpAddress } from "../../utils/request-logger";
 
 /**
  * Token endpoint handler
@@ -36,7 +37,7 @@ import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from "../types";
 export async function tokenHandler(req: Request, res: Response): Promise<void> {
   const config = loadOAuthConfig();
   if (!config) {
-    sendError(res, 500, "server_error", "OAuth not configured");
+    sendError(req, res, 500, "server_error", "OAuth not configured");
     return;
   }
 
@@ -52,7 +53,13 @@ export async function tokenHandler(req: Request, res: Response): Promise<void> {
       break;
 
     default:
-      sendError(res, 400, "unsupported_grant_type", `Grant type "${grant_type}" is not supported`);
+      sendError(
+        req,
+        res,
+        400,
+        "unsupported_grant_type",
+        `Grant type "${grant_type}" is not supported`
+      );
   }
 }
 
@@ -75,45 +82,45 @@ async function handleAuthorizationCode(
 
   // Validate required parameters
   if (!code) {
-    sendError(res, 400, "invalid_request", "Missing authorization code");
+    sendError(req, res, 400, "invalid_request", "Missing authorization code");
     return;
   }
 
   if (!code_verifier) {
-    sendError(res, 400, "invalid_request", "Missing code_verifier (PKCE required)");
+    sendError(req, res, 400, "invalid_request", "Missing code_verifier (PKCE required)");
     return;
   }
 
   // Look up authorization code
   const authCode = sessionStore.getAuthCode(code);
   if (!authCode) {
-    sendError(res, 400, "invalid_grant", "Invalid or expired authorization code");
+    sendError(req, res, 400, "invalid_grant", "Invalid or expired authorization code");
     return;
   }
 
   // Check if code has expired
   if (Date.now() > authCode.expiresAt) {
     sessionStore.deleteAuthCode(code);
-    sendError(res, 400, "invalid_grant", "Authorization code has expired");
+    sendError(req, res, 400, "invalid_grant", "Authorization code has expired");
     return;
   }
 
   // Verify PKCE code challenge
   if (!verifyCodeChallenge(code_verifier, authCode.codeChallenge, authCode.codeChallengeMethod)) {
-    sendError(res, 400, "invalid_grant", "Invalid code_verifier");
+    sendError(req, res, 400, "invalid_grant", "Invalid code_verifier");
     return;
   }
 
   // Verify redirect_uri matches (if it was provided in authorization)
   if (authCode.redirectUri && redirect_uri !== authCode.redirectUri) {
-    sendError(res, 400, "invalid_grant", "redirect_uri does not match");
+    sendError(req, res, 400, "invalid_grant", "redirect_uri does not match");
     return;
   }
 
   // Get the session created during device flow
   const session = sessionStore.getSession(authCode.sessionId);
   if (!session) {
-    sendError(res, 400, "invalid_grant", "Session not found");
+    sendError(req, res, 400, "invalid_grant", "Session not found");
     return;
   }
 
@@ -175,14 +182,14 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
   const { refresh_token } = req.body as { refresh_token?: string };
 
   if (!refresh_token) {
-    sendError(res, 400, "invalid_request", "Missing refresh_token");
+    sendError(req, res, 400, "invalid_request", "Missing refresh_token");
     return;
   }
 
   // Find session by refresh token
   const session = sessionStore.getSessionByRefreshToken(refresh_token);
   if (!session) {
-    sendError(res, 400, "invalid_grant", "Invalid refresh token");
+    sendError(req, res, 400, "invalid_grant", "Invalid refresh token");
     return;
   }
 
@@ -202,7 +209,7 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
       // Get updated session
       const refreshedSession = sessionStore.getSession(session.id);
       if (!refreshedSession) {
-        sendError(res, 400, "invalid_grant", "Session lost during refresh");
+        sendError(req, res, 400, "invalid_grant", "Session lost during refresh");
         return;
       }
       updatedSession = refreshedSession;
@@ -210,7 +217,7 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
       logger.debug({ sessionId: session.id.substring(0, 8) + "..." }, "GitLab token refreshed");
     } catch (error: unknown) {
       logger.error({ err: error as Error }, "Failed to refresh GitLab token");
-      sendError(res, 400, "invalid_grant", "Failed to refresh underlying GitLab token");
+      sendError(req, res, 400, "invalid_grant", "Failed to refresh underlying GitLab token");
       return;
     }
   }
@@ -262,8 +269,28 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
 
 /**
  * Send an OAuth error response
+ *
+ * Logs the error before sending the response for debugging and monitoring.
  */
-function sendError(res: Response, status: number, error: string, description: string): void {
+function sendError(
+  req: Request,
+  res: Response,
+  status: number,
+  error: string,
+  description: string
+): void {
+  // Log OAuth error with structured context
+  logger.warn(
+    {
+      event: "oauth_error",
+      endpoint: "/token",
+      ip: getIpAddress(req),
+      error,
+      description,
+    },
+    "OAuth token request failed"
+  );
+
   const response: OAuthErrorResponse = {
     error,
     error_description: description,

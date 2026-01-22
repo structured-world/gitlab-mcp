@@ -20,6 +20,7 @@ import { refreshGitLabToken } from "../oauth/gitlab-device-flow";
 import { getBaseUrl } from "../oauth/endpoints/metadata";
 import { logger } from "../logger";
 import { OAuthErrorResponse } from "../oauth/types";
+import { getMinimalRequestContext } from "../utils/request-logger";
 
 /**
  * OAuth authentication middleware for Express
@@ -218,8 +219,21 @@ export async function optionalOAuthMiddleware(
  *
  * Includes WWW-Authenticate header with resource parameter (RFC 9470)
  * to help clients discover the authorization server.
+ *
+ * Also logs the auth rejection for debugging and security monitoring.
  */
 function sendUnauthorized(req: Request, res: Response, error: string, description: string): void {
+  // Log auth rejection with structured context
+  logger.warn(
+    {
+      event: "auth_rejected",
+      ...getMinimalRequestContext(req),
+      reason: error,
+      description,
+    },
+    "Authentication rejected"
+  );
+
   const response: OAuthErrorResponse = {
     error,
     error_description: description,

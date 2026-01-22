@@ -5,7 +5,11 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'src/**'
       - 'package.json'
+      - '.github/workflows/docs.yml'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -28,12 +32,23 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-          cache: yarn
 
-      - run: yarn install --immutable
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install dependencies
+        run: yarn install --immutable
 
       - name: Build documentation
         run: yarn docs:build
+
+      - name: Run tests with coverage
+        run: yarn test:cov
+
+      - name: Integrate coverage into docs
+        run: |
+          mkdir -p docs/.vitepress/dist/coverage
+          cp -r coverage/lcov-report/* docs/.vitepress/dist/coverage/
 
       - uses: actions/upload-pages-artifact@v3
         with:

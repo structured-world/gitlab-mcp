@@ -48,8 +48,8 @@ export function commandExists(command: string): boolean {
 export function isValidBundleId(bundleId: string): boolean {
   // Require at least one dot (2 segments) and valid characters
   // Valid: com.example, com.example.app, org.test-app.Main
-  // Invalid: a, com, com., .com, com..example
-  return /^[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)+$/.test(bundleId);
+  // Invalid: a, com, com., .com, com..example, -com.example
+  return /^[a-zA-Z0-9][a-zA-Z0-9-]*(\.[a-zA-Z0-9][a-zA-Z0-9-]*)+$/.test(bundleId);
 }
 
 /**

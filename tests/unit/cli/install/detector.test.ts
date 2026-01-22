@@ -352,6 +352,18 @@ describe("install detector", () => {
       expect(isValidBundleId("io.cursor.Cursor")).toBe(true);
     });
 
+    it("should accept bundle IDs with hyphens", () => {
+      expect(isValidBundleId("org.test-app.Main")).toBe(true);
+      expect(isValidBundleId("com.google-chrome.Chrome")).toBe(true);
+      expect(isValidBundleId("io.my-company.my-app")).toBe(true);
+    });
+
+    it("should reject segments starting with hyphen", () => {
+      expect(isValidBundleId("-com.example")).toBe(false);
+      expect(isValidBundleId("com.-example")).toBe(false);
+      expect(isValidBundleId("com.example.-app")).toBe(false);
+    });
+
     it("should reject single-segment bundle IDs", () => {
       expect(isValidBundleId("a")).toBe(false);
       expect(isValidBundleId("com")).toBe(false);

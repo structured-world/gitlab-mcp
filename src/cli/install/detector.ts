@@ -41,10 +41,23 @@ export function commandExists(command: string): boolean {
 }
 
 /**
+ * Validate bundle ID format to prevent command injection
+ */
+function isValidBundleId(bundleId: string): boolean {
+  // Bundle IDs are reverse-domain format: com.example.app
+  return /^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/.test(bundleId);
+}
+
+/**
  * Check if macOS app bundle exists
  */
 function appBundleExists(bundleId: string): boolean {
   if (process.platform !== "darwin") {
+    return false;
+  }
+
+  // Validate bundleId format to prevent command injection
+  if (!isValidBundleId(bundleId)) {
     return false;
   }
 

@@ -628,8 +628,8 @@ describe("docker-command", () => {
       await initDocker();
 
       expect(mockInitDockerConfig).toHaveBeenCalled();
-      expect(mockP.log.info).toHaveBeenCalledWith(
-        expect.stringContaining("Generated session secret")
+      expect(mockP.log.warn).toHaveBeenCalledWith(
+        expect.stringContaining("Session secret will be stored in docker-compose.yml")
       );
     });
 

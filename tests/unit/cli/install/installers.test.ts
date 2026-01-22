@@ -18,6 +18,8 @@ jest.mock("child_process");
 jest.mock("../../../../src/cli/install/backup", () => ({
   createBackup: jest.fn(() => ({ created: true, backupPath: "/backup/path" })),
 }));
+import { getConfigPath } from "../../../../src/cli/install/detector";
+
 jest.mock("../../../../src/cli/install/detector", () => ({
   expandPath: jest.fn((p: string) => p.replace("~", "/home/user")),
   getConfigPath: jest.fn((client: string) => {
@@ -37,6 +39,7 @@ jest.mock("../../../../src/cli/install/detector", () => ({
 
 const mockFs = fs as jest.Mocked<typeof fs>;
 const mockChildProcess = childProcess as jest.Mocked<typeof childProcess>;
+const mockGetConfigPath = getConfigPath as jest.MockedFunction<typeof getConfigPath>;
 
 describe("install installers", () => {
   const mockServerConfig: McpServerConfig = {
@@ -361,6 +364,314 @@ describe("install installers", () => {
 
       expect(results).toHaveLength(2);
       expect(results.every(r => !r.success)).toBe(true);
+    });
+  });
+
+  describe("installToClient - vscode-copilot", () => {
+    it("should install to vscode-copilot with servers format", () => {
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+
+      const result = installToClient("vscode-copilot", mockServerConfig);
+
+      expect(result.success).toBe(true);
+      expect(result.client).toBe("vscode-copilot");
+
+      const writeCall = mockFs.writeFileSync.mock.calls[0];
+      const writtenContent = JSON.parse(writeCall[1] as string);
+      expect(writtenContent.servers).toBeDefined();
+      expect(writtenContent.servers.gitlab).toBeDefined();
+      expect(writtenContent.mcpServers).toBeUndefined();
+    });
+
+    it("should fail if already configured without force", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          servers: {
+            gitlab: { command: "old" },
+          },
+        })
+      );
+
+      const result = installToClient("vscode-copilot", mockServerConfig, false);
+
+      expect(result.success).toBe(false);
+      expect(result.wasAlreadyConfigured).toBe(true);
+    });
+
+    it("should overwrite with force if already configured", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          servers: {
+            gitlab: { command: "old" },
+          },
+        })
+      );
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      const result = installToClient("vscode-copilot", mockServerConfig, true);
+
+      expect(result.success).toBe(true);
+    });
+
+    it("should remove old gitlab-mcp name if exists", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          servers: {
+            "gitlab-mcp": { command: "old" },
+          },
+        })
+      );
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      const result = installToClient("vscode-copilot", mockServerConfig, true);
+
+      expect(result.success).toBe(true);
+      const writeCall = mockFs.writeFileSync.mock.calls[0];
+      const writtenContent = JSON.parse(writeCall[1] as string);
+      expect(writtenContent.servers["gitlab-mcp"]).toBeUndefined();
+      expect(writtenContent.servers.gitlab).toBeDefined();
+    });
+  });
+
+  describe("installToClient - windsurf", () => {
+    it("should install to windsurf successfully", () => {
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+
+      const result = installToClient("windsurf", mockServerConfig);
+
+      expect(result.success).toBe(true);
+      expect(result.client).toBe("windsurf");
+    });
+
+    it("should fail if already configured without force", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          mcpServers: {
+            gitlab: { command: "old" },
+          },
+        })
+      );
+
+      const result = installToClient("windsurf", mockServerConfig, false);
+
+      expect(result.success).toBe(false);
+      expect(result.wasAlreadyConfigured).toBe(true);
+    });
+
+    it("should overwrite with force if already configured", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          mcpServers: {
+            gitlab: { command: "old" },
+          },
+        })
+      );
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      const result = installToClient("windsurf", mockServerConfig, true);
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("installToClient - cline", () => {
+    it("should install to cline successfully", () => {
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+
+      const result = installToClient("cline", mockServerConfig);
+
+      expect(result.success).toBe(true);
+      expect(result.client).toBe("cline");
+    });
+
+    it("should fail if already configured without force", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          mcpServers: {
+            gitlab: { command: "old" },
+          },
+        })
+      );
+
+      const result = installToClient("cline", mockServerConfig, false);
+
+      expect(result.success).toBe(false);
+      expect(result.wasAlreadyConfigured).toBe(true);
+    });
+
+    it("should create backup when config exists", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          mcpServers: {
+            github: { command: "other" },
+          },
+        })
+      );
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      const result = installToClient("cline", mockServerConfig);
+
+      expect(result.success).toBe(true);
+      expect(result.backupPath).toBe("/backup/path");
+    });
+  });
+
+  describe("installToClient - roo-code", () => {
+    it("should install to roo-code successfully", () => {
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+
+      const result = installToClient("roo-code", mockServerConfig);
+
+      expect(result.success).toBe(true);
+      expect(result.client).toBe("roo-code");
+    });
+
+    it("should fail if already configured without force", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          mcpServers: {
+            gitlab: { command: "old" },
+          },
+        })
+      );
+
+      const result = installToClient("roo-code", mockServerConfig, false);
+
+      expect(result.success).toBe(false);
+      expect(result.wasAlreadyConfigured).toBe(true);
+    });
+
+    it("should preserve other servers when installing", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        JSON.stringify({
+          mcpServers: {
+            github: { command: "other" },
+            jira: { command: "jira-cmd" },
+          },
+        })
+      );
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      const result = installToClient("roo-code", mockServerConfig);
+
+      expect(result.success).toBe(true);
+      const writeCall = mockFs.writeFileSync.mock.calls[0];
+      const writtenContent = JSON.parse(writeCall[1] as string);
+      expect(writtenContent.mcpServers.github).toBeDefined();
+      expect(writtenContent.mcpServers.jira).toBeDefined();
+      expect(writtenContent.mcpServers.gitlab).toBeDefined();
+    });
+  });
+
+  describe("installToClient - error handling", () => {
+    it("should handle writeFileSync error gracefully", () => {
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => {
+        throw new Error("Permission denied");
+      });
+
+      const result = installToClient("cursor", mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Permission denied");
+    });
+
+    it("should handle mkdirSync error gracefully", () => {
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => {
+        throw new Error("Cannot create directory");
+      });
+
+      const result = installToClient("windsurf", mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("Cannot create directory");
+    });
+
+    it("should handle invalid JSON in existing config", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue("invalid json {{{");
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+
+      // Should not throw and should treat as empty config
+      const result = installToClient("cline", mockServerConfig);
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("installToClient - config path unavailable", () => {
+    it("should return error when claude-desktop config path unavailable", () => {
+      mockGetConfigPath.mockReturnValueOnce(undefined);
+
+      const result = installToClient("claude-desktop", mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("config path not available");
+    });
+
+    it("should return error when cursor config path unavailable", () => {
+      mockGetConfigPath.mockReturnValueOnce(undefined);
+
+      const result = installToClient("cursor", mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("config path not available");
+    });
+
+    it("should return error when vscode-copilot config path unavailable", () => {
+      mockGetConfigPath.mockReturnValueOnce(undefined);
+
+      const result = installToClient("vscode-copilot", mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("config path not available");
+    });
+
+    it("should return error when windsurf config path unavailable", () => {
+      mockGetConfigPath.mockReturnValueOnce(undefined);
+
+      const result = installToClient("windsurf", mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("config path not available");
+    });
+
+    it("should return error when cline config path unavailable", () => {
+      mockGetConfigPath.mockReturnValueOnce(undefined);
+
+      const result = installToClient("cline", mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("config path not available");
+    });
+
+    it("should return error when roo-code config path unavailable", () => {
+      mockGetConfigPath.mockReturnValueOnce(undefined);
+
+      const result = installToClient("roo-code", mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("config path not available");
     });
   });
 });

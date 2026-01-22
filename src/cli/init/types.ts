@@ -3,14 +3,19 @@
  */
 
 /**
- * User role selection for preset mapping
+ * User role selection for preset mapping.
+ *
+ * Note: These are simplified wizard-facing role names, not actual preset names.
+ * The mapping to actual presets (e.g., "reviewer" → "code-reviewer") is defined
+ * in ROLE_PRESETS below. This allows user-friendly labels in the wizard while
+ * mapping to the correct GITLAB_MCP_PRESET values.
  */
 export type UserRole =
   | "developer"
   | "senior-developer"
   | "tech-lead"
   | "devops"
-  | "reviewer"
+  | "reviewer" // Maps to "code-reviewer" preset
   | "readonly";
 
 /**
@@ -76,14 +81,17 @@ export interface McpServerConfig {
 }
 
 /**
- * Role to preset mapping
+ * Role to preset mapping.
+ * Maps wizard-facing UserRole values to actual GITLAB_MCP_PRESET names.
+ * Some mappings differ (e.g., "reviewer" → "code-reviewer") to provide
+ * simpler labels in the wizard UI while using correct preset identifiers.
  */
 export const ROLE_PRESETS: Record<UserRole, string> = {
   developer: "developer",
   "senior-developer": "senior-dev",
   "tech-lead": "full-access",
   devops: "devops",
-  reviewer: "code-reviewer",
+  reviewer: "code-reviewer", // Wizard uses "reviewer", preset is "code-reviewer"
   readonly: "readonly",
 };
 

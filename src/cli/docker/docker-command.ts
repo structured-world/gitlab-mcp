@@ -148,7 +148,7 @@ export async function initDocker(): Promise<void> {
     placeholder: "3333",
     initialValue: "3333",
     validate: value => {
-      const num = parseInt(value, 10);
+      const num = parseInt(value ?? "", 10);
       if (isNaN(num) || num < 1 || num > 65535) {
         return "Port must be a number between 1 and 65535";
       }

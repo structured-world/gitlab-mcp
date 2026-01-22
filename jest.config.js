@@ -38,6 +38,8 @@ module.exports = {
   moduleNameMapper: {
     "^(\\.{1,2}/.*)\\.js$": "$1",
   },
+  // Transform ESM modules from node_modules
+  transformIgnorePatterns: ["node_modules/(?!(@clack/prompts|@clack/core|sisteransi|picocolors)/)"],
   testMatch: integrationTestsEnabled
     ? ["**/tests/**/*.test.ts", "**/?(*.)+(spec|test).ts"]
     : ["**/tests/unit/**/*.test.ts"],

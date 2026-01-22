@@ -452,24 +452,24 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clack/core@npm:0.5.0":
-  version: 0.5.0
-  resolution: "@clack/core@npm:0.5.0"
+"@clack/core@npm:1.0.0-alpha.7":
+  version: 1.0.0-alpha.7
+  resolution: "@clack/core@npm:1.0.0-alpha.7"
   dependencies:
     picocolors: "npm:^1.0.0"
     sisteransi: "npm:^1.0.5"
-  checksum: 10c0/ef55dce4b0a4802171b71fe595865a6452c7cf823d162df7fa9afe2ea5a594b9d97e0b8e2880c2a805f2ce1d2f782cb1637d9f8d2ab8b99010af3a20816fae5a
+  checksum: 10c0/e3d706101c57252d41c77abfb16d1f163bc9e4b81cacbc70c022a859c500ceb7024049d8ff907c8869dcaa9e141e4ef6bb57b83c46027fcdc188072f7b0cc728
   languageName: node
   linkType: hard
 
-"@clack/prompts@npm:^0.11.0":
-  version: 0.11.0
-  resolution: "@clack/prompts@npm:0.11.0"
+"@clack/prompts@npm:1.0.0-alpha.9":
+  version: 1.0.0-alpha.9
+  resolution: "@clack/prompts@npm:1.0.0-alpha.9"
   dependencies:
-    "@clack/core": "npm:0.5.0"
+    "@clack/core": "npm:1.0.0-alpha.7"
     picocolors: "npm:^1.0.0"
     sisteransi: "npm:^1.0.5"
-  checksum: 10c0/4c573f2adec3b9109fe861e36312be8ae7cc6e80a5128aa784b9aeafeda5001b23f66c08eca50f4491119b435d9587ec9862956be8c5be472ec3373275003ba8
+  checksum: 10c0/e3022a5cf8e07661628a46f6cc811c2f8f03fb49e5d5a1b6243f08960264f5a61fc9546a348eb2fe0e8fdfb15c4bbea78474291d06a0eb153ea9e491ae42b116
   languageName: node
   linkType: hard
 
@@ -1909,7 +1909,7 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@structured-world/gitlab-mcp@workspace:."
   dependencies:
-    "@clack/prompts": "npm:^0.11.0"
+    "@clack/prompts": "npm:1.0.0-alpha.9"
     "@eslint/js": "npm:^9.39.2"
     "@graphql-typed-document-node/core": "npm:^3.2.0"
     "@modelcontextprotocol/sdk": "npm:^1.25.3"
@@ -1950,7 +1950,7 @@ __metadata:
     typescript: "npm:^5.9.3"
     undici: "npm:^7.19.0"
     yaml: "npm:^2.8.2"
-    zod: "npm:^4.3.5"
+    zod: "npm:^4.3.6"
   bin:
     gitlab-mcp: ./dist/src/main.js
   languageName: unknown
@@ -9739,9 +9739,16 @@ __metadata:
   languageName: node
   linkType: hard
 
-"zod@npm:^3.25 || ^4.0, zod@npm:^4.3.5":
+"zod@npm:^3.25 || ^4.0":
   version: 4.3.5
   resolution: "zod@npm:4.3.5"
   checksum: 10c0/5a2db7e59177a3d7e202543f5136cb87b97b047b77c8a3d824098d3fa8b80d3aa40a0a5f296965c3b82dfdccdd05dbbfacce91347f16a39c675680fd7b1ab109
+  languageName: node
+  linkType: hard
+
+"zod@npm:^4.3.6":
+  version: 4.3.6
+  resolution: "zod@npm:4.3.6"
+  checksum: 10c0/860d25a81ab41d33aa25f8d0d07b091a04acb426e605f396227a796e9e800c44723ed96d0f53a512b57be3d1520f45bf69c0cb3b378a232a00787a2609625307
   languageName: node
   linkType: hard

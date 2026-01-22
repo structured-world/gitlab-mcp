@@ -25,13 +25,13 @@ When multiple configuration sources are available, they are applied in this orde
 | Priority | Source | What it provides |
 |----------|--------|------------------|
 | 1 (highest) | `--profile` CLI argument | Selects user profile (host, auth, features) |
-| 2 | Project config files (`.gitlab-mcp/`) | Adds restrictions and tool selection |
+| 2 | Project config files (`.gitlab-mcp/`) | Defines intended restrictions and tool selection (detected/logged, not yet enforced) |
 | 3 (lowest) | Auto-discovered profile | Fallback profile selection from git remote |
 
 ### Important Notes
 
 - **`--profile` always wins**: If you specify `--profile work`, it will be used even if auto-discovery detected a different profile. A warning is logged when this happens.
-- **Project config adds restrictions**: The `.gitlab-mcp/` directory configuration (preset.yaml, profile.yaml) adds restrictions ON TOP of the selected profile — it doesn't replace it.
+- **Project config is not yet enforced**: The `.gitlab-mcp/` directory configuration (preset.yaml, profile.yaml) defines restrictions ON TOP of the selected profile — it doesn't replace it. Currently these files are detected and logged but automatic enforcement is not yet implemented.
 - **Auto-discovery sets defaults**: Even when a higher-priority source is used, auto-discovery still sets `GITLAB_DEFAULT_PROJECT` and `GITLAB_DEFAULT_NAMESPACE` from the git remote.
 
 ## How Auto-Discovery Works

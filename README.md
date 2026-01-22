@@ -43,13 +43,13 @@ Full documentation is available at **[docs.gitlab-mcp.sw.foundation](https://doc
 
 | Section | Description |
 |---------|-------------|
-| [Installation](https://structured-world.github.io/gitlab-mcp/guide/installation/npm) | npm, Docker, VS Code, Codex |
-| [Configuration](https://structured-world.github.io/gitlab-mcp/guide/configuration) | Environment variables, feature flags |
-| [Tool Reference](https://structured-world.github.io/gitlab-mcp/tools/) | All 47 tools with parameters |
-| [OAuth Setup](https://structured-world.github.io/gitlab-mcp/security/oauth) | Team authentication with Claude |
-| [TLS/HTTPS](https://structured-world.github.io/gitlab-mcp/advanced/tls) | Production deployment with SSL |
-| [Customization](https://structured-world.github.io/gitlab-mcp/advanced/customization) | Tool descriptions, action filtering |
-| [CLI Tools](https://structured-world.github.io/gitlab-mcp/cli/list-tools) | Browse and export tool documentation |
+| [Installation](https://docs.gitlab-mcp.sw.foundation/guide/installation/npm) | npm, Docker, VS Code, Codex |
+| [Configuration](https://docs.gitlab-mcp.sw.foundation/guide/configuration) | Environment variables, feature flags |
+| [Tool Reference](https://docs.gitlab-mcp.sw.foundation/tools/) | All 47 tools with parameters |
+| [OAuth Setup](https://docs.gitlab-mcp.sw.foundation/security/oauth) | Team authentication with Claude |
+| [TLS/HTTPS](https://docs.gitlab-mcp.sw.foundation/advanced/tls) | Production deployment with SSL |
+| [Customization](https://docs.gitlab-mcp.sw.foundation/advanced/customization) | Tool descriptions, action filtering |
+| [CLI Tools](https://docs.gitlab-mcp.sw.foundation/cli/list-tools) | Browse and export tool documentation |
 
 ### Auto-generated Tool Reference
 
@@ -96,6 +96,16 @@ docker run -i --rm -e GITLAB_TOKEN=your_token \
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR guidelines.
+
+## Support the Project
+
+<div align="center">
+
+![USDT TRC-20 Donation QR Code](assets/usdt-qr.svg)
+
+USDT (TRC-20): `TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA`
+
+</div>
 
 ## License
 

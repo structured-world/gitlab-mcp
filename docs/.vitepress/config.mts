@@ -1,11 +1,11 @@
 import { defineConfig } from "vitepress";
 
+const base = (process.env.DOCS_BASE as `/${string}/` | undefined) ?? "/gitlab-mcp/";
+
 export default defineConfig({
   title: "GitLab MCP",
   description: "Model Context Protocol server for GitLab API",
-  base: "/gitlab-mcp/",
-
-  head: [["link", { rel: "icon", type: "image/svg+xml", href: "/gitlab-mcp/logo.svg" }]],
+  base,
 
   themeConfig: {
     nav: [

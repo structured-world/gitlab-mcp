@@ -312,6 +312,30 @@ function calculateBackoffDelay(attempt: number): number {
 }
 
 /**
+ * Parse Retry-After header value
+ * Supports both delta-seconds (integer) and HTTP-date (RFC 7231) formats
+ * @returns delay in milliseconds, or null if parsing fails
+ */
+function parseRetryAfter(retryAfter: string): number | null {
+  // Try delta-seconds first (most common)
+  const seconds = parseInt(retryAfter, 10);
+  if (!isNaN(seconds) && seconds > 0 && String(seconds) === retryAfter.trim()) {
+    return seconds * 1000;
+  }
+
+  // Try HTTP-date format (RFC 7231)
+  // Example: "Wed, 21 Oct 2015 07:28:00 GMT"
+  const dateMs = Date.parse(retryAfter);
+  if (!isNaN(dateMs)) {
+    const delayMs = dateMs - Date.now();
+    // Only return positive delays
+    return delayMs > 0 ? delayMs : null;
+  }
+
+  return null;
+}
+
+/**
  * Perform a single fetch request with timeout
  * Internal function used by enhancedFetch
  */
@@ -359,10 +383,31 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
+  // Merge caller signal with internal timeout signal
+  // Use AbortSignal.any() if available (Node.js 20+), otherwise use listener pattern
+  let mergedSignal: AbortSignal = controller.signal;
+  const callerSignal = options.signal as AbortSignal | undefined;
+
+  if (callerSignal) {
+    if (typeof AbortSignal.any === "function") {
+      // Node.js 20+ - use AbortSignal.any for clean signal merging
+      mergedSignal = AbortSignal.any([controller.signal, callerSignal]);
+    } else {
+      // Fallback for older Node.js - forward caller abort to our controller
+      if (callerSignal.aborted) {
+        controller.abort(callerSignal.reason);
+      } else {
+        callerSignal.addEventListener("abort", () => controller.abort(callerSignal.reason), {
+          once: true,
+        });
+      }
+    }
+  }
+
   const fetchOptions: Record<string, unknown> = {
     ...options,
     headers,
-    signal: controller.signal,
+    signal: mergedSignal,
   };
 
   if (dispatcher) {
@@ -452,14 +497,14 @@ export async function enhancedFetch(
 
       // Check if response status is retryable (5xx, 429)
       if (isRetryableStatus(response.status) && attempt < maxRetries) {
-        // For 429, check Retry-After header
+        // For 429, check Retry-After header (supports delta-seconds and HTTP-date)
         let retryDelay = calculateBackoffDelay(attempt);
         const retryAfter = response.headers.get("Retry-After");
         if (retryAfter && response.status === 429) {
-          const retryAfterSeconds = parseInt(retryAfter, 10);
-          if (!isNaN(retryAfterSeconds) && retryAfterSeconds > 0) {
+          const parsedDelay = parseRetryAfter(retryAfter);
+          if (parsedDelay !== null) {
             // Cap Retry-After to max delay to prevent excessive waits
-            retryDelay = Math.min(retryAfterSeconds * 1000, API_RETRY_MAX_DELAY_MS);
+            retryDelay = Math.min(parsedDelay, API_RETRY_MAX_DELAY_MS);
           }
         }
 
@@ -476,7 +521,12 @@ export async function enhancedFetch(
         );
 
         // Cancel response body to release connection before retry
-        await response.body?.cancel();
+        // Wrap in try-catch as cancel() can throw if body is already disturbed
+        try {
+          await response.body?.cancel();
+        } catch {
+          // Body already consumed or errored - safe to ignore
+        }
 
         await sleep(retryDelay);
         continue;

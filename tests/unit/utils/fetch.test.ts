@@ -278,6 +278,33 @@ describe("Enhanced Fetch Utilities", () => {
       );
     });
 
+    it("should respect caller-provided AbortSignal", async () => {
+      // Test that caller signal is merged with internal timeout signal
+      const controller = new AbortController();
+      mockFetch.mockImplementation(async (_, options) => {
+        // Check that the signal passed to fetch is aborted when caller aborts
+        const signal = (options as RequestInit).signal;
+        if (signal) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+          // Simulate that caller aborted before request completed
+          if (signal.aborted) {
+            throw new DOMException("The operation was aborted", "AbortError");
+          }
+        }
+        return createMockResponse();
+      });
+
+      // Abort before fetch completes
+      setTimeout(() => controller.abort(), 5);
+
+      await expect(
+        enhancedFetch("https://example.com", {
+          signal: controller.signal,
+          retry: false, // Disable retry for this test
+        })
+      ).rejects.toThrow();
+    });
+
     it("should handle different request body types", async () => {
       const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
@@ -590,6 +617,35 @@ describe("Enhanced Fetch Utilities", () => {
       // Should be capped to API_RETRY_MAX_DELAY_MS (400ms in test mock)
       // Not wait 3600 seconds (1 hour)
       await jest.advanceTimersByTimeAsync(400);
+
+      const result = await fetchPromise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(200);
+    });
+
+    it("should parse Retry-After in HTTP-date format", async () => {
+      // Test HTTP-date format: "Wed, 21 Oct 2015 07:28:00 GMT"
+      // Set Retry-After to 2 seconds in the future
+      const futureDate = new Date(Date.now() + 2000);
+      const httpDate = futureDate.toUTCString();
+
+      const rateLimitHeaders = new Headers();
+      rateLimitHeaders.set("Retry-After", httpDate);
+
+      const rateLimitResponse = createMockResponse({
+        status: 429,
+        ok: false,
+        headers: rateLimitHeaders,
+      });
+      const successResponse = createMockResponse({ status: 200, ok: true });
+
+      mockFetch.mockResolvedValueOnce(rateLimitResponse).mockResolvedValueOnce(successResponse);
+
+      const fetchPromise = enhancedFetch("https://example.com");
+
+      // Advance timers - delay should be computed from HTTP-date
+      await jest.advanceTimersByTimeAsync(2000);
 
       const result = await fetchPromise;
 

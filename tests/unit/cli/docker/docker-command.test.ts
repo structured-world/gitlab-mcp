@@ -827,4 +827,165 @@ describe("docker-command", () => {
       expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to get logs: Connection failed");
     });
   });
+
+  describe("hostname/IPv4 validation", () => {
+    /**
+     * Tests for the hostname/IPv4 validation logic in dockerAddInstance.
+     * The validation requires:
+     * - Valid hostname patterns (alphanumeric, hyphens, dots)
+     * - Valid IPv4 addresses with octets in 0-255 range
+     */
+    let capturedValidate: ((value: string) => string | Error | undefined) | undefined;
+
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockP.isCancel.mockReturnValue(false);
+
+      // Capture the validate function when text is called
+
+      mockP.text.mockImplementation((opts: any) => {
+        if (opts.validate) {
+          capturedValidate = opts.validate;
+        }
+        return Promise.resolve("gitlab.example.com");
+      });
+    });
+
+    it("should accept valid hostname", async () => {
+      await dockerAddInstance();
+
+      expect(capturedValidate).toBeDefined();
+      expect(capturedValidate!("gitlab.example.com")).toBeUndefined();
+    });
+
+    it("should accept localhost", async () => {
+      await dockerAddInstance();
+
+      expect(capturedValidate!("localhost")).toBeUndefined();
+    });
+
+    it("should accept simple hostname without domain", async () => {
+      await dockerAddInstance();
+
+      expect(capturedValidate!("gitlab")).toBeUndefined();
+    });
+
+    it("should accept hostname with hyphens", async () => {
+      await dockerAddInstance();
+
+      expect(capturedValidate!("my-gitlab-server.example.com")).toBeUndefined();
+    });
+
+    it("should accept valid IPv4 addresses", async () => {
+      await dockerAddInstance();
+
+      expect(capturedValidate!("192.168.1.1")).toBeUndefined();
+      expect(capturedValidate!("10.0.0.1")).toBeUndefined();
+      expect(capturedValidate!("172.16.0.1")).toBeUndefined();
+    });
+
+    it("should accept boundary IPv4 values (0 and 255)", async () => {
+      await dockerAddInstance();
+
+      expect(capturedValidate!("0.0.0.0")).toBeUndefined();
+      expect(capturedValidate!("255.255.255.255")).toBeUndefined();
+    });
+
+    it("should reject IPv4 with octets > 255", async () => {
+      await dockerAddInstance();
+
+      expect(capturedValidate!("256.1.1.1")).toBe("IP address octets must be between 0 and 255");
+      expect(capturedValidate!("1.256.1.1")).toBe("IP address octets must be between 0 and 255");
+      expect(capturedValidate!("1.1.256.1")).toBe("IP address octets must be between 0 and 255");
+      expect(capturedValidate!("1.1.1.256")).toBe("IP address octets must be between 0 and 255");
+    });
+
+    it("should reject IPv4 with large invalid octets", async () => {
+      await dockerAddInstance();
+
+      expect(capturedValidate!("999.999.999.999")).toBe(
+        "IP address octets must be between 0 and 255"
+      );
+    });
+
+    it("should reject empty hostname", async () => {
+      await dockerAddInstance();
+
+      expect(capturedValidate!("")).toBe("Host is required");
+    });
+
+    it("should reject invalid hostname formats", async () => {
+      await dockerAddInstance();
+
+      expect(capturedValidate!("invalid..hostname")).toBe("Invalid hostname or IP address format");
+      expect(capturedValidate!("-invalid")).toBe("Invalid hostname or IP address format");
+      expect(capturedValidate!("invalid-")).toBe("Invalid hostname or IP address format");
+    });
+  });
+
+  describe("environment variable name sanitization", () => {
+    /**
+     * Tests for env var name generation in dockerAddInstance OAuth config.
+     * The sanitization converts hostname to UPPER_SNAKE_CASE_SECRET format.
+     */
+    beforeEach(() => {
+      jest.clearAllMocks();
+      mockP.isCancel.mockReturnValue(false);
+    });
+
+    it("should sanitize hostname to valid env var name", async () => {
+      mockP.text.mockResolvedValueOnce("Company GitLab"); // name
+      mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
+      mockP.text.mockResolvedValueOnce("app-id-12345"); // client ID
+      mockP.select.mockResolvedValueOnce("developer");
+
+      await dockerAddInstance("gitlab.company.com");
+
+      // Check that addInstance was called with properly sanitized env var name
+      expect(mockAddInstance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          oauth: {
+            clientId: "app-id-12345",
+            clientSecretEnv: "GITLAB_COMPANY_COM_SECRET",
+          },
+        })
+      );
+    });
+
+    it("should sanitize hyphenated hostname", async () => {
+      mockP.text.mockResolvedValueOnce("My GitLab"); // name
+      mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
+      mockP.text.mockResolvedValueOnce("app-id-123"); // client ID
+      mockP.select.mockResolvedValueOnce("developer");
+
+      await dockerAddInstance("my-gitlab-server.example.com");
+
+      expect(mockAddInstance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          oauth: {
+            clientId: "app-id-123",
+            clientSecretEnv: "MY_GITLAB_SERVER_EXAMPLE_COM_SECRET",
+          },
+        })
+      );
+    });
+
+    it("should sanitize special characters in hostname", async () => {
+      mockP.text.mockResolvedValueOnce("GitLab"); // name
+      mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
+      mockP.text.mockResolvedValueOnce("app-id"); // client ID
+      mockP.select.mockResolvedValueOnce("developer");
+
+      await dockerAddInstance("git.lab");
+
+      expect(mockAddInstance).toHaveBeenCalledWith(
+        expect.objectContaining({
+          oauth: {
+            clientId: "app-id",
+            clientSecretEnv: "GIT_LAB_SECRET",
+          },
+        })
+      );
+    });
+  });
 });

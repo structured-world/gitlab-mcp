@@ -336,11 +336,25 @@ export async function dockerAddInstance(host?: string): Promise<void> {
         // Allow: localhost, hostname, hostname.domain, IP addresses
         const hostnamePattern =
           /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i;
-        const ipv4Pattern = /^(\d{1,3}\.){3}\d{1,3}$/;
-        if (!hostnamePattern.test(value) && !ipv4Pattern.test(value)) {
-          return "Invalid hostname or IP address format";
+        const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+
+        // Check IPv4 FIRST - if it looks like an IP, validate octet ranges
+        // This prevents values like "256.1.1.1" from passing as hostnames
+        const ipMatch = value.match(ipv4Pattern);
+        if (ipMatch) {
+          const octets = [ipMatch[1], ipMatch[2], ipMatch[3], ipMatch[4]].map(Number);
+          if (octets.every(o => o >= 0 && o <= 255)) {
+            return undefined;
+          }
+          return "IP address octets must be between 0 and 255";
         }
-        return undefined;
+
+        // Check hostname pattern
+        if (hostnamePattern.test(value)) {
+          return undefined;
+        }
+
+        return "Invalid hostname or IP address format";
       },
     });
 

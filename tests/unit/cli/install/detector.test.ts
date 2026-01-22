@@ -14,6 +14,7 @@ import {
   detectAllClients,
   getDetectedClients,
   getConfiguredClients,
+  isValidBundleId,
 } from "../../../../src/cli/install/detector";
 import * as fs from "fs";
 import * as childProcess from "child_process";
@@ -339,6 +340,37 @@ describe("install detector", () => {
 
       const results = getConfiguredClients();
       expect(results.every(r => r.alreadyConfigured === true)).toBe(true);
+    });
+  });
+
+  describe("isValidBundleId", () => {
+    it("should accept valid reverse-domain bundle IDs", () => {
+      expect(isValidBundleId("com.example")).toBe(true);
+      expect(isValidBundleId("com.example.app")).toBe(true);
+      expect(isValidBundleId("org.test.MyApp")).toBe(true);
+      expect(isValidBundleId("com.apple.Safari")).toBe(true);
+      expect(isValidBundleId("io.cursor.Cursor")).toBe(true);
+    });
+
+    it("should reject single-segment bundle IDs", () => {
+      expect(isValidBundleId("a")).toBe(false);
+      expect(isValidBundleId("com")).toBe(false);
+      expect(isValidBundleId("example")).toBe(false);
+    });
+
+    it("should reject empty or invalid formats", () => {
+      expect(isValidBundleId("")).toBe(false);
+      expect(isValidBundleId(".")).toBe(false);
+      expect(isValidBundleId("com.")).toBe(false);
+      expect(isValidBundleId(".com")).toBe(false);
+      expect(isValidBundleId("com..example")).toBe(false);
+    });
+
+    it("should reject command injection attempts", () => {
+      expect(isValidBundleId('com.example"; rm -rf /')).toBe(false);
+      expect(isValidBundleId("com.example$(whoami)")).toBe(false);
+      expect(isValidBundleId("com.example`id`")).toBe(false);
+      expect(isValidBundleId("com.example|cat /etc/passwd")).toBe(false);
     });
   });
 });

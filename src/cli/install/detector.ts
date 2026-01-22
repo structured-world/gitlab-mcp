@@ -42,10 +42,14 @@ export function commandExists(command: string): boolean {
 
 /**
  * Validate bundle ID format to prevent command injection
+ * Bundle IDs must be reverse-domain format with at least 2 segments: com.example
+ * Exported for testing
  */
-function isValidBundleId(bundleId: string): boolean {
-  // Bundle IDs are reverse-domain format: com.example.app
-  return /^[a-zA-Z0-9]([a-zA-Z0-9.-]*[a-zA-Z0-9])?$/.test(bundleId);
+export function isValidBundleId(bundleId: string): boolean {
+  // Require at least one dot (2 segments) and valid characters
+  // Valid: com.example, com.example.app, org.test-app.Main
+  // Invalid: a, com, com., .com, com..example
+  return /^[a-zA-Z0-9]+(\.[a-zA-Z0-9]+)+$/.test(bundleId);
 }
 
 /**

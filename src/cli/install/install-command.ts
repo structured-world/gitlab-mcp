@@ -226,6 +226,9 @@ export async function runInstallWizard(
     c => detectionResults.find(r => r.client === c)?.alreadyConfigured
   );
 
+  // Track if user confirmed overwrite
+  let userConfirmedOverwrite = false;
+
   if (alreadyConfigured.length > 0 && !flags.force) {
     p.log.warn(
       `Some clients already have gitlab-mcp configured: ${alreadyConfigured.map(c => CLIENT_METADATA[c].name).join(", ")}`
@@ -241,7 +244,9 @@ export async function runInstallWizard(
       return [];
     }
 
-    if (!overwrite) {
+    if (overwrite) {
+      userConfirmedOverwrite = true;
+    } else {
       // Remove already configured clients from target list
       targetClients = targetClients.filter(c => !alreadyConfigured.includes(c));
 
@@ -256,8 +261,8 @@ export async function runInstallWizard(
   // Install to selected clients
   spinner.start("Installing configuration...");
 
-  // Force install if explicitly requested OR if user confirmed overwrite of configured clients
-  const forceInstall = flags.force === true || alreadyConfigured.length > 0;
+  // Force install only if explicitly requested OR if user confirmed overwrite
+  const forceInstall = flags.force === true || userConfirmedOverwrite;
 
   const results = installToClients(targetClients, serverConfig, forceInstall);
 

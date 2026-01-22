@@ -6,6 +6,7 @@
 import { BrowseMilestonesSchema } from "../../../src/entities/milestones/schema-readonly";
 import { ManageMilestoneSchema } from "../../../src/entities/milestones/schema";
 import { IntegrationTestHelper } from "../helpers/registry-helper";
+import { getTestData } from "../../setup/testConfig";
 
 describe("Milestones Schema - GitLab Integration", () => {
   let helper: IntegrationTestHelper;
@@ -168,7 +169,7 @@ describe("Milestones Schema - GitLab Integration", () => {
     });
   });
 
-  describe("BrowseMilestonesSchema - get action", () => {
+  describe("BrowseMilestonesSchema - get action by milestone_id", () => {
     it("should validate get milestone parameters with real data", async () => {
       // Get a project and its milestones for testing
       const projects = (await helper.listProjects({ per_page: 1 })) as {
@@ -210,7 +211,7 @@ describe("Milestones Schema - GitLab Integration", () => {
       console.log("BrowseMilestonesSchema get action validates parameters correctly");
     });
 
-    it("should test handler function for single milestone", async () => {
+    it("should test handler function for single milestone by milestone_id", async () => {
       // Get a project and its milestones for testing
       const projects = (await helper.listProjects({ per_page: 1 })) as {
         path_with_namespace: string;
@@ -268,11 +269,11 @@ describe("Milestones Schema - GitLab Integration", () => {
       }
     });
 
-    it("should require milestone_id for get action", async () => {
+    it("should require milestone_id or iid for get action", async () => {
       const invalidParams = {
         action: "get",
         namespace: "test/project",
-        // Missing milestone_id
+        // Missing both milestone_id and iid
       };
 
       const result = BrowseMilestonesSchema.safeParse(invalidParams);
@@ -282,7 +283,182 @@ describe("Milestones Schema - GitLab Integration", () => {
         expect(result.error.issues.length).toBeGreaterThan(0);
       }
 
-      console.log("BrowseMilestonesSchema correctly requires milestone_id for get action");
+      console.log("BrowseMilestonesSchema correctly requires milestone_id or iid for get action");
+    });
+  });
+
+  // === IID LOOKUP TESTS (Issue #99) ===
+  describe("BrowseMilestonesSchema - get action by IID", () => {
+    it("should validate get milestone parameters with iid", async () => {
+      const testData = getTestData();
+      if (!testData.project?.path_with_namespace || !testData.milestones?.length) {
+        console.log("No test project or milestones available for iid get milestone testing");
+        return;
+      }
+
+      const testMilestone = testData.milestones[0];
+      const validParams = {
+        action: "get" as const,
+        namespace: testData.project.path_with_namespace,
+        iid: testMilestone.iid.toString(),
+      };
+
+      const result = BrowseMilestonesSchema.safeParse(validParams);
+      expect(result.success).toBe(true);
+
+      if (result.success && result.data.action === "get") {
+        expect(result.data.namespace).toBe(testData.project.path_with_namespace);
+        expect(result.data.iid).toBe(testMilestone.iid.toString());
+      }
+
+      console.log("BrowseMilestonesSchema validates iid parameters correctly");
+    });
+
+    it("should test handler function for single milestone by IID", async () => {
+      const testData = getTestData();
+      if (!testData.project?.path_with_namespace || !testData.milestones?.length) {
+        console.log("No test project or milestones available for iid handler testing");
+        return;
+      }
+
+      const testMilestone = testData.milestones[0];
+      const params = {
+        action: "get" as const,
+        namespace: testData.project.path_with_namespace,
+        iid: testMilestone.iid.toString(),
+      };
+
+      const paramResult = BrowseMilestonesSchema.safeParse(params);
+      expect(paramResult.success).toBe(true);
+
+      if (paramResult.success) {
+        const milestone = (await helper.executeTool("browse_milestones", paramResult.data)) as {
+          id: number;
+          iid: number;
+          title: string;
+        };
+
+        expect(milestone).toHaveProperty("id");
+        expect(milestone).toHaveProperty("iid");
+        expect(milestone).toHaveProperty("title");
+        expect(milestone.iid).toBe(testMilestone.iid);
+
+        console.log(
+          `BrowseMilestonesSchema IID lookup successful: ${milestone.title} (IID: ${milestone.iid})`
+        );
+      }
+    });
+
+    it("should return same milestone whether looked up by milestone_id or by iid", async () => {
+      const testData = getTestData();
+      if (!testData.project?.path_with_namespace || !testData.milestones?.length) {
+        console.log("No test project or milestones available for comparison testing");
+        return;
+      }
+
+      const testMilestone = testData.milestones[0];
+      const namespace = testData.project.path_with_namespace;
+
+      // Lookup by milestone_id (which is actually IID in GitLab project milestone API)
+      const byIdParams = {
+        action: "get" as const,
+        namespace,
+        milestone_id: testMilestone.iid.toString(),
+      };
+      const byIdResult = BrowseMilestonesSchema.safeParse(byIdParams);
+      expect(byIdResult.success).toBe(true);
+      if (!byIdResult.success) return;
+
+      const milestoneById = (await helper.executeTool("browse_milestones", byIdResult.data)) as {
+        id: number;
+        iid: number;
+        title: string;
+      };
+
+      // Lookup by iid
+      const byIidParams = {
+        action: "get" as const,
+        namespace,
+        iid: testMilestone.iid.toString(),
+      };
+      const byIidResult = BrowseMilestonesSchema.safeParse(byIidParams);
+      expect(byIidResult.success).toBe(true);
+      if (!byIidResult.success) return;
+
+      const milestoneByIid = (await helper.executeTool("browse_milestones", byIidResult.data)) as {
+        id: number;
+        iid: number;
+        title: string;
+      };
+
+      // Both lookups should return the same milestone
+      expect(milestoneById.id).toBe(milestoneByIid.id);
+      expect(milestoneById.iid).toBe(milestoneByIid.iid);
+      expect(milestoneById.title).toBe(milestoneByIid.title);
+
+      console.log(
+        `Both lookup methods return same milestone: ${milestoneById.title} (ID: ${milestoneById.id}, IID: ${milestoneById.iid})`
+      );
+    });
+  });
+
+  describe("BrowseMilestonesSchema - issues action with IID", () => {
+    it("should list issues in milestone using iid", async () => {
+      const testData = getTestData();
+      if (!testData.project?.path_with_namespace || !testData.milestones?.length) {
+        console.log("No test project or milestones available for issues iid testing");
+        return;
+      }
+
+      const testMilestone = testData.milestones[0];
+      const params = {
+        action: "issues" as const,
+        namespace: testData.project.path_with_namespace,
+        iid: testMilestone.iid.toString(),
+      };
+
+      const result = BrowseMilestonesSchema.safeParse(params);
+      expect(result.success).toBe(true);
+
+      if (result.success) {
+        const issues = (await helper.executeTool("browse_milestones", result.data)) as {
+          id: number;
+        }[];
+        expect(Array.isArray(issues)).toBe(true);
+        console.log(
+          `Retrieved ${issues.length} issues for milestone ${testMilestone.title} using IID`
+        );
+      }
+    });
+  });
+
+  describe("BrowseMilestonesSchema - merge_requests action with IID", () => {
+    it("should list merge requests in milestone using iid", async () => {
+      const testData = getTestData();
+      if (!testData.project?.path_with_namespace || !testData.milestones?.length) {
+        console.log("No test project or milestones available for MRs iid testing");
+        return;
+      }
+
+      const testMilestone = testData.milestones[0];
+      const params = {
+        action: "merge_requests" as const,
+        namespace: testData.project.path_with_namespace,
+        iid: testMilestone.iid.toString(),
+      };
+
+      const result = BrowseMilestonesSchema.safeParse(params);
+      expect(result.success).toBe(true);
+
+      if (result.success) {
+        const mrs = (await helper.executeTool("browse_milestones", result.data)) as {
+          id: number;
+        }[];
+        expect(Array.isArray(mrs)).toBe(true);
+        console.log(
+          `Retrieved ${mrs.length} merge requests for milestone ${testMilestone.title} using IID`
+        );
+      }
     });
   });
 
@@ -406,7 +582,7 @@ describe("Milestones Schema - GitLab Integration", () => {
   });
 
   describe("ManageMilestoneSchema - update action", () => {
-    it("should validate update milestone parameters", async () => {
+    it("should validate update milestone parameters with milestone_id", async () => {
       const params = {
         action: "update" as const,
         namespace: "test/project",
@@ -424,26 +600,46 @@ describe("Milestones Schema - GitLab Integration", () => {
         expect(result.data.state_event).toBe("close");
       }
 
-      console.log("ManageMilestoneSchema update action validates correctly");
+      console.log("ManageMilestoneSchema update action validates correctly with milestone_id");
     });
 
-    it("should require milestone_id for update action", async () => {
+    it("should validate update milestone parameters with iid", async () => {
+      const params = {
+        action: "update" as const,
+        namespace: "test/project",
+        iid: "5",
+        title: "Updated Title",
+        state_event: "close",
+      };
+
+      const result = ManageMilestoneSchema.safeParse(params);
+      expect(result.success).toBe(true);
+
+      if (result.success && result.data.action === "update") {
+        expect(result.data.iid).toBe("5");
+        expect(result.data.state_event).toBe("close");
+      }
+
+      console.log("ManageMilestoneSchema update action validates correctly with iid");
+    });
+
+    it("should require milestone_id or iid for update action", async () => {
       const invalidParams = {
         action: "update",
         namespace: "test/project",
         title: "Updated Title",
-        // Missing milestone_id
+        // Missing both milestone_id and iid
       };
 
       const result = ManageMilestoneSchema.safeParse(invalidParams);
       expect(result.success).toBe(false);
 
-      console.log("ManageMilestoneSchema correctly requires milestone_id for update action");
+      console.log("ManageMilestoneSchema correctly requires milestone_id or iid for update action");
     });
   });
 
   describe("ManageMilestoneSchema - delete action", () => {
-    it("should validate delete milestone parameters", async () => {
+    it("should validate delete milestone parameters with milestone_id", async () => {
       const params = {
         action: "delete" as const,
         namespace: "test/project",
@@ -458,12 +654,42 @@ describe("Milestones Schema - GitLab Integration", () => {
         expect(result.data.milestone_id).toBe("1");
       }
 
-      console.log("ManageMilestoneSchema delete action validates correctly");
+      console.log("ManageMilestoneSchema delete action validates correctly with milestone_id");
+    });
+
+    it("should validate delete milestone parameters with iid", async () => {
+      const params = {
+        action: "delete" as const,
+        namespace: "test/project",
+        iid: "7",
+      };
+
+      const result = ManageMilestoneSchema.safeParse(params);
+      expect(result.success).toBe(true);
+
+      if (result.success && result.data.action === "delete") {
+        expect(result.data.iid).toBe("7");
+      }
+
+      console.log("ManageMilestoneSchema delete action validates correctly with iid");
+    });
+
+    it("should require milestone_id or iid for delete action", async () => {
+      const invalidParams = {
+        action: "delete",
+        namespace: "test/project",
+        // Missing both milestone_id and iid
+      };
+
+      const result = ManageMilestoneSchema.safeParse(invalidParams);
+      expect(result.success).toBe(false);
+
+      console.log("ManageMilestoneSchema correctly requires milestone_id or iid for delete action");
     });
   });
 
   describe("ManageMilestoneSchema - promote action", () => {
-    it("should validate promote milestone parameters", async () => {
+    it("should validate promote milestone parameters with milestone_id", async () => {
       const params = {
         action: "promote" as const,
         namespace: "test/project",
@@ -478,7 +704,39 @@ describe("Milestones Schema - GitLab Integration", () => {
         expect(result.data.milestone_id).toBe("1");
       }
 
-      console.log("ManageMilestoneSchema promote action validates correctly");
+      console.log("ManageMilestoneSchema promote action validates correctly with milestone_id");
+    });
+
+    it("should validate promote milestone parameters with iid", async () => {
+      const params = {
+        action: "promote" as const,
+        namespace: "test/project",
+        iid: "9",
+      };
+
+      const result = ManageMilestoneSchema.safeParse(params);
+      expect(result.success).toBe(true);
+
+      if (result.success && result.data.action === "promote") {
+        expect(result.data.iid).toBe("9");
+      }
+
+      console.log("ManageMilestoneSchema promote action validates correctly with iid");
+    });
+
+    it("should require milestone_id or iid for promote action", async () => {
+      const invalidParams = {
+        action: "promote",
+        namespace: "test/project",
+        // Missing both milestone_id and iid
+      };
+
+      const result = ManageMilestoneSchema.safeParse(invalidParams);
+      expect(result.success).toBe(false);
+
+      console.log(
+        "ManageMilestoneSchema correctly requires milestone_id or iid for promote action"
+      );
     });
   });
 });

@@ -1,3 +1,21 @@
+## [6.27.0](https://github.com/structured-world/gitlab-mcp/compare/v6.26.1...v6.27.0) (2026-01-22)
+
+### Features
+
+* **schemas:** add paginationFields() utility for dynamic pagination descriptions ([#118](https://github.com/structured-world/gitlab-mcp/issues/118)) ([963b08e](https://github.com/structured-world/gitlab-mcp/commit/963b08e661d19a8e718f5336820dcb42d072d110)), closes [#117](https://github.com/structured-world/gitlab-mcp/issues/117)
+
+## [6.26.1](https://github.com/structured-world/gitlab-mcp/compare/v6.26.0...v6.26.1) (2026-01-22)
+
+### Bug Fixes
+
+* **mrs:** use global API endpoints for code change proposals ([#116](https://github.com/structured-world/gitlab-mcp/issues/116)) ([891b5b1](https://github.com/structured-world/gitlab-mcp/commit/891b5b1ee3bf20d902177d950798c656fa48c993)), closes [#115](https://github.com/structured-world/gitlab-mcp/issues/115)
+
+## [6.26.0](https://github.com/structured-world/gitlab-mcp/compare/v6.25.0...v6.26.0) (2026-01-22)
+
+### Features
+
+* **cli:** add interactive setup wizard (gitlab-mcp init) ([#101](https://github.com/structured-world/gitlab-mcp/issues/101)) ([cb6f080](https://github.com/structured-world/gitlab-mcp/commit/cb6f0800cc45288a5f3bba62d3148dd58e5c6791)), closes [#62](https://github.com/structured-world/gitlab-mcp/issues/62)
+
 ## [6.25.0](https://github.com/structured-world/gitlab-mcp/compare/v6.24.1...v6.25.0) (2026-01-22)
 
 ### Features

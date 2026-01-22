@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { flexibleBoolean, requiredId } from "../utils";
+import { flexibleBoolean, requiredId, paginationFields } from "../utils";
 
 // ============================================================================
 // browse_labels - CQRS Query Tool (discriminated union schema)
@@ -21,8 +21,7 @@ const ListLabelsSchema = z.object({
   search: z.string().optional().describe("Keyword to filter labels by"),
   with_counts: flexibleBoolean.optional().describe("Include issue and merge request counts"),
   include_ancestor_groups: includeAncestorGroupsField,
-  per_page: z.number().optional().describe("Number of items per page"),
-  page: z.number().optional().describe("Page number"),
+  ...paginationFields(),
 });
 
 // --- Action: get ---

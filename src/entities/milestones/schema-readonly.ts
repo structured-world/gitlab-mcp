@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { GitLabMilestoneSchema } from "../shared";
-import { flexibleBoolean, requiredId } from "../utils";
+import { flexibleBoolean, requiredId, paginationFields } from "../utils";
 
 // Re-export shared schema
 export { GitLabMilestoneSchema };
@@ -40,11 +40,6 @@ const milestoneIdField = requiredId.describe(
   "The ID of a project or group milestone. Required for 'get', 'issues', 'merge_requests', 'burndown' action(s)."
 );
 
-const paginationFields = {
-  per_page: z.number().optional().describe("Number of items per page"),
-  page: z.number().optional().describe("Page number"),
-};
-
 // --- Action: list ---
 const ListMilestonesSchema = z.object({
   action: z.literal("list").describe("List milestones with optional filtering"),
@@ -71,7 +66,7 @@ const ListMilestonesSchema = z.object({
     .string()
     .optional()
     .describe("Return milestones updated after the specified date (ISO 8601 format)"),
-  ...paginationFields,
+  ...paginationFields(),
 });
 
 // --- Action: get ---
@@ -86,7 +81,7 @@ const MilestoneIssuesSchema = z.object({
   action: z.literal("issues").describe("List issues assigned to a milestone"),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
-  ...paginationFields,
+  ...paginationFields(),
 });
 
 // --- Action: merge_requests ---
@@ -94,7 +89,7 @@ const MilestoneMergeRequestsSchema = z.object({
   action: z.literal("merge_requests").describe("List merge requests assigned to a milestone"),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
-  ...paginationFields,
+  ...paginationFields(),
 });
 
 // --- Action: burndown ---
@@ -102,7 +97,7 @@ const MilestoneBurndownSchema = z.object({
   action: z.literal("burndown").describe("Get burndown chart data for a milestone"),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
-  ...paginationFields,
+  ...paginationFields(),
 });
 
 // --- Discriminated union combining all actions ---

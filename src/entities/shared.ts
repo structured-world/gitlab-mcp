@@ -1,17 +1,10 @@
 import { z } from "zod";
-import { flexibleBoolean, flexibleBooleanNullable, requiredId } from "./utils";
+import { flexibleBoolean, flexibleBooleanNullable, requiredId, paginationFields } from "./utils";
 
 // Shared schemas that are used across multiple entities
+// Uses paginationFields() for consistent default values and descriptions
 export const PaginationOptionsSchema = z.object({
-  page: z.number().int().min(1).optional().describe("Page number"),
-  per_page: z
-    .number()
-    .int()
-    .min(1)
-    .max(100)
-    .optional()
-    .default(20)
-    .describe("Number of items per page (max 100)"),
+  ...paginationFields(),
 });
 
 // Basic milestone schema to avoid circular dependencies

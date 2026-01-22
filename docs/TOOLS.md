@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-22 | Tools: 47 | Version: 6.25.0
+> Generated: 2026-01-22 | Tools: 47 | Version: 6.27.0
 
 ## Table of Contents
 
@@ -50,6 +50,7 @@ PROJECT DISCOVERY: Find, browse, or inspect GitLab projects. Use 'search' to fin
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `simple` | boolean | Yes | Return minimal fields for faster response. Default: true. |
 | `archived` | boolean | No | Filter by archive status. true=archived only, false=active only. |
 | `group_id` | string | No | Group ID to list projects within. If omitted, lists YOUR accessible projects. |
@@ -57,8 +58,7 @@ PROJECT DISCOVERY: Find, browse, or inspect GitLab projects. Use 'search' to fin
 | `membership` | boolean | No | Show only projects where you have membership. |
 | `order_by` | string | No | Sort field for results. |
 | `owned` | boolean | No | Show only projects you own (not just member of). |
-| `page` | integer | No | Page number for pagination. |
-| `per_page` | integer | No | Results per page (1-100). |
+| `page` | integer | No | Page number |
 | `search` | string | No | Text filter for list action (filters results by name/description). |
 | `sort` | string | No | Sort direction: asc or desc. |
 | `starred` | boolean | No | Show only starred/favorited projects. |
@@ -70,10 +70,10 @@ PROJECT DISCOVERY: Find, browse, or inspect GitLab projects. Use 'search' to fin
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `archived` | boolean | No | Filter by archive status. true=archived only, false=active only. |
 | `order_by` | string | No | Sort field for results. |
-| `page` | integer | No | Page number for pagination. |
-| `per_page` | integer | No | Results per page (1-100). |
+| `page` | integer | No | Page number |
 | `q` | string | No | Global search query. Searches project names, paths, descriptions. |
 | `sort` | string | No | Sort direction: asc or desc. |
 | `visibility` | string | No | Filter by visibility: public, internal, or private. |
@@ -83,7 +83,8 @@ PROJECT DISCOVERY: Find, browse, or inspect GitLab projects. Use 'search' to fin
 
 ```json
 {
-  "action": "search"
+  "action": "search",
+  "per_page": 10
 }
 ```
 
@@ -113,10 +114,10 @@ NAMESPACE OPERATIONS: Explore GitLab groups and user namespaces. Use 'list' to d
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `min_access_level` | number | No | Minimum access level: 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner. |
 | `owned_only` | boolean | No | Show only namespaces you own. |
-| `page` | integer | No | Page number for pagination. |
-| `per_page` | integer | No | Results per page (1-100). |
+| `page` | integer | No | Page number |
 | `search` | string | No | Search namespaces by name/path. |
 | `top_level_only` | boolean | No | Show only root-level namespaces. |
 | `with_statistics` | boolean | No | Include storage/count statistics. |
@@ -131,7 +132,8 @@ NAMESPACE OPERATIONS: Explore GitLab groups and user namespaces. Use 'list' to d
 
 ```json
 {
-  "action": "list"
+  "action": "list",
+  "per_page": 10
 }
 ```
 
@@ -161,9 +163,9 @@ COMMIT HISTORY: Explore repository commit history. Use 'list' to browse commits 
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `sha` | string | Yes | Commit SHA. Can be full SHA, short hash, or ref name. |
-| `page` | integer | No | Page number for pagination. |
-| `per_page` | integer | No | Results per page (1-100). |
+| `page` | integer | No | Page number |
 | `unidiff` | boolean | No | Return unified diff format. |
 
 **Action `get`**:
@@ -177,13 +179,13 @@ COMMIT HISTORY: Explore repository commit history. Use 'list' to browse commits 
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `all` | boolean | No | Include commits from all branches. |
 | `author` | string | No | Filter by author name or email. |
 | `first_parent` | boolean | No | Follow only first parent (linear history). |
 | `order` | string | No | Commit ordering: default or topo. |
-| `page` | integer | No | Page number for pagination. |
+| `page` | integer | No | Page number |
 | `path` | string | No | Filter commits affecting this file/directory path. |
-| `per_page` | integer | No | Results per page (1-100). |
 | `ref_name` | string | No | Branch/tag name. Defaults to default branch. |
 | `since` | string | No | Start date filter (ISO 8601 format). |
 | `trailers` | boolean | No | Include Git trailers (Signed-off-by, etc.). |
@@ -195,7 +197,8 @@ COMMIT HISTORY: Explore repository commit history. Use 'list' to browse commits 
 ```json
 {
   "action": "list",
-  "project_id": "my-group/my-project"
+  "project_id": "my-group/my-project",
+  "per_page": 10
 }
 ```
 
@@ -218,11 +221,11 @@ ACTIVITY FEED: Track GitLab activity and events. Use 'user' to see YOUR recent a
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `after` | string | No | Show events after this date (YYYY-MM-DD). |
 | `before` | string | No | Show events before this date (YYYY-MM-DD). |
 | `event_action` | string | No | Filter by event action. |
-| `page` | integer | No | Page number for pagination. |
-| `per_page` | integer | No | Results per page (1-100). |
+| `page` | integer | No | Page number |
 | `sort` | string | No | Sort order: asc=oldest first, desc=newest first. |
 | `target_type` | string | No | Filter by target type. |
 
@@ -236,7 +239,8 @@ ACTIVITY FEED: Track GitLab activity and events. Use 'user' to see YOUR recent a
 
 ```json
 {
-  "action": "user"
+  "action": "user",
+  "per_page": 10
 }
 ```
 
@@ -307,7 +311,7 @@ FIND USERS: Search GitLab users with smart pattern detection. Auto-detects email
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `active` | boolean | No | Filter for active (true) or inactive (false) users. |
 | `blocked` | boolean | No | Filter for blocked users. |
 | `created_after` | string | No | Filter users created after this date (ISO 8601). |
@@ -343,7 +347,7 @@ TEAM MEMBERS: List project members with access levels. Shows: 10=Guest, 20=Repor
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `project_id` | string | Yes | Project ID or URL-encoded path. |
 | `page` | integer | No | Page number |
 | `query` | string | No | Search members by name or username. |
@@ -369,7 +373,7 @@ SPRINTS: List iterations/sprints for agile planning. Filter by state: current, u
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `group_id` | string | Yes | Group ID or URL-encoded path. |
-| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `include_ancestors` | boolean | No | Include iterations from parent groups. |
 | `page` | integer | No | Page number |
 | `search` | string | No | Search iterations by title. |
@@ -609,10 +613,10 @@ BROWSE merge requests. Actions: "list" shows MRs with filtering, "get" retrieves
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `merge_request_iid` | string | Yes | Internal MR ID unique to project |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `include_diverged_commits_count` | boolean | No | Include count of commits the source branch is behind target |
 | `include_rebase_in_progress` | boolean | No | Check if MR is currently being rebased |
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `page` | integer | No | Page number |
 
 **Action `get`**:
 
@@ -627,6 +631,7 @@ BROWSE merge requests. Actions: "list" shows MRs with filtering, "get" retrieves
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `approved_by_ids` | string[] | No | Filter MRs approved by user IDs |
 | `approved_by_usernames` | string[] | No | Filter MRs approved by usernames |
 | `assignee_id` | number | No | Filter by assignee's user ID |
@@ -645,8 +650,7 @@ BROWSE merge requests. Actions: "list" shows MRs with filtering, "get" retrieves
 | `my_reaction_emoji` | string | No | Filter MRs you've reacted to |
 | `not` | object | No | Exclusion filters |
 | `order_by` | string | No | Sort field |
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `page` | integer | No | Page number |
 | `reviewer_id` | number | No | Filter by reviewer user ID |
 | `reviewer_username` | string | No | Filter by reviewer username |
 | `scope` | string | No | Filter scope |
@@ -667,7 +671,8 @@ BROWSE merge requests. Actions: "list" shows MRs with filtering, "get" retrieves
 
 ```json
 {
-  "action": "list"
+  "action": "list",
+  "per_page": 10
 }
 ```
 
@@ -675,7 +680,7 @@ BROWSE merge requests. Actions: "list" shows MRs with filtering, "get" retrieves
 
 ### browse_mr_discussions [tier: Free]
 
-BROWSE MR discussions and draft notes. Actions: "list" shows all discussion threads (default: 20 per page), "drafts" lists unpublished draft notes, "draft" gets single draft note.
+BROWSE MR discussions and draft notes. Actions: "list" shows all discussion threads, "drafts" lists unpublished draft notes, "draft" gets single draft note.
 
 #### Actions
 
@@ -704,8 +709,8 @@ BROWSE MR discussions and draft notes. Actions: "list" shows all discussion thre
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `per_page` | number | Yes | Number of items per page (default: 20) |
-| `page` | number | No | Page number |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `page` | integer | No | Page number |
 
 #### Example
 
@@ -1036,8 +1041,8 @@ BROWSE labels. Actions: "list" shows all labels in project/group with filtering,
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `page` | integer | No | Page number |
 | `search` | string | No | Keyword to filter labels by |
 | `with_counts` | boolean | No | Include issue and merge request counts |
 
@@ -1046,7 +1051,8 @@ BROWSE labels. Actions: "list" shows all labels in project/group with filtering,
 ```json
 {
   "action": "list",
-  "namespace": "my-group/my-project"
+  "namespace": "my-group/my-project",
+  "per_page": 10
 }
 ```
 
@@ -1139,10 +1145,10 @@ BROWSE milestones. Actions: "list" shows milestones with filtering, "get" retrie
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
 | `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `page` | integer | No | Page number |
 
 **Action `get`**:
 
@@ -1155,19 +1161,19 @@ BROWSE milestones. Actions: "list" shows milestones with filtering, "get" retrie
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
 | `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `page` | integer | No | Page number |
 
 **Action `list`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `iids` | string[] | No | Return only the milestones having the given iid |
 | `include_ancestors` | boolean | No | Include ancestor groups |
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `page` | integer | No | Page number |
 | `search` | string | No | Return only milestones with a title or description matching the provided string |
 | `state` | string | No | Return only active or closed milestones |
 | `title` | string | No | Return only milestones with a title matching the provided string |
@@ -1178,17 +1184,18 @@ BROWSE milestones. Actions: "list" shows milestones with filtering, "get" retrie
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
 | `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `page` | integer | No | Page number |
 
 #### Example
 
 ```json
 {
   "action": "list",
-  "namespace": "my-group/my-project"
+  "namespace": "my-group/my-project",
+  "per_page": 10
 }
 ```
 
@@ -1303,20 +1310,20 @@ BROWSE pipelines. Actions: "list" searches pipelines with filtering, "get" retri
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `pipeline_id` | string | Yes | The ID of the pipeline |
 | `include_retried` | boolean | No | Include retried jobs in the response |
 | `job_scope` | string[] | No | Scope of jobs to show |
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `page` | integer | No | Page number |
 
 **Action `list`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `name` | string | No | Filter by name of user who triggered pipeline |
 | `order_by` | string | No | Order pipelines by |
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `page` | integer | No | Page number |
 | `ref` | string | No | Filter by branch or tag ref |
 | `scope` | string | No | Pipeline scope filter |
 | `sha` | string | No | Filter by SHA |
@@ -1341,10 +1348,10 @@ BROWSE pipelines. Actions: "list" searches pipelines with filtering, "get" retri
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `pipeline_id` | string | Yes | The ID of the pipeline |
 | `include_retried` | boolean | No | Include retried jobs in the response |
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `page` | integer | No | Page number |
 | `trigger_scope` | string[] | No | Scope of trigger jobs to show |
 
 #### Example
@@ -1352,7 +1359,8 @@ BROWSE pipelines. Actions: "list" searches pipelines with filtering, "get" retri
 ```json
 {
   "action": "list",
-  "project_id": "my-group/my-project"
+  "project_id": "my-group/my-project",
+  "per_page": 10
 }
 ```
 
@@ -1486,15 +1494,16 @@ BROWSE CI/CD variables. Actions: "list" shows all variables in project/group wit
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `page` | integer | No | Page number |
 
 #### Example
 
 ```json
 {
   "action": "list",
-  "namespace": "my-group/my-project"
+  "namespace": "my-group/my-project",
+  "per_page": 10
 }
 ```
 
@@ -1597,9 +1606,9 @@ BROWSE repository files. Actions: "tree" lists files/folders with pagination, "c
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `page` | integer | No | Page number |
 | `path` | string | No | Directory path to list |
-| `per_page` | integer | No | Results per page (max 100) |
 | `recursive` | boolean | No | Include nested directories |
 
 #### Example
@@ -1607,7 +1616,8 @@ BROWSE repository files. Actions: "tree" lists files/folders with pagination, "c
 ```json
 {
   "action": "tree",
-  "project_id": "my-group/my-project"
+  "project_id": "my-group/my-project",
+  "per_page": 10
 }
 ```
 
@@ -1712,8 +1722,8 @@ BROWSE wiki pages. Actions: "list" shows all wiki pages in project/group, "get" 
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `page` | integer | No | Page number |
 | `with_content` | boolean | No | Include content of the wiki pages |
 
 #### Example
@@ -1721,7 +1731,8 @@ BROWSE wiki pages. Actions: "list" shows all wiki pages in project/group, "get" 
 ```json
 {
   "action": "list",
-  "namespace": "my-group/my-project"
+  "namespace": "my-group/my-project",
+  "per_page": 10
 }
 ```
 
@@ -1815,11 +1826,11 @@ BROWSE GitLab code snippets. Actions: "list" shows snippets by scope (personal/p
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `scope` | string | Yes | Scope of snippets: "personal" for current user, "project" for project-specific (requires projectId), "public" for all public snippets |
 | `created_after` | string | No | Return snippets created after this date (ISO 8601). Example: '2024-01-01T00:00:00Z' |
 | `created_before` | string | No | Return snippets created before this date (ISO 8601). Example: '2024-12-31T23:59:59Z' |
-| `page` | number | No | Page number |
-| `per_page` | number | No | Number of items per page |
+| `page` | integer | No | Page number |
 | `visibility` | string | No | Filter by visibility: private (author only), internal (authenticated users), public (everyone) |
 
 #### Example
@@ -1827,7 +1838,8 @@ BROWSE GitLab code snippets. Actions: "list" shows snippets by scope (personal/p
 ```json
 {
   "action": "list",
-  "scope": "personal"
+  "scope": "personal",
+  "per_page": 10
 }
 ```
 
@@ -2033,15 +2045,16 @@ LIST all active integrations for a project. Returns integrations like Slack, Jir
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `project_id` | string | Yes | Project ID or URL-encoded path |
 | `page` | integer | No | Page number |
-| `per_page` | integer | No | Number of items per page |
 
 #### Example
 
 ```json
 {
-  "project_id": "my-group/my-project"
+  "project_id": "my-group/my-project",
+  "per_page": 10
 }
 ```
 
@@ -2125,7 +2138,7 @@ TASK QUEUE: View your GitLab todos (notifications requiring action). Todos are a
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `action` | string | No | Filter by action type. |
 | `author_id` | number | No | Filter by author ID. |
 | `group_id` | number | No | Filter by group ID. |
@@ -2594,7 +2607,7 @@ BROWSE team members in projects and groups. Actions: "list_project" lists projec
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `group_id` | string | Yes | Group ID or URL-encoded path |
-| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `page` | integer | No | Page number |
 | `query` | string | No | Search members by name or username |
 | `state` | string | No | Filter by member state |
@@ -2604,7 +2617,7 @@ BROWSE team members in projects and groups. Actions: "list_project" lists projec
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `project_id` | string | Yes | Project ID or URL-encoded path |
 | `page` | integer | No | Page number |
 | `query` | string | No | Search members by name or username |
@@ -2616,7 +2629,7 @@ BROWSE team members in projects and groups. Actions: "list_project" lists projec
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `group_id` | string | Yes | Group ID or URL-encoded path |
-| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `page` | integer | No | Page number |
 | `query` | string | No | Search members by name or username |
 | `user_ids` | string[] | No | Filter to specific user IDs |
@@ -2625,7 +2638,7 @@ BROWSE team members in projects and groups. Actions: "list_project" lists projec
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `project_id` | string | Yes | Project ID or URL-encoded path |
 | `page` | integer | No | Page number |
 | `query` | string | No | Search members by name or username |
@@ -2746,7 +2759,7 @@ SEARCH GitLab resources. Actions: "global" searches entire instance, "project" s
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `per_page` | integer | Yes | Number of items per page (max 100) |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
 | `scope` | string | Yes | Search scope determining what type of resources to search |
 | `search` | string | Yes | Search query string (minimum 1 character) |
 | `confidential` | boolean | No | Filter by confidentiality (for issues scope, Premium only) |

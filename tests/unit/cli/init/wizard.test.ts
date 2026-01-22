@@ -376,11 +376,9 @@ describe("wizard", () => {
         username: "dev",
       });
 
-      // The spawnSync is dynamically imported, we can't easily mock it
-      // but the test covers the code path - spawnSync will fail silently in test
       await runWizard();
 
-      // Verify the flow reached the CLI execution path
+      // Verify the CLI execution flow was reached
       expect(p.confirm).toHaveBeenCalledWith(
         expect.objectContaining({
           message: "Run this command now?",

@@ -146,7 +146,24 @@ export const SSL_PASSPHRASE = process.env.SSL_PASSPHRASE;
 export const TRUST_PROXY = process.env.TRUST_PROXY;
 
 // API timeout configuration (in milliseconds)
-export const API_TIMEOUT_MS = parseInt(process.env.GITLAB_API_TIMEOUT_MS ?? "20000", 10);
+// Default 10s allows time for retries within a reasonable total response time
+export const API_TIMEOUT_MS = parseInt(process.env.GITLAB_API_TIMEOUT_MS ?? "10000", 10);
+
+// Retry configuration for idempotent operations (GET requests)
+// Retries on: timeouts, network errors, 5xx server errors
+export const API_RETRY_ENABLED = process.env.GITLAB_API_RETRY_ENABLED !== "false";
+export const API_RETRY_MAX_ATTEMPTS = parseInt(
+  process.env.GITLAB_API_RETRY_MAX_ATTEMPTS ?? "3",
+  10
+);
+export const API_RETRY_BASE_DELAY_MS = parseInt(
+  process.env.GITLAB_API_RETRY_BASE_DELAY_MS ?? "1000",
+  10
+);
+export const API_RETRY_MAX_DELAY_MS = parseInt(
+  process.env.GITLAB_API_RETRY_MAX_DELAY_MS ?? "4000",
+  10
+);
 
 // Rate limiting configuration
 // Per-IP rate limiting (for anonymous requests) - enabled by default

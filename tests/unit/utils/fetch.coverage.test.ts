@@ -55,7 +55,7 @@ describe("Fetch Utils Coverage Tests", () => {
       mockFetch.mockRejectedValue(timeoutError);
 
       await expect(enhancedFetch("https://example.com")).rejects.toThrow(
-        "GitLab API timeout after 20000ms"
+        "GitLab API timeout after 10000ms"
       );
     });
 
@@ -424,7 +424,7 @@ describe("Fetch Utils Coverage Tests", () => {
       const setTimeoutSpy = jest
         .spyOn(global, "setTimeout")
         .mockImplementation((callback, delay) => {
-          if (delay === 20000) {
+          if (delay === 10000) {
             // API_TIMEOUT_MS default value
             // Execute the callback immediately to simulate timeout
             callback();
@@ -440,7 +440,7 @@ describe("Fetch Utils Coverage Tests", () => {
 
       await enhancedFetch("https://gitlab.example.com/api/test");
 
-      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 20000);
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10000);
 
       setTimeoutSpy.mockRestore();
     });

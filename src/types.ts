@@ -33,6 +33,14 @@ export interface FeatureGate {
 export interface EnhancedToolDefinition extends ToolDefinition {
   handler: (args: unknown) => Promise<unknown>;
   gate?: FeatureGate; // Optional - tools without gate are always enabled
+  /**
+   * Mark the tool as idempotent (safe to retry on failure).
+   * If not specified, idempotency is inferred from tool name:
+   * - browse_*, list_*, get_* are considered idempotent (read-only)
+   * - manage_* are considered non-idempotent (write operations)
+   * Set explicitly to override the default behavior.
+   */
+  idempotent?: boolean;
 }
 
 // Tool registry type for storing enhanced tool definitions

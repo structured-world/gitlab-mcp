@@ -22,6 +22,10 @@ import {
   NODE_TLS_REJECT_UNAUTHORIZED,
   GITLAB_TOKEN,
   API_TIMEOUT_MS,
+  API_RETRY_ENABLED,
+  API_RETRY_MAX_ATTEMPTS,
+  API_RETRY_BASE_DELAY_MS,
+  API_RETRY_MAX_DELAY_MS,
 } from "../config";
 import { isOAuthEnabled, getTokenContext } from "../oauth/index";
 
@@ -189,10 +193,74 @@ export function createFetchOptions(): Record<string, unknown> {
   return dispatcher ? { dispatcher } : {};
 }
 
+// ============================================================================
+// Retry Logic
+// ============================================================================
+
 /**
- * Enhanced fetch with GitLab support and Node.js v24 compatibility
+ * Extended fetch options with retry configuration
  */
-export async function enhancedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export interface FetchWithRetryOptions extends RequestInit {
+  /** Enable retry for this request (default: false for non-GET, true for GET) */
+  retry?: boolean;
+  /** Maximum number of retry attempts (default: from config) */
+  maxRetries?: number;
+}
+
+/**
+ * Sleep for a specified duration
+ */
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * Determine if an error is retryable
+ * Retryable errors: timeouts, network errors, 5xx server errors
+ */
+function isRetryableError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  // Timeout errors are retryable
+  if (error.message.includes("timeout") || error.name === "AbortError") {
+    return true;
+  }
+
+  // Network errors (fetch failures) are retryable
+  if (
+    error.message.includes("ECONNREFUSED") ||
+    error.message.includes("ECONNRESET") ||
+    error.message.includes("ETIMEDOUT") ||
+    error.message.includes("ENOTFOUND") ||
+    error.message.includes("network")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Determine if an HTTP response status is retryable
+ * 5xx server errors are retryable, 429 rate limit is retryable after delay
+ */
+function isRetryableStatus(status: number): boolean {
+  return status >= 500 || status === 429;
+}
+
+/**
+ * Calculate exponential backoff delay
+ */
+function calculateBackoffDelay(attempt: number): number {
+  const delay = API_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+  return Math.min(delay, API_RETRY_MAX_DELAY_MS);
+}
+
+/**
+ * Perform a single fetch request with timeout
+ * Internal function used by enhancedFetch
+ */
+async function doFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const dispatcher = getDispatcher();
   const cookieHeader = loadCookieHeader();
 
@@ -227,6 +295,11 @@ export async function enhancedFetch(url: string, options: RequestInit = {}): Pro
     headers.Cookie = cookieHeader;
   }
 
+  const method = (options.method ?? "GET").toUpperCase();
+
+  // Debug log at request start
+  logger.debug({ url, method, timeout: API_TIMEOUT_MS }, "Starting GitLab API request");
+
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
 
@@ -240,17 +313,138 @@ export async function enhancedFetch(url: string, options: RequestInit = {}): Pro
     fetchOptions.dispatcher = dispatcher;
   }
 
+  const startTime = Date.now();
   try {
     const response = await fetch(url, fetchOptions as RequestInit);
     clearTimeout(timeoutId);
+
+    const duration = Date.now() - startTime;
+    logger.debug(
+      { url, method, status: response.status, duration },
+      "GitLab API request completed"
+    );
+
     return response;
   } catch (error) {
     clearTimeout(timeoutId);
+    const duration = Date.now() - startTime;
+
     if (error instanceof Error && error.name === "AbortError") {
+      // Log timeout with context
+      logger.warn(
+        { url, method, timeout: API_TIMEOUT_MS, duration },
+        "GitLab API request timed out"
+      );
       throw new Error(`GitLab API timeout after ${API_TIMEOUT_MS}ms`);
     }
+
+    // Log other errors
+    logger.warn(
+      { url, method, error: error instanceof Error ? error.message : String(error), duration },
+      "GitLab API request failed"
+    );
     throw error;
   }
+}
+
+/**
+ * Enhanced fetch with GitLab support, retry logic, and Node.js v24 compatibility
+ *
+ * @param url - URL to fetch
+ * @param options - Fetch options with optional retry configuration
+ * @returns Response from the server
+ *
+ * Retry behavior:
+ * - GET requests retry by default (idempotent)
+ * - POST/PUT/DELETE do NOT retry by default (not idempotent)
+ * - Override with options.retry = true/false
+ * - Retries on: timeouts, network errors, 5xx responses
+ * - Uses exponential backoff: 1s, 2s, 4s (configurable)
+ */
+export async function enhancedFetch(
+  url: string,
+  options: FetchWithRetryOptions = {}
+): Promise<Response> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const isIdempotent = method === "GET" || method === "HEAD" || method === "OPTIONS";
+
+  // Determine if retry is enabled for this request
+  const shouldRetry = options.retry ?? (API_RETRY_ENABLED && isIdempotent);
+  const maxRetries = options.maxRetries ?? API_RETRY_MAX_ATTEMPTS;
+
+  // Extract retry options from fetch options to pass clean options to doFetch
+  const { retry: _retry, maxRetries: _maxRetries, ...fetchOptions } = options;
+
+  // If retry is disabled, just do a single fetch
+  if (!shouldRetry || maxRetries <= 0) {
+    return doFetch(url, fetchOptions);
+  }
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await doFetch(url, fetchOptions);
+
+      // Check if response status is retryable (5xx, 429)
+      if (isRetryableStatus(response.status) && attempt < maxRetries) {
+        // For 429, check Retry-After header
+        let retryDelay = calculateBackoffDelay(attempt);
+        const retryAfter = response.headers.get("Retry-After");
+        if (retryAfter && response.status === 429) {
+          const retryAfterSeconds = parseInt(retryAfter, 10);
+          if (!isNaN(retryAfterSeconds)) {
+            retryDelay = retryAfterSeconds * 1000;
+          }
+        }
+
+        logger.warn(
+          {
+            url,
+            method,
+            status: response.status,
+            attempt: attempt + 1,
+            maxRetries,
+            retryDelay,
+          },
+          "Retrying request after server error"
+        );
+
+        await sleep(retryDelay);
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Check if error is retryable and we have attempts left
+      if (isRetryableError(error) && attempt < maxRetries) {
+        const retryDelay = calculateBackoffDelay(attempt);
+
+        logger.warn(
+          {
+            url,
+            method,
+            error: lastError.message,
+            attempt: attempt + 1,
+            maxRetries,
+            retryDelay,
+          },
+          "Retrying request after error"
+        );
+
+        await sleep(retryDelay);
+        continue;
+      }
+
+      // Not retryable or no attempts left
+      throw lastError;
+    }
+  }
+
+  // Should not reach here, but just in case
+  throw lastError ?? new Error("Unknown error during fetch retry");
 }
 
 export function resetDispatcherCache(): void {

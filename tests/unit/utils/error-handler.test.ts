@@ -10,6 +10,8 @@ import {
   createInvalidActionError,
   createTypeMismatchError,
   createValidationError,
+  createTimeoutError,
+  parseTimeoutError,
   StructuredToolError,
   isStructuredToolError,
   GitLabApiErrorResponse,
@@ -611,6 +613,72 @@ describe("Error Handler", () => {
         expect(result.error_code).toBe("VALIDATION_ERROR");
         expect(result.message).toBe("Invalid date format for created_after");
         expect(result.suggested_fix).toContain("documentation");
+      });
+    });
+  });
+
+  describe("Timeout Error Helpers", () => {
+    describe("parseTimeoutError", () => {
+      it("should parse timeout error message and return timeout value", () => {
+        const result = parseTimeoutError("GitLab API timeout after 10000ms");
+        expect(result).toBe(10000);
+      });
+
+      it("should return null for non-timeout error messages", () => {
+        expect(parseTimeoutError("GitLab API error: 500")).toBeNull();
+        expect(parseTimeoutError("Connection refused")).toBeNull();
+        expect(parseTimeoutError("Unknown error")).toBeNull();
+      });
+
+      it("should handle wrapped timeout messages", () => {
+        const result = parseTimeoutError(
+          "Failed to execute tool 'browse_mrs': GitLab API timeout after 20000ms"
+        );
+        expect(result).toBe(20000);
+      });
+
+      it("should parse various timeout durations", () => {
+        expect(parseTimeoutError("GitLab API timeout after 5000ms")).toBe(5000);
+        expect(parseTimeoutError("GitLab API timeout after 30000ms")).toBe(30000);
+        expect(parseTimeoutError("GitLab API timeout after 1000ms")).toBe(1000);
+      });
+    });
+
+    describe("createTimeoutError", () => {
+      it("should create timeout error for retryable operation", () => {
+        const result = createTimeoutError("browse_merge_requests", "list", 10000, true);
+
+        expect(result.error_code).toBe("TIMEOUT");
+        expect(result.tool).toBe("browse_merge_requests");
+        expect(result.action).toBe("list");
+        expect(result.timeout_ms).toBe(10000);
+        expect(result.retryable).toBe(true);
+        expect(result.message).toContain("10000ms");
+        expect(result.suggested_fix).toContain("read-only");
+        expect(result.suggested_fix).toContain("safely retry");
+      });
+
+      it("should create timeout error for non-retryable operation", () => {
+        const result = createTimeoutError("manage_merge_request", "create", 10000, false);
+
+        expect(result.error_code).toBe("TIMEOUT");
+        expect(result.tool).toBe("manage_merge_request");
+        expect(result.action).toBe("create");
+        expect(result.retryable).toBe(false);
+        expect(result.suggested_fix).toContain("write operation");
+        expect(result.suggested_fix).toContain("check if it completed");
+      });
+
+      it("should default retryable to false if not specified", () => {
+        const result = createTimeoutError("manage_merge_request", "update", 10000);
+
+        expect(result.retryable).toBe(false);
+      });
+
+      it("should include GITLAB_API_TIMEOUT_MS in suggested fix", () => {
+        const result = createTimeoutError("browse_commits", "list", 10000, true);
+
+        expect(result.suggested_fix).toContain("GITLAB_API_TIMEOUT_MS");
       });
     });
   });

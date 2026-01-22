@@ -15,6 +15,11 @@ jest.mock("../../../src/config", () => ({
   HTTPS_PROXY: "",
   NODE_TLS_REJECT_UNAUTHORIZED: "",
   GITLAB_TOKEN: "test-token",
+  API_TIMEOUT_MS: 10000,
+  API_RETRY_ENABLED: true,
+  API_RETRY_MAX_ATTEMPTS: 3,
+  API_RETRY_BASE_DELAY_MS: 100, // Faster for tests
+  API_RETRY_MAX_DELAY_MS: 400,
 }));
 
 // Mock dependencies
@@ -401,6 +406,157 @@ describe("Enhanced Fetch Utilities", () => {
           }),
         })
       );
+    });
+  });
+
+  describe("Retry Logic", () => {
+    it("should retry on 5xx server errors for GET requests", async () => {
+      // First call returns 500, second succeeds
+      const errorResponse = createMockResponse({ status: 500, ok: false });
+      const successResponse = createMockResponse({ status: 200, ok: true });
+
+      mockFetch.mockResolvedValueOnce(errorResponse).mockResolvedValueOnce(successResponse);
+
+      const result = await enhancedFetch("https://example.com", { method: "GET" });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(200);
+    });
+
+    it("should NOT retry on 5xx for POST requests by default", async () => {
+      const errorResponse = createMockResponse({ status: 500, ok: false });
+      mockFetch.mockResolvedValue(errorResponse);
+
+      const result = await enhancedFetch("https://example.com", { method: "POST" });
+
+      // POST is not idempotent, should not retry
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe(500);
+    });
+
+    it("should retry POST requests when retry: true is explicitly set", async () => {
+      const errorResponse = createMockResponse({ status: 500, ok: false });
+      const successResponse = createMockResponse({ status: 200, ok: true });
+
+      mockFetch.mockResolvedValueOnce(errorResponse).mockResolvedValueOnce(successResponse);
+
+      const result = await enhancedFetch("https://example.com", {
+        method: "POST",
+        retry: true,
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(200);
+    });
+
+    it("should NOT retry GET requests when retry: false is explicitly set", async () => {
+      const errorResponse = createMockResponse({ status: 500, ok: false });
+      mockFetch.mockResolvedValue(errorResponse);
+
+      const result = await enhancedFetch("https://example.com", {
+        method: "GET",
+        retry: false,
+      });
+
+      // Retry disabled, should not retry
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe(500);
+    });
+
+    it("should retry on 429 rate limit with Retry-After header", async () => {
+      const rateLimitHeaders = new Headers();
+      rateLimitHeaders.set("Retry-After", "1"); // 1 second
+
+      const rateLimitResponse = createMockResponse({
+        status: 429,
+        ok: false,
+        headers: rateLimitHeaders,
+      });
+      const successResponse = createMockResponse({ status: 200, ok: true });
+
+      mockFetch.mockResolvedValueOnce(rateLimitResponse).mockResolvedValueOnce(successResponse);
+
+      const result = await enhancedFetch("https://example.com");
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(200);
+    });
+
+    it("should stop retrying after maxRetries attempts", async () => {
+      const errorResponse = createMockResponse({ status: 500, ok: false });
+      mockFetch.mockResolvedValue(errorResponse);
+
+      const result = await enhancedFetch("https://example.com", {
+        method: "GET",
+        maxRetries: 2,
+      });
+
+      // Initial attempt + 2 retries = 3 total calls
+      expect(mockFetch).toHaveBeenCalledTimes(3);
+      expect(result.status).toBe(500);
+    });
+
+    it("should retry on network timeout errors", async () => {
+      const timeoutError = new Error("GitLab API timeout after 10000ms");
+      const successResponse = createMockResponse({ status: 200, ok: true });
+
+      mockFetch.mockRejectedValueOnce(timeoutError).mockResolvedValueOnce(successResponse);
+
+      const result = await enhancedFetch("https://example.com");
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(200);
+    });
+
+    it("should retry on ECONNRESET errors", async () => {
+      const networkError = new Error("ECONNRESET: Connection reset by peer");
+      const successResponse = createMockResponse({ status: 200, ok: true });
+
+      mockFetch.mockRejectedValueOnce(networkError).mockResolvedValueOnce(successResponse);
+
+      const result = await enhancedFetch("https://example.com");
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(200);
+    });
+
+    it("should NOT retry on 4xx client errors (except 429)", async () => {
+      const clientError = createMockResponse({ status: 400, ok: false });
+      mockFetch.mockResolvedValue(clientError);
+
+      const result = await enhancedFetch("https://example.com");
+
+      // 400 errors should not be retried
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe(400);
+    });
+
+    it("should NOT retry on 401 unauthorized errors", async () => {
+      const authError = createMockResponse({ status: 401, ok: false });
+      mockFetch.mockResolvedValue(authError);
+
+      const result = await enhancedFetch("https://example.com");
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe(401);
+    });
+
+    it("should NOT retry on 403 forbidden errors", async () => {
+      const forbiddenError = createMockResponse({ status: 403, ok: false });
+      mockFetch.mockResolvedValue(forbiddenError);
+
+      const result = await enhancedFetch("https://example.com");
+
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+      expect(result.status).toBe(403);
+    });
+
+    it("should NOT retry on non-retryable errors", async () => {
+      const validationError = new Error("Invalid JSON payload");
+      mockFetch.mockRejectedValue(validationError);
+
+      await expect(enhancedFetch("https://example.com")).rejects.toThrow("Invalid JSON payload");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
     });
   });
 });

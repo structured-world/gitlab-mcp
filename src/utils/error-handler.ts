@@ -134,6 +134,17 @@ export interface ApiError extends StructuredError {
 }
 
 /**
+ * Timeout error for API requests that exceeded the timeout limit
+ */
+export interface TimeoutError extends StructuredError {
+  error_code: "TIMEOUT";
+  /** Timeout duration in milliseconds */
+  timeout_ms: number;
+  /** Whether the request can be retried (idempotent operation) */
+  retryable: boolean;
+}
+
+/**
  * Union type of all structured errors
  */
 export type GitLabStructuredError =
@@ -141,7 +152,8 @@ export type GitLabStructuredError =
   | TierRestrictedError
   | PermissionDeniedError
   | NotFoundError
-  | ApiError;
+  | ApiError
+  | TimeoutError;
 
 // ============================================================================
 // Tier Restriction Detection
@@ -847,6 +859,48 @@ export function createValidationError(
     message: zodMessage,
     suggested_fix: "Check the tool documentation for correct parameter format",
   };
+}
+
+// ============================================================================
+// Timeout Error Helper
+// ============================================================================
+
+/**
+ * Create a timeout error response
+ *
+ * @param tool - Tool name that triggered the timeout
+ * @param action - Action that was attempted
+ * @param timeoutMs - Timeout duration in milliseconds
+ * @param retryable - Whether the operation is idempotent and can be retried
+ */
+export function createTimeoutError(
+  tool: string,
+  action: string,
+  timeoutMs: number,
+  retryable: boolean = false
+): TimeoutError {
+  const retryHint = retryable
+    ? " This is a read-only operation - you can safely retry."
+    : " This is a write operation - check if it completed before retrying.";
+
+  return {
+    error_code: "TIMEOUT",
+    tool,
+    action,
+    timeout_ms: timeoutMs,
+    retryable,
+    message: `Request timed out after ${timeoutMs}ms`,
+    suggested_fix: `The GitLab server is slow to respond. Try again later or increase GITLAB_API_TIMEOUT_MS.${retryHint}`,
+  };
+}
+
+/**
+ * Parse timeout error from error message
+ * Returns timeout value in ms if the error is a timeout error, null otherwise
+ */
+export function parseTimeoutError(errorMessage: string): number | null {
+  const match = errorMessage.match(/GitLab API timeout after (\d+)ms/);
+  return match ? parseInt(match[1], 10) : null;
 }
 
 // ============================================================================

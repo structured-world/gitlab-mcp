@@ -1229,6 +1229,104 @@ export const GET_PROJECT_WORK_ITEMS: TypedDocumentNode<
   }
 `;
 
+// Get work item by namespace + IID (for URL-based lookups)
+// Uses the namespace.workItem(iid) query supported since GitLab 16.3
+export const GET_WORK_ITEM_BY_IID: TypedDocumentNode<
+  { namespace: { workItem: WorkItem | null } | null },
+  { namespacePath: string; iid: string }
+> = gql`
+  query GetWorkItemByIid($namespacePath: ID!, $iid: String!) {
+    namespace(fullPath: $namespacePath) {
+      workItem(iid: $iid) {
+        id
+        iid
+        title
+        description
+        state
+        workItemType {
+          id
+          name
+        }
+        createdAt
+        updatedAt
+        closedAt
+        webUrl
+        widgets {
+          type
+          ... on WorkItemWidgetAssignees {
+            allowsMultipleAssignees
+            canInviteMembers
+            assignees {
+              nodes {
+                id
+                username
+                name
+                avatarUrl
+                webUrl
+              }
+            }
+          }
+          ... on WorkItemWidgetDescription {
+            description
+            descriptionHtml
+            edited
+            lastEditedAt
+            lastEditedBy {
+              id
+              username
+              name
+            }
+          }
+          ... on WorkItemWidgetHierarchy {
+            parent {
+              id
+              iid
+              title
+              workItemType {
+                name
+              }
+            }
+            children {
+              nodes {
+                id
+                iid
+                title
+                workItemType {
+                  name
+                }
+              }
+            }
+            hasChildren
+          }
+          ... on WorkItemWidgetLabels {
+            allowsScopedLabels
+            labels {
+              nodes {
+                id
+                title
+                description
+                color
+                textColor
+              }
+            }
+          }
+          ... on WorkItemWidgetMilestone {
+            milestone {
+              id
+              title
+              description
+              state
+              dueDate
+              startDate
+              webPath
+            }
+          }
+        }
+      }
+    }
+  }
+`;
+
 export const GET_WORK_ITEM: TypedDocumentNode<{ workItem: WorkItem }, { id: string }> = gql`
   query GetWorkItem($id: WorkItemID!) {
     workItem(id: $id) {

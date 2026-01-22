@@ -709,6 +709,120 @@ describe("Workitems Registry - CQRS Tools", () => {
         // Missing id should throw validation error
         await expect(tool?.handler({ action: "get" })).rejects.toThrow();
       });
+
+      // --- IID lookup tests (new functionality) ---
+      it("should execute get action successfully with namespace + iid", async () => {
+        const mockWorkItem = createMockWorkItem({
+          title: "Issue from URL",
+          description: "Found by IID",
+          iid: "95",
+        });
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            workItem: mockWorkItem,
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("browse_work_items");
+        const result = await tool?.handler({
+          action: "get",
+          namespace: "group/project",
+          iid: "95",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(expect.any(Object), {
+          namespacePath: "group/project",
+          iid: "95",
+        });
+
+        expect(result).toMatchObject({
+          iid: "95",
+          title: "Issue from URL",
+          description: "Found by IID",
+        });
+      });
+
+      it("should handle non-existent work item when using namespace + iid", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          namespace: { workItem: null },
+        });
+
+        const tool = workitemsToolRegistry.get("browse_work_items");
+
+        await expect(
+          tool?.handler({
+            action: "get",
+            namespace: "group/project",
+            iid: "999",
+          })
+        ).rejects.toThrow('Work item with IID "999" not found in namespace "group/project"');
+      });
+
+      it("should handle null namespace when using namespace + iid", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          namespace: null,
+        });
+
+        const tool = workitemsToolRegistry.get("browse_work_items");
+
+        await expect(
+          tool?.handler({
+            action: "get",
+            namespace: "invalid/namespace",
+            iid: "123",
+          })
+        ).rejects.toThrow('Work item with IID "123" not found in namespace "invalid/namespace"');
+      });
+
+      it("should reject get action when only namespace is provided without iid", async () => {
+        const tool = workitemsToolRegistry.get("browse_work_items");
+
+        await expect(
+          tool?.handler({
+            action: "get",
+            namespace: "group/project",
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should reject get action when only iid is provided without namespace", async () => {
+        const tool = workitemsToolRegistry.get("browse_work_items");
+
+        await expect(
+          tool?.handler({
+            action: "get",
+            iid: "95",
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should prefer namespace + iid lookup when both methods are provided", async () => {
+        const mockWorkItem = createMockWorkItem({
+          title: "Found by IID",
+          iid: "95",
+        });
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            workItem: mockWorkItem,
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("browse_work_items");
+        await tool?.handler({
+          action: "get",
+          namespace: "group/project",
+          iid: "95",
+          id: "12345", // This should be ignored when namespace+iid is provided
+        });
+
+        // Should call the IID query, not the ID query
+        expect(mockClient.request).toHaveBeenCalledWith(expect.any(Object), {
+          namespacePath: "group/project",
+          iid: "95",
+        });
+      });
     });
 
     describe("manage_work_item handler - create action", () => {

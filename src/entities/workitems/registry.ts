@@ -23,6 +23,7 @@ import {
   WorkItemCreateInput,
   GET_NAMESPACE_WORK_ITEMS,
   GET_WORK_ITEM,
+  GET_WORK_ITEM_BY_IID,
   UPDATE_WORK_ITEM,
   DELETE_WORK_ITEM,
   WorkItemUpdateInput,
@@ -214,7 +215,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "browse_work_items",
       description:
-        'BROWSE work items. Actions: "list" returns work items with numeric IDs (groups return epics, projects return issues/tasks), "get" retrieves single work item - use the numeric ID from list results (e.g., "5953"). Legacy GIDs like gid://gitlab/Issue/X are auto-normalized.',
+        'BROWSE work items. Actions: "list" returns work items with numeric IDs (groups return epics, projects return issues/tasks), "get" retrieves single work item - use the numeric ID from list results (e.g., "5953") or namespace + iid from URL (e.g., namespace: "group/project", iid: "95" from /issues/95). Legacy GIDs like gid://gitlab/Issue/X are auto-normalized.',
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),
       gate: { envVar: "USE_WORKITEMS", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -292,24 +293,56 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           }
 
           case "get": {
-            // TypeScript knows: input has id (required)
-            const workItemId = input.id;
+            // TypeScript knows: input has either (namespace + iid) or (id)
+            const { namespace, iid, id } = input;
 
             // Get GraphQL client from ConnectionManager
             const connectionManager = ConnectionManager.getInstance();
             const client = connectionManager.getClient();
 
-            // Convert simple ID to GID for API call
-            const workItemGid = toGid(workItemId, "WorkItem");
+            // Route to appropriate query based on input
+            if (namespace !== undefined && iid !== undefined) {
+              // Lookup by namespace + IID (preferred for URL-based requests)
+              console.log("browse_work_items get by IID called with:", {
+                namespace,
+                iid,
+              });
 
-            // Use GraphQL query for getting work item details
-            const response = await client.request(GET_WORK_ITEM, { id: workItemGid });
+              const response = await client.request(GET_WORK_ITEM_BY_IID, {
+                namespacePath: namespace,
+                iid: iid,
+              });
 
-            if (!response.workItem) {
-              throw new Error(`Work item with ID "${workItemId}" not found`);
+              if (!response.namespace?.workItem) {
+                throw new Error(
+                  `Work item with IID "${iid}" not found in namespace "${namespace}"`
+                );
+              }
+
+              return cleanWorkItemResponse(
+                response.namespace.workItem as unknown as GitLabWorkItem
+              );
+            } else if (id !== undefined) {
+              // Lookup by global ID (backward compatible)
+              console.log("browse_work_items get by ID called with:", { id });
+
+              // Convert simple ID to GID for API call
+              const workItemGid = toGid(id, "WorkItem");
+
+              // Use GraphQL query for getting work item details
+              const response = await client.request(GET_WORK_ITEM, { id: workItemGid });
+
+              if (!response.workItem) {
+                throw new Error(`Work item with ID "${id}" not found`);
+              }
+
+              return cleanWorkItemResponse(response.workItem as unknown as GitLabWorkItem);
+            } else {
+              // This should never happen due to schema validation
+              throw new Error(
+                "Either 'id' (global ID) or both 'namespace' and 'iid' (from URL) must be provided"
+              );
             }
-
-            return cleanWorkItemResponse(response.workItem as unknown as GitLabWorkItem);
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

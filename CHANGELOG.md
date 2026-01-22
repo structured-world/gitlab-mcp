@@ -1,3 +1,9 @@
+## [6.30.0](https://github.com/structured-world/gitlab-mcp/compare/v6.29.1...v6.30.0) (2026-01-22)
+
+### Features
+
+* **fetch:** add retry logic for idempotent API operations ([#120](https://github.com/structured-world/gitlab-mcp/issues/120)) ([bc6d1ac](https://github.com/structured-world/gitlab-mcp/commit/bc6d1ac7d6fa30081eb611251814e59967ff1bea)), closes [#119](https://github.com/structured-world/gitlab-mcp/issues/119)
+
 ## [6.29.1](https://github.com/structured-world/gitlab-mcp/compare/v6.29.0...v6.29.1) (2026-01-22)
 
 ### Bug Fixes

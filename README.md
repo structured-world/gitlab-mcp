@@ -4,37 +4,16 @@
 
 ## @structured-world/gitlab-mcp
 
-A fork of the original [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp)
+A Model Context Protocol server providing AI agents with access to the GitLab API. Fork of [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp) with bug fixes, strict TypeScript, and expanded features.
 
 ![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp) ![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp) ![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg) ![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg) ![Codecov](https://codecov.io/gh/structured-world/gitlab-mcp/branch/main/graph/badge.svg) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://structured-world.github.io/gitlab-mcp/coverage/)
 
-GitLab MCP(Model Context Protocol) Server. **Includes bug fixes and improvements over the original GitLab MCP server.**
+## One-Click Install
 
-This fork is actively maintained and enhanced with strict TypeScript standards, Yarn 4 support, and improved development workflows.
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?name=gitlab-mcp&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
+[![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?name=gitlab-mcp&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 
-## Requirements
-
-- **Node.js**: >=24.0.0 (required for native fetch with Undici dispatcher pattern)
-- **GitLab**: Compatible with GitLab.com and self-hosted instances
-
-## Usage
-
-### Using with Codex, Claude App, Cline, Roo Code, Cursor, Kilo Code
-
-When using with the Claude App, you need to set up your API key and URLs directly.
-
-#### Codex
-
-Add to your `~/.codex/config.toml`:
-
-```toml
-[mcp_servers.gitlab]
-command = "yarn"
-args = ["dlx", "-q", "@structured-world/gitlab-mcp@latest", "stdio"]
-env = { "GITLAB_TOKEN" = "mytoken", "GITLAB_API_URL" = "https://gitlab.com" }
-```
-
-#### npx
+## Quick Start
 
 ```json
 {
@@ -44,1072 +23,99 @@ env = { "GITLAB_TOKEN" = "mytoken", "GITLAB_API_URL" = "https://gitlab.com" }
       "args": ["-y", "@structured-world/gitlab-mcp"],
       "env": {
         "GITLAB_TOKEN": "your_gitlab_token",
-        "GITLAB_API_URL": "your_gitlab_api_url",
-        "GITLAB_PROJECT_ID": "your_project_id", // Optional: default project
-        "GITLAB_ALLOWED_PROJECT_IDS": "", // Optional: comma-separated list of allowed project IDs
-        "GITLAB_READ_ONLY_MODE": "false",
-        "GITLAB_API_TIMEOUT_MS": "10000", // API timeout in milliseconds (default: 10000)
-        "USE_GITLAB_WIKI": "false", // use wiki api?
-        "USE_MILESTONE": "false", // use milestone api?
-        "USE_PIPELINE": "false", // use pipeline api?
-        "USE_VARIABLES": "true", // use variables api?
-        "USE_WEBHOOKS": "true", // use webhooks api?
-        "USE_SNIPPETS": "true", // use snippets api?
-        "USE_INTEGRATIONS": "true", // use integrations api?
-        "SKIP_TLS_VERIFY": "false" // skip SSL cert verification (dev only)
+        "GITLAB_API_URL": "https://gitlab.com"
       }
     }
   }
 }
 ```
 
-#### vscode .vscode/mcp.json
+**Requirements:** Node.js >= 24.0.0
 
-```json
-{
-  "inputs": [
-    {
-      "type": "promptString",
-      "id": "gitlab-token",
-      "description": "Gitlab Token to read API",
-      "password": true
-    }
-  ],
-  "servers": {
-    "GitLab-MCP": {
-      "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@structured-world/gitlab-mcp"],
-      "env": {
-        "GITLAB_TOKEN": "${input:gitlab-token}",
-        "GITLAB_API_URL": "your-fancy-gitlab-url",
-        "GITLAB_READ_ONLY_MODE": "true",
-        ...
-      }
-    }
-  }
-}
-```
+## Features
 
-#### Docker
+- **47 tools** across 17 entity types — projects, merge requests, pipelines, work items, wiki, and more
+- **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
+- **Multiple transports** — stdio, SSE, StreamableHTTP
+- **OAuth 2.1** — Per-user authentication via Claude Custom Connector
+- **Read-only mode** — Safe operation for production environments
+- **Auto-discovery** — Detects GitLab config from git remotes
+- **Fine-grained control** — Enable/disable tool groups, filter actions, customize descriptions
+- **Docker support** — `ghcr.io/structured-world/gitlab-mcp:latest`
 
-**Transport Mode Selection:**
-- **PORT environment variable present** → Server starts in HTTP mode with both SSE and StreamableHTTP endpoints (`/sse` and `/mcp`)
-- **No PORT environment variable** → Server starts in stdio mode for direct MCP communication
-- **Explicit `stdio` argument** → Forces stdio mode regardless of PORT
+## Documentation
 
-- stdio mcp.json
+Full documentation is available at **[docs.gitlab-mcp.sw.foundation](https://docs.gitlab-mcp.sw.foundation)**
 
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "command": "docker",
-      "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-e",
-        "GITLAB_TOKEN",
-        "-e",
-        "GITLAB_API_URL",
-        "-e",
-        "GITLAB_READ_ONLY_MODE",
-        "-e",
-        "USE_GITLAB_WIKI",
-        "-e",
-        "USE_MILESTONE",
-        "-e",
-        "USE_PIPELINE",
-        "-e",
-        "USE_VARIABLES",
-        "-e",
-        "USE_WEBHOOKS",
-        "-e",
-        "USE_SNIPPETS",
-        "-e",
-        "USE_INTEGRATIONS",
-        "ghcr.io/structured-world/gitlab-mcp:latest"
-      ],
-      "env": {
-        "GITLAB_TOKEN": "your_gitlab_token",
-        "GITLAB_API_URL": "https://gitlab.com", // Optional, for self-hosted GitLab
-        "GITLAB_READ_ONLY_MODE": "false",
-        "USE_GITLAB_WIKI": "true",
-        "USE_MILESTONE": "true",
-        "USE_PIPELINE": "true",
-        "USE_VARIABLES": "true",
-        "USE_WEBHOOKS": "true",
-        "USE_SNIPPETS": "true",
-        "USE_INTEGRATIONS": "true"
-      }
-    }
-  }
-}
-```
+| Section | Description |
+|---------|-------------|
+| [Installation](https://structured-world.github.io/gitlab-mcp/guide/installation/npm) | npm, Docker, VS Code, Codex |
+| [Configuration](https://structured-world.github.io/gitlab-mcp/guide/configuration) | Environment variables, feature flags |
+| [Tool Reference](https://structured-world.github.io/gitlab-mcp/tools/) | All 47 tools with parameters |
+| [OAuth Setup](https://structured-world.github.io/gitlab-mcp/security/oauth) | Team authentication with Claude |
+| [TLS/HTTPS](https://structured-world.github.io/gitlab-mcp/advanced/tls) | Production deployment with SSL |
+| [Customization](https://structured-world.github.io/gitlab-mcp/advanced/customization) | Tool descriptions, action filtering |
+| [CLI Tools](https://structured-world.github.io/gitlab-mcp/cli/list-tools) | Browse and export tool documentation |
 
-- HTTP Server (SSE + StreamableHTTP)
+### Auto-generated Tool Reference
 
-```shell
-docker run -i --rm \
-  -e PORT=3002 \
-  -e GITLAB_TOKEN=your_gitlab_token \
-  -e GITLAB_API_URL="https://gitlab.com" \
-  -e GITLAB_READ_ONLY_MODE=true \
-  -e USE_GITLAB_WIKI=true \
-  -e USE_MILESTONE=true \
-  -e USE_PIPELINE=true \
-  -p 3333:3002 \
-  ghcr.io/structured-world/gitlab-mcp:latest
-```
-
-**For modern MCP clients (recommended):**
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "type": "streamable-http",
-      "url": "http://localhost:3333/mcp"
-    }
-  }
-}
-```
-
-**For legacy SSE clients (backwards compatibility):**
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "type": "sse",
-      "url": "http://localhost:3333/sse"
-    }
-  }
-}
-```
-
-## Auto-Discovery
-
-The `--auto` flag automatically detects GitLab configuration from the current git repository's remote URL.
-
-### Usage
+For the complete tool reference with parameters:
 
 ```bash
-# Auto-discover from current directory
-gitlab-mcp --auto
-
-# Auto-discover from specific directory
-gitlab-mcp --auto --cwd /path/to/repo
-
-# Use specific remote (default: origin)
-gitlab-mcp --auto --remote upstream
-
-# Dry-run: see what would be detected without applying
-gitlab-mcp --auto --dry-run
-```
-
-### Configuration Priority
-
-When multiple configuration sources are available, they are applied in this order (highest to lowest priority):
-
-| Priority | Source | What it provides |
-|----------|--------|------------------|
-| 1 (highest) | `--profile` CLI argument | Selects user profile (host, auth, features) |
-| 2 | Project config files (`.gitlab-mcp/`) | Adds restrictions and tool selection |
-| 3 (lowest) | Auto-discovered profile | Fallback profile selection from git remote |
-
-**Important notes:**
-
-- **`--profile` always wins**: If you specify `--profile work`, it will be used even if auto-discovery detected a different profile. A warning is logged when this happens.
-- **Project config adds restrictions**: The `.gitlab-mcp/` directory configuration (preset.yaml, profile.yaml) adds restrictions ON TOP of the selected profile - it doesn't replace it.
-- **Auto-discovery sets defaults**: Even when a higher-priority source is used, auto-discovery still sets `GITLAB_DEFAULT_PROJECT` and `GITLAB_DEFAULT_NAMESPACE` from the git remote.
-
-### How Auto-Discovery Works
-
-1. Parses git remote URL (SSH or HTTPS format)
-2. Extracts GitLab host and project path
-3. Matches host to configured user profiles
-4. Sets default project context for convenience
-
-**Supported URL formats:**
-- SSH: `git@gitlab.company.com:group/project.git`
-- SSH with port: `ssh://git@gitlab.company.com:2222/group/project.git`
-- HTTPS: `https://gitlab.company.com/group/project.git`
-- HTTPS with port: `https://gitlab.company.com:8443/group/project.git`
-
-## Transport Modes
-
-The GitLab MCP Server automatically selects the appropriate transport mode based on your configuration:
-
-### Automatic Mode Selection
-
-| Configuration | Transport Mode | Endpoints Available | Use Case |
-|--------------|----------------|-------------------|----------|
-| **PORT** env var present | HTTP (Dual) | `/sse` and `/mcp` | Web clients, HTTP-based MCP clients |
-| **No PORT** env var | stdio | N/A | Direct MCP communication, CLI usage |
-| **`stdio` argument** | stdio | N/A | Force stdio mode (overrides PORT) |
-
-### Mode Details
-
-**HTTP Mode (Dual Transport):**
-- Runs Express server on specified PORT
-- Provides both SSE (`/sse`) and StreamableHTTP (`/mcp`) endpoints simultaneously
-- Perfect for web-based MCP clients and backwards compatibility
-- Supports session management and reconnection
-
-**stdio Mode:**
-- Direct stdin/stdout communication
-- No HTTP server required
-- Optimal for command-line tools and direct MCP protocol usage
-- Lower resource usage
-
-## TLS/HTTPS Configuration
-
-GitLab MCP Server supports secure HTTPS connections via:
-
-| Approach | Best For | HTTP/2 | Auto-Renewal |
-|----------|----------|--------|--------------|
-| **Direct TLS** | Development, simple deployments | No | Manual |
-| **Reverse Proxy** | Production (recommended) | Yes | Yes |
-
-**Quick Start - Direct TLS:**
-```bash
-docker run -d \
-  -e PORT=3000 \
-  -e SSL_CERT_PATH=/certs/server.crt \
-  -e SSL_KEY_PATH=/certs/server.key \
-  -e GITLAB_TOKEN=your_token \
-  -v $(pwd)/certs:/certs:ro \
-  -p 3000:3000 \
-  ghcr.io/structured-world/gitlab-mcp:latest
-```
-
-**Quick Start - Reverse Proxy (Caddy):**
-```
-gitlab-mcp.example.com {
-    reverse_proxy gitlab-mcp:3002 {
-        flush_interval -1
-    }
-}
-```
-
-For complete setup guides including **nginx**, **Envoy**, **Caddy**, and **Traefik** configurations with HTTP/2 support, see **[SSL.md](SSL.md)**.
-
-## OAuth Authentication (Claude Custom Connector)
-
-GitLab MCP Server supports OAuth 2.1 authentication for use as a **Claude Custom Connector**. This enables secure per-user authentication without sharing GitLab tokens.
-
-### When to Use OAuth Mode
-
-| Scenario | Recommended Mode |
-|----------|------------------|
-| Personal/local use | Static Token (`GITLAB_TOKEN`) |
-| Team access via Claude Web/Desktop | **OAuth Mode** |
-| Private LAN GitLab with public MCP server | **OAuth Mode** |
-| CI/CD or automated pipelines | Static Token |
-
-### Prerequisites
-
-1. **GitLab 17.1+** (Device Authorization Grant support)
-2. **HTTPS endpoint** for gitlab-mcp (required for OAuth)
-3. **GitLab OAuth Application** configured
-
-### Setup Guide
-
-#### Step 1: Create GitLab OAuth Application
-
-1. In GitLab, navigate to **User Settings > Applications** (or **Admin > Applications** for instance-wide)
-2. Create a new application:
-   - **Name**: `GitLab MCP Server`
-   - **Redirect URI**: `https://your-mcp-server.com/oauth/callback` (required for Authorization Code Flow)
-   - **Confidential**: `No` (PKCE provides security without client secret)
-   - **Scopes**: Select `api` and `read_user`
-3. Save and copy the **Application ID**
-
-> **Note**: The redirect URI is used by Claude.ai Custom Connectors (Authorization Code Flow). CLI clients use Device Flow which doesn't require redirect URI.
-
-#### Step 2: Configure gitlab-mcp Server
-
-```bash
-# Required for OAuth mode
-OAUTH_ENABLED=true
-OAUTH_SESSION_SECRET=your-minimum-32-character-secret-key
-GITLAB_OAUTH_CLIENT_ID=your-gitlab-application-id
-GITLAB_API_URL=https://your-gitlab-instance.com
-
-# Server configuration
-PORT=3000
-HOST=0.0.0.0
-
-# Optional OAuth settings
-GITLAB_OAUTH_CLIENT_SECRET=your-secret    # Required only if GitLab app is confidential
-GITLAB_OAUTH_SCOPES=api,read_user          # Default scopes
-OAUTH_TOKEN_TTL=3600                       # Token lifetime (seconds)
-OAUTH_REFRESH_TOKEN_TTL=604800             # Refresh token lifetime (seconds)
-OAUTH_DEVICE_POLL_INTERVAL=5               # Device flow poll interval (seconds)
-OAUTH_DEVICE_TIMEOUT=300                   # Auth timeout (seconds)
-```
-
-#### Step 3: Deploy with HTTPS
-
-OAuth requires HTTPS. Example with Docker:
-
-```bash
-docker run -d \
-  --name gitlab-mcp \
-  -e OAUTH_ENABLED=true \
-  -e OAUTH_SESSION_SECRET="$(openssl rand -base64 32)" \
-  -e GITLAB_OAUTH_CLIENT_ID=your-app-id \
-  -e GITLAB_API_URL=https://gitlab.example.com \
-  -e PORT=3000 \
-  -p 3000:3000 \
-  ghcr.io/structured-world/gitlab-mcp:latest
-```
-
-Use a reverse proxy (nginx, Caddy, Traefik) to add HTTPS.
-
-### Claude Web Setup
-
-1. Go to [claude.ai](https://claude.ai) and sign in
-2. Navigate to **Settings > Connectors**
-3. Click **Add custom connector**
-4. Enter your gitlab-mcp server URL: `https://your-mcp-server.com`
-5. Click **Add**
-6. When prompted, complete authentication:
-   - You'll see a device code (e.g., `ABCD-1234`)
-   - Open your GitLab instance and enter the code
-   - Approve the authorization request
-7. The connector is now active
-
-### Claude Desktop Setup
-
-#### macOS / Linux
-
-Edit `~/.config/claude/claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "type": "streamable-http",
-      "url": "https://your-mcp-server.com/mcp"
-    }
-  }
-}
-```
-
-#### Windows
-
-Edit `%APPDATA%\Claude\claude_desktop_config.json`:
-
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "type": "streamable-http",
-      "url": "https://your-mcp-server.com/mcp"
-    }
-  }
-}
-```
-
-After adding the server:
-1. Restart Claude Desktop
-2. Claude will prompt you to authenticate
-3. Complete the device flow authorization in GitLab
-4. Start using GitLab tools with your personal identity
-
-### Private LAN GitLab Architecture
-
-For GitLab instances on private networks (not internet-accessible):
-
-```
-+-------------------+         +-------------------+         +-------------------+
-|   Claude Cloud    |  HTTPS  |    gitlab-mcp     |  HTTP   |   GitLab Server   |
-|   or Desktop      |-------->|   (Public IP)     |-------->|   (Private LAN)   |
-+-------------------+         +-------------------+         +-------------------+
-                                       |
-                                       | Device code displayed
-                                       v
-                              +-------------------+
-                              |   User (on VPN)   |
-                              |   visits GitLab   |
-                              |   enters code     |
-                              +-------------------+
-```
-
-**How it works:**
-1. gitlab-mcp server has network access to GitLab (same network or VPN)
-2. User connects to gitlab-mcp via Claude (public internet)
-3. gitlab-mcp initiates device authorization with GitLab
-4. User receives a code and visits GitLab directly (requires VPN/internal access)
-5. User authenticates in GitLab and enters the code
-6. gitlab-mcp receives the token and issues an MCP session token
-7. All subsequent requests use the user's GitLab identity
-
-**Requirements:**
-- gitlab-mcp must reach GitLab API (deploy on same network or use VPN)
-- Users must be able to access GitLab web UI (typically via VPN)
-- gitlab-mcp must be accessible from internet (for Claude to connect)
-
-### OAuth vs Static Token Comparison
-
-| Feature | Static Token | OAuth Mode |
-|---------|--------------|------------|
-| Setup complexity | Simple | Moderate |
-| Per-user identity | No (shared token) | Yes |
-| Token management | Manual | Automatic |
-| Audit trail | Single identity | Per-user actions |
-| Security | Token in config | No tokens in config |
-| Best for | Personal use, CI/CD | Teams, shared access |
-
-### OAuth Flows
-
-The server supports two OAuth flows automatically:
-
-| Flow | Trigger | Used By | How It Works |
-|------|---------|---------|--------------|
-| **Authorization Code Flow** | `redirect_uri` present | Claude.ai Custom Connectors | Redirects to GitLab OAuth, then back to client |
-| **Device Flow** | No `redirect_uri` | CLI clients, Claude Desktop | Shows device code page for manual entry |
-
-The flow is selected automatically based on the presence of `redirect_uri` in the authorization request.
-
-### OAuth Endpoints
-
-When OAuth is enabled, the following endpoints are available:
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/.well-known/oauth-authorization-server` | GET | OAuth metadata discovery |
-| `/.well-known/oauth-protected-resource` | GET | Protected resource metadata (RFC 9470) |
-| `/authorize` | GET | Start authorization (auto-selects flow) |
-| `/oauth/callback` | GET | GitLab callback (Auth Code Flow only) |
-| `/oauth/poll` | GET | Poll for completion (Device Flow only) |
-| `/token` | POST | Exchange code for tokens |
-| `/health` | GET | Health check endpoint |
-
-### Troubleshooting
-
-**"OAuth not configured" error**
-- Ensure `OAUTH_ENABLED=true` is set
-- Verify `OAUTH_SESSION_SECRET` is at least 32 characters
-- Check `GITLAB_OAUTH_CLIENT_ID` is correct
-
-**Device code not accepted**
-- Verify GitLab version is 17.1 or later
-- Check OAuth application scopes include `api`
-- Ensure the application is not set as "Confidential"
-
-**"Failed to refresh token" error**
-- GitLab refresh token may have expired
-- Re-authenticate through Claude connector settings
-
-**Cannot reach GitLab for authentication**
-- For private LAN GitLab, connect to VPN first
-- Verify you can access GitLab web UI in your browser
-
-### Environment Variables
-
-- `GITLAB_TOKEN`: Your GitLab personal access token.
-- `GITLAB_API_URL`: Your GitLab API URL. (Default: `https://gitlab.com`)
-- `GITLAB_PROJECT_ID`: Default project ID. If set, Overwrite this value when making an API request.
-- `GITLAB_ALLOWED_PROJECT_IDS`: Optional comma-separated list of allowed project IDs. When set with a single value, acts as a default project (like the old "lock" mode). When set with multiple values, restricts access to only those projects. Examples:
-  - Single value `123`: MCP server can only access project 123 and uses it as default
-  - Multiple values `123,456,789`: MCP server can access projects 123, 456, and 789 but requires explicit project ID in requests
-- `GITLAB_READ_ONLY_MODE`: When set to 'true', restricts the server to only expose read-only operations. Useful for enhanced security or when write access is not needed. Also useful for using with Cursor and it's 40 tool limit.
-- `GITLAB_DENIED_TOOLS_REGEX`: When set as a regular expression, it excludes the matching tools.
-- `GITLAB_API_TIMEOUT_MS`: API request timeout in milliseconds. (Default: `10000` - 10 seconds). If GitLab API doesn't respond within this time, the request will be aborted. For idempotent operations (GET/HEAD/OPTIONS requests), automatic retry with exponential backoff is attempted before returning a timeout error.
-- `GITLAB_API_RETRY_ENABLED`: Enable automatic retry for idempotent operations (GET/HEAD/OPTIONS). (Default: `true`). When enabled, failed requests due to timeouts, network errors, 5xx server errors, or 429 rate limits are automatically retried with exponential backoff. For 429 responses, the Retry-After header is honored when present.
-- `GITLAB_API_RETRY_MAX_ATTEMPTS`: Maximum number of retry attempts for failed requests. (Default: `3`). Set to `0` to disable retries.
-- `GITLAB_API_RETRY_BASE_DELAY_MS`: Base delay in milliseconds for exponential backoff. (Default: `1000` - 1 second). Actual delays: 1s, 2s, 4s for attempts 1, 2, 3.
-- `GITLAB_API_RETRY_MAX_DELAY_MS`: Maximum delay cap for exponential backoff. (Default: `4000` - 4 seconds). Prevents delays from growing too large.
-- `USE_GITLAB_WIKI`: When set to 'true', enables the wiki-related tools (list_wiki_pages, get_wiki_page, create_wiki_page, update_wiki_page, delete_wiki_page). Supports both project-level and group-level wikis. By default, wiki features are disabled.
-- `USE_MILESTONE`: When set to 'true', enables the milestone-related tools (list_milestones, get_milestone, create_milestone, edit_milestone, delete_milestone, get_milestone_issue, get_milestone_merge_requests, promote_milestone, get_milestone_burndown_events). By default, milestone features are disabled.
-- `USE_PIPELINE`: When set to 'true', enables the pipeline-related tools (list_pipelines, get_pipeline, list_pipeline_jobs, list_pipeline_trigger_jobs, get_pipeline_job, get_pipeline_job_output, create_pipeline, retry_pipeline, cancel_pipeline, play_pipeline_job, retry_pipeline_job, cancel_pipeline_job). By default, pipeline features are disabled.
-- `USE_LABELS`: When set to 'true', enables the label-related tools (list_labels, get_label, create_label, update_label, delete_label). By default, label features are enabled.
-- `USE_MRS`: When set to 'true', enables the merge request-related tools (browse_merge_requests, browse_mr_discussions, manage_merge_request, manage_mr_discussion, manage_draft_notes). These 5 CQRS tools consolidate all MR operations. By default, merge request features are enabled.
-- `USE_FILES`: When set to 'true', enables the file-related tools (browse_files, manage_files). These 2 CQRS tools consolidate all file operations. By default, file operation features are enabled.
-- `USE_VARIABLES`: When set to 'true', enables the CI/CD variables-related tools (browse_variables, manage_variable). These 2 CQRS tools consolidate all variable operations. Supports both project-level and group-level variables. By default, variables features are enabled.
-- `USE_WORKITEMS`: When set to 'true', enables the work items-related tools (browse_work_items, manage_work_item). These 2 CQRS tools consolidate all work item operations using GitLab GraphQL API. By default, work items features are enabled.
-- `USE_WEBHOOKS`: When set to 'true', enables the webhooks-related tools (list_webhooks, manage_webhook). These 2 tools provide full CRUD operations plus testing for both project and group webhooks. Group webhooks require GitLab Premium tier. By default, webhooks features are enabled.
-- `USE_SNIPPETS`: When set to 'true', enables the snippets-related tools (list_snippets, manage_snippet). These 2 CQRS tools provide full listing and CRUD operations for both personal and project snippets. Supports multi-file snippets, visibility control, and flexible scoping. By default, snippets features are enabled.
-- `USE_INTEGRATIONS`: When set to 'true', enables the integrations-related tools (list_integrations, manage_integration). These 2 CQRS tools provide full listing and management of 50+ project integrations (Slack, Jira, Discord, Jenkins, etc.). By default, integrations features are enabled.
-- `GITLAB_AUTH_COOKIE_PATH`: Path to an authentication cookie file for GitLab instances that require cookie-based authentication. When provided, the cookie will be included in all GitLab API requests.
-- `SKIP_TLS_VERIFY`: When set to 'true', skips TLS certificate verification for all GitLab API requests (both REST and GraphQL). **WARNING**: This bypasses SSL certificate validation and should only be used for testing with self-signed certificates or trusted internal GitLab instances. Never use this in production environments.
-- `SSL_CERT_PATH`: Path to PEM certificate file for direct HTTPS/TLS termination. Requires `SSL_KEY_PATH` to also be set.
-- `SSL_KEY_PATH`: Path to PEM private key file for direct HTTPS/TLS termination. Requires `SSL_CERT_PATH` to also be set.
-- `SSL_CA_PATH`: Optional path to CA certificate chain for client certificate validation.
-- `SSL_PASSPHRASE`: Optional passphrase for encrypted private keys.
-- `TRUST_PROXY`: Enable Express trust proxy for reverse proxy deployments. Values: `true`, `false`, `loopback`, `linklocal`, `uniquelocal`, hop count, or specific IP addresses.
-
-### Dynamic Tool Description Customization
-
-You can customize tool descriptions at runtime using environment variables following the pattern `GITLAB_TOOL_{TOOL_NAME}`. This feature is specifically designed to optimize agentic usage by:
-
-- **Improving AI agent tool selection** - Customize descriptions to match your specific workflows and use cases
-- **Enhancing semantic clarity** - Provide context-specific descriptions that help AI agents understand when to use each tool
-- **Reducing ambiguity** - Replace generic descriptions with precise, workflow-oriented explanations
-- **Optimizing for your domain** - Use terminology and concepts familiar to your AI agents and team
-
-#### Format
-```bash
-GITLAB_TOOL_{TOOL_NAME}="Your custom description"
-```
-
-Where `{TOOL_NAME}` is the uppercase version of the tool name with underscores preserved.
-
-#### Examples
-```bash
-# Customize the list_projects tool description
-export GITLAB_TOOL_LIST_PROJECTS="Show all available GitLab projects in our organization"
-
-# Customize the create_merge_request tool description
-export GITLAB_TOOL_CREATE_MERGE_REQUEST="Create a new MR following our team's review process"
-
-# Customize the get_file_contents tool description
-export GITLAB_TOOL_GET_FILE_CONTENTS="Read source code files from the repository"
-
-# Multiple customizations
-export GITLAB_TOOL_LIST_PROJECTS="List user projects"
-export GITLAB_TOOL_GET_PROJECT="Get project details including settings"
-export GITLAB_TOOL_MANAGE_WORK_ITEM="Create and manage tickets for our sprint planning"
-```
-
-#### Usage in Configuration Files
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "command": "npx",
-      "args": ["-y", "@structured-world/gitlab-mcp"],
-      "env": {
-        "GITLAB_TOKEN": "your_token",
-        "GITLAB_API_URL": "https://gitlab.com",
-
-        "GITLAB_TOOL_LIST_PROJECTS": "Show our team's GitLab projects",
-        "GITLAB_TOOL_CREATE_MERGE_REQUEST": "Create MR with our review standards",
-        "GITLAB_TOOL_GET_FILE_CONTENTS": "Read code from repo"
-      }
-    }
-  }
-}
-```
-
-#### Important Notes
-
-- **Description Override Only**: Only the tool description is overridden - the tool name and functionality remain unchanged
-- **Schema Preservation**: Schema field descriptions are NOT affected - they remain hardcoded for consistency
-- **Case Sensitivity**: Tool names in environment variables must be UPPERCASE (e.g., `LIST_PROJECTS` not `list_projects`)
-- **Invalid Names**: Invalid tool names in environment variables are ignored with a warning in debug logs
-- **Content Guidelines**: Descriptions can be any valid string but should be kept concise for better UX
-- **Scope**: Works with all 59 available tools across all entities (Core, Work Items, Merge Requests, Files, Snippets, etc.)
-
-### Fine-Grained Action Filtering (CQRS Tools)
-
-For CQRS tools (those with `action` parameter like `manage_milestone`, `browse_merge_requests`), you can disable specific actions while keeping others available. This provides granular control and **reduces AI context token usage** by removing disabled actions and their exclusive parameters from the schema.
-
-#### Environment Variable
-
-```bash
-GITLAB_DENIED_ACTIONS="tool_name:action,tool_name:action,..."
-```
-
-#### Examples
-
-```bash
-# Disable delete and promote actions for milestones
-export GITLAB_DENIED_ACTIONS="manage_milestone:delete,manage_milestone:promote"
-
-# Disable multiple actions across different tools
-export GITLAB_DENIED_ACTIONS="manage_milestone:delete,browse_milestones:burndown,manage_merge_request:merge"
-
-# Disable all write actions for a tool (read-only for specific tool)
-export GITLAB_DENIED_ACTIONS="manage_variable:create,manage_variable:update,manage_variable:delete"
-```
-
-#### How It Works
-
-1. **Schema Filtering**: Denied actions are removed from the tool's JSON schema
-2. **Parameter Optimization**: Parameters exclusive to denied actions are automatically removed
-3. **Runtime Validation**: Attempts to call denied actions are rejected with clear error messages
-4. **Token Savings**: Smaller schemas = fewer tokens consumed by AI agents
-
-#### Token Savings Example
-
-When only `create` action is allowed for `manage_milestone`:
-
-| State | Properties in Schema | Token Impact |
-|-------|---------------------|--------------|
-| All actions | `action`, `namespace`, `milestone_id`, `title`, `description`, `due_date`, `start_date`, `state_event` | 100% |
-| Only `create` | `action`, `namespace`, `title`, `description`, `due_date`, `start_date` | ~60% (milestone_id, state_event removed) |
-
-#### Usage in Configuration
-
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "command": "npx",
-      "args": ["-y", "@structured-world/gitlab-mcp"],
-      "env": {
-        "GITLAB_TOKEN": "your_token",
-        "GITLAB_API_URL": "https://gitlab.com",
-        "GITLAB_DENIED_ACTIONS": "manage_milestone:delete,manage_milestone:promote"
-      }
-    }
-  }
-}
-```
-
-### Action & Parameter Description Customization
-
-Beyond tool-level descriptions, you can customize descriptions for specific actions and parameters within CQRS tools.
-
-#### Action Descriptions
-
-Override the description for a specific action within a tool:
-
-```bash
-# Format: GITLAB_ACTION_{TOOL}_{ACTION}="description"
-export GITLAB_ACTION_MANAGE_MILESTONE_DELETE="Permanently remove milestone (requires admin)"
-export GITLAB_ACTION_BROWSE_MERGE_REQUESTS_LIST="Show team's active merge requests"
-```
-
-#### Parameter Descriptions
-
-Override the description for a specific parameter within a tool:
-
-```bash
-# Format: GITLAB_PARAM_{TOOL}_{PARAM}="description"
-export GITLAB_PARAM_MANAGE_MILESTONE_NAMESPACE="Project or group path (e.g., 'myteam/myproject')"
-export GITLAB_PARAM_BROWSE_WORK_ITEMS_TYPES="Filter by type: ISSUE, EPIC, TASK, etc."
-```
-
-#### Combined Example
-
-```json
-{
-  "mcpServers": {
-    "gitlab": {
-      "command": "npx",
-      "args": ["-y", "@structured-world/gitlab-mcp"],
-      "env": {
-        "GITLAB_TOKEN": "your_token",
-
-        "GITLAB_DENIED_ACTIONS": "manage_milestone:delete",
-
-        "GITLAB_TOOL_MANAGE_MILESTONE": "Manage sprint milestones for our team",
-        "GITLAB_ACTION_MANAGE_MILESTONE_CREATE": "Create new sprint milestone",
-        "GITLAB_PARAM_MANAGE_MILESTONE_TITLE": "Sprint name (e.g., 'Sprint 42')"
-      }
-    }
-  }
-}
-```
-
-### Schema Mode Configuration
-
-Configure how CQRS tool schemas are delivered to AI clients:
-
-```bash
-# Configure schema output format
-GITLAB_SCHEMA_MODE=flat|discriminated
-```
-
-| Mode | Description | Best For |
-|------|-------------|----------|
-| `flat` (default) | Merged properties with action enum | Current AI clients (Claude, GPT) |
-| `discriminated` | Full `oneOf` with action-specific branches | Advanced AI clients with native oneOf support |
-
-#### Schema Pipeline
-
-When a tool is registered, the schema goes through a transformation pipeline:
-
-1. **Filter Denied Actions** - Removes branches for actions listed in `GITLAB_DENIED_ACTIONS`
-2. **Apply Description Overrides** - Applies `GITLAB_ACTION_*` and `GITLAB_PARAM_*` overrides
-3. **Conditional Flatten** - Converts `oneOf` to flat schema when `GITLAB_SCHEMA_MODE=flat` (default)
-
-This pipeline ensures that:
-- Denied actions never appear in the schema (saves AI context tokens)
-- Description customizations work regardless of schema format
-- Future AI clients can receive native discriminated union schemas
-
-#### Future Enhancements
-
-Per-client capability detection may be added, allowing the server to automatically deliver the optimal schema format based on client capabilities announced during MCP handshake.
-
-## Tools 🛠️
-
-**62 Tools Available** - Organized by entity and functionality below.
-
-### Key Features:
-- **CQRS Pattern** - Consolidated action-based tools: `browse_*` for reads, `manage_*` for writes
-- **Modular Entity Architecture** - Separate entities for Labels, Merge Requests, Files, Pipelines, etc.
-- **Environment-Gated Features** - Enable/disable tool groups with USE_* environment variables
-- **Work Items Management** - Modern GraphQL API for Issues, Epics, Tasks, and more
-- **Complete GitLab API Coverage** - Repository, Merge Requests, Pipelines, Wiki, and more
-- **Tier-based Feature Detection** - Automatically enables features based on your GitLab tier
-- **Read-only Mode Support** - Safe operation mode for production environments
-
-## Complete Tool Reference
-
-### Legend
-- 📖 = Read-only tool (available in GITLAB_READ_ONLY_MODE)
-- ✏️ = Read/Write tool (disabled in GITLAB_READ_ONLY_MODE)
-
-### Core Tools (14 tools)
-Core GitLab functionality always available. Uses CQRS pattern with consolidated action-based tools.
-
-#### Repository & Project Management
-- 📖 **`browse_projects`**: PROJECT DISCOVERY: Find, browse, or inspect GitLab projects. Actions: "search" finds projects by name/topic, "list" browses accessible projects, "get" retrieves full details.
-- ✏️ **`manage_repository`**: REPOSITORY MANAGEMENT: Create or fork GitLab projects. Actions: "create" starts new project, "fork" creates your copy of existing project.
-- 📖 **`list_project_members`**: List members of a GitLab project with access levels.
-
-#### Namespaces & Groups
-- 📖 **`browse_namespaces`**: NAMESPACE OPERATIONS: Explore groups and user namespaces. Actions: "list" discovers namespaces, "get" retrieves details, "verify" checks if path exists.
-- ✏️ **`create_group`**: Create a new GitLab group/namespace. Can create subgroups with parent_id.
-
-#### Commits & History
-- 📖 **`browse_commits`**: COMMIT HISTORY: Explore repository commit history. Actions: "list" browses commits with filters, "get" retrieves commit metadata, "diff" shows code changes.
-- ✏️ **`create_branch`**: Create a new branch in a GitLab project from existing ref.
-
-#### Events & Activity
-- 📖 **`browse_events`**: ACTIVITY FEED: Track GitLab activity. Actions: "user" shows your activity, "project" monitors project activity. Filter by date/action type.
-- 📖 **`list_group_iterations`**: List group iterations/sprints for agile planning. Requires GitLab Premium.
-
-#### Users & Utilities
-- 📖 **`get_users`**: Search GitLab users with smart pattern detection. Auto-detects emails, usernames, or names.
-- 📖 **`download_attachment`**: Download file attachments from issues/MRs by secret and filename.
-
-#### Todos (Task Queue)
-- 📖 **`list_todos`**: View your GitLab todos (notifications requiring action). Filter by state, action type, or target type.
-- ✏️ **`manage_todos`**: Manage todo items. Actions: "mark_done" completes single todo, "mark_all_done" clears queue, "restore" undoes completed todo.
-
-#### Context Management
-- 📖 **`manage_context`**: CONTEXT: Manage runtime session context. Actions: "show" returns current context (host, preset, scope, mode); "list_presets" lists available presets; "list_profiles" lists OAuth profiles (OAuth mode only); "switch_preset" changes active preset; "switch_profile" changes OAuth profile (OAuth mode only); "set_scope" restricts operations to a namespace with auto-detection (group vs project); "reset" restores initial context.
-
-### Labels Management (5 tools)
-Requires USE_LABELS=true environment variable (enabled by default). Supports both project and group labels.
-
-- ✏️ **`create_label`**: Create a new label in a project or group
-- ✏️ **`update_label`**: Update an existing label in a project or group
-- ✏️ **`delete_label`**: Delete a label from a project or group
-- 📖 **`get_label`**: Get a single label from a project or group
-- 📖 **`list_labels`**: List labels for a project or group
-
-### Merge Requests Management (5 CQRS tools)
-Requires USE_MRS=true environment variable (enabled by default). Uses CQRS pattern with action-based tools.
-
-#### Merge Request Browsing (Query)
-- 📖 **`browse_merge_requests`**: BROWSE merge requests. Actions: "list" shows MRs with filtering, "get" retrieves single MR by IID or branch, "diffs" shows file changes, "compare" diffs two branches/commits.
-- 📖 **`browse_mr_discussions`**: BROWSE MR discussions and draft notes. Actions: "list" shows all discussion threads, "drafts" lists unpublished draft notes, "draft" gets single draft note.
-
-#### Merge Request Management (Command)
-- ✏️ **`manage_merge_request`**: MANAGE merge requests. Actions: "create" creates new MR, "update" modifies existing MR, "merge" merges approved MR into target branch.
-- ✏️ **`manage_mr_discussion`**: MANAGE MR discussions. Actions: "comment" adds comment to issue/MR, "thread" starts new discussion, "reply" responds to existing thread, "update" modifies note.
-- ✏️ **`manage_draft_notes`**: MANAGE draft notes. Actions: "create" creates draft note, "update" modifies draft, "publish" publishes single draft, "publish_all" publishes all drafts, "delete" removes draft.
-
-### File Operations (2 CQRS tools)
-Requires USE_FILES=true environment variable (enabled by default). Uses CQRS pattern with action-based tools.
-
-- 📖 **`browse_files`**: BROWSE repository files. Actions: "tree" lists files/folders with pagination, "content" reads file contents. Use for exploring project structure or reading source code.
-- ✏️ **`manage_files`**: MANAGE repository files. Actions: "single" creates/updates one file, "batch" commits multiple files atomically, "upload" adds markdown attachments.
-
-### CI/CD Variables (2 CQRS tools)
-Requires USE_VARIABLES=true environment variable (enabled by default). Uses CQRS pattern with action-based tools. Supports both project-level and group-level variables.
-
-#### Variable Browsing (Query)
-- 📖 **`browse_variables`**: BROWSE CI/CD variables. Actions: "list" shows all variables in project/group with pagination, "get" retrieves single variable details by key with optional environment scope filter.
-
-#### Variable Management (Command)
-- ✏️ **`manage_variable`**: MANAGE CI/CD variables. Actions: "create" adds new variable (requires key and value), "update" modifies existing variable, "delete" removes variable permanently. Supports environment scoping and protection settings.
-
-### Work Items (2 CQRS tools)
-Modern GraphQL API for issues, epics, tasks, and more. Requires USE_WORKITEMS=true (enabled by default). Uses CQRS pattern with action-based tools.
-
-#### Work Item Browsing (Query)
-- 📖 **`browse_work_items`**: BROWSE work items. Actions: "list" shows work items with filtering (groups return epics, projects return issues/tasks), "get" retrieves single work item by ID with full widget details.
-
-#### Work Item Management (Command)
-- ✏️ **`manage_work_item`**: MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets, "delete" permanently removes.
-
-### Wiki Management (5 tools)
-Requires USE_GITLAB_WIKI=true environment variable. Supports both project-level and group-level wikis.
-
-- ✏️ **`create_wiki_page`**: Create a new wiki page in a GitLab project or group
-- ✏️ **`update_wiki_page`**: Update an existing wiki page in a GitLab project or group
-- ✏️ **`delete_wiki_page`**: Delete a wiki page from a GitLab project or group
-- 📖 **`get_wiki_page`**: Get details of a specific wiki page from a project or group
-- 📖 **`list_wiki_pages`**: List wiki pages in a GitLab project or group
-
-### Milestones (9 tools)
-Requires USE_MILESTONE=true environment variable. Supports both project and group milestones.
-
-- ✏️ **`create_milestone`**: Create a new milestone in a GitLab project or group
-- ✏️ **`edit_milestone`**: Edit an existing milestone in a GitLab project or group
-- ✏️ **`delete_milestone`**: Delete a milestone from a GitLab project or group
-- ✏️ **`promote_milestone`**: Promote a project milestone to a group milestone
-- 📖 **`get_milestone`**: Get details of a specific project or group milestone
-- 📖 **`get_milestone_issue`**: Get issues associated with a specific project or group milestone
-- 📖 **`get_milestone_merge_requests`**: Get merge requests associated with a specific project or group milestone
-- 📖 **`get_milestone_burndown_events`**: Get burndown events for a specific project or group milestone
-- 📖 **`list_milestones`**: List milestones in a GitLab project or group with filtering options
-
-### Pipelines & CI/CD (12 tools)
-Requires USE_PIPELINE=true environment variable.
-
-- ✏️ **`create_pipeline`**: Create a new pipeline for a branch or tag
-- ✏️ **`retry_pipeline`**: Retry a failed or canceled pipeline
-- ✏️ **`cancel_pipeline`**: Cancel a running pipeline
-- ✏️ **`play_pipeline_job`**: Run a manual pipeline job
-- ✏️ **`retry_pipeline_job`**: Retry a failed or canceled pipeline job
-- ✏️ **`cancel_pipeline_job`**: Cancel a running pipeline job
-- 📖 **`get_pipeline`**: Get details of a specific pipeline in a GitLab project
-- 📖 **`get_pipeline_job`**: Get details of a GitLab pipeline job number
-- 📖 **`get_pipeline_job_output`**: Get the output/trace of a GitLab pipeline job with optional pagination to limit context window usage
-- 📖 **`list_pipelines`**: List pipelines in a GitLab project with filtering options
-- 📖 **`list_pipeline_jobs`**: List all jobs in a specific pipeline
-- 📖 **`list_pipeline_trigger_jobs`**: List all trigger jobs (bridges) in a specific pipeline that trigger downstream pipelines
-
-### Webhooks Management (2 tools)
-Requires USE_WEBHOOKS=true environment variable (enabled by default). Supports both project and group webhooks. Group webhooks require GitLab Premium tier.
-
-- 📖 **`list_webhooks`**: List all webhooks configured for a project or group. Shows webhook URLs, enabled event types, SSL settings, and delivery status. Group webhooks (Premium tier) are inherited by all child projects.
-- ✏️ **`manage_webhook`**: Manage webhooks with full CRUD operations plus testing. Actions: "create" (add new webhook with URL and event types), "read" (get webhook details), "update" (modify URL, events, or settings), "delete" (remove webhook), "test" (trigger test delivery for specific event type). Test action sends actual HTTP request to configured URL. In read-only mode, only "read" action is allowed.
-
-#### Supported Event Types
-Webhooks can be configured to trigger on:
-- **Push events** - Push to repository (with optional branch filter)
-- **Tag push events** - New tag pushed
-- **Merge request events** - MR created, updated, merged
-- **Issue events** - Issue created, updated, closed (including confidential)
-- **Note events** - Comments on issues, MRs, snippets (including confidential)
-- **Pipeline events** - Pipeline status changes
-- **Job events** - Build/job status changes
-- **Wiki page events** - Wiki page created or updated
-- **Deployment events** - Deployment triggered
-- **Release events** - Release created
-- **Milestone events** - Milestone created, updated, closed
-- **Emoji events** - Emoji reactions added
-- **Feature flag events** - Feature flag changes
-- **Resource access token events** - Token created/revoked
-- **Member events** - Member added/removed
-- **Subgroup events** - Subgroup created/removed (group webhooks only)
-- **Project events** - Project created/removed (group webhooks only)
-
-### Snippets Management (2 tools)
-Requires USE_SNIPPETS=true environment variable (enabled by default). Uses CQRS pattern with action-based tools. Supports personal, project, and public snippets with multi-file support.
-
-#### Snippet Browsing (Query)
-- 📖 **`list_snippets`**: LIST GitLab code snippets with flexible scoping. Use scope='personal' for current user's snippets, scope='project' for project-specific snippets (requires projectId), or scope='public' to discover all public snippets. Filter by visibility level (private/internal/public) and creation date. Supports pagination.
-
-#### Snippet Management (Command)
-- ✏️ **`manage_snippet`**: MANAGE GitLab snippets with full CRUD operations via action parameter. Actions: "read" retrieves snippet metadata or raw content, "create" creates new snippet with multiple files and visibility control, "update" modifies title/description/visibility/files (supports file create/update/delete/move actions), "delete" permanently removes snippet. Supports both personal and project snippets.
-
-#### Multi-file Snippet Support
-Snippets can contain multiple files with individual operations:
-- **Create action** - Files array with `file_path` and `content` for each file
-- **Update action** - Files array with `action` field: "create" (add new), "update" (modify existing), "delete" (remove), "move" (rename with `previous_path`)
-
-### Integrations Management (2 tools)
-Requires USE_INTEGRATIONS=true environment variable (enabled by default). Uses CQRS pattern with action-based tools. Supports 50+ project integrations for connecting with external services.
-
-#### Integration Browsing (Query)
-- 📖 **`list_integrations`**: LIST all active integrations for a project. Returns configured integrations like Slack, Jira, Discord, Microsoft Teams, Jenkins, etc. Only shows enabled/configured integrations with their settings.
-
-#### Integration Management (Command)
-- ✏️ **`manage_integration`**: MANAGE project integrations. Actions: "get" retrieves integration settings (read-only), "update" modifies or enables integration with specific config, "disable" removes integration. Supports 50+ integration types. Note: gitlab-slack-application cannot be created via API - requires OAuth install from GitLab UI.
-
-#### Supported Integration Types
-GitLab supports 50+ integrations organized by category:
-- **Communication** - Slack, Discord, Microsoft Teams, Mattermost, Telegram, Matrix, Pumble, and more
-- **Issue Trackers** - Jira, Bugzilla, Redmine, YouTrack, ClickUp, Linear, Phorge, Asana
-- **CI/CD** - Jenkins, TeamCity, Bamboo, Buildkite, Drone CI, Datadog
-- **Documentation** - Confluence, External Wiki
-- **Mobile/Publishing** - Apple App Store, Google Play, Packagist
-- **Cloud** - Google Cloud Platform (Artifact Registry, Workload Identity), Harbor
-- **Security** - GitGuardian
-- **Other** - GitHub, Emails on Push, Pipelines Email, Pushover
-
-#### Common Event Triggers
-Most integrations support configuring which events trigger notifications:
-- Push events, Tag push events, Issue events, Merge request events
-- Note events, Pipeline events, Job events, Wiki page events
-- Deployment events, Release events, Vulnerability events
-
-## CLI Tools 🔧
-
-### list-tools - Browse Available Tools
-
-The `list-tools` CLI utility helps you explore all available GitLab MCP tools, their descriptions, parameters, and tier requirements.
-
-#### Installation
-
-```bash
-# Install dependencies
-yarn install
-
-# Build the project
-yarn build
-```
-
-#### Usage
-
-```bash
-# List all tools with descriptions and tier badges
-yarn list-tools
-
-# Show all tools with full parameter details
+# View locally
 yarn list-tools --detail
 
-# List tools in simple format (names only)
-yarn list-tools --simple
-
-# Show tools for a specific entity
-yarn list-tools --entity workitems
-yarn list-tools --entity "merge requests"
-
-# Get detailed info for a specific tool
-yarn list-tools --tool create_work_item
-
-# Export as JSON for programmatic use
-yarn list-tools --json
-
-# Show environment configuration
-yarn list-tools --env
-
-# Test with different configurations
-GITLAB_READONLY=true yarn list-tools        # Show only read-only tools
-USE_WORKITEMS=false yarn list-tools         # Hide work items tools
-```
-
-#### Generate TOOLS.md Documentation
-
-```bash
-# Generate complete markdown documentation
-yarn list-tools --export > docs/TOOLS.md
-
-# Include table of contents
+# Generate documentation
 yarn list-tools --export --toc > docs/TOOLS.md
-
-# Generate without example JSON blocks (more compact)
-yarn list-tools --export --no-examples > docs/TOOLS.md
 ```
 
-The `--export` mode generates comprehensive documentation with:
-- **Actions table** - Available actions extracted from CQRS schemas
-- **Parameters table** - All parameters with types, required status, and action hints
-- **Example JSON** - Sample request for each tool
-- **Tier badges** - GitLab tier requirements
-- **Version info** - Package version and generation timestamp
+See [docs/TOOLS.md](docs/TOOLS.md) for the auto-generated reference.
 
-#### Features
-
-- **Tier Badges** - Visual indicators for GitLab tier requirements:
-  - 🟢 Free - Available in all GitLab tiers
-  - 🟡 Premium - Requires GitLab Premium or higher
-  - 🔴 Ultimate - Requires GitLab Ultimate
-
-- **Parameter Documentation** - Shows all input parameters with:
-  - Parameter name and type
-  - Required/optional status
-  - Detailed descriptions
-
-- **Environment Filtering** - Respects environment variables:
-  - `GITLAB_READONLY` - Show only read-only tools
-  - `USE_*` flags - Enable/disable tool categories
-  - `GITLAB_DENIED_TOOLS_REGEX` - Filter tools by regex pattern
-
-- **Multiple Output Formats**:
-  - Markdown (default) - Human-readable with formatting
-  - JSON - Machine-readable for automation
-  - Simple - Just tool names for scripting
-
-#### Examples
+## Docker
 
 ```bash
-# Find all tools related to merge requests
-yarn list-tools --entity mrs
+# HTTP mode
+docker run -e PORT=3002 -e GITLAB_TOKEN=your_token -p 3333:3002 \
+  ghcr.io/structured-world/gitlab-mcp:latest
 
-# Check what parameters are needed for creating a work item
-yarn list-tools --tool create_work_item
-
-# List all available tools with their input schemas (for MCP agents)
-yarn list-tools --detail
-
-# Export tool list for documentation
-yarn list-tools --json > tools.json
-
-# Verify read-only mode configuration
-GITLAB_READONLY=true yarn list-tools --simple | wc -l
+# stdio mode
+docker run -i --rm -e GITLAB_TOKEN=your_token \
+  ghcr.io/structured-world/gitlab-mcp:latest
 ```
 
-## Testing
+## Feature Flags
 
-This project includes comprehensive integration tests that verify functionality against a real GitLab instance.
+| Flag | Default | Tools Enabled |
+|------|---------|---------------|
+| `USE_LABELS` | `true` | Label management |
+| `USE_MRS` | `true` | Merge requests |
+| `USE_FILES` | `true` | File operations |
+| `USE_VARIABLES` | `true` | CI/CD variables |
+| `USE_WORKITEMS` | `true` | Issues, epics, tasks |
+| `USE_WEBHOOKS` | `true` | Webhook management |
+| `USE_SNIPPETS` | `true` | Code snippets |
+| `USE_INTEGRATIONS` | `true` | 50+ integrations |
+| `USE_GITLAB_WIKI` | `false` | Wiki pages |
+| `USE_MILESTONE` | `false` | Milestones |
+| `USE_PIPELINE` | `false` | Pipelines & CI/CD |
 
-### Running Tests
+## Contributing
 
-```bash
-# Run all tests (requires .env.test configuration)
-yarn test
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR guidelines.
 
-# Run with verbose output
-yarn test --verbose
-
-# Run specific test suites
-yarn test tests/integration/data-lifecycle.test.ts
-yarn test tests/integration/schemas/workitems.test.ts
-```
-
-### Quick Tool Testing
-
-For rapid testing of individual MCP tools:
-
-```bash
-# Test specific tools directly
-./scripts/test_mcp.sh '{"name": "browse_work_items", "arguments": {"action": "list", "namespace": "test"}}'
-./scripts/test_mcp.sh '{"name": "browse_work_items", "arguments": {"action": "get", "id": "gid://gitlab/WorkItem/123"}}'
-./scripts/test_mcp.sh '{"name": "manage_work_item", "arguments": {"action": "create", "namespace": "test", "workItemType": "EPIC", "title": "Test Epic"}}'
-```
-
-The `test_mcp.sh` script automatically:
-- Loads environment from `.env.test`
-- Sends proper MCP initialization sequence
-- Executes your tool call with proper JSON-RPC formatting
-- Perfect for debugging individual tools and handlers
-
-### Test Architecture
-
-- **200+ integration tests** running against real GitLab 18.3 Ultimate instance
-- **Data lifecycle pattern** - Creates test infrastructure once, shared across dependent tests
-- **Work Items CRUD testing** - Complete Create/Read/Update/Delete for both Issues and Epics
-- **Schema validation** - All 50+ schemas validated against real API responses
-- **Dependency chain** - Tests run in proper order using `--runInBand` for reliable results
-
-For detailed testing documentation, see [TESTING.md](TESTING.md).
-
-## 💖 Support the Project
-
-This GitLab MCP Server is developed and maintained with care for the community. If it saves you time or helps your workflow, consider supporting its continued development!
+## Support the Project
 
 <div align="center">
 
 ![USDT TRC-20 Donation QR Code](assets/usdt-qr.svg)
 
-☕ **Buy me a coffee with USDT (TRC-20)**
-`TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA`
-
-📱 *Scan QR code with your wallet (TronLink, Trust Wallet, Exodus, etc.)*
-
-**Every contribution helps keep this project alive and growing! 🚀**
+USDT (TRC-20): `TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA`
 
 </div>
 
----
-
 ## License
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+Apache License 2.0 — see [LICENSE](LICENSE) for details.
 
 ### Attribution
 
@@ -1117,9 +123,6 @@ This software includes code originally developed under the MIT License:
 - Original project: [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp)
 - See [LICENSE.MIT](LICENSE.MIT) for the original MIT license
 
-The migration to Apache 2.0 provides improved patent protection and clearer contributor terms while remaining fully compatible with the original MIT-licensed code.
-
 ---
 
-**Maintained with ❤️ by [Dmitry Prudnikov](https://github.com/polaz)**
-**Original work by [zereight](https://github.com/zereight) - Thank you for the foundation!**
+**Maintained by [Dmitry Prudnikov](https://github.com/polaz)** | **Original work by [zereight](https://github.com/zereight)**

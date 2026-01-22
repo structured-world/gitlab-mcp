@@ -33,3 +33,7 @@ scripts/
 !assets/
 
 /generated/prisma
+
+# VitePress
+docs/.vitepress/dist
+docs/.vitepress/cache

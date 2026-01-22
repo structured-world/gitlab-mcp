@@ -58,7 +58,10 @@
     "format": "prettier --write \"**/*.{js,ts,json,md}\"",
     "format:check": "prettier --check \"**/*.{js,ts,json,md}\"",
     "list-tools": "node dist/src/cli/list-tools.js",
-    "list-tools:dev": "node --env-file=.env.test -r source-map-support/register -r ts-node/register --experimental-specifier-resolution=node src/cli/list-tools.ts"
+    "list-tools:dev": "node --env-file=.env.test -r source-map-support/register -r ts-node/register --experimental-specifier-resolution=node src/cli/list-tools.ts",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
   },
   "dependencies": {
     "@clack/prompts": "1.0.0-alpha.9",
@@ -104,6 +107,7 @@
     "semantic-release": "^25.0.2",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vitepress": "^1.6.4"
   }
 }

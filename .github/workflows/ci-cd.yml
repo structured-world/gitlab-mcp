@@ -80,7 +80,7 @@ jobs:
         run: yarn list-tools --export --toc > /dev/null
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: build-artifacts
           path: dist/
@@ -107,7 +107,7 @@ jobs:
 
       - name: Build Docker image (test only, no push)
         id: build
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile
@@ -228,7 +228,7 @@ jobs:
             type=raw,value=${{ needs.semantic-release.outputs.new-release-version }},pattern={{major}}
 
       - name: Build and push Docker image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           file: ./Dockerfile

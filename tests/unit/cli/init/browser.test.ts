@@ -72,13 +72,24 @@ describe("browser", () => {
       const customMock = jest.fn().mockResolvedValue(undefined);
       _setImportOpen(() => Promise.resolve({ default: customMock }));
 
-      _resetImportOpen();
+      // Call once with custom mock
+      await openUrl("https://test.com");
+      expect(customMock).toHaveBeenCalledTimes(1);
 
-      // After reset, the original dynamic import is used
-      // This will try to actually import 'open' package
-      // In test environment, this should work or fail gracefully
-      const result = await openUrl("https://test.com");
-      expect(typeof result).toBe("boolean");
+      // Reset and set a different mock to verify reset worked
+      _resetImportOpen();
+      customMock.mockClear();
+
+      // Set a new mock and verify it's used instead of the previous one
+      const newMock = jest.fn().mockResolvedValue(undefined);
+      _setImportOpen(() => Promise.resolve({ default: newMock }));
+
+      await openUrl("https://test2.com");
+
+      // Original mock should not be called after reset
+      expect(customMock).not.toHaveBeenCalled();
+      // New mock should be called
+      expect(newMock).toHaveBeenCalledWith("https://test2.com");
     });
   });
 });

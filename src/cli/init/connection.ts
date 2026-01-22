@@ -11,8 +11,8 @@ export async function testConnection(
   instanceUrl: string,
   token: string
 ): Promise<ConnectionTestResult> {
-  // Normalize URL
-  const baseUrl = instanceUrl.replace(/\/$/, "");
+  // Normalize URL: strip trailing slash and /api/v4 suffix if present
+  const baseUrl = instanceUrl.replace(/\/$/, "").replace(/\/api\/v4\/?$/, "");
   const apiUrl = `${baseUrl}/api/v4`;
 
   try {
@@ -133,8 +133,11 @@ export function isGitLabSaas(url: string): boolean {
 
 /**
  * Generate PAT creation URL for GitLab instance
+ * Uses least-privilege scopes based on read-only mode
  */
-export function getPatCreationUrl(instanceUrl: string): string {
+export function getPatCreationUrl(instanceUrl: string, readOnly = false): string {
   const baseUrl = instanceUrl.replace(/\/$/, "");
-  return `${baseUrl}/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=api,read_user`;
+  // Use minimal scopes for read-only mode, full api for write access
+  const scopes = readOnly ? "read_api,read_user" : "api,read_user";
+  return `${baseUrl}/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=${scopes}`;
 }

@@ -96,6 +96,19 @@ describe("connection", () => {
       // Should not have double slashes
       expect(result).not.toContain("//user_settings");
     });
+
+    it("should use minimal scopes for read-only mode", () => {
+      const result = getPatCreationUrl("https://gitlab.com", true);
+
+      expect(result).toContain("scopes=read_api,read_user");
+      expect(result).not.toContain("scopes=api");
+    });
+
+    it("should use full api scope for write mode", () => {
+      const result = getPatCreationUrl("https://gitlab.com", false);
+
+      expect(result).toContain("scopes=api,read_user");
+    });
   });
 
   describe("isGitLabSaas", () => {
@@ -281,6 +294,44 @@ describe("connection", () => {
       });
 
       await testConnection("https://gitlab.example.com/", "glpat-xxx");
+
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://gitlab.example.com/api/v4/user",
+        expect.any(Object)
+      );
+    });
+
+    it("should normalize URL by stripping /api/v4 suffix", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "testuser" }),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ version: "16.0.0" }),
+      });
+
+      // User might accidentally include /api/v4 in the URL
+      await testConnection("https://gitlab.example.com/api/v4", "glpat-xxx");
+
+      // Should not result in /api/v4/api/v4/user
+      expect(mockFetch).toHaveBeenCalledWith(
+        "https://gitlab.example.com/api/v4/user",
+        expect.any(Object)
+      );
+    });
+
+    it("should normalize URL with both trailing slash and /api/v4", async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ username: "testuser" }),
+      });
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ version: "16.0.0" }),
+      });
+
+      await testConnection("https://gitlab.example.com/api/v4/", "glpat-xxx");
 
       expect(mockFetch).toHaveBeenCalledWith(
         "https://gitlab.example.com/api/v4/user",

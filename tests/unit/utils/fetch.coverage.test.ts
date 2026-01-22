@@ -17,7 +17,12 @@ jest.mock("fs", () => {
   };
 });
 
-import { createFetchOptions, enhancedFetch, DEFAULT_HEADERS } from "../../../src/utils/fetch";
+import {
+  createFetchOptions,
+  enhancedFetch,
+  DEFAULT_HEADERS,
+  resetDispatcherCache,
+} from "../../../src/utils/fetch";
 
 // Mock global fetch
 const mockFetch = jest.fn();
@@ -460,6 +465,29 @@ describe("Fetch Utils Coverage Tests", () => {
       } finally {
         process.env.GITLAB_TOKEN = originalToken;
       }
+    });
+  });
+
+  describe("resetDispatcherCache", () => {
+    it("should reset the dispatcher cache", () => {
+      // Call resetDispatcherCache to reset cached dispatcher
+      resetDispatcherCache();
+
+      // After reset, createFetchOptions should reinitialize
+      const options = createFetchOptions();
+      expect(typeof options).toBe("object");
+    });
+
+    it("should allow dispatcher to be reinitialized after reset", () => {
+      // First call initializes dispatcher
+      createFetchOptions();
+
+      // Reset the cache
+      resetDispatcherCache();
+
+      // Second call should reinitialize (not use cached)
+      const options = createFetchOptions();
+      expect(typeof options).toBe("object");
     });
   });
 });

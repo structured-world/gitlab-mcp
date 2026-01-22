@@ -735,5 +735,55 @@ describe("Enhanced Fetch Utilities", () => {
       await expect(enhancedFetch("https://example.com")).rejects.toThrow("Invalid JSON payload");
       expect(mockFetch).toHaveBeenCalledTimes(1);
     });
+
+    it("should NOT retry on caller-initiated AbortError", async () => {
+      // Caller aborts are NOT retryable - they should propagate immediately
+      const abortError = new DOMException("The operation was aborted", "AbortError");
+      mockFetch.mockRejectedValue(abortError);
+
+      await expect(
+        enhancedFetch("https://example.com", { retry: true, maxRetries: 3 })
+      ).rejects.toThrow("The operation was aborted");
+
+      // Should NOT retry - only 1 call
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+
+    it("should preserve caller abort error instead of converting to timeout", async () => {
+      // When caller aborts, the error should NOT be converted to "GitLab API timeout"
+      // The AbortError should propagate directly
+      const abortError = new DOMException("The operation was aborted", "AbortError");
+      mockFetch.mockRejectedValue(abortError);
+
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "The operation was aborted"
+      );
+
+      // Verify it's an AbortError, not a timeout error
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.not.toThrow(
+        "GitLab API timeout"
+      );
+    });
+
+    it("should handle pre-aborted signal", async () => {
+      // Test that already-aborted signal is handled correctly
+      const controller = new AbortController();
+      controller.abort("Already aborted");
+
+      mockFetch.mockImplementation(async (_, options) => {
+        const signal = (options as RequestInit).signal;
+        if (signal?.aborted) {
+          throw new DOMException("The operation was aborted", "AbortError");
+        }
+        return createMockResponse();
+      });
+
+      await expect(
+        enhancedFetch("https://example.com", {
+          signal: controller.signal,
+          retry: false,
+        })
+      ).rejects.toThrow();
+    });
   });
 });

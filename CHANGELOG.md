@@ -1,3 +1,9 @@
+## [6.28.0](https://github.com/structured-world/gitlab-mcp/compare/v6.27.1...v6.28.0) (2026-01-22)
+
+### Features
+
+* **logging:** structured request context and rate limit debugging ([#124](https://github.com/structured-world/gitlab-mcp/issues/124)) ([e4b212d](https://github.com/structured-world/gitlab-mcp/commit/e4b212db00569d789ff3ba17f57d467d560d0f8c)), closes [#123](https://github.com/structured-world/gitlab-mcp/issues/123)
+
 ## [6.27.1](https://github.com/structured-world/gitlab-mcp/compare/v6.27.0...v6.27.1) (2026-01-22)
 
 ### Bug Fixes

@@ -47,6 +47,7 @@ describe("cli-utils", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
     });
 
@@ -115,6 +116,7 @@ describe("cli-utils", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        init: false,
       });
     });
 
@@ -200,6 +202,21 @@ describe("cli-utils", () => {
       expect(result.auto).toBe(true);
       expect(result.profileName).toBe("work");
       expect(result.noProjectConfig).toBe(true);
+    });
+
+    // Init subcommand tests
+    it("should parse init subcommand", () => {
+      const result = parseCliArgs(["node", "main.js", "init"]);
+
+      expect(result.init).toBe(true);
+      // When init is detected, other args should be ignored
+      expect(result.auto).toBe(false);
+    });
+
+    it("should not set init for other subcommands", () => {
+      const result = parseCliArgs(["node", "main.js", "stdio"]);
+
+      expect(result.init).toBe(false);
     });
   });
 

@@ -26,6 +26,14 @@ import { extractNamespaceFromPath } from "./utils/namespace";
 async function main(): Promise<void> {
   const cliArgs = parseCliArgs();
 
+  // Handle init subcommand (run wizard and exit)
+  // Lazy import to avoid loading wizard dependencies (clack, open) when not needed
+  if (cliArgs.init) {
+    const { runWizard } = await import("./cli/init");
+    await runWizard();
+    process.exit(0);
+  }
+
   // Handle --show-project-config flag (display and exit)
   if (cliArgs.showProjectConfig) {
     try {

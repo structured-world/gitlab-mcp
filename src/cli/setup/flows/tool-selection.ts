@@ -1,0 +1,240 @@
+/**
+ * Tool selection flow for the setup wizard.
+ * Handles preset selection, manual tool category selection, and advanced settings.
+ */
+
+import * as p from "@clack/prompts";
+import { ToolConfig, ToolConfigMode } from "../types";
+import { TOOL_CATEGORIES, PRESET_DEFINITIONS, getToolCount, getTotalToolCount } from "../presets";
+
+/**
+ * Run the tool configuration flow.
+ * Presents the user with three options: preset, manual selection, or advanced settings.
+ */
+export async function runToolSelectionFlow(): Promise<ToolConfig | null> {
+  // Step 1: Choose configuration mode
+  const mode = await p.select<ToolConfigMode>({
+    message: "How do you want to configure tools?",
+    options: [
+      {
+        value: "preset" as ToolConfigMode,
+        label: "Use preset (recommended)",
+        hint: "Quick setup with role-based tool selection",
+      },
+      {
+        value: "manual" as ToolConfigMode,
+        label: "Select tools manually",
+        hint: "Choose individual tool categories",
+      },
+      {
+        value: "advanced" as ToolConfigMode,
+        label: "Advanced settings",
+        hint: "Full control over all environment variables",
+      },
+    ],
+  });
+
+  if (p.isCancel(mode)) {
+    return null;
+  }
+
+  switch (mode) {
+    case "preset":
+      return runPresetSelection();
+    case "manual":
+      return runManualSelection();
+    case "advanced":
+      return runAdvancedSettings();
+  }
+}
+
+/**
+ * Preset selection flow
+ */
+async function runPresetSelection(): Promise<ToolConfig | null> {
+  const preset = await p.select({
+    message: "Select a preset:",
+    options: PRESET_DEFINITIONS.map(p => ({
+      value: p.id,
+      label: p.name,
+      hint: p.description,
+    })),
+  });
+
+  if (p.isCancel(preset)) {
+    return null;
+  }
+
+  const presetDef = PRESET_DEFINITIONS.find(p => p.id === preset);
+  const toolCount = presetDef ? getToolCount(presetDef.enabledCategories) : 0;
+  const totalTools = getTotalToolCount();
+
+  p.log.info(`Selected: ${toolCount}/${totalTools} tools`);
+
+  return {
+    mode: "preset",
+    preset,
+    enabledCategories: presetDef?.enabledCategories,
+  };
+}
+
+/**
+ * Manual tool category selection flow
+ */
+async function runManualSelection(): Promise<ToolConfig | null> {
+  const totalTools = getTotalToolCount();
+
+  const selectedCategories = await p.multiselect({
+    message: `Select tool categories (${totalTools} tools total):`,
+    options: TOOL_CATEGORIES.map(category => ({
+      value: category.id,
+      label: `${category.name} [${category.tools.length} tools]`,
+      hint: category.description,
+    })),
+    // Pre-select default-enabled categories
+    initialValues: TOOL_CATEGORIES.filter(c => c.defaultEnabled).map(c => c.id),
+    required: true,
+  });
+
+  if (p.isCancel(selectedCategories)) {
+    return null;
+  }
+
+  const categories = selectedCategories;
+  const selectedCount = getToolCount(categories);
+
+  p.log.info(`Selected: ${selectedCount}/${totalTools} tools`);
+
+  return {
+    mode: "manual",
+    enabledCategories: categories,
+  };
+}
+
+/**
+ * Advanced settings flow - configure environment variables
+ */
+async function runAdvancedSettings(): Promise<ToolConfig | null> {
+  const envOverrides: Record<string, string> = {};
+
+  // Feature flags
+  p.log.step("Feature Flags");
+
+  const featureFlags = await p.multiselect({
+    message: "Enable features:",
+    options: [
+      { value: "USE_ISSUES", label: "Issues/Work Items", hint: "Issue tracking and epics" },
+      { value: "USE_MRS", label: "Merge Requests", hint: "Code review and MR management" },
+      { value: "USE_PIPELINES", label: "Pipelines", hint: "CI/CD pipeline management" },
+      { value: "USE_FILES", label: "Files", hint: "Repository file operations" },
+      { value: "USE_WIKI", label: "Wiki", hint: "Wiki page management" },
+      { value: "USE_SNIPPETS", label: "Snippets", hint: "Code snippets" },
+      { value: "USE_RELEASES", label: "Releases", hint: "Release management" },
+      { value: "USE_WEBHOOKS", label: "Webhooks", hint: "Webhook configuration" },
+      { value: "USE_INTEGRATIONS", label: "Integrations", hint: "Service integrations" },
+      { value: "USE_VARIABLES", label: "Variables", hint: "CI/CD variable management" },
+    ],
+    initialValues: ["USE_ISSUES", "USE_MRS", "USE_PIPELINES", "USE_FILES"],
+    required: false,
+  });
+
+  if (p.isCancel(featureFlags)) {
+    return null;
+  }
+
+  // Set all feature flags based on selection
+  const allFeatures = [
+    "USE_ISSUES",
+    "USE_MRS",
+    "USE_PIPELINES",
+    "USE_FILES",
+    "USE_WIKI",
+    "USE_SNIPPETS",
+    "USE_RELEASES",
+    "USE_WEBHOOKS",
+    "USE_INTEGRATIONS",
+    "USE_VARIABLES",
+  ];
+  const selectedFeatures = featureFlags;
+  for (const feature of allFeatures) {
+    envOverrides[feature] = selectedFeatures.includes(feature) ? "true" : "false";
+  }
+
+  // Read-only mode
+  const readOnly = await p.confirm({
+    message: "Enable read-only mode?",
+    initialValue: false,
+  });
+
+  if (p.isCancel(readOnly)) {
+    return null;
+  }
+
+  if (readOnly) {
+    envOverrides.GITLAB_READ_ONLY_MODE = "true";
+  }
+
+  // Scope restrictions
+  const configureScope = await p.confirm({
+    message: "Configure scope restrictions?",
+    initialValue: false,
+  });
+
+  if (p.isCancel(configureScope)) {
+    return null;
+  }
+
+  if (configureScope) {
+    const scopeType = await p.select({
+      message: "Scope type:",
+      options: [
+        { value: "project", label: "Single project", hint: "Restrict to one project" },
+        { value: "namespace", label: "Namespace", hint: "Restrict to a group/namespace" },
+      ],
+    });
+
+    if (p.isCancel(scopeType)) {
+      return null;
+    }
+
+    if (scopeType === "project") {
+      const project = await p.text({
+        message: "Project path (e.g., group/project):",
+        validate: v => (!v ? "Project path is required" : undefined),
+      });
+      if (p.isCancel(project)) return null;
+      envOverrides.GITLAB_SCOPE_PROJECT = project;
+    } else {
+      const namespace = await p.text({
+        message: "Namespace path (e.g., my-group):",
+        validate: v => (!v ? "Namespace is required" : undefined),
+      });
+      if (p.isCancel(namespace)) return null;
+      envOverrides.GITLAB_SCOPE_NAMESPACE = namespace;
+    }
+  }
+
+  // Log level
+  const logLevel = await p.select({
+    message: "Log level:",
+    options: [
+      { value: "info", label: "Info (default)" },
+      { value: "debug", label: "Debug" },
+      { value: "warn", label: "Warn" },
+      { value: "error", label: "Error" },
+    ],
+  });
+
+  if (p.isCancel(logLevel)) {
+    return null;
+  }
+
+  if (logLevel !== "info") {
+    envOverrides.LOG_LEVEL = logLevel;
+  }
+
+  return {
+    mode: "advanced",
+    envOverrides,
+  };
+}

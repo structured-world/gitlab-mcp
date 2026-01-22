@@ -1,0 +1,41 @@
+# Code Reviewer preset - code review focused workflow
+#
+# Optimized for reviewing merge requests:
+# - Full access to MR browsing, discussions, and approvals
+# - Read access to code, pipelines, and issues for context
+# - No access to admin features or infrastructure
+#
+# NOTE: This is a PRESET - host/auth come from environment variables.
+
+description: "Code Reviewer - MR discussions, approvals, code context"
+
+read_only: false
+
+features:
+  wiki: false      # Not needed for code review
+  milestones: false
+  pipelines: true  # Check CI status for MRs
+  labels: true     # Label MRs during review
+  mrs: true        # Core functionality
+  files: true      # Read source code
+  variables: false
+  workitems: true  # Reference issues in reviews
+  webhooks: false
+  snippets: false
+  integrations: false
+  # New entities
+  releases: false
+  refs: false      # No branch management
+  members: false
+  search: true     # Search code during review
+
+# Block infrastructure-changing actions
+denied_actions:
+  - "manage_repository:create"
+  - "manage_repository:delete"
+  - "manage_pipeline:create"
+  - "manage_pipeline:cancel"
+  - "manage_webhook:create"
+  - "manage_webhook:update"
+  - "manage_webhook:delete"
+  - "manage_integration:update"

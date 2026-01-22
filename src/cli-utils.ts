@@ -21,9 +21,13 @@ export interface CliArgs {
   dryRun: boolean;
   /** Git remote name to use (default: origin) */
   remoteName?: string;
-  /** Run init wizard */
+  /** Run unified setup wizard */
+  setup: boolean;
+  /** Setup wizard mode override */
+  setupMode?: "local" | "server" | "configure-existing";
+  /** Run init wizard (alias for setup --mode=local) */
   init: boolean;
-  /** Run install command */
+  /** Run install command (alias for setup --mode=local --skip-gitlab) */
   install: boolean;
   /** Install command arguments */
   installArgs: string[];
@@ -45,6 +49,7 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
     showProjectConfig: false,
     auto: false,
     dryRun: false,
+    setup: false,
     init: false,
     install: false,
     installArgs: [],
@@ -55,6 +60,15 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
   // Check for subcommands (first positional arg)
   if (args.length > 0) {
     switch (args[0]) {
+      case "setup":
+        result.setup = true;
+        // Parse setup-specific flags
+        for (const arg of args.slice(1)) {
+          if (arg === "--mode=local") result.setupMode = "local";
+          else if (arg === "--mode=server") result.setupMode = "server";
+          else if (arg === "--mode=configure-existing") result.setupMode = "configure-existing";
+        }
+        return result;
       case "init":
         result.init = true;
         return result;

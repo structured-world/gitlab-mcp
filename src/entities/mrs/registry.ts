@@ -418,22 +418,26 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
           case "apply_suggestion": {
             // TypeScript knows: input has suggestion_id (required), commit_message (optional)
-            const { project_id, merge_request_iid, suggestion_id, commit_message } = input;
+            // Note: project_id and merge_request_iid are in schema for context but not used in API
+            // GitLab suggestions API uses global endpoint: PUT /suggestions/:id/apply
+            const { suggestion_id, commit_message } = input;
 
             const body: Record<string, unknown> = {};
             if (commit_message) {
               body.commit_message = commit_message;
             }
 
-            return gitlab.put(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/suggestions/${suggestion_id}/apply`,
-              { body: Object.keys(body).length > 0 ? body : undefined, contentType: "json" }
-            );
+            return gitlab.put(`suggestions/${suggestion_id}/apply`, {
+              body: Object.keys(body).length > 0 ? body : undefined,
+              contentType: "json",
+            });
           }
 
           case "apply_suggestions": {
             // TypeScript knows: input has suggestion_ids (required), commit_message (optional)
-            const { project_id, merge_request_iid, suggestion_ids, commit_message } = input;
+            // Note: project_id and merge_request_iid are in schema for context but not used in API
+            // GitLab suggestions API uses global endpoint: PUT /suggestions/batch_apply
+            const { suggestion_ids, commit_message } = input;
 
             const body: Record<string, unknown> = {
               ids: suggestion_ids,
@@ -442,10 +446,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
               body.commit_message = commit_message;
             }
 
-            return gitlab.put(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/suggestions/batch_apply`,
-              { body, contentType: "json" }
-            );
+            return gitlab.put(`suggestions/batch_apply`, { body, contentType: "json" });
           }
 
           case "resolve": {

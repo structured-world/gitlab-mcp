@@ -1162,8 +1162,9 @@ describe("MRS Registry", () => {
             suggestion_id: 12345,
           });
 
+          // GitLab suggestions API uses global endpoint: PUT /suggestions/:id/apply
           expect(mockGitlab.put).toHaveBeenCalledWith(
-            "projects/test%2Fproject/merge_requests/42/suggestions/12345/apply",
+            "suggestions/12345/apply",
             expect.objectContaining({
               body: undefined,
               contentType: "json",
@@ -1185,8 +1186,9 @@ describe("MRS Registry", () => {
             commit_message: "Apply suggestion: fix typo",
           });
 
+          // GitLab suggestions API uses global endpoint: PUT /suggestions/:id/apply
           expect(mockGitlab.put).toHaveBeenCalledWith(
-            "projects/test%2Fproject/merge_requests/42/suggestions/12345/apply",
+            "suggestions/12345/apply",
             expect.objectContaining({
               body: { commit_message: "Apply suggestion: fix typo" },
               contentType: "json",
@@ -1209,8 +1211,9 @@ describe("MRS Registry", () => {
             suggestion_ids: [12345, 12346, 12347],
           });
 
+          // GitLab suggestions API uses global endpoint: PUT /suggestions/batch_apply
           expect(mockGitlab.put).toHaveBeenCalledWith(
-            "projects/test%2Fproject/merge_requests/42/suggestions/batch_apply",
+            "suggestions/batch_apply",
             expect.objectContaining({
               body: { ids: [12345, 12346, 12347] },
               contentType: "json",
@@ -1232,8 +1235,9 @@ describe("MRS Registry", () => {
             commit_message: "Apply code review suggestions",
           });
 
+          // GitLab suggestions API uses global endpoint: PUT /suggestions/batch_apply
           expect(mockGitlab.put).toHaveBeenCalledWith(
-            "projects/test%2Fproject/merge_requests/42/suggestions/batch_apply",
+            "suggestions/batch_apply",
             expect.objectContaining({
               body: {
                 ids: [12345, 12346],

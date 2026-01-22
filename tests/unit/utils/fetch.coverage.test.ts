@@ -59,7 +59,8 @@ describe("Fetch Utils Coverage Tests", () => {
       timeoutError.name = "AbortError";
       mockFetch.mockRejectedValue(timeoutError);
 
-      await expect(enhancedFetch("https://example.com")).rejects.toThrow(
+      // Disable retry to keep test fast - we're testing timeout handling, not retry behavior
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
         "GitLab API timeout after 10000ms"
       );
     });
@@ -68,7 +69,10 @@ describe("Fetch Utils Coverage Tests", () => {
       const networkError = new Error("Network error");
       mockFetch.mockRejectedValue(networkError);
 
-      await expect(enhancedFetch("https://example.com")).rejects.toThrow("Network error");
+      // Disable retry to test error propagation immediately
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "Network error"
+      );
     });
 
     it("should merge custom headers with defaults", async () => {

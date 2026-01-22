@@ -410,6 +410,9 @@ export async function enhancedFetch(
           "Retrying request after server error"
         );
 
+        // Cancel response body to release connection before retry
+        await response.body?.cancel();
+
         await sleep(retryDelay);
         continue;
       }

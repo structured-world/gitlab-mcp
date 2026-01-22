@@ -464,22 +464,32 @@ describe("Enhanced Fetch Utilities", () => {
     });
 
     it("should retry on 429 rate limit with Retry-After header", async () => {
-      const rateLimitHeaders = new Headers();
-      rateLimitHeaders.set("Retry-After", "1"); // 1 second
+      jest.useFakeTimers();
+      try {
+        const rateLimitHeaders = new Headers();
+        rateLimitHeaders.set("Retry-After", "1"); // 1 second
 
-      const rateLimitResponse = createMockResponse({
-        status: 429,
-        ok: false,
-        headers: rateLimitHeaders,
-      });
-      const successResponse = createMockResponse({ status: 200, ok: true });
+        const rateLimitResponse = createMockResponse({
+          status: 429,
+          ok: false,
+          headers: rateLimitHeaders,
+        });
+        const successResponse = createMockResponse({ status: 200, ok: true });
 
-      mockFetch.mockResolvedValueOnce(rateLimitResponse).mockResolvedValueOnce(successResponse);
+        mockFetch.mockResolvedValueOnce(rateLimitResponse).mockResolvedValueOnce(successResponse);
 
-      const result = await enhancedFetch("https://example.com");
+        const fetchPromise = enhancedFetch("https://example.com");
 
-      expect(mockFetch).toHaveBeenCalledTimes(2);
-      expect(result.status).toBe(200);
+        // Advance fake timers to simulate the Retry-After delay without real waiting
+        await jest.advanceTimersByTimeAsync(1000);
+
+        const result = await fetchPromise;
+
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+        expect(result.status).toBe(200);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it("should stop retrying after maxRetries attempts", async () => {

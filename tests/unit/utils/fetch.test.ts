@@ -452,9 +452,10 @@ describe("Enhanced Fetch Utilities", () => {
       await enhancedFetch("https://gitlab.com/api?private_token=secret123&other=value");
 
       // Should redact private_token but keep other
+      // Note: URL.searchParams.set() URL-encodes the value, so [REDACTED] becomes %5BREDACTED%5D
       expect(logger.debug).toHaveBeenCalledWith(
         expect.objectContaining({
-          url: expect.stringContaining("[REDACTED]"),
+          url: expect.stringContaining("%5BREDACTED%5D"),
         }),
         expect.any(String)
       );

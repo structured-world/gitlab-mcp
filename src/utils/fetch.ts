@@ -269,15 +269,22 @@ function redactUrlForLogging(url: string): string {
 
 /**
  * Determine if an error is retryable
- * Retryable errors: timeouts, network errors, 5xx server errors
+ * Retryable errors: internal timeouts, network errors
+ * NOT retryable: caller-initiated aborts (AbortError from caller signal)
  */
 function isRetryableError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
 
   const message = error.message.toLowerCase();
 
-  // Timeout errors are retryable
-  if (message.includes("timeout") || error.name === "AbortError") {
+  // Caller-initiated AbortErrors are NOT retryable
+  // (doFetch converts internal timeouts to "GitLab API timeout" message)
+  if (error.name === "AbortError") {
+    return false;
+  }
+
+  // Internal timeout errors (converted by doFetch) are retryable
+  if (message.includes("gitlab api timeout")) {
     return true;
   }
 
@@ -380,8 +387,10 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
   const safeUrl = redactUrlForLogging(url);
   logger.debug({ url: safeUrl, method, timeout: API_TIMEOUT_MS }, "Starting GitLab API request");
 
+  // Use a unique symbol to identify internal timeout aborts vs caller aborts
+  const TIMEOUT_REASON = "GitLab API timeout";
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(TIMEOUT_REASON), API_TIMEOUT_MS);
 
   // Merge caller signal with internal timeout signal
   // Use AbortSignal.any() if available (Node.js 20+), otherwise use listener pattern
@@ -431,12 +440,26 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
     const duration = Date.now() - startTime;
 
     if (error instanceof Error && error.name === "AbortError") {
-      // Log timeout with context
-      logger.warn(
-        { url: safeUrl, method, timeout: API_TIMEOUT_MS, duration },
-        "GitLab API request timed out"
-      );
-      throw new Error(`GitLab API timeout after ${API_TIMEOUT_MS}ms`);
+      // Distinguish between internal timeout and caller abort
+      // Check if our internal controller was aborted with timeout reason
+      const isInternalTimeout =
+        controller.signal.aborted && controller.signal.reason === TIMEOUT_REASON;
+
+      if (isInternalTimeout) {
+        // Internal timeout - log and throw timeout error
+        logger.warn(
+          { url: safeUrl, method, timeout: API_TIMEOUT_MS, duration },
+          "GitLab API request timed out"
+        );
+        throw new Error(`GitLab API timeout after ${API_TIMEOUT_MS}ms`);
+      } else {
+        // Caller abort - re-throw original error to preserve abort reason
+        logger.debug(
+          { url: safeUrl, method, duration, reason: callerSignal?.reason },
+          "GitLab API request aborted by caller"
+        );
+        throw error;
+      }
     }
 
     // Log other errors with full error object for stack trace
@@ -465,9 +488,16 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
  *   global API retry is enabled.
  * - Other methods (e.g. POST/PUT/DELETE/PATCH) do NOT retry by default.
  * - Override per request with options.retry = true or false.
- * - Retries on: timeouts, network errors, 5xx responses, and 429 Too Many Requests.
- *   For 429, the Retry-After header is honored when present.
+ * - Retries on: internal timeouts, network errors, 5xx responses, and 429 Too Many Requests.
+ *   For 429, the Retry-After header is honored when present (delta-seconds or HTTP-date).
+ * - Caller-provided AbortSignal aborts are NOT retried - they propagate immediately.
  * - Uses exponential backoff (configurable via API_RETRY_* settings).
+ *
+ * Timing considerations:
+ * - With retries enabled (default for GET), worst-case time is:
+ *   (maxRetries + 1) * timeout + sum of backoff delays
+ * - Default: 4 attempts * 10s timeout + ~7s delays = ~47s worst case
+ * - Disable retries (options.retry = false) for time-sensitive operations
  */
 export async function enhancedFetch(
   url: string,

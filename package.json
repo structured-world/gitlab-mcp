@@ -1,5 +1,11 @@
 {
   "name": "@structured-world/gitlab-mcp",
+  "resolutions": {
+    "lodash": "4.17.23",
+    "lodash-es": "4.17.23",
+    "hono": "4.11.5",
+    "diff": "4.0.4"
+  },
   "version": "6.25.0",
   "description": "MCP server for using the GitLab API",
   "license": "Apache-2.0",

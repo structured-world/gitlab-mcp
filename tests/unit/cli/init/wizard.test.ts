@@ -39,6 +39,12 @@ jest.mock("../../../../src/cli/init/browser", () => ({
 }));
 const mockOpenUrl = browser.openUrl as jest.Mock;
 
+// Mock child_process for spawnSync
+const mockSpawnSync = jest.fn().mockReturnValue({ status: 0 });
+jest.mock("child_process", () => ({
+  spawnSync: mockSpawnSync,
+}));
+
 // Mock connection module
 jest.mock("../../../../src/cli/init/connection", () => ({
   testConnection: jest.fn(),
@@ -348,10 +354,7 @@ describe("wizard", () => {
     });
 
     it("should run CLI command when user confirms", async () => {
-      const mockSpawnSync = jest.fn().mockReturnValue({ status: 0 });
-      jest.doMock("child_process", () => ({
-        spawnSync: mockSpawnSync,
-      }));
+      mockSpawnSync.mockClear();
 
       (configGenerator.generateClientConfig as jest.Mock).mockReturnValueOnce({
         type: "cli",
@@ -378,11 +381,16 @@ describe("wizard", () => {
 
       await runWizard();
 
-      // Verify the CLI execution flow was reached
+      // Verify the CLI execution flow was reached and spawnSync was called
       expect(p.confirm).toHaveBeenCalledWith(
         expect.objectContaining({
           message: "Run this command now?",
         })
+      );
+      expect(mockSpawnSync).toHaveBeenCalledWith(
+        "claude",
+        expect.arrayContaining(["mcp", "add", "gitlab"]),
+        expect.objectContaining({ stdio: "inherit" })
       );
     });
 

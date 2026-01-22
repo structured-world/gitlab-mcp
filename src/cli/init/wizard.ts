@@ -26,16 +26,10 @@ function maskSensitiveContent(content: string): string {
   let masked = content;
   // Mask GITLAB_TOKEN value in JSON: "GITLAB_TOKEN": "value"
   // Pattern handles escaped quotes: (?:\\.|[^"\\])* matches escaped chars or non-quote/backslash
-  masked = masked.replace(
-    /("GITLAB_TOKEN"\s*:\s*")((?:\\.|[^"\\])*)(")/g,
-    (_match, prefix, _token, suffix) => `${prefix}****${suffix}`
-  );
+  masked = masked.replace(/("GITLAB_TOKEN"\s*:\s*")((?:\\.|[^"\\])*)(")/g, "$1****$3");
   // Mask GITLAB_TOKEN in CLI commands: --env GITLAB_TOKEN="value" or GITLAB_TOKEN=value
-  masked = masked.replace(
-    /(GITLAB_TOKEN=")((?:\\.|[^"\\])*)(")/g,
-    (_match, prefix, _token, suffix) => `${prefix}****${suffix}`
-  );
-  masked = masked.replace(/(GITLAB_TOKEN=)([^\s"]+)/g, (_match, prefix, _token) => `${prefix}****`);
+  masked = masked.replace(/(GITLAB_TOKEN=")((?:\\.|[^"\\])*)(")/g, "$1****$3");
+  masked = masked.replace(/(GITLAB_TOKEN=)([^\s"]+)/g, "$1****");
   return masked;
 }
 

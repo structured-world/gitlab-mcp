@@ -42,6 +42,8 @@ import { oauthAuthMiddleware, rateLimiterMiddleware } from "./middleware/index";
 
 // Schema mode auto-detection
 import { setDetectedSchemaMode } from "./utils/schema-utils";
+// Request logging utilities
+import { getRequestContext } from "./utils/request-logger";
 
 // Create server instance
 export const server = new Server(
@@ -542,12 +544,13 @@ export async function startServer(): Promise<void> {
         const gitlabUserId = res.locals.gitlabUserId as number | undefined;
         const gitlabUsername = res.locals.gitlabUsername as string | undefined;
 
+        // Get full request context for logging
+        const requestContext = getRequestContext(req, res);
+
         logger.info(
           {
-            method: req.method,
-            path: req.path,
-            mcpSessionId: sessionId || "none",
-            hasOAuthSession: !!oauthSessionId,
+            event: "mcp_request",
+            ...requestContext,
             hasToken: !!gitlabToken,
           },
           "MCP endpoint request received"

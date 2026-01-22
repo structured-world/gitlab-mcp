@@ -103,7 +103,7 @@ export function showStatus(): void {
     for (const instance of status.instances) {
       console.log(`  ${instance.host}: ${instance.name}`);
       if (instance.oauth) {
-        console.log(`    OAuth: enabled (client_id: ${instance.oauth.clientId})`);
+        console.log(`    OAuth: enabled`);
       }
       if (instance.defaultPreset) {
         console.log(`    Preset: ${instance.defaultPreset}`);

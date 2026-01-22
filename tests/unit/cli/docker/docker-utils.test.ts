@@ -9,9 +9,24 @@ import {
   generateInstancesYaml,
   loadInstances,
   saveInstances,
+  isDockerInstalled,
+  isDockerRunning,
+  isComposeInstalled,
+  getContainerInfo,
+  getDockerStatus,
+  startContainer,
+  stopContainer,
+  restartContainer,
+  upgradeContainer,
+  getLogs,
+  addInstance,
+  removeInstance,
+  initDockerConfig,
+  getExpandedConfigDir,
 } from "../../../../src/cli/docker/docker-utils";
 import { DockerConfig, GitLabInstance } from "../../../../src/cli/docker/types";
 import * as fs from "fs";
+import * as childProcess from "child_process";
 import YAML from "yaml";
 import { homedir } from "os";
 import { join } from "path";
@@ -21,6 +36,7 @@ jest.mock("fs");
 jest.mock("child_process");
 
 const mockFs = fs as jest.Mocked<typeof fs>;
+const mockChildProcess = childProcess as jest.Mocked<typeof childProcess>;
 
 describe("docker-utils", () => {
   beforeEach(() => {
@@ -41,6 +57,337 @@ describe("docker-utils", () => {
     it("should not modify relative paths without ~", () => {
       const result = expandPath("relative/path");
       expect(result).toBe("relative/path");
+    });
+  });
+
+  describe("getExpandedConfigDir", () => {
+    it("should return expanded config directory path", () => {
+      const result = getExpandedConfigDir();
+      expect(result).toContain(homedir());
+      expect(result).toContain("gitlab-mcp");
+    });
+  });
+
+  describe("isDockerInstalled", () => {
+    it("should return true when docker is installed", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "Docker version 24.0.0",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = isDockerInstalled();
+
+      expect(result).toBe(true);
+      expect(mockChildProcess.spawnSync).toHaveBeenCalledWith("docker", ["--version"], {
+        stdio: "pipe",
+        encoding: "utf8",
+      });
+    });
+
+    it("should return false when docker is not installed", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 1,
+        stdout: "",
+        stderr: "command not found",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = isDockerInstalled();
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("isDockerRunning", () => {
+    it("should return true when docker daemon is running", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = isDockerRunning();
+
+      expect(result).toBe(true);
+      expect(mockChildProcess.spawnSync).toHaveBeenCalledWith("docker", ["info"], {
+        stdio: "pipe",
+        encoding: "utf8",
+      });
+    });
+
+    it("should return false when docker daemon is not running", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 1,
+        stdout: "",
+        stderr: "Cannot connect to Docker daemon",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = isDockerRunning();
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("isComposeInstalled", () => {
+    it("should return true when docker compose is installed", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "Docker Compose version v2.0.0",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = isComposeInstalled();
+
+      expect(result).toBe(true);
+      expect(mockChildProcess.spawnSync).toHaveBeenCalledWith("docker", ["compose", "version"], {
+        stdio: "pipe",
+        encoding: "utf8",
+      });
+    });
+
+    it("should return false when docker compose is not installed", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 1,
+        stdout: "",
+        stderr: "docker compose is not a docker command",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = isComposeInstalled();
+
+      expect(result).toBe(false);
+    });
+  });
+
+  describe("getContainerInfo", () => {
+    it("should return container info when container exists", () => {
+      // Format: {{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}|{{.CreatedAt}}
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout:
+          "abc123|gitlab-mcp|gitlab-mcp:latest|Up 2 hours|0.0.0.0:3333->3333/tcp|2024-01-01 00:00:00",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = getContainerInfo();
+
+      expect(result).toBeDefined();
+      expect(result?.name).toBe("gitlab-mcp");
+      expect(result?.status).toBe("running");
+    });
+
+    it("should return undefined when container does not exist", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = getContainerInfo();
+
+      expect(result).toBeUndefined();
+    });
+
+    it("should return undefined on error", () => {
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 1,
+        stdout: "",
+        stderr: "error",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = getContainerInfo();
+
+      expect(result).toBeUndefined();
+    });
+  });
+
+  describe("getDockerStatus", () => {
+    it("should return full status with all checks", () => {
+      // Mock all checks to pass
+      mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
+        if (args?.[0] === "--version") {
+          return {
+            status: 0,
+            stdout: "Docker version",
+            stderr: "",
+            pid: 123,
+            output: [],
+            signal: null,
+          };
+        }
+        if (args?.[0] === "info") {
+          return {
+            status: 0,
+            stdout: "",
+            stderr: "",
+            pid: 123,
+            output: [],
+            signal: null,
+          };
+        }
+        if (args?.[0] === "compose") {
+          return {
+            status: 0,
+            stdout: "Docker Compose version",
+            stderr: "",
+            pid: 123,
+            output: [],
+            signal: null,
+          };
+        }
+        if (args?.[0] === "ps") {
+          return {
+            status: 0,
+            stdout: Buffer.from("[]"),
+            stderr: Buffer.from(""),
+            pid: 123,
+            output: [],
+            signal: null,
+          };
+        }
+        return {
+          status: 0,
+          stdout: "",
+          stderr: "",
+          pid: 123,
+          output: [],
+          signal: null,
+        };
+      });
+
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = getDockerStatus();
+
+      expect(result.dockerInstalled).toBe(true);
+      expect(result.dockerRunning).toBe(true);
+      expect(result.composeInstalled).toBe(true);
+    });
+  });
+
+  describe("startContainer", () => {
+    it("should start container successfully", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "Container started",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = startContainer();
+
+      expect(result.success).toBe(true);
+    });
+
+    it("should return error if config not found", () => {
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = startContainer();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("not found");
+    });
+  });
+
+  describe("stopContainer", () => {
+    it("should stop container successfully", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "Container stopped",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = stopContainer();
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("restartContainer", () => {
+    it("should restart container successfully", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "Container restarted",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = restartContainer();
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("upgradeContainer", () => {
+    it("should upgrade container successfully", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "Pulled latest",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = upgradeContainer();
+
+      expect(result.success).toBe(true);
+    });
+  });
+
+  describe("getLogs", () => {
+    it("should get logs successfully", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "Log output here",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = getLogs(100);
+
+      expect(result.success).toBe(true);
+      expect(result.output).toBe("Log output here");
     });
   });
 
@@ -302,6 +649,84 @@ describe("docker-utils", () => {
       expect(mockFs.writeFileSync).toHaveBeenCalled();
       const writeCall = mockFs.writeFileSync.mock.calls[0];
       expect(writeCall[0]).toContain("instances.yml");
+    });
+  });
+
+  describe("addInstance", () => {
+    it("should add new instance to empty list", () => {
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      const instance: GitLabInstance = { host: "gitlab.com", name: "GitLab" };
+      addInstance(instance);
+
+      expect(mockFs.writeFileSync).toHaveBeenCalled();
+    });
+
+    it("should add instance to existing list", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        YAML.stringify({
+          instances: {
+            "gitlab.com": { name: "GitLab" },
+          },
+        })
+      );
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      const instance: GitLabInstance = { host: "gitlab.company.com", name: "Company" };
+      addInstance(instance);
+
+      expect(mockFs.writeFileSync).toHaveBeenCalled();
+    });
+  });
+
+  describe("removeInstance", () => {
+    it("should return false when instance not found", () => {
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = removeInstance("unknown.com");
+
+      expect(result).toBe(false);
+    });
+
+    it("should remove instance and return true", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.readFileSync.mockReturnValue(
+        YAML.stringify({
+          instances: {
+            "gitlab.com": { name: "GitLab" },
+          },
+        })
+      );
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      const result = removeInstance("gitlab.com");
+
+      expect(result).toBe(true);
+      expect(mockFs.writeFileSync).toHaveBeenCalled();
+    });
+  });
+
+  describe("initDockerConfig", () => {
+    it("should create config files", () => {
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      const config: DockerConfig = {
+        port: 3333,
+        oauthEnabled: false,
+        instances: [],
+        containerName: "gitlab-mcp",
+        image: "ghcr.io/structured-world/gitlab-mcp:latest",
+      };
+
+      initDockerConfig(config);
+
+      expect(mockFs.mkdirSync).toHaveBeenCalled();
+      expect(mockFs.writeFileSync).toHaveBeenCalled();
     });
   });
 });

@@ -234,7 +234,16 @@ function redactUrlForLogging(url: string): string {
     parsed.pathname = parsed.pathname.replace(/\/([a-f0-9]{32,})\//gi, "/[REDACTED]/");
 
     // Redact sensitive query parameters
-    const sensitiveParams = ["private_token", "token", "secret", "key", "password", "auth"];
+    const sensitiveParams = [
+      "private_token",
+      "access_token",
+      "oauth_token",
+      "token",
+      "secret",
+      "key",
+      "password",
+      "auth",
+    ];
     for (const param of sensitiveParams) {
       if (parsed.searchParams.has(param)) {
         parsed.searchParams.set(param, "[REDACTED]");

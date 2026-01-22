@@ -1,3 +1,9 @@
+## [6.29.0](https://github.com/structured-world/gitlab-mcp/compare/v6.28.0...v6.29.0) (2026-01-22)
+
+### Features
+
+* **cli:** add install and docker subcommands ([#122](https://github.com/structured-world/gitlab-mcp/issues/122)) ([36d38d0](https://github.com/structured-world/gitlab-mcp/commit/36d38d02e31e3db2341799487d2942dafb6e8eea)), closes [#100](https://github.com/structured-world/gitlab-mcp/issues/100)
+
 ## [6.28.0](https://github.com/structured-world/gitlab-mcp/compare/v6.27.1...v6.28.0) (2026-01-22)
 
 ### Features

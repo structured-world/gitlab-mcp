@@ -45,38 +45,46 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           }
 
           case "get": {
-            // TypeScript knows: input has milestone_id (required)
-            return gitlab.get(`${entityType}/${encodedPath}/milestones/${input.milestone_id}`);
+            // TypeScript knows: input has milestone_id or iid (at least one required by schema)
+            // Prefer iid if both are provided, fallback to milestone_id
+            const milestoneIdentifier = input.iid ?? input.milestone_id;
+            return gitlab.get(`${entityType}/${encodedPath}/milestones/${milestoneIdentifier}`);
           }
 
           case "issues": {
-            // TypeScript knows: input has milestone_id (required), per_page, page (optional)
-            const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
-            const query = toQuery(rest, []);
-
-            return gitlab.get(`${entityType}/${encodedPath}/milestones/${milestone_id}/issues`, {
-              query,
-            });
-          }
-
-          case "merge_requests": {
-            // TypeScript knows: input has milestone_id (required), per_page, page (optional)
-            const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
+            // TypeScript knows: input has milestone_id or iid (at least one required), per_page, page (optional)
+            const { action: _action, namespace: _namespace, milestone_id, iid, ...rest } = input;
+            const milestoneIdentifier = iid ?? milestone_id;
             const query = toQuery(rest, []);
 
             return gitlab.get(
-              `${entityType}/${encodedPath}/milestones/${milestone_id}/merge_requests`,
+              `${entityType}/${encodedPath}/milestones/${milestoneIdentifier}/issues`,
+              {
+                query,
+              }
+            );
+          }
+
+          case "merge_requests": {
+            // TypeScript knows: input has milestone_id or iid (at least one required), per_page, page (optional)
+            const { action: _action, namespace: _namespace, milestone_id, iid, ...rest } = input;
+            const milestoneIdentifier = iid ?? milestone_id;
+            const query = toQuery(rest, []);
+
+            return gitlab.get(
+              `${entityType}/${encodedPath}/milestones/${milestoneIdentifier}/merge_requests`,
               { query }
             );
           }
 
           case "burndown": {
-            // TypeScript knows: input has milestone_id (required), per_page, page (optional)
-            const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
+            // TypeScript knows: input has milestone_id or iid (at least one required), per_page, page (optional)
+            const { action: _action, namespace: _namespace, milestone_id, iid, ...rest } = input;
+            const milestoneIdentifier = iid ?? milestone_id;
             const query = toQuery(rest, []);
 
             return gitlab.get(
-              `${entityType}/${encodedPath}/milestones/${milestone_id}/burndown_events`,
+              `${entityType}/${encodedPath}/milestones/${milestoneIdentifier}/burndown_events`,
               { query }
             );
           }
@@ -123,30 +131,32 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
           }
 
           case "update": {
-            // TypeScript knows: input has milestone_id (required), title, description, etc. (optional)
-            const { action: _action, namespace: _namespace, milestone_id, ...body } = input;
+            // TypeScript knows: input has milestone_id or iid (at least one required), title, description, etc. (optional)
+            const { action: _action, namespace: _namespace, milestone_id, iid, ...body } = input;
+            const milestoneIdentifier = iid ?? milestone_id;
 
-            return gitlab.put(`${entityType}/${encodedPath}/milestones/${milestone_id}`, {
+            return gitlab.put(`${entityType}/${encodedPath}/milestones/${milestoneIdentifier}`, {
               body,
               contentType: "json",
             });
           }
 
           case "delete": {
-            // TypeScript knows: input has milestone_id (required)
-            await gitlab.delete(`${entityType}/${encodedPath}/milestones/${input.milestone_id}`);
+            // TypeScript knows: input has milestone_id or iid (at least one required)
+            const milestoneIdentifier = input.iid ?? input.milestone_id;
+            await gitlab.delete(`${entityType}/${encodedPath}/milestones/${milestoneIdentifier}`);
             return { deleted: true };
           }
 
           case "promote": {
-            // TypeScript knows: input has milestone_id (required)
+            // TypeScript knows: input has milestone_id or iid (at least one required by schema)
             if (entityType !== "projects") {
               throw new Error("Milestone promotion is only available for projects, not groups");
             }
 
-            return gitlab.post(
-              `projects/${encodedPath}/milestones/${encodeURIComponent(input.milestone_id)}/promote`
-            );
+            // Schema validation guarantees at least one identifier is present
+            const milestoneIdentifier = input.iid ?? input.milestone_id;
+            return gitlab.post(`projects/${encodedPath}/milestones/${milestoneIdentifier}/promote`);
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

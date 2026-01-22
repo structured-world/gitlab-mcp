@@ -83,8 +83,8 @@ describe("Work Items Schema - GitLab 18.3 Integration", () => {
     }, 15000);
   });
 
-  describe("BrowseWorkItemsSchema - get action", () => {
-    it("should validate get work item parameters", async () => {
+  describe("BrowseWorkItemsSchema - get action by ID", () => {
+    it("should validate get work item parameters with id", async () => {
       const testData = getTestData();
       expect(testData.workItems).toBeDefined();
       expect(testData.workItems!.length).toBeGreaterThan(0);
@@ -105,7 +105,7 @@ describe("Work Items Schema - GitLab 18.3 Integration", () => {
       console.log("✅ BrowseWorkItemsSchema validates parameters correctly");
     });
 
-    it("should make successful GraphQL request for single work item", async () => {
+    it("should make successful GraphQL request for single work item by ID", async () => {
       const testData = getTestData();
       expect(testData.workItems).toBeDefined();
       expect(testData.workItems!.length).toBeGreaterThan(0);
@@ -122,7 +122,7 @@ describe("Work Items Schema - GitLab 18.3 Integration", () => {
 
       if (!paramResult.success) return;
 
-      console.log("🔍 Getting single work item using handler function...");
+      console.log("🔍 Getting single work item by ID using handler function...");
       const workItem = (await helper.executeTool("browse_work_items", paramResult.data)) as any;
 
       expect(workItem).toBeDefined();
@@ -135,6 +135,143 @@ describe("Work Items Schema - GitLab 18.3 Integration", () => {
         `✅ BrowseWorkItemsSchema API request successful via handler: ${workItem.title} (IID: ${workItem.iid})`
       );
     }, 15000);
+  });
+
+  // === IID LOOKUP TESTS (Issue #99) ===
+  describe("BrowseWorkItemsSchema - get action by namespace + IID", () => {
+    it("should validate get work item parameters with namespace + iid", async () => {
+      const testData = getTestData();
+      expect(testData.workItems).toBeDefined();
+      expect(testData.workItems!.length).toBeGreaterThan(0);
+      expect(testData.project?.path_with_namespace).toBeDefined();
+
+      const firstWorkItem = testData.workItems![0];
+      const validParams = {
+        action: "get" as const,
+        namespace: testData.project!.path_with_namespace,
+        iid: firstWorkItem.iid,
+      };
+
+      const result = BrowseWorkItemsSchema.safeParse(validParams);
+      expect(result.success).toBe(true);
+
+      if (result.success && result.data.action === "get") {
+        expect(result.data.namespace).toBe(testData.project!.path_with_namespace);
+        expect(result.data.iid).toBe(firstWorkItem.iid);
+      }
+
+      console.log("✅ BrowseWorkItemsSchema validates namespace + iid parameters correctly");
+    });
+
+    it("should make successful GraphQL request for work item by namespace + IID", async () => {
+      const testData = getTestData();
+      expect(testData.workItems).toBeDefined();
+      expect(testData.workItems!.length).toBeGreaterThan(0);
+      expect(testData.project?.path_with_namespace).toBeDefined();
+
+      const firstWorkItem = testData.workItems![0];
+      const params = {
+        action: "get" as const,
+        namespace: testData.project!.path_with_namespace,
+        iid: firstWorkItem.iid,
+      };
+
+      // Validate parameters first
+      const paramResult = BrowseWorkItemsSchema.safeParse(params);
+      expect(paramResult.success).toBe(true);
+
+      if (!paramResult.success) return;
+
+      console.log("🔍 Getting work item by namespace + IID using handler function...");
+      const workItem = (await helper.executeTool("browse_work_items", paramResult.data)) as any;
+
+      expect(workItem).toBeDefined();
+      expect(workItem).toHaveProperty("id");
+      expect(workItem).toHaveProperty("iid");
+      expect(workItem).toHaveProperty("title");
+      expect(workItem).toHaveProperty("workItemType");
+
+      // Verify the IID matches what we requested
+      expect(workItem.iid).toBe(firstWorkItem.iid);
+
+      console.log(
+        `✅ BrowseWorkItemsSchema IID lookup successful: ${workItem.title} (IID: ${workItem.iid})`
+      );
+    }, 15000);
+
+    it("should return same work item whether looked up by ID or by namespace + IID", async () => {
+      const testData = getTestData();
+      expect(testData.workItems).toBeDefined();
+      expect(testData.workItems!.length).toBeGreaterThan(0);
+      expect(testData.project?.path_with_namespace).toBeDefined();
+
+      const firstWorkItem = testData.workItems![0];
+
+      // Lookup by ID
+      const byIdParams = {
+        action: "get" as const,
+        id: firstWorkItem.id,
+      };
+      const byIdResult = BrowseWorkItemsSchema.safeParse(byIdParams);
+      expect(byIdResult.success).toBe(true);
+      if (!byIdResult.success) return;
+
+      const workItemById = (await helper.executeTool("browse_work_items", byIdResult.data)) as any;
+
+      // Lookup by namespace + IID
+      const byIidParams = {
+        action: "get" as const,
+        namespace: testData.project!.path_with_namespace,
+        iid: firstWorkItem.iid,
+      };
+      const byIidResult = BrowseWorkItemsSchema.safeParse(byIidParams);
+      expect(byIidResult.success).toBe(true);
+      if (!byIidResult.success) return;
+
+      const workItemByIid = (await helper.executeTool(
+        "browse_work_items",
+        byIidResult.data
+      )) as any;
+
+      // Both lookups should return the same work item
+      expect(workItemById.id).toBe(workItemByIid.id);
+      expect(workItemById.iid).toBe(workItemByIid.iid);
+      expect(workItemById.title).toBe(workItemByIid.title);
+
+      console.log(
+        `✅ Both lookup methods return same work item: ${workItemById.title} (ID: ${workItemById.id}, IID: ${workItemById.iid})`
+      );
+    }, 30000);
+
+    it("should reject get action without id or namespace+iid", async () => {
+      // Missing both id and namespace+iid
+      const invalidParams1 = {
+        action: "get" as const,
+      };
+
+      const result1 = BrowseWorkItemsSchema.safeParse(invalidParams1);
+      expect(result1.success).toBe(false);
+
+      // Has namespace but missing iid
+      const invalidParams2 = {
+        action: "get" as const,
+        namespace: "test/project",
+      };
+
+      const result2 = BrowseWorkItemsSchema.safeParse(invalidParams2);
+      expect(result2.success).toBe(false);
+
+      // Has iid but missing namespace
+      const invalidParams3 = {
+        action: "get" as const,
+        iid: "1",
+      };
+
+      const result3 = BrowseWorkItemsSchema.safeParse(invalidParams3);
+      expect(result3.success).toBe(false);
+
+      console.log("✅ BrowseWorkItemsSchema correctly rejects invalid get parameters");
+    });
   });
 
   describe("CRUD Operations Integration Tests", () => {

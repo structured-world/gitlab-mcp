@@ -690,6 +690,142 @@ describe("handlers", () => {
     });
   });
 
+  describe("timeout error handling", () => {
+    beforeEach(async () => {
+      await setupHandlers(mockServer);
+      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1];
+    });
+
+    it("should convert timeout error to structured TIMEOUT response for idempotent tools", async () => {
+      // Test timeout handling for browse_* (idempotent) tools
+      mockRegistryManager.executeTool.mockRejectedValue(
+        new Error("GitLab API timeout after 10000ms")
+      );
+
+      const mockRequest = {
+        params: {
+          name: "browse_projects",
+          arguments: { action: "list" },
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error_code).toBe("TIMEOUT");
+      expect(parsed.tool).toBe("browse_projects");
+      expect(parsed.action).toBe("list");
+      expect(parsed.retryable).toBe(true); // browse_* is idempotent
+      expect(parsed.timeout_ms).toBe(10000);
+    });
+
+    it("should convert timeout error to structured TIMEOUT response for non-idempotent tools", async () => {
+      // Test timeout handling for manage_* (non-idempotent) tools
+      mockRegistryManager.executeTool.mockRejectedValue(
+        new Error("GitLab API timeout after 10000ms")
+      );
+
+      const mockRequest = {
+        params: {
+          name: "manage_merge_request",
+          arguments: { action: "merge" },
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error_code).toBe("TIMEOUT");
+      expect(parsed.tool).toBe("manage_merge_request");
+      expect(parsed.action).toBe("merge");
+      expect(parsed.retryable).toBe(false); // manage_* is NOT idempotent
+    });
+
+    it("should mark list_* tools as idempotent for timeout errors", async () => {
+      mockRegistryManager.executeTool.mockRejectedValue(
+        new Error("GitLab API timeout after 5000ms")
+      );
+
+      const mockRequest = {
+        params: {
+          name: "list_project_members",
+          arguments: { action: "list" },
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.retryable).toBe(true); // list_* is idempotent
+    });
+
+    it("should mark get_* tools as idempotent for timeout errors", async () => {
+      mockRegistryManager.executeTool.mockRejectedValue(
+        new Error("GitLab API timeout after 5000ms")
+      );
+
+      const mockRequest = {
+        params: {
+          name: "get_users",
+          arguments: {},
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.retryable).toBe(true); // get_* is idempotent
+    });
+
+    it("should mark download_* tools as idempotent for timeout errors", async () => {
+      mockRegistryManager.executeTool.mockRejectedValue(
+        new Error("GitLab API timeout after 5000ms")
+      );
+
+      const mockRequest = {
+        params: {
+          name: "download_attachment",
+          arguments: { project_id: "123", secret: "abc", filename: "test.txt" },
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.retryable).toBe(true); // download_* is idempotent
+    });
+
+    it("should handle direct StructuredToolError without wrapping", async () => {
+      // Test the direct isStructuredToolError check (line 120-121)
+      const structuredError = new StructuredToolError({
+        error_code: "TIMEOUT",
+        tool: "direct_tool",
+        action: "direct_action",
+        message: "Direct timeout error",
+        retryable: true,
+        timeout_ms: 15000,
+      });
+      mockRegistryManager.executeTool.mockRejectedValue(structuredError);
+
+      const mockRequest = {
+        params: {
+          name: "test_tool",
+          arguments: {},
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error_code).toBe("TIMEOUT");
+      expect(parsed.tool).toBe("direct_tool");
+      expect(parsed.timeout_ms).toBe(15000);
+    });
+  });
+
   describe("list tools handler - resolveRefs edge cases", () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);

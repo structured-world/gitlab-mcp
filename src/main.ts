@@ -34,6 +34,23 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
+  // Handle install subcommand
+  if (cliArgs.install) {
+    const { runInstallCommand, parseInstallFlags, buildServerConfigFromEnv } =
+      await import("./cli/install");
+    const flags = parseInstallFlags(cliArgs.installArgs);
+    const serverConfig = buildServerConfigFromEnv();
+    await runInstallCommand(serverConfig, flags);
+    process.exit(0);
+  }
+
+  // Handle docker subcommand
+  if (cliArgs.docker) {
+    const { runDockerCommand } = await import("./cli/docker");
+    await runDockerCommand(cliArgs.dockerArgs);
+    process.exit(0);
+  }
+
   // Handle --show-project-config flag (display and exit)
   if (cliArgs.showProjectConfig) {
     try {

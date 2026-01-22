@@ -48,6 +48,10 @@ describe("cli-utils", () => {
         dryRun: false,
         remoteName: undefined,
         init: false,
+        install: false,
+        installArgs: [],
+        docker: false,
+        dockerArgs: [],
       });
     });
 
@@ -117,6 +121,10 @@ describe("cli-utils", () => {
         dryRun: false,
         remoteName: undefined,
         init: false,
+        install: false,
+        installArgs: [],
+        docker: false,
+        dockerArgs: [],
       });
     });
 
@@ -217,6 +225,70 @@ describe("cli-utils", () => {
       const result = parseCliArgs(["node", "main.js", "stdio"]);
 
       expect(result.init).toBe(false);
+    });
+
+    // Install subcommand tests
+    it("should parse install subcommand", () => {
+      const result = parseCliArgs(["node", "main.js", "install"]);
+
+      expect(result.install).toBe(true);
+      expect(result.installArgs).toEqual([]);
+    });
+
+    it("should parse install subcommand with flags", () => {
+      const result = parseCliArgs(["node", "main.js", "install", "--claude-desktop", "--force"]);
+
+      expect(result.install).toBe(true);
+      expect(result.installArgs).toEqual(["--claude-desktop", "--force"]);
+    });
+
+    it("should parse install subcommand with --all flag", () => {
+      const result = parseCliArgs(["node", "main.js", "install", "--all"]);
+
+      expect(result.install).toBe(true);
+      expect(result.installArgs).toContain("--all");
+    });
+
+    it("should parse install subcommand with --show flag", () => {
+      const result = parseCliArgs(["node", "main.js", "install", "--show"]);
+
+      expect(result.install).toBe(true);
+      expect(result.installArgs).toContain("--show");
+    });
+
+    // Docker subcommand tests
+    it("should parse docker subcommand", () => {
+      const result = parseCliArgs(["node", "main.js", "docker"]);
+
+      expect(result.docker).toBe(true);
+      expect(result.dockerArgs).toEqual([]);
+    });
+
+    it("should parse docker subcommand with status", () => {
+      const result = parseCliArgs(["node", "main.js", "docker", "status"]);
+
+      expect(result.docker).toBe(true);
+      expect(result.dockerArgs).toEqual(["status"]);
+    });
+
+    it("should parse docker subcommand with logs -f", () => {
+      const result = parseCliArgs(["node", "main.js", "docker", "logs", "-f"]);
+
+      expect(result.docker).toBe(true);
+      expect(result.dockerArgs).toEqual(["logs", "-f"]);
+    });
+
+    it("should parse docker subcommand with add-instance", () => {
+      const result = parseCliArgs([
+        "node",
+        "main.js",
+        "docker",
+        "add-instance",
+        "gitlab.example.com",
+      ]);
+
+      expect(result.docker).toBe(true);
+      expect(result.dockerArgs).toEqual(["add-instance", "gitlab.example.com"]);
     });
   });
 

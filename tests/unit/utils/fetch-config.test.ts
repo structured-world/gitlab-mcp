@@ -2,7 +2,7 @@
  * Unit tests for fetch configuration edge cases
  * Tests TLS, proxy, CA certificates, and OAuth scenarios
  *
- * These tests use jest.isolateModules to properly mock config values
+ * These tests use jest.resetModules to properly mock config values
  * since the fetch module caches config imports at load time.
  */
 

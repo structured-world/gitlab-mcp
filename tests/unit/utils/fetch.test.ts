@@ -587,9 +587,9 @@ describe("Enhanced Fetch Utilities", () => {
 
       const fetchPromise = enhancedFetch("https://example.com");
 
-      // Should be capped to API_RETRY_MAX_DELAY_MS (4000ms = 4 seconds by default)
+      // Should be capped to API_RETRY_MAX_DELAY_MS (400ms in test mock)
       // Not wait 3600 seconds (1 hour)
-      await jest.advanceTimersByTimeAsync(4000);
+      await jest.advanceTimersByTimeAsync(400);
 
       const result = await fetchPromise;
 

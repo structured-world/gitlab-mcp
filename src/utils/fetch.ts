@@ -201,7 +201,7 @@ export function createFetchOptions(): Record<string, unknown> {
  * Extended fetch options with retry configuration
  */
 export interface FetchWithRetryOptions extends RequestInit {
-  /** Enable retry for this request (default: false for non-GET, true for GET) */
+  /** Enable retry for this request (default: true for GET/HEAD/OPTIONS, false otherwise) */
   retry?: boolean;
   /** Maximum number of retry attempts (default: from config) */
   maxRetries?: number;

@@ -51,6 +51,7 @@ export async function runWizard(): Promise<void> {
   if (p.isCancel(instanceType)) {
     p.cancel("Setup cancelled");
     process.exit(0);
+    return;
   }
 
   // Step 2: Get instance URL
@@ -86,6 +87,7 @@ export async function runWizard(): Promise<void> {
   if (p.isCancel(hasToken)) {
     p.cancel("Setup cancelled");
     process.exit(0);
+    return;
   }
 
   let token: string;
@@ -112,6 +114,7 @@ export async function runWizard(): Promise<void> {
     if (p.isCancel(openBrowser)) {
       p.cancel("Setup cancelled");
       process.exit(0);
+      return;
     }
 
     if (openBrowser) {
@@ -139,6 +142,7 @@ export async function runWizard(): Promise<void> {
   if (p.isCancel(tokenInput)) {
     p.cancel("Setup cancelled");
     process.exit(0);
+    return;
   }
 
   token = tokenInput;
@@ -154,6 +158,7 @@ export async function runWizard(): Promise<void> {
     p.log.error(`Connection error: ${connectionResult.error ?? "Unknown error"}`);
     p.cancel("Please check your URL and token");
     process.exit(1);
+    return;
   }
 
   spinner.stop("Connection successful!");
@@ -178,6 +183,7 @@ export async function runWizard(): Promise<void> {
   if (p.isCancel(role)) {
     p.cancel("Setup cancelled");
     process.exit(0);
+    return;
   }
 
   // Step 7: Confirm read-only if applicable
@@ -191,6 +197,7 @@ export async function runWizard(): Promise<void> {
     if (p.isCancel(confirmReadWrite)) {
       p.cancel("Setup cancelled");
       process.exit(0);
+      return;
     }
 
     readOnly = !confirmReadWrite;
@@ -211,6 +218,7 @@ export async function runWizard(): Promise<void> {
   if (p.isCancel(client)) {
     p.cancel("Setup cancelled");
     process.exit(0);
+    return;
   }
 
   // Build configuration
@@ -243,6 +251,7 @@ export async function runWizard(): Promise<void> {
     if (p.isCancel(runNow)) {
       p.cancel("Setup cancelled");
       process.exit(0);
+      return;
     }
 
     if (runNow) {
@@ -300,6 +309,7 @@ export async function runWizard(): Promise<void> {
     if (p.isCancel(useDeepLink)) {
       p.cancel("Setup cancelled");
       process.exit(0);
+      return;
     }
 
     if (useDeepLink) {

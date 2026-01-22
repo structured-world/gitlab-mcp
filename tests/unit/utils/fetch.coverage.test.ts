@@ -54,14 +54,14 @@ describe("Fetch Utils Coverage Tests", () => {
   });
 
   describe("enhancedFetch", () => {
-    it("should handle timeout errors", async () => {
-      const timeoutError = new Error("Request timeout");
-      timeoutError.name = "AbortError";
-      mockFetch.mockRejectedValue(timeoutError);
+    it("should propagate AbortError from caller signal without converting to timeout", async () => {
+      // Caller-initiated AbortErrors should propagate as-is, NOT be converted to timeout
+      const abortError = new DOMException("The operation was aborted", "AbortError");
+      mockFetch.mockRejectedValue(abortError);
 
-      // Disable retry to keep test fast - we're testing timeout handling, not retry behavior
+      // Disable retry - caller aborts are not retryable anyway
       await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
-        "GitLab API timeout after 10000ms"
+        "The operation was aborted"
       );
     });
 

@@ -1,3 +1,9 @@
+## [6.27.0](https://github.com/structured-world/gitlab-mcp/compare/v6.26.1...v6.27.0) (2026-01-22)
+
+### Features
+
+* **schemas:** add paginationFields() utility for dynamic pagination descriptions ([#118](https://github.com/structured-world/gitlab-mcp/issues/118)) ([963b08e](https://github.com/structured-world/gitlab-mcp/commit/963b08e661d19a8e718f5336820dcb42d072d110)), closes [#117](https://github.com/structured-world/gitlab-mcp/issues/117)
+
 ## [6.26.1](https://github.com/structured-world/gitlab-mcp/compare/v6.26.0...v6.26.1) (2026-01-22)
 
 ### Bug Fixes

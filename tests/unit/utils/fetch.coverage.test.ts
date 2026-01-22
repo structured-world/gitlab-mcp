@@ -17,7 +17,12 @@ jest.mock("fs", () => {
   };
 });
 
-import { createFetchOptions, enhancedFetch, DEFAULT_HEADERS } from "../../../src/utils/fetch";
+import {
+  createFetchOptions,
+  enhancedFetch,
+  DEFAULT_HEADERS,
+  resetDispatcherCache,
+} from "../../../src/utils/fetch";
 
 // Mock global fetch
 const mockFetch = jest.fn();
@@ -49,13 +54,14 @@ describe("Fetch Utils Coverage Tests", () => {
   });
 
   describe("enhancedFetch", () => {
-    it("should handle timeout errors", async () => {
-      const timeoutError = new Error("Request timeout");
-      timeoutError.name = "AbortError";
-      mockFetch.mockRejectedValue(timeoutError);
+    it("should propagate AbortError from caller signal without converting to timeout", async () => {
+      // Caller-initiated AbortErrors should propagate as-is, NOT be converted to timeout
+      const abortError = new DOMException("The operation was aborted", "AbortError");
+      mockFetch.mockRejectedValue(abortError);
 
-      await expect(enhancedFetch("https://example.com")).rejects.toThrow(
-        "GitLab API timeout after 20000ms"
+      // Disable retry - caller aborts are not retryable anyway
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "The operation was aborted"
       );
     });
 
@@ -63,7 +69,10 @@ describe("Fetch Utils Coverage Tests", () => {
       const networkError = new Error("Network error");
       mockFetch.mockRejectedValue(networkError);
 
-      await expect(enhancedFetch("https://example.com")).rejects.toThrow("Network error");
+      // Disable retry to test error propagation immediately
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "Network error"
+      );
     });
 
     it("should merge custom headers with defaults", async () => {
@@ -424,7 +433,7 @@ describe("Fetch Utils Coverage Tests", () => {
       const setTimeoutSpy = jest
         .spyOn(global, "setTimeout")
         .mockImplementation((callback, delay) => {
-          if (delay === 20000) {
+          if (delay === 10000) {
             // API_TIMEOUT_MS default value
             // Execute the callback immediately to simulate timeout
             callback();
@@ -440,7 +449,7 @@ describe("Fetch Utils Coverage Tests", () => {
 
       await enhancedFetch("https://gitlab.example.com/api/test");
 
-      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 20000);
+      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10000);
 
       setTimeoutSpy.mockRestore();
     });
@@ -460,6 +469,29 @@ describe("Fetch Utils Coverage Tests", () => {
       } finally {
         process.env.GITLAB_TOKEN = originalToken;
       }
+    });
+  });
+
+  describe("resetDispatcherCache", () => {
+    it("should reset the dispatcher cache", () => {
+      // Call resetDispatcherCache to reset cached dispatcher
+      resetDispatcherCache();
+
+      // After reset, createFetchOptions should reinitialize
+      const options = createFetchOptions();
+      expect(typeof options).toBe("object");
+    });
+
+    it("should allow dispatcher to be reinitialized after reset", () => {
+      // First call initializes dispatcher
+      createFetchOptions();
+
+      // Reset the cache
+      resetDispatcherCache();
+
+      // Second call should reinitialize (not use cached)
+      const options = createFetchOptions();
+      expect(typeof options).toBe("object");
     });
   });
 });

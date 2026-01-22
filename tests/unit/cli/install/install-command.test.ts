@@ -599,6 +599,10 @@ describe("install-command", () => {
         start: jest.fn(),
         stop: jest.fn(),
         message: jest.fn(),
+        cancel: jest.fn(),
+        error: jest.fn(),
+        clear: jest.fn(),
+        isCancelled: false,
       });
       consoleSpy = jest.spyOn(console, "log").mockImplementation();
       // Reset installToClients mock to return success

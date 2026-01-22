@@ -63,7 +63,7 @@ export async function runWizard(): Promise<void> {
       message: "Enter your GitLab instance URL:",
       placeholder: "https://gitlab.example.com",
       validate: value => {
-        const result = validateGitLabUrl(value);
+        const result = validateGitLabUrl(value ?? "");
         return result.valid ? undefined : result.error;
       },
     });

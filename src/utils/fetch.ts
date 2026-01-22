@@ -22,6 +22,10 @@ import {
   NODE_TLS_REJECT_UNAUTHORIZED,
   GITLAB_TOKEN,
   API_TIMEOUT_MS,
+  API_RETRY_ENABLED,
+  API_RETRY_MAX_ATTEMPTS,
+  API_RETRY_BASE_DELAY_MS,
+  API_RETRY_MAX_DELAY_MS,
 } from "../config";
 import { isOAuthEnabled, getTokenContext } from "../oauth/index";
 
@@ -189,10 +193,209 @@ export function createFetchOptions(): Record<string, unknown> {
   return dispatcher ? { dispatcher } : {};
 }
 
+// ============================================================================
+// Retry Logic
+// ============================================================================
+
 /**
- * Enhanced fetch with GitLab support and Node.js v24 compatibility
+ * Extended fetch options with retry configuration
  */
-export async function enhancedFetch(url: string, options: RequestInit = {}): Promise<Response> {
+export interface FetchWithRetryOptions extends RequestInit {
+  /** Enable retry for this request (default: true for GET/HEAD/OPTIONS, false otherwise) */
+  retry?: boolean;
+  /** Maximum number of retry attempts (default: from config) */
+  maxRetries?: number;
+}
+
+/**
+ * Sleep for a specified duration with optional abort support
+ * @param ms - Duration to sleep in milliseconds
+ * @param signal - Optional AbortSignal to cancel the sleep early
+ */
+function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Helper to get abort error - ensures we reject with an AbortError-typed instance
+    // Preserves AbortError semantics so downstream code can identify abort errors
+    const getAbortError = (): Error => {
+      const reason: unknown = signal?.reason;
+
+      // If reason is already an Error, ensure it's identifiable as AbortError
+      if (reason instanceof Error) {
+        if (reason.name !== "AbortError") {
+          reason.name = "AbortError";
+        }
+        return reason;
+      }
+
+      // For non-Error reasons, create DOMException with AbortError name
+      const message = reason !== undefined ? String(reason) : "Aborted";
+      return new DOMException(message, "AbortError");
+    };
+
+    if (signal?.aborted) {
+      reject(getAbortError());
+      return;
+    }
+
+    let abortHandler: (() => void) | undefined;
+
+    const timeoutId = setTimeout(() => {
+      // Clean up abort listener on normal completion
+      if (abortHandler) {
+        signal?.removeEventListener("abort", abortHandler);
+      }
+      resolve();
+    }, ms);
+
+    if (signal) {
+      abortHandler = () => {
+        clearTimeout(timeoutId);
+        reject(getAbortError());
+      };
+      signal.addEventListener("abort", abortHandler, { once: true });
+    }
+  });
+}
+
+/**
+ * Redact sensitive information from URLs for safe logging
+ * Masks upload secrets, tokens in paths, and sensitive query parameters
+ */
+function redactUrlForLogging(url: string): string {
+  try {
+    const parsed = new URL(url);
+
+    // Redact URL userinfo (user:pass@host)
+    if (parsed.username) parsed.username = "[REDACTED]";
+    if (parsed.password) parsed.password = "[REDACTED]";
+
+    // Redact upload secrets in path: /uploads/<secret>/<filename> -> /uploads/[REDACTED]/<filename>
+    // Secret can be any string (not just hex), so match any path segment after /uploads/
+    parsed.pathname = parsed.pathname.replace(/\/uploads\/([^/]+)\//gi, "/uploads/[REDACTED]/");
+
+    // Redact any path segment that looks like a secret/token (32+ hex chars)
+    // Match both mid-path (/token/) and end-of-path (/token) tokens
+    parsed.pathname = parsed.pathname.replace(/\/([a-f0-9]{32,})(\/|$)/gi, "/[REDACTED]$2");
+
+    // Redact sensitive query parameters
+    const sensitiveParams = [
+      "private_token",
+      "access_token",
+      "oauth_token",
+      "token",
+      "secret",
+      "key",
+      "password",
+      "auth",
+    ];
+    for (const param of sensitiveParams) {
+      if (parsed.searchParams.has(param)) {
+        parsed.searchParams.set(param, "[REDACTED]");
+      }
+    }
+
+    return parsed.toString();
+  } catch {
+    // If URL parsing fails, return a safe fallback
+    // Extract only scheme and host, excluding any userinfo (user:pass@)
+    const schemeMatch = url.match(/^(https?):\/\//);
+    if (!schemeMatch) return "[INVALID_URL]";
+
+    // Remove userinfo if present and extract host
+    const afterScheme = url.slice(schemeMatch[0].length);
+    const atIndex = afterScheme.indexOf("@");
+    const hostPart = atIndex >= 0 ? afterScheme.slice(atIndex + 1) : afterScheme;
+    const hostMatch = hostPart.match(/^([^/:]+)/);
+
+    return hostMatch ? `${schemeMatch[1]}://[REDACTED_HOST]/[URL_PARSE_ERROR]` : "[INVALID_URL]";
+  }
+}
+
+/**
+ * Determine if an error is retryable
+ * Retryable errors: internal timeouts, network errors
+ * NOT retryable: caller-initiated aborts (AbortError from caller signal)
+ */
+function isRetryableError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+
+  const message = error.message.toLowerCase();
+
+  // Caller-initiated AbortErrors are NOT retryable
+  // (doFetch converts internal timeouts to "GitLab API timeout" message)
+  if (error.name === "AbortError") {
+    return false;
+  }
+
+  // Internal timeout errors (converted by doFetch) are retryable
+  if (message.includes("gitlab api timeout")) {
+    return true;
+  }
+
+  // Network errors (fetch failures) are retryable
+  if (
+    message.includes("econnrefused") ||
+    message.includes("econnreset") ||
+    message.includes("etimedout") ||
+    message.includes("enotfound") ||
+    message.includes("network")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
+ * Determine if an HTTP response status is retryable
+ * 5xx server errors are retryable, 429 rate limit is retryable after delay
+ */
+function isRetryableStatus(status: number): boolean {
+  return status >= 500 || status === 429;
+}
+
+/**
+ * Calculate exponential backoff delay
+ */
+function calculateBackoffDelay(attempt: number): number {
+  const delay = API_RETRY_BASE_DELAY_MS * Math.pow(2, attempt);
+  return Math.min(delay, API_RETRY_MAX_DELAY_MS);
+}
+
+/**
+ * Parse Retry-After header value
+ * Supports both delta-seconds (integer) and HTTP-date (RFC 7231) formats
+ * @returns delay in milliseconds, or null if parsing fails
+ */
+function parseRetryAfter(retryAfter: string): number | null {
+  // Try delta-seconds first (most common)
+  // Accept 0 or positive integers per RFC 7231 (0 means "retry immediately")
+  // Allow leading zeros per RFC 7231 delta-seconds = 1*DIGIT (e.g., "01", "001")
+  const trimmed = retryAfter.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = parseInt(trimmed, 10);
+    if (seconds >= 0) {
+      return seconds * 1000;
+    }
+  }
+
+  // Try HTTP-date format (RFC 7231)
+  // Example: "Wed, 21 Oct 2015 07:28:00 GMT"
+  const dateMs = Date.parse(retryAfter);
+  if (!isNaN(dateMs)) {
+    const delayMs = dateMs - Date.now();
+    // Only return positive delays
+    return delayMs > 0 ? delayMs : null;
+  }
+
+  return null;
+}
+
+/**
+ * Perform a single fetch request with timeout
+ * Internal function used by enhancedFetch
+ */
+async function doFetch(url: string, options: RequestInit = {}): Promise<Response> {
   const dispatcher = getDispatcher();
   const cookieHeader = loadCookieHeader();
 
@@ -227,30 +430,226 @@ export async function enhancedFetch(url: string, options: RequestInit = {}): Pro
     headers.Cookie = cookieHeader;
   }
 
+  const method = (options.method ?? "GET").toUpperCase();
+
+  // Debug log at request start (redact sensitive URL parts)
+  const safeUrl = redactUrlForLogging(url);
+  logger.debug({ url: safeUrl, method, timeout: API_TIMEOUT_MS }, "Starting GitLab API request");
+
+  // Use a unique Symbol to identify internal timeout aborts vs caller aborts
+  const TIMEOUT_REASON = Symbol("GitLab API timeout");
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+  const timeoutId = setTimeout(() => controller.abort(TIMEOUT_REASON), API_TIMEOUT_MS);
+
+  // Merge caller signal with internal timeout signal
+  // Use AbortSignal.any() if available (Node.js 20+), otherwise use listener pattern
+  let mergedSignal: AbortSignal = controller.signal;
+  const callerSignal = options.signal as AbortSignal | undefined;
+  let callerAbortHandler: (() => void) | undefined;
+
+  if (callerSignal) {
+    if (typeof AbortSignal.any === "function") {
+      // Node.js 20+ - use AbortSignal.any for clean signal merging
+      mergedSignal = AbortSignal.any([controller.signal, callerSignal]);
+    } else {
+      // Fallback for older Node.js - forward caller abort to our controller
+      if (callerSignal.aborted) {
+        controller.abort(callerSignal.reason);
+      } else {
+        callerAbortHandler = () => controller.abort(callerSignal.reason);
+        callerSignal.addEventListener("abort", callerAbortHandler, { once: true });
+      }
+    }
+  }
+
+  // Helper to clean up listeners
+  const cleanup = () => {
+    clearTimeout(timeoutId);
+    if (callerAbortHandler && callerSignal) {
+      callerSignal.removeEventListener("abort", callerAbortHandler);
+    }
+  };
 
   const fetchOptions: Record<string, unknown> = {
     ...options,
     headers,
-    signal: controller.signal,
+    signal: mergedSignal,
   };
 
   if (dispatcher) {
     fetchOptions.dispatcher = dispatcher;
   }
 
+  const startTime = Date.now();
   try {
     const response = await fetch(url, fetchOptions as RequestInit);
-    clearTimeout(timeoutId);
+    cleanup();
+
+    const duration = Date.now() - startTime;
+    logger.debug(
+      { url: safeUrl, method, status: response.status, duration },
+      "GitLab API request completed"
+    );
+
     return response;
   } catch (error) {
-    clearTimeout(timeoutId);
+    cleanup();
+    const duration = Date.now() - startTime;
+
     if (error instanceof Error && error.name === "AbortError") {
-      throw new Error(`GitLab API timeout after ${API_TIMEOUT_MS}ms`);
+      // Distinguish between internal timeout and caller abort
+      // Check if our internal controller was aborted with timeout reason
+      const isInternalTimeout =
+        controller.signal.aborted && controller.signal.reason === TIMEOUT_REASON;
+
+      if (isInternalTimeout) {
+        // Internal timeout - log and throw timeout error
+        logger.warn(
+          { url: safeUrl, method, timeout: API_TIMEOUT_MS, duration },
+          "GitLab API request timed out"
+        );
+        throw new Error(`GitLab API timeout after ${API_TIMEOUT_MS}ms`);
+      } else {
+        // Caller abort - re-throw original error to preserve abort reason
+        logger.debug(
+          { url: safeUrl, method, duration, reason: callerSignal?.reason },
+          "GitLab API request aborted by caller"
+        );
+        throw error;
+      }
     }
+
+    // Log other errors with full error object for stack trace
+    logger.warn(
+      {
+        url: safeUrl,
+        method,
+        err: error instanceof Error ? error : new Error(String(error)),
+        duration,
+      },
+      "GitLab API request failed"
+    );
     throw error;
   }
+}
+
+/**
+ * Enhanced fetch with GitLab support, retry logic, and Node.js v24 compatibility
+ *
+ * @param url - URL to fetch
+ * @param options - Fetch options with optional retry configuration
+ * @returns Response from the server
+ *
+ * Retry behavior:
+ * - By default, safe/read-only methods (GET/HEAD/OPTIONS) may be retried when
+ *   global API retry is enabled.
+ * - Other methods (e.g. POST/PUT/DELETE/PATCH) do NOT retry by default.
+ * - Override per request with options.retry = true or false.
+ * - Retries on: internal timeouts, network errors, 5xx responses, and 429 Too Many Requests.
+ *   For 429, the Retry-After header is honored when present (delta-seconds or HTTP-date).
+ * - Caller-provided AbortSignal aborts are NOT retried - they propagate immediately.
+ * - Uses exponential backoff (configurable via API_RETRY_* settings).
+ *
+ * Timing considerations:
+ * - With retries enabled (default for GET), worst-case time is:
+ *   (maxRetries + 1) * timeout + sum of backoff delays
+ * - Default: 4 attempts * 10s timeout + ~7s delays = ~47s worst case
+ * - Disable retries (options.retry = false) for time-sensitive operations
+ */
+export async function enhancedFetch(
+  url: string,
+  options: FetchWithRetryOptions = {}
+): Promise<Response> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const isIdempotent = method === "GET" || method === "HEAD" || method === "OPTIONS";
+  const safeUrl = redactUrlForLogging(url);
+
+  // Determine if retry is enabled for this request
+  const shouldRetry = options.retry ?? (API_RETRY_ENABLED && isIdempotent);
+  const maxRetries = options.maxRetries ?? API_RETRY_MAX_ATTEMPTS;
+
+  // Extract retry options from fetch options to pass clean options to doFetch
+  const { retry: _retry, maxRetries: _maxRetries, ...fetchOptions } = options;
+
+  // If retry is disabled, just do a single fetch
+  if (!shouldRetry || maxRetries <= 0) {
+    return doFetch(url, fetchOptions);
+  }
+
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await doFetch(url, fetchOptions);
+
+      // Check if response status is retryable (5xx, 429)
+      if (isRetryableStatus(response.status) && attempt < maxRetries) {
+        // For 429, check Retry-After header (supports delta-seconds and HTTP-date)
+        let retryDelay = calculateBackoffDelay(attempt);
+        const retryAfter = response.headers.get("Retry-After");
+        if (retryAfter && response.status === 429) {
+          const parsedDelay = parseRetryAfter(retryAfter);
+          if (parsedDelay !== null) {
+            // Cap Retry-After to max delay to prevent excessive waits
+            retryDelay = Math.min(parsedDelay, API_RETRY_MAX_DELAY_MS);
+          }
+        }
+
+        logger.warn(
+          {
+            url: safeUrl,
+            method,
+            status: response.status,
+            attempt: attempt + 1,
+            maxRetries,
+            retryDelay,
+          },
+          "Retrying request after server error"
+        );
+
+        // Cancel response body to release connection before retry
+        // Wrap in try-catch as cancel() can throw if body is already disturbed
+        try {
+          await response.body?.cancel();
+        } catch {
+          // Body already consumed or errored - safe to ignore
+        }
+
+        await sleep(retryDelay, fetchOptions.signal ?? undefined);
+        continue;
+      }
+
+      return response;
+    } catch (error) {
+      lastError = error instanceof Error ? error : new Error(String(error));
+
+      // Check if error is retryable and we have attempts left
+      if (isRetryableError(error) && attempt < maxRetries) {
+        const retryDelay = calculateBackoffDelay(attempt);
+
+        logger.warn(
+          {
+            url: safeUrl,
+            method,
+            error: lastError.message,
+            attempt: attempt + 1,
+            maxRetries,
+            retryDelay,
+          },
+          "Retrying request after error"
+        );
+
+        await sleep(retryDelay, fetchOptions.signal ?? undefined);
+        continue;
+      }
+
+      // Not retryable or no attempts left
+      throw lastError;
+    }
+  }
+
+  /* istanbul ignore next -- unreachable: loop always exits via return or throw */
+  throw lastError ?? new Error("Unexpected: retry loop exited without result");
 }
 
 export function resetDispatcherCache(): void {

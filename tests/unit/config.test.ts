@@ -472,6 +472,24 @@ describe("config.ts", () => {
       expect(overrides.has("invalidentry:")).toBe(false);
       expect(overrides.get("manage:valid")).toBe("Valid entry");
     });
+
+    it("should skip entries with empty tool or action name after split", () => {
+      // Empty action name (trailing underscore)
+      process.env.GITLAB_ACTION_MANAGE_ = "Empty action";
+      // Empty tool name (leading underscore after prefix)
+      process.env.GITLAB_ACTION__DELETE = "Empty tool";
+      // Valid entry for comparison
+      process.env.GITLAB_ACTION_BROWSE_LIST = "Valid entry";
+
+      const config = require("../../src/config");
+      const overrides = config.getActionDescriptionOverrides();
+
+      // These should be skipped due to empty tool/action
+      expect(overrides.has("manage:")).toBe(false);
+      expect(overrides.has(":delete")).toBe(false);
+      // Valid entry should be present
+      expect(overrides.get("browse:list")).toBe("Valid entry");
+    });
   });
 
   describe("getParamDescriptionOverrides", () => {
@@ -522,6 +540,35 @@ describe("config.ts", () => {
       const overrides = config.getParamDescriptionOverrides();
 
       expect(overrides.get("manage_milestone:title")).toBe("Milestone title");
+    });
+
+    it("should skip entries without underscore separator", () => {
+      process.env.GITLAB_PARAM_INVALIDENTRY = "Invalid entry";
+      process.env.GITLAB_PARAM_MANAGE_VALID = "Valid entry";
+
+      const config = require("../../src/config");
+      const overrides = config.getParamDescriptionOverrides();
+
+      expect(overrides.has("invalidentry:")).toBe(false);
+      expect(overrides.get("manage:valid")).toBe("Valid entry");
+    });
+
+    it("should skip entries with empty tool or param name after split", () => {
+      // Empty param name (trailing underscore)
+      process.env.GITLAB_PARAM_MANAGE_ = "Empty param";
+      // Empty tool name (leading underscore after prefix)
+      process.env.GITLAB_PARAM__TITLE = "Empty tool";
+      // Valid entry for comparison
+      process.env.GITLAB_PARAM_BROWSE_QUERY = "Valid entry";
+
+      const config = require("../../src/config");
+      const overrides = config.getParamDescriptionOverrides();
+
+      // These should be skipped due to empty tool/param
+      expect(overrides.has("manage:")).toBe(false);
+      expect(overrides.has(":title")).toBe(false);
+      // Valid entry should be present
+      expect(overrides.get("browse:query")).toBe("Valid entry");
     });
   });
 

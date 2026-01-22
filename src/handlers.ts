@@ -6,6 +6,8 @@ import {
   handleGitLabError,
   GitLabStructuredError,
   isStructuredToolError,
+  createTimeoutError,
+  parseTimeoutError,
 } from "./utils/error-handler";
 
 interface JsonSchemaProperty {
@@ -92,6 +94,20 @@ function extractActionFromError(error: unknown): string | undefined {
 }
 
 /**
+ * Check if a tool operation is idempotent (safe to retry)
+ * browse_* tools are always idempotent (read-only)
+ * list_*, get_*, and download_* tools are also idempotent
+ */
+function isIdempotentOperation(toolName: string): boolean {
+  return (
+    toolName.startsWith("browse_") ||
+    toolName.startsWith("list_") ||
+    toolName.startsWith("get_") ||
+    toolName.startsWith("download_")
+  );
+}
+
+/**
  * Convert an error to a structured GitLab error response
  * Extracts tool name and action from context, parses API errors
  */
@@ -113,16 +129,23 @@ function toStructuredError(
 
   if (!(error instanceof Error)) return null;
 
-  // Try to parse GitLab API error from message
-  const parsed = parseGitLabApiError(error.message);
-  if (!parsed) return null;
-
-  // Extract action: prefer from error cause, then from tool args
+  // Extract action early - needed for both timeout and API errors
   let action = extractActionFromError(error);
   if (!action && toolArgs && typeof toolArgs.action === "string") {
     action = toolArgs.action;
   }
   action ??= "unknown";
+
+  // Check for timeout error first (before parseGitLabApiError)
+  const timeoutMs = parseTimeoutError(error.message);
+  if (timeoutMs !== null) {
+    const retryable = isIdempotentOperation(toolName);
+    return createTimeoutError(toolName, action, timeoutMs, retryable);
+  }
+
+  // Try to parse GitLab API error from message
+  const parsed = parseGitLabApiError(error.message);
+  if (!parsed) return null;
 
   return handleGitLabError(
     { status: parsed.status, message: parsed.message },

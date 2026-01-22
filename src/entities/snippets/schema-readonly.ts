@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { requiredId } from "../utils";
+import { requiredId, paginationFields } from "../utils";
 
 // ============================================================================
 // browse_snippets - CQRS Query Tool (discriminated union schema)
@@ -46,8 +46,7 @@ const ListSnippetsSchema = z.object({
     .describe(
       "Return snippets created before this date (ISO 8601). Example: '2024-12-31T23:59:59Z'"
     ),
-  per_page: z.number().optional().describe("Number of items per page"),
-  page: z.number().optional().describe("Page number"),
+  ...paginationFields(),
 });
 
 // --- Action: get ---

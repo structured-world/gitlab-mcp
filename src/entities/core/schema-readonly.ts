@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { flexibleBoolean, requiredId } from "../utils";
+import { flexibleBoolean, requiredId, paginationFields } from "../utils";
 import { PaginationOptionsSchema } from "../shared";
 
 // ============================================================================
@@ -73,8 +73,7 @@ const SearchProjectsSchema = z.object({
   order_by: projectOrderByField,
   sort: projectSortField,
   with_programming_language: projectProgrammingLangField,
-  per_page: z.number().int().min(1).max(100).optional().describe("Results per page (1-100)."),
-  page: z.number().int().min(1).optional().describe("Page number for pagination."),
+  ...paginationFields(),
 });
 
 // --- Action: list ---
@@ -104,8 +103,7 @@ const ListProjectsSchema = z.object({
   order_by: projectOrderByField,
   sort: projectSortField,
   with_programming_language: projectProgrammingLangField,
-  per_page: z.number().int().min(1).max(100).optional().describe("Results per page (1-100)."),
-  page: z.number().int().min(1).optional().describe("Page number for pagination."),
+  ...paginationFields(),
 });
 
 // --- Action: get ---
@@ -143,8 +141,7 @@ const ListNamespacesSchema = z.object({
     .describe(
       "Minimum access level: 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner."
     ),
-  per_page: z.number().int().min(1).max(100).optional().describe("Results per page (1-100)."),
-  page: z.number().int().min(1).optional().describe("Page number for pagination."),
+  ...paginationFields(),
 });
 
 // --- Action: get ---
@@ -186,8 +183,7 @@ const ListCommitsSchema = z.object({
   order: z.enum(["default", "topo"]).optional().describe("Commit ordering: default or topo."),
   with_stats: flexibleBoolean.optional().describe("Include stats for each commit."),
   trailers: flexibleBoolean.optional().describe("Include Git trailers (Signed-off-by, etc.)."),
-  per_page: z.number().int().min(1).max(100).optional().describe("Results per page (1-100)."),
-  page: z.number().int().min(1).optional().describe("Page number for pagination."),
+  ...paginationFields(),
 });
 
 // --- Action: get ---
@@ -204,8 +200,7 @@ const GetCommitDiffSchema = z.object({
   project_id: commitProjectIdField,
   sha: commitShaField,
   unidiff: flexibleBoolean.optional().describe("Return unified diff format."),
-  per_page: z.number().int().min(1).max(100).optional().describe("Results per page (1-100)."),
-  page: z.number().int().min(1).optional().describe("Page number for pagination."),
+  ...paginationFields(),
 });
 
 // --- Discriminated union combining all actions ---
@@ -247,10 +242,6 @@ const eventSortField = z
   .enum(["asc", "desc"])
   .optional()
   .describe("Sort order: asc=oldest first, desc=newest first.");
-const eventPaginationFields = {
-  per_page: z.number().int().min(1).max(100).optional().describe("Results per page (1-100)."),
-  page: z.number().int().min(1).optional().describe("Page number for pagination."),
-};
 
 // --- Action: user ---
 const UserEventsSchema = z.object({
@@ -260,7 +251,7 @@ const UserEventsSchema = z.object({
   before: eventBeforeField,
   after: eventAfterField,
   sort: eventSortField,
-  ...eventPaginationFields,
+  ...paginationFields(),
 });
 
 // --- Action: project ---
@@ -272,7 +263,7 @@ const ProjectEventsSchema = z.object({
   before: eventBeforeField,
   after: eventAfterField,
   sort: eventSortField,
-  ...eventPaginationFields,
+  ...paginationFields(),
 });
 
 // --- Discriminated union combining all actions ---

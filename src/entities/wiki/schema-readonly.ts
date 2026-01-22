@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { flexibleBoolean } from "../utils";
+import { flexibleBoolean, paginationFields } from "../utils";
 
 // ============================================================================
 // browse_wiki - CQRS Query Tool (discriminated union schema)
@@ -16,8 +16,7 @@ const ListWikiSchema = z.object({
   action: z.literal("list").describe("List all wiki pages"),
   namespace: namespaceField,
   with_content: flexibleBoolean.optional().describe("Include content of the wiki pages"),
-  per_page: z.number().optional().describe("Number of items per page"),
-  page: z.number().optional().describe("Page number"),
+  ...paginationFields(),
 });
 
 // --- Action: get ---

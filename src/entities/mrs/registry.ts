@@ -172,7 +172,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: "browse_mr_discussions",
       description:
-        'BROWSE MR discussions and draft notes. Actions: "list" shows all discussion threads (default: 20 per page), "drafts" lists unpublished draft notes, "draft" gets single draft note.',
+        'BROWSE MR discussions and draft notes. Actions: "list" shows all discussion threads, "drafts" lists unpublished draft notes, "draft" gets single draft note.',
       inputSchema: z.toJSONSchema(BrowseMrDiscussionsSchema),
       gate: { envVar: "USE_MRS", defaultValue: true },
       handler: async (args: unknown) => {

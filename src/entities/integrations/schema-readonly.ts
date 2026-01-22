@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginationFields } from "../utils";
 
 // ============================================================================
 // list_integrations - Read-only tool for listing project integrations
@@ -6,8 +7,7 @@ import { z } from "zod";
 
 export const ListIntegrationsSchema = z.object({
   project_id: z.string().describe("Project ID or URL-encoded path"),
-  per_page: z.number().int().min(1).max(100).optional().describe("Number of items per page"),
-  page: z.number().int().min(1).optional().describe("Page number"),
+  ...paginationFields(),
 });
 
 // ============================================================================

@@ -2,6 +2,56 @@ import { z } from "zod";
 
 const DEFAULT_NULL = process.env.DEFAULT_NULL === "true";
 
+/**
+ * GitLab REST API default pagination value.
+ * @see https://docs.gitlab.com/ee/api/rest/index.html#pagination
+ */
+export const GITLAB_DEFAULT_PER_PAGE = 20;
+
+/**
+ * Maximum items per page allowed by GitLab API.
+ */
+export const GITLAB_MAX_PER_PAGE = 100;
+
+/**
+ * Creates pagination fields for Zod schemas with dynamic descriptions.
+ * The description automatically includes the default value.
+ *
+ * @param defaultPerPage - Default items per page (default: 20)
+ * @param maxPerPage - Maximum items per page (default: 100)
+ * @returns Object with page and per_page Zod fields
+ *
+ * @example
+ * // In schema definition:
+ * const ListSchema = z.object({
+ *   action: z.literal("list"),
+ *   ...paginationFields(),  // Uses GitLab defaults (20, max 100)
+ * });
+ *
+ * @example
+ * // With custom default:
+ * const ListSchema = z.object({
+ *   action: z.literal("list"),
+ *   ...paginationFields(50),  // Default 50, max 100
+ * });
+ */
+export function paginationFields(
+  defaultPerPage: number = GITLAB_DEFAULT_PER_PAGE,
+  maxPerPage: number = GITLAB_MAX_PER_PAGE
+) {
+  return {
+    per_page: z
+      .number()
+      .int()
+      .min(1)
+      .max(maxPerPage)
+      .optional()
+      .default(defaultPerPage)
+      .describe(`Number of items per page (default: ${defaultPerPage}, max: ${maxPerPage})`),
+    page: z.number().int().min(1).optional().describe("Page number (default: 1)"),
+  };
+}
+
 export const flexibleBoolean = z.preprocess(val => {
   if (typeof val === "boolean") {
     return val;

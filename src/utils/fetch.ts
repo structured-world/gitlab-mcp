@@ -214,12 +214,22 @@ export interface FetchWithRetryOptions extends RequestInit {
  */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
-    // Helper to get abort error - ensures we always reject with an Error instance
+    // Helper to get abort error - ensures we reject with an AbortError-typed instance
+    // Preserves AbortError semantics so downstream code can identify abort errors
     const getAbortError = (): Error => {
       const reason: unknown = signal?.reason;
-      if (reason instanceof Error) return reason;
-      if (reason !== undefined) return new Error(String(reason));
-      return new DOMException("Aborted", "AbortError");
+
+      // If reason is already an Error, ensure it's identifiable as AbortError
+      if (reason instanceof Error) {
+        if (reason.name !== "AbortError") {
+          reason.name = "AbortError";
+        }
+        return reason;
+      }
+
+      // For non-Error reasons, create DOMException with AbortError name
+      const message = reason !== undefined ? String(reason) : "Aborted";
+      return new DOMException(message, "AbortError");
     };
 
     if (signal?.aborted) {

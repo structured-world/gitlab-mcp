@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-21 | Tools: 47 | Version: 6.24.1
+> Generated: 2026-01-22 | Tools: 47 | Version: 6.25.0
 
 ## Table of Contents
 
@@ -468,7 +468,7 @@ CREATE GROUP: Create a new GitLab group/namespace. Groups organize projects and 
 
 ### browse_work_items [tier: Free]
 
-BROWSE work items. Actions: "list" returns work items with numeric IDs (groups return epics, projects return issues/tasks), "get" retrieves single work item - use the numeric ID from list results (e.g., "5953"). Legacy GIDs like gid://gitlab/Issue/X are auto-normalized.
+BROWSE work items. Actions: "list" returns work items with numeric IDs (groups return epics, projects return issues/tasks), "get" retrieves single work item - use the numeric ID from list results (e.g., "5953") or namespace + iid from URL (e.g., namespace: "group/project", iid: "95" from /issues/95). Legacy GIDs like gid://gitlab/Issue/X are auto-normalized.
 
 #### Actions
 
@@ -479,18 +479,24 @@ BROWSE work items. Actions: "list" returns work items with numeric IDs (groups r
 
 #### Parameters
 
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `namespace` | string | No | Namespace path (group or project). Groups return epics, projects return issues/tasks. |
+
 **Action `get`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `id` | string | Yes | Work item ID to retrieve - use numeric ID from list results (e.g., '5953') |
+| `id` | string | No | Work item ID to retrieve - use numeric ID from list results (e.g., '5953') |
+| `iid` | string | No | Internal ID from URL (e.g., '95' from /issues/95). Use with namespace parameter. |
 
 **Action `list`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `first` | number | Yes | Number of items to return |
-| `namespace` | string | Yes | Namespace path (group or project). Groups return epics, projects return issues/tasks. |
 | `simple` | boolean | Yes | Return simplified structure with essential fields only. RECOMMENDED: Use default true for most cases. |
 | `state` | string[] | Yes | Filter by work item state. Defaults to OPEN items only. Use ["OPEN", "CLOSED"] for all items. |
 | `after` | string | No | Cursor for pagination (use endCursor from previous response) |
@@ -1133,7 +1139,8 @@ BROWSE milestones. Actions: "list" shows milestones with filtering, "get" retrie
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `milestone_id` | string | Yes | The ID of a project or group milestone |
+| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
+| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
 | `page` | number | No | Page number |
 | `per_page` | number | No | Number of items per page |
 
@@ -1141,13 +1148,15 @@ BROWSE milestones. Actions: "list" shows milestones with filtering, "get" retrie
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `milestone_id` | string | Yes | The ID of a project or group milestone |
+| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
+| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
 
 **Action `issues`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `milestone_id` | string | Yes | The ID of a project or group milestone |
+| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
+| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
 | `page` | number | No | Page number |
 | `per_page` | number | No | Number of items per page |
 
@@ -1169,7 +1178,8 @@ BROWSE milestones. Actions: "list" shows milestones with filtering, "get" retrie
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `milestone_id` | string | Yes | The ID of a project or group milestone |
+| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
+| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
 | `page` | number | No | Page number |
 | `per_page` | number | No | Number of items per page |
 
@@ -1218,21 +1228,24 @@ MANAGE milestones. Actions: "create" creates new milestone, "update" modifies ex
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `milestone_id` | string | Yes | The ID of the milestone to delete |
+| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
+| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
 
 **Action `promote`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `milestone_id` | string | Yes | The ID of the project milestone to promote to group level |
+| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
+| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
 
 **Action `update`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `milestone_id` | string | Yes | The ID of the milestone to update |
 | `description` | string | No | The new description of the milestone |
 | `due_date` | string | No | The due date of the milestone (YYYY-MM-DD) |
+| `iid` | string | No | Milestone IID from URL (e.g., '3' from /milestones/3). Alternative to milestone_id. |
+| `milestone_id` | string | No | Milestone ID (same as IID in GitLab URLs, e.g., '3' from /milestones/3) |
 | `start_date` | string | No | The start date of the milestone (YYYY-MM-DD) |
 | `state_event` | string | No | State event to apply: 'close' or 'activate' |
 | `title` | string | No | The new title of the milestone |

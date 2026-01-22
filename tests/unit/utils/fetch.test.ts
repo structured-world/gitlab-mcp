@@ -467,15 +467,12 @@ describe("Enhanced Fetch Utilities", () => {
       );
     });
 
-    it("should handle invalid URLs gracefully in redaction", async () => {
-      // This tests the catch block in redactUrlForLogging
+    it("should handle valid URLs in redaction logging", async () => {
+      // Test that valid URLs are properly logged with debug
       const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
       const { logger } = require("../../../src/logger");
 
-      // The fetch will still work but the URL parsing in redactUrlForLogging may fail
-      // for relative URLs - but our current implementation handles full URLs
-      // Test with a URL that has protocol but invalid structure
       await enhancedFetch("https://gitlab.com/api/v4");
 
       expect(logger.debug).toHaveBeenCalled();

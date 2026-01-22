@@ -243,9 +243,18 @@ function redactUrlForLogging(url: string): string {
 
     return parsed.toString();
   } catch {
-    // If URL parsing fails, return a safe fallback with hostname only
-    const hostMatch = url.match(/^(https?:\/\/[^/]+)/);
-    return hostMatch ? `${hostMatch[1]}/[URL_PARSE_ERROR]` : "[INVALID_URL]";
+    // If URL parsing fails, return a safe fallback
+    // Extract only scheme and host, excluding any userinfo (user:pass@)
+    const schemeMatch = url.match(/^(https?):\/\//);
+    if (!schemeMatch) return "[INVALID_URL]";
+
+    // Remove userinfo if present and extract host
+    const afterScheme = url.slice(schemeMatch[0].length);
+    const atIndex = afterScheme.indexOf("@");
+    const hostPart = atIndex >= 0 ? afterScheme.slice(atIndex + 1) : afterScheme;
+    const hostMatch = hostPart.match(/^([^/:]+)/);
+
+    return hostMatch ? `${schemeMatch[1]}://[REDACTED_HOST]/[URL_PARSE_ERROR]` : "[INVALID_URL]";
   }
 }
 

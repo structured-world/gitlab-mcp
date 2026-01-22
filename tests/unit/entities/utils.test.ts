@@ -9,6 +9,9 @@ import {
   assertDefined,
   requiredId,
   validateScopeId,
+  paginationFields,
+  GITLAB_DEFAULT_PER_PAGE,
+  GITLAB_MAX_PER_PAGE,
 } from "../../../src/entities/utils";
 import { setupMockFetch, resetMocks } from "../../utils/testHelpers";
 
@@ -358,6 +361,93 @@ describe("entity utilities", () => {
 
     it("should reject empty strings", () => {
       expect(() => requiredId.parse("")).toThrow();
+    });
+  });
+
+  describe("paginationFields", () => {
+    it("should export correct default constants", () => {
+      expect(GITLAB_DEFAULT_PER_PAGE).toBe(20);
+      expect(GITLAB_MAX_PER_PAGE).toBe(100);
+    });
+
+    it("should return per_page and page fields", () => {
+      const fields = paginationFields();
+      expect(fields).toHaveProperty("per_page");
+      expect(fields).toHaveProperty("page");
+    });
+
+    it("should use default values when no arguments provided", () => {
+      const fields = paginationFields();
+      const { z } = require("zod");
+      const schema = z.object(fields);
+
+      // Parse with empty object - should get defaults
+      const result = schema.parse({});
+      expect(result.per_page).toBe(20);
+      expect(result.page).toBeUndefined();
+    });
+
+    it("should allow custom default per_page", () => {
+      const fields = paginationFields(50);
+      const { z } = require("zod");
+      const schema = z.object(fields);
+
+      const result = schema.parse({});
+      expect(result.per_page).toBe(50);
+    });
+
+    it("should allow custom max per_page", () => {
+      const fields = paginationFields(20, 50);
+      const { z } = require("zod");
+      const schema = z.object(fields);
+
+      // Should reject values above custom max
+      const result = schema.safeParse({ per_page: 51 });
+      expect(result.success).toBe(false);
+
+      // Should accept values at custom max
+      const validResult = schema.safeParse({ per_page: 50 });
+      expect(validResult.success).toBe(true);
+    });
+
+    it("should validate per_page is positive integer", () => {
+      const fields = paginationFields();
+      const { z } = require("zod");
+      const schema = z.object(fields);
+
+      expect(schema.safeParse({ per_page: 0 }).success).toBe(false);
+      expect(schema.safeParse({ per_page: -1 }).success).toBe(false);
+      expect(schema.safeParse({ per_page: 1.5 }).success).toBe(false);
+      expect(schema.safeParse({ per_page: 1 }).success).toBe(true);
+    });
+
+    it("should validate per_page does not exceed max", () => {
+      const fields = paginationFields();
+      const { z } = require("zod");
+      const schema = z.object(fields);
+
+      expect(schema.safeParse({ per_page: 100 }).success).toBe(true);
+      expect(schema.safeParse({ per_page: 101 }).success).toBe(false);
+    });
+
+    it("should validate page is positive integer", () => {
+      const fields = paginationFields();
+      const { z } = require("zod");
+      const schema = z.object(fields);
+
+      expect(schema.safeParse({ page: 0 }).success).toBe(false);
+      expect(schema.safeParse({ page: -1 }).success).toBe(false);
+      expect(schema.safeParse({ page: 1.5 }).success).toBe(false);
+      expect(schema.safeParse({ page: 1 }).success).toBe(true);
+      expect(schema.safeParse({ page: 100 }).success).toBe(true);
+    });
+
+    it("should include dynamic description with default values", () => {
+      const fields = paginationFields(25, 75);
+      // The description should mention the custom defaults
+      const perPageDesc = fields.per_page.description;
+      expect(perPageDesc).toContain("25");
+      expect(perPageDesc).toContain("75");
     });
   });
 

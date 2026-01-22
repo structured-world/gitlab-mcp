@@ -1,6 +1,5 @@
 import { z } from "zod";
-import { paginationFields } from "../utils";
-import { flexibleBoolean, requiredId } from "../utils";
+import { flexibleBoolean, paginationFields, requiredId } from "../utils";
 
 // Pipeline related schemas
 export const GitLabPipelineSchema = z.object({

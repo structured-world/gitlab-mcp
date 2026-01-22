@@ -155,10 +155,8 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
             }
 
             // Schema validation guarantees at least one identifier is present
-            const milestoneIdentifier = (input.iid ?? input.milestone_id)!;
-            return gitlab.post(
-              `projects/${encodedPath}/milestones/${encodeURIComponent(milestoneIdentifier)}/promote`
-            );
+            const milestoneIdentifier = input.iid ?? input.milestone_id;
+            return gitlab.post(`projects/${encodedPath}/milestones/${milestoneIdentifier}/promote`);
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

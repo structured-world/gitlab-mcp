@@ -43,7 +43,7 @@ import { oauthAuthMiddleware, rateLimiterMiddleware } from "./middleware/index";
 // Schema mode auto-detection
 import { setDetectedSchemaMode } from "./utils/schema-utils";
 // Request logging utilities
-import { getRequestContext, truncateId } from "./utils/request-logger";
+import { getRequestContext } from "./utils/request-logger";
 
 // Create server instance
 export const server = new Server(
@@ -551,8 +551,6 @@ export async function startServer(): Promise<void> {
           {
             event: "mcp_request",
             ...requestContext,
-            mcpSessionId: truncateId(sessionId) ?? "none",
-            oauthSessionId: truncateId(oauthSessionId),
             hasToken: !!gitlabToken,
           },
           "MCP endpoint request received"

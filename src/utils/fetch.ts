@@ -214,8 +214,16 @@ export interface FetchWithRetryOptions extends RequestInit {
  */
 function sleep(ms: number, signal?: AbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
+    // Helper to get abort error - ensures we always reject with an Error instance
+    const getAbortError = (): Error => {
+      const reason: unknown = signal?.reason;
+      if (reason instanceof Error) return reason;
+      if (reason !== undefined) return new Error(String(reason));
+      return new DOMException("Aborted", "AbortError");
+    };
+
     if (signal?.aborted) {
-      reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+      reject(getAbortError());
       return;
     }
 
@@ -232,7 +240,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     if (signal) {
       abortHandler = () => {
         clearTimeout(timeoutId);
-        reject(signal.reason ?? new DOMException("Aborted", "AbortError"));
+        reject(getAbortError());
       };
       signal.addEventListener("abort", abortHandler, { once: true });
     }
@@ -256,7 +264,8 @@ function redactUrlForLogging(url: string): string {
     parsed.pathname = parsed.pathname.replace(/\/uploads\/([^/]+)\//gi, "/uploads/[REDACTED]/");
 
     // Redact any path segment that looks like a secret/token (32+ hex chars)
-    parsed.pathname = parsed.pathname.replace(/\/([a-f0-9]{32,})\//gi, "/[REDACTED]/");
+    // Match both mid-path (/token/) and end-of-path (/token) tokens
+    parsed.pathname = parsed.pathname.replace(/\/([a-f0-9]{32,})(\/|$)/gi, "/[REDACTED]$2");
 
     // Redact sensitive query parameters
     const sensitiveParams = [

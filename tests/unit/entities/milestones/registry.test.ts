@@ -175,6 +175,14 @@ describe("Milestones Registry - CQRS Tools", () => {
   });
 
   describe("Filtered Milestones Tools Function", () => {
+    it("should return all tools when called without arguments (default)", () => {
+      const allTools = getFilteredMilestonesTools();
+      const allDefinitions = getMilestonesToolDefinitions();
+
+      expect(allTools.length).toBe(allDefinitions.length);
+      expect(allTools.length).toBe(2);
+    });
+
     it("should return all tools in normal mode", () => {
       const allTools = getFilteredMilestonesTools(false);
       const allDefinitions = getMilestonesToolDefinitions();

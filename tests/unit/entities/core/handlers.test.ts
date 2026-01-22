@@ -330,8 +330,9 @@ describe("Core Registry Handlers", () => {
 
         await handler?.({ action: "diff", project_id: "456", sha: "def456" });
 
+        // Default pagination values are now included in the query
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          "https://test-gitlab.com/api/v4/projects/456/repository/commits/def456/diff?"
+          "https://test-gitlab.com/api/v4/projects/456/repository/commits/def456/diff?per_page=20"
         );
       });
     });
@@ -376,10 +377,9 @@ describe("Core Registry Handlers", () => {
 
         await handler?.({ action: "project", project_id: "999" });
 
-        // Trailing `?` is expected: URLSearchParams.toString() returns empty string
-        // when no params, and URL is constructed as `${base}?${params}` regardless
+        // Default pagination values are now included in the query
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          "https://test-gitlab.com/api/v4/projects/999/events?"
+          "https://test-gitlab.com/api/v4/projects/999/events?per_page=20"
         );
       });
     });

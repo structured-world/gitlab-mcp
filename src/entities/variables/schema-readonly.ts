@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { paginationFields } from "../utils";
 
 // ============================================================================
 // browse_variables - CQRS Query Tool (discriminated union schema)
@@ -25,8 +26,7 @@ const filterField = z
 const ListVariablesSchema = z.object({
   action: z.literal("list").describe("List all CI/CD variables"),
   namespace: namespaceField,
-  per_page: z.number().optional().describe("Number of items per page"),
-  page: z.number().optional().describe("Page number"),
+  ...paginationFields(),
 });
 
 // --- Action: get ---

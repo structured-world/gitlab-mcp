@@ -700,6 +700,7 @@ describe("MRS Registry", () => {
               query: {
                 include_diverged_commits_count: true,
                 include_rebase_in_progress: true,
+                per_page: 20,
               },
             }
           );

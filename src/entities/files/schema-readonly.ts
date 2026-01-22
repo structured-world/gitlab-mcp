@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { flexibleBoolean, requiredId } from "../utils";
+import { flexibleBoolean, requiredId, paginationFields } from "../utils";
 
 // ============================================================================
 // Response schemas for GitLab file API responses
@@ -59,8 +59,7 @@ const TreeActionSchema = z.object({
   ref: refField,
   path: z.string().optional().describe("Directory path to list"),
   recursive: flexibleBoolean.optional().describe("Include nested directories"),
-  per_page: z.number().int().min(1).max(100).optional().describe("Results per page (max 100)"),
-  page: z.number().int().min(1).optional().describe("Page number"),
+  ...paginationFields(),
 });
 
 // --- Action: content ---

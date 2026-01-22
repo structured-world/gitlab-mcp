@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { flexibleBoolean, requiredId } from "../utils";
+import { flexibleBoolean, paginationFields, requiredId } from "../utils";
 
 // Pipeline related schemas
 export const GitLabPipelineSchema = z.object({
@@ -243,8 +243,7 @@ const ListPipelinesSchema = z.object({
     .optional()
     .describe("Order pipelines by"),
   sort: z.enum(["asc", "desc"]).optional().describe("Sort order"),
-  per_page: z.number().optional().describe("Number of items per page"),
-  page: z.number().optional().describe("Page number"),
+  ...paginationFields(),
 });
 
 // --- Action: get ---
@@ -261,8 +260,7 @@ const ListPipelineJobsSchema = z.object({
   pipeline_id: requiredId.describe("The ID of the pipeline"),
   job_scope: z.array(JobScopeSchema).optional().describe("Scope of jobs to show"),
   include_retried: z.boolean().optional().describe("Include retried jobs in the response"),
-  per_page: z.number().optional().describe("Number of items per page"),
-  page: z.number().optional().describe("Page number"),
+  ...paginationFields(),
 });
 
 // --- Action: triggers ---
@@ -275,8 +273,7 @@ const ListPipelineTriggersSchema = z.object({
     .optional()
     .describe("Scope of trigger jobs to show"),
   include_retried: z.boolean().optional().describe("Include retried jobs in the response"),
-  per_page: z.number().optional().describe("Number of items per page"),
-  page: z.number().optional().describe("Page number"),
+  ...paginationFields(),
 });
 
 // --- Action: job ---

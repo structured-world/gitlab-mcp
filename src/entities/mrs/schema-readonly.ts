@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { flexibleBoolean, requiredId } from "../utils";
+import { flexibleBoolean, requiredId, paginationFields } from "../utils";
 
 // ============================================================================
 // browse_merge_requests - CQRS Query Tool (discriminated union schema)
@@ -91,8 +91,7 @@ const ListMergeRequestsSchema = z
       .optional()
       .describe("Include extra API associations"),
     min_access_level: z.number().optional().describe("Minimum access level filter (10-50)"),
-    per_page: z.number().optional().describe("Number of items per page"),
-    page: z.number().optional().describe("Page number"),
+    ...paginationFields(),
   })
   .passthrough();
 
@@ -120,8 +119,7 @@ const DiffsMergeRequestSchema = z
     merge_request_iid: mergeRequestIidField,
     include_diverged_commits_count: includeDivergedCommitsCountField,
     include_rebase_in_progress: includeRebaseInProgressField,
-    per_page: z.number().optional().describe("Number of items per page"),
-    page: z.number().optional().describe("Page number"),
+    ...paginationFields(),
   })
   .passthrough();
 
@@ -255,8 +253,7 @@ const ListMrDiscussionsSchema = z.object({
   action: z.literal("list").describe("List all discussion threads on an MR"),
   project_id: projectIdField,
   merge_request_iid: mergeRequestIidField,
-  per_page: z.number().optional().default(20).describe("Number of items per page (default: 20)"),
-  page: z.number().optional().describe("Page number"),
+  ...paginationFields(),
 });
 
 // --- Action: drafts ---

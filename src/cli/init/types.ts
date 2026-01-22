@@ -5,10 +5,13 @@
 /**
  * User role selection for preset mapping.
  *
- * Note: These are simplified wizard-facing role names, not actual preset names.
- * The mapping to actual presets (e.g., "reviewer" → "code-reviewer") is defined
- * in ROLE_PRESETS below. This allows user-friendly labels in the wizard while
- * mapping to the correct GITLAB_MCP_PRESET values.
+ * IMPORTANT: These are wizard-facing role names that users see and select.
+ * They differ from the actual GITLAB_MCP_PRESET values for better UX:
+ *   - "reviewer" (wizard) → "code-reviewer" (preset)
+ *   - "senior-developer" (wizard) → "senior-dev" (preset)
+ *   - "tech-lead" (wizard) → "full-access" (preset)
+ *
+ * The mapping is defined in ROLE_PRESETS below.
  */
 export type UserRole =
   | "developer"

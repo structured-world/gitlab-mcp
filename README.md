@@ -1,17 +1,11 @@
 # GitLab MCP Server
 
-**Maintained by:** [Dmitry Prudnikov](https://github.com/polaz) | **Original Author:** [zereight](https://github.com/zereight)
+[![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://structured-world.github.io/gitlab-mcp/coverage/)
 
-## @structured-world/gitlab-mcp
+A [Model Context Protocol](https://modelcontextprotocol.io) server that connects AI agents to the GitLab API — 47 tools across 17 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes.
 
-A Model Context Protocol server providing AI agents with access to the GitLab API. Fork of [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp) with bug fixes, strict TypeScript, and expanded features.
-
-![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp) ![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp) ![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg) ![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg) ![Codecov](https://codecov.io/gh/structured-world/gitlab-mcp/branch/main/graph/badge.svg) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://structured-world.github.io/gitlab-mcp/coverage/)
-
-## One-Click Install
-
-[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?name=gitlab-mcp&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
-[![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?name=gitlab-mcp&config=%7B%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
+[![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 
 ## Quick Start
 
@@ -32,7 +26,7 @@ A Model Context Protocol server providing AI agents with access to the GitLab AP
 
 **Requirements:** Node.js >= 24.0.0
 
-## Features
+## Highlights
 
 - **47 tools** across 17 entity types — projects, merge requests, pipelines, work items, wiki, and more
 - **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
@@ -103,26 +97,8 @@ docker run -i --rm -e GITLAB_TOKEN=your_token \
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR guidelines.
 
-## Support the Project
-
-<div align="center">
-
-![USDT TRC-20 Donation QR Code](assets/usdt-qr.svg)
-
-USDT (TRC-20): `TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA`
-
-</div>
-
 ## License
 
 Apache License 2.0 — see [LICENSE](LICENSE) for details.
 
-### Attribution
-
-This software includes code originally developed under the MIT License:
-- Original project: [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp)
-- See [LICENSE.MIT](LICENSE.MIT) for the original MIT license
-
----
-
-**Maintained by [Dmitry Prudnikov](https://github.com/polaz)** | **Original work by [zereight](https://github.com/zereight)**
+Based on [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp) (MIT). See [LICENSE.MIT](LICENSE.MIT).

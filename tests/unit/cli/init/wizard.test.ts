@@ -421,12 +421,13 @@ describe("wizard", () => {
 
       await runWizard();
 
-      // Should show warnings and note with deep link
-      expect(p.log.warn).toHaveBeenCalledWith("Could not open Claude Desktop automatically");
+      // Should show security warning before confirmation
       expect(p.log.warn).toHaveBeenCalledWith(
-        "Security: this link contains your GitLab token encoded. " +
-          "Do NOT share or store it in logs/chat."
+        "Security: the deep link encodes your GitLab token. " +
+          "It may be recorded in OS/app logs. Treat it like a password."
       );
+      // Should show warnings and note with deep link when open fails
+      expect(p.log.warn).toHaveBeenCalledWith("Could not open Claude Desktop automatically");
       expect(p.note).toHaveBeenCalledWith(
         "claude://test-deep-link",
         "Copy this sensitive link (treat like a password):"

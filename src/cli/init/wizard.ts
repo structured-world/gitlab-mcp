@@ -229,13 +229,19 @@ export async function runWizard(): Promise<void> {
     // Claude Code - offer CLI installation
     // Mask token in displayed command for security (actual command uses real token)
     p.note(maskSensitiveContent(generatedConfig.cliCommand), "Run this command to install:");
+    p.log.info("If copying this command, replace **** with your actual token.");
 
     const runNow = await p.confirm({
       message: "Run this command now?",
       initialValue: true,
     });
 
-    if (!p.isCancel(runNow) && runNow) {
+    if (p.isCancel(runNow)) {
+      p.cancel("Setup cancelled");
+      process.exit(0);
+    }
+
+    if (runNow) {
       // Execute claude mcp add command using spawnSync with argument array
       // to prevent command injection vulnerabilities
       const { spawnSync } = await import("child_process");
@@ -277,21 +283,27 @@ export async function runWizard(): Promise<void> {
   if (client === "claude-desktop") {
     const deepLink = generateClaudeDeepLink(wizardConfig);
 
+    p.log.warn(
+      "Security: the deep link encodes your GitLab token. " +
+        "It may be recorded in OS/app logs. Treat it like a password."
+    );
+
     const useDeepLink = await p.confirm({
-      message: "Open Claude Desktop to install automatically?",
+      message: "Open Claude Desktop with deep link?",
       initialValue: true,
     });
 
-    if (!p.isCancel(useDeepLink) && useDeepLink) {
+    if (p.isCancel(useDeepLink)) {
+      p.cancel("Setup cancelled");
+      process.exit(0);
+    }
+
+    if (useDeepLink) {
       const opened = await openUrl(deepLink);
       if (opened) {
         p.log.success("Claude Desktop should open with the configuration");
       } else {
         p.log.warn("Could not open Claude Desktop automatically");
-        p.log.warn(
-          "Security: this link contains your GitLab token encoded. " +
-            "Do NOT share or store it in logs/chat."
-        );
         p.note(deepLink, "Copy this sensitive link (treat like a password):");
       }
     }

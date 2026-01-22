@@ -1,3 +1,9 @@
+## [6.26.1](https://github.com/structured-world/gitlab-mcp/compare/v6.26.0...v6.26.1) (2026-01-22)
+
+### Bug Fixes
+
+* **mrs:** use global API endpoints for code change proposals ([#116](https://github.com/structured-world/gitlab-mcp/issues/116)) ([891b5b1](https://github.com/structured-world/gitlab-mcp/commit/891b5b1ee3bf20d902177d950798c656fa48c993)), closes [#115](https://github.com/structured-world/gitlab-mcp/issues/115)
+
 ## [6.26.0](https://github.com/structured-world/gitlab-mcp/compare/v6.25.0...v6.26.0) (2026-01-22)
 
 ### Features

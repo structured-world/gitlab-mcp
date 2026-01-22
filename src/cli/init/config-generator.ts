@@ -21,8 +21,11 @@ function shellEscape(value: string): string {
  * Generate MCP server configuration object
  */
 export function generateServerConfig(config: WizardConfig): McpServerConfig {
+  // Normalize instance URL to avoid double-appending /api/v4 later
+  const normalizedUrl = config.instanceUrl.replace(/\/+$/, "").replace(/\/api\/v4$/i, "");
+
   const env: Record<string, string> = {
-    GITLAB_API_URL: config.instanceUrl,
+    GITLAB_API_URL: normalizedUrl,
     GITLAB_TOKEN: config.token,
   };
 

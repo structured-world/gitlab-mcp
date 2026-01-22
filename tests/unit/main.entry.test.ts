@@ -90,7 +90,7 @@ describe("main entry point", () => {
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("should run init wizard and exit when --init flag is set", async () => {
+  it("should run init wizard and exit when init subcommand is used", async () => {
     // Reset modules to ensure fresh import
     jest.resetModules();
 

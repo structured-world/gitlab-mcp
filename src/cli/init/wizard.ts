@@ -70,9 +70,11 @@ export async function runWizard(): Promise<void> {
     if (p.isCancel(urlInput)) {
       p.cancel("Setup cancelled");
       process.exit(0);
+      return; // Unreachable, but helps TypeScript and test mocks
     }
 
-    instanceUrl = urlInput;
+    // Normalize URL: strip trailing slash and /api/v4 suffix if present
+    instanceUrl = urlInput.replace(/\/+$/, "").replace(/\/api\/v4$/i, "");
   }
 
   // Step 3: Check if user has a token

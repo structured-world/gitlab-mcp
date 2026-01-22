@@ -76,7 +76,26 @@ const mockExit = jest.spyOn(process, "exit").mockImplementation(() => undefined 
 
 describe("wizard", () => {
   beforeEach(() => {
+    // Clear call history but keep implementations from module-level mocks
     jest.clearAllMocks();
+
+    // Reset specific mocks that need fresh state
+    (p.select as jest.Mock).mockReset().mockResolvedValue("generic");
+    (p.text as jest.Mock).mockReset().mockResolvedValue("https://gitlab.example.com");
+    (p.confirm as jest.Mock).mockReset().mockResolvedValue(true);
+    (p.password as jest.Mock).mockReset().mockResolvedValue("glpat-test-token-12345");
+    (p.isCancel as unknown as jest.Mock).mockReset().mockReturnValue(false);
+
+    // Restore spinner mock (cleared by resetAllMocks)
+    (p.spinner as jest.Mock).mockReturnValue({
+      start: jest.fn(),
+      stop: jest.fn(),
+    });
+
+    (connection.testConnection as jest.Mock).mockReset().mockResolvedValue({
+      success: true,
+      username: "testuser",
+    });
   });
 
   afterAll(() => {

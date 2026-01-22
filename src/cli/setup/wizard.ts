@@ -17,8 +17,6 @@ import { runConfigureExistingFlow } from "./flows/configure-existing";
 export async function runSetupWizard(options?: {
   /** Skip to specific mode (for alias commands) */
   mode?: SetupMode;
-  /** Skip GitLab authentication (for install-only) */
-  skipGitlab?: boolean;
 }): Promise<SetupResult> {
   p.intro("GitLab MCP Setup Wizard");
 
@@ -38,10 +36,15 @@ export async function runSetupWizard(options?: {
   let mode: SetupMode;
 
   if (options?.mode) {
-    // Mode specified via alias (init → local, install → local, docker init → server)
+    // Mode specified via alias (init → local, docker init → server)
     mode = options.mode;
   } else {
-    mode = await selectMode(discovery);
+    const selected = await selectMode(discovery);
+    if (!selected) {
+      p.outro("Setup cancelled.");
+      return { success: false, mode: "local", error: "Cancelled" };
+    }
+    mode = selected;
   }
 
   // Phase 3: Execute selected flow
@@ -87,7 +90,7 @@ export async function runSetupWizard(options?: {
 /**
  * Present mode selection based on discovery results
  */
-async function selectMode(discovery: ReturnType<typeof runDiscovery>): Promise<SetupMode> {
+async function selectMode(discovery: ReturnType<typeof runDiscovery>): Promise<SetupMode | null> {
   const options: { value: SetupMode; label: string; hint?: string }[] = [];
 
   // If existing setup found, show configure-existing first
@@ -125,8 +128,7 @@ async function selectMode(discovery: ReturnType<typeof runDiscovery>): Promise<S
   });
 
   if (p.isCancel(mode)) {
-    p.cancel("Setup cancelled");
-    process.exit(0);
+    return null;
   }
 
   return mode;

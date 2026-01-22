@@ -207,13 +207,22 @@ async function updateClients(clients: InstallableClient[]): Promise<SetupResult>
   spinner.stop("Done!");
 
   const successful = results.filter(r => r.success);
+  const failed = results.filter(r => !r.success);
+
   if (successful.length > 0) {
     p.log.success(`Updated ${successful.length} client(s)`);
+  }
+
+  if (failed.length > 0) {
+    for (const r of failed) {
+      p.log.error(`  ${CLIENT_METADATA[r.client].name}: ${r.error}`);
+    }
   }
 
   return {
     success: successful.length > 0,
     mode: "configure-existing",
     configuredClients: successful.map(r => r.client),
+    error: failed.length > 0 ? `Failed to update ${failed.length} client(s)` : undefined,
   };
 }

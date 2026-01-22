@@ -8,7 +8,7 @@ import { randomBytes } from "crypto";
 import { DiscoveryResult, SetupResult, DockerDeploymentType } from "../types";
 import { initDockerConfig, startContainer } from "../../docker/docker-utils";
 import { DEFAULT_DOCKER_CONFIG } from "../../docker/types";
-import { runToolSelectionFlow } from "./tool-selection";
+import { runToolSelectionFlow, applyManualCategories } from "./tool-selection";
 
 /**
  * Run the server (HTTP/SSE) setup flow.
@@ -120,13 +120,23 @@ export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<Se
     return { success: false, mode: "server", error: "Cancelled" };
   }
 
-  // Step 5: Create Docker configuration
+  // Step 5: Create Docker configuration with tool selection applied
+  const toolEnv: Record<string, string> = {};
+  if (toolConfig.mode === "preset" && toolConfig.preset) {
+    toolEnv.GITLAB_PROFILE = toolConfig.preset;
+  } else if (toolConfig.mode === "advanced" && toolConfig.envOverrides) {
+    Object.assign(toolEnv, toolConfig.envOverrides);
+  } else if (toolConfig.mode === "manual" && toolConfig.enabledCategories) {
+    applyManualCategories(toolConfig.enabledCategories, toolEnv);
+  }
+
   const config = {
     ...DEFAULT_DOCKER_CONFIG,
     port: parseInt(port, 10),
     oauthEnabled: enableOAuth,
     oauthSessionSecret,
     databaseUrl,
+    env: toolEnv,
   };
 
   const spinner = p.spinner();

@@ -27,7 +27,7 @@ export interface CliArgs {
   setupMode?: "local" | "server" | "configure-existing";
   /** Run init wizard (alias for setup --mode=local) */
   init: boolean;
-  /** Run install command (alias for setup --mode=local --skip-gitlab) */
+  /** Run install command */
   install: boolean;
   /** Install command arguments */
   installArgs: string[];

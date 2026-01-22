@@ -10,7 +10,7 @@ import { testConnection, validateGitLabUrl, getPatCreationUrl } from "../../init
 import { openUrl } from "../../init/browser";
 import { McpServerConfig } from "../../init/types";
 import { installToClients } from "../../install/installers";
-import { runToolSelectionFlow } from "./tool-selection";
+import { runToolSelectionFlow, applyManualCategories } from "./tool-selection";
 
 /**
  * Run the local (stdio) setup flow.
@@ -186,13 +186,17 @@ function buildServerConfig(
   toolConfig: ToolConfig
 ): McpServerConfig {
   const env: Record<string, string> = {
-    GITLAB_URL: instanceUrl,
+    GITLAB_API_URL: instanceUrl,
     GITLAB_TOKEN: token,
   };
 
   // Apply tool configuration
   if (toolConfig.mode === "preset" && toolConfig.preset) {
-    env.GITLAB_MCP_PRESET = toolConfig.preset;
+    env.GITLAB_PROFILE = toolConfig.preset;
+  }
+
+  if (toolConfig.mode === "manual" && toolConfig.enabledCategories) {
+    applyManualCategories(toolConfig.enabledCategories, env);
   }
 
   if (toolConfig.mode === "advanced" && toolConfig.envOverrides) {

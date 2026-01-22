@@ -8,6 +8,45 @@ import { ToolConfig, ToolConfigMode } from "../types";
 import { TOOL_CATEGORIES, PRESET_DEFINITIONS, getToolCount, getTotalToolCount } from "../presets";
 
 /**
+ * Map tool category IDs to USE_* environment variables.
+ * Used by both local and server flows to apply manual category selection.
+ */
+const CATEGORY_ENV_MAP: Record<string, string> = {
+  "merge-requests": "USE_MRS",
+  "work-items": "USE_WORKITEMS",
+  pipelines: "USE_PIPELINE",
+  files: "USE_FILES",
+  commits: "USE_FILES", // commits use file browsing
+  wiki: "USE_GITLAB_WIKI",
+  snippets: "USE_SNIPPETS",
+  releases: "USE_RELEASES",
+  refs: "USE_REFS",
+  labels: "USE_LABELS",
+  milestones: "USE_MILESTONE",
+  members: "USE_MEMBERS",
+  search: "USE_SEARCH",
+  variables: "USE_VARIABLES",
+  webhooks: "USE_WEBHOOKS",
+  integrations: "USE_INTEGRATIONS",
+};
+
+/**
+ * Apply manual category selections to env vars.
+ * Disables USE_* flags for categories not in the selection.
+ */
+export function applyManualCategories(
+  selectedCategories: string[],
+  env: Record<string, string>
+): void {
+  const selected = new Set(selectedCategories);
+  for (const [category, envVar] of Object.entries(CATEGORY_ENV_MAP)) {
+    if (!selected.has(category)) {
+      env[envVar] = "false";
+    }
+  }
+}
+
+/**
  * Run the tool configuration flow.
  * Presents the user with three options: preset, manual selection, or advanced settings.
  */
@@ -123,18 +162,23 @@ async function runAdvancedSettings(): Promise<ToolConfig | null> {
   const featureFlags = await p.multiselect({
     message: "Enable features:",
     options: [
-      { value: "USE_ISSUES", label: "Issues/Work Items", hint: "Issue tracking and epics" },
+      { value: "USE_WORKITEMS", label: "Issues/Work Items", hint: "Issue tracking and epics" },
       { value: "USE_MRS", label: "Merge Requests", hint: "Code review and MR management" },
-      { value: "USE_PIPELINES", label: "Pipelines", hint: "CI/CD pipeline management" },
+      { value: "USE_PIPELINE", label: "Pipelines", hint: "CI/CD pipeline management" },
       { value: "USE_FILES", label: "Files", hint: "Repository file operations" },
-      { value: "USE_WIKI", label: "Wiki", hint: "Wiki page management" },
+      { value: "USE_GITLAB_WIKI", label: "Wiki", hint: "Wiki page management" },
       { value: "USE_SNIPPETS", label: "Snippets", hint: "Code snippets" },
       { value: "USE_RELEASES", label: "Releases", hint: "Release management" },
+      { value: "USE_REFS", label: "Branches/Tags", hint: "Branch and tag management" },
+      { value: "USE_LABELS", label: "Labels", hint: "Label management" },
+      { value: "USE_MILESTONE", label: "Milestones", hint: "Milestone management" },
+      { value: "USE_MEMBERS", label: "Members", hint: "Team member management" },
+      { value: "USE_SEARCH", label: "Search", hint: "Global search" },
       { value: "USE_WEBHOOKS", label: "Webhooks", hint: "Webhook configuration" },
       { value: "USE_INTEGRATIONS", label: "Integrations", hint: "Service integrations" },
       { value: "USE_VARIABLES", label: "Variables", hint: "CI/CD variable management" },
     ],
-    initialValues: ["USE_ISSUES", "USE_MRS", "USE_PIPELINES", "USE_FILES"],
+    initialValues: ["USE_WORKITEMS", "USE_MRS", "USE_PIPELINE", "USE_FILES"],
     required: false,
   });
 
@@ -142,15 +186,20 @@ async function runAdvancedSettings(): Promise<ToolConfig | null> {
     return null;
   }
 
-  // Set all feature flags based on selection
+  // Set all feature flags based on selection (matching src/config.ts USE_* names)
   const allFeatures = [
-    "USE_ISSUES",
+    "USE_WORKITEMS",
     "USE_MRS",
-    "USE_PIPELINES",
+    "USE_PIPELINE",
     "USE_FILES",
-    "USE_WIKI",
+    "USE_GITLAB_WIKI",
     "USE_SNIPPETS",
     "USE_RELEASES",
+    "USE_REFS",
+    "USE_LABELS",
+    "USE_MILESTONE",
+    "USE_MEMBERS",
+    "USE_SEARCH",
     "USE_WEBHOOKS",
     "USE_INTEGRATIONS",
     "USE_VARIABLES",
@@ -199,18 +248,18 @@ async function runAdvancedSettings(): Promise<ToolConfig | null> {
 
     if (scopeType === "project") {
       const project = await p.text({
-        message: "Project path (e.g., group/project):",
+        message: "Project ID or path (e.g., group/project):",
         validate: v => (!v ? "Project path is required" : undefined),
       });
       if (p.isCancel(project)) return null;
-      envOverrides.GITLAB_SCOPE_PROJECT = project;
+      envOverrides.GITLAB_PROJECT_ID = project;
     } else {
       const namespace = await p.text({
-        message: "Namespace path (e.g., my-group):",
-        validate: v => (!v ? "Namespace is required" : undefined),
+        message: "Allowed project IDs (comma-separated):",
+        validate: v => (!v ? "At least one project ID is required" : undefined),
       });
       if (p.isCancel(namespace)) return null;
-      envOverrides.GITLAB_SCOPE_NAMESPACE = namespace;
+      envOverrides.GITLAB_ALLOWED_PROJECT_IDS = namespace;
     }
   }
 

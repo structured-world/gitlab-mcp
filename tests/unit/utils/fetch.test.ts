@@ -828,6 +828,31 @@ describe("Enhanced Fetch Utilities", () => {
       expect(result.status).toBe(200);
     });
 
+    it("should accept Retry-After with leading zeros (RFC 7231 delta-seconds)", async () => {
+      // RFC 7231: delta-seconds = 1*DIGIT, so "01", "001" are valid
+      const rateLimitHeaders = new Headers();
+      rateLimitHeaders.set("Retry-After", "01"); // Leading zero
+
+      const rateLimitResponse = createMockResponse({
+        status: 429,
+        ok: false,
+        headers: rateLimitHeaders,
+      });
+      const successResponse = createMockResponse({ status: 200, ok: true });
+
+      mockFetch.mockResolvedValueOnce(rateLimitResponse).mockResolvedValueOnce(successResponse);
+
+      const fetchPromise = enhancedFetch("https://example.com");
+
+      // "01" = 1 second = 1000ms
+      await jest.advanceTimersByTimeAsync(1000);
+
+      const result = await fetchPromise;
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(result.status).toBe(200);
+    });
+
     it("should abort during backoff sleep when caller aborts", async () => {
       // Test that caller abort during backoff sleep is respected
       const controller = new AbortController();

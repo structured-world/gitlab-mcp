@@ -360,9 +360,13 @@ function calculateBackoffDelay(attempt: number): number {
 function parseRetryAfter(retryAfter: string): number | null {
   // Try delta-seconds first (most common)
   // Accept 0 or positive integers per RFC 7231 (0 means "retry immediately")
-  const seconds = parseInt(retryAfter, 10);
-  if (!isNaN(seconds) && seconds >= 0 && String(seconds) === retryAfter.trim()) {
-    return seconds * 1000;
+  // Allow leading zeros per RFC 7231 delta-seconds = 1*DIGIT (e.g., "01", "001")
+  const trimmed = retryAfter.trim();
+  if (/^\d+$/.test(trimmed)) {
+    const seconds = parseInt(trimmed, 10);
+    if (seconds >= 0) {
+      return seconds * 1000;
+    }
   }
 
   // Try HTTP-date format (RFC 7231)

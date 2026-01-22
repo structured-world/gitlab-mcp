@@ -183,7 +183,9 @@ export async function initDocker(): Promise<void> {
 
     // Generate session secret
     oauthSessionSecret = randomBytes(32).toString("hex");
-    p.log.info(`Generated session secret (stored in docker-compose.yml)`);
+    p.log.warn(
+      "Session secret will be stored in docker-compose.yml. Keep this file secure and do NOT commit to version control."
+    );
   }
 
   // Create configuration
@@ -328,14 +330,31 @@ export async function dockerAddInstance(host?: string): Promise<void> {
       message: "GitLab instance host:",
       placeholder: "gitlab.company.com",
       validate: value => {
-        if (!value || value.length < 3) {
+        if (!value || value.length < 1) {
           return "Host is required";
         }
-        // Basic hostname validation
-        if (!/^[a-z0-9]+([-.][a-z0-9]+)*\.[a-z]{2,}$/i.test(value)) {
-          return "Invalid hostname format";
+        // Allow: localhost, hostname, hostname.domain, IP addresses
+        const hostnamePattern =
+          /^([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i;
+        const ipv4Pattern = /^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/;
+
+        // Check IPv4 FIRST - if it looks like an IP, validate octet ranges
+        // This prevents values like "256.1.1.1" from passing as hostnames
+        const ipMatch = value.match(ipv4Pattern);
+        if (ipMatch) {
+          const octets = [ipMatch[1], ipMatch[2], ipMatch[3], ipMatch[4]].map(Number);
+          if (octets.every(o => o >= 0 && o <= 255)) {
+            return undefined;
+          }
+          return "IP address octets must be between 0 and 255";
         }
-        return undefined;
+
+        // Check hostname pattern
+        if (hostnamePattern.test(value)) {
+          return undefined;
+        }
+
+        return "Invalid hostname or IP address format";
       },
     });
 
@@ -388,8 +407,8 @@ export async function dockerAddInstance(host?: string): Promise<void> {
       return;
     }
 
-    // Environment variable name for secret
-    const envName = instanceHost.toUpperCase().replace(/\./g, "_") + "_SECRET";
+    // Environment variable name for secret (sanitize all non-alphanumeric chars)
+    const envName = instanceHost.toUpperCase().replace(/[^A-Z0-9]/g, "_") + "_SECRET";
 
     p.note(
       `Store your OAuth secret in environment variable: ${envName}\n` +

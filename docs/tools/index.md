@@ -190,7 +190,7 @@ See [role-based prompts](/prompts/by-role/developer) for workflows tailored to e
 | Category | Query (browse_*) | Command (manage_*) |
 |----------|-------------------|---------------------|
 | **Merge Requests** | `browse_merge_requests` (list, get, diffs, compare) | `manage_merge_request` (create, update, merge, approve) |
-| **Discussions** | `browse_mr_discussions` (list, drafts) | `manage_mr_discussion` (comment, thread, suggest, resolve) |
+| **Discussions** | `browse_mr_discussions` (list, drafts, draft) | `manage_mr_discussion` (comment, thread, suggest, resolve) |
 | **Pipelines** | `browse_pipelines` (list, get, jobs, logs) | `manage_pipeline` (create, retry, cancel) |
 | **Jobs** | — (via browse_pipelines) | `manage_pipeline_job` (play, retry, cancel) |
 | **Variables** | `browse_variables` (list, get) | `manage_variable` (create, update, delete) |

@@ -74,7 +74,7 @@ Use `lines_above` and `lines_below` to include surrounding context:
   "project_id": "my-org/api",
   "merge_request_iid": "42",
   "suggestion_ids": [12345, 12346, 12347],
-  "commit_message": "Apply review suggestions"
+  "commit_message": "refactor(review): apply code suggestions"
 }
 ```
 

@@ -1,3 +1,9 @@
+## [6.36.0](https://github.com/structured-world/gitlab-mcp/compare/v6.35.0...v6.36.0) (2026-01-23)
+
+### Features
+
+* **availability:** extend tier matrix with per-parameter gating ([#150](https://github.com/structured-world/gitlab-mcp/issues/150)) ([1ae98c8](https://github.com/structured-world/gitlab-mcp/commit/1ae98c88bf4d8059befd81144d3bd66559c6f191)), closes [#136](https://github.com/structured-world/gitlab-mcp/issues/136) [#143](https://github.com/structured-world/gitlab-mcp/issues/143) [#125](https://github.com/structured-world/gitlab-mcp/issues/125)
+
 ## [6.35.0](https://github.com/structured-world/gitlab-mcp/compare/v6.34.1...v6.35.0) (2026-01-23)
 
 ### Features

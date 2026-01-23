@@ -1,40 +1,44 @@
 import { z } from "zod";
-import { PaginationOptionsSchema } from "../shared";
+import { requiredId, paginationFields } from "../utils";
 
 // ============================================================================
-// list_webhooks - CQRS Query Tool (discriminated union schema)
-// Actions: project, group
+// browse_webhooks - CQRS Query Tool (discriminated union schema)
+// Actions: list, get
 //
-// Uses z.discriminatedUnion() for type-safe scope handling.
-// Each scope has only its relevant ID field:
-// - scope="project" requires projectId
-// - scope="group" requires groupId
+// Uses z.discriminatedUnion() on "action" for type-safe action handling.
+// - action="list": List webhooks for a project or group (with pagination)
+// - action="get": Retrieve details of a single webhook by ID
 // ============================================================================
 
-// --- Project scope: list webhooks for a project ---
-const ListProjectWebhooksSchema = z
-  .object({
-    scope: z.literal("project").describe("List webhooks for a project"),
-    projectId: z.string().describe("Project ID or path"),
-  })
-  .merge(PaginationOptionsSchema);
+// --- Shared scope fields ---
+const scopeField = z.enum(["project", "group"]).describe("Scope of webhook (project or group)");
 
-// --- Group scope: list webhooks for a group ---
-const ListGroupWebhooksSchema = z
-  .object({
-    scope: z.literal("group").describe("List webhooks for a group"),
-    groupId: z.string().describe("Group ID or path"),
-  })
-  .merge(PaginationOptionsSchema);
+// --- Action: list ---
+const ListWebhooksSchema = z.object({
+  action: z.literal("list").describe("List all webhooks for a project or group"),
+  scope: scopeField,
+  projectId: z.string().optional().describe("Project ID or path (required if scope=project)"),
+  groupId: z.string().optional().describe("Group ID or path (required if scope=group)"),
+  ...paginationFields(),
+});
 
-// --- Discriminated union combining all scopes ---
-export const ListWebhooksSchema = z.discriminatedUnion("scope", [
-  ListProjectWebhooksSchema,
-  ListGroupWebhooksSchema,
+// --- Action: get ---
+const GetWebhookSchema = z.object({
+  action: z.literal("get").describe("Get webhook details by ID"),
+  scope: scopeField,
+  projectId: z.string().optional().describe("Project ID or path (required if scope=project)"),
+  groupId: z.string().optional().describe("Group ID or path (required if scope=group)"),
+  hookId: requiredId.describe("Webhook ID (required)"),
+});
+
+// --- Discriminated union combining all actions ---
+export const BrowseWebhooksSchema = z.discriminatedUnion("action", [
+  ListWebhooksSchema,
+  GetWebhookSchema,
 ]);
 
 // ============================================================================
 // Type exports
 // ============================================================================
 
-export type ListWebhooksOptions = z.infer<typeof ListWebhooksSchema>;
+export type BrowseWebhooksInput = z.infer<typeof BrowseWebhooksSchema>;

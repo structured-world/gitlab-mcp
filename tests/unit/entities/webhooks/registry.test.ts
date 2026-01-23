@@ -44,7 +44,7 @@ describe("Webhooks Registry", () => {
       const toolNames = Array.from(webhooksToolRegistry.keys());
 
       // Check for read-only tools
-      expect(toolNames).toContain("list_webhooks");
+      expect(toolNames).toContain("browse_webhooks");
 
       // Check for manage tool
       expect(toolNames).toContain("manage_webhook");
@@ -77,11 +77,11 @@ describe("Webhooks Registry", () => {
   });
 
   describe("Tool Definitions", () => {
-    it("should have proper list_webhooks tool", () => {
-      const tool = webhooksToolRegistry.get("list_webhooks");
+    it("should have proper browse_webhooks tool", () => {
+      const tool = webhooksToolRegistry.get("browse_webhooks");
       expect(tool).toBeDefined();
-      expect(tool!.name).toBe("list_webhooks");
-      expect(tool!.description).toContain("List all webhooks");
+      expect(tool!.name).toBe("browse_webhooks");
+      expect(tool!.description).toContain("BROWSE webhooks");
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -101,15 +101,15 @@ describe("Webhooks Registry", () => {
       expect(readOnlyTools.length).toBeGreaterThan(0);
     });
 
-    it("should include expected read-only tools", () => {
+    it("should include only browse_webhooks as read-only", () => {
       const readOnlyTools = getWebhooksReadOnlyToolNames();
-      expect(readOnlyTools).toContain("list_webhooks");
-      expect(readOnlyTools).toContain("manage_webhook");
+      expect(readOnlyTools).toContain("browse_webhooks");
+      expect(readOnlyTools).not.toContain("manage_webhook");
     });
 
-    it("should return exactly 2 tools (manage_webhook allowed for read action)", () => {
+    it("should return exactly 1 tool", () => {
       const readOnlyTools = getWebhooksReadOnlyToolNames();
-      expect(readOnlyTools.length).toBe(2);
+      expect(readOnlyTools.length).toBe(1);
     });
 
     it("should return tools that exist in the registry", () => {
@@ -154,19 +154,19 @@ describe("Webhooks Registry", () => {
       expect(filteredTools.length).toBe(2);
     });
 
-    it("should return read-only tools in read-only mode", () => {
+    it("should return only browse_webhooks in read-only mode", () => {
       const filteredTools = getFilteredWebhooksTools(true);
-      expect(filteredTools.length).toBe(2);
+      expect(filteredTools.length).toBe(1);
 
       const toolNames = filteredTools.map(tool => tool.name);
-      expect(toolNames).toContain("list_webhooks");
-      expect(toolNames).toContain("manage_webhook");
+      expect(toolNames).toContain("browse_webhooks");
+      expect(toolNames).not.toContain("manage_webhook");
     });
   });
 
-  describe("list_webhooks Handler", () => {
-    it("should handle project scope correctly", async () => {
-      const tool = webhooksToolRegistry.get("list_webhooks");
+  describe("browse_webhooks Handler", () => {
+    it("should handle list action with project scope", async () => {
+      const tool = webhooksToolRegistry.get("browse_webhooks");
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
@@ -175,6 +175,7 @@ describe("Webhooks Registry", () => {
       } as Response);
 
       const result = await tool!.handler({
+        action: "list",
         scope: "project",
         projectId: "test-project",
         page: 1,
@@ -187,8 +188,8 @@ describe("Webhooks Registry", () => {
       expect(result).toBeDefined();
     });
 
-    it("should handle group scope correctly", async () => {
-      const tool = webhooksToolRegistry.get("list_webhooks");
+    it("should handle list action with group scope", async () => {
+      const tool = webhooksToolRegistry.get("browse_webhooks");
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
@@ -197,6 +198,7 @@ describe("Webhooks Registry", () => {
       } as Response);
 
       const result = await tool!.handler({
+        action: "list",
         scope: "group",
         groupId: "test-group",
         page: 1,
@@ -209,12 +211,35 @@ describe("Webhooks Registry", () => {
       expect(result).toBeDefined();
     });
 
-    it("should throw error for invalid scope", async () => {
-      const tool = webhooksToolRegistry.get("list_webhooks");
+    it("should handle get action", async () => {
+      const tool = webhooksToolRegistry.get("browse_webhooks");
+      expect(tool).toBeDefined();
+
+      mockEnhancedFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 1, url: "https://example.com/hook" }),
+      } as Response);
+
+      const result = await tool!.handler({
+        action: "get",
+        scope: "project",
+        projectId: "test-project",
+        hookId: "1",
+      });
+
+      expect(mockEnhancedFetch).toHaveBeenCalledWith(
+        expect.stringContaining("projects/test-project/hooks/1")
+      );
+      expect(result).toBeDefined();
+    });
+
+    it("should throw error for missing projectId", async () => {
+      const tool = webhooksToolRegistry.get("browse_webhooks");
       expect(tool).toBeDefined();
 
       await expect(
         tool!.handler({
+          action: "list",
           scope: "project",
           // Missing projectId
         })
@@ -245,28 +270,6 @@ describe("Webhooks Registry", () => {
         expect.objectContaining({
           method: "POST",
         })
-      );
-      expect(result).toBeDefined();
-    });
-
-    it("should handle read action", async () => {
-      const tool = webhooksToolRegistry.get("manage_webhook");
-      expect(tool).toBeDefined();
-
-      mockEnhancedFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ id: 1, url: "https://example.com/hook" }),
-      } as Response);
-
-      const result = await tool!.handler({
-        action: "read",
-        scope: "project",
-        projectId: "test-project",
-        hookId: 1,
-      });
-
-      expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        expect.stringContaining("projects/test-project/hooks/1")
       );
       expect(result).toBeDefined();
     });
@@ -347,94 +350,6 @@ describe("Webhooks Registry", () => {
         })
       );
       expect(result).toBeDefined();
-    });
-
-    it("should enforce read-only mode for write operations", async () => {
-      // Set read-only mode
-      process.env.GITLAB_READ_ONLY_MODE = "true";
-
-      const tool = webhooksToolRegistry.get("manage_webhook");
-      expect(tool).toBeDefined();
-
-      await expect(
-        tool!.handler({
-          action: "create",
-          scope: "project",
-          projectId: "test-project",
-          url: "https://example.com/hook",
-        })
-      ).rejects.toThrow("not allowed in read-only mode");
-
-      await expect(
-        tool!.handler({
-          action: "update",
-          scope: "project",
-          projectId: "test-project",
-          hookId: 1,
-          url: "https://example.com/hook",
-        })
-      ).rejects.toThrow("not allowed in read-only mode");
-
-      await expect(
-        tool!.handler({
-          action: "delete",
-          scope: "project",
-          projectId: "test-project",
-          hookId: 1,
-        })
-      ).rejects.toThrow("not allowed in read-only mode");
-
-      await expect(
-        tool!.handler({
-          action: "test",
-          scope: "project",
-          projectId: "test-project",
-          hookId: 1,
-          trigger: "push_events",
-        })
-      ).rejects.toThrow("not allowed in read-only mode");
-
-      // Cleanup
-      delete process.env.GITLAB_READ_ONLY_MODE;
-    });
-
-    it("should allow read action in read-only mode", async () => {
-      // Set read-only mode
-      process.env.GITLAB_READ_ONLY_MODE = "true";
-
-      const tool = webhooksToolRegistry.get("manage_webhook");
-      expect(tool).toBeDefined();
-
-      mockEnhancedFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ id: 1, url: "https://example.com/hook" }),
-      } as Response);
-
-      const result = await tool!.handler({
-        action: "read",
-        scope: "project",
-        projectId: "test-project",
-        hookId: 1,
-      });
-
-      expect(result).toBeDefined();
-
-      // Cleanup
-      delete process.env.GITLAB_READ_ONLY_MODE;
-    });
-
-    it("should require hookId for read action", async () => {
-      const tool = webhooksToolRegistry.get("manage_webhook");
-      expect(tool).toBeDefined();
-
-      await expect(
-        tool!.handler({
-          action: "read",
-          scope: "project",
-          projectId: "test-project",
-          // Missing hookId
-        })
-      ).rejects.toThrow();
     });
 
     it("should require url for create action", async () => {

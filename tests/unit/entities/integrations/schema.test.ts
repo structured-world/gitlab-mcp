@@ -79,16 +79,13 @@ describe("IntegrationTypeSchema", () => {
 
 describe("ManageIntegrationSchema", () => {
   describe("action field validation", () => {
-    it("should accept 'get' action", () => {
+    it("should reject 'get' action (moved to browse_integrations)", () => {
       const result = ManageIntegrationSchema.safeParse({
         action: "get",
         project_id: "test/project",
         integration: "slack",
       });
-      expect(result.success).toBe(true);
-      if (result.success) {
-        expect(result.data.action).toBe("get");
-      }
+      expect(result.success).toBe(false);
     });
 
     it("should accept 'update' action", () => {
@@ -134,24 +131,24 @@ describe("ManageIntegrationSchema", () => {
     });
   });
 
-  describe("get action validation", () => {
-    it("should accept minimal get request", () => {
+  describe("disable action validation", () => {
+    it("should accept minimal disable request", () => {
       const result = ManageIntegrationSchema.safeParse({
-        action: "get",
+        action: "disable",
         project_id: "my-group/my-project",
         integration: "jira",
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.action).toBe("get");
+        expect(result.data.action).toBe("disable");
         expect(result.data.project_id).toBe("my-group/my-project");
         expect(result.data.integration).toBe("jira");
       }
     });
 
-    it("should accept get with numeric project_id", () => {
+    it("should accept disable with numeric project_id", () => {
       const result = ManageIntegrationSchema.safeParse({
-        action: "get",
+        action: "disable",
         project_id: "12345",
         integration: "discord",
       });
@@ -372,7 +369,7 @@ describe("ManageIntegrationSchema", () => {
   describe("required fields validation", () => {
     it("should reject missing project_id", () => {
       const result = ManageIntegrationSchema.safeParse({
-        action: "get",
+        action: "update",
         integration: "slack",
       });
       expect(result.success).toBe(false);
@@ -380,7 +377,7 @@ describe("ManageIntegrationSchema", () => {
 
     it("should reject missing integration", () => {
       const result = ManageIntegrationSchema.safeParse({
-        action: "get",
+        action: "disable",
         project_id: "test/project",
       });
       expect(result.success).toBe(false);
@@ -388,7 +385,7 @@ describe("ManageIntegrationSchema", () => {
 
     it("should reject invalid integration type", () => {
       const result = ManageIntegrationSchema.safeParse({
-        action: "get",
+        action: "disable",
         project_id: "test/project",
         integration: "invalid-integration-type",
       });
@@ -410,7 +407,7 @@ describe("ManageIntegrationSchema", () => {
 
       for (const integration of communicationIntegrations) {
         const result = ManageIntegrationSchema.safeParse({
-          action: "get",
+          action: "disable",
           project_id: "test/project",
           integration,
         });
@@ -430,7 +427,7 @@ describe("ManageIntegrationSchema", () => {
 
       for (const integration of cicdIntegrations) {
         const result = ManageIntegrationSchema.safeParse({
-          action: "get",
+          action: "disable",
           project_id: "test/project",
           integration,
         });
@@ -451,7 +448,7 @@ describe("ManageIntegrationSchema", () => {
 
       for (const integration of issueTrackerIntegrations) {
         const result = ManageIntegrationSchema.safeParse({
-          action: "get",
+          action: "disable",
           project_id: "test/project",
           integration,
         });

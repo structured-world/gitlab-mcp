@@ -6,7 +6,7 @@
     "hono": "4.11.5",
     "diff": "4.0.4"
   },
-  "version": "6.31.2",
+  "version": "6.32.0",
   "description": "MCP server for using the GitLab API",
   "license": "Apache-2.0",
   "author": "Dmitry Prudnikov <mail@polaz.com>",

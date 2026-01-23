@@ -343,31 +343,35 @@ describe("RegistryManager", () => {
         handler: jest.fn(),
       });
 
-      // Make getRestrictedParameters return restricted params for this tool
-      ToolAvailability.getRestrictedParameters.mockImplementation((toolName: string) =>
-        toolName === "tool_with_params" ? ["weight", "healthStatus"] : []
-      );
+      try {
+        // Make getRestrictedParameters return restricted params for this tool
+        ToolAvailability.getRestrictedParameters.mockImplementation((toolName: string) =>
+          toolName === "tool_with_params" ? ["weight", "healthStatus"] : []
+        );
 
-      (RegistryManager as any).instance = null;
-      registryManager = RegistryManager.getInstance();
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
 
-      const tool = registryManager.getTool("tool_with_params");
-      expect(tool).toBeDefined();
+        const tool = registryManager.getTool("tool_with_params");
+        expect(tool).toBeDefined();
 
-      const schema = tool?.inputSchema as any;
+        const schema = tool?.inputSchema as any;
 
-      // Restricted properties should be removed
-      expect(schema.properties?.weight).toBeUndefined();
-      expect(schema.properties?.healthStatus).toBeUndefined();
+        // Restricted properties should be removed
+        expect(schema.properties?.weight).toBeUndefined();
+        expect(schema.properties?.healthStatus).toBeUndefined();
 
-      // Non-restricted properties should remain
-      expect(schema.properties?.action).toBeDefined();
-      expect(schema.properties?.title).toBeDefined();
+        // Non-restricted properties should remain
+        expect(schema.properties?.action).toBeDefined();
+        expect(schema.properties?.title).toBeDefined();
 
-      // weight was in required, should be removed
-      expect(schema.required).not.toContain("weight");
-      expect(schema.required).toContain("action");
-      expect(schema.required).toContain("title");
+        // weight was in required, should be removed
+        expect(schema.required).not.toContain("weight");
+        expect(schema.required).toContain("action");
+        expect(schema.required).toContain("title");
+      } finally {
+        coreRegistry.delete("tool_with_params");
+      }
     });
   });
 

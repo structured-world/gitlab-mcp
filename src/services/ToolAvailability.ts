@@ -765,11 +765,13 @@ export class ToolAvailability {
 
     let instanceTier: GitLabTier;
     let instanceVersion: number;
+    let rawVersion: string;
 
     try {
       const instanceInfo = connectionManager.getInstanceInfo();
       instanceTier = instanceInfo.tier;
-      instanceVersion = parseVersion(instanceInfo.version);
+      rawVersion = instanceInfo.version;
+      instanceVersion = parseVersion(rawVersion);
     } catch {
       // Connection not initialized - don't restrict anything
       return [];
@@ -790,7 +792,7 @@ export class ToolAvailability {
 
     if (restricted.length > 0) {
       logger.debug(
-        `Tool '${toolName}': restricted parameters for tier=${instanceTier}, version=${instanceVersion}: [${restricted.join(", ")}]`
+        `Tool '${toolName}': restricted parameters for tier=${instanceTier}, version=${rawVersion}: [${restricted.join(", ")}]`
       );
     }
 

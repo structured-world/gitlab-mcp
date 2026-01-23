@@ -11,6 +11,7 @@ import {
   createTypeMismatchError,
   createValidationError,
   createTimeoutError,
+  createVersionRestrictedError,
   parseTimeoutError,
   StructuredToolError,
   isStructuredToolError,
@@ -754,6 +755,136 @@ describe("Error Handler", () => {
       expect(isStructuredToolError(undefined)).toBe(false);
       expect(isStructuredToolError("string")).toBe(false);
       expect(isStructuredToolError({})).toBe(false);
+    });
+  });
+
+  describe("createVersionRestrictedError", () => {
+    it("should create a VERSION_RESTRICTED error with all fields", () => {
+      const error = createVersionRestrictedError(
+        "manage_work_item",
+        "create",
+        "CUSTOM_FIELDS",
+        "customFields",
+        "17.0",
+        "16.5.0",
+        "Ultimate",
+        "Premium"
+      );
+
+      expect(error.error_code).toBe("VERSION_RESTRICTED");
+      expect(error.tool).toBe("manage_work_item");
+      expect(error.action).toBe("create");
+      expect(error.widget).toBe("CUSTOM_FIELDS");
+      expect(error.parameter).toBe("customFields");
+      expect(error.required_version).toBe("17.0");
+      expect(error.detected_version).toBe("16.5.0");
+      expect(error.required_tier).toBe("Ultimate");
+      expect(error.current_tier).toBe("Premium");
+      expect(error.docs_url).toBeDefined();
+    });
+
+    it("should mention only tier in message when version is sufficient but tier differs", () => {
+      const error = createVersionRestrictedError(
+        "manage_work_item",
+        "update",
+        "WEIGHT",
+        "weight",
+        "15.0",
+        "15.5.0",
+        "Premium",
+        "Free"
+      );
+
+      // Version 15.5 >= 15.0, so message focuses on tier
+      expect(error.message).toContain("WEIGHT");
+      expect(error.message).toContain("weight");
+      expect(error.message).toContain("Premium");
+      expect(error.message).toContain("Free");
+      expect(error.message).not.toContain(">="); // No version requirement shown
+    });
+
+    it("should not include tier info when tiers match", () => {
+      const error = createVersionRestrictedError(
+        "manage_work_item",
+        "create",
+        "ASSIGNEES",
+        "assigneeIds",
+        "15.0",
+        "14.0.0",
+        "Free",
+        "Free"
+      );
+
+      // Message should not mention tier when same
+      expect(error.message).not.toContain("tier");
+      expect(error.message).toContain("15.0");
+      expect(error.message).toContain("14.0.0");
+    });
+
+    it("should work without optional tier parameters", () => {
+      const error = createVersionRestrictedError(
+        "manage_work_item",
+        "create",
+        "LABELS",
+        "labelIds",
+        "15.0",
+        "14.0.0"
+      );
+
+      expect(error.error_code).toBe("VERSION_RESTRICTED");
+      expect(error.required_tier).toBeUndefined();
+      expect(error.current_tier).toBeUndefined();
+      expect(error.suggested_fix).toContain("15.0");
+    });
+
+    it("should suggest version upgrade when only version is insufficient", () => {
+      const error = createVersionRestrictedError(
+        "manage_work_item",
+        "update",
+        "CUSTOM_FIELDS",
+        "customFields",
+        "17.0",
+        "16.5.0"
+      );
+
+      expect(error.suggested_fix).toContain("17.0");
+      expect(error.suggested_fix).toContain("customFields");
+      expect(error.suggested_fix).not.toContain("tier");
+    });
+
+    it("should suggest tier upgrade when version is fine but tier is insufficient", () => {
+      const error = createVersionRestrictedError(
+        "manage_work_item",
+        "update",
+        "WEIGHT",
+        "weight",
+        "15.0",
+        "18.0.0",
+        "Premium",
+        "Free"
+      );
+
+      // Version 18.0 >= 15.0, so only tier is the issue
+      expect(error.suggested_fix).toContain("Premium");
+      expect(error.suggested_fix).toContain("tier");
+      expect(error.suggested_fix).not.toContain("version");
+    });
+
+    it("should suggest both upgrades when version and tier are insufficient", () => {
+      const error = createVersionRestrictedError(
+        "manage_work_item",
+        "create",
+        "CUSTOM_FIELDS",
+        "customFields",
+        "17.0",
+        "15.5.0",
+        "Ultimate",
+        "Free"
+      );
+
+      // Version 15.5 < 17.0 AND Free < Ultimate
+      expect(error.suggested_fix).toContain("17.0");
+      expect(error.suggested_fix).toContain("Ultimate");
     });
   });
 });

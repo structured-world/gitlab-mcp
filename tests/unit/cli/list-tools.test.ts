@@ -65,7 +65,7 @@ describe("list-tools script", () => {
     mockGetToolRequirement.mockReturnValue(null);
     mockGetHighestTier.mockReturnValue("free");
     mockGetTierRestrictedActions.mockReturnValue([]);
-    mockGetActionRequirement.mockReturnValue({ tier: "free", minVersion: 8.0 });
+    mockGetActionRequirement.mockReturnValue({ tier: "free", minVersion: "8.0" });
 
     // Reset profile loader mocks
     mockProfileLoader.listProfiles.mockResolvedValue([]);
@@ -316,13 +316,13 @@ describe("list-tools script", () => {
     // Mock tier requirements for different tools
     mockGetToolRequirement.mockImplementation((name: string) => {
       if (name === "premium_tool") {
-        return { requiredTier: "premium", minVersion: 10.0 };
+        return { requiredTier: "premium", minVersion: "10.0" };
       }
       if (name === "ultimate_tool") {
-        return { requiredTier: "ultimate", minVersion: 12.0 };
+        return { requiredTier: "ultimate", minVersion: "12.0" };
       }
       if (name === "free_tool") {
-        return { requiredTier: "free", minVersion: 8.0 };
+        return { requiredTier: "free", minVersion: "8.0" };
       }
       return null;
     });
@@ -336,9 +336,9 @@ describe("list-tools script", () => {
 
     // Mock getActionRequirement for default tier check (used in mixed tier detection)
     mockGetActionRequirement.mockImplementation((name: string) => {
-      if (name === "premium_tool") return { tier: "premium", minVersion: 10.0 };
-      if (name === "ultimate_tool") return { tier: "ultimate", minVersion: 12.0 };
-      return { tier: "free", minVersion: 8.0 };
+      if (name === "premium_tool") return { tier: "premium", minVersion: "10.0" };
+      if (name === "ultimate_tool") return { tier: "ultimate", minVersion: "12.0" };
+      return { tier: "free", minVersion: "8.0" };
     });
 
     const { main } = await import("../../../src/cli/list-tools");

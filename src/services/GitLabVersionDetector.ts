@@ -2,6 +2,7 @@ import { GraphQLClient } from "../graphql/client";
 import { gql } from "graphql-tag";
 import { enhancedFetch } from "../utils/fetch";
 import { logger } from "../logger";
+import { parseVersion } from "../utils/version";
 
 export type GitLabTier = "free" | "premium" | "ultimate";
 
@@ -239,52 +240,40 @@ export class GitLabVersionDetector {
   }
 
   private determineFeatures(version: string, tier: GitLabTier): GitLabFeatures {
-    const versionNumber = this.parseVersion(version);
+    const v = parseVersion(version);
 
     const features: GitLabFeatures = {
-      // Core features aligned with WORK.md Feature Availability Matrix
-      workItems: versionNumber >= 15.0,
-      epics: tier !== "free" && versionNumber >= 10.2,
-      iterations: tier !== "free" && versionNumber >= 13.1,
-      roadmaps: tier !== "free" && versionNumber >= 10.8,
-      portfolioManagement: tier === "ultimate" && versionNumber >= 12.0,
-      advancedSearch: tier !== "free" && versionNumber >= 11.0,
-      codeReview: tier !== "free" && versionNumber >= 11.0,
-      securityDashboard: tier === "ultimate" && versionNumber >= 11.1,
-      complianceFramework: tier === "ultimate" && versionNumber >= 13.0,
-      valueStreamAnalytics: tier !== "free" && versionNumber >= 12.3,
-      customFields: tier === "ultimate" && versionNumber >= 17.0,
-      okrs: tier === "ultimate" && versionNumber >= 15.7,
-      healthStatus: tier === "ultimate" && versionNumber >= 13.1,
-      weight: tier !== "free" && versionNumber >= 12.0,
-      multiLevelEpics: tier === "ultimate" && versionNumber >= 11.7,
-      serviceDesk: tier !== "free" && versionNumber >= 9.1,
-      requirements: tier === "ultimate" && versionNumber >= 13.1,
-      qualityManagement: tier === "ultimate" && versionNumber >= 13.0,
+      // Core features based on GitLab documentation
+      workItems: v >= parseVersion("15.0"),
+      epics: tier !== "free" && v >= parseVersion("10.2"),
+      iterations: tier !== "free" && v >= parseVersion("13.1"),
+      roadmaps: tier !== "free" && v >= parseVersion("10.8"),
+      portfolioManagement: tier === "ultimate" && v >= parseVersion("12.0"),
+      advancedSearch: tier !== "free" && v >= parseVersion("11.0"),
+      codeReview: tier !== "free" && v >= parseVersion("11.0"),
+      securityDashboard: tier === "ultimate" && v >= parseVersion("11.1"),
+      complianceFramework: tier === "ultimate" && v >= parseVersion("13.0"),
+      valueStreamAnalytics: tier !== "free" && v >= parseVersion("12.3"),
+      customFields: tier === "ultimate" && v >= parseVersion("17.0"),
+      okrs: tier === "ultimate" && v >= parseVersion("15.7"),
+      healthStatus: tier === "ultimate" && v >= parseVersion("13.1"),
+      weight: tier !== "free" && v >= parseVersion("12.0"),
+      multiLevelEpics: tier === "ultimate" && v >= parseVersion("11.7"),
+      serviceDesk: tier !== "free" && v >= parseVersion("9.1"),
+      requirements: tier === "ultimate" && v >= parseVersion("13.1"),
+      qualityManagement: tier === "ultimate" && v >= parseVersion("13.0"),
 
-      // Widget-specific features aligned with WORK.md
-      timeTracking: tier !== "free" && versionNumber >= 8.14,
-      crmContacts: tier === "ultimate" && versionNumber >= 14.0,
-      vulnerabilities: tier === "ultimate" && versionNumber >= 12.5,
-      errorTracking: tier === "ultimate" && versionNumber >= 12.7,
-      designManagement: tier !== "free" && versionNumber >= 12.2,
-      linkedResources: tier !== "free" && versionNumber >= 16.5,
-      emailParticipants: tier !== "free" && versionNumber >= 16.0,
+      // Widget-specific features
+      timeTracking: tier !== "free" && v >= parseVersion("8.14"),
+      crmContacts: tier === "ultimate" && v >= parseVersion("14.0"),
+      vulnerabilities: tier === "ultimate" && v >= parseVersion("12.5"),
+      errorTracking: tier === "ultimate" && v >= parseVersion("12.7"),
+      designManagement: tier !== "free" && v >= parseVersion("12.2"),
+      linkedResources: tier !== "free" && v >= parseVersion("16.5"),
+      emailParticipants: tier !== "free" && v >= parseVersion("16.0"),
     };
 
     return features;
-  }
-
-  private parseVersion(version: string): number {
-    if (!version || version === "unknown") return 0;
-
-    const match = version.match(/^(\d+)\.(\d+)/);
-    if (!match) return 0;
-
-    const major = parseInt(match[1], 10);
-    const minor = parseInt(match[2], 10);
-
-    return major + minor / 10;
   }
 
   private isRecentCache(detectedAt: Date): boolean {

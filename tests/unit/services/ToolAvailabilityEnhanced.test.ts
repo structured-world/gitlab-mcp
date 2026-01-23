@@ -194,7 +194,7 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
       const requirement = ToolAvailability.getToolRequirement("list_projects");
 
       expect(requirement).toBeDefined();
-      expect(requirement?.minVersion).toBe(8.0);
+      expect(requirement?.minVersion).toBe("8.0");
       expect(requirement?.requiredTier).toBe("free");
     });
 
@@ -247,7 +247,7 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
 
       const reason = ToolAvailability.getUnavailableReason("list_projects");
 
-      expect(reason).toBe("Requires GitLab 8+, current version is 7.0.0");
+      expect(reason).toBe("Requires GitLab 8.0+, current version is 7.0.0");
     });
 
     it("should return tier requirement message", () => {
@@ -359,7 +359,7 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
 
   describe("getToolsByMinVersion method", () => {
     it("should return tools that require minimum version 13", () => {
-      const tools = ToolAvailability.getToolsByMinVersion(13);
+      const tools = ToolAvailability.getToolsByMinVersion("13.0");
 
       expect(Array.isArray(tools)).toBe(true);
       expect(tools).toContain("get_draft_note"); // requires 13.2
@@ -368,26 +368,26 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
     });
 
     it("should return tools that require minimum version 15", () => {
-      const tools = ToolAvailability.getToolsByMinVersion(15);
+      const tools = ToolAvailability.getToolsByMinVersion("15.0");
 
       expect(Array.isArray(tools)).toBe(true);
       // Should only include tools that require 15.0+
-      const allRequirements = tools.map(
-        tool => ToolAvailability.getToolRequirement(tool)?.minVersion || 0
-      );
-      allRequirements.forEach(version => {
-        expect(version).toBeGreaterThanOrEqual(15);
+      tools.forEach(tool => {
+        const req = ToolAvailability.getToolRequirement(tool);
+        expect(req).toBeDefined();
+        const [major] = req!.minVersion.split(".");
+        expect(parseInt(major, 10)).toBeGreaterThanOrEqual(15);
       });
     });
 
     it("should return empty array for very high version requirement", () => {
-      const tools = ToolAvailability.getToolsByMinVersion(99);
+      const tools = ToolAvailability.getToolsByMinVersion("99.0");
 
       expect(tools).toEqual([]);
     });
 
     it("should handle version 0 (should return all tools)", () => {
-      const tools = ToolAvailability.getToolsByMinVersion(0);
+      const tools = ToolAvailability.getToolsByMinVersion("0.0");
 
       expect(Array.isArray(tools)).toBe(true);
       expect(tools.length).toBeGreaterThan(0);

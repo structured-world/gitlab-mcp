@@ -1,4 +1,4 @@
-# list-tools CLI
+# gitlab-mcp list-tools
 
 Browse and export available GitLab MCP tools, their descriptions, parameters, and tier requirements.
 

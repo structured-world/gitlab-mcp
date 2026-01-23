@@ -26,9 +26,17 @@ export default defineConfig({
       { text: "Tools", link: "/tools/" },
       { text: "Prompts", link: "/prompts/" },
       { text: "Guides", link: "/guides/" },
-      { text: "Security", link: "/security/oauth" },
-      { text: "Advanced", link: "/advanced/tls" },
-      { text: "CLI", link: "/cli/list-tools" },
+      { text: "Clients", link: "/clients/" },
+      { text: "CLI", link: "/cli/" },
+      {
+        text: "More",
+        items: [
+          { text: "Security", link: "/security/oauth" },
+          { text: "Advanced", link: "/advanced/tls" },
+          { text: "Deployment", link: "/deployment/" },
+          { text: "Troubleshooting", link: "/troubleshooting/" },
+        ],
+      },
     ],
 
     sidebar: {
@@ -44,10 +52,13 @@ export default defineConfig({
           text: "Installation",
           collapsed: false,
           items: [
+            { text: "Overview", link: "/guide/installation/" },
+            { text: "Setup Wizard", link: "/guide/installation/wizard" },
             { text: "npm / npx", link: "/guide/installation/npm" },
             { text: "Docker", link: "/guide/installation/docker" },
             { text: "VS Code", link: "/guide/installation/vscode" },
             { text: "Codex", link: "/guide/installation/codex" },
+            { text: "Manual", link: "/guide/installation/manual" },
           ],
         },
         {
@@ -62,8 +73,53 @@ export default defineConfig({
       ],
       "/cli/": [
         {
-          text: "CLI Tools",
-          items: [{ text: "list-tools", link: "/cli/list-tools" }],
+          text: "CLI Reference",
+          items: [
+            { text: "Overview", link: "/cli/" },
+            { text: "setup", link: "/cli/setup" },
+            { text: "init", link: "/cli/init" },
+            { text: "install", link: "/cli/install" },
+            { text: "docker", link: "/cli/docker" },
+            { text: "list-tools", link: "/cli/list-tools" },
+          ],
+        },
+      ],
+      "/clients/": [
+        {
+          text: "MCP Clients",
+          items: [
+            { text: "Overview", link: "/clients/" },
+            { text: "Claude Desktop", link: "/clients/claude-desktop" },
+            { text: "Claude Code", link: "/clients/claude-code" },
+            { text: "Cursor", link: "/clients/cursor" },
+            { text: "VS Code", link: "/clients/vscode" },
+            { text: "Windsurf", link: "/clients/windsurf" },
+            { text: "Cline", link: "/clients/cline" },
+            { text: "Roo Code", link: "/clients/roo-code" },
+          ],
+        },
+      ],
+      "/deployment/": [
+        {
+          text: "Deployment",
+          items: [
+            { text: "Overview", link: "/deployment/" },
+            { text: "Local stdio", link: "/deployment/local-stdio" },
+            { text: "Docker Standalone", link: "/deployment/docker-standalone" },
+            { text: "Docker + PostgreSQL", link: "/deployment/docker-postgres" },
+            { text: "Docker Compose", link: "/deployment/docker-compose" },
+          ],
+        },
+      ],
+      "/troubleshooting/": [
+        {
+          text: "Troubleshooting",
+          items: [
+            { text: "Common Issues", link: "/troubleshooting/" },
+            { text: "Connection", link: "/troubleshooting/connection" },
+            { text: "Clients", link: "/troubleshooting/clients" },
+            { text: "Docker", link: "/troubleshooting/docker" },
+          ],
         },
       ],
       "/tools/": [

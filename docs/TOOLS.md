@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-22 | Tools: 47 | Version: 6.30.0
+> Generated: 2026-01-23 | Tools: 47 | Version: 6.30.1
 
 ## Table of Contents
 
@@ -1898,16 +1898,46 @@ MANAGE GitLab snippets. Actions: "create" creates new snippet with multiple file
 
 ## Webhooks
 
-### list_webhooks [tier: Free]
+### browse_webhooks [tier: Free]
 
-List all webhooks configured for a project or group. Use to discover existing integrations, audit webhook configurations, debug delivery issues, or understand event subscriptions. Shows webhook URLs, enabled event types, SSL settings, and delivery status. Group webhooks are inherited by all child projects.
+BROWSE webhooks. Actions: "list" shows all webhooks configured for a project or group with pagination, "get" retrieves single webhook details by ID. Use to discover existing integrations, audit webhook configurations, debug delivery issues, or understand event subscriptions.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `list` | Free | List all webhooks for a project or group |
+| `get` | Free | Get webhook details by ID |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `scope` | string | Yes | Scope of webhook (project or group) |
+| `groupId` | string | No | Group ID or path (required if scope=group) |
+| `projectId` | string | No | Project ID or path (required if scope=project) |
+
+**Action `get`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `hookId` | string | Yes | Webhook ID (required) |
+
+**Action `list`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `page` | integer | No | Page number |
 
 #### Example
 
 ```json
 {
-  "scope": "example_scope",
-  "projectId": "my-group/my-project",
+  "action": "list",
+  "scope": "project",
   "per_page": 10
 }
 ```
@@ -1916,14 +1946,13 @@ List all webhooks configured for a project or group. Use to discover existing in
 
 ### manage_webhook [tier: Premium*]
 
-Manage webhooks with full CRUD operations plus testing. Actions: 'create' (add new webhook with URL and event types), 'read' (get webhook details), 'update' (modify URL, events, or settings), 'delete' (remove webhook), 'test' (trigger test delivery for specific event type). Use for setting up CI/CD automation, configuring notifications, integrating external systems, or managing event subscriptions.
+Manage webhooks with full CRUD operations plus testing. Actions: 'create' (add new webhook with URL and event types), 'update' (modify URL, events, or settings), 'delete' (remove webhook), 'test' (trigger test delivery for specific event type). Use for setting up CI/CD automation, configuring notifications, integrating external systems, or managing event subscriptions.
 
 #### Actions
 
 | Action | Tier | Description |
 |--------|------|-------------|
 | `create` | Free | Create a new item |
-| `read` | Free | Read item details |
 | `update` | Free | Update an existing item |
 | `delete` | Free | Delete an item |
 | `test` | Free | Test a webhook |
@@ -1968,12 +1997,6 @@ Manage webhooks with full CRUD operations plus testing. Actions: 'create' (add n
 | `wiki_page_events` | boolean | No | Enable wiki page events |
 
 **Action `delete`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `hookId` | string | Yes | Webhook ID (required) |
-
-**Action `read`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -2030,22 +2053,43 @@ Manage webhooks with full CRUD operations plus testing. Actions: 'create' (add n
 
 ## Integrations
 
-### list_integrations [tier: Free]
+### browse_integrations [tier: Free]
 
-LIST all active integrations for a project. Returns integrations like Slack, Jira, Discord, Microsoft Teams, Jenkins, etc. Only shows enabled/configured integrations.
+BROWSE project integrations. Actions: "list" shows all active integrations (Slack, Jira, Discord, Teams, Jenkins, etc.), "get" retrieves settings for a specific integration by type slug.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `list` | Free | List all active integrations for a project |
+| `get` | Free | Get integration settings (read-only) |
 
 #### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+
+**Action `get`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `integration` | string | Yes | Integration type slug (e.g., slack, jira, discord). Note: gitlab-slack-application cannot be created via API - it requires OAuth installation from GitLab UI. |
+
+**Action `list`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `project_id` | string | Yes | Project ID or URL-encoded path |
 | `page` | integer | No | Page number |
 
 #### Example
 
 ```json
 {
+  "action": "list",
   "project_id": "my-group/my-project",
   "per_page": 10
 }
@@ -2055,13 +2099,12 @@ LIST all active integrations for a project. Returns integrations like Slack, Jir
 
 ### manage_integration [tier: Free]
 
-MANAGE project integrations. Actions: "get" retrieves integration settings (read-only), "update" modifies or enables integration with specific config, "disable" removes integration. Supports 50+ integrations: Slack, Jira, Discord, Teams, Jenkins, etc. Note: gitlab-slack-application cannot be created via API - requires OAuth install from UI.
+MANAGE project integrations. Actions: "update" modifies or enables integration with specific config, "disable" removes integration. Supports 50+ integrations: Slack, Jira, Discord, Teams, Jenkins, etc. Note: gitlab-slack-application cannot be created via API - requires OAuth install from UI.
 
 #### Actions
 
 | Action | Tier | Description |
 |--------|------|-------------|
-| `get` | Free | Get integration settings (read-only) |
 | `update` | Free | Update or enable integration with specific config |
 | `disable` | Free | Disable and remove integration |
 
@@ -2097,7 +2140,7 @@ MANAGE project integrations. Actions: "get" retrieves integration settings (read
 
 ```json
 {
-  "action": "get",
+  "action": "update",
   "project_id": "my-group/my-project",
   "integration": "slack"
 }

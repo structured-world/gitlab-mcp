@@ -24,17 +24,20 @@ export interface WidgetValidationFailure {
  * This is the source of truth for which parameters require which widgets.
  */
 const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
+  // Free tier widgets
   assigneeIds: WorkItemWidgetTypes.ASSIGNEES,
   labelIds: WorkItemWidgetTypes.LABELS,
   milestoneId: WorkItemWidgetTypes.MILESTONE,
   description: WorkItemWidgetTypes.DESCRIPTION,
-  // Future widget parameters (from #135) will be added here:
-  // weight: WorkItemWidgetTypes.WEIGHT,
-  // iterationId: WorkItemWidgetTypes.ITERATION,
-  // healthStatus: WorkItemWidgetTypes.HEALTH_STATUS,
-  // startDate / dueDate: WorkItemWidgetTypes.START_AND_DUE_DATE,
-  // color: WorkItemWidgetTypes.COLOR,
-  // linkedItemIds: WorkItemWidgetTypes.LINKED_ITEMS,
+  startDate: WorkItemWidgetTypes.START_AND_DUE_DATE,
+  dueDate: WorkItemWidgetTypes.START_AND_DUE_DATE,
+  color: WorkItemWidgetTypes.COLOR,
+  // Premium tier widgets
+  weight: WorkItemWidgetTypes.WEIGHT,
+  iterationId: WorkItemWidgetTypes.ITERATION,
+  linkedItemIds: WorkItemWidgetTypes.LINKED_ITEMS,
+  // Ultimate tier widgets
+  healthStatus: WorkItemWidgetTypes.HEALTH_STATUS,
 };
 
 export class WidgetAvailability {

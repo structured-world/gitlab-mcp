@@ -438,14 +438,58 @@ describe("WidgetAvailability", () => {
       expect(result!.detectedVersion).toBe("14.0.0");
     });
 
-    it("should detect tier-restricted widget parameters", () => {
-      // Free tier should fail for WEIGHT widget (requires premium)
+    it("should detect tier-restricted widget parameters (premium on free)", () => {
+      // Free tier instance should fail for weight (requires premium tier)
       mockConnectionManager.getInstanceInfo.mockReturnValue(mockInstanceInfoFree);
 
-      // Note: weight is not currently in PARAMETER_WIDGET_MAP since it's not yet
-      // a schema parameter. This test validates the tier check logic by testing
-      // the isWidgetAvailable method directly.
-      expect(WidgetAvailability.isWidgetAvailable(WorkItemWidgetTypes.WEIGHT)).toBe(false);
+      const result = WidgetAvailability.validateWidgetParams({
+        weight: 5,
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.parameter).toBe("weight");
+      expect(result!.widget).toBe("WEIGHT");
+      expect(result!.requiredTier).toBe("premium");
+      expect(result!.currentTier).toBe("free");
+    });
+
+    it("should detect tier-restricted widget parameters (ultimate on premium)", () => {
+      // Premium tier instance should fail for healthStatus (requires ultimate tier)
+      mockConnectionManager.getInstanceInfo.mockReturnValue(mockInstanceInfoPremium);
+
+      const result = WidgetAvailability.validateWidgetParams({
+        healthStatus: "onTrack",
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.parameter).toBe("healthStatus");
+      expect(result!.widget).toBe("HEALTH_STATUS");
+      expect(result!.requiredTier).toBe("ultimate");
+      expect(result!.currentTier).toBe("premium");
+    });
+
+    it("should pass tier-restricted params when tier is sufficient", () => {
+      // Premium tier should allow weight (requires premium)
+      mockConnectionManager.getInstanceInfo.mockReturnValue(mockInstanceInfoPremium);
+
+      const result = WidgetAvailability.validateWidgetParams({
+        weight: 3,
+        iterationId: "123",
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it("should pass ultimate params on ultimate tier", () => {
+      // Ultimate tier should allow healthStatus
+      mockConnectionManager.getInstanceInfo.mockReturnValue(mockInstanceInfoUltimate);
+
+      const result = WidgetAvailability.validateWidgetParams({
+        healthStatus: "atRisk",
+        weight: 5,
+      });
+
+      expect(result).toBeNull();
     });
 
     it("should return null when connection is not initialized", () => {
@@ -503,10 +547,20 @@ describe("WidgetAvailability", () => {
     it("should return the parameter-to-widget mapping", () => {
       const map = WidgetAvailability.getParameterWidgetMap();
 
+      // Free tier params
       expect(map.assigneeIds).toBe("ASSIGNEES");
       expect(map.labelIds).toBe("LABELS");
       expect(map.milestoneId).toBe("MILESTONE");
       expect(map.description).toBe("DESCRIPTION");
+      expect(map.startDate).toBe("START_AND_DUE_DATE");
+      expect(map.dueDate).toBe("START_AND_DUE_DATE");
+      expect(map.color).toBe("COLOR");
+      // Premium tier params
+      expect(map.weight).toBe("WEIGHT");
+      expect(map.iterationId).toBe("ITERATION");
+      expect(map.linkedItemIds).toBe("LINKED_ITEMS");
+      // Ultimate tier params
+      expect(map.healthStatus).toBe("HEALTH_STATUS");
     });
 
     it("should return a copy (not the original reference)", () => {

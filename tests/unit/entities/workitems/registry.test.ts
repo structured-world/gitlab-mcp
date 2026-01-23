@@ -30,6 +30,14 @@ jest.mock("../../../../src/utils/workItemTypes", () => ({
   ),
 }));
 
+// Mock WidgetAvailability - default: no validation failures
+const mockValidateWidgetParams = jest.fn().mockReturnValue(null);
+jest.mock("../../../../src/services/WidgetAvailability", () => ({
+  WidgetAvailability: {
+    validateWidgetParams: (params: Record<string, unknown>) => mockValidateWidgetParams(params),
+  },
+}));
+
 describe("Workitems Registry - CQRS Tools", () => {
   describe("Registry Structure", () => {
     it("should be a Map instance", () => {
@@ -260,6 +268,7 @@ describe("Workitems Registry - CQRS Tools", () => {
   describe("Handler Tests", () => {
     beforeEach(() => {
       mockClient.request.mockReset();
+      mockValidateWidgetParams.mockClear();
     });
 
     // Helper function to create complete mock work items
@@ -1043,6 +1052,60 @@ describe("Workitems Registry - CQRS Tools", () => {
           })
         ).rejects.toThrow("Work item creation failed - no work item returned");
       });
+
+      it("should throw VERSION_RESTRICTED error when widget validation fails", async () => {
+        // Mock validateWidgetParams to return a failure for this test
+        mockValidateWidgetParams.mockReturnValueOnce({
+          parameter: "weight",
+          widget: "WEIGHT",
+          requiredVersion: "15.0",
+          detectedVersion: "14.0.0",
+          requiredTier: "premium",
+          currentTier: "free",
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+
+        await expect(
+          tool?.handler({
+            action: "create",
+            namespace: "test-group",
+            workItemType: "EPIC",
+            title: "Test Epic",
+            description: "test",
+          })
+        ).rejects.toThrow("Widget 'WEIGHT'");
+      });
+
+      it("should not validate empty arrays on create (no widget sent for empty arrays)", async () => {
+        // Empty arrays should NOT be passed to validateWidgetParams on create,
+        // because the handler only sends widget input for non-empty arrays.
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: {
+            workItem: {
+              id: "gid://gitlab/WorkItem/999",
+              title: "Test",
+              workItemType: { name: "EPIC" },
+            },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "create",
+          namespace: "test-group",
+          workItemType: "EPIC",
+          title: "Test",
+          assigneeIds: [],
+          labelIds: [],
+        });
+
+        // validateWidgetParams should have been called WITHOUT assigneeIds/labelIds
+        expect(mockValidateWidgetParams).toHaveBeenLastCalledWith(
+          expect.not.objectContaining({ assigneeIds: [], labelIds: [] })
+        );
+      });
     });
 
     describe("manage_work_item handler - update action", () => {
@@ -1249,6 +1312,28 @@ describe("Workitems Registry - CQRS Tools", () => {
             title: "Updated Title",
           })
         ).rejects.toThrow("Work item update failed - no work item returned");
+      });
+
+      it("should throw VERSION_RESTRICTED error when widget validation fails", async () => {
+        // Mock validateWidgetParams to return a failure for this test
+        mockValidateWidgetParams.mockReturnValueOnce({
+          parameter: "healthStatus",
+          widget: "HEALTH_STATUS",
+          requiredVersion: "15.0",
+          detectedVersion: "15.5.0",
+          requiredTier: "ultimate",
+          currentTier: "premium",
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+
+        await expect(
+          tool?.handler({
+            action: "update",
+            id: "123",
+            description: "test",
+          })
+        ).rejects.toThrow("Widget 'HEALTH_STATUS'");
       });
     });
 

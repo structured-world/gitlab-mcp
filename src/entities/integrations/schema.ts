@@ -68,8 +68,11 @@ export const IntegrationTypeSchema = z.enum([
 
 // ============================================================================
 // manage_integration - CQRS Command Tool (discriminated union schema)
-// Actions: get, update, disable
+// Actions: update, disable
 // Uses z.discriminatedUnion() for type-safe action handling.
+//
+// Note: The 'get' action has been moved to browse_integrations (action: 'get')
+// for clean CQRS separation (browse_* = read, manage_* = write).
 // ============================================================================
 
 // --- Shared fields ---
@@ -111,13 +114,6 @@ const eventFields = {
     ),
 };
 
-// --- Action: get ---
-const GetIntegrationSchema = z.object({
-  action: z.literal("get").describe("Get integration settings (read-only)"),
-  project_id: projectIdField,
-  integration: integrationField,
-});
-
 // --- Action: update ---
 const UpdateIntegrationSchema = z
   .object({
@@ -137,7 +133,6 @@ const DisableIntegrationSchema = z.object({
 
 // --- Discriminated union combining all actions ---
 export const ManageIntegrationSchema = z.discriminatedUnion("action", [
-  GetIntegrationSchema,
   UpdateIntegrationSchema,
   DisableIntegrationSchema,
 ]);

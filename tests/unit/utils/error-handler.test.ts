@@ -87,7 +87,7 @@ describe("Error Handler", () => {
         };
 
         // Group webhooks require Premium - scope is in toolArgs
-        const result = handleGitLabError(error, "list_webhooks", "list", { scope: "group" });
+        const result = handleGitLabError(error, "browse_webhooks", "list", { scope: "group" });
 
         expect(result.error_code).toBe("TIER_RESTRICTED");
         if (result.error_code === "TIER_RESTRICTED") {

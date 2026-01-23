@@ -21,6 +21,7 @@ jest.mock("@clack/prompts", () => ({
   spinner: jest.fn(() => ({
     start: jest.fn(),
     stop: jest.fn(),
+    message: jest.fn(),
   })),
   log: {
     info: jest.fn(),
@@ -599,7 +600,7 @@ describe("install-command", () => {
         start: jest.fn(),
         stop: jest.fn(),
         message: jest.fn(),
-      } as ReturnType<typeof mockP.spinner>);
+      });
       consoleSpy = jest.spyOn(console, "log").mockImplementation();
       // Reset installToClients mock to return success
       installToClients.mockReturnValue([

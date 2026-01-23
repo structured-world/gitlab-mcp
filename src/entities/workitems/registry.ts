@@ -503,7 +503,9 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const { id, title, description, state, assigneeIds, labelIds, milestoneId } = input;
             const workItemId = id;
 
-            // Validate widget parameters against instance version/tier
+            // Validate widget parameters against instance version/tier.
+            // Unlike create, empty arrays are validated here because on update
+            // they semantically clear the widget (e.g. assigneeIds: [] removes all assignees).
             const widgetParams = { description, assigneeIds, labelIds, milestoneId };
             const validationFailure = WidgetAvailability.validateWidgetParams(widgetParams);
             if (validationFailure) {

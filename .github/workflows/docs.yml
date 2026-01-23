@@ -40,6 +40,8 @@ jobs:
 
       - name: Build documentation
         run: yarn docs:build
+        env:
+          DOCS_BASE: /
 
       - name: Run tests with coverage
         if: github.event_name == 'release'

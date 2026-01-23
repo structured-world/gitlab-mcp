@@ -1,3 +1,9 @@
+## [6.31.0](https://github.com/structured-world/gitlab-mcp/compare/v6.30.1...v6.31.0) (2026-01-23)
+
+### Features
+
+* **cli:** add unified setup wizard consolidating init/install/docker flows ([#132](https://github.com/structured-world/gitlab-mcp/issues/132)) ([ae5d009](https://github.com/structured-world/gitlab-mcp/commit/ae5d0095736b5201dd74d2c606684b32c734e44b)), closes [#129](https://github.com/structured-world/gitlab-mcp/issues/129)
+
 ## [6.30.1](https://github.com/structured-world/gitlab-mcp/compare/v6.30.0...v6.30.1) (2026-01-23)
 
 ### Refactoring

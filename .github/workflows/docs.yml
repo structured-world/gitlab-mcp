@@ -6,6 +6,7 @@ on:
     paths:
       - 'docs/**'
       - 'package.json'
+      - 'yarn.lock'
       - '.github/workflows/docs.yml'
   release:
     types: [published]

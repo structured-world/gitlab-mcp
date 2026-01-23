@@ -7,7 +7,7 @@
     "diff": "4.0.4",
     "esbuild": ">=0.25.0"
   },
-  "version": "6.35.0",
+  "version": "6.36.0",
   "description": "MCP server for using the GitLab API",
   "license": "Apache-2.0",
   "author": "Dmitry Prudnikov <mail@polaz.com>",

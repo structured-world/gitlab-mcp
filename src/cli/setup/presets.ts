@@ -109,14 +109,14 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     id: "webhooks",
     name: "Webhooks",
     description: "Webhook configuration and testing",
-    tools: ["list_webhooks", "manage_webhook"],
+    tools: ["browse_webhooks", "manage_webhook"],
     defaultEnabled: false,
   },
   {
     id: "integrations",
     name: "Integrations",
     description: "Third-party service integrations",
-    tools: ["list_integrations", "manage_integration"],
+    tools: ["browse_integrations", "manage_integration"],
     defaultEnabled: false,
   },
   {

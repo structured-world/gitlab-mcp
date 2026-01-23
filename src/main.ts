@@ -57,6 +57,7 @@ async function main(): Promise<void> {
       const { runSetupWizard } = await import("./cli/setup");
       const result = await runSetupWizard({ mode: "server" });
       process.exit(result.success ? 0 : 1);
+      return;
     }
     const { runDockerCommand } = await import("./cli/docker");
     await runDockerCommand(cliArgs.dockerArgs);

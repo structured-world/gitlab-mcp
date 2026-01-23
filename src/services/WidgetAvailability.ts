@@ -20,18 +20,18 @@ export interface WidgetValidationFailure {
   currentTier: GitLabTier;
 }
 
-/**
- * Maps manage_work_item input parameters to their corresponding widget types.
- * Includes both current schema parameters and those planned for #135.
- * Parameters not yet in ManageWorkItemSchema are harmless here — validation
- * only triggers when the parameter is actually present in the handler input.
- */
 const TIER_HIERARCHY: Record<GitLabTier, number> = {
   free: 0,
   premium: 1,
   ultimate: 2,
 };
 
+/**
+ * Maps manage_work_item input parameters to their corresponding widget types.
+ * Includes both current schema parameters and those planned for #135.
+ * Parameters not yet in ManageWorkItemSchema are harmless here — validation
+ * only triggers when the parameter is actually present in the handler input.
+ */
 const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
   // Current schema parameters
   assigneeIds: WorkItemWidgetTypes.ASSIGNEES,

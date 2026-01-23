@@ -676,6 +676,16 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               }
             }
 
+            // Validate timelog-related params require timeSpent
+            if (
+              (timeSpentAt !== undefined || timeSpentSummary !== undefined) &&
+              timeSpent === undefined
+            ) {
+              throw new Error(
+                "timeSpentAt and timeSpentSummary require timeSpent to be specified (they are timelog entry properties)"
+              );
+            }
+
             // Time tracking widget
             if (timeEstimate !== undefined || timeSpent !== undefined) {
               updateInput.timeTrackingWidget = {};

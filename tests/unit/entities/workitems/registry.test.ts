@@ -1394,6 +1394,585 @@ describe("Workitems Registry - CQRS Tools", () => {
       });
     });
 
+    describe("manage_work_item handler - add_link action", () => {
+      it("should add a BLOCKS link between work items", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemAddLinkedItems: {
+            workItem: {
+              id: "gid://gitlab/WorkItem/100",
+              iid: "10",
+              title: "Source Item",
+              state: "OPEN",
+              workItemType: { id: "gid://gitlab/WorkItems::Type/2", name: "Issue" },
+              webUrl: "https://gitlab.com/group/project/-/work_items/10",
+              widgets: [
+                {
+                  type: "LINKED_ITEMS",
+                  linkedItems: {
+                    nodes: [
+                      {
+                        linkType: "BLOCKS",
+                        workItem: {
+                          id: "gid://gitlab/WorkItem/200",
+                          iid: "20",
+                          title: "Target",
+                          state: "OPEN",
+                          workItemType: { name: "Issue" },
+                        },
+                      },
+                    ],
+                  },
+                },
+              ],
+            },
+            errors: [],
+            message: null,
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        const result = await tool?.handler({
+          action: "add_link",
+          id: "100",
+          targetId: "200",
+          linkType: "BLOCKS",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(expect.anything(), {
+          input: {
+            id: "gid://gitlab/WorkItem/100",
+            workItemsIds: ["gid://gitlab/WorkItem/200"],
+            linkType: "BLOCKS",
+          },
+        });
+        expect(result).toHaveProperty("id");
+      });
+
+      it("should map RELATES_TO to RELATED for GraphQL API", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemAddLinkedItems: {
+            workItem: {
+              id: "gid://gitlab/WorkItem/100",
+              iid: "10",
+              title: "Source",
+              state: "OPEN",
+              workItemType: { id: "gid://gitlab/WorkItems::Type/2", name: "Issue" },
+              webUrl: "https://gitlab.com/-/work_items/10",
+              widgets: [],
+            },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "add_link",
+          id: "100",
+          targetId: "200",
+          linkType: "RELATES_TO",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(expect.anything(), {
+          input: {
+            id: "gid://gitlab/WorkItem/100",
+            workItemsIds: ["gid://gitlab/WorkItem/200"],
+            linkType: "RELATED",
+          },
+        });
+      });
+
+      it("should handle GraphQL errors in add_link action", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemAddLinkedItems: {
+            workItem: null,
+            errors: ["Work items are already linked"],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await expect(
+          tool?.handler({ action: "add_link", id: "100", targetId: "200", linkType: "BLOCKS" })
+        ).rejects.toThrow("GitLab GraphQL errors: Work items are already linked");
+      });
+
+      it("should handle empty response in add_link action", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemAddLinkedItems: { workItem: null, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await expect(
+          tool?.handler({
+            action: "add_link",
+            id: "100",
+            targetId: "200",
+            linkType: "IS_BLOCKED_BY",
+          })
+        ).rejects.toThrow("Add linked item failed - no work item returned");
+      });
+    });
+
+    describe("manage_work_item handler - remove_link action", () => {
+      it("should remove a link between work items", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemRemoveLinkedItems: {
+            workItem: {
+              id: "gid://gitlab/WorkItem/100",
+              iid: "10",
+              title: "Source",
+              state: "OPEN",
+              workItemType: { id: "gid://gitlab/WorkItems::Type/2", name: "Issue" },
+              webUrl: "https://gitlab.com/-/work_items/10",
+              widgets: [{ type: "LINKED_ITEMS", linkedItems: { nodes: [] } }],
+            },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        const result = await tool?.handler({
+          action: "remove_link",
+          id: "100",
+          targetId: "200",
+          linkType: "BLOCKS",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(expect.anything(), {
+          input: {
+            id: "gid://gitlab/WorkItem/100",
+            workItemsIds: ["gid://gitlab/WorkItem/200"],
+            linkType: "BLOCKS",
+          },
+        });
+        expect(result).toHaveProperty("id");
+      });
+
+      it("should map RELATES_TO to RELATED in remove_link", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemRemoveLinkedItems: {
+            workItem: {
+              id: "gid://gitlab/WorkItem/100",
+              iid: "10",
+              title: "Source",
+              state: "OPEN",
+              workItemType: { id: "gid://gitlab/WorkItems::Type/2", name: "Issue" },
+              webUrl: "https://gitlab.com/-/work_items/10",
+              widgets: [],
+            },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "remove_link",
+          id: "100",
+          targetId: "200",
+          linkType: "RELATES_TO",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(expect.anything(), {
+          input: {
+            id: "gid://gitlab/WorkItem/100",
+            workItemsIds: ["gid://gitlab/WorkItem/200"],
+            linkType: "RELATED",
+          },
+        });
+      });
+
+      it("should handle GraphQL errors in remove_link action", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemRemoveLinkedItems: {
+            workItem: null,
+            errors: ["Link not found"],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await expect(
+          tool?.handler({ action: "remove_link", id: "100", targetId: "200", linkType: "BLOCKS" })
+        ).rejects.toThrow("GitLab GraphQL errors: Link not found");
+      });
+    });
+
+    describe("manage_work_item handler - widget parameters", () => {
+      const mockWorkItemResponse = {
+        id: "gid://gitlab/WorkItem/100",
+        iid: "10",
+        title: "Test Item",
+        state: "OPEN",
+        workItemType: { id: "gid://gitlab/WorkItems::Type/2", name: "Issue" },
+        webUrl: "https://gitlab.com/-/work_items/10",
+        widgets: [],
+      };
+
+      it("should create work item with start and due dates", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "create",
+          namespace: "group/project",
+          title: "Dated Item",
+          workItemType: "ISSUE",
+          startDate: "2025-01-15",
+          dueDate: "2025-02-28",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              startAndDueDateWidget: { startDate: "2025-01-15", dueDate: "2025-02-28" },
+            }),
+          })
+        );
+      });
+
+      it("should create work item with hierarchy (parentId)", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "create",
+          namespace: "group/project",
+          title: "Child Item",
+          workItemType: "TASK",
+          parentId: "500",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              hierarchyWidget: { parentId: "gid://gitlab/WorkItem/500" },
+            }),
+          })
+        );
+      });
+
+      it("should create work item with time estimate", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "create",
+          namespace: "group/project",
+          title: "Estimated Item",
+          workItemType: "ISSUE",
+          timeEstimate: "4h",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              timeTrackingWidget: { timeEstimate: "4h" },
+            }),
+          })
+        );
+      });
+
+      it("should create work item with weight", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "create",
+          namespace: "group/project",
+          title: "Weighted",
+          workItemType: "ISSUE",
+          weight: 5,
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              weightWidget: { weight: 5 },
+            }),
+          })
+        );
+      });
+
+      it("should create work item with iteration", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "create",
+          namespace: "group/project",
+          title: "Sprint Item",
+          workItemType: "ISSUE",
+          iterationId: "42",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              iterationWidget: { iterationId: "gid://gitlab/Iteration/42" },
+            }),
+          })
+        );
+      });
+
+      it("should create work item with health status", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "create",
+          namespace: "group/project",
+          title: "At Risk",
+          workItemType: "ISSUE",
+          healthStatus: "atRisk",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              healthStatusWidget: { healthStatus: "atRisk" },
+            }),
+          })
+        );
+      });
+
+      it("should create work item with color", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "create",
+          namespace: "my-group",
+          title: "Colored Epic",
+          workItemType: "EPIC",
+          color: "#FF5733",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              colorWidget: { color: "#FF5733" },
+            }),
+          })
+        );
+      });
+
+      it("should create work item with progress", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "create",
+          namespace: "group/project",
+          title: "Key Result",
+          workItemType: "ISSUE",
+          progressCurrentValue: 50,
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              progressWidget: { currentValue: 50 },
+            }),
+          })
+        );
+      });
+
+      it("should update work item with time tracking (estimate + timelog)", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "100",
+          timeEstimate: "8h",
+          timeSpent: "2h 30m",
+          timeSpentAt: "2025-01-20T10:00:00Z",
+          timeSpentSummary: "Code review",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              timeTrackingWidget: {
+                timeEstimate: "8h",
+                timelog: {
+                  timeSpent: "2h 30m",
+                  spentAt: "2025-01-20T10:00:00Z",
+                  summary: "Code review",
+                },
+              },
+            }),
+          })
+        );
+      });
+
+      it("should throw error if timeSpentAt provided without timeSpent", async () => {
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await expect(
+          tool?.handler({
+            action: "update",
+            id: "100",
+            timeSpentAt: "2025-01-20T10:00:00Z",
+          })
+        ).rejects.toThrow("timeSpentAt and timeSpentSummary require timeSpent");
+      });
+
+      it("should throw error if timeSpentSummary provided without timeSpent", async () => {
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await expect(
+          tool?.handler({
+            action: "update",
+            id: "100",
+            timeSpentSummary: "Some work",
+          })
+        ).rejects.toThrow("timeSpentAt and timeSpentSummary require timeSpent");
+      });
+
+      it("should update work item with null parentId to unlink", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "100",
+          parentId: null,
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              hierarchyWidget: { parentId: null },
+            }),
+          })
+        );
+      });
+
+      it("should update work item with childrenIds", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "100",
+          childrenIds: ["201", "202"],
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              hierarchyWidget: {
+                childrenIds: ["gid://gitlab/WorkItem/201", "gid://gitlab/WorkItem/202"],
+              },
+            }),
+          })
+        );
+      });
+
+      it("should update work item with null iterationId to unassign", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "100",
+          iterationId: null,
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              iterationWidget: { iterationId: null },
+            }),
+          })
+        );
+      });
+
+      it("should update work item with isFixed dates", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "100",
+          startDate: "2025-03-01",
+          dueDate: "2025-03-31",
+          isFixed: true,
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              startAndDueDateWidget: {
+                startDate: "2025-03-01",
+                dueDate: "2025-03-31",
+                isFixed: true,
+              },
+            }),
+          })
+        );
+      });
+
+      it("should update work item with null dates to clear", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "100",
+          startDate: null,
+          dueDate: null,
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              startAndDueDateWidget: { startDate: null, dueDate: null },
+            }),
+          })
+        );
+      });
+    });
+
     describe("Error Handling", () => {
       it("should handle GraphQL client errors gracefully", async () => {
         mockClient.request.mockRejectedValueOnce(new Error("Network error"));

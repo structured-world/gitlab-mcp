@@ -561,7 +561,6 @@ describe("WidgetAvailability", () => {
       expect(map.childrenIds).toBe("HIERARCHY");
       expect(map.timeEstimate).toBe("TIME_TRACKING");
       expect(map.timeSpent).toBe("TIME_TRACKING");
-      expect(map.linkedItemIds).toBe("LINKED_ITEMS");
       // Premium tier params
       expect(map.weight).toBe("WEIGHT");
       expect(map.iterationId).toBe("ITERATION");

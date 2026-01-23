@@ -1,3 +1,9 @@
+## [6.34.0](https://github.com/structured-world/gitlab-mcp/compare/v6.33.3...v6.34.0) (2026-01-23)
+
+### Features
+
+* **docs:** migrate domain, add branding assets, remove dead code ([#156](https://github.com/structured-world/gitlab-mcp/issues/156)) ([ce8f18f](https://github.com/structured-world/gitlab-mcp/commit/ce8f18f6e64570655f4655ab0a16d415a701b4ec)), closes [#145](https://github.com/structured-world/gitlab-mcp/issues/145)
+
 ## [6.33.3](https://github.com/structured-world/gitlab-mcp/compare/v6.33.2...v6.33.3) (2026-01-23)
 
 ### Bug Fixes

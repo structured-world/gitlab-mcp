@@ -1,3 +1,21 @@
+## [6.33.1](https://github.com/structured-world/gitlab-mcp/compare/v6.33.0...v6.33.1) (2026-01-23)
+
+### Bug Fixes
+
+* **deps:** resolve esbuild CORS vulnerability (GHSA-67mh-4wv8-2f99) ([#152](https://github.com/structured-world/gitlab-mcp/issues/152)) ([b1e0c3a](https://github.com/structured-world/gitlab-mcp/commit/b1e0c3ad0fc0534449075c63cac7511450d89d52)), closes [#151](https://github.com/structured-world/gitlab-mcp/issues/151)
+
+## [6.33.0](https://github.com/structured-world/gitlab-mcp/compare/v6.32.0...v6.33.0) (2026-01-23)
+
+### Features
+
+* **docs:** add "Report a Bug" feedback widget to documentation site ([#148](https://github.com/structured-world/gitlab-mcp/issues/148)) ([00ff2ed](https://github.com/structured-world/gitlab-mcp/commit/00ff2ed45a59bec97b5f187cc17fc473bb06926d)), closes [#145](https://github.com/structured-world/gitlab-mcp/issues/145) [PKCS#1](https://github.com/structured-world/PKCS/issues/1) [PKCS#8](https://github.com/structured-world/PKCS/issues/8) [PKCS#1](https://github.com/structured-world/PKCS/issues/1) [PKCS#8](https://github.com/structured-world/PKCS/issues/8)
+
+## [6.32.0](https://github.com/structured-world/gitlab-mcp/compare/v6.31.2...v6.32.0) (2026-01-23)
+
+### Features
+
+* **availability:** use WidgetAvailability for version-based widget validation ([#140](https://github.com/structured-world/gitlab-mcp/issues/140)) ([66e0215](https://github.com/structured-world/gitlab-mcp/commit/66e0215d08d25afa90cb9463113c1a59e06dc6c9)), closes [#137](https://github.com/structured-world/gitlab-mcp/issues/137) [#132](https://github.com/structured-world/gitlab-mcp/issues/132) [#129](https://github.com/structured-world/gitlab-mcp/issues/129) [#135](https://github.com/structured-world/gitlab-mcp/issues/135)
+
 ## [6.31.2](https://github.com/structured-world/gitlab-mcp/compare/v6.31.1...v6.31.2) (2026-01-23)
 
 ### Bug Fixes

@@ -4,7 +4,7 @@ import { GitLabTier } from "./GitLabVersionDetector";
 import { parseVersion } from "../utils/version";
 
 interface WidgetRequirement {
-  tier: GitLabTier | "free";
+  tier: GitLabTier;
   minVersion: string;
 }
 
@@ -16,7 +16,7 @@ export interface WidgetValidationFailure {
   widget: WorkItemWidgetType;
   requiredVersion: string;
   detectedVersion: string;
-  requiredTier: GitLabTier | "free";
+  requiredTier: GitLabTier;
   currentTier: GitLabTier;
 }
 
@@ -26,6 +26,12 @@ export interface WidgetValidationFailure {
  * Parameters not yet in ManageWorkItemSchema are harmless here — validation
  * only triggers when the parameter is actually present in the handler input.
  */
+const TIER_HIERARCHY: Record<GitLabTier, number> = {
+  free: 0,
+  premium: 1,
+  ultimate: 2,
+};
+
 const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
   // Current schema parameters
   assigneeIds: WorkItemWidgetTypes.ASSIGNEES,
@@ -186,14 +192,8 @@ export class WidgetAvailability {
 
       // Check tier requirement
       if (requirement.tier !== "free") {
-        const tierHierarchy: Record<GitLabTier, number> = {
-          free: 0,
-          premium: 1,
-          ultimate: 2,
-        };
-
-        const requiredTierLevel = tierHierarchy[requirement.tier as GitLabTier];
-        const actualTierLevel = tierHierarchy[instanceTier];
+        const requiredTierLevel = TIER_HIERARCHY[requirement.tier];
+        const actualTierLevel = TIER_HIERARCHY[instanceTier];
 
         if (actualTierLevel < requiredTierLevel) {
           return {

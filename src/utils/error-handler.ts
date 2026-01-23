@@ -944,7 +944,7 @@ export function createVersionRestrictedError(
   currentTier?: GitLabTier
 ): VersionRestrictedError {
   // Determine which constraints are violated
-  const tierHierarchy: Record<string, number> = { Free: 0, Premium: 1, Ultimate: 2 };
+  const tierHierarchy: Record<GitLabTier, number> = { Free: 0, Premium: 1, Ultimate: 2 };
   const isTierInsufficient =
     requiredTier && currentTier && tierHierarchy[requiredTier] > tierHierarchy[currentTier];
 

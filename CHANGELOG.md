@@ -1,3 +1,9 @@
+## [6.33.1](https://github.com/structured-world/gitlab-mcp/compare/v6.33.0...v6.33.1) (2026-01-23)
+
+### Bug Fixes
+
+* **deps:** resolve esbuild CORS vulnerability (GHSA-67mh-4wv8-2f99) ([#152](https://github.com/structured-world/gitlab-mcp/issues/152)) ([b1e0c3a](https://github.com/structured-world/gitlab-mcp/commit/b1e0c3ad0fc0534449075c63cac7511450d89d52)), closes [#151](https://github.com/structured-world/gitlab-mcp/issues/151)
+
 ## [6.33.0](https://github.com/structured-world/gitlab-mcp/compare/v6.32.0...v6.33.0) (2026-01-23)
 
 ### Features

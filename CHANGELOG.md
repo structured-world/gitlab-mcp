@@ -1,3 +1,9 @@
+## [6.31.2](https://github.com/structured-world/gitlab-mcp/compare/v6.31.1...v6.31.2) (2026-01-23)
+
+### Bug Fixes
+
+* **transport:** add SSE keepalive and configure HTTP server timeouts for proxy chain ([#147](https://github.com/structured-world/gitlab-mcp/issues/147)) ([382490b](https://github.com/structured-world/gitlab-mcp/commit/382490be0df8147991af7d99000cfb27b9a3ca41)), closes [#139](https://github.com/structured-world/gitlab-mcp/issues/139)
+
 ## [6.31.1](https://github.com/structured-world/gitlab-mcp/compare/v6.31.0...v6.31.1) (2026-01-23)
 
 ### Bug Fixes

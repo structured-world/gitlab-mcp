@@ -475,11 +475,11 @@ export function stripTierRestrictedParameters(
  * Remove restricted parameters from a schema object's properties and required array
  */
 function stripFromProperties(schema: JSONSchema, restrictedParams: Set<string>): void {
-  if (!schema.properties) return;
-
-  for (const paramName of restrictedParams) {
-    if (paramName in schema.properties) {
-      delete schema.properties[paramName];
+  if (schema.properties) {
+    for (const paramName of restrictedParams) {
+      if (paramName in schema.properties) {
+        delete schema.properties[paramName];
+      }
     }
   }
 

@@ -909,6 +909,21 @@ describe("schema-utils", () => {
       expect(result.properties).toBeUndefined();
     });
 
+    it("should filter required array even when properties object is missing", () => {
+      // Schema with required but no properties (e.g., allOf/$ref pattern)
+      const schemaWithRequiredOnly: TestJSONSchema = {
+        type: "object",
+        required: ["action", "weight", "title"],
+      };
+
+      const result = stripTierRestrictedParameters(schemaWithRequiredOnly as any, ["weight"]);
+
+      // required should still be filtered even without properties
+      expect(result.required).toEqual(["action", "title"]);
+      expect(result.required).not.toContain("weight");
+      expect(result.properties).toBeUndefined();
+    });
+
     it("should handle schema without required array", () => {
       // Schema with properties but no required array
       const noRequiredSchema: TestJSONSchema = {

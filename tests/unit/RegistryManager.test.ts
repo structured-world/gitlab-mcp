@@ -401,12 +401,18 @@ describe("RegistryManager", () => {
       });
 
       try {
+        // Mock getRestrictedParameters to return restricted params (would strip if called)
+        ToolAvailability.getRestrictedParameters.mockReturnValue(["weight"]);
+
         // Make ConnectionManager throw (simulating uninitialized connection)
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockImplementation(() => {
             throw new Error("Connection not initialized");
           }),
         });
+
+        // Clear call history from beforeEach cache build before creating new instance
+        ToolAvailability.getRestrictedParameters.mockClear();
 
         (RegistryManager as any).instance = null;
         registryManager = RegistryManager.getInstance();
@@ -417,11 +423,16 @@ describe("RegistryManager", () => {
         const schema = tool?.inputSchema as any;
 
         // Parameters should NOT be stripped when connection is unavailable
+        // (getRestrictedParameters should not be called at all)
         expect(schema.properties?.weight).toBeDefined();
         expect(schema.properties?.title).toBeDefined();
         expect(schema.required).toContain("weight");
+
+        // Verify getRestrictedParameters was NOT called (guard prevented it)
+        expect(ToolAvailability.getRestrictedParameters).not.toHaveBeenCalled();
       } finally {
         coreRegistry.delete("tool_with_params");
+        ToolAvailability.getRestrictedParameters.mockReturnValue([]);
         // Restore ConnectionManager mock
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: "free", version: "17.0.0" }),

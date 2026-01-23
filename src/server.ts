@@ -1,8 +1,8 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express, { Express } from "express";
+import * as crypto from "crypto";
 import * as http from "http";
 import * as https from "https";
 import * as fs from "fs";
@@ -16,9 +16,8 @@ import {
   TRUST_PROXY,
 } from "./config";
 import { TransportMode } from "./types";
-import { packageName, packageVersion } from "./config";
-import { setupHandlers } from "./handlers";
 import { logger } from "./logger";
+import { getSessionManager } from "./session-manager";
 
 // OAuth imports
 import {
@@ -40,52 +39,23 @@ import {
 // Middleware imports
 import { oauthAuthMiddleware, rateLimiterMiddleware } from "./middleware/index";
 
-// Schema mode auto-detection
-import { setDetectedSchemaMode } from "./utils/schema-utils";
 // Request logging utilities
 import { getRequestContext } from "./utils/request-logger";
 
-// Create server instance
-export const server = new Server(
-  {
-    name: packageName,
-    version: packageVersion,
-  },
-  {
-    capabilities: {
-      tools: {
-        listChanged: true,
-      },
-    },
-  }
-);
-
-// Auto-detect schema mode from clientInfo after initialization
-// Used when GITLAB_SCHEMA_MODE=auto to determine flat vs discriminated
-// NOTE: This works correctly for stdio mode (single client). For HTTP/SSE with multiple
-// concurrent sessions, auto-detection will use the most recent client's preference for
-// all sessions. Use explicit GITLAB_SCHEMA_MODE=flat|discriminated for multi-session deployments.
-server.oninitialized = () => {
-  const clientVersion = server.getClientVersion();
-  setDetectedSchemaMode(clientVersion?.name);
-};
-
 /**
- * Send a tools/list_changed notification to connected clients.
+ * Send a tools/list_changed notification to ALL connected clients.
  *
  * This notifies clients that the available tools have changed, prompting them
  * to re-fetch the tool list. Used when switching presets that affect tool availability.
  *
- * Per MCP spec, this notification is sent as:
- * { jsonrpc: "2.0", method: "notifications/tools/list_changed" }
+ * Broadcasts to all active sessions managed by the SessionManager.
  */
 export async function sendToolsListChangedNotification(): Promise<void> {
   try {
-    await server.notification({ method: "notifications/tools/list_changed" });
-    logger.info("Sent tools/list_changed notification to clients");
-  } catch (error) {
-    // Log but don't throw - client may not support this notification
-    logger.debug({ err: error }, "Failed to send tools/list_changed notification");
+    const sessionManager = getSessionManager();
+    await sessionManager.broadcastToolsListChanged();
+  } catch (error: unknown) {
+    logger.error({ err: error }, "Failed to broadcast tools/list_changed notification");
   }
 }
 
@@ -266,197 +236,17 @@ export async function startServer(): Promise<void> {
     await sessionStore.initialize();
   }
 
-  // Setup request handlers
-  await setupHandlers(server);
+  // Initialize session manager (handles per-session Server instances)
+  const sessionManager = getSessionManager();
+  sessionManager.start();
 
   const transportMode = determineTransportMode();
 
   switch (transportMode) {
     case "stdio": {
       const transport = new StdioServerTransport();
-      await server.connect(transport);
+      await sessionManager.createSession("stdio", transport);
       logger.info("GitLab MCP Server running on stdio");
-      break;
-    }
-
-    case "sse": {
-      logger.info("Setting up SSE mode with MCP SDK...");
-      const app = express();
-      app.use(express.json());
-
-      // Configure trust proxy for reverse proxy deployments
-      configureTrustProxy(app);
-
-      // Rate limiting middleware (protects anonymous requests, authenticated users skip)
-      app.use(rateLimiterMiddleware());
-
-      // Register OAuth endpoints if OAuth mode is enabled
-      if (isOAuthEnabled()) {
-        registerOAuthEndpoints(app);
-      }
-
-      const sseTransports: { [sessionId: string]: SSEServerTransport } = {};
-
-      // SSE endpoint for establishing the stream
-      app.get("/sse", async (req, res) => {
-        logger.debug("SSE endpoint hit!");
-        const transport = new SSEServerTransport("/messages", res);
-
-        // Connect the server to this transport (this calls start() automatically)
-        await server.connect(transport);
-
-        // Store transport by session ID for message routing
-        const sessionId = transport.sessionId;
-        sseTransports[sessionId] = transport;
-        logger.debug(`SSE transport created with session: ${sessionId}`);
-      });
-
-      // Messages endpoint for receiving JSON-RPC messages
-      app.post("/messages", async (req, res): Promise<void> => {
-        logger.debug("Messages endpoint hit!");
-        const sessionId = req.query.sessionId as string;
-
-        if (!sessionId || !sseTransports[sessionId]) {
-          res.status(404).json({ error: "Session not found" });
-          return;
-        }
-
-        try {
-          const transport = sseTransports[sessionId];
-          await transport.handlePostMessage(req, res, req.body);
-        } catch (error: unknown) {
-          logger.error({ err: error }, "Error handling SSE message");
-          res.status(500).json({ error: "Internal server error" });
-        }
-      });
-
-      startHttpServer(app, () => {
-        const url = `${getProtocol()}://${HOST}:${PORT}`;
-        logger.info(`GitLab MCP Server SSE running on ${url}`);
-        if (isTLSEnabled()) {
-          logger.info("TLS/HTTPS enabled");
-        }
-        logger.info("SSE server started successfully");
-      });
-      break;
-    }
-
-    case "streamable-http": {
-      const app = express();
-      app.use(express.json());
-
-      // Configure trust proxy for reverse proxy deployments
-      configureTrustProxy(app);
-
-      // Rate limiting middleware (protects anonymous requests, authenticated users skip)
-      app.use(rateLimiterMiddleware());
-
-      // Register OAuth endpoints if OAuth mode is enabled
-      if (isOAuthEnabled()) {
-        registerOAuthEndpoints(app);
-      }
-
-      // Middleware to ensure Accept header includes text/event-stream for MCP endpoints
-      // This fixes compatibility with clients that don't send the full Accept header
-      // as required by MCP spec (e.g., when headers are modified by reverse proxies)
-      app.use("/mcp", (req, res, next) => {
-        const accept = req.headers.accept ?? "";
-        if (req.method === "POST" && !accept.includes("text/event-stream")) {
-          req.headers.accept = accept
-            ? `${accept}, text/event-stream`
-            : "application/json, text/event-stream";
-          logger.debug(
-            { originalAccept: accept, newAccept: req.headers.accept },
-            "Modified Accept header for MCP compatibility"
-          );
-        }
-        next();
-      });
-
-      // OAuth authentication middleware for MCP endpoints (when OAuth mode is enabled)
-      if (isOAuthEnabled()) {
-        app.use("/mcp", oauthAuthMiddleware);
-      }
-
-      const streamableTransports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
-
-      // Single endpoint that handles both GET (SSE) and POST (JSON-RPC) requests
-      // This follows MCP SDK pattern where StreamableHTTP transport handles both internally
-      app.all("/mcp", async (req, res) => {
-        const sessionId = req.headers["mcp-session-id"] as string;
-
-        // Get OAuth token info from middleware (stored in res.locals)
-        const oauthSessionId = res.locals.oauthSessionId as string | undefined;
-        const gitlabToken = res.locals.gitlabToken as string | undefined;
-        const gitlabUserId = res.locals.gitlabUserId as number | undefined;
-        const gitlabUsername = res.locals.gitlabUsername as string | undefined;
-
-        // Helper to handle request with proper token context
-        const handleWithContext = async (
-          transport: StreamableHTTPServerTransport
-        ): Promise<void> => {
-          if (gitlabToken && oauthSessionId && gitlabUserId && gitlabUsername) {
-            // Wrap transport.handleRequest in token context so MCP handlers have access
-            await runWithTokenContext(
-              {
-                gitlabToken,
-                gitlabUserId,
-                gitlabUsername,
-                sessionId: oauthSessionId,
-              },
-              async () => {
-                await transport.handleRequest(req, res, req.body);
-              }
-            );
-          } else {
-            // No OAuth token - direct handling (static token mode or unauthenticated)
-            await transport.handleRequest(req, res, req.body);
-          }
-        };
-
-        try {
-          let transport: StreamableHTTPServerTransport;
-
-          if (sessionId && sessionId in streamableTransports) {
-            // Use existing transport for this session
-            transport = streamableTransports[sessionId];
-            await handleWithContext(transport);
-          } else {
-            // Create new transport (handles both SSE and JSON-RPC internally)
-            transport = new StreamableHTTPServerTransport({
-              sessionIdGenerator: () => Math.random().toString(36).substring(7),
-              onsessioninitialized: (newSessionId: string) => {
-                streamableTransports[newSessionId] = transport;
-                logger.info(`MCP session initialized: ${newSessionId} (method: ${req.method})`);
-
-                // Associate MCP session with OAuth session if authenticated
-                if (oauthSessionId) {
-                  sessionStore.associateMcpSession(newSessionId, oauthSessionId);
-                }
-              },
-              onsessionclosed: (closedSessionId: string) => {
-                delete streamableTransports[closedSessionId];
-                sessionStore.removeMcpSessionAssociation(closedSessionId);
-                logger.info(`MCP session closed: ${closedSessionId}`);
-              },
-            });
-            await server.connect(transport);
-            await handleWithContext(transport);
-          }
-        } catch (error: unknown) {
-          logger.error({ err: error }, "Error in StreamableHTTP transport");
-          res.status(500).json({ error: "Internal server error" });
-        }
-      });
-
-      startHttpServer(app, () => {
-        const url = `${getProtocol()}://${HOST}:${PORT}`;
-        logger.info(`GitLab MCP Server running on ${url}/mcp`);
-        if (isTLSEnabled()) {
-          logger.info("TLS/HTTPS enabled");
-        }
-        logger.info("Supports both SSE (GET) and JSON-RPC (POST) on same endpoint");
-      });
       break;
     }
 
@@ -508,11 +298,28 @@ export async function startServer(): Promise<void> {
       app.get("/sse", async (req, res) => {
         logger.debug("SSE endpoint hit!");
         const transport = new SSEServerTransport("/messages", res);
-        await server.connect(transport);
-
         const sessionId = transport.sessionId;
-        sseTransports[sessionId] = transport;
-        logger.debug(`SSE transport created with session: ${sessionId}`);
+
+        try {
+          // Each SSE session gets its own Server instance
+          await sessionManager.createSession(sessionId, transport);
+          sseTransports[sessionId] = transport;
+          logger.debug(`SSE transport created with session: ${sessionId}`);
+        } catch (error: unknown) {
+          logger.error({ err: error, sessionId }, "Failed to create SSE session");
+          if (!res.headersSent) {
+            res.status(500).end();
+          }
+          return;
+        }
+
+        // Clean up session when client disconnects
+        res.on("close", () => {
+          delete sseTransports[sessionId];
+          sessionManager.removeSession(sessionId).catch((error: unknown) => {
+            logger.debug({ err: error, sessionId }, "Error removing SSE session on disconnect");
+          });
+        });
       });
 
       app.post("/messages", async (req, res): Promise<void> => {
@@ -525,11 +332,14 @@ export async function startServer(): Promise<void> {
         }
 
         try {
+          sessionManager.touchSession(sessionId);
           const transport = sseTransports[sessionId];
           await transport.handlePostMessage(req, res, req.body);
         } catch (error: unknown) {
           logger.error({ err: error }, "Error handling SSE message");
-          res.status(500).json({ error: "Internal server error" });
+          if (!res.headersSent) {
+            res.status(500).json({ error: "Internal server error" });
+          }
         }
       });
 
@@ -583,32 +393,48 @@ export async function startServer(): Promise<void> {
           let transport: StreamableHTTPServerTransport;
 
           if (sessionId && sessionId in streamableTransports) {
+            sessionManager.touchSession(sessionId);
             transport = streamableTransports[sessionId];
             await handleWithContext(transport);
           } else {
+            // Pre-generate session ID so we can connect the Server before handling the request
+            const newSessionId = crypto.randomUUID();
+
             transport = new StreamableHTTPServerTransport({
-              sessionIdGenerator: () => Math.random().toString(36).substring(7),
-              onsessioninitialized: (newSessionId: string) => {
-                streamableTransports[newSessionId] = transport;
-                logger.info(`MCP session initialized: ${newSessionId} (method: ${req.method})`);
+              sessionIdGenerator: () => newSessionId,
+              onsessioninitialized: (sessionId: string) => {
+                streamableTransports[sessionId] = transport;
+                logger.info(`MCP session initialized: ${sessionId} (method: ${req.method})`);
 
                 // Associate MCP session with OAuth session if authenticated
                 if (oauthSessionId) {
-                  sessionStore.associateMcpSession(newSessionId, oauthSessionId);
+                  sessionStore.associateMcpSession(sessionId, oauthSessionId);
                 }
               },
               onsessionclosed: (closedSessionId: string) => {
                 delete streamableTransports[closedSessionId];
                 sessionStore.removeMcpSessionAssociation(closedSessionId);
+                sessionManager.removeSession(closedSessionId).catch((err: unknown) => {
+                  logger.debug(
+                    { err, sessionId: closedSessionId },
+                    "Error removing closed session"
+                  );
+                });
                 logger.info(`MCP session closed: ${closedSessionId}`);
               },
             });
-            await server.connect(transport);
+
+            // Connect per-session Server BEFORE handling request — ensures
+            // message routing is ready before the transport processes the request
+            await sessionManager.createSession(newSessionId, transport);
+
             await handleWithContext(transport);
           }
         } catch (error: unknown) {
           logger.error({ err: error }, "Error in StreamableHTTP transport");
-          res.status(500).json({ error: "Internal server error" });
+          if (!res.headersSent) {
+            res.status(500).json({ error: "Internal server error" });
+          }
         }
       });
 
@@ -634,9 +460,18 @@ export async function startServer(): Promise<void> {
   }
 }
 
-// Graceful shutdown - save sessions to storage backend before exit
+// Graceful shutdown - close all sessions and save to storage backend before exit
 async function gracefulShutdown(signal: string): Promise<void> {
   logger.info({ signal }, "Shutting down GitLab MCP Server...");
+
+  try {
+    // Shut down session manager (closes all per-session Server instances)
+    const sm = getSessionManager();
+    await sm.shutdown();
+    logger.info("Session manager shut down successfully");
+  } catch (error) {
+    logger.error({ err: error as Error }, "Error shutting down session manager");
+  }
 
   try {
     // Close session store (saves file-based sessions, disconnects PostgreSQL)

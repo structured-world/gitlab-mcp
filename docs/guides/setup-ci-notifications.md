@@ -19,6 +19,7 @@ The built-in Slack integration provides rich notifications with pipeline status,
 ```json
 // browse_integrations
 {
+  "action": "list",
   "project_id": "my-org/api",
   "per_page": 50
 }
@@ -139,7 +140,7 @@ For custom endpoints or services not covered by built-in integrations.
 ```json
 // browse_webhooks
 {
-  "action": "",
+  "action": "list",
   "scope": "project",
   "projectId": "my-org/api",
   "per_page": 20

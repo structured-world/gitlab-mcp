@@ -22,7 +22,6 @@ Focused prompts for daily development workflows — code, MRs, pipelines, and de
 
 ```json [Create branch]
 {
-  "action": "create_branch",
   "project_id": "my-org/api",
   "branch": "feature/user-auth",
   "ref": "main"

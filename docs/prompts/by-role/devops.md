@@ -89,7 +89,7 @@ Infrastructure, CI/CD, integrations, and deployment management.
 
 ```json [List webhooks]
 {
-  "action": "",
+  "action": "list",
   "scope": "project",
   "projectId": "my-org/api",
   "per_page": 20
@@ -132,6 +132,7 @@ Infrastructure, CI/CD, integrations, and deployment management.
 
 ```json [List active]
 {
+  "action": "list",
   "project_id": "my-org/api",
   "per_page": 50
 }
@@ -172,8 +173,6 @@ Infrastructure, CI/CD, integrations, and deployment management.
 {
   "action": "protect_branch",
   "project_id": "my-org/api",
-  "branch": "main",
-  "ref": "main",
   "name": "main",
   "push_access_level": 40,
   "merge_access_level": 30,

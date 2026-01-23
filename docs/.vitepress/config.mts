@@ -15,6 +15,7 @@ export default defineConfig({
       { text: "Guides", link: "/guides/" },
       { text: "Security", link: "/security/oauth" },
       { text: "Advanced", link: "/advanced/tls" },
+      { text: "CLI", link: "/cli/list-tools" },
     ],
 
     sidebar: {

@@ -106,12 +106,10 @@ Prompts for monitoring merge requests, pipelines, and overall project health.
 
 ```json [By milestone]
 {
-  "action": "list",
+  "action": "issues",
   "namespace": "my-org/api",
-  "state": ["OPEN"],
-  "types": ["ISSUE"],
-  "first": 20,
-  "simple": true
+  "milestone_id": "5",
+  "per_page": 20
 }
 ```
 

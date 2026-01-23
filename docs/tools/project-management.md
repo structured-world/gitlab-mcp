@@ -290,8 +290,8 @@ Manage project and group membership.
 | 40 | Maintainer | Merge MRs, manage settings |
 | 50 | Owner | Full control |
 
-## Related Guides
+## Related
 
 - [Sprint Planning Prompts](/prompts/project-management/sprint-planning)
-- [Issue Triage](/prompts/project-management/issue-triage)
+- [Issue Triage Prompts](/prompts/project-management/issue-triage)
 - [Team Onboarding Guide](/guides/team-onboarding)

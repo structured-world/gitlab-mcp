@@ -302,4 +302,5 @@ File browsing, commits, branches, tags, and repository management.
 
 - [Developer Prompts](/prompts/by-role/developer)
 - [Explore Repo Prompts](/prompts/quick-start/explore-repo)
-- [Release Notes Guide](/prompts/project-management/release-notes)
+- [Release Notes Prompts](/prompts/project-management/release-notes)
+- [Automate Releases Guide](/guides/automate-releases)

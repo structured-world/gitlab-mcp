@@ -114,9 +114,8 @@ If the latest pipeline failed, fix issues before proceeding.
 {
   "action": "create_tag",
   "project_id": "my-org/api",
-  "branch": "v2.0.0",
-  "ref": "main",
   "tag_name": "v2.0.0",
+  "ref": "main",
   "message": "Release v2.0.0 - Platform modernization"
 }
 ```

@@ -1,7 +1,7 @@
 /**
- * Unit tests for the Cloudflare Pages Function handlers in report-bug.ts.
- * Tests the exported onRequestOptions and onRequestPost with mocked
- * crypto.subtle and fetch to cover JWT auth, rate limiting, and error paths.
+ * Unit tests for the Cloudflare Worker handler in docs/worker/src/index.ts.
+ * Tests the exported default fetch handler with mocked crypto.subtle and fetch
+ * to cover routing, JWT auth, rate limiting, and error paths.
  */
 
 // Mock fetch globally before importing the module
@@ -20,11 +20,13 @@ Object.defineProperty(global, "crypto", {
   },
 });
 
-import { onRequestOptions, onRequestPost } from "../../../docs/functions/api/report-bug";
+// Import the Worker's default export
+import worker from "../../../docs/worker/src/index";
 
-// Helper to create a mock context matching Cloudflare's EventContext shape
-function createMockContext(overrides: {
+// Helper to create a Request + Env pair for the Worker
+function createWorkerInput(overrides: {
   method?: string;
+  path?: string;
   origin?: string;
   body?: unknown;
   ip?: string;
@@ -36,8 +38,23 @@ function createMockContext(overrides: {
   }>;
 }) {
   const method = overrides.method || "POST";
+  const path = overrides.path || "/api/report-bug";
   const origin = overrides.origin || "https://structured-world.github.io";
   const ip = overrides.ip || "1.2.3.4";
+
+  const headers = new Headers();
+  headers.set("Origin", origin);
+  headers.set("CF-Connecting-IP", ip);
+  headers.set("Content-Type", "application/json");
+
+  const request = new Request(`https://gitlab-mcp.sw.foundation${path}`, {
+    method,
+    headers,
+    ...(method !== "GET" && method !== "OPTIONS" && overrides.body !== undefined
+      ? { body: JSON.stringify(overrides.body) }
+      : {}),
+  });
+
   const env = {
     GITHUB_APP_ID: "12345",
     GITHUB_APP_PEM: "dGVzdA==", // base64 of "test"
@@ -46,21 +63,10 @@ function createMockContext(overrides: {
     ...overrides.env,
   };
 
-  const headers = new Map<string, string>();
-  headers.set("Origin", origin);
-  headers.set("CF-Connecting-IP", ip);
-
-  return {
-    request: {
-      method,
-      headers: { get: (key: string) => headers.get(key) || null },
-      json: jest.fn().mockResolvedValue(overrides.body ?? {}),
-    },
-    env,
-  } as unknown as Parameters<typeof onRequestPost>[0];
+  return { request, env };
 }
 
-describe("report-bug handlers", () => {
+describe("Worker fetch handler", () => {
   beforeEach(() => {
     jest.clearAllMocks();
     // Default: crypto.subtle.importKey returns a mock CryptoKey
@@ -69,14 +75,30 @@ describe("report-bug handlers", () => {
     mockSign.mockResolvedValue(new Uint8Array([1, 2, 3, 4]).buffer);
   });
 
-  describe("onRequestOptions (CORS preflight)", () => {
+  describe("routing", () => {
+    // Tests that non-API paths return 404
+    it("returns 404 for non-API paths", async () => {
+      const { request, env } = createWorkerInput({ path: "/guide/quick-start" });
+      const response = await worker.fetch(request, env);
+      expect(response.status).toBe(404);
+    });
+
+    // Tests that unsupported methods return 405
+    it("returns 405 for unsupported methods", async () => {
+      const { request, env } = createWorkerInput({ method: "GET" });
+      const response = await worker.fetch(request, env);
+      expect(response.status).toBe(405);
+    });
+  });
+
+  describe("OPTIONS (CORS preflight)", () => {
     // Tests that OPTIONS returns 204 with proper CORS headers
     it("returns 204 with CORS headers for allowed origin", async () => {
-      const ctx = createMockContext({
+      const { request, env } = createWorkerInput({
         method: "OPTIONS",
         origin: "https://structured-world.github.io",
       });
-      const response = await onRequestOptions(ctx);
+      const response = await worker.fetch(request, env);
 
       expect(response.status).toBe(204);
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
@@ -87,8 +109,11 @@ describe("report-bug handlers", () => {
 
     // Tests that unknown origins fall back to primary allowed origin
     it("falls back to primary origin for unknown origins", async () => {
-      const ctx = createMockContext({ method: "OPTIONS", origin: "https://evil.com" });
-      const response = await onRequestOptions(ctx);
+      const { request, env } = createWorkerInput({
+        method: "OPTIONS",
+        origin: "https://evil.com",
+      });
+      const response = await worker.fetch(request, env);
 
       expect(response.status).toBe(204);
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
@@ -97,11 +122,11 @@ describe("report-bug handlers", () => {
     });
   });
 
-  describe("onRequestPost", () => {
+  describe("POST /api/report-bug", () => {
     // Tests that invalid input returns 400
     it("returns 400 for missing description", async () => {
-      const ctx = createMockContext({ body: { page: "/test" } });
-      const response = await onRequestPost(ctx);
+      const { request, env } = createWorkerInput({ body: { page: "/test" } });
+      const response = await worker.fetch(request, env);
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -110,8 +135,8 @@ describe("report-bug handlers", () => {
 
     // Tests that short description returns 400
     it("returns 400 for description too short", async () => {
-      const ctx = createMockContext({ body: { description: "short" } });
-      const response = await onRequestPost(ctx);
+      const { request, env } = createWorkerInput({ body: { description: "short" } });
+      const response = await worker.fetch(request, env);
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -120,10 +145,10 @@ describe("report-bug handlers", () => {
 
     // Tests that honeypot detection returns 400
     it("returns 400 for non-empty honeypot (anti-spam)", async () => {
-      const ctx = createMockContext({
+      const { request, env } = createWorkerInput({
         body: { description: "Valid description text", honeypot: "bot filled this" },
       });
-      const response = await onRequestPost(ctx);
+      const response = await worker.fetch(request, env);
 
       expect(response.status).toBe(400);
       const data = await response.json();
@@ -136,11 +161,11 @@ describe("report-bug handlers", () => {
         get: jest.fn().mockResolvedValue("5"), // at max
         put: jest.fn(),
       };
-      const ctx = createMockContext({
+      const { request, env } = createWorkerInput({
         body: { description: "Valid description text" },
         env: { RATE_LIMIT_KV: mockKV },
       });
-      const response = await onRequestPost(ctx);
+      const response = await worker.fetch(request, env);
 
       expect(response.status).toBe(429);
       const data = await response.json();
@@ -149,7 +174,6 @@ describe("report-bug handlers", () => {
 
     // Tests successful issue creation (happy path)
     it("returns 201 on successful issue creation", async () => {
-      // Mock fetch: first call = installation token, second call = create issue
       mockFetch
         .mockResolvedValueOnce({
           ok: true,
@@ -164,14 +188,14 @@ describe("report-bug handlers", () => {
             }),
         });
 
-      const ctx = createMockContext({
+      const { request, env } = createWorkerInput({
         body: {
           page: "/guide/quick-start",
           description: "The example code does not work",
           category: "Tool not working as described",
         },
       });
-      const response = await onRequestPost(ctx);
+      const response = await worker.fetch(request, env);
 
       expect(response.status).toBe(201);
       const data = await response.json();
@@ -195,10 +219,10 @@ describe("report-bug handlers", () => {
         text: () => Promise.resolve("Bad credentials"),
       });
 
-      const ctx = createMockContext({
+      const { request, env } = createWorkerInput({
         body: { description: "Valid description for testing" },
       });
-      const response = await onRequestPost(ctx);
+      const response = await worker.fetch(request, env);
 
       expect(response.status).toBe(500);
       const data = await response.json();
@@ -218,10 +242,10 @@ describe("report-bug handlers", () => {
           text: () => Promise.resolve("Validation Failed"),
         });
 
-      const ctx = createMockContext({
+      const { request, env } = createWorkerInput({
         body: { description: "Valid description for testing" },
       });
-      const response = await onRequestPost(ctx);
+      const response = await worker.fetch(request, env);
 
       expect(response.status).toBe(500);
       const data = await response.json();
@@ -245,12 +269,12 @@ describe("report-bug handlers", () => {
           json: () => Promise.resolve({ number: 1, html_url: "https://example.com" }),
         });
 
-      const ctx = createMockContext({
+      const { request, env } = createWorkerInput({
         body: { description: "Valid description for testing" },
         env: { RATE_LIMIT_KV: mockKV },
         ip: "10.0.0.1",
       });
-      await onRequestPost(ctx);
+      await worker.fetch(request, env);
 
       expect(mockKV.get).toHaveBeenCalledWith("rate:10.0.0.1");
       expect(mockKV.put).toHaveBeenCalledWith("rate:10.0.0.1", "3", { expirationTtl: 3600 });
@@ -268,11 +292,11 @@ describe("report-bug handlers", () => {
           json: () => Promise.resolve({ number: 5, html_url: "https://example.com" }),
         });
 
-      const ctx = createMockContext({
+      const { request, env } = createWorkerInput({
         body: { description: "Valid description for testing" },
         env: { RATE_LIMIT_KV: undefined },
       });
-      const response = await onRequestPost(ctx);
+      const response = await worker.fetch(request, env);
 
       expect(response.status).toBe(201);
     });

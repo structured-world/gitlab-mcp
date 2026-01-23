@@ -835,7 +835,7 @@ describe("Error Handler", () => {
       expect(error.suggested_fix).toContain("15.0");
     });
 
-    it("should include suggested fix with upgrade hint", () => {
+    it("should suggest version upgrade when only version is insufficient", () => {
       const error = createVersionRestrictedError(
         "manage_work_item",
         "update",
@@ -847,6 +847,42 @@ describe("Error Handler", () => {
 
       expect(error.suggested_fix).toContain("17.0");
       expect(error.suggested_fix).toContain("customFields");
+      expect(error.suggested_fix).not.toContain("tier");
+    });
+
+    it("should suggest tier upgrade when version is fine but tier is insufficient", () => {
+      const error = createVersionRestrictedError(
+        "manage_work_item",
+        "update",
+        "WEIGHT",
+        "weight",
+        "15.0",
+        "18.0.0",
+        "Premium",
+        "Free"
+      );
+
+      // Version 18.0 >= 15.0, so only tier is the issue
+      expect(error.suggested_fix).toContain("Premium");
+      expect(error.suggested_fix).toContain("tier");
+      expect(error.suggested_fix).not.toContain("version");
+    });
+
+    it("should suggest both upgrades when version and tier are insufficient", () => {
+      const error = createVersionRestrictedError(
+        "manage_work_item",
+        "create",
+        "CUSTOM_FIELDS",
+        "customFields",
+        "17.0",
+        "15.5.0",
+        "Ultimate",
+        "Free"
+      );
+
+      // Version 15.5 < 17.0 AND Free < Ultimate
+      expect(error.suggested_fix).toContain("17.0");
+      expect(error.suggested_fix).toContain("Ultimate");
     });
   });
 });

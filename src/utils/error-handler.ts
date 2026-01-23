@@ -951,8 +951,14 @@ export function createVersionRestrictedError(
   const tierInfo = isTierInsufficient ? ` and GitLab ${requiredTier} tier` : "";
 
   // Build suggested_fix based on which constraint is violated
+  // Use numeric comparison (string comparison fails for single-digit major, e.g. "9.0" > "15.0")
+  const parseVer = (v: string): number => {
+    const m = v.match(/^(\d+)\.(\d+)/);
+    return m ? parseInt(m[1], 10) * 100 + parseInt(m[2], 10) : 0;
+  };
+  const isVersionSufficient = parseVer(detectedVersion) >= parseVer(requiredVersion);
   let suggestedFix: string;
-  if (isTierInsufficient && detectedVersion >= requiredVersion) {
+  if (isTierInsufficient && isVersionSufficient) {
     // Only tier is insufficient, version is fine
     suggestedFix = `Upgrade to GitLab ${requiredTier} tier to use the '${parameter}' parameter`;
   } else if (isTierInsufficient) {

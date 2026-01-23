@@ -10,11 +10,11 @@ hero:
       text: Get Started
       link: /guide/
     - theme: alt
+      text: Prompt Library
+      link: /prompts/
+    - theme: alt
       text: Tool Reference
       link: /tools/
-    - theme: alt
-      text: View on GitHub
-      link: https://github.com/structured-world/gitlab-mcp
 
 features:
   - icon: "\U0001F527"

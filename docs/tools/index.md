@@ -139,6 +139,15 @@ Each tool accepts an `action` parameter selecting the specific operation.
 | `manage_pipeline` | Command | Create, retry, cancel pipelines |
 | `manage_pipeline_job` | Command | Play, retry, cancel jobs |
 
+## Tools by Use-Case
+
+For workflow-oriented documentation with examples:
+
+- [Code Review](/tools/code-review) — MRs, diffs, discussions, suggestions
+- [CI/CD](/tools/ci-cd) — Pipelines, jobs, logs, variables
+- [Project Management](/tools/project-management) — Issues, milestones, labels, members
+- [Repository](/tools/repository) — Files, commits, branches, releases
+
 ## Detailed Documentation
 
 For complete parameter documentation, action matrices, and example requests, see the auto-generated [TOOLS.md](https://github.com/structured-world/gitlab-mcp/blob/main/docs/TOOLS.md).

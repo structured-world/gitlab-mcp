@@ -1,3 +1,9 @@
+## [6.33.0](https://github.com/structured-world/gitlab-mcp/compare/v6.32.0...v6.33.0) (2026-01-23)
+
+### Features
+
+* **docs:** add "Report a Bug" feedback widget to documentation site ([#148](https://github.com/structured-world/gitlab-mcp/issues/148)) ([00ff2ed](https://github.com/structured-world/gitlab-mcp/commit/00ff2ed45a59bec97b5f187cc17fc473bb06926d)), closes [#145](https://github.com/structured-world/gitlab-mcp/issues/145) [PKCS#1](https://github.com/structured-world/PKCS/issues/1) [PKCS#8](https://github.com/structured-world/PKCS/issues/8) [PKCS#1](https://github.com/structured-world/PKCS/issues/1) [PKCS#8](https://github.com/structured-world/PKCS/issues/8)
+
 ## [6.32.0](https://github.com/structured-world/gitlab-mcp/compare/v6.31.2...v6.32.0) (2026-01-23)
 
 ### Features

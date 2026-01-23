@@ -3,6 +3,7 @@
  */
 
 import { spawnSync, spawn, ChildProcess } from "child_process";
+import { randomBytes } from "crypto";
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
 import { join } from "path";
 import YAML from "yaml";
@@ -187,8 +188,8 @@ export function generateDockerCompose(config: DockerConfig): string {
     },
   };
 
-  // Add compose-bundle postgres service
-  if (config.deploymentType === "compose-bundle") {
+  // Add compose-bundle postgres service (only when OAuth needs a database)
+  if (config.deploymentType === "compose-bundle" && config.oauthEnabled) {
     compose.services.postgres = {
       image: "postgres:16-alpine",
       container_name: `${config.containerName}-db`,
@@ -514,11 +515,9 @@ export function saveEnvFile(config: DockerConfig): void {
     lines.push(`OAUTH_SESSION_SECRET=${config.oauthSessionSecret}`);
   }
 
-  if (config.deploymentType === "compose-bundle") {
-    // Generate a postgres password for the bundled database
-    const pgPassword = config.oauthSessionSecret
-      ? config.oauthSessionSecret.slice(0, 32)
-      : "gitlab_mcp_password";
+  if (config.deploymentType === "compose-bundle" && config.oauthEnabled) {
+    // Generate a strong random postgres password for the bundled database
+    const pgPassword = randomBytes(24).toString("base64url");
     lines.push(`POSTGRES_PASSWORD=${pgPassword}`);
   }
 

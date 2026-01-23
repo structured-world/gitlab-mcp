@@ -55,8 +55,8 @@ async function main(): Promise<void> {
     // docker init is alias for setup --mode=server
     if (cliArgs.dockerArgs[0] === "init") {
       const { runSetupWizard } = await import("./cli/setup");
-      await runSetupWizard({ mode: "server" });
-      process.exit(0);
+      const result = await runSetupWizard({ mode: "server" });
+      process.exit(result.success ? 0 : 1);
     }
     const { runDockerCommand } = await import("./cli/docker");
     await runDockerCommand(cliArgs.dockerArgs);

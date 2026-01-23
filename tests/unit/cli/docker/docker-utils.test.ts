@@ -605,6 +605,25 @@ describe("docker-utils", () => {
       expect(parsed.volumes["postgres-data"]).toBeDefined();
     });
 
+    it("should not add postgres for compose-bundle without OAuth", () => {
+      const config: DockerConfig = {
+        port: 3333,
+        deploymentType: "compose-bundle",
+        oauthEnabled: false,
+        instances: [],
+        containerName: "gitlab-mcp",
+        image: "ghcr.io/structured-world/gitlab-mcp:latest",
+      };
+
+      const result = generateDockerCompose(config);
+      const parsed = YAML.parse(result);
+
+      // Postgres service should NOT be added without OAuth
+      expect(parsed.services.postgres).toBeUndefined();
+      expect(parsed.services["gitlab-mcp"].depends_on).toBeUndefined();
+      expect(parsed.volumes["postgres-data"]).toBeUndefined();
+    });
+
     it("should include volume for data", () => {
       const config: DockerConfig = {
         port: 3333,
@@ -998,13 +1017,14 @@ describe("docker-utils", () => {
       expect(envCall).toBeUndefined();
     });
 
-    it("should include POSTGRES_PASSWORD for compose-bundle", () => {
+    it("should include POSTGRES_PASSWORD for compose-bundle with OAuth", () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.writeFileSync.mockImplementation(() => undefined);
 
       saveEnvFile({
         ...DEFAULT_DOCKER_CONFIG,
         deploymentType: "compose-bundle",
+        oauthEnabled: true,
         oauthSessionSecret: "a]b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
       });
 
@@ -1012,8 +1032,30 @@ describe("docker-utils", () => {
         (call[0] as string).endsWith(".env")
       );
       expect(envCall).toBeDefined();
-      expect(envCall![1]).toContain("POSTGRES_PASSWORD=");
-      expect(envCall![1]).toContain("OAUTH_SESSION_SECRET=");
+      const content = envCall![1] as string;
+      expect(content).toContain("POSTGRES_PASSWORD=");
+      expect(content).toContain("OAUTH_SESSION_SECRET=");
+      // Password should be a strong random value, not the weak default
+      const match = content.match(/POSTGRES_PASSWORD=(.+)/);
+      expect(match).toBeDefined();
+      expect(match![1].length).toBeGreaterThanOrEqual(20);
+    });
+
+    it("should not include POSTGRES_PASSWORD for compose-bundle without OAuth", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveEnvFile({
+        ...DEFAULT_DOCKER_CONFIG,
+        deploymentType: "compose-bundle",
+        oauthEnabled: false,
+      });
+
+      const envCall = mockFs.writeFileSync.mock.calls.find(call =>
+        (call[0] as string).endsWith(".env")
+      );
+      // No secrets to write, so no .env file created
+      expect(envCall).toBeUndefined();
     });
 
     it("should create config directory if not exists", () => {

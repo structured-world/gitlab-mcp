@@ -142,8 +142,7 @@ Complete workflow for performing a thorough code review using GitLab MCP.
 {
   "action": "approve",
   "project_id": "my-org/api",
-  "merge_request_iid": "42",
-  "source_branch": "feature/login-refactor"
+  "merge_request_iid": "42"
 }
 ```
 
@@ -151,8 +150,7 @@ Complete workflow for performing a thorough code review using GitLab MCP.
 {
   "action": "get_approval_state",
   "project_id": "my-org/api",
-  "merge_request_iid": "42",
-  "source_branch": "feature/login-refactor"
+  "merge_request_iid": "42"
 }
 ```
 

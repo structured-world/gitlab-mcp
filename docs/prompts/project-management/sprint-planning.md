@@ -93,7 +93,6 @@ Use GitLab MCP for milestone management, sprint planning, and iteration tracking
 
 ```json [Current iteration]
 {
-  "action": "list",
   "group_id": "my-org",
   "state": "current",
   "per_page": 5
@@ -102,7 +101,6 @@ Use GitLab MCP for milestone management, sprint planning, and iteration tracking
 
 ```json [Upcoming]
 {
-  "action": "list",
   "group_id": "my-org",
   "state": "upcoming",
   "per_page": 5

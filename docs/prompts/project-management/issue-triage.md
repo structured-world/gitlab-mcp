@@ -103,8 +103,6 @@ Organize, prioritize, and assign incoming issues efficiently.
 ```json [Assign issue]
 {
   "action": "update",
-  "namespace": "my-org/api",
-  "workItemType": "ISSUE",
   "id": "5953",
   "assigneeIds": ["42"]
 }
@@ -113,8 +111,6 @@ Organize, prioritize, and assign incoming issues efficiently.
 ```json [Add labels]
 {
   "action": "update",
-  "namespace": "my-org/api",
-  "workItemType": "ISSUE",
   "id": "5953",
   "labelIds": ["101", "102"]
 }
@@ -129,8 +125,6 @@ Organize, prioritize, and assign incoming issues efficiently.
 ```json [Close issue]
 {
   "action": "update",
-  "namespace": "my-org/api",
-  "workItemType": "ISSUE",
   "id": "5953",
   "state": "CLOSE"
 }

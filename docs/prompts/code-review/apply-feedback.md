@@ -105,7 +105,6 @@ Handle review feedback on your merge requests — resolve discussions, apply sug
   "action": "update",
   "project_id": "my-org/api",
   "merge_request_iid": "42",
-  "source_branch": "feature/login",
   "description": "## Changes\n- Refactored auth module\n- Added error handling (per review feedback)\n- Added tests for edge cases"
 }
 ```

@@ -120,8 +120,7 @@ Create and manage merge requests.
 {
   "action": "approve",
   "project_id": "my-org/api",
-  "merge_request_iid": "42",
-  "source_branch": "feature/auth"
+  "merge_request_iid": "42"
 }
 ```
 
@@ -130,7 +129,6 @@ Create and manage merge requests.
   "action": "merge",
   "project_id": "my-org/api",
   "merge_request_iid": "42",
-  "source_branch": "feature/auth",
   "squash": true,
   "should_remove_source_branch": true
 }

@@ -154,7 +154,6 @@ Combine these queries to balance workload:
   "action": "update",
   "project_id": "my-org/api",
   "merge_request_iid": "42",
-  "source_branch": "feature/auth",
   "reviewer_ids": ["42", "43"]
 }
 ```

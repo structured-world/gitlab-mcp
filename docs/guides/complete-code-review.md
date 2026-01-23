@@ -203,8 +203,7 @@ Based on your review, either approve or leave it for the author to address.
 {
   "action": "approve",
   "project_id": "my-org/api",
-  "merge_request_iid": "42",
-  "source_branch": "feature/user-auth"
+  "merge_request_iid": "42"
 }
 ```
 

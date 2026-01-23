@@ -54,10 +54,7 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 {
   "action": "get",
   "namespace": "my-org/api",
-  "id": "5953",
-  "state": ["OPEN"],
-  "first": 1,
-  "simple": false
+  "id": "5953"
 }
 ```
 
@@ -65,10 +62,7 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 {
   "action": "get",
   "namespace": "my-org/api",
-  "iid": "95",
-  "state": ["OPEN"],
-  "first": 1,
-  "simple": false
+  "iid": "95"
 }
 ```
 
@@ -109,8 +103,6 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 ```json [Close issue]
 {
   "action": "update",
-  "namespace": "my-org/api",
-  "workItemType": "ISSUE",
   "id": "5953",
   "state": "CLOSE"
 }

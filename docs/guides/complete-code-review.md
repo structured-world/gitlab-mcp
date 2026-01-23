@@ -187,8 +187,7 @@ When all your comments are ready, publish them at once.
 {
   "action": "publish_all",
   "project_id": "my-org/api",
-  "merge_request_iid": "42",
-  "note": ""
+  "merge_request_iid": "42"
 }
 ```
 

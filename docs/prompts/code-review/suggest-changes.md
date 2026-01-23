@@ -101,8 +101,7 @@ Use draft notes to prepare all your feedback before publishing:
 {
   "action": "publish_all",
   "project_id": "my-org/api",
-  "merge_request_iid": "42",
-  "note": ""
+  "merge_request_iid": "42"
 }
 ```
 

@@ -101,7 +101,7 @@ Each tool accepts an `action` parameter selecting the specific operation.
 | Tool | Type | Description |
 |------|------|-------------|
 | `browse_webhooks` | Query | List project/group webhooks |
-| `manage_webhook` | Command | CRUD + test webhooks |
+| `manage_webhook` | Command | Create, update, delete, test webhooks |
 
 ### Snippets (`USE_SNIPPETS=true`, default: enabled)
 
@@ -115,7 +115,7 @@ Each tool accepts an `action` parameter selecting the specific operation.
 | Tool | Type | Description |
 |------|------|-------------|
 | `browse_integrations` | Query | List active project integrations |
-| `manage_integration` | Command | Get, update, disable integrations |
+| `manage_integration` | Command | Update, disable integrations |
 
 ### Wiki (`USE_GITLAB_WIKI=true`, default: enabled)
 

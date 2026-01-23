@@ -49,7 +49,7 @@ The built-in Slack integration provides rich notifications with pipeline status,
 > "Check the Slack integration settings"
 
 ```json
-// manage_integration
+// browse_integrations
 {
   "action": "get",
   "project_id": "my-org/api",

@@ -53,6 +53,12 @@ export class SessionManager {
    * Handlers are registered identically on each instance.
    */
   async createSession(sessionId: string, transport: Transport): Promise<Server> {
+    // Guard against duplicate session IDs — close existing before allocating new resources
+    if (this.sessions.has(sessionId)) {
+      logger.warn({ sessionId }, "Duplicate sessionId detected — closing existing session");
+      await this.removeSession(sessionId);
+    }
+
     const server = new Server(
       { name: packageName, version: packageVersion },
       { capabilities: { tools: { listChanged: true } } }
@@ -72,12 +78,6 @@ export class SessionManager {
     await setupHandlers(server);
 
     await server.connect(transport);
-
-    // Guard against duplicate session IDs — close existing session first
-    if (this.sessions.has(sessionId)) {
-      logger.warn({ sessionId }, "Duplicate sessionId detected — closing existing session");
-      await this.removeSession(sessionId);
-    }
 
     const now = Date.now();
     this.sessions.set(sessionId, {

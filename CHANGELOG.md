@@ -1,3 +1,9 @@
+## [6.35.0](https://github.com/structured-world/gitlab-mcp/compare/v6.34.1...v6.35.0) (2026-01-23)
+
+### Features
+
+* **docs:** add sponsor heart icon and donate page ([#161](https://github.com/structured-world/gitlab-mcp/issues/161)) ([e0d68bd](https://github.com/structured-world/gitlab-mcp/commit/e0d68bde3748cc515c996dc00443971ae6e3ab1f)), closes [#160](https://github.com/structured-world/gitlab-mcp/issues/160)
+
 ## [6.34.1](https://github.com/structured-world/gitlab-mcp/compare/v6.34.0...v6.34.1) (2026-01-23)
 
 ### Bug Fixes

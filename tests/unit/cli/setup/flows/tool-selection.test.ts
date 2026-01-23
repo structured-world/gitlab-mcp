@@ -132,10 +132,10 @@ describe("flows/tool-selection", () => {
       expect(result!.envOverrides!.GITLAB_PROJECT_ID).toBe("my-group/my-project");
     });
 
-    it("should configure namespace scope restriction", async () => {
+    it("should configure project allowlist scope restriction", async () => {
       mockSelect
         .mockResolvedValueOnce("advanced")
-        .mockResolvedValueOnce("namespace") // scope type
+        .mockResolvedValueOnce("allowlist") // scope type
         .mockResolvedValueOnce("debug"); // log level
       mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
       mockConfirm.mockResolvedValueOnce(false).mockResolvedValueOnce(true); // yes scope
@@ -264,7 +264,6 @@ describe("flows/tool-selection", () => {
         "work-items",
         "pipelines",
         "files",
-        "commits",
         "wiki",
         "snippets",
         "releases",

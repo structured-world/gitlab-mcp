@@ -61,6 +61,8 @@ export interface DockerConfig {
   oauthSessionSecret?: string;
   /** Database URL for sessions */
   databaseUrl?: string;
+  /** Additional environment variables (e.g., GITLAB_PROFILE, USE_* flags) */
+  environment?: Record<string, string>;
   /** Configured GitLab instances */
   instances: GitLabInstance[];
   /** Container name */

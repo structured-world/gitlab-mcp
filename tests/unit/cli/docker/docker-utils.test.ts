@@ -24,7 +24,11 @@ import {
   initDockerConfig,
   getExpandedConfigDir,
 } from "../../../../src/cli/docker/docker-utils";
-import { DockerConfig, GitLabInstance } from "../../../../src/cli/docker/types";
+import {
+  DockerConfig,
+  GitLabInstance,
+  DEFAULT_DOCKER_CONFIG,
+} from "../../../../src/cli/docker/types";
 import * as fs from "fs";
 import * as childProcess from "child_process";
 import YAML from "yaml";
@@ -644,6 +648,37 @@ describe("docker-utils", () => {
       const parsed = YAML.parse(result);
 
       expect(parsed.services["gitlab-mcp"].restart).toBe("unless-stopped");
+    });
+
+    it("should include custom environment variables from config", () => {
+      const config: DockerConfig = {
+        ...DEFAULT_DOCKER_CONFIG,
+        environment: {
+          GITLAB_PROFILE: "developer",
+          USE_WORKITEMS: "false",
+        },
+      };
+
+      const result = generateDockerCompose(config);
+      const parsed = YAML.parse(result);
+
+      expect(parsed.services["gitlab-mcp"].environment).toContain("GITLAB_PROFILE=developer");
+      expect(parsed.services["gitlab-mcp"].environment).toContain("USE_WORKITEMS=false");
+    });
+
+    it("should not add environment entries when environment is undefined", () => {
+      const config: DockerConfig = {
+        ...DEFAULT_DOCKER_CONFIG,
+      };
+
+      const result = generateDockerCompose(config);
+      const parsed = YAML.parse(result);
+      const env = parsed.services["gitlab-mcp"].environment;
+
+      // Only default entries
+      expect(env).toContain("TRANSPORT=sse");
+      expect(env).toContain("PORT=3333");
+      expect(env.length).toBe(3); // TRANSPORT, PORT, OAUTH_ENABLED
     });
   });
 

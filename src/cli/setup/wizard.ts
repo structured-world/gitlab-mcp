@@ -42,7 +42,7 @@ export async function runSetupWizard(options?: {
     const selected = await selectMode(discovery);
     if (!selected) {
       p.outro("Setup cancelled.");
-      return { success: false, mode: "local", error: "Cancelled" };
+      return { success: false, error: "Cancelled" };
     }
     mode = selected;
   }

@@ -16,7 +16,6 @@ const CATEGORY_ENV_MAP: Record<string, string> = {
   "work-items": "USE_WORKITEMS",
   pipelines: "USE_PIPELINE",
   files: "USE_FILES",
-  commits: "USE_FILES", // commits use file browsing
   wiki: "USE_GITLAB_WIKI",
   snippets: "USE_SNIPPETS",
   releases: "USE_RELEASES",
@@ -238,7 +237,7 @@ async function runAdvancedSettings(): Promise<ToolConfig | null> {
       message: "Scope type:",
       options: [
         { value: "project", label: "Single project", hint: "Restrict to one project" },
-        { value: "namespace", label: "Namespace", hint: "Restrict to a group/namespace" },
+        { value: "allowlist", label: "Project allowlist", hint: "Restrict to multiple projects" },
       ],
     });
 
@@ -254,12 +253,12 @@ async function runAdvancedSettings(): Promise<ToolConfig | null> {
       if (p.isCancel(project)) return null;
       envOverrides.GITLAB_PROJECT_ID = project;
     } else {
-      const namespace = await p.text({
-        message: "Allowed project IDs (comma-separated):",
-        validate: v => (!v ? "At least one project ID is required" : undefined),
+      const allowlist = await p.text({
+        message: "Allowed project paths (comma-separated, e.g., group/project1,group/project2):",
+        validate: v => (!v ? "At least one project path is required" : undefined),
       });
-      if (p.isCancel(namespace)) return null;
-      envOverrides.GITLAB_ALLOWED_PROJECT_IDS = namespace;
+      if (p.isCancel(allowlist)) return null;
+      envOverrides.GITLAB_ALLOWED_PROJECT_IDS = allowlist;
     }
   }
 

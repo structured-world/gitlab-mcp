@@ -93,8 +93,8 @@ export interface ToolConfig {
 export interface SetupResult {
   /** Whether setup completed successfully */
   success: boolean;
-  /** Setup mode used */
-  mode: SetupMode;
+  /** Setup mode used (undefined if cancelled before selection) */
+  mode?: SetupMode;
   /** Clients that were configured */
   configuredClients?: InstallableClient[];
   /** Docker config (if server mode) */

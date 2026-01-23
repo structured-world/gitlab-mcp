@@ -229,6 +229,13 @@ export function generateDockerCompose(config: DockerConfig): string {
     compose.services["gitlab-mcp"].volumes.push("./instances.yml:/app/config/instances.yml:ro");
   }
 
+  // Add tool configuration environment variables
+  if (config.environment) {
+    for (const [key, value] of Object.entries(config.environment)) {
+      compose.services["gitlab-mcp"].environment.push(`${key}=${value}`);
+    }
+  }
+
   return YAML.stringify(compose);
 }
 

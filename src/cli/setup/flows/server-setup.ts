@@ -136,7 +136,7 @@ export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<Se
     oauthEnabled: enableOAuth,
     oauthSessionSecret,
     databaseUrl,
-    env: toolEnv,
+    environment: toolEnv,
   };
 
   const spinner = p.spinner();

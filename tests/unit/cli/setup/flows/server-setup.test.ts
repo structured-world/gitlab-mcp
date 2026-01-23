@@ -167,7 +167,7 @@ describe("flows/server-setup", () => {
     await runServerSetupFlow(dockerReadyDiscovery);
 
     const configArg = (initDockerConfig as jest.Mock).mock.calls[0][0];
-    expect(configArg.env.GITLAB_PROFILE).toBe("developer");
+    expect(configArg.environment.GITLAB_PROFILE).toBe("developer");
   });
 
   it("should handle OAuth with external database", async () => {
@@ -244,8 +244,8 @@ describe("flows/server-setup", () => {
     await runServerSetupFlow(dockerReadyDiscovery);
 
     const configArg = (initDockerConfig as jest.Mock).mock.calls[0][0];
-    expect(configArg.env.LOG_LEVEL).toBe("debug");
-    expect(configArg.env.GITLAB_READ_ONLY_MODE).toBe("true");
+    expect(configArg.environment.LOG_LEVEL).toBe("debug");
+    expect(configArg.environment.GITLAB_READ_ONLY_MODE).toBe("true");
   });
 
   it("should apply manual categories to Docker config", async () => {

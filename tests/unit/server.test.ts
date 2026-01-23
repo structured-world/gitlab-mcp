@@ -19,12 +19,20 @@ const mockSessionManager = {
   activeSessionCount: 0,
 };
 
+const mockHttpServer = {
+  listen: jest.fn(),
+  keepAliveTimeout: 0,
+  headersTimeout: 0,
+  timeout: 0,
+};
+
 const mockApp = {
   use: jest.fn(),
   get: jest.fn(),
   post: jest.fn(),
   all: jest.fn(),
   listen: jest.fn(),
+  set: jest.fn(),
 };
 
 const mockTransport = {
@@ -44,6 +52,11 @@ const mockLogger = {
 const mockExpress = jest.fn(() => mockApp);
 (mockExpress as any).json = jest.fn();
 jest.mock("express", () => mockExpress);
+
+// Mock http module to prevent actual server creation
+jest.mock("http", () => ({
+  createServer: jest.fn(() => mockHttpServer),
+}));
 
 // Mock SDK components
 jest.mock("@modelcontextprotocol/sdk/server/index.js", () => ({
@@ -78,6 +91,8 @@ jest.mock("../../src/config", () => ({
   STREAMABLE_HTTP: false,
   HOST: "localhost",
   PORT: "3000",
+  SSE_HEARTBEAT_MS: 30000,
+  HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
   packageName: "test-package",
   packageVersion: "1.0.0",
 }));
@@ -124,6 +139,7 @@ describe("server", () => {
   let originalEnv: NodeJS.ProcessEnv;
 
   beforeEach(() => {
+    jest.useFakeTimers({ doNotFake: ["setTimeout", "setImmediate", "clearTimeout", "Date"] });
     jest.clearAllMocks();
     lastStreamableOpts = null;
 
@@ -136,16 +152,25 @@ describe("server", () => {
     delete process.env.SSE;
     delete process.env.STREAMABLE_HTTP;
 
-    // Mock app.listen to call callback immediately
-    mockApp.listen.mockImplementation((port: number, host: string, callback: () => void) => {
+    // Mock httpServer.listen to call callback immediately
+    mockHttpServer.listen.mockImplementation((port: number, host: string, callback: () => void) => {
       if (callback) callback();
     });
+
+    // Reset HTTP server timeout properties
+    mockHttpServer.keepAliveTimeout = 0;
+    mockHttpServer.headersTimeout = 0;
+    mockHttpServer.timeout = 0;
 
     // Mock server.connect to resolve
     mockServer.connect.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
+    // Clear all pending timers (SSE heartbeat intervals)
+    jest.clearAllTimers();
+    jest.useRealTimers();
+
     // Restore original values
     process.argv = originalArgv;
     process.env = originalEnv;
@@ -169,6 +194,8 @@ describe("server", () => {
       jest.doMock("../../src/config", () => ({
         HOST: "localhost",
         PORT: "3000",
+        SSE_HEARTBEAT_MS: 30000,
+        HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         packageName: "test-package",
         packageVersion: "1.0.0",
       }));
@@ -228,7 +255,7 @@ describe("server", () => {
     it("should start HTTP server with dual transport endpoints", async () => {
       await startServer();
 
-      expect(mockApp.listen).toHaveBeenCalledWith(3000, "localhost", expect.any(Function));
+      expect(mockHttpServer.listen).toHaveBeenCalledWith(3000, "localhost", expect.any(Function));
       expect(mockLogger.info).toHaveBeenCalledWith(
         "GitLab MCP Server running on http://localhost:3000"
       );
@@ -373,7 +400,7 @@ describe("server", () => {
       await startServer();
 
       // Get the listen callback
-      const listenCallback = mockApp.listen.mock.calls[0][2];
+      const listenCallback = mockHttpServer.listen.mock.calls[0][2];
 
       // Execute the callback
       listenCallback();
@@ -433,7 +460,7 @@ describe("server", () => {
       expect(mockLogger.info).toHaveBeenCalledWith(
         "Selected dual transport mode (SSE + StreamableHTTP) - PORT environment variable detected"
       );
-      expect(mockApp.listen).toHaveBeenCalledWith(3000, "localhost", expect.any(Function));
+      expect(mockHttpServer.listen).toHaveBeenCalledWith(3000, "localhost", expect.any(Function));
     });
   });
 
@@ -897,6 +924,259 @@ describe("server", () => {
       // handleRequest called (reusing existing transport)
       expect(mockTransport.handleRequest).toHaveBeenCalled();
     });
+
+    it("should start SSE heartbeat on /sse endpoint", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find(call => call[0] === "/sse")[1];
+
+      const mockRes = {
+        on: jest.fn(),
+        write: jest.fn(),
+        writableEnded: false,
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Heartbeat should be started — debug log confirms
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        { sessionId: "test-session-123", intervalMs: 30000 },
+        "SSE heartbeat started"
+      );
+    });
+
+    it("should send SSE ping comments at heartbeat interval", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find(call => call[0] === "/sse")[1];
+
+      const mockRes = {
+        on: jest.fn(),
+        write: jest.fn(),
+        writableEnded: false,
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Advance time by one heartbeat interval (30s)
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.write).toHaveBeenCalledWith(": ping\n\n");
+
+      // Advance by another interval
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.write).toHaveBeenCalledTimes(2);
+    });
+
+    it("should stop SSE heartbeat when /sse connection closes", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find(call => call[0] === "/sse")[1];
+
+      let closeHandler: (() => void) | null = null;
+      const mockRes = {
+        on: jest.fn((event: string, handler: () => void) => {
+          if (event === "close") closeHandler = handler;
+        }),
+        write: jest.fn(),
+        writableEnded: false,
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Trigger close event — stops heartbeat
+      closeHandler!();
+
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        { sessionId: "test-session-123" },
+        "SSE heartbeat stopped"
+      );
+
+      // After close, advancing timer should NOT send more pings
+      mockRes.write.mockClear();
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.write).not.toHaveBeenCalled();
+    });
+
+    it("should not write heartbeat if response stream has ended", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find(call => call[0] === "/sse")[1];
+
+      const mockRes = {
+        on: jest.fn(),
+        write: jest.fn(),
+        writableEnded: false,
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Mark stream as ended before heartbeat fires
+      mockRes.writableEnded = true;
+      jest.advanceTimersByTime(30000);
+
+      // write should NOT be called since stream has ended
+      expect(mockRes.write).not.toHaveBeenCalled();
+    });
+
+    it("should start SSE heartbeat for GET requests to StreamableHTTP endpoint", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      const mockReq = {
+        headers: {},
+        method: "GET",
+        path: "/mcp",
+        body: {},
+      };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        write: jest.fn(),
+        on: jest.fn(),
+        locals: {},
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      // Heartbeat should be started for GET requests
+      expect(mockLogger.debug).toHaveBeenCalledWith(
+        expect.objectContaining({ intervalMs: 30000 }),
+        "SSE heartbeat started"
+      );
+    });
+
+    it("should send pings on GET SSE stream at heartbeat interval", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      const mockReq = {
+        headers: {},
+        method: "GET",
+        path: "/mcp",
+        body: {},
+      };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        write: jest.fn(),
+        on: jest.fn(),
+        locals: {},
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      // Advance timer and verify pings are sent
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.write).toHaveBeenCalledWith(": ping\n\n");
+
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.write).toHaveBeenCalledTimes(2);
+    });
+
+    it("should stop heartbeat when GET SSE stream closes", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      let closeHandler: (() => void) | null = null;
+      const mockReq = {
+        headers: {},
+        method: "GET",
+        path: "/mcp",
+        body: {},
+      };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        write: jest.fn(),
+        on: jest.fn((event: string, handler: () => void) => {
+          if (event === "close") closeHandler = handler;
+        }),
+        locals: {},
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      // Close the stream
+      closeHandler!();
+
+      // Advancing timer should NOT produce writes
+      mockRes.write.mockClear();
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.write).not.toHaveBeenCalled();
+    });
+
+    it("should NOT start heartbeat for POST requests to StreamableHTTP endpoint", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      const mockReq = {
+        headers: {},
+        method: "POST",
+        path: "/mcp",
+        body: { method: "initialize" },
+      };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: true, // POST responses end immediately
+        write: jest.fn(),
+        on: jest.fn(),
+        locals: {},
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      // No heartbeat for POST requests
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.write).not.toHaveBeenCalled();
+    });
+
+    it("should configure HTTP server timeouts for SSE streaming", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      // Verify HTTP server timeouts are configured
+      expect(mockHttpServer.keepAliveTimeout).toBe(620000);
+      expect(mockHttpServer.headersTimeout).toBe(625000); // keepAliveTimeout + 5000
+      expect(mockHttpServer.timeout).toBe(0); // No socket timeout for SSE
+    });
+
+    it("should log SSE keepalive configuration on startup", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        { heartbeatMs: 30000, keepAliveTimeoutMs: 620000 },
+        "SSE keepalive configured for proxy chain compatibility"
+      );
+    });
   });
 
   describe("stdio mode", () => {
@@ -911,6 +1191,8 @@ describe("server", () => {
         STREAMABLE_HTTP: false,
         HOST: "localhost",
         PORT: undefined, // No PORT means stdio mode
+        SSE_HEARTBEAT_MS: 30000,
+        HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         packageName: "test-package",
         packageVersion: "1.0.0",
       }));
@@ -929,7 +1211,7 @@ describe("server", () => {
 
       expect(mockApp.get).not.toHaveBeenCalled();
       expect(mockApp.post).not.toHaveBeenCalled();
-      expect(mockApp.listen).not.toHaveBeenCalled();
+      expect(mockHttpServer.listen).not.toHaveBeenCalled();
     });
   });
 
@@ -945,6 +1227,8 @@ describe("server", () => {
         STREAMABLE_HTTP: false,
         HOST: "localhost",
         PORT: undefined, // No PORT means stdio mode
+        SSE_HEARTBEAT_MS: 30000,
+        HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         packageName: "test-package",
         packageVersion: "1.0.0",
       }));
@@ -967,6 +1251,8 @@ describe("server", () => {
         STREAMABLE_HTTP: false,
         HOST: "localhost",
         PORT: undefined, // No PORT means stdio mode
+        SSE_HEARTBEAT_MS: 30000,
+        HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         packageName: "test-package",
         packageVersion: "1.0.0",
       }));

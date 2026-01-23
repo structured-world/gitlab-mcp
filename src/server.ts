@@ -14,6 +14,8 @@ import {
   SSL_CA_PATH,
   SSL_PASSPHRASE,
   TRUST_PROXY,
+  SSE_HEARTBEAT_MS,
+  HTTP_KEEPALIVE_TIMEOUT_MS,
 } from "./config";
 import { TransportMode } from "./types";
 import { logger } from "./logger";
@@ -173,6 +175,29 @@ function configureTrustProxy(app: Express): void {
 }
 
 /**
+ * Configure HTTP server timeouts for SSE streaming through proxy chains.
+ *
+ * - keepAliveTimeout: Time to keep idle HTTP/1.1 connections open between requests.
+ *   Must exceed upstream proxy timeouts (Cloudflare max is 600s for Enterprise).
+ * - headersTimeout: Must be greater than keepAliveTimeout per Node.js docs.
+ * - timeout: Set to 0 to disable socket timeout entirely for long-lived SSE streams.
+ */
+function configureServerTimeouts(server: http.Server | https.Server): void {
+  server.keepAliveTimeout = HTTP_KEEPALIVE_TIMEOUT_MS;
+  server.headersTimeout = HTTP_KEEPALIVE_TIMEOUT_MS + 5000; // Must be > keepAliveTimeout
+  server.timeout = 0; // No socket timeout for SSE streaming
+
+  logger.info(
+    {
+      keepAliveTimeout: server.keepAliveTimeout,
+      headersTimeout: server.headersTimeout,
+      timeout: server.timeout,
+    },
+    "HTTP server timeouts configured for SSE streaming"
+  );
+}
+
+/**
  * Start an HTTP or HTTPS server based on TLS configuration
  */
 function startHttpServer(app: Express, callback: () => void): void {
@@ -180,9 +205,12 @@ function startHttpServer(app: Express, callback: () => void): void {
 
   if (tlsOptions) {
     const httpsServer = https.createServer(tlsOptions, app as http.RequestListener);
+    configureServerTimeouts(httpsServer);
     httpsServer.listen(Number(PORT), HOST, callback);
   } else {
-    app.listen(Number(PORT), HOST, callback);
+    const httpServer = http.createServer(app as http.RequestListener);
+    configureServerTimeouts(httpServer);
+    httpServer.listen(Number(PORT), HOST, callback);
   }
 }
 
@@ -191,6 +219,38 @@ function startHttpServer(app: Express, callback: () => void): void {
  */
 function getProtocol(): string {
   return isTLSEnabled() ? "https" : "http";
+}
+
+/**
+ * Start SSE heartbeat on a response to keep the connection alive through proxies.
+ *
+ * Sends SSE comment lines (`: ping\n\n`) at regular intervals. These are ignored
+ * by SSE clients per the spec but prevent intermediate proxies (Cloudflare, Envoy)
+ * from killing idle connections.
+ *
+ * @param res - The HTTP response with an active SSE stream
+ * @param sessionId - Session identifier for logging
+ * @returns Cleanup function to stop the heartbeat
+ */
+function startSseHeartbeat(res: express.Response, sessionId: string): () => void {
+  const interval = setInterval(() => {
+    try {
+      if (!res.writableEnded) {
+        res.write(": ping\n\n");
+      } else {
+        clearInterval(interval);
+      }
+    } catch {
+      clearInterval(interval);
+    }
+  }, SSE_HEARTBEAT_MS);
+
+  logger.debug({ sessionId, intervalMs: SSE_HEARTBEAT_MS }, "SSE heartbeat started");
+
+  return () => {
+    clearInterval(interval);
+    logger.debug({ sessionId }, "SSE heartbeat stopped");
+  };
 }
 
 function determineTransportMode(): TransportMode {
@@ -313,8 +373,12 @@ export async function startServer(): Promise<void> {
           return;
         }
 
+        // Start SSE heartbeat to keep connection alive through proxies
+        const stopHeartbeat = startSseHeartbeat(res, sessionId);
+
         // Clean up session when client disconnects
         res.on("close", () => {
+          stopHeartbeat();
           delete sseTransports[sessionId];
           sessionManager.removeSession(sessionId).catch((error: unknown) => {
             logger.debug({ err: error, sessionId }, "Error removing SSE session on disconnect");
@@ -391,14 +455,17 @@ export async function startServer(): Promise<void> {
 
         try {
           let transport: StreamableHTTPServerTransport;
+          let effectiveSessionId: string;
 
           if (sessionId && sessionId in streamableTransports) {
+            effectiveSessionId = sessionId;
             sessionManager.touchSession(sessionId);
             transport = streamableTransports[sessionId];
             await handleWithContext(transport);
           } else {
             // Pre-generate session ID so we can connect the Server before handling the request
             const newSessionId = crypto.randomUUID();
+            effectiveSessionId = newSessionId;
 
             transport = new StreamableHTTPServerTransport({
               sessionIdGenerator: () => newSessionId,
@@ -430,6 +497,14 @@ export async function startServer(): Promise<void> {
 
             await handleWithContext(transport);
           }
+
+          // Start SSE heartbeat for GET requests (long-lived SSE streams)
+          if (req.method === "GET" && !res.writableEnded) {
+            const stopHeartbeat = startSseHeartbeat(res, effectiveSessionId);
+            res.on("close", () => {
+              stopHeartbeat();
+            });
+          }
         } catch (error: unknown) {
           logger.error({ err: error }, "Error in StreamableHTTP transport");
           if (!res.headersSent) {
@@ -453,6 +528,10 @@ export async function startServer(): Promise<void> {
           logger.info(`  Authorization: ${url}/authorize`);
           logger.info(`  Token exchange: ${url}/token`);
         }
+        logger.info(
+          { heartbeatMs: SSE_HEARTBEAT_MS, keepAliveTimeoutMs: HTTP_KEEPALIVE_TIMEOUT_MS },
+          "SSE keepalive configured for proxy chain compatibility"
+        );
         logger.info("Clients can use either transport as needed");
       });
       break;

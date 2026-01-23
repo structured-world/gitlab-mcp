@@ -1,3 +1,9 @@
+## [6.30.1](https://github.com/structured-world/gitlab-mcp/compare/v6.30.0...v6.30.1) (2026-01-23)
+
+### Refactoring
+
+* **read-only:** move read-only actions from manage_* to browse_* tools ([#142](https://github.com/structured-world/gitlab-mcp/issues/142)) ([0c325e2](https://github.com/structured-world/gitlab-mcp/commit/0c325e205b1175d4b52a9d6b61e552276a5a02c1)), closes [#134](https://github.com/structured-world/gitlab-mcp/issues/134)
+
 ## [6.30.0](https://github.com/structured-world/gitlab-mcp/compare/v6.29.1...v6.30.0) (2026-01-22)
 
 ### Features

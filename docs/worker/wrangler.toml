@@ -6,7 +6,6 @@ routes = [
   { pattern = "docs.gitlab-mcp.sw.foundation/api/*", zone_name = "sw.foundation" }
 ]
 
-# KV namespace for rate limiting (create in CF dashboard, paste ID here)
-# [[kv_namespaces]]
-# binding = "RATE_LIMIT_KV"
-# id = "<PASTE_KV_NAMESPACE_ID>"
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "67e3b42cfafe492bbc8bbb17fe5c6b8b"

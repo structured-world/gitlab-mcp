@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
 routes = [
-  { pattern = "docs.gitlab-mcp.sw.foundation/api/*", zone_name = "sw.foundation" }
+  { pattern = "gitlab-mcp.sw.foundation/api/*", zone_name = "sw.foundation" }
 ]
 
 [[kv_namespaces]]

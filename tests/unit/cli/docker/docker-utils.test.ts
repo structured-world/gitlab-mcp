@@ -531,7 +531,7 @@ describe("docker-utils", () => {
       expect(parsed.services["gitlab-mcp"].ports[0]).toContain("4444");
     });
 
-    it("should include OAuth configuration when enabled", () => {
+    it("should include OAuth configuration with session secret from config", () => {
       const config: DockerConfig = {
         port: 3333,
         oauthEnabled: true,
@@ -546,7 +546,46 @@ describe("docker-utils", () => {
 
       expect(parsed.services["gitlab-mcp"].environment).toContain("OAUTH_ENABLED=true");
       expect(parsed.services["gitlab-mcp"].environment).toContain(
+        "OAUTH_SESSION_SECRET=test-secret"
+      );
+      expect(parsed.services["gitlab-mcp"].environment).toContain(
+        "DATABASE_URL=file:/data/sessions.db"
+      );
+    });
+
+    it("should use env var reference when oauthSessionSecret is not set", () => {
+      const config: DockerConfig = {
+        port: 3333,
+        oauthEnabled: true,
+        instances: [],
+        containerName: "gitlab-mcp",
+        image: "ghcr.io/structured-world/gitlab-mcp:latest",
+      };
+
+      const result = generateDockerCompose(config);
+      const parsed = YAML.parse(result);
+
+      expect(parsed.services["gitlab-mcp"].environment).toContain(
         "OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}"
+      );
+    });
+
+    it("should use custom databaseUrl when provided", () => {
+      const config: DockerConfig = {
+        port: 3333,
+        oauthEnabled: true,
+        oauthSessionSecret: "secret",
+        databaseUrl: "postgresql://user:pass@host:5432/db",
+        instances: [],
+        containerName: "gitlab-mcp",
+        image: "ghcr.io/structured-world/gitlab-mcp:latest",
+      };
+
+      const result = generateDockerCompose(config);
+      const parsed = YAML.parse(result);
+
+      expect(parsed.services["gitlab-mcp"].environment).toContain(
+        "DATABASE_URL=postgresql://user:pass@host:5432/db"
       );
     });
 
@@ -1045,21 +1084,16 @@ describe("docker-utils", () => {
       );
     });
 
-    it("should fallback to docker compose when composeCmd is null", () => {
+    it("should throw when composeCmd is null", () => {
       mockGetContainerRuntime.mockReturnValue({
         ...dockerRuntime,
         composeCmd: null,
       });
-      mockChildProcess.spawn.mockReturnValue(mockProcess);
 
-      tailLogs(true, 100);
-
-      // Falls back to ["docker", "compose"]
-      expect(mockChildProcess.spawn).toHaveBeenCalledWith(
-        "docker",
-        ["compose", "logs", "-f", "--tail", "100"],
-        expect.any(Object)
+      expect(() => tailLogs(true, 100)).toThrow(
+        "No compose tool available. Install Docker Compose or podman-compose."
       );
+      expect(mockChildProcess.spawn).not.toHaveBeenCalled();
     });
   });
 });

@@ -189,9 +189,11 @@ export function generateDockerCompose(config: DockerConfig): string {
 
   // Add OAuth-specific configuration
   if (config.oauthEnabled) {
+    const sessionSecret = config.oauthSessionSecret ?? "${OAUTH_SESSION_SECRET}";
+    const databaseUrl = config.databaseUrl ?? "file:/data/sessions.db";
     compose.services["gitlab-mcp"].environment.push(
-      "OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}",
-      "DATABASE_URL=file:/data/sessions.db"
+      `OAUTH_SESSION_SECRET=${sessionSecret}`,
+      `DATABASE_URL=${databaseUrl}`
     );
     compose.services["gitlab-mcp"].volumes.push("./instances.yml:/app/config/instances.yml:ro");
   }
@@ -388,9 +390,10 @@ export function tailLogs(follow: boolean = true, lines: number = 100): ChildProc
   const configDir = getExpandedConfigDir();
   const runtime = getContainerRuntime();
 
-  // Fallback to "docker compose" if no compose detected (will fail gracefully)
-  const composeCmd = runtime.composeCmd ?? ["docker", "compose"];
-  const [composeExe, ...composePrefix] = composeCmd;
+  if (!runtime.composeCmd) {
+    throw new Error("No compose tool available. Install Docker Compose or podman-compose.");
+  }
+  const [composeExe, ...composePrefix] = runtime.composeCmd;
 
   const args = [...composePrefix, "logs"];
 

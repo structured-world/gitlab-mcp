@@ -72,8 +72,15 @@ const CreateWorkItemSchema = z.object({
   startDate: DateSchema.optional().describe("Start date in YYYY-MM-DD format"),
   dueDate: DateSchema.optional().describe("Due date in YYYY-MM-DD format"),
   // Free tier: hierarchy
-  parentId: z.string().optional().describe("Parent work item ID to set hierarchy relationship"),
-  childrenIds: z.array(z.string()).optional().describe("Array of child work item IDs to add"),
+  parentId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Parent work item ID to set hierarchy relationship"),
+  childrenIds: z
+    .array(z.string().min(1))
+    .optional()
+    .describe("Array of child work item IDs to add"),
   // Free tier: time tracking
   timeEstimate: z
     .string()
@@ -85,7 +92,11 @@ const CreateWorkItemSchema = z.object({
     .optional()
     .describe("Fixed dates - not inherited from children (Premium tier)"),
   weight: z.number().int().min(0).optional().describe("Story points / weight value (Premium tier)"),
-  iterationId: z.string().optional().describe("Iteration/sprint ID to assign (Premium tier)"),
+  iterationId: z
+    .string()
+    .min(1)
+    .optional()
+    .describe("Iteration/sprint ID to assign (Premium tier)"),
   progressCurrentValue: z
     .number()
     .int()
@@ -127,10 +138,14 @@ const UpdateWorkItemSchema = z.object({
   // Free tier: hierarchy
   parentId: z
     .string()
+    .min(1)
     .nullable()
     .optional()
     .describe("Parent work item ID (null to unlink parent)"),
-  childrenIds: z.array(z.string()).optional().describe("Array of child work item IDs to add"),
+  childrenIds: z
+    .array(z.string().min(1))
+    .optional()
+    .describe("Array of child work item IDs to add"),
   // Free tier: time tracking
   timeEstimate: z
     .string()
@@ -162,6 +177,7 @@ const UpdateWorkItemSchema = z.object({
     .describe("Story points / weight value, null to clear (Premium tier)"),
   iterationId: z
     .string()
+    .min(1)
     .nullable()
     .optional()
     .describe("Iteration/sprint ID, null to unassign (Premium tier)"),

@@ -1593,6 +1593,20 @@ describe("Workitems Registry - CQRS Tools", () => {
           tool?.handler({ action: "remove_link", id: "100", targetId: "200", linkType: "BLOCKS" })
         ).rejects.toThrow("GitLab GraphQL errors: Link not found");
       });
+
+      it("should throw when remove_link returns no work item", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemRemoveLinkedItems: {
+            workItem: null,
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await expect(
+          tool?.handler({ action: "remove_link", id: "100", targetId: "200", linkType: "BLOCKS" })
+        ).rejects.toThrow("Remove linked item failed - no work item returned");
+      });
     });
 
     describe("manage_work_item handler - widget parameters", () => {
@@ -1794,6 +1808,120 @@ describe("Workitems Registry - CQRS Tools", () => {
           expect.objectContaining({
             input: expect.objectContaining({
               progressWidget: { currentValue: 50 },
+            }),
+          })
+        );
+      });
+
+      it("should create work item with childrenIds", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "create",
+          namespace: "group/project",
+          title: "Parent Item",
+          workItemType: "ISSUE",
+          childrenIds: ["201", "202"],
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              hierarchyWidget: {
+                childrenIds: ["gid://gitlab/WorkItem/201", "gid://gitlab/WorkItem/202"],
+              },
+            }),
+          })
+        );
+      });
+
+      it("should update work item with weight", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "100",
+          weight: 8,
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              weightWidget: { weight: 8 },
+            }),
+          })
+        );
+      });
+
+      it("should update work item with healthStatus", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "100",
+          healthStatus: "atRisk",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              healthStatusWidget: { healthStatus: "atRisk" },
+            }),
+          })
+        );
+      });
+
+      it("should update work item with progressCurrentValue", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "100",
+          progressCurrentValue: 75,
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              progressWidget: { currentValue: 75 },
+            }),
+          })
+        );
+      });
+
+      it("should update work item with color", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "100",
+          color: "#00FF00",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              colorWidget: { color: "#00FF00" },
             }),
           })
         );

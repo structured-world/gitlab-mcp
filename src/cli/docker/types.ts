@@ -3,6 +3,27 @@
  */
 
 /**
+ * Container runtime type (docker or podman)
+ */
+export type ContainerRuntime = "docker" | "podman";
+
+/**
+ * Detected container runtime information
+ */
+export interface ContainerRuntimeInfo {
+  /** Which runtime was detected */
+  runtime: ContainerRuntime;
+  /** Command to invoke the runtime (e.g. "docker" or "podman") */
+  runtimeCmd: string;
+  /** Whether the runtime daemon is accessible */
+  runtimeAvailable: boolean;
+  /** Compose command tokens, e.g. ["docker", "compose"] or ["podman-compose"], null if unavailable */
+  composeCmd: string[] | null;
+  /** Version string of the runtime, undefined if not detected */
+  runtimeVersion?: string;
+}
+
+/**
  * Docker container status
  */
 export type ContainerStatus =
@@ -55,12 +76,16 @@ export interface GitLabInstance {
 export interface DockerConfig {
   /** SSE port (default: 3333) */
   port: number;
+  /** Deployment type (standalone, external-db, compose-bundle) */
+  deploymentType?: "standalone" | "external-db" | "compose-bundle";
   /** Enable OAuth mode */
   oauthEnabled: boolean;
   /** OAuth session secret */
   oauthSessionSecret?: string;
   /** Database URL for sessions */
   databaseUrl?: string;
+  /** Additional environment variables (e.g., GITLAB_PROFILE, USE_* flags) */
+  environment?: Record<string, string>;
   /** Configured GitLab instances */
   instances: GitLabInstance[];
   /** Container name */
@@ -90,6 +115,7 @@ export interface DockerComposeService {
   environment: string[];
   volumes: string[];
   restart: string;
+  depends_on?: string[];
 }
 
 /**
@@ -136,6 +162,8 @@ export interface DockerStatusResult {
   composeInstalled: boolean;
   container?: ContainerInfo;
   instances: GitLabInstance[];
+  /** Detected container runtime details */
+  runtime?: ContainerRuntimeInfo;
 }
 
 /**

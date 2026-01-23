@@ -26,12 +26,18 @@ import { extractNamespaceFromPath } from "./utils/namespace";
 async function main(): Promise<void> {
   const cliArgs = parseCliArgs();
 
-  // Handle init subcommand (run wizard and exit)
-  // Lazy import to avoid loading wizard dependencies (clack, open) when not needed
+  // Handle setup subcommand (unified wizard)
+  if (cliArgs.setup) {
+    const { runSetupWizard } = await import("./cli/setup");
+    const result = await runSetupWizard({ mode: cliArgs.setupMode });
+    process.exit(result.success ? 0 : 1);
+  }
+
+  // Handle init subcommand (alias for setup --mode=local)
   if (cliArgs.init) {
-    const { runWizard } = await import("./cli/init");
-    await runWizard();
-    process.exit(0);
+    const { runSetupWizard } = await import("./cli/setup");
+    const result = await runSetupWizard({ mode: "local" });
+    process.exit(result.success ? 0 : 1);
   }
 
   // Handle install subcommand
@@ -46,6 +52,13 @@ async function main(): Promise<void> {
 
   // Handle docker subcommand
   if (cliArgs.docker) {
+    // docker init is alias for setup --mode=server
+    if (cliArgs.dockerArgs[0] === "init") {
+      const { runSetupWizard } = await import("./cli/setup");
+      const result = await runSetupWizard({ mode: "server" });
+      process.exit(result.success ? 0 : 1);
+      return;
+    }
     const { runDockerCommand } = await import("./cli/docker");
     await runDockerCommand(cliArgs.dockerArgs);
     process.exit(0);

@@ -47,6 +47,8 @@ describe("cli-utils", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        setup: false,
+        setupMode: undefined,
         init: false,
         install: false,
         installArgs: [],
@@ -120,6 +122,8 @@ describe("cli-utils", () => {
         cwd: undefined,
         dryRun: false,
         remoteName: undefined,
+        setup: false,
+        setupMode: undefined,
         init: false,
         install: false,
         installArgs: [],
@@ -289,6 +293,51 @@ describe("cli-utils", () => {
 
       expect(result.docker).toBe(true);
       expect(result.dockerArgs).toEqual(["add-instance", "gitlab.example.com"]);
+    });
+
+    // Setup subcommand tests
+    it("should parse setup subcommand without mode", () => {
+      const result = parseCliArgs(["node", "main.js", "setup"]);
+
+      expect(result.setup).toBe(true);
+      expect(result.setupMode).toBeUndefined();
+    });
+
+    it("should parse setup subcommand with --mode=local", () => {
+      const result = parseCliArgs(["node", "main.js", "setup", "--mode=local"]);
+
+      expect(result.setup).toBe(true);
+      expect(result.setupMode).toBe("local");
+    });
+
+    it("should parse setup subcommand with --mode=server", () => {
+      const result = parseCliArgs(["node", "main.js", "setup", "--mode=server"]);
+
+      expect(result.setup).toBe(true);
+      expect(result.setupMode).toBe("server");
+    });
+
+    it("should parse setup subcommand with --mode=configure-existing", () => {
+      const result = parseCliArgs(["node", "main.js", "setup", "--mode=configure-existing"]);
+
+      expect(result.setup).toBe(true);
+      expect(result.setupMode).toBe("configure-existing");
+    });
+
+    it("should ignore unknown setup flags", () => {
+      const result = parseCliArgs(["node", "main.js", "setup", "--unknown-flag"]);
+
+      expect(result.setup).toBe(true);
+      expect(result.setupMode).toBeUndefined();
+    });
+
+    it("should not parse remaining flags after setup subcommand", () => {
+      const result = parseCliArgs(["node", "main.js", "setup", "--mode=local", "--auto"]);
+
+      expect(result.setup).toBe(true);
+      expect(result.setupMode).toBe("local");
+      // --auto is not parsed when setup subcommand is active (early return)
+      expect(result.auto).toBe(false);
     });
   });
 

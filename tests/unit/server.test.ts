@@ -9,6 +9,16 @@ const mockServer = {
   notification: jest.fn().mockResolvedValue(undefined),
 };
 
+const mockSessionManager = {
+  start: jest.fn(),
+  createSession: jest.fn().mockResolvedValue(mockServer),
+  touchSession: jest.fn(),
+  removeSession: jest.fn().mockResolvedValue(undefined),
+  broadcastToolsListChanged: jest.fn().mockResolvedValue(undefined),
+  shutdown: jest.fn().mockResolvedValue(undefined),
+  activeSessionCount: 0,
+};
+
 const mockApp = {
   use: jest.fn(),
   get: jest.fn(),
@@ -81,6 +91,18 @@ jest.mock("../../src/oauth/index", () => ({
   validateStaticConfig: jest.fn(),
   isOAuthEnabled: jest.fn(() => false),
   getAuthModeDescription: jest.fn(() => "Static token mode"),
+  sessionStore: {
+    initialize: jest.fn().mockResolvedValue(undefined),
+    close: jest.fn().mockResolvedValue(undefined),
+    associateMcpSession: jest.fn(),
+    removeMcpSessionAssociation: jest.fn(),
+  },
+  runWithTokenContext: jest.fn(),
+}));
+
+// Mock session manager
+jest.mock("../../src/session-manager", () => ({
+  getSessionManager: jest.fn(() => mockSessionManager),
 }));
 
 import type { Server as _Server } from "@modelcontextprotocol/sdk/server/index.js";
@@ -213,12 +235,17 @@ describe("server", () => {
         writeHead: jest.fn(),
         write: jest.fn(),
         end: jest.fn(),
+        on: jest.fn(),
       };
 
       // Execute the SSE handler
       await sseHandler(mockReq, mockRes);
 
-      expect(mockServer.connect).toHaveBeenCalled();
+      // Per-session Server created via session manager
+      expect(mockSessionManager.createSession).toHaveBeenCalledWith(
+        "test-session-123",
+        expect.anything()
+      );
       expect(mockLogger.debug).toHaveBeenCalledWith("SSE endpoint hit!");
     });
 
@@ -318,13 +345,16 @@ describe("server", () => {
         end: jest.fn(),
         status: jest.fn().mockReturnThis(),
         json: jest.fn(),
+        headersSent: false,
         locals: {}, // Required for OAuth session tracking
       };
 
-      // Execute the MCP handler
+      // Execute the MCP handler — creates StreamableHTTPServerTransport
+      // Session server is created via onsessioninitialized callback (async)
       await mcpHandler(mockReq, mockRes);
 
-      expect(mockServer.connect).toHaveBeenCalled();
+      // Transport's handleRequest should have been called
+      expect(mockTransport.handleRequest).toHaveBeenCalled();
     });
 
     it("should handle server listen callback", async () => {
@@ -361,7 +391,7 @@ describe("server", () => {
       const sseHandler = mockApp.get.mock.calls.find(call => call[0] === "/sse")[1];
 
       // Create transport by hitting SSE endpoint first
-      await sseHandler({}, {});
+      await sseHandler({}, { on: jest.fn() });
 
       // Execute the messages handler (this would normally fail if transport throws error)
       await messagesHandler(mockReq, mockRes);
@@ -378,7 +408,8 @@ describe("server", () => {
       await startServer();
 
       expect(mockLogger.info).toHaveBeenCalledWith("Selected stdio mode (explicit argument)");
-      expect(mockServer.connect).toHaveBeenCalledWith(mockTransport);
+      // In stdio mode, session manager creates a session for the single transport
+      expect(mockSessionManager.createSession).toHaveBeenCalledWith("stdio", mockTransport);
     });
 
     it("should select dual mode when PORT is set without stdio arg", async () => {
@@ -410,6 +441,7 @@ describe("server", () => {
       const mockRes = {
         status: jest.fn(() => mockRes),
         json: jest.fn(),
+        headersSent: false,
       };
 
       // Mock transport.handlePostMessage to throw error
@@ -417,7 +449,7 @@ describe("server", () => {
 
       // First create SSE transport by hitting SSE endpoint
       const sseHandler = mockApp.get.mock.calls.find(call => call[0] === "/sse")[1];
-      await sseHandler({}, {});
+      await sseHandler({}, { on: jest.fn() });
 
       // Now test error handling in messages handler
       await messagesHandler(mockReq, mockRes);
@@ -444,6 +476,7 @@ describe("server", () => {
       const mockRes = {
         status: jest.fn(() => mockRes),
         json: jest.fn(),
+        headersSent: false,
         locals: {},
       };
 
@@ -480,13 +513,14 @@ describe("server", () => {
       const mockRes = {
         status: jest.fn(() => mockRes),
         json: jest.fn(),
+        headersSent: false,
         locals: {},
       };
 
       // Test the handler - this should create a new transport
+      // Session server is created via onsessioninitialized callback (async)
       await mcpHandler(mockReq, mockRes);
 
-      expect(mockServer.connect).toHaveBeenCalled();
       expect(mockTransport.handleRequest).toHaveBeenCalled();
     });
   });
@@ -508,11 +542,11 @@ describe("server", () => {
       }));
     });
 
-    it("should connect server with StdioServerTransport", async () => {
+    it("should create session via session manager with StdioServerTransport", async () => {
       const { startServer: newStartServer } = await import("../../src/server");
       await newStartServer();
 
-      expect(mockServer.connect).toHaveBeenCalledWith(mockTransport);
+      expect(mockSessionManager.createSession).toHaveBeenCalledWith("stdio", mockTransport);
     });
 
     it("should not set up any HTTP endpoints in stdio mode", async () => {
@@ -526,7 +560,7 @@ describe("server", () => {
   });
 
   describe("error handling", () => {
-    it("should handle server connection errors in stdio mode", async () => {
+    it("should handle session creation errors in stdio mode", async () => {
       // Ensure stdio mode by removing PORT from environment
       delete process.env.PORT;
 
@@ -541,14 +575,14 @@ describe("server", () => {
         packageVersion: "1.0.0",
       }));
 
-      mockServer.connect.mockRejectedValue(new Error("Connection failed"));
+      mockSessionManager.createSession.mockRejectedValueOnce(new Error("Connection failed"));
 
       // stdio mode should propagate connection errors
       const { startServer: newStartServer } = await import("../../src/server");
       await expect(newStartServer()).rejects.toThrow("Connection failed");
     });
 
-    it("should handle server.connect rejections gracefully", async () => {
+    it("should handle sessionManager.createSession rejections gracefully", async () => {
       // Ensure stdio mode by removing PORT from environment
       delete process.env.PORT;
 
@@ -563,18 +597,14 @@ describe("server", () => {
         packageVersion: "1.0.0",
       }));
 
-      const originalConnect = mockServer.connect;
-      mockServer.connect.mockRejectedValue(new Error("Connection failed"));
+      mockSessionManager.createSession.mockRejectedValueOnce(new Error("Connection failed"));
 
       try {
         const { startServer: newStartServer } = await import("../../src/server");
         await newStartServer();
-      } catch (error: any) {
-        expect(error.message).toBe("Connection failed");
+      } catch (error: unknown) {
+        expect((error as Error).message).toBe("Connection failed");
       }
-
-      // Restore original mock
-      mockServer.connect = originalConnect;
     });
   });
 
@@ -598,11 +628,12 @@ describe("server", () => {
         const mockRes = {
           json: jest.fn(),
           status: jest.fn(() => mockRes),
+          headersSent: false,
         };
 
         // First create a transport through SSE endpoint
         const sseHandler = mockApp.get.mock.calls.find(call => call[0] === "/sse")[1];
-        await sseHandler({}, {});
+        await sseHandler({}, { on: jest.fn() });
 
         // Now call messages handler
         await messagesHandler(mockReq, mockRes);
@@ -653,7 +684,7 @@ describe("server", () => {
   });
 
   describe("signal handlers", () => {
-    it("should handle SIGINT signal", () => {
+    it("should handle SIGINT signal", async () => {
       // Use a mock that returns never (like the real process.exit) instead of throwing
       // Throwing causes Jest worker crashes in Node.js 24
       const mockExit = jest.spyOn(process, "exit").mockImplementation((() => {
@@ -662,6 +693,9 @@ describe("server", () => {
 
       // Trigger SIGINT
       process.emit("SIGINT");
+
+      // Wait for async graceful shutdown to complete (flush microtask queue)
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       expect(mockLogger.info).toHaveBeenCalledWith(
         { signal: "SIGINT" },
@@ -672,7 +706,7 @@ describe("server", () => {
       mockExit.mockRestore();
     });
 
-    it("should handle SIGTERM signal", () => {
+    it("should handle SIGTERM signal", async () => {
       // Use a mock that returns never (like the real process.exit) instead of throwing
       const mockExit = jest.spyOn(process, "exit").mockImplementation((() => {
         // No-op to prevent actual exit
@@ -680,6 +714,9 @@ describe("server", () => {
 
       // Trigger SIGTERM
       process.emit("SIGTERM");
+
+      // Wait for async graceful shutdown to complete (flush microtask queue)
+      await new Promise(resolve => setTimeout(resolve, 0));
 
       expect(mockLogger.info).toHaveBeenCalledWith(
         { signal: "SIGTERM" },
@@ -695,44 +732,23 @@ describe("server", () => {
 
   describe("sendToolsListChangedNotification", () => {
     beforeEach(() => {
-      mockServer.notification.mockClear();
-      mockServer.notification.mockResolvedValue(undefined);
+      mockSessionManager.broadcastToolsListChanged.mockClear();
+      mockSessionManager.broadcastToolsListChanged.mockResolvedValue(undefined);
     });
 
-    it("should send notification with correct method", async () => {
+    it("should delegate to session manager broadcastToolsListChanged", async () => {
       await sendToolsListChangedNotification();
 
-      expect(mockServer.notification).toHaveBeenCalledTimes(1);
-      expect(mockServer.notification).toHaveBeenCalledWith({
-        method: "notifications/tools/list_changed",
-      });
+      expect(mockSessionManager.broadcastToolsListChanged).toHaveBeenCalledTimes(1);
     });
 
-    it("should log info on successful notification", async () => {
-      await sendToolsListChangedNotification();
-
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "Sent tools/list_changed notification to clients"
+    it("should not throw if broadcast fails", async () => {
+      mockSessionManager.broadcastToolsListChanged.mockRejectedValueOnce(
+        new Error("Broadcast failed")
       );
-    });
 
-    it("should not throw if notification fails", async () => {
-      mockServer.notification.mockRejectedValueOnce(new Error("Client disconnected"));
-
-      // Should not throw
-      await expect(sendToolsListChangedNotification()).resolves.toBeUndefined();
-    });
-
-    it("should log debug on failed notification", async () => {
-      const error = new Error("Transport closed");
-      mockServer.notification.mockRejectedValueOnce(error);
-
-      await sendToolsListChangedNotification();
-
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        { err: error },
-        "Failed to send tools/list_changed notification"
-      );
+      // Should propagate the error (session manager handles individual failures internally)
+      await expect(sendToolsListChangedNotification()).rejects.toThrow("Broadcast failed");
     });
   });
 });

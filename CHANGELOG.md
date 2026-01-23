@@ -1,3 +1,9 @@
+## [6.31.1](https://github.com/structured-world/gitlab-mcp/compare/v6.31.0...v6.31.1) (2026-01-23)
+
+### Bug Fixes
+
+* **transport:** single Server instance causes response routing to wrong clients ([#141](https://github.com/structured-world/gitlab-mcp/issues/141)) ([86f5317](https://github.com/structured-world/gitlab-mcp/commit/86f5317f7d6cca446d9641bf052b4b3d3001f19c)), closes [#138](https://github.com/structured-world/gitlab-mcp/issues/138)
+
 ## [6.31.0](https://github.com/structured-world/gitlab-mcp/compare/v6.30.1...v6.31.0) (2026-01-23)
 
 ### Features

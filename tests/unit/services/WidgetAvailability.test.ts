@@ -73,8 +73,7 @@ describe("WidgetAvailability", () => {
           WorkItemWidgetTypes.DEVELOPMENT,
           WorkItemWidgetTypes.TIME_TRACKING,
           WorkItemWidgetTypes.ERROR_TRACKING,
-          WorkItemWidgetTypes.PROGRESS,
-          WorkItemWidgetTypes.COLOR,
+          WorkItemWidgetTypes.LINKED_ITEMS,
         ];
 
         for (const widget of freeWidgets) {
@@ -86,7 +85,7 @@ describe("WidgetAvailability", () => {
         const premiumWidgets = [
           WorkItemWidgetTypes.WEIGHT,
           WorkItemWidgetTypes.ITERATION,
-          WorkItemWidgetTypes.LINKED_ITEMS,
+          WorkItemWidgetTypes.PROGRESS,
           WorkItemWidgetTypes.CRM_CONTACTS,
           WorkItemWidgetTypes.EMAIL_PARTICIPANTS,
           WorkItemWidgetTypes.LINKED_RESOURCES,
@@ -100,6 +99,7 @@ describe("WidgetAvailability", () => {
       it("should deny ultimate widgets on free tier", () => {
         const ultimateWidgets = [
           WorkItemWidgetTypes.HEALTH_STATUS,
+          WorkItemWidgetTypes.COLOR,
           WorkItemWidgetTypes.CUSTOM_FIELDS,
           WorkItemWidgetTypes.VULNERABILITIES,
           WorkItemWidgetTypes.REQUIREMENT_LEGACY,
@@ -131,6 +131,7 @@ describe("WidgetAvailability", () => {
       it("should deny ultimate-only widgets on premium tier", () => {
         const ultimateOnlyWidgets = [
           WorkItemWidgetTypes.HEALTH_STATUS,
+          WorkItemWidgetTypes.COLOR,
           WorkItemWidgetTypes.CUSTOM_FIELDS,
           WorkItemWidgetTypes.VULNERABILITIES,
         ];
@@ -555,13 +556,19 @@ describe("WidgetAvailability", () => {
       expect(map.description).toBe("DESCRIPTION");
       expect(map.startDate).toBe("START_AND_DUE_DATE");
       expect(map.dueDate).toBe("START_AND_DUE_DATE");
-      expect(map.color).toBe("COLOR");
+      expect(map.isFixed).toBe("START_AND_DUE_DATE");
+      expect(map.parentId).toBe("HIERARCHY");
+      expect(map.childrenIds).toBe("HIERARCHY");
+      expect(map.timeEstimate).toBe("TIME_TRACKING");
+      expect(map.timeSpent).toBe("TIME_TRACKING");
+      expect(map.linkedItemIds).toBe("LINKED_ITEMS");
       // Premium tier params
       expect(map.weight).toBe("WEIGHT");
       expect(map.iterationId).toBe("ITERATION");
-      expect(map.linkedItemIds).toBe("LINKED_ITEMS");
+      expect(map.progressCurrentValue).toBe("PROGRESS");
       // Ultimate tier params
       expect(map.healthStatus).toBe("HEALTH_STATUS");
+      expect(map.color).toBe("COLOR");
     });
 
     it("should return a copy (not the original reference)", () => {

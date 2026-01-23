@@ -36,6 +36,40 @@ export interface WorkItemUpdateInput {
   milestoneWidget?: {
     milestoneId: string;
   };
+  startAndDueDateWidget?: {
+    startDate?: string | null;
+    dueDate?: string | null;
+    isFixed?: boolean;
+  };
+  hierarchyWidget?: {
+    parentId?: string | null;
+    childrenIds?: string[];
+    adjacentWorkItemId?: string;
+    relativePosition?: "BEFORE" | "AFTER";
+  };
+  timeTrackingWidget?: {
+    timeEstimate?: string;
+    timelog?: {
+      timeSpent: string;
+      spentAt?: string;
+      summary?: string;
+    };
+  };
+  weightWidget?: {
+    weight?: number | null;
+  };
+  iterationWidget?: {
+    iterationId?: string | null;
+  };
+  healthStatusWidget?: {
+    healthStatus?: string | null;
+  };
+  progressWidget?: {
+    currentValue: number;
+  };
+  colorWidget?: {
+    color: string;
+  };
 }
 
 // Work Item State enum - defines possible states
@@ -191,12 +225,29 @@ export interface WorkItemStatusWidget extends WorkItemWidget {
   status?: string;
 }
 
+export interface WorkItemTimelog {
+  id: string;
+  timeSpent: number;
+  spentAt?: string;
+  summary?: string;
+  user?: {
+    id: string;
+    username: string;
+  };
+  note?: {
+    body: string;
+  };
+}
+
 export interface WorkItemTimeTrackingWidget extends WorkItemWidget {
   type: "TIME_TRACKING";
   timeEstimate?: number;
   totalTimeSpent?: number;
   humanTimeEstimate?: string;
   humanTotalTimeSpent?: string;
+  timelogs?: {
+    nodes: WorkItemTimelog[];
+  };
 }
 
 export interface WorkItemParticipantsWidget extends WorkItemWidget {
@@ -212,6 +263,21 @@ export interface WorkItemProgressWidget extends WorkItemWidget {
   endValue?: number;
   progress?: number;
   startValue?: number;
+}
+
+export interface WorkItemIterationWidget extends WorkItemWidget {
+  type: "ITERATION";
+  iteration?: {
+    id: string;
+    title: string;
+    startDate?: string;
+    dueDate?: string;
+    webUrl?: string;
+    iterationCadence?: {
+      id: string;
+      title: string;
+    };
+  };
 }
 
 export interface WorkItemRequirementLegacyWidget extends WorkItemWidget {
@@ -245,10 +311,15 @@ export interface WorkItemAwardEmojiWidget extends WorkItemWidget {
   downvotes: number;
 }
 
+export interface WorkItemLinkedItemNode {
+  linkType: string;
+  workItem: WorkItem;
+}
+
 export interface WorkItemLinkedItemsWidget extends WorkItemWidget {
   type: "LINKED_ITEMS";
   linkedItems: {
-    nodes: WorkItem[];
+    nodes: WorkItemLinkedItemNode[];
   };
 }
 
@@ -1531,6 +1602,87 @@ export const UPDATE_WORK_ITEM: TypedDocumentNode<
               webPath
             }
           }
+          ... on WorkItemWidgetStartAndDueDate {
+            startDate
+            dueDate
+            isFixed
+          }
+          ... on WorkItemWidgetHierarchy {
+            parent {
+              id
+              iid
+              title
+              workItemType {
+                name
+              }
+            }
+            children {
+              nodes {
+                id
+                iid
+                title
+                workItemType {
+                  name
+                }
+              }
+            }
+            hasChildren
+          }
+          ... on WorkItemWidgetTimeTracking {
+            timeEstimate
+            totalTimeSpent
+            timelogs {
+              nodes {
+                id
+                timeSpent
+                spentAt
+                summary
+                user {
+                  id
+                  username
+                }
+              }
+            }
+          }
+          ... on WorkItemWidgetWeight {
+            weight
+          }
+          ... on WorkItemWidgetIteration {
+            iteration {
+              id
+              title
+              startDate
+              dueDate
+            }
+          }
+          ... on WorkItemWidgetHealthStatus {
+            healthStatus
+          }
+          ... on WorkItemWidgetProgress {
+            currentValue
+            endValue
+            progress
+            startValue
+          }
+          ... on WorkItemWidgetColor {
+            color
+          }
+          ... on WorkItemWidgetLinkedItems {
+            linkedItems {
+              nodes {
+                linkType
+                workItem {
+                  id
+                  iid
+                  title
+                  state
+                  workItemType {
+                    name
+                  }
+                }
+              }
+            }
+          }
         }
       }
       errors
@@ -1579,6 +1731,33 @@ export interface WorkItemCreateInput {
   };
   milestoneWidget?: {
     milestoneId: string;
+  };
+  startAndDueDateWidget?: {
+    startDate?: string | null;
+    dueDate?: string | null;
+    isFixed?: boolean;
+  };
+  hierarchyWidget?: {
+    parentId?: string | null;
+    childrenIds?: string[];
+  };
+  timeTrackingWidget?: {
+    timeEstimate?: string;
+  };
+  weightWidget?: {
+    weight?: number | null;
+  };
+  iterationWidget?: {
+    iterationId?: string | null;
+  };
+  healthStatusWidget?: {
+    healthStatus?: string | null;
+  };
+  progressWidget?: {
+    currentValue: number;
+  };
+  colorWidget?: {
+    color: string;
   };
 }
 
@@ -1742,6 +1921,105 @@ export const CREATE_WORK_ITEM_WITH_WIDGETS: TypedDocumentNode<
         }
       }
       errors
+    }
+  }
+`;
+
+// Linked items mutations (Free tier)
+export type WorkItemLinkType = "RELATED" | "BLOCKS" | "IS_BLOCKED_BY";
+
+export interface WorkItemAddLinkedItemsInput {
+  id: string;
+  workItemsIds: string[];
+  linkType: WorkItemLinkType;
+}
+
+export interface WorkItemRemoveLinkedItemsInput {
+  id: string;
+  workItemsIds: string[];
+  linkType: WorkItemLinkType;
+}
+
+export const WORK_ITEM_ADD_LINKED_ITEMS: TypedDocumentNode<
+  { workItemAddLinkedItems: { workItem: WorkItem; errors: string[]; message?: string } },
+  { input: WorkItemAddLinkedItemsInput }
+> = gql`
+  mutation WorkItemAddLinkedItems($input: WorkItemAddLinkedItemsInput!) {
+    workItemAddLinkedItems(input: $input) {
+      workItem {
+        id
+        iid
+        title
+        state
+        workItemType {
+          id
+          name
+        }
+        webUrl
+        widgets {
+          type
+          ... on WorkItemWidgetLinkedItems {
+            linkedItems {
+              nodes {
+                linkType
+                workItem {
+                  id
+                  iid
+                  title
+                  state
+                  workItemType {
+                    name
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      errors
+      message
+    }
+  }
+`;
+
+export const WORK_ITEM_REMOVE_LINKED_ITEMS: TypedDocumentNode<
+  { workItemRemoveLinkedItems: { workItem: WorkItem; errors: string[]; message?: string } },
+  { input: WorkItemRemoveLinkedItemsInput }
+> = gql`
+  mutation WorkItemRemoveLinkedItems($input: WorkItemRemoveLinkedItemsInput!) {
+    workItemRemoveLinkedItems(input: $input) {
+      workItem {
+        id
+        iid
+        title
+        state
+        workItemType {
+          id
+          name
+        }
+        webUrl
+        widgets {
+          type
+          ... on WorkItemWidgetLinkedItems {
+            linkedItems {
+              nodes {
+                linkType
+                workItem {
+                  id
+                  iid
+                  title
+                  state
+                  workItemType {
+                    name
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+      errors
+      message
     }
   }
 `;

@@ -54,6 +54,7 @@ const GID_PREFIXES = {
   Group: "gid://gitlab/Group/",
   Label: "gid://gitlab/ProjectLabel/",
   Milestone: "gid://gitlab/Milestone/",
+  Iteration: "gid://gitlab/Iteration/",
   MergeRequest: "gid://gitlab/MergeRequest/",
   Pipeline: "gid://gitlab/Ci::Pipeline/",
   Job: "gid://gitlab/Ci::Build/",

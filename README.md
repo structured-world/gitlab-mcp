@@ -89,9 +89,9 @@ docker run -i --rm -e GITLAB_TOKEN=your_token \
 | `USE_WEBHOOKS` | `true` | Webhook management |
 | `USE_SNIPPETS` | `true` | Code snippets |
 | `USE_INTEGRATIONS` | `true` | 50+ integrations |
-| `USE_GITLAB_WIKI` | `false` | Wiki pages |
-| `USE_MILESTONE` | `false` | Milestones |
-| `USE_PIPELINE` | `false` | Pipelines & CI/CD |
+| `USE_GITLAB_WIKI` | `false` | Wiki pages (opt-in) |
+| `USE_MILESTONE` | `false` | Milestones (opt-in) |
+| `USE_PIPELINE` | `false` | Pipelines & CI/CD (opt-in) |
 
 ## Contributing
 

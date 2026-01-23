@@ -13,6 +13,7 @@ GITLAB_READ_ONLY_MODE=true
 When enabled:
 - Only `browse_*` and other read-only tools are available
 - All `manage_*` tools are hidden from the tool list
+- `manage_context` is the sole exception (session context, no GitLab data modification)
 - Write operations return an error if attempted
 - Useful for production environments or when write access is not needed
 

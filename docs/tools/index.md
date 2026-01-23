@@ -97,6 +97,10 @@ Each tool accepts an `action` parameter selecting the specific operation.
 | `list_integrations` | Query | List active project integrations |
 | `manage_integration` | Command | Get, update, disable integrations |
 
+### Opt-in Tool Groups
+
+The following groups are disabled by default to keep the tool count within client limits (e.g., Cursor's 40-tool cap). Enable them as needed.
+
 ### Wiki (`USE_GITLAB_WIKI=true`, default: disabled)
 
 | Tool | Type | Description |

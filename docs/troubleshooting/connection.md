@@ -63,8 +63,21 @@ Ensure no whitespace or newlines are included in your config.
 
 ### Self-Signed Certificates
 
-For GitLab instances with self-signed SSL certificates:
+For GitLab instances with self-signed SSL certificates, add the CA certificate:
 
+```json
+{
+  "env": {
+    "NODE_EXTRA_CA_CERTS": "/path/to/your-ca-certificate.pem",
+    "GITLAB_API_URL": "https://gitlab.internal.com"
+  }
+}
+```
+
+This is the recommended approach — it trusts only your specific CA while keeping TLS validation active.
+
+::: danger Last resort only
+If you cannot obtain the CA certificate, you can disable TLS verification entirely. This is **insecure** and should never be used in production:
 ```json
 {
   "env": {
@@ -73,10 +86,9 @@ For GitLab instances with self-signed SSL certificates:
   }
 }
 ```
-
-::: warning
-Disabling TLS verification is insecure. For production, configure proper certificates via [TLS settings](/advanced/tls).
 :::
+
+For full TLS configuration options, see [TLS settings](/advanced/tls).
 
 ## Tools Missing {#tools-missing}
 

@@ -613,5 +613,48 @@ describe("ToolAvailability - Tier-based Filtering", () => {
 
       expect(restricted).toHaveLength(0);
     });
+
+    it("should use cachedInstanceInfo when provided instead of ConnectionManager", () => {
+      // Even if ConnectionManager would throw, cachedInstanceInfo should be used
+      mockInstance.getInstanceInfo.mockImplementation(() => {
+        throw new Error("Should not be called");
+      });
+
+      const restricted = ToolAvailability.getRestrictedParameters("manage_work_item", {
+        tier: "free",
+        version: "17.0.0",
+      });
+
+      // Free tier should restrict all premium/ultimate params
+      expect(restricted).toContain("weight");
+      expect(restricted).toContain("iterationId");
+      expect(restricted).toContain("healthStatus");
+      // ConnectionManager should NOT have been called
+      expect(mockInstance.getInstanceInfo).not.toHaveBeenCalled();
+    });
+
+    it("should respect tier from cachedInstanceInfo", () => {
+      const restricted = ToolAvailability.getRestrictedParameters("manage_work_item", {
+        tier: "premium",
+        version: "17.0.0",
+      });
+
+      // Premium tier: weight and iterationId allowed, healthStatus restricted
+      expect(restricted).not.toContain("weight");
+      expect(restricted).not.toContain("iterationId");
+      expect(restricted).toContain("healthStatus");
+    });
+
+    it("should respect version from cachedInstanceInfo", () => {
+      const restricted = ToolAvailability.getRestrictedParameters("manage_work_item", {
+        tier: "ultimate",
+        version: "14.0.0",
+      });
+
+      // Ultimate tier but old version: all params restricted (minVersion 15.0)
+      expect(restricted).toContain("weight");
+      expect(restricted).toContain("iterationId");
+      expect(restricted).toContain("healthStatus");
+    });
   });
 });

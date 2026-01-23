@@ -381,6 +381,53 @@ describe("RegistryManager", () => {
         coreRegistry.delete("tool_with_params");
       }
     });
+
+    it("should skip parameter stripping when ConnectionManager is not initialized", () => {
+      const { ConnectionManager } = require("../../src/services/ConnectionManager");
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+
+      coreRegistry.set("tool_with_params", {
+        name: "tool_with_params",
+        description: "Tool with tier-gated params",
+        inputSchema: {
+          type: "object",
+          properties: {
+            weight: { type: "number" },
+            title: { type: "string" },
+          },
+          required: ["weight", "title"],
+        },
+        handler: jest.fn(),
+      });
+
+      try {
+        // Make ConnectionManager throw (simulating uninitialized connection)
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockImplementation(() => {
+            throw new Error("Connection not initialized");
+          }),
+        });
+
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
+
+        const tool = registryManager.getTool("tool_with_params");
+        expect(tool).toBeDefined();
+
+        const schema = tool?.inputSchema as any;
+
+        // Parameters should NOT be stripped when connection is unavailable
+        expect(schema.properties?.weight).toBeDefined();
+        expect(schema.properties?.title).toBeDefined();
+        expect(schema.required).toContain("weight");
+      } finally {
+        coreRegistry.delete("tool_with_params");
+        // Restore ConnectionManager mock
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: "free", version: "17.0.0" }),
+        });
+      }
+    });
   });
 
   describe("Description Overrides", () => {

@@ -165,7 +165,7 @@ onUnmounted(() => {
         <path d="M22 13h-4" />
         <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
       </svg>
-      <span class="bug-tab-text">Bug?</span>
+      <span class="bug-tab-text">Report Bug</span>
     </button>
 
     <!-- Expanded: form panel -->
@@ -299,58 +299,71 @@ onUnmounted(() => {
 <style scoped>
 .bug-report-widget {
   position: fixed;
-  right: 0;
-  top: 40%;
+  right: 24px;
+  bottom: 24px;
   z-index: 100;
 }
 
-/* Collapsed side tab */
+/* Collapsed floating button */
 .bug-tab {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 8px 10px;
+  gap: 6px;
+  padding: 12px 16px;
   background: var(--vp-c-brand-1);
   color: #fff;
   border: none;
-  border-radius: 8px 0 0 8px;
+  border-radius: 24px;
   cursor: pointer;
-  font-size: 13px;
-  font-weight: 500;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
+  font-size: 14px;
+  font-weight: 600;
+  writing-mode: horizontal-tb;
   transition:
     transform 0.2s ease,
-    background 0.2s ease;
-  box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.1);
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  animation: pulse 3s ease-in-out 2s 3;
 }
 
 .bug-tab:hover {
-  transform: translateX(-2px);
+  transform: translateY(-2px);
   background: var(--vp-c-brand-2);
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+}
+
+@keyframes pulse {
+  0%,
+  100% {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  }
+  50% {
+    box-shadow:
+      0 4px 16px rgba(0, 0, 0, 0.2),
+      0 0 0 6px rgba(var(--vp-c-brand-1-rgb, 66, 184, 131), 0.2);
+  }
 }
 
 .bug-tab svg {
-  transform: rotate(90deg);
+  transform: none;
 }
 
 .bug-tab-text {
-  margin-top: 4px;
+  margin-top: 0;
 }
 
 /* Expanded panel */
 .bug-panel {
   position: fixed;
-  right: 16px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 320px;
-  max-height: 80vh;
+  right: 24px;
+  bottom: 80px;
+  width: 340px;
+  max-height: 70vh;
   overflow-y: auto;
   background: var(--vp-c-bg);
   border: 1px solid var(--vp-c-border);
   border-radius: 12px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
   padding: 16px;
   animation: slideIn 0.2s ease;
 }
@@ -358,11 +371,11 @@ onUnmounted(() => {
 @keyframes slideIn {
   from {
     opacity: 0;
-    transform: translateY(-50%) translateX(20px);
+    transform: translateY(12px);
   }
   to {
     opacity: 1;
-    transform: translateY(-50%) translateX(0);
+    transform: translateY(0);
   }
 }
 
@@ -581,25 +594,19 @@ onUnmounted(() => {
 /* Mobile responsive */
 @media (max-width: 768px) {
   .bug-report-widget {
-    right: auto;
-    left: auto;
-    top: auto;
-    bottom: 16px;
     right: 16px;
+    bottom: 16px;
   }
 
   .bug-tab {
-    writing-mode: horizontal-tb;
     border-radius: 50%;
     width: 48px;
     height: 48px;
     padding: 0;
     justify-content: center;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   }
 
   .bug-tab svg {
-    transform: none;
     width: 20px;
     height: 20px;
   }
@@ -609,14 +616,10 @@ onUnmounted(() => {
   }
 
   .bug-panel {
-    position: fixed;
     right: 8px;
     left: 8px;
     bottom: 8px;
-    top: auto;
     width: auto;
-    max-height: 70vh;
-    transform: none;
     animation: slideUp 0.2s ease;
   }
 

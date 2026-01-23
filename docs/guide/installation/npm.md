@@ -2,6 +2,13 @@
 
 The simplest way to run GitLab MCP Server.
 
+::: tip
+For guided setup with auto-detection, use the [Setup Wizard](/guide/installation/wizard):
+```bash
+npx @structured-world/gitlab-mcp setup
+```
+:::
+
 ## npx (No Installation)
 
 ```json

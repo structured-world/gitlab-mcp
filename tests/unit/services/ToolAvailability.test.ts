@@ -485,7 +485,7 @@ describe("ToolAvailability - Tier-based Filtering", () => {
         const req = ToolAvailability.getToolRequirement("get_project");
         expect(req).toBeDefined();
         expect(req?.requiredTier).toBe("free");
-        expect(req?.minVersion).toBe(8.0);
+        expect(req?.minVersion).toBe("8.0");
       });
 
       it("should return undefined for unknown tools", () => {

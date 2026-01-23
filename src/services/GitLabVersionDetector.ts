@@ -243,7 +243,7 @@ export class GitLabVersionDetector {
     const v = parseVersion(version);
 
     const features: GitLabFeatures = {
-      // Core features aligned with WORK.md Feature Availability Matrix
+      // Core features based on GitLab documentation
       workItems: v >= parseVersion("15.0"),
       epics: tier !== "free" && v >= parseVersion("10.2"),
       iterations: tier !== "free" && v >= parseVersion("13.1"),
@@ -263,7 +263,7 @@ export class GitLabVersionDetector {
       requirements: tier === "ultimate" && v >= parseVersion("13.1"),
       qualityManagement: tier === "ultimate" && v >= parseVersion("13.0"),
 
-      // Widget-specific features aligned with WORK.md
+      // Widget-specific features
       timeTracking: tier !== "free" && v >= parseVersion("8.14"),
       crmContacts: tier === "ultimate" && v >= parseVersion("14.0"),
       vulnerabilities: tier === "ultimate" && v >= parseVersion("12.5"),

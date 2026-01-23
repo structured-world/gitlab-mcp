@@ -474,7 +474,7 @@ function detectTierRestriction(
   }
 
   // Check for group webhooks (tool name pattern)
-  if ((tool === "list_webhooks" || tool === "manage_webhook") && toolArgs?.scope === "group") {
+  if ((tool === "browse_webhooks" || tool === "manage_webhook") && toolArgs?.scope === "group") {
     // Group webhooks require Premium - check if we have serviceDesk (Premium feature) as proxy
     if (!connectionManager.isFeatureAvailable("serviceDesk")) {
       return {

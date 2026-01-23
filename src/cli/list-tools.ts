@@ -382,8 +382,8 @@ const ENTITY_TOOLS: Record<string, string[]> = {
   Milestones: ["browse_milestones", "manage_milestone"],
   Files: ["browse_files", "manage_files"],
   Snippets: ["browse_snippets", "manage_snippet"],
-  Webhooks: ["list_webhooks", "manage_webhook"],
-  Integrations: ["list_integrations", "manage_integration"],
+  Webhooks: ["browse_webhooks", "manage_webhook"],
+  Integrations: ["browse_integrations", "manage_integration"],
   Todos: ["list_todos", "manage_todos"],
 };
 
@@ -1024,9 +1024,9 @@ const FEATURE_TO_TOOLS: Record<string, string[]> = {
   files: ["browse_files", "manage_files"],
   variables: ["browse_variables", "manage_variable"],
   workitems: ["browse_work_items", "manage_work_item"],
-  webhooks: ["list_webhooks", "manage_webhook"],
+  webhooks: ["browse_webhooks", "manage_webhook"],
   snippets: ["browse_snippets", "manage_snippet"],
-  integrations: ["list_integrations", "manage_integration"],
+  integrations: ["browse_integrations", "manage_integration"],
 };
 
 /**

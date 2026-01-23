@@ -1,3 +1,9 @@
+## [6.33.2](https://github.com/structured-world/gitlab-mcp/compare/v6.33.1...v6.33.2) (2026-01-23)
+
+### Bug Fixes
+
+* **docs:** deploy bug report API as CF Worker + improve widget & layout ([#154](https://github.com/structured-world/gitlab-mcp/issues/154)) ([e8284bc](https://github.com/structured-world/gitlab-mcp/commit/e8284bce4d521f8e85e76f203ee53a0697b442e4)), closes [#145](https://github.com/structured-world/gitlab-mcp/issues/145) [PKCS#1](https://github.com/structured-world/PKCS/issues/1) [PKCS#8](https://github.com/structured-world/PKCS/issues/8) [PKCS#1](https://github.com/structured-world/PKCS/issues/1) [PKCS#8](https://github.com/structured-world/PKCS/issues/8) [#153](https://github.com/structured-world/gitlab-mcp/issues/153)
+
 ## [6.33.1](https://github.com/structured-world/gitlab-mcp/compare/v6.33.0...v6.33.1) (2026-01-23)
 
 ### Bug Fixes

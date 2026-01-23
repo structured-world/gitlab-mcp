@@ -100,8 +100,8 @@ Each tool accepts an `action` parameter selecting the specific operation.
 
 | Tool | Type | Description |
 |------|------|-------------|
-| `list_webhooks` | Query | List project/group webhooks |
-| `manage_webhook` | Command | CRUD + test webhooks |
+| `browse_webhooks` | Query | List project/group webhooks |
+| `manage_webhook` | Command | Create, update, delete, test webhooks |
 
 ### Snippets (`USE_SNIPPETS=true`, default: enabled)
 
@@ -114,8 +114,8 @@ Each tool accepts an `action` parameter selecting the specific operation.
 
 | Tool | Type | Description |
 |------|------|-------------|
-| `list_integrations` | Query | List active project integrations |
-| `manage_integration` | Command | Get, update, disable integrations |
+| `browse_integrations` | Query | List active project integrations |
+| `manage_integration` | Command | Update, disable integrations |
 
 ### Wiki (`USE_GITLAB_WIKI=true`, default: enabled)
 
@@ -138,6 +138,73 @@ Each tool accepts an `action` parameter selecting the specific operation.
 | `browse_pipelines` | Query | List pipelines, jobs, logs |
 | `manage_pipeline` | Command | Create, retry, cancel pipelines |
 | `manage_pipeline_job` | Command | Play, retry, cancel jobs |
+
+## Tools by Use-Case
+
+For workflow-oriented documentation with examples:
+
+- [Code Review](/tools/code-review) — MRs, diffs, discussions, suggestions
+- [CI/CD](/tools/ci-cd) — Pipelines, jobs, logs, variables
+- [Project Management](/tools/project-management) — Issues, milestones, labels, members
+- [Repository](/tools/repository) — Files, commits, branches, releases
+
+## Tool Comparison by Role
+
+Which tools matter most for each role:
+
+| Tool | Developer | DevOps | Team Lead | PM |
+|------|:---------:|:------:|:---------:|:--:|
+| `browse_merge_requests` | ★★★ | ★ | ★★★ | ★ |
+| `manage_merge_request` | ★★★ | ★ | ★★★ | — |
+| `manage_mr_discussion` | ★★★ | — | ★★★ | — |
+| `browse_pipelines` | ★★ | ★★★ | ★ | — |
+| `manage_pipeline` | ★ | ★★★ | — | — |
+| `manage_pipeline_job` | ★ | ★★★ | — | — |
+| `browse_variables` | ★ | ★★★ | — | — |
+| `manage_variable` | — | ★★★ | — | — |
+| `browse_files` | ★★★ | ★ | ★ | — |
+| `manage_files` | ★★ | ★ | — | — |
+| `browse_commits` | ★★ | ★ | ★ | — |
+| `browse_work_items` | ★★ | ★ | ★★★ | ★★★ |
+| `manage_work_item` | ★★ | ★ | ★★★ | ★★★ |
+| `browse_milestones` | ★ | — | ★★★ | ★★★ |
+| `manage_milestone` | — | — | ★★ | ★★★ |
+| `browse_labels` | ★ | — | ★★ | ★★★ |
+| `manage_label` | — | — | ★★ | ★★★ |
+| `browse_members` | ★ | ★ | ★★★ | ★★ |
+| `manage_member` | — | ★ | ★★★ | — |
+| `browse_webhooks` | — | ★★★ | ★ | — |
+| `manage_webhook` | — | ★★★ | ★ | — |
+| `browse_integrations` | — | ★★★ | ★ | — |
+| `browse_releases` | ★ | ★★ | ★ | ★★ |
+| `manage_release` | ★ | ★★★ | ★ | ★★ |
+| `browse_refs` | ★★ | ★★★ | ★ | — |
+| `browse_search` | ★★ | ★ | ★★ | ★ |
+
+★★★ = Primary tool &nbsp;|&nbsp; ★★ = Frequently used &nbsp;|&nbsp; ★ = Occasionally &nbsp;|&nbsp; — = Rarely needed
+
+See [role-based prompts](/prompts/by-role/developer) for workflows tailored to each role.
+
+## Query vs Command Comparison
+
+| Category | Query (browse_*) | Command (manage_*) |
+|----------|-------------------|---------------------|
+| **Merge Requests** | `browse_merge_requests` (list, get, diffs, compare) | `manage_merge_request` (create, update, merge, approve) |
+| **Discussions** | `browse_mr_discussions` (list, drafts, draft) | `manage_mr_discussion` (comment, thread, suggest, resolve) |
+| **Pipelines** | `browse_pipelines` (list, get, jobs, logs) | `manage_pipeline` (create, retry, cancel) |
+| **Jobs** | — (via browse_pipelines) | `manage_pipeline_job` (play, retry, cancel) |
+| **Variables** | `browse_variables` (list, get) | `manage_variable` (create, update, delete) |
+| **Files** | `browse_files` (tree, content) | `manage_files` (single, batch, upload) |
+| **Work Items** | `browse_work_items` (list, get) | `manage_work_item` (create, update, delete) |
+| **Milestones** | `browse_milestones` (list, get, issues, burndown) | `manage_milestone` (create, update, delete, promote) |
+| **Labels** | `browse_labels` (list, get) | `manage_label` (create, update, delete) |
+| **Releases** | `browse_releases` (list, get, assets) | `manage_release` (create, update, delete, links) |
+| **Refs** | `browse_refs` (branches, tags, protection) | `manage_ref` (create, delete, protect) |
+| **Members** | `browse_members` (list, get) | `manage_member` (add, remove, update) |
+| **Webhooks** | `browse_webhooks` (list, get) | `manage_webhook` (create, update, delete, test) |
+| **Integrations** | `browse_integrations` (list, get) | `manage_integration` (update, disable) |
+| **Wiki** | `browse_wiki` (list, get) | `manage_wiki` (create, update, delete) |
+| **Snippets** | `browse_snippets` (list, get) | `manage_snippet` (create, update, delete) |
 
 ## Detailed Documentation
 

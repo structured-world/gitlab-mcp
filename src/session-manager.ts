@@ -29,7 +29,6 @@ export class SessionManager {
   private sessions = new Map<string, ManagedSession>();
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private readonly sessionTimeoutMs: number;
-  private handlersInitialized = false;
 
   constructor(sessionTimeoutMs?: number) {
     this.sessionTimeoutMs = sessionTimeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
@@ -68,14 +67,7 @@ export class SessionManager {
     };
 
     // Register request handlers (idempotent — same logic for every session)
-    if (!this.handlersInitialized) {
-      // Initialize connection manager once on first session
-      await setupHandlers(server);
-      this.handlersInitialized = true;
-    } else {
-      // For subsequent sessions, register handlers without re-initializing connection
-      await setupHandlers(server);
-    }
+    await setupHandlers(server);
 
     await server.connect(transport);
 

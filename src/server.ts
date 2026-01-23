@@ -50,8 +50,12 @@ import { getRequestContext } from "./utils/request-logger";
  * Broadcasts to all active sessions managed by the SessionManager.
  */
 export async function sendToolsListChangedNotification(): Promise<void> {
-  const sessionManager = getSessionManager();
-  await sessionManager.broadcastToolsListChanged();
+  try {
+    const sessionManager = getSessionManager();
+    await sessionManager.broadcastToolsListChanged();
+  } catch (error: unknown) {
+    logger.error({ err: error }, "Failed to broadcast tools/list_changed notification");
+  }
 }
 
 // Terminal colors for logging (currently unused)
@@ -398,21 +402,19 @@ export async function startServer(): Promise<void> {
             transport = streamableTransports[sessionId];
             await handleWithContext(transport);
           } else {
+            // Pre-generate session ID so we can connect the Server before handling the request
+            const newSessionId = Math.random().toString(36).substring(7);
+
             // Create new transport (handles both SSE and JSON-RPC internally)
             transport = new StreamableHTTPServerTransport({
-              sessionIdGenerator: () => Math.random().toString(36).substring(7),
-              onsessioninitialized: (newSessionId: string) => {
-                streamableTransports[newSessionId] = transport;
-                logger.info(`MCP session initialized: ${newSessionId} (method: ${req.method})`);
-
-                // Each session gets its own Server instance via session manager
-                sessionManager.createSession(newSessionId, transport).catch((err: unknown) => {
-                  logger.error({ err, sessionId: newSessionId }, "Failed to create session server");
-                });
+              sessionIdGenerator: () => newSessionId,
+              onsessioninitialized: (sessionId: string) => {
+                streamableTransports[sessionId] = transport;
+                logger.info(`MCP session initialized: ${sessionId} (method: ${req.method})`);
 
                 // Associate MCP session with OAuth session if authenticated
                 if (oauthSessionId) {
-                  sessionStore.associateMcpSession(newSessionId, oauthSessionId);
+                  sessionStore.associateMcpSession(sessionId, oauthSessionId);
                 }
               },
               onsessionclosed: (closedSessionId: string) => {
@@ -427,6 +429,11 @@ export async function startServer(): Promise<void> {
                 logger.info(`MCP session closed: ${closedSessionId}`);
               },
             });
+
+            // Connect per-session Server BEFORE handling request — ensures
+            // message routing is ready before the transport processes the request
+            await sessionManager.createSession(newSessionId, transport);
+
             await handleWithContext(transport);
           }
         } catch (error: unknown) {
@@ -587,20 +594,18 @@ export async function startServer(): Promise<void> {
             transport = streamableTransports[sessionId];
             await handleWithContext(transport);
           } else {
-            transport = new StreamableHTTPServerTransport({
-              sessionIdGenerator: () => Math.random().toString(36).substring(7),
-              onsessioninitialized: (newSessionId: string) => {
-                streamableTransports[newSessionId] = transport;
-                logger.info(`MCP session initialized: ${newSessionId} (method: ${req.method})`);
+            // Pre-generate session ID so we can connect the Server before handling the request
+            const newSessionId = Math.random().toString(36).substring(7);
 
-                // Each session gets its own Server instance via session manager
-                sessionManager.createSession(newSessionId, transport).catch((err: unknown) => {
-                  logger.error({ err, sessionId: newSessionId }, "Failed to create session server");
-                });
+            transport = new StreamableHTTPServerTransport({
+              sessionIdGenerator: () => newSessionId,
+              onsessioninitialized: (sessionId: string) => {
+                streamableTransports[sessionId] = transport;
+                logger.info(`MCP session initialized: ${sessionId} (method: ${req.method})`);
 
                 // Associate MCP session with OAuth session if authenticated
                 if (oauthSessionId) {
-                  sessionStore.associateMcpSession(newSessionId, oauthSessionId);
+                  sessionStore.associateMcpSession(sessionId, oauthSessionId);
                 }
               },
               onsessionclosed: (closedSessionId: string) => {
@@ -615,6 +620,11 @@ export async function startServer(): Promise<void> {
                 logger.info(`MCP session closed: ${closedSessionId}`);
               },
             });
+
+            // Connect per-session Server BEFORE handling request — ensures
+            // message routing is ready before the transport processes the request
+            await sessionManager.createSession(newSessionId, transport);
+
             await handleWithContext(transport);
           }
         } catch (error: unknown) {

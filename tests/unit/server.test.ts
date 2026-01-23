@@ -58,8 +58,18 @@ jest.mock("@modelcontextprotocol/sdk/server/stdio.js", () => ({
   StdioServerTransport: jest.fn(() => mockTransport),
 }));
 
+// Store StreamableHTTP constructor options for testing callbacks
+let lastStreamableOpts: {
+  sessionIdGenerator?: () => string;
+  onsessioninitialized?: (id: string) => void;
+  onsessionclosed?: (id: string) => void;
+} | null = null;
+
 jest.mock("@modelcontextprotocol/sdk/server/streamableHttp.js", () => ({
-  StreamableHTTPServerTransport: jest.fn(() => mockTransport),
+  StreamableHTTPServerTransport: jest.fn((opts?: Record<string, unknown>) => {
+    lastStreamableOpts = opts as typeof lastStreamableOpts;
+    return mockTransport;
+  }),
 }));
 
 // Mock config
@@ -107,6 +117,7 @@ jest.mock("../../src/session-manager", () => ({
 
 import type { Server as _Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { startServer, sendToolsListChangedNotification } from "../../src/server";
+import { sessionStore as mockSessionStore } from "../../src/oauth/index";
 
 describe("server", () => {
   let originalArgv: string[];
@@ -114,6 +125,7 @@ describe("server", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    lastStreamableOpts = null;
 
     // Store original values
     originalArgv = [...process.argv];
@@ -517,10 +529,320 @@ describe("server", () => {
         locals: {},
       };
 
-      // Test the handler - this should create a new transport
-      // Session server is created via onsessioninitialized callback (async)
+      // Server is connected BEFORE handleRequest via createSession
       await mcpHandler(mockReq, mockRes);
 
+      // createSession is called with a pre-generated session ID and the transport
+      expect(mockSessionManager.createSession).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.anything()
+      );
+      expect(mockTransport.handleRequest).toHaveBeenCalled();
+    });
+
+    it("should create session before handling request in StreamableHTTP", async () => {
+      process.env.PORT = "3000";
+
+      // Track call order to verify createSession happens before handleRequest
+      const callOrder: string[] = [];
+      mockSessionManager.createSession.mockImplementation(async () => {
+        callOrder.push("createSession");
+        return mockServer;
+      });
+      mockTransport.handleRequest.mockImplementation(async () => {
+        callOrder.push("handleRequest");
+      });
+
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      const mockReq = {
+        headers: {},
+        method: "POST",
+        path: "/mcp",
+        body: { jsonrpc: "2.0", method: "initialize", id: 1 },
+      };
+      const mockRes = {
+        status: jest.fn(() => mockRes),
+        json: jest.fn(),
+        headersSent: false,
+        locals: {},
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      // createSession MUST be called before handleRequest
+      expect(callOrder).toEqual(["createSession", "handleRequest"]);
+    });
+
+    it("should not send 500 when headers already sent in SSE messages handler", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find(call => call[0] === "/sse")[1];
+      const messagesHandler = mockApp.post.mock.calls.find(call => call[0] === "/messages")[1];
+
+      // Create SSE transport first
+      await sseHandler({}, { on: jest.fn() });
+
+      // Mock transport error
+      mockTransport.handlePostMessage.mockRejectedValueOnce(new Error("Stream error"));
+
+      const mockReq = {
+        query: { sessionId: "test-session-123" },
+        body: { method: "test" },
+      };
+      const mockRes = {
+        status: jest.fn(() => mockRes),
+        json: jest.fn(),
+        headersSent: true, // Headers already sent (streaming in progress)
+      };
+
+      await messagesHandler(mockReq, mockRes);
+
+      // Should NOT call res.status when headers are already sent
+      expect(mockRes.status).not.toHaveBeenCalled();
+    });
+
+    it("should not send 500 when headers already sent in StreamableHTTP handler", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      // Mock createSession to throw after transport is created
+      mockSessionManager.createSession.mockRejectedValueOnce(new Error("Server init failed"));
+
+      const mockReq = {
+        headers: {},
+        method: "POST",
+        path: "/mcp",
+        body: { method: "initialize" },
+      };
+      const mockRes = {
+        status: jest.fn(() => mockRes),
+        json: jest.fn(),
+        headersSent: true, // Simulate headers already sent
+        locals: {},
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      // Should NOT call res.status when headers are already sent
+      expect(mockRes.status).not.toHaveBeenCalled();
+    });
+
+    it("should clean up SSE session when client disconnects", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find(call => call[0] === "/sse")[1];
+
+      // Capture the 'close' event handler
+      let closeHandler: (() => void) | null = null;
+      const mockRes = {
+        on: jest.fn((event: string, handler: () => void) => {
+          if (event === "close") closeHandler = handler;
+        }),
+      };
+
+      await sseHandler({}, mockRes);
+
+      expect(mockRes.on).toHaveBeenCalledWith("close", expect.any(Function));
+      expect(closeHandler).not.toBeNull();
+
+      // Simulate client disconnect
+      closeHandler!();
+
+      expect(mockSessionManager.removeSession).toHaveBeenCalledWith("test-session-123");
+    });
+
+    it("should handle createSession failure in StreamableHTTP new session", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      // createSession fails
+      mockSessionManager.createSession.mockRejectedValueOnce(new Error("Handler setup failed"));
+
+      const mockReq = {
+        headers: {},
+        method: "POST",
+        path: "/mcp",
+        body: { method: "initialize" },
+      };
+      const mockRes = {
+        status: jest.fn(() => mockRes),
+        json: jest.fn(),
+        headersSent: false,
+        locals: {},
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      // Error should be caught and 500 returned
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.json).toHaveBeenCalledWith({ error: "Internal server error" });
+    });
+
+    it("should invoke onsessioninitialized and register transport", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      // Trigger new session creation
+      await mcpHandler(
+        { headers: {}, method: "POST", path: "/mcp", body: {} },
+        { status: jest.fn().mockReturnThis(), json: jest.fn(), headersSent: false, locals: {} }
+      );
+
+      // onsessioninitialized should have been captured
+      expect(lastStreamableOpts).not.toBeNull();
+      expect(lastStreamableOpts!.onsessioninitialized).toBeDefined();
+
+      // Call onsessioninitialized to simulate SDK behavior
+      const sessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(sessionId);
+
+      expect(mockLogger.info).toHaveBeenCalledWith(
+        expect.stringContaining(`MCP session initialized: ${sessionId}`)
+      );
+    });
+
+    it("should associate OAuth session in onsessioninitialized when authenticated", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      // Get the MCP handler registered for dual mode
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      // Request with OAuth credentials in res.locals
+      const mockReq = {
+        headers: {},
+        method: "POST",
+        path: "/mcp",
+        body: {},
+      };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        locals: {
+          oauthSessionId: "oauth-session-123",
+          gitlabToken: "test-token",
+          gitlabUserId: 42,
+          gitlabUsername: "testuser",
+        },
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      // onsessioninitialized was captured — verify the callback handles OAuth association
+      expect(lastStreamableOpts).not.toBeNull();
+      expect(lastStreamableOpts!.onsessioninitialized).toBeDefined();
+
+      // Simulate SDK calling onsessioninitialized
+      const sessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(sessionId);
+
+      // The closure should have captured oauthSessionId from res.locals
+      expect(mockSessionStore.associateMcpSession).toHaveBeenCalledWith(
+        sessionId,
+        "oauth-session-123"
+      );
+    });
+
+    it("should handle removeSession error in onsessionclosed gracefully", async () => {
+      process.env.PORT = "3000";
+      mockSessionManager.removeSession.mockRejectedValueOnce(new Error("Remove failed"));
+
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      await mcpHandler(
+        { headers: {}, method: "POST", path: "/mcp", body: {} },
+        { status: jest.fn().mockReturnThis(), json: jest.fn(), headersSent: false, locals: {} }
+      );
+
+      // Should not throw when onsessionclosed triggers removeSession error
+      expect(() => lastStreamableOpts!.onsessionclosed!("failing-session")).not.toThrow();
+    });
+
+    it("should invoke onsessionclosed and cleanup session", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      // Trigger new session creation
+      await mcpHandler(
+        { headers: {}, method: "POST", path: "/mcp", body: {} },
+        { status: jest.fn().mockReturnThis(), json: jest.fn(), headersSent: false, locals: {} }
+      );
+
+      // Call onsessionclosed to simulate SDK session close
+      expect(lastStreamableOpts!.onsessionclosed).toBeDefined();
+      lastStreamableOpts!.onsessionclosed!("closed-session-id");
+
+      expect(mockSessionManager.removeSession).toHaveBeenCalledWith("closed-session-id");
+      expect(mockLogger.info).toHaveBeenCalledWith("MCP session closed: closed-session-id");
+    });
+
+    it("should touch session and reuse transport for existing StreamableHTTP sessions", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      // First: create a new session and register it via onsessioninitialized
+      await mcpHandler(
+        { headers: {}, method: "POST", path: "/mcp", body: {} },
+        { status: jest.fn().mockReturnThis(), json: jest.fn(), headersSent: false, locals: {} }
+      );
+
+      // Simulate SDK firing onsessioninitialized — registers transport in streamableTransports
+      const registeredSessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(registeredSessionId);
+
+      // Second: request with existing session ID — should hit the "reuse" branch
+      const mockReq = {
+        headers: { "mcp-session-id": registeredSessionId },
+        method: "POST",
+        path: "/mcp",
+        body: { method: "tools/list" },
+      };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        locals: {},
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      // touchSession called for existing sessions
+      expect(mockSessionManager.touchSession).toHaveBeenCalledWith(registeredSessionId);
+      // handleRequest called (reusing existing transport)
       expect(mockTransport.handleRequest).toHaveBeenCalled();
     });
   });
@@ -726,6 +1048,42 @@ describe("server", () => {
 
       mockExit.mockRestore();
     });
+
+    it("should call session manager shutdown and session store close", async () => {
+      const mockExit = jest.spyOn(process, "exit").mockImplementation((() => {
+        // No-op
+      }) as never);
+
+      process.emit("SIGINT");
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      expect(mockSessionManager.shutdown).toHaveBeenCalled();
+
+      const { sessionStore } = require("../../src/oauth/index");
+      expect(sessionStore.close).toHaveBeenCalled();
+
+      mockExit.mockRestore();
+    });
+
+    it("should handle session manager shutdown errors gracefully", async () => {
+      const mockExit = jest.spyOn(process, "exit").mockImplementation((() => {
+        // No-op
+      }) as never);
+
+      mockSessionManager.shutdown.mockRejectedValueOnce(new Error("Shutdown failed"));
+
+      process.emit("SIGINT");
+      await new Promise(resolve => setTimeout(resolve, 0));
+
+      // Should still exit despite shutdown error
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        { err: expect.any(Error) },
+        "Error shutting down session manager"
+      );
+      expect(mockExit).toHaveBeenCalledWith(0);
+
+      mockExit.mockRestore();
+    });
   });
 
   // Note: setupHandlers integration is tested separately in handlers.test.ts
@@ -747,8 +1105,8 @@ describe("server", () => {
         new Error("Broadcast failed")
       );
 
-      // Should propagate the error (session manager handles individual failures internally)
-      await expect(sendToolsListChangedNotification()).rejects.toThrow("Broadcast failed");
+      // Should not propagate — error is caught and logged internally
+      await expect(sendToolsListChangedNotification()).resolves.toBeUndefined();
     });
   });
 });

@@ -34,8 +34,7 @@ Prompts to understand a project's structure, recent changes, and current state.
 {
   "action": "content",
   "project_id": "my-org/api",
-  "file_path": "src/config.ts",
-  "per_page": 20
+  "file_path": "src/config.ts"
 }
 ```
 
@@ -92,8 +91,7 @@ Prompts to understand a project's structure, recent changes, and current state.
   "action": "get",
   "project_id": "my-org/api",
   "sha": "abc1234",
-  "stats": true,
-  "per_page": 20
+  "stats": true
 }
 ```
 

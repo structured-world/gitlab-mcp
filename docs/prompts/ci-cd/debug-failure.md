@@ -71,8 +71,7 @@ Quickly diagnose and fix CI/CD failures using GitLab MCP.
 {
   "action": "logs",
   "project_id": "my-org/api",
-  "job_id": "5678",
-  "per_page": 20
+  "job_id": "5678"
 }
 ```
 
@@ -82,7 +81,7 @@ Quickly diagnose and fix CI/CD failures using GitLab MCP.
   "project_id": "my-org/api",
   "job_id": "5678",
   "start": -100,
-  "per_page": 20
+  "limit": 100
 }
 ```
 
@@ -129,8 +128,7 @@ Look for:
 {
   "action": "retry",
   "project_id": "my-org/api",
-  "pipeline_id": "1234",
-  "ref": "main"
+  "pipeline_id": "1234"
 }
 ```
 
@@ -138,8 +136,7 @@ Look for:
 {
   "action": "cancel",
   "project_id": "my-org/api",
-  "pipeline_id": "1234",
-  "ref": "main"
+  "pipeline_id": "1234"
 }
 ```
 

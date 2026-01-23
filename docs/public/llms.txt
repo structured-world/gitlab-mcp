@@ -62,10 +62,10 @@ Optional: GITLAB_API_URL (defaults to https://gitlab.com/api/v4)
 - manage_member: Add/remove members, change access levels.
 
 ## Webhooks & Integrations
-- list_webhooks: List configured webhooks for projects/groups.
-- manage_webhook: Create, read, update, delete, test webhooks.
-- list_integrations: List active project integrations (Slack, Jira, etc).
-- manage_integration: Get, update, disable integrations (50+ supported).
+- browse_webhooks: List webhooks, get webhook details for projects/groups.
+- manage_webhook: Create, update, delete, test webhooks.
+- browse_integrations: List active integrations, get integration settings.
+- manage_integration: Update, disable integrations (50+ supported).
 
 ## Releases
 - browse_releases: List releases, get release details, list asset links.

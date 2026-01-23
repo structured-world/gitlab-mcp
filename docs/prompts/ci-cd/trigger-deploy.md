@@ -73,8 +73,7 @@ Run pipelines, trigger manual jobs, and manage deployments with GitLab MCP.
 {
   "action": "job",
   "project_id": "my-org/api",
-  "job_id": "5678",
-  "per_page": 20
+  "job_id": "5678"
 }
 ```
 
@@ -84,7 +83,7 @@ Run pipelines, trigger manual jobs, and manage deployments with GitLab MCP.
   "project_id": "my-org/api",
   "job_id": "5678",
   "start": -50,
-  "per_page": 20
+  "limit": 50
 }
 ```
 
@@ -110,8 +109,7 @@ Run pipelines, trigger manual jobs, and manage deployments with GitLab MCP.
 {
   "action": "cancel",
   "project_id": "my-org/api",
-  "pipeline_id": "1234",
-  "ref": "main"
+  "pipeline_id": "1234"
 }
 ```
 
@@ -147,8 +145,7 @@ A typical deployment sequence:
 {
   "action": "get",
   "namespace": "my-org/api",
-  "key": "DEPLOY_URL",
-  "per_page": 20
+  "key": "DEPLOY_URL"
 }
 ```
 

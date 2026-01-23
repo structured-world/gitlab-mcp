@@ -47,8 +47,7 @@ Before looking at code, understand what the MR is about.
 {
   "action": "get",
   "project_id": "my-org/api",
-  "merge_request_iid": "42",
-  "per_page": 20
+  "merge_request_iid": "42"
 }
 ```
 

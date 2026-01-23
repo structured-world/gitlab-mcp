@@ -56,7 +56,7 @@ View pipeline status, job details, and console output.
   "project_id": "my-org/api",
   "job_id": "5678",
   "start": -100,
-  "per_page": 20
+  "limit": 100
 }
 ```
 
@@ -110,8 +110,7 @@ Trigger and control pipeline execution.
 {
   "action": "retry",
   "project_id": "my-org/api",
-  "pipeline_id": "1234",
-  "ref": "main"
+  "pipeline_id": "1234"
 }
 ```
 
@@ -119,8 +118,7 @@ Trigger and control pipeline execution.
 {
   "action": "cancel",
   "project_id": "my-org/api",
-  "pipeline_id": "1234",
-  "ref": "main"
+  "pipeline_id": "1234"
 }
 ```
 

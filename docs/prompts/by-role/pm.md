@@ -21,8 +21,7 @@ Work items, roadmap planning, milestone tracking, and release coordination.
 ```json [Project details]
 {
   "action": "get",
-  "project_id": "my-org/api",
-  "per_page": 20
+  "project_id": "my-org/api"
 }
 ```
 
@@ -84,8 +83,7 @@ Work items, roadmap planning, milestone tracking, and release coordination.
 {
   "action": "get",
   "namespace": "my-org/api",
-  "milestone_id": "42",
-  "per_page": 20
+  "milestone_id": "42"
 }
 ```
 

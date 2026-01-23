@@ -41,8 +41,7 @@ File browsing, commits, branches, tags, and repository management.
   "action": "content",
   "project_id": "my-org/api",
   "file_path": "src/config.ts",
-  "ref": "main",
-  "per_page": 20
+  "ref": "main"
 }
 ```
 
@@ -221,8 +220,7 @@ File browsing, commits, branches, tags, and repository management.
 {
   "action": "delete_branch",
   "project_id": "my-org/api",
-  "branch": "feature/old",
-  "ref": "main"
+  "branch": "feature/old"
 }
 ```
 
@@ -230,8 +228,6 @@ File browsing, commits, branches, tags, and repository management.
 {
   "action": "protect_branch",
   "project_id": "my-org/api",
-  "branch": "main",
-  "ref": "main",
   "name": "main",
   "push_access_level": 40,
   "merge_access_level": 30
@@ -242,9 +238,8 @@ File browsing, commits, branches, tags, and repository management.
 {
   "action": "create_tag",
   "project_id": "my-org/api",
-  "branch": "v2.0.0",
-  "ref": "main",
   "tag_name": "v2.0.0",
+  "ref": "main",
   "message": "Release version 2.0.0"
 }
 ```

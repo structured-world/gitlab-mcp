@@ -6,7 +6,7 @@ Configure pipeline alerts and notifications to stay informed about CI/CD events.
 
 This guide shows how to set up notifications for pipeline events using webhooks and integrations. You'll learn to configure Slack, Discord, or custom endpoints to receive real-time CI/CD updates.
 
-**Tools used:** `manage_webhook`, `list_webhooks`, `manage_integration`, `list_integrations`
+**Tools used:** `manage_webhook`, `browse_webhooks`, `manage_integration`, `browse_integrations`
 
 ## Option 1: Slack Integration (Recommended)
 
@@ -17,7 +17,7 @@ The built-in Slack integration provides rich notifications with pipeline status,
 > "List active integrations in `my-org/api`"
 
 ```json
-// list_integrations
+// browse_integrations
 {
   "project_id": "my-org/api",
   "per_page": 50
@@ -137,7 +137,7 @@ For custom endpoints or services not covered by built-in integrations.
 > "Show me all configured webhooks"
 
 ```json
-// list_webhooks
+// browse_webhooks
 {
   "action": "",
   "scope": "project",

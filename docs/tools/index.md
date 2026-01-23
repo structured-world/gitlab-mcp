@@ -100,7 +100,7 @@ Each tool accepts an `action` parameter selecting the specific operation.
 
 | Tool | Type | Description |
 |------|------|-------------|
-| `list_webhooks` | Query | List project/group webhooks |
+| `browse_webhooks` | Query | List project/group webhooks |
 | `manage_webhook` | Command | CRUD + test webhooks |
 
 ### Snippets (`USE_SNIPPETS=true`, default: enabled)
@@ -114,7 +114,7 @@ Each tool accepts an `action` parameter selecting the specific operation.
 
 | Tool | Type | Description |
 |------|------|-------------|
-| `list_integrations` | Query | List active project integrations |
+| `browse_integrations` | Query | List active project integrations |
 | `manage_integration` | Command | Get, update, disable integrations |
 
 ### Wiki (`USE_GITLAB_WIKI=true`, default: enabled)
@@ -173,9 +173,9 @@ Which tools matter most for each role:
 | `manage_label` | — | — | ★★ | ★★★ |
 | `browse_members` | ★ | ★ | ★★★ | ★★ |
 | `manage_member` | — | ★ | ★★★ | — |
-| `list_webhooks` | — | ★★★ | ★ | — |
+| `browse_webhooks` | — | ★★★ | ★ | — |
 | `manage_webhook` | — | ★★★ | ★ | — |
-| `list_integrations` | — | ★★★ | ★ | — |
+| `browse_integrations` | — | ★★★ | ★ | — |
 | `browse_releases` | ★ | ★★ | ★ | ★★ |
 | `manage_release` | ★ | ★★★ | ★ | ★★ |
 | `browse_refs` | ★★ | ★★★ | ★ | — |
@@ -201,8 +201,8 @@ See [role-based prompts](/prompts/by-role/developer) for workflows tailored to e
 | **Releases** | `browse_releases` (list, get, assets) | `manage_release` (create, update, delete, links) |
 | **Refs** | `browse_refs` (branches, tags, protection) | `manage_ref` (create, delete, protect) |
 | **Members** | `browse_members` (list, get) | `manage_member` (add, remove, update) |
-| **Webhooks** | `list_webhooks` (list) | `manage_webhook` (create, update, delete, test) |
-| **Integrations** | `list_integrations` (list) | `manage_integration` (get, update, disable) |
+| **Webhooks** | `browse_webhooks` (list, get) | `manage_webhook` (create, update, delete, test) |
+| **Integrations** | `browse_integrations` (list, get) | `manage_integration` (update, disable) |
 | **Wiki** | `browse_wiki` (list, get) | `manage_wiki` (create, update, delete) |
 | **Snippets** | `browse_snippets` (list, get) | `manage_snippet` (create, update, delete) |
 

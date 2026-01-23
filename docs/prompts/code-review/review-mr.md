@@ -44,8 +44,7 @@ Complete workflow for performing a thorough code review using GitLab MCP.
 {
   "action": "get",
   "project_id": "my-org/api",
-  "merge_request_iid": "42",
-  "per_page": 20
+  "merge_request_iid": "42"
 }
 ```
 
@@ -53,8 +52,7 @@ Complete workflow for performing a thorough code review using GitLab MCP.
 {
   "action": "get",
   "project_id": "my-org/api",
-  "branch_name": "feature/login-refactor",
-  "per_page": 20
+  "branch_name": "feature/login-refactor"
 }
 ```
 
@@ -82,8 +80,7 @@ Complete workflow for performing a thorough code review using GitLab MCP.
   "action": "compare",
   "project_id": "my-org/api",
   "from": "main",
-  "to": "feature/login-refactor",
-  "per_page": 20
+  "to": "feature/login-refactor"
 }
 ```
 

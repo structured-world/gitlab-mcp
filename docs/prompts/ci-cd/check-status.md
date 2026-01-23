@@ -50,8 +50,7 @@ Monitor pipeline health and job progress across your projects.
 {
   "action": "get",
   "project_id": "my-org/api",
-  "pipeline_id": "1234",
-  "per_page": 20
+  "pipeline_id": "1234"
 }
 ```
 

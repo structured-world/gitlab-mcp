@@ -86,8 +86,7 @@ Your first interactions with GitLab MCP. These prompts help you explore what's a
 {
   "action": "content",
   "project_id": "my-org/backend-api",
-  "file_path": "README.md",
-  "per_page": 20
+  "file_path": "README.md"
 }
 ```
 

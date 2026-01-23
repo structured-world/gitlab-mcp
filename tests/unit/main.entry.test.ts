@@ -137,4 +137,40 @@ describe("main entry point", () => {
     expect(mockSetupWizard).toHaveBeenCalledWith({ mode: "local" });
     expect(mockExit).toHaveBeenCalledWith(0);
   });
+
+  it("should exit with code 1 when init wizard fails", async () => {
+    jest.resetModules();
+
+    const mockSetupWizard = jest
+      .fn<(options?: { mode?: string }) => Promise<{ success: boolean; mode: string }>>()
+      .mockResolvedValue({ success: false, mode: "local" });
+
+    jest.doMock("../../src/cli-utils", () => ({
+      parseCliArgs: jest.fn(() => ({
+        init: true,
+        setup: false,
+        noProjectConfig: false,
+        showProjectConfig: false,
+        auto: false,
+      })),
+    }));
+    jest.doMock("../../src/server", () => ({
+      startServer: jest.fn(),
+    }));
+    jest.doMock("../../src/logger", () => ({
+      logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() },
+    }));
+    jest.doMock("../../src/profiles", () => ({
+      tryApplyProfileFromEnv: jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined),
+    }));
+    jest.doMock("../../src/cli/setup", () => ({
+      runSetupWizard: mockSetupWizard,
+    }));
+
+    await import("../../src/main");
+    await new Promise(resolve => setTimeout(resolve, 10));
+
+    expect(mockSetupWizard).toHaveBeenCalledWith({ mode: "local" });
+    expect(mockExit).toHaveBeenCalledWith(1);
+  });
 });

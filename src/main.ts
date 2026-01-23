@@ -29,15 +29,15 @@ async function main(): Promise<void> {
   // Handle setup subcommand (unified wizard)
   if (cliArgs.setup) {
     const { runSetupWizard } = await import("./cli/setup");
-    await runSetupWizard({ mode: cliArgs.setupMode });
-    process.exit(0);
+    const result = await runSetupWizard({ mode: cliArgs.setupMode });
+    process.exit(result.success ? 0 : 1);
   }
 
   // Handle init subcommand (alias for setup --mode=local)
   if (cliArgs.init) {
     const { runSetupWizard } = await import("./cli/setup");
-    await runSetupWizard({ mode: "local" });
-    process.exit(0);
+    const result = await runSetupWizard({ mode: "local" });
+    process.exit(result.success ? 0 : 1);
   }
 
   // Handle install subcommand

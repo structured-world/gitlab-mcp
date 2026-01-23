@@ -187,12 +187,38 @@ export function generateDockerCompose(config: DockerConfig): string {
     },
   };
 
+  // Add compose-bundle postgres service
+  if (config.deploymentType === "compose-bundle") {
+    compose.services.postgres = {
+      image: "postgres:16-alpine",
+      container_name: `${config.containerName}-db`,
+      ports: [],
+      environment: [
+        "POSTGRES_USER=gitlab_mcp",
+        "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}",
+        "POSTGRES_DB=gitlab_mcp",
+      ],
+      volumes: ["postgres-data:/var/lib/postgresql/data"],
+      restart: "unless-stopped",
+    };
+    compose.services["gitlab-mcp"].depends_on = ["postgres"];
+    if (compose.volumes) {
+      compose.volumes["postgres-data"] = {};
+    }
+  }
+
   // Add OAuth-specific configuration
   if (config.oauthEnabled) {
-    const sessionSecret = config.oauthSessionSecret ?? "${OAUTH_SESSION_SECRET}";
-    const databaseUrl = config.databaseUrl ?? "file:/data/sessions.db";
+    // Determine DATABASE_URL based on deployment type
+    let databaseUrl: string;
+    if (config.deploymentType === "compose-bundle") {
+      databaseUrl = "postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp";
+    } else {
+      databaseUrl = config.databaseUrl ?? "file:/data/sessions.db";
+    }
+    // Reference secret via env var — actual value stored in .env file
     compose.services["gitlab-mcp"].environment.push(
-      `OAUTH_SESSION_SECRET=${sessionSecret}`,
+      "OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}",
       `DATABASE_URL=${databaseUrl}`
     );
     compose.services["gitlab-mcp"].volumes.push("./instances.yml:/app/config/instances.yml:ro");
@@ -460,10 +486,44 @@ export function initDockerConfig(config: Partial<DockerConfig> = {}): DockerConf
   // Save docker-compose.yml
   saveDockerCompose(fullConfig);
 
+  // Write .env file with secrets (restricted permissions)
+  saveEnvFile(fullConfig);
+
   // Save instances if provided
   if (fullConfig.instances.length > 0) {
     saveInstances(fullConfig.instances);
   }
 
   return fullConfig;
+}
+
+/**
+ * Write .env file with secrets for docker-compose environment variable references.
+ * File is created with 0600 permissions to limit exposure.
+ */
+export function saveEnvFile(config: DockerConfig): void {
+  const configDir = getExpandedConfigDir();
+
+  if (!existsSync(configDir)) {
+    mkdirSync(configDir, { recursive: true });
+  }
+
+  const lines: string[] = [];
+
+  if (config.oauthSessionSecret) {
+    lines.push(`OAUTH_SESSION_SECRET=${config.oauthSessionSecret}`);
+  }
+
+  if (config.deploymentType === "compose-bundle") {
+    // Generate a postgres password for the bundled database
+    const pgPassword = config.oauthSessionSecret
+      ? config.oauthSessionSecret.slice(0, 32)
+      : "gitlab_mcp_password";
+    lines.push(`POSTGRES_PASSWORD=${pgPassword}`);
+  }
+
+  if (lines.length > 0) {
+    const envPath = join(configDir, ".env");
+    writeFileSync(envPath, lines.join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
+  }
 }

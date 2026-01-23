@@ -23,6 +23,7 @@ import {
   addInstance,
   removeInstance,
   initDockerConfig,
+  saveEnvFile,
   getExpandedConfigDir,
 } from "../../../../src/cli/docker/docker-utils";
 import {
@@ -531,7 +532,7 @@ describe("docker-utils", () => {
       expect(parsed.services["gitlab-mcp"].ports[0]).toContain("4444");
     });
 
-    it("should include OAuth configuration with session secret from config", () => {
+    it("should reference OAuth secret via env var (not plaintext)", () => {
       const config: DockerConfig = {
         port: 3333,
         oauthEnabled: true,
@@ -545,36 +546,20 @@ describe("docker-utils", () => {
       const parsed = YAML.parse(result);
 
       expect(parsed.services["gitlab-mcp"].environment).toContain("OAUTH_ENABLED=true");
+      // Secret is referenced via env var, not embedded directly
       expect(parsed.services["gitlab-mcp"].environment).toContain(
-        "OAUTH_SESSION_SECRET=test-secret"
+        "OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}"
       );
       expect(parsed.services["gitlab-mcp"].environment).toContain(
         "DATABASE_URL=file:/data/sessions.db"
       );
     });
 
-    it("should use env var reference when oauthSessionSecret is not set", () => {
+    it("should use custom databaseUrl for external-db", () => {
       const config: DockerConfig = {
         port: 3333,
+        deploymentType: "external-db",
         oauthEnabled: true,
-        instances: [],
-        containerName: "gitlab-mcp",
-        image: "ghcr.io/structured-world/gitlab-mcp:latest",
-      };
-
-      const result = generateDockerCompose(config);
-      const parsed = YAML.parse(result);
-
-      expect(parsed.services["gitlab-mcp"].environment).toContain(
-        "OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}"
-      );
-    });
-
-    it("should use custom databaseUrl when provided", () => {
-      const config: DockerConfig = {
-        port: 3333,
-        oauthEnabled: true,
-        oauthSessionSecret: "secret",
         databaseUrl: "postgresql://user:pass@host:5432/db",
         instances: [],
         containerName: "gitlab-mcp",
@@ -587,6 +572,37 @@ describe("docker-utils", () => {
       expect(parsed.services["gitlab-mcp"].environment).toContain(
         "DATABASE_URL=postgresql://user:pass@host:5432/db"
       );
+    });
+
+    it("should add postgres service for compose-bundle deployment", () => {
+      const config: DockerConfig = {
+        port: 3333,
+        deploymentType: "compose-bundle",
+        oauthEnabled: true,
+        instances: [],
+        containerName: "gitlab-mcp",
+        image: "ghcr.io/structured-world/gitlab-mcp:latest",
+      };
+
+      const result = generateDockerCompose(config);
+      const parsed = YAML.parse(result);
+
+      // Postgres service added
+      expect(parsed.services.postgres).toBeDefined();
+      expect(parsed.services.postgres.image).toBe("postgres:16-alpine");
+      expect(parsed.services.postgres.container_name).toBe("gitlab-mcp-db");
+      expect(parsed.services.postgres.environment).toContain("POSTGRES_DB=gitlab_mcp");
+
+      // gitlab-mcp depends on postgres
+      expect(parsed.services["gitlab-mcp"].depends_on).toEqual(["postgres"]);
+
+      // DATABASE_URL points to bundled postgres
+      expect(parsed.services["gitlab-mcp"].environment).toContain(
+        "DATABASE_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp"
+      );
+
+      // postgres-data volume added
+      expect(parsed.volumes["postgres-data"]).toBeDefined();
     });
 
     it("should include volume for data", () => {
@@ -942,6 +958,75 @@ describe("docker-utils", () => {
 
       // Should write both docker-compose.yml and instances.yml
       expect(mockFs.writeFileSync).toHaveBeenCalledTimes(2);
+    });
+
+    it("should write .env file when oauthSessionSecret is set", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      const config: DockerConfig = {
+        port: 3333,
+        oauthEnabled: true,
+        oauthSessionSecret: "abc123secret",
+        instances: [],
+        containerName: "gitlab-mcp",
+        image: "ghcr.io/structured-world/gitlab-mcp:latest",
+      };
+
+      initDockerConfig(config);
+
+      // .env file should be written with restricted permissions
+      const envCall = mockFs.writeFileSync.mock.calls.find(call =>
+        (call[0] as string).endsWith(".env")
+      );
+      expect(envCall).toBeDefined();
+      expect(envCall![1]).toContain("OAUTH_SESSION_SECRET=abc123secret");
+      expect(envCall![2]).toEqual({ encoding: "utf8", mode: 0o600 });
+    });
+  });
+
+  describe("saveEnvFile", () => {
+    it("should not write .env when no secrets present", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveEnvFile({ ...DEFAULT_DOCKER_CONFIG });
+
+      const envCall = mockFs.writeFileSync.mock.calls.find(call =>
+        (call[0] as string).endsWith(".env")
+      );
+      expect(envCall).toBeUndefined();
+    });
+
+    it("should include POSTGRES_PASSWORD for compose-bundle", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveEnvFile({
+        ...DEFAULT_DOCKER_CONFIG,
+        deploymentType: "compose-bundle",
+        oauthSessionSecret: "a]b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6",
+      });
+
+      const envCall = mockFs.writeFileSync.mock.calls.find(call =>
+        (call[0] as string).endsWith(".env")
+      );
+      expect(envCall).toBeDefined();
+      expect(envCall![1]).toContain("POSTGRES_PASSWORD=");
+      expect(envCall![1]).toContain("OAUTH_SESSION_SECRET=");
+    });
+
+    it("should create config directory if not exists", () => {
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveEnvFile({
+        ...DEFAULT_DOCKER_CONFIG,
+        oauthSessionSecret: "test-secret",
+      });
+
+      expect(mockFs.mkdirSync).toHaveBeenCalledWith(expect.any(String), { recursive: true });
     });
   });
 

@@ -65,15 +65,23 @@ describe("flows/tool-selection", () => {
       expect(result).toBeNull();
     });
 
-    it("should run manual selection flow", async () => {
+    it("should run manual selection flow with always-on categories appended", async () => {
       mockSelect.mockResolvedValueOnce("manual");
-      mockMultiselect.mockResolvedValueOnce(["core", "merge-requests", "work-items"]);
+      // Only configurable categories are shown in multiselect
+      mockMultiselect.mockResolvedValueOnce(["merge-requests", "work-items"]);
 
       const result = await runToolSelectionFlow();
 
       expect(result).toBeDefined();
       expect(result!.mode).toBe("manual");
-      expect(result!.enabledCategories).toEqual(["core", "merge-requests", "work-items"]);
+      // Always-on categories (core, commits, context) are appended automatically
+      expect(result!.enabledCategories).toEqual([
+        "merge-requests",
+        "work-items",
+        "core",
+        "commits",
+        "context",
+      ]);
     });
 
     it("should return null when manual selection is cancelled", async () => {

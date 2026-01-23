@@ -117,20 +117,31 @@ async function runPresetSelection(): Promise<ToolConfig | null> {
 }
 
 /**
- * Manual tool category selection flow
+ * Manual tool category selection flow.
+ * Only shows categories that can be controlled via USE_* env vars.
+ * Categories without env var mappings are always enabled.
  */
 async function runManualSelection(): Promise<ToolConfig | null> {
   const totalTools = getTotalToolCount();
 
+  // Only show categories that have corresponding env vars (can actually be toggled)
+  const configurableCategories = TOOL_CATEGORIES.filter(c => c.id in CATEGORY_ENV_MAP);
+  const alwaysOnCategories = TOOL_CATEGORIES.filter(c => !(c.id in CATEGORY_ENV_MAP));
+
+  if (alwaysOnCategories.length > 0) {
+    const alwaysOnNames = alwaysOnCategories.map(c => c.name).join(", ");
+    p.log.info(`Always enabled: ${alwaysOnNames}`);
+  }
+
   const selectedCategories = await p.multiselect({
     message: `Select tool categories (${totalTools} tools total):`,
-    options: TOOL_CATEGORIES.map(category => ({
+    options: configurableCategories.map(category => ({
       value: category.id,
       label: `${category.name} [${category.tools.length} tools]`,
       hint: category.description,
     })),
     // Pre-select default-enabled categories
-    initialValues: TOOL_CATEGORIES.filter(c => c.defaultEnabled).map(c => c.id),
+    initialValues: configurableCategories.filter(c => c.defaultEnabled).map(c => c.id),
     required: true,
   });
 
@@ -138,7 +149,8 @@ async function runManualSelection(): Promise<ToolConfig | null> {
     return null;
   }
 
-  const categories = selectedCategories;
+  // Include always-on categories in the result
+  const categories = [...selectedCategories, ...alwaysOnCategories.map(c => c.id)];
   const selectedCount = getToolCount(categories);
 
   p.log.info(`Selected: ${selectedCount}/${totalTools} tools`);

@@ -76,6 +76,8 @@ export interface GitLabInstance {
 export interface DockerConfig {
   /** SSE port (default: 3333) */
   port: number;
+  /** Deployment type (standalone, external-db, compose-bundle) */
+  deploymentType?: "standalone" | "external-db" | "compose-bundle";
   /** Enable OAuth mode */
   oauthEnabled: boolean;
   /** OAuth session secret */
@@ -113,6 +115,7 @@ export interface DockerComposeService {
   environment: string[];
   volumes: string[];
   restart: string;
+  depends_on?: string[];
 }
 
 /**

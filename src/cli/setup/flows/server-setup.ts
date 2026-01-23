@@ -98,7 +98,7 @@ export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<Se
 
   if (enableOAuth) {
     oauthSessionSecret = randomBytes(32).toString("hex");
-    p.log.info("Session secret generated automatically.");
+    p.log.info("Session secret generated and stored in .env file (not in compose).");
 
     if (deploymentType === "external-db") {
       const dbUrl = await p.text({
@@ -127,9 +127,7 @@ export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<Se
   }
 
   // Step 5: Create Docker configuration with tool selection and deployment type applied
-  const toolEnv: Record<string, string> = {
-    DEPLOYMENT_TYPE: deploymentType,
-  };
+  const toolEnv: Record<string, string> = {};
   if (toolConfig.mode === "preset" && toolConfig.preset) {
     toolEnv.GITLAB_PROFILE = toolConfig.preset;
   } else if (toolConfig.mode === "advanced" && toolConfig.envOverrides) {
@@ -141,10 +139,11 @@ export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<Se
   const config = {
     ...DEFAULT_DOCKER_CONFIG,
     port: parseInt(port, 10),
+    deploymentType,
     oauthEnabled: enableOAuth,
     oauthSessionSecret,
     databaseUrl,
-    environment: toolEnv,
+    environment: Object.keys(toolEnv).length > 0 ? toolEnv : undefined,
   };
 
   const spinner = p.spinner();

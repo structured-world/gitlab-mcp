@@ -27,7 +27,9 @@ function toggle() {
   } else if (state.value === "expanded" || state.value === "error") {
     state.value = "collapsed";
     resetForm();
-    triggerRef.value?.focus();
+    nextTick(() => {
+      triggerRef.value?.focus();
+    });
   }
 }
 
@@ -82,8 +84,9 @@ function handleKeydown(e: KeyboardEvent) {
   if (e.key === "Escape" && state.value !== "collapsed") {
     state.value = "collapsed";
     resetForm();
-    // Return focus to trigger button
-    triggerRef.value?.focus();
+    nextTick(() => {
+      triggerRef.value?.focus();
+    });
     return;
   }
 

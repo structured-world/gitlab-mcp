@@ -1,6 +1,7 @@
 import { WorkItemWidgetType, WorkItemWidgetTypes } from "../graphql/workItems";
 import { ConnectionManager } from "./ConnectionManager";
 import { GitLabTier } from "./GitLabVersionDetector";
+import { parseVersion } from "../utils/version";
 
 interface WidgetRequirement {
   tier: GitLabTier | "free";
@@ -21,22 +22,25 @@ export interface WidgetValidationFailure {
 
 /**
  * Maps manage_work_item input parameters to their corresponding widget types.
- * This is the source of truth for which parameters require which widgets.
+ * Includes both current schema parameters and those planned for #135.
+ * Parameters not yet in ManageWorkItemSchema are harmless here — validation
+ * only triggers when the parameter is actually present in the handler input.
  */
 const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
-  // Free tier widgets
+  // Current schema parameters
   assigneeIds: WorkItemWidgetTypes.ASSIGNEES,
   labelIds: WorkItemWidgetTypes.LABELS,
   milestoneId: WorkItemWidgetTypes.MILESTONE,
   description: WorkItemWidgetTypes.DESCRIPTION,
+  // Planned in #135: free tier
   startDate: WorkItemWidgetTypes.START_AND_DUE_DATE,
   dueDate: WorkItemWidgetTypes.START_AND_DUE_DATE,
   color: WorkItemWidgetTypes.COLOR,
-  // Premium tier widgets
+  // Planned in #135: premium tier
   weight: WorkItemWidgetTypes.WEIGHT,
   iterationId: WorkItemWidgetTypes.ITERATION,
   linkedItemIds: WorkItemWidgetTypes.LINKED_ITEMS,
-  // Ultimate tier widgets
+  // Planned in #135: ultimate tier
   healthStatus: WorkItemWidgetTypes.HEALTH_STATUS,
 };
 
@@ -93,8 +97,8 @@ export class WidgetAvailability {
       }
 
       // Check version requirement
-      const version = this.parseVersion(instanceInfo.version);
-      const minVersion = this.parseVersion(requirement.minVersion);
+      const version = parseVersion(instanceInfo.version);
+      const minVersion = parseVersion(requirement.minVersion);
       if (version < minVersion) {
         return false;
       }
@@ -155,7 +159,7 @@ export class WidgetAvailability {
       return null;
     }
 
-    const parsedVersion = this.parseVersion(instanceVersion);
+    const parsedVersion = parseVersion(instanceVersion);
 
     for (const [paramName, paramValue] of Object.entries(params)) {
       // Skip undefined/null parameters (not provided by user)
@@ -168,7 +172,7 @@ export class WidgetAvailability {
       if (!requirement) continue; // Unknown widget
 
       // Check version requirement
-      const minVersion = this.parseVersion(requirement.minVersion);
+      const minVersion = parseVersion(requirement.minVersion);
       if (parsedVersion < minVersion) {
         return {
           parameter: paramName,
@@ -212,22 +216,5 @@ export class WidgetAvailability {
    */
   public static getParameterWidgetMap(): Record<string, WorkItemWidgetType> {
     return { ...PARAMETER_WIDGET_MAP };
-  }
-
-  /**
-   * Parse a version string into a comparable integer.
-   * Uses major * 100 + minor encoding to correctly handle minor >= 10
-   * (e.g., "16.11.0" → 1611, not 17.1 as float math would give).
-   */
-  private static parseVersion(version: string): number {
-    if (version === "unknown") return 0;
-
-    const match = version.match(/^(\d+)\.(\d+)/);
-    if (!match) return 0;
-
-    const major = parseInt(match[1], 10);
-    const minor = parseInt(match[2], 10);
-
-    return major * 100 + minor;
   }
 }

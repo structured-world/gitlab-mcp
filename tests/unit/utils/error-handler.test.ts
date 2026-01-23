@@ -783,7 +783,7 @@ describe("Error Handler", () => {
       expect(error.docs_url).toBeDefined();
     });
 
-    it("should include tier info in message when tier differs", () => {
+    it("should mention only tier in message when version is sufficient but tier differs", () => {
       const error = createVersionRestrictedError(
         "manage_work_item",
         "update",
@@ -795,10 +795,12 @@ describe("Error Handler", () => {
         "Free"
       );
 
+      // Version 15.5 >= 15.0, so message focuses on tier
       expect(error.message).toContain("WEIGHT");
       expect(error.message).toContain("weight");
-      expect(error.message).toContain("15.0");
       expect(error.message).toContain("Premium");
+      expect(error.message).toContain("Free");
+      expect(error.message).not.toContain(">="); // No version requirement shown
     });
 
     it("should not include tier info when tiers match", () => {

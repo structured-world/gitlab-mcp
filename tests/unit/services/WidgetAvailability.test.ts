@@ -6,6 +6,7 @@
 import { WidgetAvailability } from "../../../src/services/WidgetAvailability";
 import { ConnectionManager } from "../../../src/services/ConnectionManager";
 import { WorkItemWidgetTypes } from "../../../src/graphql/workItems";
+import { parseVersion } from "../../../src/utils/version";
 import { setupMockFetch, resetMocks } from "../../utils/testHelpers";
 
 // Mock dependencies
@@ -308,8 +309,6 @@ describe("WidgetAvailability", () => {
 
   describe("version parsing", () => {
     it("should parse version strings correctly", () => {
-      const parseVersion = (WidgetAvailability as any).parseVersion;
-
       // Uses major * 100 + minor encoding to handle minor >= 10 correctly
       expect(parseVersion("18.3.0")).toBe(1803);
       expect(parseVersion("15.11.2")).toBe(1511); // Correctly handles minor >= 10

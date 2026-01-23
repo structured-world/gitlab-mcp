@@ -10,6 +10,7 @@
 
 import { ConnectionManager } from "../services/ConnectionManager.js";
 import { GitLabFeatures, GitLabTier as InternalTier } from "../services/GitLabVersionDetector.js";
+import { parseVersion } from "./version.js";
 
 /**
  * Display-friendly tier type with capitalized values for API responses.
@@ -947,25 +948,22 @@ export function createVersionRestrictedError(
   const isTierInsufficient =
     requiredTier && currentTier && tierHierarchy[requiredTier] > tierHierarchy[currentTier];
 
-  // Build message: mention tier only when current tier is actually insufficient
-  const tierInfo = isTierInsufficient ? ` and GitLab ${requiredTier} tier` : "";
-
-  // Build suggested_fix based on which constraint is violated
-  // Use numeric comparison (string comparison fails for single-digit major, e.g. "9.0" > "15.0")
-  const parseVer = (v: string): number => {
-    const m = v.match(/^(\d+)\.(\d+)/);
-    return m ? parseInt(m[1], 10) * 100 + parseInt(m[2], 10) : 0;
-  };
-  const isVersionSufficient = parseVer(detectedVersion) >= parseVer(requiredVersion);
+  // Determine which constraints are actually violated
+  const isVersionSufficient = parseVersion(detectedVersion) >= parseVersion(requiredVersion);
   let suggestedFix: string;
+  let message: string;
+
   if (isTierInsufficient && isVersionSufficient) {
-    // Only tier is insufficient, version is fine
+    // Only tier is insufficient
+    message = `Widget '${widget}' (parameter '${parameter}') requires GitLab ${requiredTier} tier (current: ${currentTier})`;
     suggestedFix = `Upgrade to GitLab ${requiredTier} tier to use the '${parameter}' parameter`;
   } else if (isTierInsufficient) {
     // Both version and tier are insufficient
+    message = `Widget '${widget}' (parameter '${parameter}') requires GitLab >= ${requiredVersion} and ${requiredTier} tier (detected: ${detectedVersion}, tier: ${currentTier})`;
     suggestedFix = `Upgrade GitLab to version ${requiredVersion}+ and ${requiredTier} tier to use the '${parameter}' parameter`;
   } else {
     // Only version is insufficient
+    message = `Widget '${widget}' (parameter '${parameter}') requires GitLab >= ${requiredVersion} (detected: ${detectedVersion})`;
     suggestedFix = `Upgrade GitLab to version ${requiredVersion} or higher to use the '${parameter}' parameter`;
   }
 
@@ -979,7 +977,7 @@ export function createVersionRestrictedError(
     detected_version: detectedVersion,
     required_tier: requiredTier,
     current_tier: currentTier,
-    message: `Widget '${widget}' (parameter '${parameter}') requires GitLab >= ${requiredVersion}${tierInfo} (detected: ${detectedVersion})`,
+    message,
     suggested_fix: suggestedFix,
     docs_url: "https://docs.gitlab.com/ee/user/project/work_items/",
   };

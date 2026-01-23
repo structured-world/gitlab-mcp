@@ -2,6 +2,7 @@ import { WorkItemWidgetType, WorkItemWidgetTypes } from "../graphql/workItems";
 import { ConnectionManager } from "./ConnectionManager";
 import { GitLabTier } from "./GitLabVersionDetector";
 import { parseVersion } from "../utils/version";
+import { logger } from "../logger";
 
 interface WidgetRequirement {
   tier: GitLabTier;
@@ -161,7 +162,9 @@ export class WidgetAvailability {
 
     const parsedVersion = parseVersion(instanceVersion);
     if (parsedVersion === 0) {
-      // Version undetectable - skip validation rather than blocking all params
+      logger.debug(
+        `Widget param validation skipped: version "${instanceVersion}" could not be parsed`
+      );
       return null;
     }
 

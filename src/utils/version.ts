@@ -5,6 +5,8 @@
  *
  * @param version - Version string like "16.11.0-ee", "15.0", or "unknown"
  * @returns Comparable integer (0 for unparseable versions)
+ * @example parseVersion("16.11.0-ee") // 1611
+ * @example parseVersion("unknown") // 0
  */
 export function parseVersion(version: string): number {
   if (!version || version === "unknown") return 0;

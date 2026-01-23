@@ -37,6 +37,7 @@ function resetForm() {
   description.value = "";
   expected.value = "";
   category.value = "";
+  honeypot.value = "";
   errorMessage.value = "";
 }
 

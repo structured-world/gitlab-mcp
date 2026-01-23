@@ -10,6 +10,7 @@
 
 import { ConnectionManager } from "../services/ConnectionManager.js";
 import { GitLabFeatures, GitLabTier as InternalTier } from "../services/GitLabVersionDetector.js";
+import { parseVersion } from "./version.js";
 
 /**
  * Display-friendly tier type with capitalized values for API responses.
@@ -134,6 +135,27 @@ export interface ApiError extends StructuredError {
 }
 
 /**
+ * Error for version-restricted widget parameters
+ */
+export interface VersionRestrictedError extends StructuredError {
+  error_code: "VERSION_RESTRICTED";
+  /** Widget type that is restricted */
+  widget: string;
+  /** Parameter name that maps to the widget */
+  parameter: string;
+  /** Required GitLab version for this widget */
+  required_version: string;
+  /** Detected GitLab instance version */
+  detected_version: string;
+  /** Required tier (if also tier-restricted) */
+  required_tier?: GitLabTier;
+  /** Current tier */
+  current_tier?: GitLabTier;
+  /** Documentation URL */
+  docs_url?: string;
+}
+
+/**
  * Timeout error for API requests that exceeded the timeout limit
  */
 export interface TimeoutError extends StructuredError {
@@ -150,6 +172,7 @@ export interface TimeoutError extends StructuredError {
 export type GitLabStructuredError =
   | ActionValidationError
   | TierRestrictedError
+  | VersionRestrictedError
   | PermissionDeniedError
   | NotFoundError
   | ApiError
@@ -559,7 +582,7 @@ function createRestrictionInfo(
  * Converts InternalTier (lowercase: "free", "premium", "ultimate")
  * to display GitLabTier (capitalized: "Free", "Premium", "Ultimate").
  */
-function normalizeTier(tier: string | InternalTier): GitLabTier {
+export function normalizeTier(tier: string | InternalTier): GitLabTier {
   const lower = tier.toLowerCase();
   if (lower === "ultimate" || lower === "gold") return "Ultimate";
   if (lower === "premium" || lower === "silver") return "Premium";
@@ -891,6 +914,72 @@ export function createTimeoutError(
     retryable,
     message: `Request timed out after ${timeoutMs}ms`,
     suggested_fix: `The GitLab server is slow to respond. Try again later or increase GITLAB_API_TIMEOUT_MS.${retryHint}`,
+  };
+}
+
+// ============================================================================
+// Version Restricted Error Helper
+// ============================================================================
+
+/**
+ * Create a version-restricted error for widget parameters
+ *
+ * @param tool - Tool name that triggered the error
+ * @param action - Action that was attempted
+ * @param widget - Widget type that is restricted
+ * @param parameter - Parameter name that maps to the widget
+ * @param requiredVersion - Minimum required GitLab version
+ * @param detectedVersion - Detected GitLab instance version
+ * @param requiredTier - Required tier (if also tier-restricted)
+ * @param currentTier - Current instance tier
+ */
+export function createVersionRestrictedError(
+  tool: string,
+  action: string,
+  widget: string,
+  parameter: string,
+  requiredVersion: string,
+  detectedVersion: string,
+  requiredTier?: GitLabTier,
+  currentTier?: GitLabTier
+): VersionRestrictedError {
+  // Determine which constraints are violated
+  const tierHierarchy: Record<GitLabTier, number> = { Free: 0, Premium: 1, Ultimate: 2 };
+  const isTierInsufficient =
+    requiredTier && currentTier && tierHierarchy[requiredTier] > tierHierarchy[currentTier];
+
+  // Determine which constraints are actually violated
+  const isVersionSufficient = parseVersion(detectedVersion) >= parseVersion(requiredVersion);
+  let suggestedFix: string;
+  let message: string;
+
+  if (isTierInsufficient && isVersionSufficient) {
+    // Only tier is insufficient
+    message = `Widget '${widget}' (parameter '${parameter}') requires GitLab ${requiredTier} tier (current: ${currentTier})`;
+    suggestedFix = `Upgrade to GitLab ${requiredTier} tier to use the '${parameter}' parameter`;
+  } else if (isTierInsufficient) {
+    // Both version and tier are insufficient
+    message = `Widget '${widget}' (parameter '${parameter}') requires GitLab >= ${requiredVersion} and ${requiredTier} tier (detected: ${detectedVersion}, tier: ${currentTier})`;
+    suggestedFix = `Upgrade GitLab to version ${requiredVersion}+ and ${requiredTier} tier to use the '${parameter}' parameter`;
+  } else {
+    // Only version is insufficient
+    message = `Widget '${widget}' (parameter '${parameter}') requires GitLab >= ${requiredVersion} (detected: ${detectedVersion})`;
+    suggestedFix = `Upgrade GitLab to version ${requiredVersion} or higher to use the '${parameter}' parameter`;
+  }
+
+  return {
+    error_code: "VERSION_RESTRICTED",
+    tool,
+    action,
+    widget,
+    parameter,
+    required_version: requiredVersion,
+    detected_version: detectedVersion,
+    required_tier: isTierInsufficient ? requiredTier : undefined,
+    current_tier: isTierInsufficient ? currentTier : undefined,
+    message,
+    suggested_fix: suggestedFix,
+    docs_url: "https://docs.gitlab.com/ee/user/project/work_items/",
   };
 }
 

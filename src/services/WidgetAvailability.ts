@@ -7,6 +7,36 @@ interface WidgetRequirement {
   minVersion: number;
 }
 
+/**
+ * Result of a widget parameter availability check
+ */
+export interface WidgetValidationFailure {
+  parameter: string;
+  widget: WorkItemWidgetType;
+  requiredVersion: string;
+  detectedVersion: string;
+  requiredTier: GitLabTier | "free";
+  currentTier: GitLabTier;
+}
+
+/**
+ * Maps manage_work_item input parameters to their corresponding widget types.
+ * This is the source of truth for which parameters require which widgets.
+ */
+const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
+  assigneeIds: WorkItemWidgetTypes.ASSIGNEES,
+  labelIds: WorkItemWidgetTypes.LABELS,
+  milestoneId: WorkItemWidgetTypes.MILESTONE,
+  description: WorkItemWidgetTypes.DESCRIPTION,
+  // Future widget parameters (from #135) will be added here:
+  // weight: WorkItemWidgetTypes.WEIGHT,
+  // iterationId: WorkItemWidgetTypes.ITERATION,
+  // healthStatus: WorkItemWidgetTypes.HEALTH_STATUS,
+  // startDate / dueDate: WorkItemWidgetTypes.START_AND_DUE_DATE,
+  // color: WorkItemWidgetTypes.COLOR,
+  // linkedItemIds: WorkItemWidgetTypes.LINKED_ITEMS,
+};
+
 export class WidgetAvailability {
   private static widgetRequirements: Record<WorkItemWidgetType, WidgetRequirement> = {
     // Free tier widgets (available to all)
@@ -97,6 +127,88 @@ export class WidgetAvailability {
     return this.widgetRequirements[widget];
   }
 
+  /**
+   * Validate widget parameters against the detected GitLab instance version and tier.
+   * Returns the first unavailable widget parameter, or null if all are available.
+   *
+   * @param params - Object with parameter names as keys (only defined/present params checked)
+   * @returns WidgetValidationFailure for the first unavailable parameter, or null if all valid
+   */
+  public static validateWidgetParams(
+    params: Record<string, unknown>
+  ): WidgetValidationFailure | null {
+    const connectionManager = ConnectionManager.getInstance();
+
+    let instanceVersion: string;
+    let instanceTier: GitLabTier;
+
+    try {
+      const instanceInfo = connectionManager.getInstanceInfo();
+      instanceVersion = instanceInfo.version;
+      instanceTier = instanceInfo.tier;
+    } catch {
+      // Connection not initialized - skip validation (will fail at API call)
+      return null;
+    }
+
+    const parsedVersion = this.parseVersion(instanceVersion);
+
+    for (const [paramName, paramValue] of Object.entries(params)) {
+      // Skip undefined/null parameters (not provided by user)
+      if (paramValue === undefined || paramValue === null) continue;
+
+      const widgetType = PARAMETER_WIDGET_MAP[paramName];
+      if (!widgetType) continue; // Not a widget parameter
+
+      const requirement = this.widgetRequirements[widgetType];
+      if (!requirement) continue; // Unknown widget
+
+      // Check version requirement
+      if (parsedVersion < requirement.minVersion) {
+        return {
+          parameter: paramName,
+          widget: widgetType,
+          requiredVersion: this.formatVersion(requirement.minVersion),
+          detectedVersion: instanceVersion,
+          requiredTier: requirement.tier,
+          currentTier: instanceTier,
+        };
+      }
+
+      // Check tier requirement
+      if (requirement.tier !== "free") {
+        const tierHierarchy: Record<GitLabTier, number> = {
+          free: 0,
+          premium: 1,
+          ultimate: 2,
+        };
+
+        const requiredTierLevel = tierHierarchy[requirement.tier as GitLabTier];
+        const actualTierLevel = tierHierarchy[instanceTier];
+
+        if (actualTierLevel < requiredTierLevel) {
+          return {
+            parameter: paramName,
+            widget: widgetType,
+            requiredVersion: this.formatVersion(requirement.minVersion),
+            detectedVersion: instanceVersion,
+            requiredTier: requirement.tier,
+            currentTier: instanceTier,
+          };
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Get the parameter-to-widget mapping (for testing and external use)
+   */
+  public static getParameterWidgetMap(): Record<string, WorkItemWidgetType> {
+    return { ...PARAMETER_WIDGET_MAP };
+  }
+
   private static parseVersion(version: string): number {
     if (version === "unknown") return 0;
 
@@ -107,5 +219,14 @@ export class WidgetAvailability {
     const minor = parseInt(match[2], 10);
 
     return major + minor / 10;
+  }
+
+  /**
+   * Format a numeric version back to a displayable string (e.g., 17.0 → "17.0")
+   */
+  private static formatVersion(version: number): string {
+    const major = Math.floor(version);
+    const minor = Math.round((version - major) * 10);
+    return `${major}.${minor}`;
   }
 }

@@ -376,4 +376,156 @@ describe("WidgetAvailability", () => {
       expect(availableWidgets.every(widget => typeof widget === "string")).toBe(true);
     });
   });
+
+  describe("validateWidgetParams", () => {
+    it("should return null when all params are available (free tier, modern version)", () => {
+      // Free tier instance with modern version - all base widget params should pass
+      mockConnectionManager.getInstanceInfo.mockReturnValue(mockInstanceInfoFree);
+
+      const result = WidgetAvailability.validateWidgetParams({
+        description: "test",
+        assigneeIds: ["1"],
+        labelIds: ["2"],
+        milestoneId: "3",
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it("should skip undefined/null parameters", () => {
+      // Parameters that are undefined or null should be ignored
+      mockConnectionManager.getInstanceInfo.mockReturnValue(mockInstanceInfoFree);
+
+      const result = WidgetAvailability.validateWidgetParams({
+        description: undefined,
+        assigneeIds: null,
+        labelIds: undefined,
+        milestoneId: undefined,
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it("should skip unknown parameters (non-widget params like title)", () => {
+      // Parameters not in the widget map should be ignored
+      mockConnectionManager.getInstanceInfo.mockReturnValue(mockInstanceInfoFree);
+
+      const result = WidgetAvailability.validateWidgetParams({
+        title: "Test title",
+        state: "CLOSE",
+        unknownParam: "value",
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it("should detect version-restricted widget parameters", () => {
+      // Old GitLab version (14.0) should fail for ASSIGNEES (requires 15.0+)
+      const oldVersionInfo = {
+        ...mockInstanceInfoFree,
+        version: "14.0.0",
+      };
+      mockConnectionManager.getInstanceInfo.mockReturnValue(oldVersionInfo);
+
+      const result = WidgetAvailability.validateWidgetParams({
+        assigneeIds: ["1", "2"],
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.parameter).toBe("assigneeIds");
+      expect(result!.widget).toBe("ASSIGNEES");
+      expect(result!.requiredVersion).toBe("15.0");
+      expect(result!.detectedVersion).toBe("14.0.0");
+    });
+
+    it("should detect tier-restricted widget parameters", () => {
+      // Free tier should fail for WEIGHT widget (requires premium)
+      mockConnectionManager.getInstanceInfo.mockReturnValue(mockInstanceInfoFree);
+
+      // Note: weight is not currently in PARAMETER_WIDGET_MAP since it's not yet
+      // a schema parameter. This test validates the tier check logic by testing
+      // the isWidgetAvailable method directly.
+      expect(WidgetAvailability.isWidgetAvailable(WorkItemWidgetTypes.WEIGHT)).toBe(false);
+    });
+
+    it("should return null when connection is not initialized", () => {
+      // When connection throws, validation should pass (fail at API call)
+      mockConnectionManager.getInstanceInfo.mockImplementation(() => {
+        throw new Error("Not initialized");
+      });
+
+      const result = WidgetAvailability.validateWidgetParams({
+        description: "test",
+        assigneeIds: ["1"],
+      });
+
+      expect(result).toBeNull();
+    });
+
+    it("should return first failing parameter only", () => {
+      // When multiple params fail, only the first one should be reported
+      const oldVersionInfo = {
+        ...mockInstanceInfoFree,
+        version: "14.0.0",
+      };
+      mockConnectionManager.getInstanceInfo.mockReturnValue(oldVersionInfo);
+
+      const result = WidgetAvailability.validateWidgetParams({
+        description: "test",
+        assigneeIds: ["1"],
+        labelIds: ["2"],
+      });
+
+      // Should return the first failure encountered
+      expect(result).not.toBeNull();
+      expect(result!.parameter).toBeDefined();
+      expect(result!.widget).toBeDefined();
+    });
+
+    it("should include correct tier info in validation failure", () => {
+      const oldVersionInfo = {
+        ...mockInstanceInfoPremium,
+        version: "14.0.0",
+      };
+      mockConnectionManager.getInstanceInfo.mockReturnValue(oldVersionInfo);
+
+      const result = WidgetAvailability.validateWidgetParams({
+        labelIds: ["1"],
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.currentTier).toBe("premium");
+      expect(result!.requiredTier).toBe("free"); // LABELS widget is free tier
+    });
+  });
+
+  describe("getParameterWidgetMap", () => {
+    it("should return the parameter-to-widget mapping", () => {
+      const map = WidgetAvailability.getParameterWidgetMap();
+
+      expect(map.assigneeIds).toBe("ASSIGNEES");
+      expect(map.labelIds).toBe("LABELS");
+      expect(map.milestoneId).toBe("MILESTONE");
+      expect(map.description).toBe("DESCRIPTION");
+    });
+
+    it("should return a copy (not the original reference)", () => {
+      const map1 = WidgetAvailability.getParameterWidgetMap();
+      const map2 = WidgetAvailability.getParameterWidgetMap();
+
+      expect(map1).toEqual(map2);
+      expect(map1).not.toBe(map2);
+    });
+  });
+
+  describe("formatVersion", () => {
+    it("should format numeric versions to display strings", () => {
+      const formatVersion = (WidgetAvailability as any).formatVersion;
+
+      expect(formatVersion(15.0)).toBe("15.0");
+      expect(formatVersion(17.0)).toBe("17.0");
+      expect(formatVersion(16.5)).toBe("16.5");
+      expect(formatVersion(18.3)).toBe("18.3");
+    });
+  });
 });

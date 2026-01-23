@@ -134,6 +134,27 @@ export interface ApiError extends StructuredError {
 }
 
 /**
+ * Error for version-restricted widget parameters
+ */
+export interface VersionRestrictedError extends StructuredError {
+  error_code: "VERSION_RESTRICTED";
+  /** Widget type that is restricted */
+  widget: string;
+  /** Parameter name that maps to the widget */
+  parameter: string;
+  /** Required GitLab version for this widget */
+  required_version: string;
+  /** Detected GitLab instance version */
+  detected_version: string;
+  /** Required tier (if also tier-restricted) */
+  required_tier?: GitLabTier;
+  /** Current tier */
+  current_tier?: GitLabTier;
+  /** Documentation URL */
+  docs_url?: string;
+}
+
+/**
  * Timeout error for API requests that exceeded the timeout limit
  */
 export interface TimeoutError extends StructuredError {
@@ -150,6 +171,7 @@ export interface TimeoutError extends StructuredError {
 export type GitLabStructuredError =
   | ActionValidationError
   | TierRestrictedError
+  | VersionRestrictedError
   | PermissionDeniedError
   | NotFoundError
   | ApiError
@@ -891,6 +913,53 @@ export function createTimeoutError(
     retryable,
     message: `Request timed out after ${timeoutMs}ms`,
     suggested_fix: `The GitLab server is slow to respond. Try again later or increase GITLAB_API_TIMEOUT_MS.${retryHint}`,
+  };
+}
+
+// ============================================================================
+// Version Restricted Error Helper
+// ============================================================================
+
+/**
+ * Create a version-restricted error for widget parameters
+ *
+ * @param tool - Tool name that triggered the error
+ * @param action - Action that was attempted
+ * @param widget - Widget type that is restricted
+ * @param parameter - Parameter name that maps to the widget
+ * @param requiredVersion - Minimum required GitLab version
+ * @param detectedVersion - Detected GitLab instance version
+ * @param requiredTier - Required tier (if also tier-restricted)
+ * @param currentTier - Current instance tier
+ */
+export function createVersionRestrictedError(
+  tool: string,
+  action: string,
+  widget: string,
+  parameter: string,
+  requiredVersion: string,
+  detectedVersion: string,
+  requiredTier?: GitLabTier,
+  currentTier?: GitLabTier
+): VersionRestrictedError {
+  const tierInfo =
+    requiredTier && currentTier && requiredTier !== currentTier
+      ? ` and GitLab ${requiredTier} tier`
+      : "";
+
+  return {
+    error_code: "VERSION_RESTRICTED",
+    tool,
+    action,
+    widget,
+    parameter,
+    required_version: requiredVersion,
+    detected_version: detectedVersion,
+    required_tier: requiredTier,
+    current_tier: currentTier,
+    message: `Widget '${widget}' (parameter '${parameter}') requires GitLab >= ${requiredVersion}${tierInfo} (detected: ${detectedVersion})`,
+    suggested_fix: `Upgrade GitLab to version ${requiredVersion} or higher to use the '${parameter}' parameter`,
+    docs_url: "https://docs.gitlab.com/ee/user/project/work_items/",
   };
 }
 

@@ -11,6 +11,12 @@ import {
   toGids,
   type GitLabWorkItem,
 } from "../../utils/idConversion";
+import { WidgetAvailability } from "../../services/WidgetAvailability";
+import {
+  createVersionRestrictedError,
+  StructuredToolError,
+  GitLabTier as DisplayTier,
+} from "../../utils/error-handler";
 
 // Define interface for work item type objects
 interface WorkItemType {
@@ -198,6 +204,17 @@ const simplifyWorkItem = (
 
   return simplified;
 };
+
+/**
+ * Normalize internal tier (lowercase) to display-friendly format (capitalized)
+ * for use in structured error responses.
+ */
+function normalizeTierForDisplay(tier: string): DisplayTier {
+  const lower = tier.toLowerCase();
+  if (lower === "ultimate") return "Ultimate";
+  if (lower === "premium") return "Premium";
+  return "Free";
+}
 
 /**
  * Work items tools registry - 2 CQRS tools replacing 5 individual tools
@@ -389,6 +406,24 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const workItemTitle = title;
             const workItemTypeName = workItemType;
 
+            // Validate widget parameters against instance version/tier
+            const widgetParams = { description, assigneeIds, labelIds, milestoneId };
+            const validationFailure = WidgetAvailability.validateWidgetParams(widgetParams);
+            if (validationFailure) {
+              throw new StructuredToolError(
+                createVersionRestrictedError(
+                  "manage_work_item",
+                  "create",
+                  validationFailure.widget,
+                  validationFailure.parameter,
+                  validationFailure.requiredVersion,
+                  validationFailure.detectedVersion,
+                  normalizeTierForDisplay(validationFailure.requiredTier),
+                  normalizeTierForDisplay(validationFailure.currentTier)
+                )
+              );
+            }
+
             // Get GraphQL client from ConnectionManager
             const connectionManager = ConnectionManager.getInstance();
             const client = connectionManager.getClient();
@@ -459,6 +494,24 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // TypeScript knows: input has id (required), title, description, state, assigneeIds, labelIds, milestoneId (optional)
             const { id, title, description, state, assigneeIds, labelIds, milestoneId } = input;
             const workItemId = id;
+
+            // Validate widget parameters against instance version/tier
+            const widgetParams = { description, assigneeIds, labelIds, milestoneId };
+            const validationFailure = WidgetAvailability.validateWidgetParams(widgetParams);
+            if (validationFailure) {
+              throw new StructuredToolError(
+                createVersionRestrictedError(
+                  "manage_work_item",
+                  "update",
+                  validationFailure.widget,
+                  validationFailure.parameter,
+                  validationFailure.requiredVersion,
+                  validationFailure.detectedVersion,
+                  normalizeTierForDisplay(validationFailure.requiredTier),
+                  normalizeTierForDisplay(validationFailure.currentTier)
+                )
+              );
+            }
 
             // Get GraphQL client from ConnectionManager
             const connectionManager = ConnectionManager.getInstance();

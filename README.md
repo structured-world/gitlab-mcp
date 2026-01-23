@@ -39,17 +39,17 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server that connects
 
 ## Documentation
 
-Full documentation is available at **[docs.gitlab-mcp.sw.foundation](https://docs.gitlab-mcp.sw.foundation)**
+Full documentation is available at **[gitlab-mcp.sw.foundation](https://gitlab-mcp.sw.foundation)**
 
 | Section | Description |
 |---------|-------------|
-| [Installation](https://docs.gitlab-mcp.sw.foundation/guide/installation/npm) | npm, Docker, VS Code, Codex |
-| [Configuration](https://docs.gitlab-mcp.sw.foundation/guide/configuration) | Environment variables, feature flags |
-| [Tool Reference](https://docs.gitlab-mcp.sw.foundation/tools/) | All 47 tools with parameters |
-| [OAuth Setup](https://docs.gitlab-mcp.sw.foundation/security/oauth) | Team authentication with Claude |
-| [TLS/HTTPS](https://docs.gitlab-mcp.sw.foundation/advanced/tls) | Production deployment with SSL |
-| [Customization](https://docs.gitlab-mcp.sw.foundation/advanced/customization) | Tool descriptions, action filtering |
-| [CLI Tools](https://docs.gitlab-mcp.sw.foundation/cli/list-tools) | Browse and export tool documentation |
+| [Installation](https://gitlab-mcp.sw.foundation/guide/installation/npm) | npm, Docker, VS Code, Codex |
+| [Configuration](https://gitlab-mcp.sw.foundation/guide/configuration) | Environment variables, feature flags |
+| [Tool Reference](https://gitlab-mcp.sw.foundation/tools/) | All 47 tools with parameters |
+| [OAuth Setup](https://gitlab-mcp.sw.foundation/security/oauth) | Team authentication with Claude |
+| [TLS/HTTPS](https://gitlab-mcp.sw.foundation/advanced/tls) | Production deployment with SSL |
+| [Customization](https://gitlab-mcp.sw.foundation/advanced/customization) | Tool descriptions, action filtering |
+| [CLI Tools](https://gitlab-mcp.sw.foundation/cli/list-tools) | Browse and export tool documentation |
 
 ### Auto-generated Tool Reference
 

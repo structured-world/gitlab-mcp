@@ -24,7 +24,7 @@ function toggle() {
   if (state.value === "collapsed") {
     state.value = "expanded";
     focusPanel();
-  } else if (state.value === "expanded" || state.value === "error") {
+  } else if (state.value !== "collapsed") {
     state.value = "collapsed";
     resetForm();
     nextTick(() => {

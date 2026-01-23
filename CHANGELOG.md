@@ -1,3 +1,9 @@
+## [6.33.3](https://github.com/structured-world/gitlab-mcp/compare/v6.33.2...v6.33.3) (2026-01-23)
+
+### Bug Fixes
+
+* **docs:** migrate domain from docs.gitlab-mcp to gitlab-mcp.sw.foundation ([#155](https://github.com/structured-world/gitlab-mcp/issues/155)) ([42ebef3](https://github.com/structured-world/gitlab-mcp/commit/42ebef33505a52fa7af1697c5f5d5217d259b0ca)), closes [#145](https://github.com/structured-world/gitlab-mcp/issues/145) [PKCS#1](https://github.com/structured-world/PKCS/issues/1) [PKCS#8](https://github.com/structured-world/PKCS/issues/8) [PKCS#1](https://github.com/structured-world/PKCS/issues/1) [PKCS#8](https://github.com/structured-world/PKCS/issues/8) [#153](https://github.com/structured-world/gitlab-mcp/issues/153)
+
 ## [6.33.2](https://github.com/structured-world/gitlab-mcp/compare/v6.33.1...v6.33.2) (2026-01-23)
 
 ### Bug Fixes

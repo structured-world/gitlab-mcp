@@ -1,0 +1,123 @@
+> GitLab MCP - Model Context Protocol server for GitLab API
+> Provides 47 tools across 17 entity types using CQRS pattern (browse_* for reads, manage_* for writes)
+
+# Quick Start
+
+npx @structured-world/gitlab-mcp init
+
+# Configuration
+
+Required: GITLAB_TOKEN (Personal Access Token or OAuth)
+Optional: GITLAB_API_URL (defaults to https://gitlab.com)
+
+# Tools (47 total, CQRS pattern: browse_* = read, manage_* = write)
+
+## Projects & Namespaces
+- browse_projects: Search, list, or get project details. Actions: search, list, get.
+- manage_repository: Create or fork projects. Actions: create, fork.
+- browse_namespaces: Explore groups and namespaces. Actions: list, get, verify.
+- create_group: Create new groups/subgroups.
+
+## Code Review (Merge Requests)
+- browse_merge_requests: List, get, diffs, compare MRs. Filter by state, author, reviewer, labels.
+- browse_mr_discussions: List discussion threads and draft notes on MRs.
+- manage_merge_request: Create, update, merge, approve, unapprove MRs.
+- manage_mr_discussion: Add comments, start threads, reply, resolve, suggest code changes.
+- manage_draft_notes: Create, update, publish, delete draft review notes.
+
+## CI/CD (Pipelines)
+- browse_pipelines: List pipelines, get details, list jobs, get job details, read job logs.
+- manage_pipeline: Create (trigger), retry, cancel pipelines.
+- manage_pipeline_job: Play manual jobs, retry, cancel individual jobs.
+
+## CI/CD (Variables)
+- browse_variables: List and get CI/CD variables for projects/groups.
+- manage_variable: Create, update, delete CI/CD variables with environment scoping.
+
+## Repository (Files)
+- browse_files: Tree listing (directory structure) and file content reading.
+- manage_files: Create/update single files, batch commit multiple files, upload attachments.
+
+## Repository (Commits & Branches)
+- browse_commits: List commits with filters, get commit details and stats, view commit diffs.
+- create_branch: Create new branches from any ref.
+- browse_refs: List branches/tags, get details, view protection rules.
+- manage_ref: Create/delete branches and tags, manage branch/tag protection.
+
+## Work Items (Issues, Epics, Tasks)
+- browse_work_items: List and get issues, epics, tasks, incidents. Filter by state, type.
+- manage_work_item: Create, update, delete work items. Assign users, labels, milestones.
+
+## Milestones
+- browse_milestones: List, get, view issues/MRs in milestone, burndown charts.
+- manage_milestone: Create, update, delete, promote milestones.
+
+## Labels
+- browse_labels: List and get labels for projects/groups.
+- manage_label: Create, update, delete labels.
+
+## Team Members
+- list_project_members: List members with access levels.
+- browse_members: Browse members in projects and groups with inherited members.
+- manage_member: Add/remove members, change access levels.
+
+## Webhooks & Integrations
+- browse_webhooks: List webhooks, get webhook details for projects/groups.
+- manage_webhook: Create, update, delete, test webhooks.
+- browse_integrations: List active integrations, get integration settings.
+- manage_integration: Update, disable integrations (50+ supported).
+
+## Releases
+- browse_releases: List releases, get release details, list asset links.
+- manage_release: Create, update, delete releases. Manage asset links.
+
+## Wiki
+- browse_wiki: List and get wiki pages.
+- manage_wiki: Create, update, delete wiki pages.
+
+## Snippets
+- browse_snippets: List personal/project/public snippets.
+- manage_snippet: Create, update, delete snippets with multiple files.
+
+## Search
+- browse_search: Global, project, or group search across code, issues, MRs, commits, wiki.
+
+## Activity & Notifications
+- browse_events: User activity feed or project activity. Filter by action type.
+- list_todos: View pending/done todos. Filter by action, target type.
+- manage_todos: Mark todos as done, mark all done, restore.
+- list_group_iterations: List sprint iterations (Premium). Filter by state.
+
+## Users & Context
+- get_users: Search users by name, email, username. Smart search with transliteration.
+- manage_context: Show/switch presets, profiles, set namespace scope.
+- download_attachment: Retrieve file attachments from issues/MRs.
+
+# Authentication Methods
+
+1. Personal Access Token (PAT): Set GITLAB_TOKEN environment variable
+2. OAuth 2.1: Device Flow or Authorization Code Flow for multi-user setups
+
+# Transport Modes
+
+1. stdio: Default, for direct MCP client integration
+2. HTTP/SSE: For network-accessible deployments (set PORT environment variable)
+
+# Security Features
+
+- Read-only mode: GITLAB_READ_ONLY_MODE=true (disables all manage_* tools)
+- Tool filtering: GITLAB_DENIED_TOOLS_REGEX to disable specific tools
+- Action filtering: GITLAB_DENIED_ACTIONS to block specific actions
+- Project scoping: GITLAB_ALLOWED_PROJECT_IDS to restrict access
+
+# Feature Flags (USE_* environment variables)
+
+All default to true. Set to false to disable tool groups:
+USE_MRS, USE_PIPELINE, USE_FILES, USE_WORKITEMS, USE_LABELS,
+USE_VARIABLES, USE_WEBHOOKS, USE_SNIPPETS, USE_INTEGRATIONS,
+USE_GITLAB_WIKI, USE_MILESTONE, USE_RELEASES, USE_REFS,
+USE_MEMBERS, USE_SEARCH
+
+[Full documentation: https://structured-world.github.io/gitlab-mcp/]
+[Source code: https://github.com/structured-world/gitlab-mcp]
+[npm package: https://www.npmjs.com/package/@structured-world/gitlab-mcp]

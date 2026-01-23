@@ -13,6 +13,8 @@ export default defineConfig({
     nav: [
       { text: "Guide", link: "/guide/" },
       { text: "Tools", link: "/tools/" },
+      { text: "Prompts", link: "/prompts/" },
+      { text: "Guides", link: "/guides/" },
       { text: "Security", link: "/security/oauth" },
       { text: "Advanced", link: "/advanced/tls" },
       { text: "CLI", link: "/cli/list-tools" },
@@ -47,6 +49,93 @@ export default defineConfig({
           ],
         },
       ],
+      "/cli/": [
+        {
+          text: "CLI Tools",
+          items: [{ text: "list-tools", link: "/cli/list-tools" }],
+        },
+      ],
+      "/tools/": [
+        {
+          text: "Tool Reference",
+          items: [{ text: "Overview", link: "/tools/" }],
+        },
+        {
+          text: "By Use-Case",
+          collapsed: false,
+          items: [
+            { text: "Code Review", link: "/tools/code-review" },
+            { text: "CI/CD", link: "/tools/ci-cd" },
+            { text: "Project Management", link: "/tools/project-management" },
+            { text: "Repository", link: "/tools/repository" },
+          ],
+        },
+      ],
+      "/prompts/": [
+        {
+          text: "Prompt Library",
+          items: [{ text: "Overview", link: "/prompts/" }],
+        },
+        {
+          text: "Quick Start",
+          collapsed: false,
+          items: [
+            { text: "First Steps", link: "/prompts/quick-start/first-steps" },
+            { text: "Explore a Repo", link: "/prompts/quick-start/explore-repo" },
+            { text: "Check Status", link: "/prompts/quick-start/check-status" },
+          ],
+        },
+        {
+          text: "Code Review",
+          collapsed: false,
+          items: [
+            { text: "Review an MR", link: "/prompts/code-review/review-mr" },
+            { text: "Suggest Changes", link: "/prompts/code-review/suggest-changes" },
+            { text: "Apply Feedback", link: "/prompts/code-review/apply-feedback" },
+          ],
+        },
+        {
+          text: "CI/CD",
+          collapsed: false,
+          items: [
+            { text: "Debug Failures", link: "/prompts/ci-cd/debug-failure" },
+            { text: "Check Status", link: "/prompts/ci-cd/check-status" },
+            { text: "Trigger Deploy", link: "/prompts/ci-cd/trigger-deploy" },
+          ],
+        },
+        {
+          text: "Project Management",
+          collapsed: false,
+          items: [
+            { text: "Sprint Planning", link: "/prompts/project-management/sprint-planning" },
+            { text: "Issue Triage", link: "/prompts/project-management/issue-triage" },
+            { text: "Release Notes", link: "/prompts/project-management/release-notes" },
+          ],
+        },
+        {
+          text: "By Role",
+          collapsed: false,
+          items: [
+            { text: "Developer", link: "/prompts/by-role/developer" },
+            { text: "DevOps", link: "/prompts/by-role/devops" },
+            { text: "Team Lead", link: "/prompts/by-role/team-lead" },
+            { text: "Product Manager", link: "/prompts/by-role/pm" },
+          ],
+        },
+      ],
+      "/guides/": [
+        {
+          text: "Step-by-Step Guides",
+          items: [
+            { text: "Overview", link: "/guides/" },
+            { text: "Complete Code Review", link: "/guides/complete-code-review" },
+            { text: "Setup CI Notifications", link: "/guides/setup-ci-notifications" },
+            { text: "Automate Releases", link: "/guides/automate-releases" },
+            { text: "Multi-GitLab Setup", link: "/guides/multi-gitlab-setup" },
+            { text: "Team Onboarding", link: "/guides/team-onboarding" },
+          ],
+        },
+      ],
       "/security/": [
         {
           text: "Security",
@@ -63,18 +152,6 @@ export default defineConfig({
             { text: "TLS / HTTPS", link: "/advanced/tls" },
             { text: "Customization", link: "/advanced/customization" },
           ],
-        },
-      ],
-      "/cli/": [
-        {
-          text: "CLI Tools",
-          items: [{ text: "list-tools", link: "/cli/list-tools" }],
-        },
-      ],
-      "/tools/": [
-        {
-          text: "Tool Reference",
-          items: [{ text: "Overview", link: "/tools/" }],
         },
       ],
     },

@@ -277,6 +277,8 @@ Manage project and group membership.
 
 | Level | Role | Capabilities |
 |-------|------|-------------|
+| 0 | No access | No access to the project |
+| 5 | Minimal | Read-only, minimal permissions |
 | 10 | Guest | View issues, leave comments |
 | 20 | Reporter | View code, create issues |
 | 30 | Developer | Push code, create MRs |

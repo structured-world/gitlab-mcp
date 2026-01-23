@@ -64,7 +64,7 @@ Use `lines_above` and `lines_below` to include surrounding context:
   "project_id": "my-org/api",
   "merge_request_iid": "42",
   "suggestion_id": 12345,
-  "commit_message": "Apply suggestion: use optional chaining"
+  "commit_message": "refactor(auth): use optional chaining for null safety"
 }
 ```
 

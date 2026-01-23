@@ -73,6 +73,8 @@ As a team lead, add new members to your projects:
 ```
 
 Access levels:
+- **0** — No access
+- **5** — Minimal (read-only, minimal permissions)
 - **10** — Guest (view only)
 - **20** — Reporter (view + create issues)
 - **30** — Developer (push code, create MRs)

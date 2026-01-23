@@ -86,7 +86,7 @@ Handle review feedback on your merge requests — resolve discussions, apply sug
   "project_id": "my-org/api",
   "merge_request_iid": "42",
   "suggestion_ids": [12345, 12346],
-  "commit_message": "Apply reviewer suggestions for auth module"
+  "commit_message": "refactor(auth): apply suggested improvements"
 }
 ```
 

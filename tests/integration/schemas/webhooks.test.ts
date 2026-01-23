@@ -3,7 +3,7 @@
  * Tests schemas using handler functions with real GitLab API
  */
 
-import { ListWebhooksSchema } from "../../../src/entities/webhooks/schema-readonly";
+import { BrowseWebhooksSchema } from "../../../src/entities/webhooks/schema-readonly";
 import { ManageWebhookSchema } from "../../../src/entities/webhooks/schema";
 import { IntegrationTestHelper } from "../helpers/registry-helper";
 
@@ -57,7 +57,7 @@ describe("Webhooks Schema - GitLab Integration", () => {
     }
   });
 
-  describe("ListWebhooksSchema - project scope", () => {
+  describe("BrowseWebhooksSchema - list action", () => {
     it("should validate list webhooks parameters", async () => {
       if (!testProjectId) {
         console.log("Skipping: no test project available");
@@ -65,18 +65,19 @@ describe("Webhooks Schema - GitLab Integration", () => {
       }
 
       const validParams = {
+        action: "list" as const,
         scope: "project" as const,
         projectId: testProjectId,
         per_page: 10,
       };
 
       // Validate schema
-      const result = ListWebhooksSchema.safeParse(validParams);
+      const result = BrowseWebhooksSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
       if (result.success) {
         // Test actual handler function
-        const webhooks = (await helper.executeTool("list_webhooks", result.data)) as {
+        const webhooks = (await helper.executeTool("browse_webhooks", result.data)) as {
           id: number;
           url: string;
         }[];
@@ -92,19 +93,20 @@ describe("Webhooks Schema - GitLab Integration", () => {
         }
       }
 
-      console.log("ListWebhooksSchema project scope test completed");
+      console.log("BrowseWebhooksSchema list action test completed");
     });
 
     it("should reject missing projectId for project scope", () => {
       const invalidParams = {
+        action: "list" as const,
         scope: "project" as const,
         // Missing projectId
       };
 
-      const result = ListWebhooksSchema.safeParse(invalidParams);
+      const result = BrowseWebhooksSchema.safeParse(invalidParams);
       expect(result.success).toBe(false);
 
-      console.log("ListWebhooksSchema correctly rejects missing projectId");
+      console.log("BrowseWebhooksSchema correctly rejects missing projectId");
     });
   });
 
@@ -147,7 +149,7 @@ describe("Webhooks Schema - GitLab Integration", () => {
       console.log("ManageWebhookSchema correctly requires url for create action");
     });
 
-    it("should create and read a webhook via handler", async () => {
+    it("should create a webhook and get it via browse_webhooks", async () => {
       if (!testProjectId) {
         console.log("Skipping: no test project available");
         return;
@@ -180,25 +182,25 @@ describe("Webhooks Schema - GitLab Integration", () => {
         createdWebhookId = webhook.id;
         console.log(`Created test webhook with ID: ${webhook.id}`);
 
-        // Read the webhook back
-        const readParams = {
-          action: "read" as const,
+        // Get the webhook back via browse_webhooks (action: get)
+        const getParams = {
+          action: "get" as const,
           scope: "project" as const,
           projectId: testProjectId,
           hookId: webhook.id,
         };
 
-        const readResult = ManageWebhookSchema.safeParse(readParams);
-        expect(readResult.success).toBe(true);
+        const getResult = BrowseWebhooksSchema.safeParse(getParams);
+        expect(getResult.success).toBe(true);
 
-        if (readResult.success) {
-          const readWebhook = (await helper.executeTool("manage_webhook", readResult.data)) as {
+        if (getResult.success) {
+          const readWebhook = (await helper.executeTool("browse_webhooks", getResult.data)) as {
             id: number;
             url: string;
           };
           expect(readWebhook.id).toBe(webhook.id);
           expect(readWebhook.url).toBe(webhook.url);
-          console.log(`Read webhook ${readWebhook.id} successfully`);
+          console.log(`Got webhook ${readWebhook.id} via browse_webhooks successfully`);
         }
       }
     });

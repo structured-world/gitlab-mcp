@@ -390,7 +390,7 @@ export class ToolAvailability {
     delete_variable: { minVersion: 9.0, requiredTier: "free" },
 
     // Webhooks - Project hooks in Free, Group hooks in Premium
-    list_webhooks: { minVersion: 8.0, requiredTier: "free", notes: "Project webhooks" },
+    browse_webhooks: { minVersion: 8.0, requiredTier: "free", notes: "Project webhooks" },
     manage_webhook: {
       minVersion: 8.0,
       requiredTier: "free",
@@ -579,7 +579,7 @@ export class ToolAvailability {
     },
 
     // Webhooks
-    list_webhooks: {
+    browse_webhooks: {
       default: { tier: "free", minVersion: 8.0, notes: "Project webhooks" },
     },
     manage_webhook: {
@@ -592,7 +592,7 @@ export class ToolAvailability {
     },
 
     // Integrations
-    list_integrations: {
+    browse_integrations: {
       default: { tier: "free", minVersion: 8.0 },
     },
     manage_integration: {

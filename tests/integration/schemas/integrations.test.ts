@@ -3,7 +3,7 @@
  * Tests schemas using handler functions with real GitLab API
  */
 
-import { ListIntegrationsSchema } from "../../../src/entities/integrations/schema-readonly";
+import { BrowseIntegrationsSchema } from "../../../src/entities/integrations/schema-readonly";
 import { ManageIntegrationSchema } from "../../../src/entities/integrations/schema";
 import { IntegrationTestHelper } from "../helpers/registry-helper";
 
@@ -21,7 +21,7 @@ describe("Integrations Schema - GitLab Integration", () => {
     console.log("Integration test helper initialized for integrations testing");
   });
 
-  describe("ListIntegrationsSchema", () => {
+  describe("BrowseIntegrationsSchema - list action", () => {
     it("should validate and list integrations with real project data", async () => {
       console.log("Getting real project for integrations testing");
 
@@ -40,17 +40,18 @@ describe("Integrations Schema - GitLab Integration", () => {
       console.log(`Using project: ${testProject.name} (ID: ${testProject.id})`);
 
       const validParams = {
+        action: "list" as const,
         project_id: testProject.id.toString(),
         per_page: 20,
       };
 
       // Validate schema
-      const result = ListIntegrationsSchema.safeParse(validParams);
+      const result = BrowseIntegrationsSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
       if (result.success) {
         // Test actual handler function
-        const integrations = (await helper.executeTool("list_integrations", result.data)) as {
+        const integrations = (await helper.executeTool("browse_integrations", result.data)) as {
           slug: string;
           title: string;
           active: boolean;
@@ -70,7 +71,7 @@ describe("Integrations Schema - GitLab Integration", () => {
         }
       }
 
-      console.log("ListIntegrationsSchema test completed with real data");
+      console.log("BrowseIntegrationsSchema list action test completed with real data");
     });
 
     it("should validate pagination parameters", async () => {
@@ -85,40 +86,42 @@ describe("Integrations Schema - GitLab Integration", () => {
 
       const testProject = projects[0];
       const paginationParams = {
+        action: "list" as const,
         project_id: testProject.id.toString(),
         per_page: 10,
         page: 1,
       };
 
-      const result = ListIntegrationsSchema.safeParse(paginationParams);
+      const result = BrowseIntegrationsSchema.safeParse(paginationParams);
       expect(result.success).toBe(true);
 
-      if (result.success) {
+      if (result.success && result.data.action === "list") {
         expect(result.data.per_page).toBe(10);
         expect(result.data.page).toBe(1);
       }
 
-      console.log("ListIntegrationsSchema validates pagination parameters");
+      console.log("BrowseIntegrationsSchema validates pagination parameters");
     });
 
     it("should reject invalid parameters", async () => {
       const invalidParams = {
+        action: "list" as const,
         project_id: "123",
         per_page: 150, // Exceeds max of 100
       };
 
-      const result = ListIntegrationsSchema.safeParse(invalidParams);
+      const result = BrowseIntegrationsSchema.safeParse(invalidParams);
       expect(result.success).toBe(false);
 
       if (!result.success) {
         expect(result.error.issues.length).toBeGreaterThan(0);
       }
 
-      console.log("ListIntegrationsSchema correctly rejects invalid parameters");
+      console.log("BrowseIntegrationsSchema correctly rejects invalid parameters");
     });
   });
 
-  describe("ManageIntegrationSchema - get action", () => {
+  describe("BrowseIntegrationsSchema - get action", () => {
     it("should validate get integration parameters", async () => {
       const params = {
         action: "get" as const,
@@ -126,15 +129,15 @@ describe("Integrations Schema - GitLab Integration", () => {
         integration: "slack" as const,
       };
 
-      const result = ManageIntegrationSchema.safeParse(params);
+      const result = BrowseIntegrationsSchema.safeParse(params);
       expect(result.success).toBe(true);
 
-      if (result.success) {
+      if (result.success && result.data.action === "get") {
         expect(result.data.action).toBe("get");
         expect(result.data.integration).toBe("slack");
       }
 
-      console.log("ManageIntegrationSchema get action validates correctly");
+      console.log("BrowseIntegrationsSchema get action validates correctly");
     });
 
     it("should support all integration types", async () => {
@@ -154,11 +157,11 @@ describe("Integrations Schema - GitLab Integration", () => {
           integration: integrationType,
         };
 
-        const result = ManageIntegrationSchema.safeParse(params);
+        const result = BrowseIntegrationsSchema.safeParse(params);
         expect(result.success).toBe(true);
       }
 
-      console.log("ManageIntegrationSchema supports multiple integration types");
+      console.log("BrowseIntegrationsSchema supports multiple integration types");
     });
   });
 
@@ -289,7 +292,7 @@ describe("Integrations Schema - GitLab Integration", () => {
     });
   });
 
-  describe("ManageIntegrationSchema - integration type validation", () => {
+  describe("BrowseIntegrationsSchema - integration type validation", () => {
     it("should reject invalid integration type", async () => {
       const params = {
         action: "get" as const,
@@ -297,10 +300,10 @@ describe("Integrations Schema - GitLab Integration", () => {
         integration: "invalid-integration" as const,
       };
 
-      const result = ManageIntegrationSchema.safeParse(params);
+      const result = BrowseIntegrationsSchema.safeParse(params);
       expect(result.success).toBe(false);
 
-      console.log("ManageIntegrationSchema rejects invalid integration type");
+      console.log("BrowseIntegrationsSchema rejects invalid integration type");
     });
   });
 
@@ -338,7 +341,7 @@ describe("Integrations Schema - GitLab Integration", () => {
 
       try {
         // Get current state of emails-on-push integration
-        const result = (await helper.executeTool("manage_integration", {
+        const result = (await helper.executeTool("browse_integrations", {
           action: "get",
           project_id: testProjectId,
           integration: "emails-on-push",
@@ -467,7 +470,7 @@ describe("Integrations Schema - GitLab Integration", () => {
         console.log("emails-on-push integration disabled successfully");
 
         // Verify it's disabled
-        const verifyResult = (await helper.executeTool("manage_integration", {
+        const verifyResult = (await helper.executeTool("browse_integrations", {
           action: "get",
           project_id: testProjectId,
           integration: "emails-on-push",

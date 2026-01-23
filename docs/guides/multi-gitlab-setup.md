@@ -100,9 +100,9 @@ All subsequent `browse_*` and `manage_*` operations will be limited to this name
 }
 ```
 
-### Reset Scope
+### Reset Context
 
-> "Remove the namespace restriction"
+> "Restore the initial context (host, preset, scope)"
 
 ```json
 // manage_context

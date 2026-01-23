@@ -125,6 +125,7 @@ Look for:
 ::: code-group
 
 ```json [Retry pipeline]
+// manage_pipeline
 {
   "action": "retry",
   "project_id": "my-org/api",
@@ -133,6 +134,7 @@ Look for:
 ```
 
 ```json [Cancel pipeline]
+// manage_pipeline
 {
   "action": "cancel",
   "project_id": "my-org/api",
@@ -141,6 +143,7 @@ Look for:
 ```
 
 ```json [Retry single job]
+// manage_pipeline_job
 {
   "action": "retry",
   "project_id": "my-org/api",

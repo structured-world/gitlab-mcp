@@ -9,9 +9,9 @@ File browsing, commits, branches, tags, and repository management.
 | `browse_files` | Query | Directory tree and file content |
 | `manage_files` | Command | Create, update, upload files |
 | `browse_commits` | Query | Commit history, details, diffs |
-| `create_branch` | Command | Create new branches |
 | `browse_refs` | Query | Branches, tags, protection rules |
 | `manage_ref` | Command | Create/delete/protect branches and tags |
+| `create_branch` | Command | Create a branch (convenience alias for `manage_ref`) |
 | `browse_releases` | Query | Release history and assets |
 | `manage_release` | Command | Create releases with assets |
 

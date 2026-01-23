@@ -116,6 +116,49 @@ describe("setup/discovery", () => {
       expect(result.docker.dockerRunning).toBe(true);
       expect(result.docker.composeInstalled).toBe(true);
     });
+
+    it("should detect docker-compose v1 when v2 is not available", async () => {
+      mockDetectAllClients.mockReturnValue([]);
+
+      mockSpawnSync.mockImplementation((command, args) => {
+        const cmd = `${command} ${(args as string[]).join(" ")}`;
+        if (cmd.includes("--version") && !cmd.includes("compose")) {
+          return {
+            status: 0,
+            stdout: "Docker version 24.0.0",
+            stderr: "",
+            pid: 0,
+            output: [],
+            signal: null,
+          };
+        }
+        if (cmd.includes("info")) {
+          return { status: 0, stdout: "running", stderr: "", pid: 0, output: [], signal: null };
+        }
+        if (cmd.includes("compose version")) {
+          return { status: 1, stdout: "", stderr: "not found", pid: 0, output: [], signal: null };
+        }
+        if (command === "docker-compose") {
+          return {
+            status: 0,
+            stdout: "docker-compose version 1.29.2",
+            stderr: "",
+            pid: 0,
+            output: [],
+            signal: null,
+          };
+        }
+        if (cmd.includes("ps")) {
+          return { status: 0, stdout: "", stderr: "", pid: 0, output: [], signal: null };
+        }
+        return { status: 1, stdout: "", stderr: "", pid: 0, output: [], signal: null };
+      });
+
+      const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
+      const result = runDiscovery();
+
+      expect(result.docker.composeInstalled).toBe(true);
+    });
   });
 
   describe("formatDiscoverySummary", () => {

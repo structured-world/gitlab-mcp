@@ -37,12 +37,20 @@ function detectDocker(): DockerStatusResult {
     });
     const dockerRunning = dockerInfo.status === 0;
 
-    // Check Docker Compose
-    const composeVersion = spawnSync("docker", ["compose", "version"], {
+    // Check Docker Compose (v2: `docker compose`, fallback to v1: `docker-compose`)
+    const composeV2 = spawnSync("docker", ["compose", "version"], {
       stdio: "pipe",
       encoding: "utf8",
     });
-    const composeInstalled = composeVersion.status === 0;
+    let composeInstalled = composeV2.status === 0;
+
+    if (!composeInstalled) {
+      const composeV1 = spawnSync("docker-compose", ["--version"], {
+        stdio: "pipe",
+        encoding: "utf8",
+      });
+      composeInstalled = composeV1.status === 0;
+    }
 
     // Check for gitlab-mcp container
     let container: DockerStatusResult["container"];

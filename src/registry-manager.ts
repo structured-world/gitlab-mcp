@@ -315,10 +315,12 @@ class RegistryManager {
         // Transform schema to remove denied actions and apply description overrides
         let transformedSchema = transformToolSchema(toolName, tool.inputSchema);
 
-        // Strip tier-restricted parameters from schema (reuse pre-fetched instance info)
-        const restrictedParams = ToolAvailability.getRestrictedParameters(toolName, instanceInfo);
-        if (restrictedParams.length > 0) {
-          transformedSchema = stripTierRestrictedParameters(transformedSchema, restrictedParams);
+        // Strip tier-restricted parameters from schema (skip if connection not initialized)
+        if (instanceInfo) {
+          const restrictedParams = ToolAvailability.getRestrictedParameters(toolName, instanceInfo);
+          if (restrictedParams.length > 0) {
+            transformedSchema = stripTierRestrictedParameters(transformedSchema, restrictedParams);
+          }
         }
 
         // Apply tool-level description override if available
@@ -377,8 +379,7 @@ class RegistryManager {
    * Clear all caches and rebuild (e.g., after ConnectionManager init provides tier/version)
    */
   public refreshCache(): void {
-    this.toolDefinitionsCache = null;
-    this.buildToolLookupCache();
+    this.invalidateCaches();
   }
 
   /**

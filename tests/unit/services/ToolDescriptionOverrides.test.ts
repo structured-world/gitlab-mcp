@@ -44,6 +44,14 @@ jest.mock("../../../src/services/ToolAvailability", () => ({
   },
 }));
 
+jest.mock("../../../src/services/ConnectionManager", () => ({
+  ConnectionManager: {
+    getInstance: jest.fn().mockReturnValue({
+      getInstanceInfo: jest.fn().mockReturnValue({ tier: "free", version: "17.0.0" }),
+    }),
+  },
+}));
+
 // Mock all entity registries
 jest.mock("../../../src/entities/core/registry", () => ({
   coreToolRegistry: new Map([

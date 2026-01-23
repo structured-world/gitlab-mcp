@@ -76,6 +76,14 @@ jest.mock("../../src/services/ToolAvailability", () => ({
   },
 }));
 
+jest.mock("../../src/services/ConnectionManager", () => ({
+  ConnectionManager: {
+    getInstance: jest.fn().mockReturnValue({
+      getInstanceInfo: jest.fn().mockReturnValue({ tier: "free", version: "17.0.0" }),
+    }),
+  },
+}));
+
 jest.mock("../../src/logger", () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
 }));

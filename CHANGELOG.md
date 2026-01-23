@@ -1,3 +1,9 @@
+## [6.34.1](https://github.com/structured-world/gitlab-mcp/compare/v6.34.0...v6.34.1) (2026-01-23)
+
+### Bug Fixes
+
+* **docs:** inline constants removed with dead code cleanup ([#158](https://github.com/structured-world/gitlab-mcp/issues/158)) ([c93585f](https://github.com/structured-world/gitlab-mcp/commit/c93585f74780efdcdee31db2a699e0f74d2d9e0d)), closes [#157](https://github.com/structured-world/gitlab-mcp/issues/157)
+
 ## [6.34.0](https://github.com/structured-world/gitlab-mcp/compare/v6.33.3...v6.34.0) (2026-01-23)
 
 ### Features

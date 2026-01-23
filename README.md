@@ -92,6 +92,10 @@ docker run -i --rm -e GITLAB_TOKEN=your_token \
 | `USE_GITLAB_WIKI` | `true` | Wiki pages |
 | `USE_MILESTONE` | `true` | Milestones |
 | `USE_PIPELINE` | `true` | Pipelines & CI/CD |
+| `USE_RELEASES` | `true` | Release management |
+| `USE_REFS` | `true` | Branch & tag management |
+| `USE_MEMBERS` | `true` | Team members |
+| `USE_SEARCH` | `true` | Cross-project search |
 
 ## Contributing
 

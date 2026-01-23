@@ -71,9 +71,13 @@ Enable or disable tool groups by setting these to `true` or `false`:
     "USE_WEBHOOKS": "true",
     "USE_SNIPPETS": "true",
     "USE_INTEGRATIONS": "true",
-    "USE_GITLAB_WIKI": "false",
-    "USE_MILESTONE": "false",
-    "USE_PIPELINE": "false"
+    "USE_GITLAB_WIKI": "true",
+    "USE_MILESTONE": "true",
+    "USE_PIPELINE": "true",
+    "USE_RELEASES": "true",
+    "USE_REFS": "true",
+    "USE_MEMBERS": "true",
+    "USE_SEARCH": "true"
   }
 }
 ```

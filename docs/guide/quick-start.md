@@ -52,6 +52,10 @@ Enable or disable tool groups:
 | `USE_GITLAB_WIKI` | `true` | Wiki pages |
 | `USE_MILESTONE` | `true` | Milestone tracking |
 | `USE_PIPELINE` | `true` | Pipeline and CI/CD jobs |
+| `USE_RELEASES` | `true` | Release management |
+| `USE_REFS` | `true` | Branch and tag management |
+| `USE_MEMBERS` | `true` | Team member management |
+| `USE_SEARCH` | `true` | Cross-project search |
 
 ## Next Steps
 

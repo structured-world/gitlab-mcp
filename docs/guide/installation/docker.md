@@ -16,26 +16,27 @@ For direct MCP communication (CLI tools, Claude Desktop):
         "-e", "GITLAB_TOKEN",
         "-e", "GITLAB_API_URL",
         "-e", "GITLAB_READ_ONLY_MODE",
-        "-e", "USE_GITLAB_WIKI",
-        "-e", "USE_MILESTONE",
-        "-e", "USE_PIPELINE",
+        "-e", "USE_LABELS",
+        "-e", "USE_MRS",
+        "-e", "USE_FILES",
         "-e", "USE_VARIABLES",
+        "-e", "USE_WORKITEMS",
         "-e", "USE_WEBHOOKS",
         "-e", "USE_SNIPPETS",
         "-e", "USE_INTEGRATIONS",
+        "-e", "USE_GITLAB_WIKI",
+        "-e", "USE_MILESTONE",
+        "-e", "USE_PIPELINE",
+        "-e", "USE_RELEASES",
+        "-e", "USE_REFS",
+        "-e", "USE_MEMBERS",
+        "-e", "USE_SEARCH",
         "ghcr.io/structured-world/gitlab-mcp:latest"
       ],
       "env": {
         "GITLAB_TOKEN": "your_gitlab_token",
         "GITLAB_API_URL": "https://gitlab.com",
-        "GITLAB_READ_ONLY_MODE": "false",
-        "USE_GITLAB_WIKI": "true",
-        "USE_MILESTONE": "true",
-        "USE_PIPELINE": "true",
-        "USE_VARIABLES": "true",
-        "USE_WEBHOOKS": "true",
-        "USE_SNIPPETS": "true",
-        "USE_INTEGRATIONS": "true"
+        "GITLAB_READ_ONLY_MODE": "false"
       }
     }
   }

@@ -30,13 +30,33 @@ Each tool accepts an `action` parameter selecting the specific operation.
 | `manage_todos` | Command | Mark todos done/restore |
 | `manage_context` | Mixed | Manage session context |
 | `list_project_members` | Query | List project members |
-| `browse_search` | Query | Search across GitLab |
+
+### Releases (`USE_RELEASES=true`, default: enabled)
+
+| Tool | Type | Description |
+|------|------|-------------|
 | `browse_releases` | Query | Browse project releases |
 | `manage_release` | Command | Create/update releases |
+
+### Refs (`USE_REFS=true`, default: enabled)
+
+| Tool | Type | Description |
+|------|------|-------------|
 | `browse_refs` | Query | Browse branches and tags |
 | `manage_ref` | Command | Create/protect branches and tags |
+
+### Members (`USE_MEMBERS=true`, default: enabled)
+
+| Tool | Type | Description |
+|------|------|-------------|
 | `browse_members` | Query | Browse team members |
 | `manage_member` | Command | Add/remove team members |
+
+### Search (`USE_SEARCH=true`, default: enabled)
+
+| Tool | Type | Description |
+|------|------|-------------|
+| `browse_search` | Query | Search across GitLab |
 
 ### Labels (`USE_LABELS=true`, default: enabled)
 

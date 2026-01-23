@@ -47,6 +47,12 @@ export default defineConfig({
           ],
         },
       ],
+      "/cli/": [
+        {
+          text: "CLI Tools",
+          items: [{ text: "list-tools", link: "/cli/list-tools" }],
+        },
+      ],
       "/tools/": [
         {
           text: "Tool Reference",

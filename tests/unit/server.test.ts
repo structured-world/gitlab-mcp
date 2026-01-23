@@ -662,6 +662,58 @@ describe("server", () => {
       expect(mockSessionManager.removeSession).toHaveBeenCalledWith("test-session-123");
     });
 
+    it("should handle createSession failure in SSE endpoint", async () => {
+      process.env.PORT = "3000";
+
+      // Make createSession fail
+      mockSessionManager.createSession.mockRejectedValueOnce(new Error("Session init failed"));
+
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find(call => call[0] === "/sse")[1];
+
+      const mockRes = {
+        on: jest.fn(),
+        status: jest.fn().mockReturnThis(),
+        end: jest.fn(),
+        headersSent: false,
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Should log the error and return 500
+      expect(mockLogger.error).toHaveBeenCalledWith(
+        { err: expect.any(Error), sessionId: "test-session-123" },
+        "Failed to create SSE session"
+      );
+      expect(mockRes.status).toHaveBeenCalledWith(500);
+      expect(mockRes.end).toHaveBeenCalled();
+      // close handler should NOT be registered since session creation failed
+      expect(mockRes.on).not.toHaveBeenCalled();
+    });
+
+    it("should not send 500 in SSE if headers already sent when createSession fails", async () => {
+      process.env.PORT = "3000";
+
+      mockSessionManager.createSession.mockRejectedValueOnce(new Error("Session init failed"));
+
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find(call => call[0] === "/sse")[1];
+
+      const mockRes = {
+        on: jest.fn(),
+        status: jest.fn().mockReturnThis(),
+        end: jest.fn(),
+        headersSent: true, // SSE headers already sent
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Should NOT call res.status when headers are already sent
+      expect(mockRes.status).not.toHaveBeenCalled();
+    });
+
     it("should handle createSession failure in StreamableHTTP new session", async () => {
       process.env.PORT = "3000";
       await startServer();

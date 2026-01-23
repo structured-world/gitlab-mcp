@@ -40,6 +40,8 @@ jest.mock("../../src/logger", () => ({
 import { SessionManager, getSessionManager, resetSessionManager } from "../../src/session-manager";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { setupHandlers } from "../../src/handlers";
+import { setDetectedSchemaMode } from "../../src/utils/schema-utils";
+import { logger } from "../../src/logger";
 
 describe("SessionManager", () => {
   let manager: SessionManager;
@@ -104,6 +106,45 @@ describe("SessionManager", () => {
       const server = await manager.createSession("session-1", mockTransport as any);
 
       expect(server.connect).toHaveBeenCalledWith(mockTransport);
+    });
+
+    it("should only call setDetectedSchemaMode once across multiple sessions", async () => {
+      manager.start();
+
+      // Create first session and trigger oninitialized
+      const server1 = await manager.createSession("session-1", mockTransport as any);
+      // Simulate SDK calling oninitialized
+      (server1 as any).oninitialized();
+
+      // Create second session and trigger oninitialized
+      const server2 = await manager.createSession("session-2", mockTransport as any);
+      (server2 as any).oninitialized();
+
+      // setDetectedSchemaMode should only be called once (from first session)
+      expect(setDetectedSchemaMode).toHaveBeenCalledTimes(1);
+    });
+
+    it("should close existing session when duplicate sessionId is provided", async () => {
+      manager.start();
+
+      // Create a session
+      const server1 = await manager.createSession("session-dup", mockTransport as any);
+      expect(manager.activeSessionCount).toBe(1);
+
+      // Create another session with the SAME ID — should close the first
+      const server2 = await manager.createSession("session-dup", mockTransport as any);
+
+      // Old server should have been closed
+      expect(server1.close).toHaveBeenCalled();
+      // Manager should still have exactly 1 session with that ID
+      expect(manager.activeSessionCount).toBe(1);
+      // Warning should have been logged
+      expect(logger.warn).toHaveBeenCalledWith(
+        { sessionId: "session-dup" },
+        "Duplicate sessionId detected — closing existing session"
+      );
+      // New server is a distinct instance
+      expect(server2).not.toBe(server1);
     });
   });
 

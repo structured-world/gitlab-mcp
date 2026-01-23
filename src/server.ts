@@ -2,6 +2,7 @@ import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import express, { Express } from "express";
+import * as crypto from "crypto";
 import * as http from "http";
 import * as https from "https";
 import * as fs from "fs";
@@ -273,10 +274,18 @@ export async function startServer(): Promise<void> {
         const transport = new SSEServerTransport("/messages", res);
         const sessionId = transport.sessionId;
 
-        // Each SSE session gets its own Server instance
-        await sessionManager.createSession(sessionId, transport);
-        sseTransports[sessionId] = transport;
-        logger.debug(`SSE transport created with session: ${sessionId}`);
+        try {
+          // Each SSE session gets its own Server instance
+          await sessionManager.createSession(sessionId, transport);
+          sseTransports[sessionId] = transport;
+          logger.debug(`SSE transport created with session: ${sessionId}`);
+        } catch (error: unknown) {
+          logger.error({ err: error, sessionId }, "Failed to create SSE session");
+          if (!res.headersSent) {
+            res.status(500).end();
+          }
+          return;
+        }
 
         // Clean up session when client disconnects
         res.on("close", () => {
@@ -403,7 +412,7 @@ export async function startServer(): Promise<void> {
             await handleWithContext(transport);
           } else {
             // Pre-generate session ID so we can connect the Server before handling the request
-            const newSessionId = Math.random().toString(36).substring(7);
+            const newSessionId = crypto.randomUUID();
 
             // Create new transport (handles both SSE and JSON-RPC internally)
             transport = new StreamableHTTPServerTransport({
@@ -505,10 +514,18 @@ export async function startServer(): Promise<void> {
         const transport = new SSEServerTransport("/messages", res);
         const sessionId = transport.sessionId;
 
-        // Each SSE session gets its own Server instance
-        await sessionManager.createSession(sessionId, transport);
-        sseTransports[sessionId] = transport;
-        logger.debug(`SSE transport created with session: ${sessionId}`);
+        try {
+          // Each SSE session gets its own Server instance
+          await sessionManager.createSession(sessionId, transport);
+          sseTransports[sessionId] = transport;
+          logger.debug(`SSE transport created with session: ${sessionId}`);
+        } catch (error: unknown) {
+          logger.error({ err: error, sessionId }, "Failed to create SSE session");
+          if (!res.headersSent) {
+            res.status(500).end();
+          }
+          return;
+        }
 
         // Clean up session when client disconnects
         res.on("close", () => {
@@ -595,7 +612,7 @@ export async function startServer(): Promise<void> {
             await handleWithContext(transport);
           } else {
             // Pre-generate session ID so we can connect the Server before handling the request
-            const newSessionId = Math.random().toString(36).substring(7);
+            const newSessionId = crypto.randomUUID();
 
             transport = new StreamableHTTPServerTransport({
               sessionIdGenerator: () => newSessionId,

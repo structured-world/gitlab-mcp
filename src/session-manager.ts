@@ -26,6 +26,7 @@ export class SessionManager {
   private sessions = new Map<string, ManagedSession>();
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private readonly sessionTimeoutMs: number;
+  private schemaModeDetected = false;
 
   constructor(sessionTimeoutMs?: number) {
     this.sessionTimeoutMs = sessionTimeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
@@ -57,16 +58,26 @@ export class SessionManager {
       { capabilities: { tools: { listChanged: true } } }
     );
 
-    // Auto-detect schema mode from client info
+    // Auto-detect schema mode from the first client to initialize.
+    // Only the first session sets the mode to avoid race conditions.
     server.oninitialized = () => {
-      const clientVersion = server.getClientVersion();
-      setDetectedSchemaMode(clientVersion?.name);
+      if (!this.schemaModeDetected) {
+        this.schemaModeDetected = true;
+        const clientVersion = server.getClientVersion();
+        setDetectedSchemaMode(clientVersion?.name);
+      }
     };
 
     // Register request handlers (idempotent — same logic for every session)
     await setupHandlers(server);
 
     await server.connect(transport);
+
+    // Guard against duplicate session IDs — close existing session first
+    if (this.sessions.has(sessionId)) {
+      logger.warn({ sessionId }, "Duplicate sessionId detected — closing existing session");
+      await this.removeSession(sessionId);
+    }
 
     const now = Date.now();
     this.sessions.set(sessionId, {

@@ -40,7 +40,7 @@ Set the token:
 ```bash
 # In your MCP client configuration
 GITLAB_TOKEN=glpat-your-token-here
-GITLAB_API_URL=https://gitlab.company.com/api/v4
+GITLAB_API_URL=https://gitlab.company.com
 ```
 
 ### Verify Access

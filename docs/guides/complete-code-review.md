@@ -14,7 +14,7 @@ Start by identifying merge requests that need your attention.
 
 > "Show me MRs where I'm assigned as reviewer in `my-org/api`"
 
-```json
+```jsonc
 // browse_merge_requests
 {
   "action": "list",
@@ -27,7 +27,7 @@ Start by identifying merge requests that need your attention.
 
 You can also check your todo list for review requests:
 
-```json
+```jsonc
 // list_todos
 {
   "per_page": 20,
@@ -42,7 +42,7 @@ Before looking at code, understand what the MR is about.
 
 > "Get the details of MR !42 — title, description, and labels"
 
-```json
+```jsonc
 // browse_merge_requests
 {
   "action": "get",
@@ -63,7 +63,7 @@ Look at the actual code changes.
 
 > "Show me the file changes in MR !42"
 
-```json
+```jsonc
 // browse_merge_requests
 {
   "action": "diffs",
@@ -87,7 +87,7 @@ Ensure tests pass before spending time reviewing.
 
 > "What's the pipeline status for MR !42?"
 
-```json
+```jsonc
 // browse_pipelines
 {
   "action": "list",
@@ -105,7 +105,7 @@ Check if other reviewers have already provided feedback.
 
 > "Show me discussion threads on MR !42"
 
-```json
+```jsonc
 // browse_mr_discussions
 {
   "action": "list",
@@ -121,7 +121,7 @@ Use draft notes to write all your comments before publishing — this gives a be
 
 > "Create a draft comment about the error handling"
 
-```json
+```jsonc
 // manage_draft_notes
 {
   "action": "create",
@@ -133,7 +133,7 @@ Use draft notes to write all your comments before publishing — this gives a be
 
 For inline comments on specific lines:
 
-```json
+```jsonc
 // manage_draft_notes
 {
   "action": "create",
@@ -157,7 +157,7 @@ For concrete fixes, use suggestions that can be applied directly.
 
 > "Suggest using optional chaining on line 42"
 
-```json
+```jsonc
 // manage_mr_discussion
 {
   "action": "suggest",
@@ -182,7 +182,7 @@ When all your comments are ready, publish them at once.
 
 > "Publish all my draft notes on MR !42"
 
-```json
+```jsonc
 // manage_draft_notes
 {
   "action": "publish_all",
@@ -197,7 +197,7 @@ Based on your review, either approve or leave it for the author to address.
 
 ::: code-group
 
-```json [Approve]
+```jsonc [Approve]
 // manage_merge_request
 {
   "action": "approve",
@@ -206,7 +206,7 @@ Based on your review, either approve or leave it for the author to address.
 }
 ```
 
-```json [Request changes (comment)]
+```jsonc [Request changes (comment)]
 // manage_mr_discussion
 {
   "action": "comment",
@@ -225,7 +225,7 @@ After the author addresses feedback, verify the changes.
 
 > "Show me recent commits on MR !42 — did they address the feedback?"
 
-```json
+```jsonc
 // browse_commits
 {
   "action": "list",
@@ -237,7 +237,7 @@ After the author addresses feedback, verify the changes.
 
 Then resolve your discussion threads:
 
-```json
+```jsonc
 // manage_mr_discussion
 {
   "action": "resolve",

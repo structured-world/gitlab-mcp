@@ -124,7 +124,7 @@ Look for:
 
 ::: code-group
 
-```json [Retry pipeline]
+```jsonc [Retry pipeline]
 // manage_pipeline
 {
   "action": "retry",
@@ -133,7 +133,7 @@ Look for:
 }
 ```
 
-```json [Cancel pipeline]
+```jsonc [Cancel pipeline]
 // manage_pipeline
 {
   "action": "cancel",
@@ -142,7 +142,7 @@ Look for:
 }
 ```
 
-```json [Retry single job]
+```jsonc [Retry single job]
 // manage_pipeline_job
 {
   "action": "retry",

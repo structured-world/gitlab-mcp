@@ -11,7 +11,7 @@ File browsing, commits, branches, tags, and repository management.
 | `browse_commits` | Query | Commit history, details, diffs |
 | `browse_refs` | Query | Branches, tags, protection rules |
 | `manage_ref` | Command | Create/delete/protect branches and tags |
-| `create_branch` | Command | Create a branch (convenience alias for `manage_ref`) |
+| `create_branch` | Command | Create a new branch (standalone tool) |
 | `browse_releases` | Query | Release history and assets |
 | `manage_release` | Command | Create releases with assets |
 
@@ -201,9 +201,11 @@ File browsing, commits, branches, tags, and repository management.
 | `delete_branch` | Delete a branch |
 | `protect_branch` | Add branch protection rules |
 | `unprotect_branch` | Remove branch protection |
+| `update_branch_protection` | Modify existing protection rules |
 | `create_tag` | Create a tag |
 | `delete_tag` | Delete a tag |
 | `protect_tag` | Add tag protection (Premium) |
+| `unprotect_tag` | Remove tag protection (Premium) |
 
 ::: code-group
 

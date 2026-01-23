@@ -16,7 +16,7 @@ Start by identifying what's changed since the previous release.
 
 > "Show me the latest releases in `my-org/api`"
 
-```json
+```jsonc
 // browse_releases
 {
   "action": "list",
@@ -29,7 +29,7 @@ Start by identifying what's changed since the previous release.
 
 > "Show me commits on `main` since the last release"
 
-```json
+```jsonc
 // browse_commits
 {
   "action": "list",
@@ -44,7 +44,7 @@ Start by identifying what's changed since the previous release.
 
 > "What MRs were merged since the last release?"
 
-```json
+```jsonc
 // browse_merge_requests
 {
   "action": "list",
@@ -65,7 +65,7 @@ Verify all milestone work is done before releasing.
 
 ::: code-group
 
-```json [Milestone issues]
+```jsonc [Milestone issues]
 {
   "action": "issues",
   "namespace": "my-org/api",
@@ -74,7 +74,7 @@ Verify all milestone work is done before releasing.
 }
 ```
 
-```json [Milestone MRs]
+```jsonc [Milestone MRs]
 {
   "action": "merge_requests",
   "namespace": "my-org/api",
@@ -93,7 +93,7 @@ Ensure `main` is green before tagging.
 
 > "What's the pipeline status on `main`?"
 
-```json
+```jsonc
 // browse_pipelines
 {
   "action": "list",
@@ -109,7 +109,7 @@ If the latest pipeline failed, fix issues before proceeding.
 
 > "Create tag v2.0.0 from `main` in `my-org/api`"
 
-```json
+```jsonc
 // manage_ref
 {
   "action": "create_tag",
@@ -134,7 +134,7 @@ Based on the merged MRs, organize changes by category:
 
 > "Create release v2.0.0 with changelog and milestone association"
 
-```json
+```jsonc
 // manage_release
 {
   "action": "create",
@@ -152,7 +152,7 @@ Based on the merged MRs, organize changes by category:
 
 ::: code-group
 
-```json [Linux binary]
+```jsonc [Linux binary]
 {
   "action": "create_link",
   "project_id": "my-org/api",
@@ -164,7 +164,7 @@ Based on the merged MRs, organize changes by category:
 }
 ```
 
-```json [Docker image]
+```jsonc [Docker image]
 {
   "action": "create_link",
   "project_id": "my-org/api",
@@ -175,7 +175,7 @@ Based on the merged MRs, organize changes by category:
 }
 ```
 
-```json [Runbook]
+```jsonc [Runbook]
 {
   "action": "create_link",
   "project_id": "my-org/api",
@@ -192,7 +192,7 @@ Based on the merged MRs, organize changes by category:
 
 > "Close milestone 'v2.0' — all work is released"
 
-```json
+```jsonc
 // manage_milestone
 {
   "action": "update",
@@ -206,7 +206,7 @@ Based on the merged MRs, organize changes by category:
 
 > "Create milestone 'v2.1' for the next sprint"
 
-```json
+```jsonc
 // manage_milestone
 {
   "action": "create",

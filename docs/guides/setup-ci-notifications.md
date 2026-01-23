@@ -16,7 +16,7 @@ The built-in Slack integration provides rich notifications with pipeline status,
 
 > "List active integrations in `my-org/api`"
 
-```json
+```jsonc
 // browse_integrations
 {
   "action": "list",
@@ -29,7 +29,7 @@ The built-in Slack integration provides rich notifications with pipeline status,
 
 > "Set up Slack notifications for pipeline events in `my-org/api`"
 
-```json
+```jsonc
 // manage_integration
 {
   "action": "update",
@@ -48,7 +48,7 @@ The built-in Slack integration provides rich notifications with pipeline status,
 
 > "Check the Slack integration settings"
 
-```json
+```jsonc
 // browse_integrations
 {
   "action": "get",
@@ -63,7 +63,7 @@ The built-in Slack integration provides rich notifications with pipeline status,
 
 > "Set up Discord notifications for CI failures"
 
-```json
+```jsonc
 // manage_integration
 {
   "action": "update",
@@ -81,7 +81,7 @@ The built-in Slack integration provides rich notifications with pipeline status,
 
 ### Configure Teams Webhook
 
-```json
+```jsonc
 // manage_integration
 {
   "action": "update",
@@ -102,7 +102,7 @@ For custom endpoints or services not covered by built-in integrations.
 
 > "Create a webhook for pipeline events in `my-org/api`"
 
-```json
+```jsonc
 // manage_webhook
 {
   "action": "create",
@@ -122,7 +122,7 @@ For custom endpoints or services not covered by built-in integrations.
 
 > "Test the pipeline webhook to ensure it works"
 
-```json
+```jsonc
 // manage_webhook
 {
   "action": "test",
@@ -137,7 +137,7 @@ For custom endpoints or services not covered by built-in integrations.
 
 > "Show me all configured webhooks"
 
-```json
+```jsonc
 // browse_webhooks
 {
   "action": "list",
@@ -153,7 +153,7 @@ For notifications across all projects in a group:
 
 ### Create Group Webhook
 
-```json
+```jsonc
 // manage_webhook
 {
   "action": "create",
@@ -172,7 +172,7 @@ Group webhooks are inherited by all projects in the group.
 
 ### Configure Pipeline Emails
 
-```json
+```jsonc
 // manage_integration
 {
   "action": "update",
@@ -216,7 +216,7 @@ Group webhooks are inherited by all projects in the group.
 
 ### Disable an Integration
 
-```json
+```jsonc
 // manage_integration
 {
   "action": "disable",
@@ -227,7 +227,7 @@ Group webhooks are inherited by all projects in the group.
 
 ### Delete a Webhook
 
-```json
+```jsonc
 // manage_webhook
 {
   "action": "delete",

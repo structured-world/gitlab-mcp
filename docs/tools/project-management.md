@@ -245,7 +245,7 @@ Manage project and group membership.
 
 ::: code-group
 
-```json [List members]
+```json [List members (browse_members)]
 {
   "action": "list_project",
   "project_id": "my-org/api",

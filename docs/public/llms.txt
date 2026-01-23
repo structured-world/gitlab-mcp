@@ -8,7 +8,7 @@ npx @structured-world/gitlab-mcp init
 # Configuration
 
 Required: GITLAB_TOKEN (Personal Access Token or OAuth)
-Optional: GITLAB_API_URL (defaults to https://gitlab.com/api/v4)
+Optional: GITLAB_API_URL (defaults to https://gitlab.com)
 
 # Tools (47 total, CQRS pattern: browse_* = read, manage_* = write)
 

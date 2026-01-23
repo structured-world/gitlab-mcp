@@ -39,7 +39,7 @@ Presets are predefined configurations you can switch between. They're configured
 # .env file for multiple instances
 
 # Instance 1: Company GitLab (default)
-GITLAB_API_URL=https://gitlab.company.com/api/v4
+GITLAB_API_URL=https://gitlab.company.com
 GITLAB_TOKEN=glpat-company-token
 
 # Instance 2: GitLab.com (via preset)
@@ -189,7 +189,7 @@ For self-hosted GitLab instances:
 
 ```bash
 # Corporate instance
-GITLAB_API_URL=https://gitlab.internal.company.com/api/v4
+GITLAB_API_URL=https://gitlab.internal.company.com
 GITLAB_TOKEN=glpat-internal-token
 
 # Additional settings for self-hosted
@@ -204,7 +204,7 @@ See the [TLS/HTTPS guide](/advanced/tls) for self-hosted certificate configurati
 
 - Verify the token for the target instance is valid
 - Check token scopes match required operations
-- Ensure the API URL is correct (include `/api/v4`)
+- Ensure the API URL is correct (base URL without `/api/v4` suffix)
 
 ### Scope not applying
 

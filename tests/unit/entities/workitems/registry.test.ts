@@ -1101,7 +1101,7 @@ describe("Workitems Registry - CQRS Tools", () => {
         });
 
         // validateWidgetParams should have been called WITHOUT assigneeIds/labelIds
-        expect(mockValidateWidgetParams).toHaveBeenCalledWith(
+        expect(mockValidateWidgetParams).toHaveBeenLastCalledWith(
           expect.not.objectContaining({ assigneeIds: [], labelIds: [] })
         );
       });

@@ -4,7 +4,7 @@ import { GitLabTier } from "./GitLabVersionDetector";
 
 interface WidgetRequirement {
   tier: GitLabTier | "free";
-  minVersion: number;
+  minVersion: string;
 }
 
 /**
@@ -43,41 +43,41 @@ const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
 export class WidgetAvailability {
   private static widgetRequirements: Record<WorkItemWidgetType, WidgetRequirement> = {
     // Free tier widgets (available to all)
-    [WorkItemWidgetTypes.ASSIGNEES]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.DESCRIPTION]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.HIERARCHY]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.LABELS]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.MILESTONE]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.NOTES]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.START_AND_DUE_DATE]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.STATUS]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.NOTIFICATIONS]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.CURRENT_USER_TODOS]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.AWARD_EMOJI]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.PARTICIPANTS]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.DESIGNS]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.DEVELOPMENT]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.TIME_TRACKING]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.ERROR_TRACKING]: { tier: "free", minVersion: 15.0 },
+    [WorkItemWidgetTypes.ASSIGNEES]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.DESCRIPTION]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.HIERARCHY]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.LABELS]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.MILESTONE]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.NOTES]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.START_AND_DUE_DATE]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.STATUS]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.NOTIFICATIONS]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.CURRENT_USER_TODOS]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.AWARD_EMOJI]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.PARTICIPANTS]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.DESIGNS]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.DEVELOPMENT]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.TIME_TRACKING]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.ERROR_TRACKING]: { tier: "free", minVersion: "15.0" },
 
     // Premium tier widgets
-    [WorkItemWidgetTypes.WEIGHT]: { tier: "premium", minVersion: 15.0 },
-    [WorkItemWidgetTypes.ITERATION]: { tier: "premium", minVersion: 15.0 },
-    [WorkItemWidgetTypes.LINKED_ITEMS]: { tier: "premium", minVersion: 15.0 },
-    [WorkItemWidgetTypes.CRM_CONTACTS]: { tier: "premium", minVersion: 16.0 },
-    [WorkItemWidgetTypes.EMAIL_PARTICIPANTS]: { tier: "premium", minVersion: 16.0 },
-    [WorkItemWidgetTypes.LINKED_RESOURCES]: { tier: "premium", minVersion: 16.5 },
+    [WorkItemWidgetTypes.WEIGHT]: { tier: "premium", minVersion: "15.0" },
+    [WorkItemWidgetTypes.ITERATION]: { tier: "premium", minVersion: "15.0" },
+    [WorkItemWidgetTypes.LINKED_ITEMS]: { tier: "premium", minVersion: "15.0" },
+    [WorkItemWidgetTypes.CRM_CONTACTS]: { tier: "premium", minVersion: "16.0" },
+    [WorkItemWidgetTypes.EMAIL_PARTICIPANTS]: { tier: "premium", minVersion: "16.0" },
+    [WorkItemWidgetTypes.LINKED_RESOURCES]: { tier: "premium", minVersion: "16.5" },
 
     // Ultimate tier widgets
-    [WorkItemWidgetTypes.HEALTH_STATUS]: { tier: "ultimate", minVersion: 15.0 },
-    [WorkItemWidgetTypes.CUSTOM_FIELDS]: { tier: "ultimate", minVersion: 17.0 },
-    [WorkItemWidgetTypes.VULNERABILITIES]: { tier: "ultimate", minVersion: 15.0 },
+    [WorkItemWidgetTypes.HEALTH_STATUS]: { tier: "ultimate", minVersion: "15.0" },
+    [WorkItemWidgetTypes.CUSTOM_FIELDS]: { tier: "ultimate", minVersion: "17.0" },
+    [WorkItemWidgetTypes.VULNERABILITIES]: { tier: "ultimate", minVersion: "15.0" },
 
     // Legacy widgets (may not be available)
-    [WorkItemWidgetTypes.PROGRESS]: { tier: "free", minVersion: 15.0 },
-    [WorkItemWidgetTypes.REQUIREMENT_LEGACY]: { tier: "ultimate", minVersion: 13.1 },
-    [WorkItemWidgetTypes.TEST_REPORTS]: { tier: "ultimate", minVersion: 13.6 },
-    [WorkItemWidgetTypes.COLOR]: { tier: "free", minVersion: 15.0 },
+    [WorkItemWidgetTypes.PROGRESS]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.REQUIREMENT_LEGACY]: { tier: "ultimate", minVersion: "13.1" },
+    [WorkItemWidgetTypes.TEST_REPORTS]: { tier: "ultimate", minVersion: "13.6" },
+    [WorkItemWidgetTypes.COLOR]: { tier: "free", minVersion: "15.0" },
   };
 
   public static isWidgetAvailable(widget: WorkItemWidgetType): boolean {
@@ -92,9 +92,9 @@ export class WidgetAvailability {
         return false;
       }
 
-      // Check version requirement using tuple comparison (handles minor >= 10)
+      // Check version requirement
       const version = this.parseVersion(instanceInfo.version);
-      const minVersion = this.minVersionToComparable(requirement.minVersion);
+      const minVersion = this.parseVersion(requirement.minVersion);
       if (version < minVersion) {
         return false;
       }
@@ -167,13 +167,13 @@ export class WidgetAvailability {
       const requirement = this.widgetRequirements[widgetType];
       if (!requirement) continue; // Unknown widget
 
-      // Check version requirement using tuple comparison (handles minor >= 10)
-      const minVersion = this.minVersionToComparable(requirement.minVersion);
+      // Check version requirement
+      const minVersion = this.parseVersion(requirement.minVersion);
       if (parsedVersion < minVersion) {
         return {
           parameter: paramName,
           widget: widgetType,
-          requiredVersion: this.formatVersion(requirement.minVersion),
+          requiredVersion: requirement.minVersion,
           detectedVersion: instanceVersion,
           requiredTier: requirement.tier,
           currentTier: instanceTier,
@@ -195,7 +195,7 @@ export class WidgetAvailability {
           return {
             parameter: paramName,
             widget: widgetType,
-            requiredVersion: this.formatVersion(requirement.minVersion),
+            requiredVersion: requirement.minVersion,
             detectedVersion: instanceVersion,
             requiredTier: requirement.tier,
             currentTier: instanceTier,
@@ -229,24 +229,5 @@ export class WidgetAvailability {
     const minor = parseInt(match[2], 10);
 
     return major * 100 + minor;
-  }
-
-  /**
-   * Convert a stored minVersion float (e.g., 16.5) to the comparable integer format.
-   * minVersion values use the convention major.minor as a float (max minor = 9).
-   */
-  private static minVersionToComparable(minVersion: number): number {
-    const major = Math.floor(minVersion);
-    const minor = Math.round((minVersion - major) * 10);
-    return major * 100 + minor;
-  }
-
-  /**
-   * Format a stored minVersion float to a displayable string (e.g., 17.0 → "17.0")
-   */
-  private static formatVersion(minVersion: number): string {
-    const major = Math.floor(minVersion);
-    const minor = Math.round((minVersion - major) * 10);
-    return `${major}.${minor}`;
   }
 }

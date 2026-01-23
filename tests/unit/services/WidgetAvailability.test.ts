@@ -289,15 +289,15 @@ describe("WidgetAvailability", () => {
   describe("widget requirements", () => {
     it("should return widget requirement correctly", () => {
       const assigneesReq = WidgetAvailability.getWidgetRequirement(WorkItemWidgetTypes.ASSIGNEES);
-      expect(assigneesReq).toEqual({ tier: "free", minVersion: 15.0 });
+      expect(assigneesReq).toEqual({ tier: "free", minVersion: "15.0" });
 
       const weightReq = WidgetAvailability.getWidgetRequirement(WorkItemWidgetTypes.WEIGHT);
-      expect(weightReq).toEqual({ tier: "premium", minVersion: 15.0 });
+      expect(weightReq).toEqual({ tier: "premium", minVersion: "15.0" });
 
       const customFieldsReq = WidgetAvailability.getWidgetRequirement(
         WorkItemWidgetTypes.CUSTOM_FIELDS
       );
-      expect(customFieldsReq).toEqual({ tier: "ultimate", minVersion: 17.0 });
+      expect(customFieldsReq).toEqual({ tier: "ultimate", minVersion: "17.0" });
     });
 
     it("should return undefined for unknown widget", () => {
@@ -571,17 +571,6 @@ describe("WidgetAvailability", () => {
 
       expect(map1).toEqual(map2);
       expect(map1).not.toBe(map2);
-    });
-  });
-
-  describe("formatVersion", () => {
-    it("should format numeric versions to display strings", () => {
-      const formatVersion = (WidgetAvailability as any).formatVersion;
-
-      expect(formatVersion(15.0)).toBe("15.0");
-      expect(formatVersion(17.0)).toBe("17.0");
-      expect(formatVersion(16.5)).toBe("16.5");
-      expect(formatVersion(18.3)).toBe("18.3");
     });
   });
 });

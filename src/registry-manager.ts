@@ -55,6 +55,7 @@ import { ToolAvailability } from "./services/ToolAvailability";
 import { logger } from "./logger";
 import {
   transformToolSchema,
+  stripTierRestrictedParameters,
   shouldRemoveTool,
   extractActionsFromSchema,
 } from "./utils/schema-utils";
@@ -301,7 +302,13 @@ class RegistryManager {
         let finalTool = tool;
 
         // Transform schema to remove denied actions and apply description overrides
-        const transformedSchema = transformToolSchema(toolName, tool.inputSchema);
+        let transformedSchema = transformToolSchema(toolName, tool.inputSchema);
+
+        // Strip tier-restricted parameters from schema
+        const restrictedParams = ToolAvailability.getRestrictedParameters(toolName);
+        if (restrictedParams.length > 0) {
+          transformedSchema = stripTierRestrictedParameters(transformedSchema, restrictedParams);
+        }
 
         // Apply tool-level description override if available
         const customDescription = this.descriptionOverrides.get(toolName);

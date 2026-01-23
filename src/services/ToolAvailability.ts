@@ -726,6 +726,70 @@ export class ToolAvailability {
     },
   };
 
+  // ============================================================================
+  // Per-Parameter Tier Requirements
+  // ============================================================================
+
+  /**
+   * Parameter-level requirements for tools with tier-gated parameters.
+   * Parameters listed here will be stripped from the JSON Schema when the
+   * detected instance tier/version is insufficient.
+   */
+  private static parameterRequirements: Record<string, Record<string, ActionRequirement>> = {
+    manage_work_item: {
+      weight: { tier: "premium", minVersion: "15.0", notes: "Work item weight widget" },
+      iterationId: { tier: "premium", minVersion: "15.0", notes: "Iteration widget" },
+      healthStatus: { tier: "ultimate", minVersion: "15.0", notes: "Health status widget" },
+    },
+  };
+
+  /**
+   * Get list of parameter names that should be REMOVED from the schema
+   * for the current instance tier and version.
+   *
+   * @param toolName - Tool name to check parameter requirements for
+   * @returns Array of parameter names that should be stripped from the schema
+   */
+  public static getRestrictedParameters(toolName: string): string[] {
+    const paramReqs = this.parameterRequirements[toolName];
+    if (!paramReqs) return [];
+
+    const connectionManager = ConnectionManager.getInstance();
+
+    let instanceTier: GitLabTier;
+    let instanceVersion: number;
+
+    try {
+      const instanceInfo = connectionManager.getInstanceInfo();
+      instanceTier = instanceInfo.tier;
+      instanceVersion = parseVersion(instanceInfo.version);
+    } catch {
+      // Connection not initialized - don't restrict anything
+      return [];
+    }
+
+    const restricted: string[] = [];
+    const actualTierLevel = this.TIER_ORDER[instanceTier] ?? 0;
+
+    for (const [paramName, req] of Object.entries(paramReqs)) {
+      const requiredTierLevel = this.TIER_ORDER[req.tier] ?? 0;
+      const requiredVersion = parseVersion(req.minVersion);
+
+      // Parameter is restricted if tier is insufficient OR version is too low
+      if (actualTierLevel < requiredTierLevel || instanceVersion < requiredVersion) {
+        restricted.push(paramName);
+      }
+    }
+
+    if (restricted.length > 0) {
+      logger.debug(
+        `Tool '${toolName}': restricted parameters for ${instanceTier} tier: [${restricted.join(", ")}]`
+      );
+    }
+
+    return restricted;
+  }
+
   /**
    * Get requirement for a tool, optionally with action
    */

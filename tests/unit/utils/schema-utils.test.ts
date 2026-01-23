@@ -8,6 +8,7 @@ import {
   flattenDiscriminatedUnion,
   applyDescriptionOverrides,
   transformToolSchema,
+  stripTierRestrictedParameters,
   shouldRemoveTool,
   extractActionsFromSchema,
   setDetectedSchemaMode,
@@ -772,6 +773,129 @@ describe("schema-utils", () => {
       } finally {
         configModule.GITLAB_SCHEMA_MODE = originalMode;
       }
+    });
+  });
+
+  describe("stripTierRestrictedParameters", () => {
+    // Flat schema with tier-gated parameters
+    const flatSchemaWithParams: TestJSONSchema = {
+      type: "object",
+      properties: {
+        action: { type: "string", enum: ["create", "update"] },
+        namespace: { type: "string", description: "Namespace path" },
+        title: { type: "string", description: "Title" },
+        weight: { type: "number", description: "Work item weight" },
+        iterationId: { type: "string", description: "Iteration ID" },
+        healthStatus: { type: "string", description: "Health status" },
+      },
+      required: ["action", "namespace", "title", "weight"],
+    };
+
+    // Discriminated union schema with tier-gated parameters
+    const discriminatedWithParams: TestJSONSchema = {
+      oneOf: [
+        {
+          type: "object",
+          properties: {
+            action: { const: "create" },
+            namespace: { type: "string" },
+            title: { type: "string" },
+            weight: { type: "number", description: "Weight (premium)" },
+            healthStatus: { type: "string", description: "Health (ultimate)" },
+          },
+          required: ["action", "namespace", "title", "weight"],
+        },
+        {
+          type: "object",
+          properties: {
+            action: { const: "update" },
+            id: { type: "string" },
+            weight: { type: "number", description: "Weight (premium)" },
+            iterationId: { type: "string", description: "Iteration (premium)" },
+          },
+          required: ["action", "id"],
+        },
+      ],
+    };
+
+    it("should return schema unchanged when no parameters are restricted", () => {
+      const result = stripTierRestrictedParameters(flatSchemaWithParams as any, []);
+
+      expect(result).toEqual(flatSchemaWithParams);
+    });
+
+    it("should remove restricted properties from flat schema", () => {
+      const result = stripTierRestrictedParameters(flatSchemaWithParams as any, [
+        "weight",
+        "healthStatus",
+      ]);
+
+      // Removed properties should not be present
+      expect(result.properties?.weight).toBeUndefined();
+      expect(result.properties?.healthStatus).toBeUndefined();
+
+      // Non-restricted properties remain
+      expect(result.properties?.action).toBeDefined();
+      expect(result.properties?.namespace).toBeDefined();
+      expect(result.properties?.title).toBeDefined();
+      expect(result.properties?.iterationId).toBeDefined();
+    });
+
+    it("should remove restricted parameters from required array", () => {
+      const result = stripTierRestrictedParameters(flatSchemaWithParams as any, ["weight"]);
+
+      // weight was in required, should be removed
+      expect(result.required).not.toContain("weight");
+      // Other required entries remain
+      expect(result.required).toContain("action");
+      expect(result.required).toContain("namespace");
+      expect(result.required).toContain("title");
+    });
+
+    it("should remove restricted properties from all discriminated union branches", () => {
+      const result = stripTierRestrictedParameters(discriminatedWithParams as any, [
+        "weight",
+        "healthStatus",
+      ]);
+
+      // Branch 0 (create): weight and healthStatus removed
+      expect(result.oneOf?.[0]?.properties?.weight).toBeUndefined();
+      expect(result.oneOf?.[0]?.properties?.healthStatus).toBeUndefined();
+      expect(result.oneOf?.[0]?.properties?.namespace).toBeDefined();
+      expect(result.oneOf?.[0]?.properties?.title).toBeDefined();
+
+      // Branch 1 (update): weight removed, iterationId remains
+      expect(result.oneOf?.[1]?.properties?.weight).toBeUndefined();
+      expect(result.oneOf?.[1]?.properties?.iterationId).toBeDefined();
+      expect(result.oneOf?.[1]?.properties?.id).toBeDefined();
+    });
+
+    it("should remove restricted params from required in discriminated union branches", () => {
+      const result = stripTierRestrictedParameters(discriminatedWithParams as any, ["weight"]);
+
+      // Branch 0 had weight in required - should be removed
+      expect(result.oneOf?.[0]?.required).not.toContain("weight");
+      expect(result.oneOf?.[0]?.required).toContain("action");
+      expect(result.oneOf?.[0]?.required).toContain("namespace");
+    });
+
+    it("should not mutate the original schema", () => {
+      const original = JSON.parse(JSON.stringify(flatSchemaWithParams));
+
+      stripTierRestrictedParameters(flatSchemaWithParams as any, ["weight", "healthStatus"]);
+
+      // Original should remain unchanged
+      expect(flatSchemaWithParams).toEqual(original);
+    });
+
+    it("should handle parameters not present in the schema gracefully", () => {
+      // Restrict a param that doesn't exist in the schema - should be a no-op
+      const result = stripTierRestrictedParameters(flatSchemaWithParams as any, [
+        "nonExistentParam",
+      ]);
+
+      expect(result.properties?.action).toBeDefined();
+      expect(result.properties?.weight).toBeDefined();
     });
   });
 });

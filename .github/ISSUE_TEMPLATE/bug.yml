@@ -1,0 +1,44 @@
+name: Bug Report
+description: Something not working? Let us know!
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting! Just tell us what happened — no formal structure needed.
+
+  - type: input
+    id: page
+    attributes:
+      label: Which page?
+      placeholder: e.g., /guide/quick-start
+    validations:
+      required: false
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      placeholder: Describe what went wrong or was confusing...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect? (optional)
+    validations:
+      required: false
+
+  - type: dropdown
+    id: category
+    attributes:
+      label: Category (optional)
+      options:
+        - Documentation is wrong/outdated
+        - Tool not working as described
+        - Missing information
+        - Installation/setup issue
+        - Other
+    validations:
+      required: false

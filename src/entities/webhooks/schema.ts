@@ -3,7 +3,7 @@ import { flexibleBoolean, requiredId } from "../utils";
 
 // ============================================================================
 // manage_webhook - CQRS Command Tool (discriminated union schema)
-// Actions: create, read, update, delete, test
+// Actions: create, update, delete, test
 //
 // Uses z.discriminatedUnion() to define action-specific parameters.
 // Benefits:
@@ -11,6 +11,9 @@ import { flexibleBoolean, requiredId } from "../utils";
 // - TypeScript type narrowing in handlers
 // - Filtering denied actions removes their exclusive parameters from schema
 // - JSON Schema outputs oneOf which is flattened for AI clients at runtime
+//
+// Note: The 'read' action has been moved to browse_webhooks (action: 'get')
+// for clean CQRS separation (browse_* = read, manage_* = write).
 // ============================================================================
 
 // --- Shared webhook event fields used by create/update actions ---
@@ -83,15 +86,6 @@ const CreateWebhookSchema = z.object({
   ...WebhookEventFields,
 });
 
-// --- Read action: retrieves webhook details ---
-const ReadWebhookSchema = z.object({
-  action: z.literal("read"),
-  scope: scopeField,
-  projectId: z.string().optional().describe("Project ID or path (required if scope=project)"),
-  groupId: z.string().optional().describe("Group ID or path (required if scope=group)"),
-  hookId: requiredId.describe("Webhook ID (required)"),
-});
-
 // --- Update action: modifies an existing webhook ---
 const UpdateWebhookSchema = z.object({
   action: z.literal("update"),
@@ -128,7 +122,6 @@ const TestWebhookSchema = z.object({
 // --- Discriminated union combining all actions ---
 export const ManageWebhookSchema = z.discriminatedUnion("action", [
   CreateWebhookSchema,
-  ReadWebhookSchema,
   UpdateWebhookSchema,
   DeleteWebhookSchema,
   TestWebhookSchema,

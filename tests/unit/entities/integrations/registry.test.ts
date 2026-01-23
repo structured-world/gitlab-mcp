@@ -49,7 +49,7 @@ describe("Integrations Registry", () => {
       const toolNames = Array.from(integrationsToolRegistry.keys());
 
       // Check for read-only tools
-      expect(toolNames).toContain("list_integrations");
+      expect(toolNames).toContain("browse_integrations");
 
       // Check for manage tool
       expect(toolNames).toContain("manage_integration");
@@ -82,11 +82,11 @@ describe("Integrations Registry", () => {
   });
 
   describe("Tool Definitions", () => {
-    it("should have proper list_integrations tool", () => {
-      const tool = integrationsToolRegistry.get("list_integrations");
+    it("should have proper browse_integrations tool", () => {
+      const tool = integrationsToolRegistry.get("browse_integrations");
       expect(tool).toBeDefined();
-      expect(tool!.name).toBe("list_integrations");
-      expect(tool!.description).toContain("all active integrations");
+      expect(tool!.name).toBe("browse_integrations");
+      expect(tool!.description).toContain("BROWSE project integrations");
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -120,19 +120,15 @@ describe("Integrations Registry", () => {
       expect(readOnlyTools.length).toBeGreaterThan(0);
     });
 
-    it("should include list_integrations as read-only", () => {
+    it("should include only browse_integrations as read-only", () => {
       const readOnlyTools = getIntegrationsReadOnlyToolNames();
-      expect(readOnlyTools).toContain("list_integrations");
+      expect(readOnlyTools).toContain("browse_integrations");
+      expect(readOnlyTools).not.toContain("manage_integration");
     });
 
-    it("should include manage_integration (allowed for get action)", () => {
+    it("should return exactly 1 tool", () => {
       const readOnlyTools = getIntegrationsReadOnlyToolNames();
-      expect(readOnlyTools).toContain("manage_integration");
-    });
-
-    it("should return exactly 2 tools", () => {
-      const readOnlyTools = getIntegrationsReadOnlyToolNames();
-      expect(readOnlyTools.length).toBe(2);
+      expect(readOnlyTools.length).toBe(1);
     });
 
     it("should return tools that exist in the registry", () => {
@@ -177,19 +173,19 @@ describe("Integrations Registry", () => {
       expect(filteredTools.length).toBe(2);
     });
 
-    it("should return read-only tools in read-only mode", () => {
+    it("should return only browse_integrations in read-only mode", () => {
       const filteredTools = getFilteredIntegrationsTools(true);
-      expect(filteredTools.length).toBe(2);
+      expect(filteredTools.length).toBe(1);
 
       const toolNames = filteredTools.map(tool => tool.name);
-      expect(toolNames).toContain("list_integrations");
-      expect(toolNames).toContain("manage_integration");
+      expect(toolNames).toContain("browse_integrations");
+      expect(toolNames).not.toContain("manage_integration");
     });
   });
 
-  describe("list_integrations Handler", () => {
-    it("should call GitLab API with correct endpoint", async () => {
-      const tool = integrationsToolRegistry.get("list_integrations");
+  describe("browse_integrations Handler", () => {
+    it("should handle list action with correct endpoint", async () => {
+      const tool = integrationsToolRegistry.get("browse_integrations");
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
@@ -201,6 +197,7 @@ describe("Integrations Registry", () => {
       } as Response);
 
       const result = await tool!.handler({
+        action: "list",
         project_id: "test-project",
       });
 
@@ -210,8 +207,8 @@ describe("Integrations Registry", () => {
       expect(result).toBeDefined();
     });
 
-    it("should handle pagination parameters", async () => {
-      const tool = integrationsToolRegistry.get("list_integrations");
+    it("should handle list action with pagination parameters", async () => {
+      const tool = integrationsToolRegistry.get("browse_integrations");
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
@@ -220,6 +217,7 @@ describe("Integrations Registry", () => {
       } as Response);
 
       await tool!.handler({
+        action: "list",
         project_id: "test-project",
         per_page: 50,
         page: 2,
@@ -230,7 +228,7 @@ describe("Integrations Registry", () => {
     });
 
     it("should URL-encode project path", async () => {
-      const tool = integrationsToolRegistry.get("list_integrations");
+      const tool = integrationsToolRegistry.get("browse_integrations");
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
@@ -239,6 +237,7 @@ describe("Integrations Registry", () => {
       } as Response);
 
       await tool!.handler({
+        action: "list",
         project_id: "my-group/my-project",
       });
 
@@ -246,11 +245,9 @@ describe("Integrations Registry", () => {
         expect.stringContaining("projects/my-group%2Fmy-project/integrations")
       );
     });
-  });
 
-  describe("manage_integration Handler - get action", () => {
-    it("should call GitLab API with correct endpoint for get action", async () => {
-      const tool = integrationsToolRegistry.get("manage_integration");
+    it("should handle get action for specific integration", async () => {
+      const tool = integrationsToolRegistry.get("browse_integrations");
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
@@ -365,71 +362,6 @@ describe("Integrations Registry", () => {
     });
   });
 
-  describe("manage_integration Handler - read-only mode enforcement", () => {
-    it("should allow get action in read-only mode", async () => {
-      // Set read-only mode
-      process.env.GITLAB_READ_ONLY_MODE = "true";
-
-      const tool = integrationsToolRegistry.get("manage_integration");
-      expect(tool).toBeDefined();
-
-      mockEnhancedFetch.mockResolvedValue({
-        ok: true,
-        json: async () => ({ id: 1, slug: "slack" }),
-      } as Response);
-
-      const result = await tool!.handler({
-        action: "get",
-        project_id: "test-project",
-        integration: "slack",
-      });
-
-      expect(result).toBeDefined();
-
-      // Cleanup
-      delete process.env.GITLAB_READ_ONLY_MODE;
-    });
-
-    it("should reject update action in read-only mode", async () => {
-      // Set read-only mode
-      process.env.GITLAB_READ_ONLY_MODE = "true";
-
-      const tool = integrationsToolRegistry.get("manage_integration");
-      expect(tool).toBeDefined();
-
-      await expect(
-        tool!.handler({
-          action: "update",
-          project_id: "test-project",
-          integration: "slack",
-          active: true,
-        })
-      ).rejects.toThrow("not allowed in read-only mode");
-
-      // Cleanup
-      delete process.env.GITLAB_READ_ONLY_MODE;
-    });
-
-    it("should reject disable action in read-only mode", async () => {
-      // Set read-only mode
-      process.env.GITLAB_READ_ONLY_MODE = "true";
-
-      const tool = integrationsToolRegistry.get("manage_integration");
-      expect(tool).toBeDefined();
-
-      await expect(
-        tool!.handler({
-          action: "disable",
-          project_id: "test-project",
-          integration: "slack",
-        })
-      ).rejects.toThrow("not allowed in read-only mode");
-
-      // Cleanup
-      delete process.env.GITLAB_READ_ONLY_MODE;
-    });
-  });
-
   describe("manage_integration Handler - validation", () => {
     it("should reject missing project_id", async () => {
       const tool = integrationsToolRegistry.get("manage_integration");
@@ -437,7 +369,7 @@ describe("Integrations Registry", () => {
 
       await expect(
         tool!.handler({
-          action: "get",
+          action: "disable",
           integration: "slack",
         })
       ).rejects.toThrow();
@@ -449,7 +381,7 @@ describe("Integrations Registry", () => {
 
       await expect(
         tool!.handler({
-          action: "get",
+          action: "disable",
           project_id: "test-project",
         })
       ).rejects.toThrow();
@@ -461,7 +393,7 @@ describe("Integrations Registry", () => {
 
       await expect(
         tool!.handler({
-          action: "get",
+          action: "disable",
           project_id: "test-project",
           integration: "invalid-integration-type",
         })
@@ -474,7 +406,7 @@ describe("Integrations Registry", () => {
 
       await expect(
         tool!.handler({
-          action: "create", // Not a valid action for manage_integration
+          action: "get", // Not a valid action for manage_integration (moved to browse_integrations)
           project_id: "test-project",
           integration: "slack",
         })

@@ -92,7 +92,7 @@ describe("report-bug handlers", () => {
 
       expect(response.status).toBe(204);
       expect(response.headers.get("Access-Control-Allow-Origin")).toBe(
-        "https://docs.gitlab-mcp.sw.foundation"
+        "https://gitlab-mcp.sw.foundation"
       );
     });
   });

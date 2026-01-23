@@ -42,7 +42,7 @@ const CATEGORIES = [
 ];
 
 const ALLOWED_ORIGINS = [
-  "https://docs.gitlab-mcp.sw.foundation",
+  "https://gitlab-mcp.sw.foundation",
   "https://structured-world.github.io",
   "http://localhost:5173",
   "http://localhost:4173",

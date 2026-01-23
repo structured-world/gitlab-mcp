@@ -145,6 +145,25 @@ export const SSL_PASSPHRASE = process.env.SSL_PASSPHRASE;
 // Values: 'true', 'false', 'loopback', 'linklocal', 'uniquelocal', or specific IPs
 export const TRUST_PROXY = process.env.TRUST_PROXY;
 
+// SSE heartbeat interval (in milliseconds)
+// Sends `: ping\n\n` comments to keep SSE connections alive through proxies (Cloudflare, Envoy, etc.)
+// Default 30s — well under Cloudflare's ~100-125s idle timeout
+const parsedHeartbeatMs = parseInt(process.env.GITLAB_SSE_HEARTBEAT_MS ?? "30000", 10);
+export const SSE_HEARTBEAT_MS =
+  Number.isFinite(parsedHeartbeatMs) && parsedHeartbeatMs > 0 ? parsedHeartbeatMs : 30000;
+
+// HTTP server keepalive timeout (in milliseconds)
+// Must be higher than any upstream proxy timeout (Cloudflare max is 600s for Enterprise)
+// Default 620s ensures the Node.js server doesn't close connections before the proxy does
+const parsedKeepAliveTimeout = parseInt(
+  process.env.GITLAB_HTTP_KEEPALIVE_TIMEOUT_MS ?? "620000",
+  10
+);
+export const HTTP_KEEPALIVE_TIMEOUT_MS =
+  Number.isFinite(parsedKeepAliveTimeout) && parsedKeepAliveTimeout > 0
+    ? parsedKeepAliveTimeout
+    : 620000;
+
 // API timeout configuration (in milliseconds)
 // Default 10s allows time for retries within a reasonable total response time
 const parsedTimeoutMs = parseInt(process.env.GITLAB_API_TIMEOUT_MS ?? "10000", 10);

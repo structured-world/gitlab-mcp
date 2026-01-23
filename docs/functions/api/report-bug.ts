@@ -11,6 +11,16 @@
  * - RATE_LIMIT_KV (optional KV namespace binding)
  */
 
+import {
+  type BugReport,
+  RATE_LIMIT_MAX,
+  corsHeaders,
+  validateReport,
+  base64url,
+  asn1Length,
+  concatBuffers,
+} from "./utils.js";
+
 interface Env {
   GITHUB_APP_ID: string;
   GITHUB_APP_PEM: string;
@@ -18,42 +28,9 @@ interface Env {
   RATE_LIMIT_KV?: KVNamespace;
 }
 
-interface BugReport {
-  page: string;
-  description: string;
-  expected?: string;
-  category?: string;
-  honeypot?: string;
-}
-
 const REPO_OWNER = "structured-world";
 const REPO_NAME = "gitlab-mcp";
-const ALLOWED_ORIGINS = [
-  "https://structured-world.github.io",
-  "http://localhost:5173",
-  "http://localhost:4173",
-];
-const RATE_LIMIT_MAX = 5;
 const RATE_LIMIT_WINDOW_SECONDS = 3600;
-const MIN_DESCRIPTION_LENGTH = 10;
-
-const CATEGORIES = [
-  "Documentation is wrong/outdated",
-  "Tool not working as described",
-  "Missing information",
-  "Installation/setup issue",
-  "Other",
-];
-
-function corsHeaders(origin: string): Record<string, string> {
-  const allowed = ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
-  return {
-    "Access-Control-Allow-Origin": allowed,
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type",
-    "Access-Control-Max-Age": "86400",
-  };
-}
 
 /**
  * Create a JWT for GitHub App authentication using Web Crypto API.
@@ -102,8 +79,10 @@ async function importPemKey(pem: string): Promise<CryptoKey> {
 
   const binaryDer = Uint8Array.from(atob(pemBody), c => c.charCodeAt(0));
 
-  // Determine format: PKCS#8 vs PKCS#1
-  const isPkcs8 = pemContent.includes("BEGIN PRIVATE");
+  // PKCS#1 headers contain "RSA" (e.g. "BEGIN RSA ..."), PKCS#8 do not.
+  // GitHub App PEMs are typically PKCS#1 and need wrapping for Web Crypto.
+  const isPkcs1 = pemContent.includes("BEGIN RSA");
+  const isPkcs8 = !isPkcs1;
 
   let keyData: ArrayBuffer;
   if (!isPkcs8) {
@@ -144,45 +123,6 @@ function wrapAsn1(tag: number, content: Uint8Array): Uint8Array {
   result.set(lengthBytes, 1);
   result.set(content, 1 + lengthBytes.length);
   return result;
-}
-
-function asn1Length(length: number): Uint8Array {
-  if (length < 0x80) {
-    return new Uint8Array([length]);
-  }
-  const bytes: number[] = [];
-  let temp = length;
-  while (temp > 0) {
-    bytes.unshift(temp & 0xff);
-    temp >>= 8;
-  }
-  return new Uint8Array([0x80 | bytes.length, ...bytes]);
-}
-
-function concatBuffers(...arrays: Uint8Array[]): Uint8Array {
-  const totalLength = arrays.reduce((sum, arr) => sum + arr.length, 0);
-  const result = new Uint8Array(totalLength);
-  let offset = 0;
-  for (const arr of arrays) {
-    result.set(arr, offset);
-    offset += arr.length;
-  }
-  return result;
-}
-
-function base64url(input: string | ArrayBuffer): string {
-  let base64: string;
-  if (typeof input === "string") {
-    base64 = btoa(input);
-  } else {
-    const bytes = new Uint8Array(input);
-    let binary = "";
-    for (const byte of bytes) {
-      binary += String.fromCharCode(byte);
-    }
-    base64 = btoa(binary);
-  }
-  return base64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /**
@@ -279,60 +219,6 @@ async function checkRateLimit(
 
   await kv.put(key, String(count + 1), { expirationTtl: RATE_LIMIT_WINDOW_SECONDS });
   return { allowed: true, remaining: RATE_LIMIT_MAX - count - 1 };
-}
-
-/**
- * Validate and sanitize the bug report input.
- */
-function validateReport(
-  data: unknown
-): { valid: true; report: BugReport } | { valid: false; error: string } {
-  if (!data || typeof data !== "object") {
-    return { valid: false, error: "Invalid request body" };
-  }
-
-  const raw = data as Record<string, unknown>;
-
-  // Honeypot check — must be empty
-  if (raw.honeypot && typeof raw.honeypot === "string" && raw.honeypot.trim() !== "") {
-    return { valid: false, error: "Invalid submission" };
-  }
-
-  // Required: description
-  if (!raw.description || typeof raw.description !== "string") {
-    return { valid: false, error: "Description is required" };
-  }
-
-  const description = raw.description.trim();
-  if (description.length < MIN_DESCRIPTION_LENGTH) {
-    return {
-      valid: false,
-      error: `Description must be at least ${MIN_DESCRIPTION_LENGTH} characters`,
-    };
-  }
-
-  // Sanitize page path
-  const page = typeof raw.page === "string" ? raw.page.trim().slice(0, 200) : "/unknown";
-
-  // Optional: expected
-  const expected =
-    typeof raw.expected === "string" ? raw.expected.trim().slice(0, 2000) : undefined;
-
-  // Optional: category (validate against allowed values)
-  let category: string | undefined;
-  if (typeof raw.category === "string" && CATEGORIES.includes(raw.category)) {
-    category = raw.category;
-  }
-
-  return {
-    valid: true,
-    report: {
-      page,
-      description: description.slice(0, 2000),
-      expected: expected || undefined,
-      category,
-    },
-  };
 }
 
 /**

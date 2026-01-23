@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, nextTick, onMounted, onUnmounted } from "vue";
 import { useRoute } from "vitepress";
 
 const route = useRoute();
@@ -28,9 +28,11 @@ const currentPage = computed(() => route.path);
 function toggle() {
   if (state.value === "collapsed") {
     state.value = "expanded";
+    focusPanel();
   } else if (state.value === "expanded" || state.value === "error") {
     state.value = "collapsed";
     resetForm();
+    triggerRef.value?.focus();
   }
 }
 
@@ -77,12 +79,47 @@ async function submit() {
   }
 }
 
-// Close on Escape key
+const panelRef = ref<HTMLElement | null>(null);
+const triggerRef = ref<HTMLElement | null>(null);
+
+// Focus trap: constrain Tab navigation within the dialog
 function handleKeydown(e: KeyboardEvent) {
-  if (e.key === "Escape" && state.value === "expanded") {
+  if (e.key === "Escape" && state.value !== "collapsed") {
     state.value = "collapsed";
     resetForm();
+    // Return focus to trigger button
+    triggerRef.value?.focus();
+    return;
   }
+
+  // Focus trap when dialog is open
+  if (e.key === "Tab" && state.value !== "collapsed" && panelRef.value) {
+    const focusable = panelRef.value.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusable.length === 0) return;
+
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  }
+}
+
+// Move focus into dialog on open
+function focusPanel() {
+  nextTick(() => {
+    if (panelRef.value) {
+      const firstInput = panelRef.value.querySelector<HTMLElement>("textarea, button, input");
+      firstInput?.focus();
+    }
+  });
 }
 
 onMounted(() => {
@@ -99,6 +136,7 @@ onUnmounted(() => {
     <!-- Collapsed: side tab trigger -->
     <button
       v-if="state === 'collapsed'"
+      ref="triggerRef"
       class="bug-tab"
       @click="toggle"
       aria-label="Report a bug"
@@ -132,7 +170,14 @@ onUnmounted(() => {
     </button>
 
     <!-- Expanded: form panel -->
-    <div v-if="state !== 'collapsed'" class="bug-panel" role="dialog" aria-label="Bug report form">
+    <div
+      v-if="state !== 'collapsed'"
+      ref="panelRef"
+      class="bug-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Bug report form"
+    >
       <div class="bug-panel-header">
         <span class="bug-panel-title">Found a bug?</span>
         <button class="bug-panel-close" @click="toggle" aria-label="Close">

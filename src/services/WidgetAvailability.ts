@@ -92,9 +92,10 @@ export class WidgetAvailability {
         return false;
       }
 
-      // Check version requirement
+      // Check version requirement using tuple comparison (handles minor >= 10)
       const version = this.parseVersion(instanceInfo.version);
-      if (version < requirement.minVersion) {
+      const minVersion = this.minVersionToComparable(requirement.minVersion);
+      if (version < minVersion) {
         return false;
       }
 
@@ -166,8 +167,9 @@ export class WidgetAvailability {
       const requirement = this.widgetRequirements[widgetType];
       if (!requirement) continue; // Unknown widget
 
-      // Check version requirement
-      if (parsedVersion < requirement.minVersion) {
+      // Check version requirement using tuple comparison (handles minor >= 10)
+      const minVersion = this.minVersionToComparable(requirement.minVersion);
+      if (parsedVersion < minVersion) {
         return {
           parameter: paramName,
           widget: widgetType,
@@ -212,6 +214,11 @@ export class WidgetAvailability {
     return { ...PARAMETER_WIDGET_MAP };
   }
 
+  /**
+   * Parse a version string into a comparable integer.
+   * Uses major * 100 + minor encoding to correctly handle minor >= 10
+   * (e.g., "16.11.0" → 1611, not 17.1 as float math would give).
+   */
   private static parseVersion(version: string): number {
     if (version === "unknown") return 0;
 
@@ -221,15 +228,25 @@ export class WidgetAvailability {
     const major = parseInt(match[1], 10);
     const minor = parseInt(match[2], 10);
 
-    return major + minor / 10;
+    return major * 100 + minor;
   }
 
   /**
-   * Format a numeric version back to a displayable string (e.g., 17.0 → "17.0")
+   * Convert a stored minVersion float (e.g., 16.5) to the comparable integer format.
+   * minVersion values use the convention major.minor as a float (max minor = 9).
    */
-  private static formatVersion(version: number): string {
-    const major = Math.floor(version);
-    const minor = Math.round((version - major) * 10);
+  private static minVersionToComparable(minVersion: number): number {
+    const major = Math.floor(minVersion);
+    const minor = Math.round((minVersion - major) * 10);
+    return major * 100 + minor;
+  }
+
+  /**
+   * Format a stored minVersion float to a displayable string (e.g., 17.0 → "17.0")
+   */
+  private static formatVersion(minVersion: number): string {
+    const major = Math.floor(minVersion);
+    const minor = Math.round((minVersion - major) * 10);
     return `${major}.${minor}`;
   }
 }

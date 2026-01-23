@@ -310,9 +310,11 @@ describe("WidgetAvailability", () => {
     it("should parse version strings correctly", () => {
       const parseVersion = (WidgetAvailability as any).parseVersion;
 
-      expect(parseVersion("18.3.0")).toBe(18.3);
-      expect(parseVersion("15.11.2")).toBe(16.1); // 15 + 11/10 = 16.1
-      expect(parseVersion("10.2.5")).toBe(10.2);
+      // Uses major * 100 + minor encoding to handle minor >= 10 correctly
+      expect(parseVersion("18.3.0")).toBe(1803);
+      expect(parseVersion("15.11.2")).toBe(1511); // Correctly handles minor >= 10
+      expect(parseVersion("16.11.0")).toBe(1611); // Not 17.1 as float math would give
+      expect(parseVersion("10.2.5")).toBe(1002);
       expect(parseVersion("unknown")).toBe(0);
       expect(parseVersion("invalid")).toBe(0);
       expect(parseVersion("")).toBe(0);

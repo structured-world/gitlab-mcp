@@ -14,8 +14,8 @@ import {
 import { WidgetAvailability } from "../../services/WidgetAvailability";
 import {
   createVersionRestrictedError,
+  normalizeTier,
   StructuredToolError,
-  GitLabTier as DisplayTier,
 } from "../../utils/error-handler";
 
 // Define interface for work item type objects
@@ -204,17 +204,6 @@ const simplifyWorkItem = (
 
   return simplified;
 };
-
-/**
- * Normalize internal tier (lowercase) to display-friendly format (capitalized)
- * for use in structured error responses.
- */
-function normalizeTierForDisplay(tier: string): DisplayTier {
-  const lower = tier.toLowerCase();
-  if (lower === "ultimate") return "Ultimate";
-  if (lower === "premium") return "Premium";
-  return "Free";
-}
 
 /**
  * Work items tools registry - 2 CQRS tools replacing 5 individual tools
@@ -426,8 +415,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                   validationFailure.parameter,
                   validationFailure.requiredVersion,
                   validationFailure.detectedVersion,
-                  normalizeTierForDisplay(validationFailure.requiredTier),
-                  normalizeTierForDisplay(validationFailure.currentTier)
+                  normalizeTier(validationFailure.requiredTier),
+                  normalizeTier(validationFailure.currentTier)
                 )
               );
             }
@@ -517,8 +506,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                   validationFailure.parameter,
                   validationFailure.requiredVersion,
                   validationFailure.detectedVersion,
-                  normalizeTierForDisplay(validationFailure.requiredTier),
-                  normalizeTierForDisplay(validationFailure.currentTier)
+                  normalizeTier(validationFailure.requiredTier),
+                  normalizeTier(validationFailure.currentTier)
                 )
               );
             }

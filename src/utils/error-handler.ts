@@ -581,7 +581,7 @@ function createRestrictionInfo(
  * Converts InternalTier (lowercase: "free", "premium", "ultimate")
  * to display GitLabTier (capitalized: "Free", "Premium", "Ultimate").
  */
-function normalizeTier(tier: string | InternalTier): GitLabTier {
+export function normalizeTier(tier: string | InternalTier): GitLabTier {
   const lower = tier.toLowerCase();
   if (lower === "ultimate" || lower === "gold") return "Ultimate";
   if (lower === "premium" || lower === "silver") return "Premium";
@@ -942,10 +942,26 @@ export function createVersionRestrictedError(
   requiredTier?: GitLabTier,
   currentTier?: GitLabTier
 ): VersionRestrictedError {
-  const tierInfo =
-    requiredTier && currentTier && requiredTier !== currentTier
-      ? ` and GitLab ${requiredTier} tier`
-      : "";
+  // Determine which constraints are violated
+  const tierHierarchy: Record<string, number> = { Free: 0, Premium: 1, Ultimate: 2 };
+  const isTierInsufficient =
+    requiredTier && currentTier && tierHierarchy[requiredTier] > tierHierarchy[currentTier];
+
+  // Build message: mention tier only when current tier is actually insufficient
+  const tierInfo = isTierInsufficient ? ` and GitLab ${requiredTier} tier` : "";
+
+  // Build suggested_fix based on which constraint is violated
+  let suggestedFix: string;
+  if (isTierInsufficient && detectedVersion >= requiredVersion) {
+    // Only tier is insufficient, version is fine
+    suggestedFix = `Upgrade to GitLab ${requiredTier} tier to use the '${parameter}' parameter`;
+  } else if (isTierInsufficient) {
+    // Both version and tier are insufficient
+    suggestedFix = `Upgrade GitLab to version ${requiredVersion}+ and ${requiredTier} tier to use the '${parameter}' parameter`;
+  } else {
+    // Only version is insufficient
+    suggestedFix = `Upgrade GitLab to version ${requiredVersion} or higher to use the '${parameter}' parameter`;
+  }
 
   return {
     error_code: "VERSION_RESTRICTED",
@@ -958,7 +974,7 @@ export function createVersionRestrictedError(
     required_tier: requiredTier,
     current_tier: currentTier,
     message: `Widget '${widget}' (parameter '${parameter}') requires GitLab >= ${requiredVersion}${tierInfo} (detected: ${detectedVersion})`,
-    suggested_fix: `Upgrade GitLab to version ${requiredVersion} or higher to use the '${parameter}' parameter`,
+    suggested_fix: suggestedFix,
     docs_url: "https://docs.gitlab.com/ee/user/project/work_items/",
   };
 }

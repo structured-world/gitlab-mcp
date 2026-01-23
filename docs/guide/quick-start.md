@@ -49,9 +49,9 @@ Enable or disable tool groups:
 | `USE_WEBHOOKS` | `true` | Webhook management |
 | `USE_SNIPPETS` | `true` | Code snippets |
 | `USE_INTEGRATIONS` | `true` | 50+ project integrations |
-| `USE_GITLAB_WIKI` | `false` | Wiki pages (opt-in) |
-| `USE_MILESTONE` | `false` | Milestone tracking (opt-in) |
-| `USE_PIPELINE` | `false` | Pipeline and CI/CD jobs (opt-in) |
+| `USE_GITLAB_WIKI` | `true` | Wiki pages |
+| `USE_MILESTONE` | `true` | Milestone tracking |
+| `USE_PIPELINE` | `true` | Pipeline and CI/CD jobs |
 
 ## Next Steps
 

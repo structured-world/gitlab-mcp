@@ -59,9 +59,9 @@
     "format:check": "prettier --check \"**/*.{js,ts,json,md}\"",
     "list-tools": "node dist/src/cli/list-tools.js",
     "list-tools:dev": "node --env-file=.env.test -r source-map-support/register -r ts-node/register --experimental-specifier-resolution=node src/cli/list-tools.ts",
-    "docs:dev": "vitepress dev docs",
-    "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:dev": "DOCS_BASE=/ vitepress dev docs",
+    "docs:build": "DOCS_BASE=/ vitepress build docs",
+    "docs:preview": "DOCS_BASE=/ vitepress preview docs"
   },
   "dependencies": {
     "@clack/prompts": "1.0.0-alpha.9",

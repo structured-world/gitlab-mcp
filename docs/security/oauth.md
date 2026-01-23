@@ -191,6 +191,7 @@ When OAuth is enabled:
 | `/oauth/callback` | GET | GitLab callback (Auth Code Flow only) |
 | `/oauth/poll` | GET | Poll for completion (Device Flow only) |
 | `/token` | POST | Exchange code for tokens |
+| `/register` | POST | Dynamic Client Registration (RFC 7591) |
 | `/health` | GET | Health check |
 
 ## Troubleshooting

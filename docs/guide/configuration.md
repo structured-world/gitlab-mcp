@@ -58,9 +58,9 @@ Enable or disable tool groups:
 | `USE_WEBHOOKS` | Webhook management | `true` |
 | `USE_SNIPPETS` | Code snippet tools | `true` |
 | `USE_INTEGRATIONS` | Project integration tools | `true` |
-| `USE_GITLAB_WIKI` | Wiki page tools (opt-in) | `false` |
-| `USE_MILESTONE` | Milestone tools (opt-in) | `false` |
-| `USE_PIPELINE` | Pipeline and CI/CD job tools (opt-in) | `false` |
+| `USE_GITLAB_WIKI` | Wiki page tools | `true` |
+| `USE_MILESTONE` | Milestone tools | `true` |
+| `USE_PIPELINE` | Pipeline and CI/CD job tools | `true` |
 
 ## Server Configuration
 

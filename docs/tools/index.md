@@ -97,25 +97,21 @@ Each tool accepts an `action` parameter selecting the specific operation.
 | `list_integrations` | Query | List active project integrations |
 | `manage_integration` | Command | Get, update, disable integrations |
 
-### Opt-in Tool Groups
-
-The following groups are disabled by default to keep the tool count within client limits (e.g., Cursor's 40-tool cap). Enable them as needed.
-
-### Wiki (`USE_GITLAB_WIKI=true`, default: disabled)
+### Wiki (`USE_GITLAB_WIKI=true`, default: enabled)
 
 | Tool | Type | Description |
 |------|------|-------------|
 | `browse_wiki` | Query | List and get wiki pages |
 | `manage_wiki` | Command | Create, update, delete wiki pages |
 
-### Milestones (`USE_MILESTONE=true`, default: disabled)
+### Milestones (`USE_MILESTONE=true`, default: enabled)
 
 | Tool | Type | Description |
 |------|------|-------------|
 | `browse_milestones` | Query | List, get, issues, MRs, burndown |
 | `manage_milestone` | Command | Create, update, delete, promote |
 
-### Pipelines (`USE_PIPELINE=true`, default: disabled)
+### Pipelines (`USE_PIPELINE=true`, default: enabled)
 
 | Tool | Type | Description |
 |------|------|-------------|

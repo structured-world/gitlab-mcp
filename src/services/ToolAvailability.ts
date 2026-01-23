@@ -757,24 +757,32 @@ export class ToolAvailability {
    * @param toolName - Tool name to check parameter requirements for
    * @returns Array of parameter names that should be stripped from the schema
    */
-  public static getRestrictedParameters(toolName: string): string[] {
+  public static getRestrictedParameters(
+    toolName: string,
+    cachedInstanceInfo?: { tier: GitLabTier; version: string }
+  ): string[] {
     const paramReqs = this.parameterRequirements[toolName];
     if (!paramReqs) return [];
-
-    const connectionManager = ConnectionManager.getInstance();
 
     let instanceTier: GitLabTier;
     let instanceVersion: number;
     let rawVersion: string;
 
-    try {
-      const instanceInfo = connectionManager.getInstanceInfo();
-      instanceTier = instanceInfo.tier;
-      rawVersion = instanceInfo.version;
+    if (cachedInstanceInfo) {
+      instanceTier = cachedInstanceInfo.tier;
+      rawVersion = cachedInstanceInfo.version;
       instanceVersion = parseVersion(rawVersion);
-    } catch {
-      // Connection not initialized - don't restrict anything
-      return [];
+    } else {
+      const connectionManager = ConnectionManager.getInstance();
+      try {
+        const instanceInfo = connectionManager.getInstanceInfo();
+        instanceTier = instanceInfo.tier;
+        rawVersion = instanceInfo.version;
+        instanceVersion = parseVersion(rawVersion);
+      } catch {
+        // Connection not initialized - don't restrict anything
+        return [];
+      }
     }
 
     const restricted: string[] = [];

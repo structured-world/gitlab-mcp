@@ -52,6 +52,8 @@ import {
   getToolDescriptionOverrides,
 } from "./config";
 import { ToolAvailability } from "./services/ToolAvailability";
+import { ConnectionManager } from "./services/ConnectionManager";
+import type { GitLabTier } from "./services/GitLabVersionDetector";
 import { logger } from "./logger";
 import {
   transformToolSchema,
@@ -270,6 +272,15 @@ class RegistryManager {
   private buildToolLookupCache(): void {
     this.toolLookupCache.clear();
 
+    // Pre-fetch instance info once per cache build to avoid redundant calls
+    let instanceInfo: { tier: GitLabTier; version: string } | undefined;
+    try {
+      const info = ConnectionManager.getInstance().getInstanceInfo();
+      instanceInfo = { tier: info.tier, version: info.version };
+    } catch {
+      // Connection not initialized - parameter restrictions won't apply
+    }
+
     for (const registry of this.registries.values()) {
       for (const [toolName, tool] of registry) {
         // Apply GITLAB_READ_ONLY_MODE filtering at registry level
@@ -304,8 +315,8 @@ class RegistryManager {
         // Transform schema to remove denied actions and apply description overrides
         let transformedSchema = transformToolSchema(toolName, tool.inputSchema);
 
-        // Strip tier-restricted parameters from schema
-        const restrictedParams = ToolAvailability.getRestrictedParameters(toolName);
+        // Strip tier-restricted parameters from schema (reuse pre-fetched instance info)
+        const restrictedParams = ToolAvailability.getRestrictedParameters(toolName, instanceInfo);
         if (restrictedParams.length > 0) {
           transformedSchema = stripTierRestrictedParameters(transformedSchema, restrictedParams);
         }
@@ -363,9 +374,10 @@ class RegistryManager {
   }
 
   /**
-   * Clear all caches and rebuild
+   * Clear all caches and rebuild (e.g., after ConnectionManager init provides tier/version)
    */
   public refreshCache(): void {
+    this.toolDefinitionsCache = null;
     this.buildToolLookupCache();
   }
 

@@ -406,8 +406,16 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const workItemTitle = title;
             const workItemTypeName = workItemType;
 
-            // Validate widget parameters against instance version/tier
-            const widgetParams = { description, assigneeIds, labelIds, milestoneId };
+            // Validate widget parameters against instance version/tier.
+            // Only include array-based widgets when non-empty, matching the
+            // conditions used when building the GraphQL input below.
+            const widgetParams: Record<string, unknown> = { description, milestoneId };
+            if (assigneeIds && assigneeIds.length > 0) {
+              widgetParams.assigneeIds = assigneeIds;
+            }
+            if (labelIds && labelIds.length > 0) {
+              widgetParams.labelIds = labelIds;
+            }
             const validationFailure = WidgetAvailability.validateWidgetParams(widgetParams);
             if (validationFailure) {
               throw new StructuredToolError(

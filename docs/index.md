@@ -5,6 +5,9 @@ hero:
   name: GitLab MCP
   text: Model Context Protocol Server
   tagline: Connect AI agents to GitLab with 47 tools across 17 entity types
+  image:
+    src: /logo-hero.png
+    alt: GitLab MCP Logo
   actions:
     - theme: brand
       text: Get Started

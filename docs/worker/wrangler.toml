@@ -1,0 +1,11 @@
+name = "gitlab-mcp-docs-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+routes = [
+  { pattern = "docs.gitlab-mcp.sw.foundation/api/*", zone_name = "sw.foundation" }
+]
+
+[[kv_namespaces]]
+binding = "RATE_LIMIT_KV"
+id = "67e3b42cfafe492bbc8bbb17fe5c6b8b"

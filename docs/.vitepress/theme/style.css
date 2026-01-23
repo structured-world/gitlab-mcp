@@ -1,0 +1,45 @@
+/**
+ * Custom theme overrides for wider content layout on large screens.
+ */
+
+/* Widen the doc content area on large screens */
+@media (min-width: 1440px) {
+  .VPDoc .container {
+    max-width: 1104px;
+  }
+
+  .VPDoc:not(.has-aside) .container {
+    max-width: 1104px;
+  }
+
+  .VPDoc:not(.has-aside) .container > .content {
+    max-width: 900px;
+  }
+}
+
+@media (min-width: 1600px) {
+  .VPDoc .container {
+    max-width: 1280px;
+  }
+
+  .VPDoc:not(.has-aside) .container {
+    max-width: 1280px;
+  }
+
+  .VPDoc:not(.has-aside) .container > .content {
+    max-width: 1040px;
+  }
+}
+
+/* Hero image sizing */
+.VPHero .image-container .image-src {
+  max-width: 320px;
+  max-height: 320px;
+}
+
+@media (min-width: 960px) {
+  .VPHero .image-container .image-src {
+    max-width: 400px;
+    max-height: 400px;
+  }
+}

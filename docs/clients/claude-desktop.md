@@ -1,0 +1,103 @@
+# Claude Desktop
+
+Configure GitLab MCP for [Claude Desktop](https://claude.ai/download).
+
+## Auto-Setup
+
+```bash
+npx @structured-world/gitlab-mcp install --claude-desktop
+```
+
+## Detection
+
+| Method | Details |
+|--------|---------|
+| Type | macOS app bundle |
+| Bundle ID | `com.anthropic.claudefordesktop` |
+| Auto-detected | Yes (when app is installed) |
+
+## Config File Location
+
+| OS | Path |
+|----|------|
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Windows | `%APPDATA%\Claude\claude_desktop_config.json` |
+| Linux | `~/.config/claude/claude_desktop_config.json` |
+
+## Configuration
+
+Add to your `claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "npx",
+      "args": ["-y", "@structured-world/gitlab-mcp"],
+      "env": {
+        "GITLAB_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx",
+        "GITLAB_API_URL": "https://gitlab.com"
+      }
+    }
+  }
+}
+```
+
+## Docker (stdio)
+
+To run via Docker instead of npx:
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-e", "GITLAB_TOKEN",
+        "-e", "GITLAB_API_URL",
+        "ghcr.io/structured-world/gitlab-mcp:latest"
+      ],
+      "env": {
+        "GITLAB_TOKEN": "glpat-xxxxxxxxxxxxxxxxxxxx",
+        "GITLAB_API_URL": "https://gitlab.com"
+      }
+    }
+  }
+}
+```
+
+## Remote Server
+
+Connect to a running GitLab MCP HTTP server:
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "type": "streamable-http",
+      "url": "http://localhost:3333/mcp"
+    }
+  }
+}
+```
+
+## Verification
+
+1. Open Claude Desktop
+2. Check the MCP indicator (hammer icon) in the bottom-left
+3. Click it to see connected servers
+4. "gitlab" should appear with available tools listed
+
+## Troubleshooting
+
+- **Server not appearing**: Restart Claude Desktop after config changes
+- **"Command not found"**: Ensure Node.js >= 24 is installed and `npx` is in PATH
+- **Connection errors**: Check token scopes (`api`, `read_user`)
+- **Config file not found**: Create the file and parent directories if they don't exist
+
+## See Also
+
+- [Quick Start](/guide/quick-start)
+- [Configuration reference](/guide/configuration)
+- [Troubleshooting](/troubleshooting/clients)

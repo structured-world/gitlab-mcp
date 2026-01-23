@@ -2,6 +2,13 @@
 
 Run GitLab MCP Server as a Docker container.
 
+::: tip
+For detailed deployment options (standalone, PostgreSQL, Compose), see [Deployment](/deployment/). For guided Docker setup, run:
+```bash
+npx @structured-world/gitlab-mcp docker init
+```
+:::
+
 ## stdio Mode
 
 For direct MCP communication (CLI tools, Claude Desktop):

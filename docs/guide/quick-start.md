@@ -2,6 +2,13 @@
 
 Get GitLab MCP Server running with your AI agent in under a minute.
 
+::: tip Recommended
+Use the [Setup Wizard](/guide/installation/wizard) for guided configuration:
+```bash
+npx @structured-world/gitlab-mcp setup
+```
+:::
+
 ## 1. Get a GitLab Token
 
 Create a [Personal Access Token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html) with `api` and `read_user` scopes.
@@ -59,6 +66,9 @@ Enable or disable tool groups:
 
 ## Next Steps
 
-- [Detailed installation options](/guide/installation/npm)
+- [Setup Wizard](/guide/installation/wizard) — interactive guided setup
+- [Supported Clients](/clients/) — per-client configuration guides
+- [Deployment Options](/deployment/) — local vs Docker vs server
 - [All environment variables](/guide/configuration)
+- [CLI Reference](/cli/) — all available commands
 - [OAuth for teams](/security/oauth)

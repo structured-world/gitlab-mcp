@@ -268,6 +268,7 @@ describe("Workitems Registry - CQRS Tools", () => {
   describe("Handler Tests", () => {
     beforeEach(() => {
       mockClient.request.mockReset();
+      mockValidateWidgetParams.mockClear();
     });
 
     // Helper function to create complete mock work items

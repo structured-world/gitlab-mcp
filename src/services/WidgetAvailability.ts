@@ -114,14 +114,8 @@ export class WidgetAvailability {
         return true; // Available to all tiers
       }
 
-      const tierHierarchy: Record<GitLabTier, number> = {
-        free: 0,
-        premium: 1,
-        ultimate: 2,
-      };
-
-      const requiredTierLevel = tierHierarchy[requirement.tier as GitLabTier];
-      const actualTierLevel = tierHierarchy[instanceInfo.tier];
+      const requiredTierLevel = TIER_HIERARCHY[requirement.tier];
+      const actualTierLevel = TIER_HIERARCHY[instanceInfo.tier];
 
       return actualTierLevel >= requiredTierLevel;
     } catch {
@@ -166,6 +160,10 @@ export class WidgetAvailability {
     }
 
     const parsedVersion = parseVersion(instanceVersion);
+    if (parsedVersion === 0) {
+      // Version undetectable - skip validation rather than blocking all params
+      return null;
+    }
 
     for (const [paramName, paramValue] of Object.entries(params)) {
       // Skip undefined/null parameters (not provided by user)

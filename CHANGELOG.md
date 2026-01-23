@@ -1,3 +1,9 @@
+## [6.32.0](https://github.com/structured-world/gitlab-mcp/compare/v6.31.2...v6.32.0) (2026-01-23)
+
+### Features
+
+* **availability:** use WidgetAvailability for version-based widget validation ([#140](https://github.com/structured-world/gitlab-mcp/issues/140)) ([66e0215](https://github.com/structured-world/gitlab-mcp/commit/66e0215d08d25afa90cb9463113c1a59e06dc6c9)), closes [#137](https://github.com/structured-world/gitlab-mcp/issues/137) [#132](https://github.com/structured-world/gitlab-mcp/issues/132) [#129](https://github.com/structured-world/gitlab-mcp/issues/129) [#135](https://github.com/structured-world/gitlab-mcp/issues/135)
+
 ## [6.31.2](https://github.com/structured-world/gitlab-mcp/compare/v6.31.1...v6.31.2) (2026-01-23)
 
 ### Bug Fixes

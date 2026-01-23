@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted } from "vue";
 import { useRoute } from "vitepress";
-import { CATEGORIES, MIN_DESCRIPTION_LENGTH } from "../../../functions/api/utils";
+
+const MIN_DESCRIPTION_LENGTH = 10;
+
+const CATEGORIES = [
+  "Documentation is wrong/outdated",
+  "Tool not working as described",
+  "Missing information",
+  "Installation/setup issue",
+  "Other",
+];
 
 const route = useRoute();
 

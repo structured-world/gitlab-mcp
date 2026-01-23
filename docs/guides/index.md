@@ -8,6 +8,7 @@ Comprehensive walkthroughs for common GitLab MCP workflows.
 |-------|-------------|-----------|
 | [Complete Code Review](/guides/complete-code-review) | End-to-end MR review process | browse_merge_requests, manage_mr_discussion |
 | [Setup CI Notifications](/guides/setup-ci-notifications) | Pipeline alerts via Slack/Discord/webhooks | manage_webhook, manage_integration |
+| [Automate Releases](/guides/automate-releases) | Release workflow with changelogs | manage_release, browse_commits |
 | [Multi-GitLab Setup](/guides/multi-gitlab-setup) | Multiple instances with presets | manage_context |
 | [Team Onboarding](/guides/team-onboarding) | Getting your team started | browse_projects, manage_member |
 

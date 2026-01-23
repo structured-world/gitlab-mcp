@@ -121,6 +121,7 @@ export default defineConfig({
             { text: "Overview", link: "/guides/" },
             { text: "Complete Code Review", link: "/guides/complete-code-review" },
             { text: "Setup CI Notifications", link: "/guides/setup-ci-notifications" },
+            { text: "Automate Releases", link: "/guides/automate-releases" },
             { text: "Multi-GitLab Setup", link: "/guides/multi-gitlab-setup" },
             { text: "Team Onboarding", link: "/guides/team-onboarding" },
           ],

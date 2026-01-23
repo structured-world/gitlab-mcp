@@ -19,6 +19,13 @@ interface ActionRequirement {
 }
 
 /**
+ * Parameter-level tier/version requirement.
+ * Same structure as ActionRequirement; aliased for semantic clarity
+ * when used in parameterRequirements map.
+ */
+type ParameterRequirement = ActionRequirement;
+
+/**
  * Tool with action-level requirements (for consolidated tools)
  */
 interface ToolActionRequirements {
@@ -735,7 +742,7 @@ export class ToolAvailability {
    * Parameters listed here will be stripped from the JSON Schema when the
    * detected instance tier/version is insufficient.
    */
-  private static parameterRequirements: Record<string, Record<string, ActionRequirement>> = {
+  private static parameterRequirements: Record<string, Record<string, ParameterRequirement>> = {
     manage_work_item: {
       weight: { tier: "premium", minVersion: "15.0", notes: "Work item weight widget" },
       iterationId: { tier: "premium", minVersion: "15.0", notes: "Iteration widget" },
@@ -783,7 +790,7 @@ export class ToolAvailability {
 
     if (restricted.length > 0) {
       logger.debug(
-        `Tool '${toolName}': restricted parameters for ${instanceTier} tier: [${restricted.join(", ")}]`
+        `Tool '${toolName}': restricted parameters for tier=${instanceTier}, version=${instanceVersion}: [${restricted.join(", ")}]`
       );
     }
 

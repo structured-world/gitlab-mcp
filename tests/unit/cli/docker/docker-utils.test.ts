@@ -19,6 +19,7 @@ import {
   restartContainer,
   upgradeContainer,
   getLogs,
+  tailLogs,
   addInstance,
   removeInstance,
   initDockerConfig,
@@ -27,6 +28,7 @@ import {
 import {
   DockerConfig,
   GitLabInstance,
+  ContainerRuntimeInfo,
   DEFAULT_DOCKER_CONFIG,
 } from "../../../../src/cli/docker/types";
 import * as fs from "fs";
@@ -38,13 +40,39 @@ import { join } from "path";
 // Mock modules
 jest.mock("fs");
 jest.mock("child_process");
+jest.mock("../../../../src/cli/docker/container-runtime");
 
 const mockFs = fs as jest.Mocked<typeof fs>;
 const mockChildProcess = childProcess as jest.Mocked<typeof childProcess>;
 
+import { getContainerRuntime } from "../../../../src/cli/docker/container-runtime";
+const mockGetContainerRuntime = getContainerRuntime as jest.MockedFunction<
+  typeof getContainerRuntime
+>;
+
+// Default Docker runtime mock
+const dockerRuntime: ContainerRuntimeInfo = {
+  runtime: "docker",
+  runtimeCmd: "docker",
+  runtimeAvailable: true,
+  composeCmd: ["docker", "compose"],
+  runtimeVersion: "24.0.7",
+};
+
+// Podman runtime mock
+const podmanRuntime: ContainerRuntimeInfo = {
+  runtime: "podman",
+  runtimeCmd: "podman",
+  runtimeAvailable: true,
+  composeCmd: ["podman", "compose"],
+  runtimeVersion: "4.9.3",
+};
+
 describe("docker-utils", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    // Default: Docker runtime available with compose
+    mockGetContainerRuntime.mockReturnValue(dockerRuntime);
   });
 
   describe("expandPath", () => {
@@ -73,33 +101,18 @@ describe("docker-utils", () => {
   });
 
   describe("isDockerInstalled", () => {
-    it("should return true when docker is installed", () => {
-      mockChildProcess.spawnSync.mockReturnValue({
-        status: 0,
-        stdout: "Docker version 24.0.0",
-        stderr: "",
-        pid: 123,
-        output: [],
-        signal: null,
-      });
+    it("should return true when runtime has a version", () => {
+      mockGetContainerRuntime.mockReturnValue(dockerRuntime);
 
       const result = isDockerInstalled();
 
       expect(result).toBe(true);
-      expect(mockChildProcess.spawnSync).toHaveBeenCalledWith("docker", ["--version"], {
-        stdio: "pipe",
-        encoding: "utf8",
-      });
     });
 
-    it("should return false when docker is not installed", () => {
-      mockChildProcess.spawnSync.mockReturnValue({
-        status: 1,
-        stdout: "",
-        stderr: "command not found",
-        pid: 123,
-        output: [],
-        signal: null,
+    it("should return false when runtime has no version", () => {
+      mockGetContainerRuntime.mockReturnValue({
+        ...dockerRuntime,
+        runtimeVersion: undefined,
       });
 
       const result = isDockerInstalled();
@@ -107,45 +120,28 @@ describe("docker-utils", () => {
       expect(result).toBe(false);
     });
 
-    it("should return false when spawnSync throws an error", () => {
-      mockChildProcess.spawnSync.mockImplementation(() => {
-        throw new Error("spawn error");
-      });
+    it("should return true for podman runtime", () => {
+      mockGetContainerRuntime.mockReturnValue(podmanRuntime);
 
       const result = isDockerInstalled();
 
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
   });
 
   describe("isDockerRunning", () => {
-    it("should return true when docker daemon is running", () => {
-      mockChildProcess.spawnSync.mockReturnValue({
-        status: 0,
-        stdout: "",
-        stderr: "",
-        pid: 123,
-        output: [],
-        signal: null,
-      });
+    it("should return true when runtime is available", () => {
+      mockGetContainerRuntime.mockReturnValue(dockerRuntime);
 
       const result = isDockerRunning();
 
       expect(result).toBe(true);
-      expect(mockChildProcess.spawnSync).toHaveBeenCalledWith("docker", ["info"], {
-        stdio: "pipe",
-        encoding: "utf8",
-      });
     });
 
-    it("should return false when docker daemon is not running", () => {
-      mockChildProcess.spawnSync.mockReturnValue({
-        status: 1,
-        stdout: "",
-        stderr: "Cannot connect to Docker daemon",
-        pid: 123,
-        output: [],
-        signal: null,
+    it("should return false when runtime is not available", () => {
+      mockGetContainerRuntime.mockReturnValue({
+        ...dockerRuntime,
+        runtimeAvailable: false,
       });
 
       const result = isDockerRunning();
@@ -153,45 +149,28 @@ describe("docker-utils", () => {
       expect(result).toBe(false);
     });
 
-    it("should return false when spawnSync throws an error", () => {
-      mockChildProcess.spawnSync.mockImplementation(() => {
-        throw new Error("spawn error");
-      });
+    it("should return true for podman runtime when available", () => {
+      mockGetContainerRuntime.mockReturnValue(podmanRuntime);
 
       const result = isDockerRunning();
 
-      expect(result).toBe(false);
+      expect(result).toBe(true);
     });
   });
 
   describe("isComposeInstalled", () => {
-    it("should return true when docker compose is installed", () => {
-      mockChildProcess.spawnSync.mockReturnValue({
-        status: 0,
-        stdout: "Docker Compose version v2.0.0",
-        stderr: "",
-        pid: 123,
-        output: [],
-        signal: null,
-      });
+    it("should return true when composeCmd is set", () => {
+      mockGetContainerRuntime.mockReturnValue(dockerRuntime);
 
       const result = isComposeInstalled();
 
       expect(result).toBe(true);
-      expect(mockChildProcess.spawnSync).toHaveBeenCalledWith("docker", ["compose", "version"], {
-        stdio: "pipe",
-        encoding: "utf8",
-      });
     });
 
-    it("should return false when docker compose is not installed", () => {
-      mockChildProcess.spawnSync.mockReturnValue({
-        status: 1,
-        stdout: "",
-        stderr: "docker compose is not a docker command",
-        pid: 123,
-        output: [],
-        signal: null,
+    it("should return false when composeCmd is null", () => {
+      mockGetContainerRuntime.mockReturnValue({
+        ...dockerRuntime,
+        composeCmd: null,
       });
 
       const result = isComposeInstalled();
@@ -199,40 +178,15 @@ describe("docker-utils", () => {
       expect(result).toBe(false);
     });
 
-    it("should fall back to docker-compose v1 when v2 fails", () => {
-      // First call (docker compose) fails
-      mockChildProcess.spawnSync.mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr: "is not a docker command",
-        pid: 123,
-        output: [],
-        signal: null,
-      });
-      // Second call (docker-compose) succeeds
-      mockChildProcess.spawnSync.mockReturnValueOnce({
-        status: 0,
-        stdout: "docker-compose version 1.29.0",
-        stderr: "",
-        pid: 123,
-        output: [],
-        signal: null,
+    it("should return true for podman-compose", () => {
+      mockGetContainerRuntime.mockReturnValue({
+        ...podmanRuntime,
+        composeCmd: ["podman-compose"],
       });
 
       const result = isComposeInstalled();
 
       expect(result).toBe(true);
-      expect(mockChildProcess.spawnSync).toHaveBeenCalledTimes(2);
-    });
-
-    it("should return false when both v1 and v2 throw errors", () => {
-      mockChildProcess.spawnSync.mockImplementation(() => {
-        throw new Error("spawn error");
-      });
-
-      const result = isComposeInstalled();
-
-      expect(result).toBe(false);
     });
   });
 
@@ -369,59 +323,17 @@ describe("docker-utils", () => {
   });
 
   describe("getDockerStatus", () => {
-    it("should return full status with all checks", () => {
-      // Mock all checks to pass
-      mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
-        if (args?.[0] === "--version") {
-          return {
-            status: 0,
-            stdout: "Docker version",
-            stderr: "",
-            pid: 123,
-            output: [],
-            signal: null,
-          };
-        }
-        if (args?.[0] === "info") {
-          return {
-            status: 0,
-            stdout: "",
-            stderr: "",
-            pid: 123,
-            output: [],
-            signal: null,
-          };
-        }
-        if (args?.[0] === "compose") {
-          return {
-            status: 0,
-            stdout: "Docker Compose version",
-            stderr: "",
-            pid: 123,
-            output: [],
-            signal: null,
-          };
-        }
-        if (args?.[0] === "ps") {
-          return {
-            status: 0,
-            stdout: Buffer.from("[]"),
-            stderr: Buffer.from(""),
-            pid: 123,
-            output: [],
-            signal: null,
-          };
-        }
-        return {
-          status: 0,
-          stdout: "",
-          stderr: "",
-          pid: 123,
-          output: [],
-          signal: null,
-        };
+    it("should return full status from runtime info", () => {
+      mockGetContainerRuntime.mockReturnValue(dockerRuntime);
+      // getContainerInfo will be called since runtimeAvailable is true
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
       });
-
       mockFs.existsSync.mockReturnValue(false);
 
       const result = getDockerStatus();
@@ -429,6 +341,42 @@ describe("docker-utils", () => {
       expect(result.dockerInstalled).toBe(true);
       expect(result.dockerRunning).toBe(true);
       expect(result.composeInstalled).toBe(true);
+      expect(result.runtime).toBe(dockerRuntime);
+    });
+
+    it("should include runtime info for podman", () => {
+      mockGetContainerRuntime.mockReturnValue(podmanRuntime);
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = getDockerStatus();
+
+      expect(result.dockerInstalled).toBe(true);
+      expect(result.runtime?.runtime).toBe("podman");
+    });
+
+    it("should not query container when runtime unavailable", () => {
+      mockGetContainerRuntime.mockReturnValue({
+        ...dockerRuntime,
+        runtimeAvailable: false,
+        runtimeVersion: undefined,
+      });
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = getDockerStatus();
+
+      expect(result.dockerInstalled).toBe(false);
+      expect(result.dockerRunning).toBe(false);
+      expect(result.container).toBeUndefined();
+      // spawnSync should NOT be called for container check
+      expect(mockChildProcess.spawnSync).not.toHaveBeenCalled();
     });
   });
 
@@ -958,20 +906,11 @@ describe("docker-utils", () => {
     });
   });
 
-  describe("runComposeCommand - error paths", () => {
-    it("should fall back to docker-compose v1 when v2 fails", () => {
+  describe("runComposeCommand - runtime integration", () => {
+    it("should use compose command from runtime", () => {
       mockFs.existsSync.mockReturnValue(true);
-      // First call fails with "is not a docker command"
-      mockChildProcess.spawnSync.mockReturnValueOnce({
-        status: 1,
-        stdout: "",
-        stderr: "is not a docker command",
-        pid: 123,
-        output: [],
-        signal: null,
-      });
-      // Second call succeeds with docker-compose
-      mockChildProcess.spawnSync.mockReturnValueOnce({
+      mockGetContainerRuntime.mockReturnValue(dockerRuntime);
+      mockChildProcess.spawnSync.mockReturnValue({
         status: 0,
         stdout: "Success",
         stderr: "",
@@ -983,7 +922,51 @@ describe("docker-utils", () => {
       const result = startContainer();
 
       expect(result.success).toBe(true);
-      expect(mockChildProcess.spawnSync).toHaveBeenCalledTimes(2);
+      // Should call with "docker" and ["compose", "up", "-d"]
+      expect(mockChildProcess.spawnSync).toHaveBeenCalledWith(
+        "docker",
+        ["compose", "up", "-d"],
+        expect.any(Object)
+      );
+    });
+
+    it("should use podman-compose when runtime is podman with standalone compose", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockGetContainerRuntime.mockReturnValue({
+        ...podmanRuntime,
+        composeCmd: ["podman-compose"],
+      });
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 0,
+        stdout: "Success",
+        stderr: "",
+        pid: 123,
+        output: [],
+        signal: null,
+      });
+
+      const result = startContainer();
+
+      expect(result.success).toBe(true);
+      // Should call "podman-compose" with ["up", "-d"]
+      expect(mockChildProcess.spawnSync).toHaveBeenCalledWith(
+        "podman-compose",
+        ["up", "-d"],
+        expect.any(Object)
+      );
+    });
+
+    it("should return error when no compose tool is available", () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockGetContainerRuntime.mockReturnValue({
+        ...dockerRuntime,
+        composeCmd: null,
+      });
+
+      const result = startContainer();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("No compose tool available");
     });
 
     it("should return error when command fails", () => {
@@ -1013,6 +996,70 @@ describe("docker-utils", () => {
 
       expect(result.success).toBe(false);
       expect(result.error).toContain("Unexpected error");
+    });
+  });
+
+  describe("tailLogs", () => {
+    const mockProcess = { pid: 999 } as any;
+
+    it("should use compose command from runtime with follow mode", () => {
+      mockGetContainerRuntime.mockReturnValue(dockerRuntime);
+      mockChildProcess.spawn.mockReturnValue(mockProcess);
+
+      const result = tailLogs(true, 50);
+
+      expect(result).toBe(mockProcess);
+      expect(mockChildProcess.spawn).toHaveBeenCalledWith(
+        "docker",
+        ["compose", "logs", "-f", "--tail", "50"],
+        expect.objectContaining({ stdio: "inherit" })
+      );
+    });
+
+    it("should omit -f flag when follow is false", () => {
+      mockGetContainerRuntime.mockReturnValue(dockerRuntime);
+      mockChildProcess.spawn.mockReturnValue(mockProcess);
+
+      tailLogs(false, 200);
+
+      expect(mockChildProcess.spawn).toHaveBeenCalledWith(
+        "docker",
+        ["compose", "logs", "--tail", "200"],
+        expect.any(Object)
+      );
+    });
+
+    it("should use podman-compose when runtime is podman", () => {
+      mockGetContainerRuntime.mockReturnValue({
+        ...podmanRuntime,
+        composeCmd: ["podman-compose"],
+      });
+      mockChildProcess.spawn.mockReturnValue(mockProcess);
+
+      tailLogs(true, 100);
+
+      expect(mockChildProcess.spawn).toHaveBeenCalledWith(
+        "podman-compose",
+        ["logs", "-f", "--tail", "100"],
+        expect.any(Object)
+      );
+    });
+
+    it("should fallback to docker compose when composeCmd is null", () => {
+      mockGetContainerRuntime.mockReturnValue({
+        ...dockerRuntime,
+        composeCmd: null,
+      });
+      mockChildProcess.spawn.mockReturnValue(mockProcess);
+
+      tailLogs(true, 100);
+
+      // Falls back to ["docker", "compose"]
+      expect(mockChildProcess.spawn).toHaveBeenCalledWith(
+        "docker",
+        ["compose", "logs", "-f", "--tail", "100"],
+        expect.any(Object)
+      );
     });
   });
 });

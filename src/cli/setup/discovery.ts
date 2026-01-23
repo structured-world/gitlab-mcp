@@ -3,103 +3,27 @@
  * Discovers installed MCP clients, Docker environment, and existing configurations.
  */
 
-import { spawnSync } from "child_process";
 import { detectAllClients } from "../install/detector";
 import { DiscoveryResult } from "./types";
 import { DockerStatusResult } from "../docker/types";
+import { getContainerRuntime } from "../docker/container-runtime";
+import { getContainerInfo } from "../docker/docker-utils";
 
 /**
- * Detect Docker environment status.
- * Uses lightweight subprocess calls to check Docker availability.
+ * Detect container runtime environment status.
+ * Uses the shared container-runtime module for Docker/Podman detection.
  */
 function detectDocker(): DockerStatusResult {
-  try {
-    // Check if Docker is installed
-    const dockerVersion = spawnSync("docker", ["--version"], {
-      stdio: "pipe",
-      encoding: "utf8",
-    });
-    const dockerInstalled = dockerVersion.status === 0;
+  const runtime = getContainerRuntime();
 
-    if (!dockerInstalled) {
-      return {
-        dockerInstalled: false,
-        dockerRunning: false,
-        composeInstalled: false,
-        instances: [],
-      };
-    }
-
-    // Check if Docker daemon is running
-    const dockerInfo = spawnSync("docker", ["info"], {
-      stdio: "pipe",
-      encoding: "utf8",
-    });
-    const dockerRunning = dockerInfo.status === 0;
-
-    // Check Docker Compose (v2: `docker compose`, fallback to v1: `docker-compose`)
-    const composeV2 = spawnSync("docker", ["compose", "version"], {
-      stdio: "pipe",
-      encoding: "utf8",
-    });
-    let composeInstalled = composeV2.status === 0;
-
-    if (!composeInstalled) {
-      const composeV1 = spawnSync("docker-compose", ["--version"], {
-        stdio: "pipe",
-        encoding: "utf8",
-      });
-      composeInstalled = composeV1.status === 0;
-    }
-
-    // Check for gitlab-mcp container
-    let container: DockerStatusResult["container"];
-    if (dockerRunning) {
-      const containerCheck = spawnSync(
-        "docker",
-        [
-          "ps",
-          "-a",
-          "--filter",
-          "name=gitlab-mcp",
-          "--format",
-          "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}",
-        ],
-        { stdio: "pipe", encoding: "utf8" }
-      );
-
-      if (containerCheck.status === 0 && containerCheck.stdout.trim()) {
-        const line = containerCheck.stdout.trim().split("\n")[0];
-        const [id, name, image, status, ports] = line.split("|");
-        const isRunning = status?.toLowerCase().startsWith("up");
-
-        container = {
-          id: id ?? "",
-          name: name ?? "gitlab-mcp",
-          image: image ?? "",
-          status: isRunning ? "running" : "exited",
-          ports: ports ? ports.split(",").map(p => p.trim()) : [],
-          created: "",
-        };
-      }
-    }
-
-    return {
-      dockerInstalled,
-      dockerRunning,
-      composeInstalled,
-      container,
-      instances: [],
-    };
-  } catch {
-    // If child_process fails, return minimal result
-    return {
-      dockerInstalled: false,
-      dockerRunning: false,
-      composeInstalled: false,
-      instances: [],
-    };
-  }
+  return {
+    dockerInstalled: runtime.runtimeVersion !== undefined,
+    dockerRunning: runtime.runtimeAvailable,
+    composeInstalled: runtime.composeCmd !== null,
+    container: runtime.runtimeAvailable ? getContainerInfo() : undefined,
+    instances: [],
+    runtime,
+  };
 }
 
 /**
@@ -159,11 +83,12 @@ export function formatDiscoverySummary(result: DiscoveryResult): string {
   }
 
   if (result.docker.dockerInstalled) {
+    const runtimeLabel = result.docker.runtime?.runtime === "podman" ? "Podman" : "Docker";
     if (result.docker.container) {
       const status = result.docker.container.status === "running" ? "running" : "stopped";
-      parts.push(`Docker: container ${status}`);
+      parts.push(`${runtimeLabel}: container ${status}`);
     } else {
-      parts.push("Docker: installed, no container");
+      parts.push(`${runtimeLabel}: installed, no container`);
     }
   }
 

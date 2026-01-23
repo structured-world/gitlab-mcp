@@ -3,11 +3,14 @@
  */
 
 import { DiscoveryResult } from "../../../../src/cli/setup/types";
+import { ContainerRuntimeInfo } from "../../../../src/cli/docker/types";
 import { formatDiscoverySummary } from "../../../../src/cli/setup/discovery";
 
-// Mock child_process to prevent actual system calls
-jest.mock("child_process", () => ({
-  spawnSync: jest.fn().mockReturnValue({ status: 1, stdout: "", stderr: "" }),
+// Mock container-runtime module
+jest.mock("../../../../src/cli/docker/container-runtime");
+// Mock docker-utils getContainerInfo
+jest.mock("../../../../src/cli/docker/docker-utils", () => ({
+  getContainerInfo: jest.fn().mockReturnValue(undefined),
 }));
 
 // Mock detector to control client detection results
@@ -15,30 +18,52 @@ jest.mock("../../../../src/cli/install/detector", () => ({
   detectAllClients: jest.fn().mockReturnValue([]),
 }));
 
-import { spawnSync } from "child_process";
+import { getContainerRuntime } from "../../../../src/cli/docker/container-runtime";
+import { getContainerInfo } from "../../../../src/cli/docker/docker-utils";
 import { detectAllClients } from "../../../../src/cli/install/detector";
 
-const mockSpawnSync = spawnSync as jest.MockedFunction<typeof spawnSync>;
+const mockGetContainerRuntime = getContainerRuntime as jest.MockedFunction<
+  typeof getContainerRuntime
+>;
+const mockGetContainerInfo = getContainerInfo as jest.MockedFunction<typeof getContainerInfo>;
 const mockDetectAllClients = detectAllClients as jest.MockedFunction<typeof detectAllClients>;
+
+// Default: no runtime available
+const noRuntime: ContainerRuntimeInfo = {
+  runtime: "docker",
+  runtimeCmd: "docker",
+  runtimeAvailable: false,
+  composeCmd: null,
+  runtimeVersion: undefined,
+};
+
+const dockerRuntime: ContainerRuntimeInfo = {
+  runtime: "docker",
+  runtimeCmd: "docker",
+  runtimeAvailable: true,
+  composeCmd: ["docker", "compose"],
+  runtimeVersion: "24.0.7",
+};
+
+const podmanRuntime: ContainerRuntimeInfo = {
+  runtime: "podman",
+  runtimeCmd: "podman",
+  runtimeAvailable: true,
+  composeCmd: ["podman", "compose"],
+  runtimeVersion: "4.9.3",
+};
 
 describe("setup/discovery", () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockSpawnSync.mockReturnValue({
-      status: 1,
-      stdout: "",
-      stderr: "",
-      pid: 0,
-      output: [],
-      signal: null,
-    });
+    // Default: no runtime, no clients
+    mockGetContainerRuntime.mockReturnValue(noRuntime);
+    mockGetContainerInfo.mockReturnValue(undefined);
+    mockDetectAllClients.mockReturnValue([]);
   });
 
   describe("runDiscovery", () => {
-    it("should return empty discovery when no clients or docker detected", async () => {
-      mockDetectAllClients.mockReturnValue([]);
-
-      // Re-import to use mocked dependencies
+    it("should return empty discovery when no clients or runtime detected", async () => {
       const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
       const result = runDiscovery();
 
@@ -81,33 +106,9 @@ describe("setup/discovery", () => {
       expect(result.summary.hasExistingSetup).toBe(true);
     });
 
-    it("should detect Docker environment when Docker is installed", async () => {
-      mockDetectAllClients.mockReturnValue([]);
-
-      // Mock Docker commands to succeed
-      mockSpawnSync.mockImplementation((command, args) => {
-        const cmd = `${command} ${(args as string[]).join(" ")}`;
-        if (cmd.includes("--version")) {
-          return {
-            status: 0,
-            stdout: "Docker version 24.0.0",
-            stderr: "",
-            pid: 0,
-            output: [],
-            signal: null,
-          };
-        }
-        if (cmd.includes("info")) {
-          return { status: 0, stdout: "running", stderr: "", pid: 0, output: [], signal: null };
-        }
-        if (cmd.includes("compose version")) {
-          return { status: 0, stdout: "v2.20.0", stderr: "", pid: 0, output: [], signal: null };
-        }
-        if (cmd.includes("ps")) {
-          return { status: 0, stdout: "", stderr: "", pid: 0, output: [], signal: null };
-        }
-        return { status: 1, stdout: "", stderr: "", pid: 0, output: [], signal: null };
-      });
+    it("should detect Docker runtime when available", async () => {
+      mockGetContainerRuntime.mockReturnValue(dockerRuntime);
+      mockGetContainerInfo.mockReturnValue(undefined);
 
       const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
       const result = runDiscovery();
@@ -115,49 +116,48 @@ describe("setup/discovery", () => {
       expect(result.docker.dockerInstalled).toBe(true);
       expect(result.docker.dockerRunning).toBe(true);
       expect(result.docker.composeInstalled).toBe(true);
+      expect(result.docker.runtime?.runtime).toBe("docker");
     });
 
-    it("should detect docker-compose v1 when v2 is not available", async () => {
-      mockDetectAllClients.mockReturnValue([]);
+    it("should detect Podman runtime", async () => {
+      mockGetContainerRuntime.mockReturnValue(podmanRuntime);
+      mockGetContainerInfo.mockReturnValue(undefined);
 
-      mockSpawnSync.mockImplementation((command, args) => {
-        const cmd = `${command} ${(args as string[]).join(" ")}`;
-        if (cmd.includes("--version") && !cmd.includes("compose")) {
-          return {
-            status: 0,
-            stdout: "Docker version 24.0.0",
-            stderr: "",
-            pid: 0,
-            output: [],
-            signal: null,
-          };
-        }
-        if (cmd.includes("info")) {
-          return { status: 0, stdout: "running", stderr: "", pid: 0, output: [], signal: null };
-        }
-        if (cmd.includes("compose version")) {
-          return { status: 1, stdout: "", stderr: "not found", pid: 0, output: [], signal: null };
-        }
-        if (command === "docker-compose") {
-          return {
-            status: 0,
-            stdout: "docker-compose version 1.29.2",
-            stderr: "",
-            pid: 0,
-            output: [],
-            signal: null,
-          };
-        }
-        if (cmd.includes("ps")) {
-          return { status: 0, stdout: "", stderr: "", pid: 0, output: [], signal: null };
-        }
-        return { status: 1, stdout: "", stderr: "", pid: 0, output: [], signal: null };
+      const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
+      const result = runDiscovery();
+
+      expect(result.docker.dockerInstalled).toBe(true);
+      expect(result.docker.dockerRunning).toBe(true);
+      expect(result.docker.runtime?.runtime).toBe("podman");
+    });
+
+    it("should include container info when runtime is available", async () => {
+      mockGetContainerRuntime.mockReturnValue(dockerRuntime);
+      mockGetContainerInfo.mockReturnValue({
+        id: "abc123",
+        name: "gitlab-mcp",
+        image: "ghcr.io/structured-world/gitlab-mcp:latest",
+        status: "running",
+        ports: ["3333:3333"],
+        created: "2024-01-01",
       });
 
       const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
       const result = runDiscovery();
 
-      expect(result.docker.composeInstalled).toBe(true);
+      expect(result.docker.container).toBeDefined();
+      expect(result.docker.container?.status).toBe("running");
+      expect(result.summary.containerExists).toBe(true);
+      expect(result.summary.hasExistingSetup).toBe(true);
+    });
+
+    it("should not call getContainerInfo when runtime is unavailable", async () => {
+      mockGetContainerRuntime.mockReturnValue(noRuntime);
+
+      const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
+      runDiscovery();
+
+      expect(mockGetContainerInfo).not.toHaveBeenCalled();
     });
   });
 
@@ -234,6 +234,7 @@ describe("setup/discovery", () => {
             created: "",
           },
           instances: [],
+          runtime: dockerRuntime,
         },
         summary: {
           hasExistingSetup: true,
@@ -248,6 +249,29 @@ describe("setup/discovery", () => {
       expect(formatted).toContain("Docker: container running");
     });
 
+    it("should show Podman label when runtime is podman", () => {
+      const result: DiscoveryResult = {
+        clients: { detected: [], configured: [], unconfigured: [] },
+        docker: {
+          dockerInstalled: true,
+          dockerRunning: true,
+          composeInstalled: true,
+          instances: [],
+          runtime: podmanRuntime,
+        },
+        summary: {
+          hasExistingSetup: false,
+          clientCount: 0,
+          configuredCount: 0,
+          dockerRunning: true,
+          containerExists: false,
+        },
+      };
+
+      const formatted = formatDiscoverySummary(result);
+      expect(formatted).toContain("Podman: installed, no container");
+    });
+
     it("should show Docker installed without container", () => {
       const result: DiscoveryResult = {
         clients: { detected: [], configured: [], unconfigured: [] },
@@ -256,6 +280,7 @@ describe("setup/discovery", () => {
           dockerRunning: true,
           composeInstalled: true,
           instances: [],
+          runtime: dockerRuntime,
         },
         summary: {
           hasExistingSetup: false,

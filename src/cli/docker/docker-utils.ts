@@ -18,6 +18,7 @@ import {
   DEFAULT_DOCKER_CONFIG,
   getConfigDir,
 } from "./types";
+import { getContainerRuntime } from "./container-runtime";
 import { expandPath } from "../utils/path-utils.js";
 
 // Re-export expandPath for backwards compatibility with existing imports
@@ -31,60 +32,27 @@ export function getExpandedConfigDir(): string {
 }
 
 /**
- * Check if Docker is installed
+ * Check if a container runtime (Docker/Podman) is installed
  */
 export function isDockerInstalled(): boolean {
-  try {
-    const result = spawnSync("docker", ["--version"], {
-      stdio: "pipe",
-      encoding: "utf8",
-    });
-    return result.status === 0;
-  } catch {
-    return false;
-  }
+  const runtime = getContainerRuntime();
+  return runtime.runtimeVersion !== undefined;
 }
 
 /**
- * Check if Docker daemon is running
+ * Check if the container runtime daemon is running
  */
 export function isDockerRunning(): boolean {
-  try {
-    const result = spawnSync("docker", ["info"], {
-      stdio: "pipe",
-      encoding: "utf8",
-    });
-    return result.status === 0;
-  } catch {
-    return false;
-  }
+  const runtime = getContainerRuntime();
+  return runtime.runtimeAvailable;
 }
 
 /**
- * Check if Docker Compose is installed
+ * Check if a compose tool is available for the detected runtime
  */
 export function isComposeInstalled(): boolean {
-  // Try docker compose (v2)
-  try {
-    const result = spawnSync("docker", ["compose", "version"], {
-      stdio: "pipe",
-      encoding: "utf8",
-    });
-    if (result.status === 0) return true;
-  } catch {
-    // Continue to try docker-compose
-  }
-
-  // Try docker-compose (v1)
-  try {
-    const result = spawnSync("docker-compose", ["--version"], {
-      stdio: "pipe",
-      encoding: "utf8",
-    });
-    return result.status === 0;
-  } catch {
-    return false;
-  }
+  const runtime = getContainerRuntime();
+  return runtime.composeCmd !== null;
 }
 
 /**
@@ -108,8 +76,9 @@ export function getContainerInfo(containerName: string = "gitlab-mcp"): Containe
   }
 
   try {
+    const runtime = getContainerRuntime();
     const result = spawnSync(
-      "docker",
+      runtime.runtimeCmd,
       [
         "ps",
         "-a",
@@ -177,20 +146,18 @@ export function getContainerInfo(containerName: string = "gitlab-mcp"): Containe
  * Get Docker status
  */
 export function getDockerStatus(containerName: string = "gitlab-mcp"): DockerStatusResult {
+  const runtime = getContainerRuntime();
+
   const result: DockerStatusResult = {
-    dockerInstalled: isDockerInstalled(),
-    dockerRunning: false,
-    composeInstalled: false,
+    dockerInstalled: runtime.runtimeVersion !== undefined,
+    dockerRunning: runtime.runtimeAvailable,
+    composeInstalled: runtime.composeCmd !== null,
     instances: [],
+    runtime,
   };
 
-  if (result.dockerInstalled) {
-    result.dockerRunning = isDockerRunning();
-    result.composeInstalled = isComposeInstalled();
-
-    if (result.dockerRunning) {
-      result.container = getContainerInfo(containerName);
-    }
+  if (result.dockerRunning) {
+    result.container = getContainerInfo(containerName);
   }
 
   // Load instances from config
@@ -343,22 +310,24 @@ export function runComposeCommand(args: string[], configDir?: string): DockerCom
     };
   }
 
+  const runtime = getContainerRuntime();
+  if (!runtime.composeCmd) {
+    return {
+      success: false,
+      error: "No compose tool available. Install docker-compose or podman-compose.",
+    };
+  }
+
   try {
-    // Try docker compose v2 first
-    let result = spawnSync("docker", ["compose", ...args], {
+    // Use the detected compose command
+    const [composeExe, ...composePrefix] = runtime.composeCmd;
+    const fullArgs = [...composePrefix, ...args];
+
+    const result = spawnSync(composeExe, fullArgs, {
       cwd,
       stdio: "pipe",
       encoding: "utf8",
     });
-
-    // Fall back to docker-compose v1 if v2 fails
-    if (result.status !== 0 && result.stderr?.includes("is not a docker command")) {
-      result = spawnSync("docker-compose", args, {
-        cwd,
-        stdio: "pipe",
-        encoding: "utf8",
-      });
-    }
 
     if (result.status === 0) {
       return {
@@ -417,7 +386,13 @@ export function upgradeContainer(): DockerCommandResult {
  */
 export function tailLogs(follow: boolean = true, lines: number = 100): ChildProcess {
   const configDir = getExpandedConfigDir();
-  const args = ["compose", "logs"];
+  const runtime = getContainerRuntime();
+
+  // Fallback to "docker compose" if no compose detected (will fail gracefully)
+  const composeCmd = runtime.composeCmd ?? ["docker", "compose"];
+  const [composeExe, ...composePrefix] = composeCmd;
+
+  const args = [...composePrefix, "logs"];
 
   if (follow) {
     args.push("-f");
@@ -425,7 +400,7 @@ export function tailLogs(follow: boolean = true, lines: number = 100): ChildProc
 
   args.push("--tail", String(lines));
 
-  return spawn("docker", args, {
+  return spawn(composeExe, args, {
     cwd: configDir,
     stdio: "inherit",
   });

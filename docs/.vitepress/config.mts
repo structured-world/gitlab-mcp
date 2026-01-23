@@ -8,6 +8,8 @@ export default defineConfig({
   base,
 
   themeConfig: {
+    logo: "/logo.png",
+
     nav: [
       { text: "Guide", link: "/guide/" },
       { text: "Tools", link: "/tools/" },

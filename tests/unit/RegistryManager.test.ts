@@ -323,6 +323,52 @@ describe("RegistryManager", () => {
       expect(names).toContain("core_tool_1");
       expect(names).not.toContain("unavailable_tool");
     });
+
+    it("should strip tier-restricted parameters from tool schema", () => {
+      // Add a tool with properties to test parameter stripping
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+      coreRegistry.set("tool_with_params", {
+        name: "tool_with_params",
+        description: "Tool with tier-gated params",
+        inputSchema: {
+          type: "object",
+          properties: {
+            action: { type: "string", enum: ["create"] },
+            title: { type: "string" },
+            weight: { type: "number", description: "Premium param" },
+            healthStatus: { type: "string", description: "Ultimate param" },
+          },
+          required: ["action", "title", "weight"],
+        },
+        handler: jest.fn(),
+      });
+
+      // Make getRestrictedParameters return restricted params for this tool
+      ToolAvailability.getRestrictedParameters.mockImplementation((toolName: string) =>
+        toolName === "tool_with_params" ? ["weight", "healthStatus"] : []
+      );
+
+      (RegistryManager as any).instance = null;
+      registryManager = RegistryManager.getInstance();
+
+      const tool = registryManager.getTool("tool_with_params");
+      expect(tool).toBeDefined();
+
+      const schema = tool?.inputSchema as any;
+
+      // Restricted properties should be removed
+      expect(schema.properties?.weight).toBeUndefined();
+      expect(schema.properties?.healthStatus).toBeUndefined();
+
+      // Non-restricted properties should remain
+      expect(schema.properties?.action).toBeDefined();
+      expect(schema.properties?.title).toBeDefined();
+
+      // weight was in required, should be removed
+      expect(schema.required).not.toContain("weight");
+      expect(schema.required).toContain("action");
+      expect(schema.required).toContain("title");
+    });
   });
 
   describe("Description Overrides", () => {

@@ -897,5 +897,61 @@ describe("schema-utils", () => {
       expect(result.properties?.action).toBeDefined();
       expect(result.properties?.weight).toBeDefined();
     });
+
+    it("should handle schema without properties object", () => {
+      // Edge case: schema branch with no properties at all
+      const noPropsSchema: TestJSONSchema = { type: "object" };
+
+      const result = stripTierRestrictedParameters(noPropsSchema as any, ["weight"]);
+
+      // Should return schema unchanged (no crash)
+      expect(result.type).toBe("object");
+      expect(result.properties).toBeUndefined();
+    });
+
+    it("should handle schema without required array", () => {
+      // Schema with properties but no required array
+      const noRequiredSchema: TestJSONSchema = {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          weight: { type: "number" },
+        },
+      };
+
+      const result = stripTierRestrictedParameters(noRequiredSchema as any, ["weight"]);
+
+      // Property should be removed, no crash on missing required
+      expect(result.properties?.weight).toBeUndefined();
+      expect(result.properties?.title).toBeDefined();
+      expect(result.required).toBeUndefined();
+    });
+
+    it("should handle discriminated union with branch missing properties", () => {
+      // oneOf branch without properties should not crash
+      const partialBranches: TestJSONSchema = {
+        oneOf: [
+          {
+            type: "object",
+            properties: {
+              action: { const: "create" },
+              weight: { type: "number" },
+            },
+            required: ["action"],
+          },
+          {
+            type: "object",
+            // No properties object in this branch
+          },
+        ],
+      };
+
+      const result = stripTierRestrictedParameters(partialBranches as any, ["weight"]);
+
+      expect(result.oneOf?.[0]?.properties?.weight).toBeUndefined();
+      expect(result.oneOf?.[0]?.properties?.action).toBeDefined();
+      // Second branch should remain unchanged
+      expect(result.oneOf?.[1]?.type).toBe("object");
+    });
   });
 });

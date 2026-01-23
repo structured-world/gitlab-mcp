@@ -52,9 +52,12 @@ import {
   getToolDescriptionOverrides,
 } from "./config";
 import { ToolAvailability } from "./services/ToolAvailability";
+import { ConnectionManager } from "./services/ConnectionManager";
+import type { GitLabTier } from "./services/GitLabVersionDetector";
 import { logger } from "./logger";
 import {
   transformToolSchema,
+  stripTierRestrictedParameters,
   shouldRemoveTool,
   extractActionsFromSchema,
 } from "./utils/schema-utils";
@@ -269,6 +272,15 @@ class RegistryManager {
   private buildToolLookupCache(): void {
     this.toolLookupCache.clear();
 
+    // Pre-fetch instance info once per cache build to avoid redundant calls
+    let instanceInfo: { tier: GitLabTier; version: string } | undefined;
+    try {
+      const info = ConnectionManager.getInstance().getInstanceInfo();
+      instanceInfo = { tier: info.tier, version: info.version };
+    } catch {
+      // Connection not initialized - parameter restrictions won't apply
+    }
+
     for (const registry of this.registries.values()) {
       for (const [toolName, tool] of registry) {
         // Apply GITLAB_READ_ONLY_MODE filtering at registry level
@@ -301,7 +313,15 @@ class RegistryManager {
         let finalTool = tool;
 
         // Transform schema to remove denied actions and apply description overrides
-        const transformedSchema = transformToolSchema(toolName, tool.inputSchema);
+        let transformedSchema = transformToolSchema(toolName, tool.inputSchema);
+
+        // Strip tier-restricted parameters from schema (skip if connection not initialized)
+        if (instanceInfo) {
+          const restrictedParams = ToolAvailability.getRestrictedParameters(toolName, instanceInfo);
+          if (restrictedParams.length > 0) {
+            transformedSchema = stripTierRestrictedParameters(transformedSchema, restrictedParams);
+          }
+        }
 
         // Apply tool-level description override if available
         const customDescription = this.descriptionOverrides.get(toolName);
@@ -356,10 +376,10 @@ class RegistryManager {
   }
 
   /**
-   * Clear all caches and rebuild
+   * Clear all caches and rebuild (e.g., after ConnectionManager init provides tier/version)
    */
   public refreshCache(): void {
-    this.buildToolLookupCache();
+    this.invalidateCaches();
   }
 
   /**

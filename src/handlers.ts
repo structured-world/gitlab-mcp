@@ -305,6 +305,10 @@ export async function setupHandlers(server: Server): Promise<void> {
 
           const instanceInfo = connectionManager.getInstanceInfo();
           logger.info(`Connection initialized: ${instanceInfo.version} ${instanceInfo.tier}`);
+
+          // Rebuild registry cache now that tier/version info is available
+          const { RegistryManager } = await import("./registry-manager");
+          RegistryManager.getInstance().refreshCache();
         } catch (initError) {
           logger.error(
             `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`

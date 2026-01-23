@@ -432,6 +432,63 @@ function filterFlatSchemaActions(schema: JSONSchema, toolName: string): JSONSche
 }
 
 // ============================================================================
+// Parameter-Level Tier Filtering
+// ============================================================================
+
+/**
+ * Strip tier-restricted parameters from a JSON Schema.
+ * Removes properties and their required entries for parameters that are
+ * unavailable at the current GitLab instance tier/version.
+ *
+ * Works with both flat schemas and discriminated unions (oneOf).
+ *
+ * @param schema - JSON schema (already transformed by the main pipeline)
+ * @param restrictedParams - Parameter names to remove from the schema
+ * @returns Schema with restricted parameters removed
+ */
+export function stripTierRestrictedParameters(
+  schema: JSONSchema,
+  restrictedParams: string[]
+): JSONSchema {
+  if (restrictedParams.length === 0) {
+    return schema;
+  }
+
+  // Deep clone to avoid mutating original
+  const result = JSON.parse(JSON.stringify(schema)) as JSONSchema;
+  const restrictedSet = new Set(restrictedParams);
+
+  if (result.oneOf) {
+    // Discriminated union: strip from each branch
+    for (const branch of result.oneOf) {
+      stripFromProperties(branch, restrictedSet);
+    }
+  } else {
+    // Flat schema: strip from top-level properties
+    stripFromProperties(result, restrictedSet);
+  }
+
+  return result;
+}
+
+/**
+ * Remove restricted parameters from a schema object's properties and required array
+ */
+function stripFromProperties(schema: JSONSchema, restrictedParams: Set<string>): void {
+  if (schema.properties) {
+    for (const paramName of restrictedParams) {
+      if (paramName in schema.properties) {
+        delete schema.properties[paramName];
+      }
+    }
+  }
+
+  if (schema.required) {
+    schema.required = schema.required.filter(name => !restrictedParams.has(name));
+  }
+}
+
+// ============================================================================
 // Utility Functions
 // ============================================================================
 

@@ -40,6 +40,15 @@ jest.mock("../../../src/services/ToolAvailability", () => ({
   ToolAvailability: {
     isToolAvailable: jest.fn().mockReturnValue(true),
     getUnavailableReason: jest.fn().mockReturnValue(""),
+    getRestrictedParameters: jest.fn().mockReturnValue([]),
+  },
+}));
+
+jest.mock("../../../src/services/ConnectionManager", () => ({
+  ConnectionManager: {
+    getInstance: jest.fn().mockReturnValue({
+      getInstanceInfo: jest.fn().mockReturnValue({ tier: "free", version: "17.0.0" }),
+    }),
   },
 }));
 

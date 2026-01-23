@@ -5,10 +5,7 @@ import { setupHandlers } from "./handlers";
 import { setDetectedSchemaMode } from "./utils/schema-utils";
 import { logger } from "./logger";
 
-/**
- * Default session idle timeout: 30 minutes.
- * Sessions without activity for this duration are automatically cleaned up.
- */
+/** Default session idle timeout: 30 minutes */
 const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 
 interface ManagedSession {

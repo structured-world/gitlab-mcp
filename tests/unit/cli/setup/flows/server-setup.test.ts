@@ -27,6 +27,16 @@ jest.mock("../../../../../src/cli/docker/docker-utils", () => ({
   startContainer: jest.fn().mockReturnValue({ success: true }),
 }));
 
+jest.mock("../../../../../src/cli/docker/container-runtime", () => ({
+  getContainerRuntime: jest.fn().mockReturnValue({
+    runtime: "docker",
+    runtimeCmd: "docker",
+    runtimeAvailable: true,
+    composeCmd: ["docker", "compose"],
+    runtimeVersion: "24.0.7",
+  }),
+}));
+
 jest.mock("../../../../../src/cli/docker/types", () => ({
   DEFAULT_DOCKER_CONFIG: { port: 3333, image: "ghcr.io/structured-world/gitlab-mcp:latest" },
 }));
@@ -78,7 +88,7 @@ describe("flows/server-setup", () => {
     const result = await runServerSetupFlow(discovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Docker not installed");
+    expect(result.error).toBe("Container runtime not installed");
   });
 
   it("should fail when Docker Compose is not installed", async () => {
@@ -90,7 +100,7 @@ describe("flows/server-setup", () => {
     const result = await runServerSetupFlow(discovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Docker Compose not installed");
+    expect(result.error).toBe("Compose tool not installed");
   });
 
   it("should return cancelled when deployment type is cancelled", async () => {

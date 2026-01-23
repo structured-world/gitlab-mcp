@@ -99,7 +99,11 @@ export async function runConfigureExistingFlow(discovery: DiscoveryResult): Prom
         spinner.stop("Failed");
         p.log.error(result.error ?? "Unknown error");
       }
-      return { success: result.success, mode: "configure-existing" };
+      return {
+        success: result.success,
+        mode: "configure-existing",
+        error: result.success ? undefined : (result.error ?? "Container operation failed"),
+      };
     }
 
     default:

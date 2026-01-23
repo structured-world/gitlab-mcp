@@ -7,6 +7,7 @@ import * as p from "@clack/prompts";
 import { randomBytes } from "crypto";
 import { DiscoveryResult, SetupResult, DockerDeploymentType } from "../types";
 import { initDockerConfig, startContainer } from "../../docker/docker-utils";
+import { getContainerRuntime } from "../../docker/container-runtime";
 import { DEFAULT_DOCKER_CONFIG } from "../../docker/types";
 import { runToolSelectionFlow, applyManualCategories } from "./tool-selection";
 
@@ -15,22 +16,27 @@ import { runToolSelectionFlow, applyManualCategories } from "./tool-selection";
  * Guides user through Docker deployment configuration.
  */
 export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<SetupResult> {
-  // Check Docker prerequisites
+  // Check container runtime prerequisites
   const status = discovery.docker;
+  const runtime = getContainerRuntime();
+  const runtimeLabel = runtime.runtime === "podman" ? "Podman" : "Docker";
 
   if (!status.dockerInstalled) {
-    p.log.error("Docker is not installed.");
-    p.note("Visit https://docs.docker.com/get-docker/ to install Docker.", "Install Docker");
-    return { success: false, mode: "server", error: "Docker not installed" };
+    p.log.error("No container runtime (Docker or Podman) is installed.");
+    p.note(
+      "Install Docker: https://docs.docker.com/get-docker/\nOr Podman: https://podman.io/getting-started/installation",
+      "Install Runtime"
+    );
+    return { success: false, mode: "server", error: "Container runtime not installed" };
   }
 
   if (!status.composeInstalled) {
-    p.log.error("Docker Compose is not installed.");
+    p.log.error(`No compose tool found for ${runtimeLabel}.`);
     p.note(
-      "Docker Compose is required. It's bundled with Docker Desktop,\nor install via: docker compose version",
+      `A compose tool is required.\nFor Docker: bundled with Docker Desktop or 'docker compose'\nFor Podman: install podman-compose`,
       "Install Compose"
     );
-    return { success: false, mode: "server", error: "Docker Compose not installed" };
+    return { success: false, mode: "server", error: "Compose tool not installed" };
   }
 
   // Step 1: Deployment type
@@ -120,8 +126,10 @@ export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<Se
     return { success: false, mode: "server", error: "Cancelled" };
   }
 
-  // Step 5: Create Docker configuration with tool selection applied
-  const toolEnv: Record<string, string> = {};
+  // Step 5: Create Docker configuration with tool selection and deployment type applied
+  const toolEnv: Record<string, string> = {
+    DEPLOYMENT_TYPE: deploymentType,
+  };
   if (toolConfig.mode === "preset" && toolConfig.preset) {
     toolEnv.GITLAB_PROFILE = toolConfig.preset;
   } else if (toolConfig.mode === "advanced" && toolConfig.envOverrides) {

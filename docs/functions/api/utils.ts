@@ -54,16 +54,18 @@ export function validateReport(
   const raw = data as Record<string, unknown>;
 
   // Honeypot check — must be empty
-  if (raw.honeypot && typeof raw.honeypot === "string" && raw.honeypot.trim() !== "") {
+  const honeypot = raw.honeypot;
+  if (typeof honeypot === "string" && honeypot.trim() !== "") {
     return { valid: false, error: "Invalid submission" };
   }
 
   // Required: description
-  if (!raw.description || typeof raw.description !== "string") {
+  const rawDescription = raw.description;
+  if (!rawDescription || typeof rawDescription !== "string") {
     return { valid: false, error: "Description is required" };
   }
 
-  const description = raw.description.trim();
+  const description = rawDescription.trim();
   if (description.length < MIN_DESCRIPTION_LENGTH) {
     return {
       valid: false,

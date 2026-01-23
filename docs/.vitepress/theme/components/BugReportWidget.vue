@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, nextTick, onMounted, onUnmounted } from "vue";
 import { useRoute } from "vitepress";
+import { CATEGORIES, MIN_DESCRIPTION_LENGTH } from "../../../functions/api/utils";
 
 const route = useRoute();
 
@@ -13,15 +14,9 @@ const category = ref("");
 const honeypot = ref("");
 const errorMessage = ref("");
 
-const categories = [
-  "Documentation is wrong/outdated",
-  "Tool not working as described",
-  "Missing information",
-  "Installation/setup issue",
-  "Other",
-];
+const categories = CATEGORIES;
 
-const isValid = computed(() => description.value.trim().length >= 10);
+const isValid = computed(() => description.value.trim().length >= MIN_DESCRIPTION_LENGTH);
 
 const currentPage = computed(() => route.path);
 
@@ -243,8 +238,11 @@ onUnmounted(() => {
             required
             :disabled="state === 'submitting'"
           />
-          <span v-if="description.length > 0 && description.trim().length < 10" class="field-hint">
-            At least 10 characters required
+          <span
+            v-if="description.length > 0 && description.trim().length < MIN_DESCRIPTION_LENGTH"
+            class="field-hint"
+          >
+            At least {{ MIN_DESCRIPTION_LENGTH }} characters required
           </span>
         </div>
 

@@ -113,7 +113,7 @@ function wrapInPkcs8(pkcs1: Uint8Array): ArrayBuffer {
   const octetString = wrapAsn1(0x04, pkcs1);
   const inner = concatBuffers(version, rsaOid, octetString);
   const pkcs8 = wrapAsn1(0x30, inner);
-  return pkcs8.buffer;
+  return pkcs8.buffer as ArrayBuffer;
 }
 
 function wrapAsn1(tag: number, content: Uint8Array): Uint8Array {

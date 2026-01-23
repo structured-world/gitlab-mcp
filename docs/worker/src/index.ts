@@ -1,5 +1,5 @@
 /**
- * Cloudflare Worker: API backend for docs.gitlab-mcp.sw.foundation
+ * Cloudflare Worker: API backend for gitlab-mcp.sw.foundation
  *
  * Handles POST /api/report-bug — creates GitHub issues from the docs feedback widget.
  * Deployed as a standalone Worker with a route rule that intercepts /api/* before GitHub Pages.

@@ -30,6 +30,8 @@ All MCP clients use a JSON configuration with the same structure:
 
 ### 1. Create a GitLab Token
 
+Follow the [Authentication Guide](/guide/authentication#create-token) for detailed steps, or briefly:
+
 1. Go to **Settings > Access Tokens** in your GitLab instance
 2. Create a token with `api` and `read_user` scopes
 3. Copy the token value

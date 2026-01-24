@@ -32,7 +32,7 @@ See [Installation Guide](/guide/installation/npm) for detailed instructions per 
 
 ### Personal Access Token
 
-Each developer needs a GitLab PAT with appropriate scopes:
+Each developer needs a [GitLab PAT](/guide/authentication#pat) with appropriate scopes:
 
 | Scope | Purpose |
 |-------|---------|

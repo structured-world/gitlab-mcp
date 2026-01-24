@@ -66,7 +66,7 @@ All configuration is via environment variables in the `env` object:
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GITLAB_TOKEN` | Yes | Personal Access Token |
+| `GITLAB_TOKEN` | Yes | [Personal Access Token](/guide/authentication#pat) |
 | `GITLAB_API_URL` | No | GitLab instance URL (default: `https://gitlab.com`) |
 | `GITLAB_PROJECT_ID` | No | Default project context |
 | `GITLAB_READ_ONLY_MODE` | No | Restrict to read-only tools |

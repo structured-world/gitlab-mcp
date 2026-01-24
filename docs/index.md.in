@@ -48,7 +48,7 @@ You must configure `GITLAB_TOKEN` in your MCP client settings before the server 
 ## Quick Start
 
 ::: tip Prerequisites
-Create a [GitLab Personal Access Token](https://docs.gitlab.com/user/profile/personal_access_tokens/) with `api,read_user` scopes (or `read_api,read_user` for read-only mode) and export it:
+Create a [GitLab Personal Access Token](/guide/authentication#pat) with `api,read_user` scopes (or `read_api,read_user` for read-only mode) and export it:
 ```bash
 export GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"
 ```

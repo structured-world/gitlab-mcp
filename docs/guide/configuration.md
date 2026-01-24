@@ -11,7 +11,7 @@ Complete reference for all environment variables.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `GITLAB_TOKEN` | GitLab personal access token | — |
+| `GITLAB_TOKEN` | [GitLab personal access token](/guide/authentication#pat) | — |
 | `GITLAB_API_URL` | GitLab instance URL | `https://gitlab.com` |
 | `GITLAB_AUTH_COOKIE_PATH` | Path to auth cookie file (cookie-based auth) | — |
 

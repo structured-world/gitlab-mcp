@@ -26,6 +26,7 @@ import {
   detectTokenScopes,
   logTokenScopeInfo,
   getToolScopeRequirements,
+  GitLabScope,
 } from "../../../src/services/TokenScopeDetector";
 import { enhancedFetch } from "../../../src/utils/fetch";
 
@@ -559,7 +560,7 @@ describe("ConnectionManager Enhanced Tests", () => {
     it("should return token scope info via getTokenScopeInfo()", async () => {
       const scopeInfo = {
         name: "my-token",
-        scopes: ["api"] as any,
+        scopes: ["api"] as GitLabScope[],
         expiresAt: "2027-01-01",
         active: true,
         tokenType: "personal_access_token" as const,
@@ -577,7 +578,7 @@ describe("ConnectionManager Enhanced Tests", () => {
     it("should call logTokenScopeInfo with dynamic tool count", async () => {
       const scopeInfo = {
         name: "my-token",
-        scopes: ["api"] as any,
+        scopes: ["api"] as GitLabScope[],
         expiresAt: null,
         active: true,
         tokenType: "personal_access_token" as const,

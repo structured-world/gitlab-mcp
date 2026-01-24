@@ -346,9 +346,10 @@ export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): voi
       logger.info("GraphQL introspection skipped (requires 'api' or 'read_api' scope)");
     }
 
+    const fixUrl = getTokenCreationUrl(GITLAB_BASE_URL);
     logger.info(
-      { url: getTokenCreationUrl(GITLAB_BASE_URL) },
-      `For full functionality, create a token with 'api' scope: ${getTokenCreationUrl(GITLAB_BASE_URL)}`
+      { url: fixUrl },
+      `For full functionality, create a token with 'api' scope: ${fixUrl}`
     );
   }
 }

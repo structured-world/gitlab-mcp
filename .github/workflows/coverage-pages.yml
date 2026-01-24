@@ -4,7 +4,7 @@
 # Actual deployment to GitHub Pages is handled by docs.yml workflow.
 #
 # Coverage reports on the live site:
-# https://structured-world.github.io/gitlab-mcp/coverage/
+# https://gitlab-mcp.sw.foundation/coverage/
 
 name: Coverage Report
 
@@ -82,7 +82,7 @@ jobs:
                 `| Functions | ${t.functions.pct}% |`,
                 `| Lines | ${t.lines.pct}% |`,
                 '',
-                '[View detailed coverage report](https://structured-world.github.io/gitlab-mcp/coverage/)',
+                '[View detailed coverage report](https://gitlab-mcp.sw.foundation/coverage/)',
               ].join('\n');
             } catch {
               summary = `## Test Coverage Report\n\n**Coverage:** ${{ steps.coverage.outputs.percentage }}%`;

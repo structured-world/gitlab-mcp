@@ -11,6 +11,10 @@ export default defineConfig({
   // Until first .mcpb release exists, the link is a dead link — safe to ignore.
   ignoreDeadLinks: [/\/downloads\/.+\.mcpb$/],
 
+  sitemap: {
+    hostname: "https://gitlab-mcp.sw.foundation",
+  },
+
   head: [
     ["link", { rel: "icon", type: "image/x-icon", href: "/favicon.ico" }],
     ["link", { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32x32.png" }],

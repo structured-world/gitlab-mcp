@@ -6,7 +6,7 @@ set -euo pipefail
 #
 # Updates:
 # - server.json: version + description (dynamic tool count)
-# - README.md: tool count references
+# - README.md: generated from README.md.in with actual counts
 # - .semantic-release-version: version file for CI
 
 VERSION="${1:?Usage: prepare-release.sh <version>}"
@@ -26,17 +26,14 @@ echo "prepare-release: v${VERSION}, ${TOOL_COUNT} tools (${READONLY_TOOL_COUNT} 
 
 # Update server.json: version + description
 jq --arg v "$VERSION" --arg tc "$TOOL_COUNT" \
-  '.version = $v | .packages[0].version = $v | .description = "GitLab MCP server with " + $tc + " tools for projects, MRs, pipelines, work items, and more"' \
+  '.version = $v | .packages[0].version = $v | .description = "GitLab MCP server with " + $tc + " tools for projects, MRs, pipelines, and more"' \
   server.json > server.tmp && mv server.tmp server.json
 
-# Update README.md: replace tool/entity counts
-# NOTE: Uses GNU sed (runs on ubuntu-latest in CI, NOT macOS)
-# Plain text: "NN tools across NN entity types"
-sed -i -E "s/([^*])[0-9]+ tools across [0-9]+ entity types/\1${TOOL_COUNT} tools across ${ENTITY_COUNT} entity types/g" README.md
-# Markdown bold: "**NN tools** across NN entity types"
-sed -i -E "s/\*\*[0-9]+ tools\*\* across [0-9]+ entity types/\*\*${TOOL_COUNT} tools\*\* across ${ENTITY_COUNT} entity types/g" README.md
-# "All NN tools"
-sed -i -E "s/All [0-9]+ tools/All ${TOOL_COUNT} tools/g" README.md
+# Generate README.md from template (replaces fragile regex patterns)
+sed -e "s/__TOOL_COUNT__/${TOOL_COUNT}/g" \
+    -e "s/__ENTITY_COUNT__/${ENTITY_COUNT}/g" \
+    -e "s/__READONLY_TOOL_COUNT__/${READONLY_TOOL_COUNT}/g" \
+    README.md.in > README.md
 
 # Write version file for CI
 echo "$VERSION" > .semantic-release-version

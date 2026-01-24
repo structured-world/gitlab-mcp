@@ -335,7 +335,9 @@ jobs:
           # Add mcpb package entry to server.json
           jq --arg url "$MCPB_URL" --arg sha "$SHA256" \
             '.packages += [{"registryType": "mcpb", "identifier": $url, "fileSha256": $sha, "transport": {"type": "stdio"}}]' \
-            server.json > server.tmp && mv server.tmp server.json
+            server.json > server.tmp
+          jq . server.tmp > /dev/null || { echo "Error: invalid JSON produced by jq"; exit 1; }
+          mv server.tmp server.json
 
           echo "Final server.json:"
           cat server.json

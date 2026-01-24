@@ -182,9 +182,21 @@ function getGitLabToken(): string | undefined {
   return GITLAB_TOKEN;
 }
 
-export function getAuthorizationHeader(): string | undefined {
+/**
+ * Get authentication headers based on the current auth mode.
+ * - Static mode (PAT): returns { "PRIVATE-TOKEN": token }
+ * - OAuth mode: returns { "Authorization": "Bearer <token>" }
+ */
+export function getAuthHeaders(): Record<string, string> {
   const token = getGitLabToken();
-  return token ? `Bearer ${token}` : undefined;
+  if (!token) return {};
+
+  if (isOAuthEnabled()) {
+    return { Authorization: `Bearer ${token}` };
+  }
+
+  // PAT mode: use GitLab's canonical PRIVATE-TOKEN header
+  return { "PRIVATE-TOKEN": token };
 }
 
 /** @deprecated Use enhancedFetch() directly */
@@ -405,12 +417,7 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
     ? { "User-Agent": DEFAULT_HEADERS["User-Agent"], Accept: DEFAULT_HEADERS.Accept }
     : { ...DEFAULT_HEADERS };
 
-  const headers: Record<string, string> = { ...baseHeaders };
-
-  const authHeader = getAuthorizationHeader();
-  if (authHeader) {
-    headers.Authorization = authHeader;
-  }
+  const headers: Record<string, string> = { ...baseHeaders, ...getAuthHeaders() };
 
   if (options.headers) {
     if (options.headers instanceof Headers) {

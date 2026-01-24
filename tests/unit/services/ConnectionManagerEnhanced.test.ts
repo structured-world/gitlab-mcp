@@ -113,7 +113,7 @@ describe("ConnectionManager Enhanced Tests", () => {
 
       expect(MockedGraphQLClient).toHaveBeenCalledWith("https://test-gitlab.com/api/graphql", {
         headers: {
-          Authorization: "Bearer test-token-123",
+          "PRIVATE-TOKEN": "test-token-123",
         },
       });
       expect(mockVersionDetector.detectInstance).toHaveBeenCalled();

@@ -124,7 +124,7 @@ describe("Enhanced Fetch Utilities", () => {
             "User-Agent": "GitLab MCP Server",
             "Content-Type": "application/json",
             Accept: "application/json",
-            Authorization: "Bearer test-token",
+            "PRIVATE-TOKEN": "test-token",
           }),
         })
       );
@@ -145,7 +145,7 @@ describe("Enhanced Fetch Utilities", () => {
           headers: expect.objectContaining({
             "User-Agent": "GitLab MCP Server",
             "X-Custom-Header": "custom-value",
-            Authorization: "Bearer test-token",
+            "PRIVATE-TOKEN": "test-token",
           }),
         })
       );
@@ -360,8 +360,8 @@ describe("Enhanced Fetch Utilities", () => {
   });
 
   describe("Edge Cases and Error Handling", () => {
-    it("should include Authorization header when token is available", async () => {
-      // In static token mode with GITLAB_TOKEN set, Authorization should be added
+    it("should include PRIVATE-TOKEN header when PAT token is available", async () => {
+      // In static token mode with GITLAB_TOKEN set, PRIVATE-TOKEN header should be used
       const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
@@ -371,7 +371,7 @@ describe("Enhanced Fetch Utilities", () => {
         "https://example.com",
         expect.objectContaining({
           headers: expect.objectContaining({
-            Authorization: "Bearer test-token",
+            "PRIVATE-TOKEN": "test-token",
           }),
         })
       );

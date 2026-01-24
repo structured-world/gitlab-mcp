@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-23 | Tools: 47 | Version: 6.36.0
+> Generated: 2026-01-24 | Tools: 47 | Version: 6.36.0
 
 ## Table of Contents
 
@@ -522,7 +522,7 @@ BROWSE work items. Actions: "list" returns work items with numeric IDs (groups r
 
 ### manage_work_item [tier: Free]
 
-MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets using numeric ID from list, "delete" permanently removes. Legacy GIDs auto-normalized.
+MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets using numeric ID, "delete" permanently removes, "add_link" creates relationship (BLOCKS/IS_BLOCKED_BY/RELATES_TO), "remove_link" removes relationship. Supports dates, time tracking, hierarchy, weight, iterations, health status, progress, color widgets. Legacy GIDs auto-normalized.
 
 #### Actions
 
@@ -531,8 +531,18 @@ MANAGE work items. Actions: "create" creates new work item (Epics need GROUP nam
 | `create` | Free | Create a new work item |
 | `update` | Free | Update an existing work item |
 | `delete` | Free | Delete a work item |
+| `add_link` | Free | Add a relationship link between two work items |
+| `remove_link` | Free | Remove a relationship link between two work items |
 
 #### Parameters
+
+**Action `add_link`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | Source work item ID |
+| `linkType` | string | Yes | Relationship type: BLOCKS (this blocks target), IS_BLOCKED_BY (this is blocked by target), RELATES_TO (general relationship) |
+| `targetId` | string | Yes | Target work item ID to link to |
 
 **Action `create`**:
 
@@ -542,9 +552,20 @@ MANAGE work items. Actions: "create" creates new work item (Epics need GROUP nam
 | `title` | string | Yes | Title of the work item |
 | `workItemType` | string | Yes | Type of work item |
 | `assigneeIds` | string[] | No | Array of assignee user IDs |
+| `childrenIds` | string[] | No | Array of child work item IDs to add |
+| `color` | string | No | Custom hex color for epics (Ultimate tier) |
 | `description` | string | No | Description of the work item |
+| `dueDate` | string | No | Due date in YYYY-MM-DD format |
+| `healthStatus` | string | No | Health status indicator (Ultimate tier) |
+| `isFixed` | boolean | No | Fixed dates - not inherited from children (Premium tier) |
+| `iterationId` | string | No | Iteration/sprint ID to assign (Premium tier) |
 | `labelIds` | string[] | No | Array of label IDs |
 | `milestoneId` | string | No | Milestone ID |
+| `parentId` | string | No | Parent work item ID to set hierarchy relationship |
+| `progressCurrentValue` | integer | No | Current progress value 0-100 for OKR key results (Premium tier) |
+| `startDate` | string | No | Start date in YYYY-MM-DD format |
+| `timeEstimate` | string | No | Time estimate in human-readable format (e.g. "1h 30m", "2d") |
+| `weight` | integer | No | Story points / weight value (Premium tier) |
 
 **Action `delete`**:
 
@@ -552,17 +573,39 @@ MANAGE work items. Actions: "create" creates new work item (Epics need GROUP nam
 |-----------|------|----------|-------------|
 | `id` | string | Yes | Work item ID - use numeric ID from list results (e.g., '5953') |
 
+**Action `remove_link`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | Source work item ID |
+| `linkType` | string | Yes | Relationship type: BLOCKS (this blocks target), IS_BLOCKED_BY (this is blocked by target), RELATES_TO (general relationship) |
+| `targetId` | string | Yes | Target work item ID to unlink |
+
 **Action `update`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | string | Yes | Work item ID - use numeric ID from list results (e.g., '5953') |
 | `assigneeIds` | string[] | No | Array of assignee user IDs |
+| `childrenIds` | string[] | No | Array of child work item IDs to add |
+| `color` | string | No | Custom hex color for epics (Ultimate tier) |
 | `description` | string | No | Description of the work item |
+| `dueDate` | string | null | No | Due date in YYYY-MM-DD format (null to clear) |
+| `healthStatus` | string | null | No | Health status indicator, null to clear (Ultimate tier) |
+| `isFixed` | boolean | No | Fixed dates - not inherited from children (Premium tier) |
+| `iterationId` | string | null | No | Iteration/sprint ID, null to unassign (Premium tier) |
 | `labelIds` | string[] | No | Array of label IDs |
 | `milestoneId` | string | No | Milestone ID |
+| `parentId` | string | null | No | Parent work item ID (null to unlink parent) |
+| `progressCurrentValue` | integer | No | Current progress value 0-100 for OKR key results (Premium tier) |
+| `startDate` | string | null | No | Start date in YYYY-MM-DD format (null to clear) |
 | `state` | string | No | State event for the work item (CLOSE, REOPEN) |
+| `timeEstimate` | string | No | Time estimate in human-readable format (e.g. "1h 30m", "2d", "0h" to clear) |
+| `timeSpent` | string | No | Time spent to log as timelog entry (e.g. "2h", "1h 30m") |
+| `timeSpentAt` | string | No | When time was spent in ISO 8601 format (defaults to now) |
+| `timeSpentSummary` | string | No | Summary/description of work done for the timelog entry |
 | `title` | string | No | Title of the work item |
+| `weight` | integer | null | No | Story points / weight value, null to clear (Premium tier) |
 
 #### Example
 
@@ -2830,3 +2873,4 @@ SEARCH GitLab resources. Actions: "global" searches entire instance, "project" s
 
 ---
 
+[02:18:39.959] [32mINFO[39m (gitlab-mcp): [36mUsing in-memory session storage (sessions will be lost on restart)[39m

@@ -30,6 +30,8 @@ Ensure no whitespace or newlines are included in your config.
 
 ## Scope Issues {#scopes}
 
+For detailed scope requirements, token creation steps, and what breaks without `api` scope, see the [Authentication Guide — Scope Comparison](/guide/authentication#scope-comparison).
+
 ### "403 Forbidden" on Specific Operations
 
 **Cause**: Token missing required scopes.

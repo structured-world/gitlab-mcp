@@ -67,7 +67,7 @@ Select "standalone" when prompted for deployment type.
 |----------|----------|-------------|---------|
 | `PORT` | Yes | Internal HTTP port | — |
 | `HOST` | No | Bind address | `0.0.0.0` |
-| `GITLAB_TOKEN` | Yes | GitLab Personal Access Token | — |
+| `GITLAB_TOKEN` | Yes | [GitLab Personal Access Token](/guide/authentication#pat) | — |
 | `GITLAB_API_URL` | No | GitLab instance URL | `https://gitlab.com` |
 | `GITLAB_READ_ONLY_MODE` | No | Restrict to read-only tools | `false` |
 

@@ -59,6 +59,8 @@ import {
 } from "./config";
 import { ToolAvailability } from "./services/ToolAvailability";
 import { ConnectionManager } from "./services/ConnectionManager";
+import { isToolAvailableForScopes } from "./services/TokenScopeDetector";
+import type { GitLabScope } from "./services/TokenScopeDetector";
 import type { GitLabTier } from "./services/GitLabVersionDetector";
 import { logger } from "./logger";
 import {
@@ -296,6 +298,17 @@ class RegistryManager {
       // Connection not initialized - parameter restrictions won't apply
     }
 
+    // Pre-fetch token scope info for scope-based filtering
+    let tokenScopes: GitLabScope[] | undefined;
+    try {
+      const scopeInfo = ConnectionManager.getInstance().getTokenScopeInfo();
+      if (scopeInfo) {
+        tokenScopes = scopeInfo.scopes;
+      }
+    } catch {
+      // Connection not initialized - scope filtering won't apply
+    }
+
     for (const registry of this.registries.values()) {
       for (const [toolName, tool] of registry) {
         // Apply GITLAB_READ_ONLY_MODE filtering at registry level
@@ -307,6 +320,12 @@ class RegistryManager {
         // Apply GITLAB_DENIED_TOOLS_REGEX filtering at registry level
         if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) {
           logger.debug(`Tool '${toolName}' filtered out: matches denied regex`);
+          continue;
+        }
+
+        // Apply token scope filtering - skip tools the token can't access
+        if (tokenScopes && !isToolAvailableForScopes(toolName, tokenScopes)) {
+          logger.debug(`Tool '${toolName}' filtered out: insufficient token scopes`);
           continue;
         }
 

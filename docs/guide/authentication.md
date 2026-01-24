@@ -1,0 +1,225 @@
+---
+title: Authentication
+description: "Choose and configure authentication for GitLab MCP Server — Personal Access Token (PAT) for local use or OAuth for team deployments"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp authentication, personal access token, PAT, oauth, token scopes, gitlab api token
+---
+
+# Authentication
+
+GitLab MCP Server supports two authentication modes. Choose based on your use case.
+
+## Which mode do I need?
+
+| Use Case | Mode | Why |
+|----------|------|-----|
+| Personal local use (Claude Code, Cursor, etc.) | **PAT** | Simple, one token in config |
+| CI/CD pipelines, automation | **PAT** | No user interaction needed |
+| Shared server for a team | **OAuth** | Per-user identity, audit trail |
+| Docker/cloud deployment | **OAuth** | No shared secrets, token rotation |
+| Claude.ai Custom Connector | **OAuth** | Required by Claude.ai |
+
+## Option A: Personal Access Token (PAT) {#pat}
+
+Best for: individual developers running gitlab-mcp locally.
+
+### Step 1: Open Token Settings in GitLab
+
+Navigate to your GitLab instance:
+
+**GitLab.com:**
+`https://gitlab.com/-/user_settings/personal_access_tokens`
+
+**Self-hosted:**
+`https://your-gitlab.com/-/user_settings/personal_access_tokens`
+
+Or via UI: **Avatar (top-left) → Edit profile → Access tokens** (left sidebar)
+
+### Step 2: Create the Token {#create-token}
+
+| Field | Value | Notes |
+|-------|-------|-------|
+| **Token name** | `gitlab-mcp` | Any descriptive name |
+| **Expiration date** | 90 days recommended | GitLab enforces max 365 days |
+| **Select scopes** | See table below | |
+
+### Step 3: Select Scopes {#scopes}
+
+::: danger Required Scopes
+You MUST select `api` scope for full functionality. Without it, most tools will not work.
+:::
+
+| Scope | Required? | What it enables |
+|-------|-----------|-----------------|
+| `api` | **YES** | All 43 scope-gated tools (projects, MRs, issues, pipelines, etc.) |
+| `read_user` | Recommended | User info display, avatar, email |
+| `read_api` | Alternative | Read-only access (use with `GITLAB_READ_ONLY_MODE=true`) |
+| `read_repository` | Optional | File content access (covered by `api`) |
+| `write_repository` | Optional | File mutations (covered by `api`) |
+
+**Minimum for full functionality:** `api` + `read_user`
+
+**Minimum for read-only:** `read_api` + `read_user`
+
+::: warning Common mistake
+Selecting only `read_user` gives access to just 2 of 43 tools (user search and events only).
+GraphQL API is completely blocked without `api` or `read_api`.
+:::
+
+### Step 4: Copy and Configure
+
+1. Click **"Create personal access token"**
+2. **Copy the token immediately** — it's shown only once!
+3. Token format: `glpat-xxxxxxxxxxxxxxxxxxxx`
+
+Add to your MCP client config:
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "npx",
+      "args": ["-y", "@structured-world/gitlab-mcp"],
+      "env": {
+        "GITLAB_TOKEN": "glpat-your-token-here",
+        "GITLAB_API_URL": "https://gitlab.com"
+      }
+    }
+  }
+}
+```
+
+## Scope Detection at Startup {#scope-detection}
+
+GitLab MCP Server automatically detects your token's scopes at startup using the `/api/v4/personal_access_tokens/self` endpoint. Based on the detected scopes, the server:
+
+1. **Skips GraphQL introspection** when `api` or `read_api` scope is missing (avoids 401 errors)
+2. **Registers only matching tools** — tools that would fail are not shown to the AI agent
+3. **Shows a clear message** explaining what's available and how to fix it
+
+### What you see with limited scopes
+
+With full access (`api` + `read_user`):
+```
+[INFO] Token "gitlab-mcp" detected (scopes: api, read_user)
+```
+
+With limited access (`read_user` only):
+```
+[INFO] Token "gitlab-mcp" has limited scopes - 2 of 43 scope-gated tools available
+[INFO] GraphQL introspection skipped (requires 'api' or 'read_api' scope)
+[INFO] For full functionality, create a token with 'api' scope:
+       https://gitlab.com/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=api%2Cread_user
+```
+
+### Token expiry warnings
+
+When your token expires within 7 days:
+```
+[WARN] Token "gitlab-mcp" expires in 3 day(s)
+```
+
+## Scope Comparison: What Breaks Without `api` {#scope-comparison}
+
+| Token Scopes | Available Tools | GraphQL | REST Projects | What Works |
+|-------------|----------------|---------|---------------|------------|
+| `api, read_user` | **43/43** | Full | Full | Everything |
+| `read_api, read_user` | **23/43** | Read-only | Read-only | All browse_* tools |
+| `read_user` only | **2/43** | Blocked | Blocked | Only browse_users, browse_events |
+| `read_repository` only | **1/43** | Blocked | Blocked | Only browse_files |
+| No scopes | **0/43** | Blocked | Blocked | Nothing |
+
+## Option B: OAuth (Server/Team Deployment) {#oauth}
+
+Best for: shared servers, Docker deployments, team access.
+
+With OAuth, each user authenticates with their own GitLab identity — no shared tokens.
+
+### Step 1: Create GitLab OAuth Application
+
+Navigate to: **GitLab → User Settings → Applications**
+(or **Admin → Applications** for instance-wide)
+
+| Field | Value |
+|-------|-------|
+| **Name** | `GitLab MCP Server` |
+| **Redirect URI** | `https://your-mcp-server.com/oauth/callback` |
+| **Confidential** | No (PKCE provides security) |
+| **Scopes** | `api` and `read_user` |
+
+Click **Save application** and copy the **Application ID**.
+
+### Step 2: Configure Server Environment
+
+```bash
+# Required
+OAUTH_ENABLED=true
+OAUTH_SESSION_SECRET=$(openssl rand -base64 32)
+GITLAB_OAUTH_CLIENT_ID=your-application-id
+GITLAB_API_URL=https://gitlab.com
+
+# Server
+PORT=3333
+HOST=0.0.0.0
+```
+
+### Step 3: Deploy
+
+**Docker:**
+```bash
+docker run -d --name gitlab-mcp \
+  -e OAUTH_ENABLED=true \
+  -e OAUTH_SESSION_SECRET="$(openssl rand -base64 32)" \
+  -e GITLAB_OAUTH_CLIENT_ID=your-app-id \
+  -e GITLAB_API_URL=https://gitlab.com \
+  -e PORT=3333 \
+  -p 3333:3333 \
+  ghcr.io/structured-world/gitlab-mcp:latest
+```
+
+**Docker Compose:** See [Docker Compose deployment](/guide/installation/docker)
+
+### Step 4: Add HTTPS
+
+OAuth requires HTTPS. Use a reverse proxy:
+- [TLS/HTTPS Configuration](/advanced/tls)
+- Cloudflare, nginx, Caddy, or Traefik
+
+### Step 5: Connect Clients
+
+Each user connects and authenticates individually:
+1. Add server URL to MCP client config
+2. On first use, receive a device code
+3. Enter code in GitLab to authorize
+4. Start using tools with personal identity
+
+See [OAuth details](/security/oauth) for full flow documentation.
+
+## Troubleshooting {#troubleshooting}
+
+### "GraphQL request failed: 401 Unauthorized"
+
+Your token is missing `api` or `read_api` scope. The server will show which scopes are detected:
+```
+[INFO] Token "mcp" has limited scopes - 2 of 43 scope-gated tools available
+[INFO] GraphQL introspection skipped (requires 'api' or 'read_api' scope)
+```
+
+**Fix:** Create a new token with `api` + `read_user` scopes.
+
+### "403 Forbidden" on specific operations
+
+Token has `read_api` but not `api`. Write operations (create, update, delete) need `api` scope.
+
+### Token expired
+
+Tokens have an expiration date. Check in **GitLab → Settings → Access Tokens**.
+The server warns when a token expires within 7 days.
+
+### Scope detection not working
+
+The `/personal_access_tokens/self` endpoint requires GitLab 14.0+. On older versions, the server falls back to attempting operations directly.
+
+For more connection issues, see [Troubleshooting](/troubleshooting/connection).

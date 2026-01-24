@@ -16,7 +16,11 @@ npx @structured-world/gitlab-mcp setup
 
 ## 1. Get a GitLab Token
 
-Create a [Personal Access Token](https://docs.gitlab.com/ee/user/profile/personal_access_tokens.html) with `api` and `read_user` scopes.
+Create a [Personal Access Token](/guide/authentication#pat) with `api` and `read_user` scopes.
+
+::: tip First time?
+See the [step-by-step authentication guide](/guide/authentication) for detailed instructions on token creation and scope selection.
+:::
 
 ## 2. Configure Your MCP Client
 

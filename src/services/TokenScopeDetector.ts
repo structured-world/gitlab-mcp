@@ -325,7 +325,11 @@ export function getTokenCreationUrl(
   } catch {
     // baseUrl lacks a scheme or is otherwise unparseable — fall back to string concat
     const base = baseUrl.replace(/\/$/, "");
-    return `${base}/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=${scopes.join(",")}`;
+    const params = new URLSearchParams({
+      name: "gitlab-mcp",
+      scopes: scopes.join(","),
+    });
+    return `${base}/-/user_settings/personal_access_tokens?${params.toString()}`;
   }
 }
 

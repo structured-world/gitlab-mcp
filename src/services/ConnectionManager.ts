@@ -317,7 +317,8 @@ export class ConnectionManager {
 
   /**
    * Detect GitLab version via REST API (fallback when GraphQL is not available).
-   * Uses GET /api/v4/version which requires authentication but not api scope.
+   * Uses GET /api/v4/version; authentication requirements depend on instance
+   * configuration. This helper always sends the configured token as a fallback.
    */
   private async detectVersionViaREST(): Promise<GitLabInstanceInfo> {
     try {

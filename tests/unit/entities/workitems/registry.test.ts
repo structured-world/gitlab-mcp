@@ -1448,39 +1448,6 @@ describe("Workitems Registry - CQRS Tools", () => {
         expect(result).toHaveProperty("id");
       });
 
-      it("should map RELATES_TO to RELATED for GraphQL API", async () => {
-        mockClient.request.mockResolvedValueOnce({
-          workItemAddLinkedItems: {
-            workItem: {
-              id: "gid://gitlab/WorkItem/100",
-              iid: "10",
-              title: "Source",
-              state: "OPEN",
-              workItemType: { id: "gid://gitlab/WorkItems::Type/2", name: "Issue" },
-              webUrl: "https://gitlab.com/-/work_items/10",
-              widgets: [],
-            },
-            errors: [],
-          },
-        });
-
-        const tool = workitemsToolRegistry.get("manage_work_item");
-        await tool?.handler({
-          action: "add_link",
-          id: "100",
-          targetId: "200",
-          linkType: "RELATES_TO",
-        });
-
-        expect(mockClient.request).toHaveBeenCalledWith(expect.anything(), {
-          input: {
-            id: "gid://gitlab/WorkItem/100",
-            workItemsIds: ["gid://gitlab/WorkItem/200"],
-            linkType: "RELATED",
-          },
-        });
-      });
-
       it("should handle GraphQL errors in add_link action", async () => {
         mockClient.request.mockResolvedValueOnce({
           workItemAddLinkedItems: {
@@ -1506,7 +1473,7 @@ describe("Workitems Registry - CQRS Tools", () => {
             action: "add_link",
             id: "100",
             targetId: "200",
-            linkType: "IS_BLOCKED_BY",
+            linkType: "BLOCKED_BY",
           })
         ).rejects.toThrow("Add linked item failed - no work item returned");
       });
@@ -1545,39 +1512,6 @@ describe("Workitems Registry - CQRS Tools", () => {
           },
         });
         expect(result).toHaveProperty("id");
-      });
-
-      it("should map RELATES_TO to RELATED in remove_link", async () => {
-        mockClient.request.mockResolvedValueOnce({
-          workItemRemoveLinkedItems: {
-            workItem: {
-              id: "gid://gitlab/WorkItem/100",
-              iid: "10",
-              title: "Source",
-              state: "OPEN",
-              workItemType: { id: "gid://gitlab/WorkItems::Type/2", name: "Issue" },
-              webUrl: "https://gitlab.com/-/work_items/10",
-              widgets: [],
-            },
-            errors: [],
-          },
-        });
-
-        const tool = workitemsToolRegistry.get("manage_work_item");
-        await tool?.handler({
-          action: "remove_link",
-          id: "100",
-          targetId: "200",
-          linkType: "RELATES_TO",
-        });
-
-        expect(mockClient.request).toHaveBeenCalledWith(expect.anything(), {
-          input: {
-            id: "gid://gitlab/WorkItem/100",
-            workItemsIds: ["gid://gitlab/WorkItem/200"],
-            linkType: "RELATED",
-          },
-        });
       });
 
       it("should handle GraphQL errors in remove_link action", async () => {

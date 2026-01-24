@@ -46,9 +46,9 @@ const workItemIdField = WorkItemIdSchema.describe(
 
 // --- Link type enum ---
 const LinkTypeSchema = z
-  .enum(["BLOCKS", "IS_BLOCKED_BY", "RELATES_TO"])
+  .enum(["BLOCKS", "BLOCKED_BY", "RELATED"])
   .describe(
-    "Relationship type: BLOCKS (this blocks target), IS_BLOCKED_BY (this is blocked by target), RELATES_TO (general relationship)"
+    "Relationship type: BLOCKS (this blocks target), BLOCKED_BY (this is blocked by target), RELATED (general relationship)"
   );
 
 // --- Date validation pattern ---

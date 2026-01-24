@@ -371,7 +371,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "manage_work_item",
       description:
-        "Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), add_link/remove_link (BLOCKS/IS_BLOCKED_BY/RELATES_TO). Related: browse_work_items for discovery.",
+        "Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), add_link/remove_link (BLOCKS/BLOCKED_BY/RELATED). Related: browse_work_items for discovery.",
       inputSchema: z.toJSONSchema(ManageWorkItemSchema),
       gate: { envVar: "USE_WORKITEMS", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -781,15 +781,11 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const connectionManager = ConnectionManager.getInstance();
             const client = connectionManager.getClient();
 
-            // Map user-facing link type to GraphQL enum
-            const graphqlLinkType: WorkItemLinkType =
-              linkType === "RELATES_TO" ? "RELATED" : linkType;
-
             const response = await client.request(WORK_ITEM_ADD_LINKED_ITEMS, {
               input: {
                 id: toGid(id, "WorkItem"),
                 workItemsIds: [toGid(targetId, "WorkItem")],
-                linkType: graphqlLinkType,
+                linkType: linkType as WorkItemLinkType,
               },
             });
 
@@ -817,15 +813,11 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const connectionManager = ConnectionManager.getInstance();
             const client = connectionManager.getClient();
 
-            // Map user-facing link type to GraphQL enum
-            const graphqlLinkType: WorkItemLinkType =
-              linkType === "RELATES_TO" ? "RELATED" : linkType;
-
             const response = await client.request(WORK_ITEM_REMOVE_LINKED_ITEMS, {
               input: {
                 id: toGid(id, "WorkItem"),
                 workItemsIds: [toGid(targetId, "WorkItem")],
-                linkType: graphqlLinkType,
+                linkType: linkType as WorkItemLinkType,
               },
             });
 

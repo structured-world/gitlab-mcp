@@ -263,8 +263,7 @@ export function cleanWorkItemResponse(workItem: GitLabWorkItem): GitLabWorkItem 
           ...widget.linkedItems,
           nodes: widget.linkedItems.nodes.map(node => ({
             ...node,
-            // Map GraphQL RELATED back to user-facing RELATES_TO
-            linkType: node.linkType === "RELATED" ? "RELATES_TO" : node.linkType,
+            linkType: node.linkType,
             workItem: node.workItem
               ? { ...node.workItem, id: extractSimpleId(node.workItem.id) }
               : node.workItem,

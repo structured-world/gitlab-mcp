@@ -66,6 +66,7 @@ import {
   shouldRemoveTool,
   extractActionsFromSchema,
 } from "./utils/schema-utils";
+import { resolveRelatedReferences } from "./utils/description-utils";
 
 /**
  * Central registry manager that aggregates tools from all entity registries
@@ -354,6 +355,18 @@ class RegistryManager {
       }
     }
 
+    // Second pass: resolve Related references against available tools
+    const availableToolNames = new Set(this.toolLookupCache.keys());
+    for (const [toolName, tool] of this.toolLookupCache) {
+      // Skip tools with custom description overrides (user controls entire description)
+      if (this.descriptionOverrides.has(toolName)) continue;
+
+      const resolved = resolveRelatedReferences(tool.description, availableToolNames);
+      if (resolved !== tool.description) {
+        this.toolLookupCache.set(toolName, { ...tool, description: resolved });
+      }
+    }
+
     logger.debug(
       `Registry manager built cache with ${this.toolLookupCache.size} tools after filtering`
     );
@@ -508,6 +521,19 @@ class RegistryManager {
         };
 
         allTools.push(finalTool);
+      }
+    }
+
+    // Second pass: resolve Related references against available tools
+    const availableToolNames = new Set(allTools.map(t => t.name));
+    for (let i = 0; i < allTools.length; i++) {
+      const tool = allTools[i];
+      // Skip tools with custom description overrides
+      if (descOverrides.has(tool.name)) continue;
+
+      const resolved = resolveRelatedReferences(tool.description, availableToolNames);
+      if (resolved !== tool.description) {
+        allTools[i] = { ...tool, description: resolved };
       }
     }
 

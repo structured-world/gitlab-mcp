@@ -23,7 +23,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
     {
       name: "browse_files",
       description:
-        'BROWSE repository files. Actions: "tree" lists files/folders with pagination, "content" reads file contents. Use for exploring project structure or reading source code.',
+        "Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.",
       inputSchema: z.toJSONSchema(BrowseFilesSchema),
       gate: { envVar: "USE_FILES", defaultValue: true },
       handler: async (args: unknown) => {
@@ -105,7 +105,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
     {
       name: "manage_files",
       description:
-        'MANAGE repository files. Actions: "single" creates/updates one file, "batch" commits multiple files atomically, "upload" adds markdown attachments.',
+        "Create, update, or upload repository files. Actions: single (create/update one file with commit message), batch (atomic multi-file commit), upload (add attachment returning markdown link). Related: browse_files to read existing files.",
       inputSchema: z.toJSONSchema(ManageFilesSchema),
       gate: { envVar: "USE_FILES", defaultValue: true },
       handler: async (args: unknown) => {

@@ -21,7 +21,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
     {
       name: "browse_snippets",
       description:
-        'BROWSE GitLab code snippets. Actions: "list" shows snippets by scope (personal/project/public) with filtering, "get" retrieves single snippet metadata or raw content. Snippets are reusable code blocks, configs, or text with versioning support.',
+        "Find and read code snippets with versioning support. Actions: list (personal/project/public scope with filtering), get (snippet metadata or raw file content). Related: manage_snippet to create/update.",
       inputSchema: z.toJSONSchema(BrowseSnippetsSchema),
       gate: { envVar: "USE_SNIPPETS", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -95,7 +95,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
     {
       name: "manage_snippet",
       description:
-        'MANAGE GitLab snippets. Actions: "create" creates new snippet with multiple files and visibility control, "update" modifies title/description/visibility/files (supports file create/update/delete/move), "delete" permanently removes snippet. Supports personal and project snippets.',
+        "Create, update, or delete code snippets with multi-file support. Actions: create (new snippet with files and visibility), update (modify content/metadata, file operations), delete (remove permanently). Related: browse_snippets for discovery.",
       inputSchema: z.toJSONSchema(ManageSnippetSchema),
       gate: { envVar: "USE_SNIPPETS", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {

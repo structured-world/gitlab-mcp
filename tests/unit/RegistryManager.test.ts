@@ -656,6 +656,173 @@ describe("RegistryManager", () => {
     });
   });
 
+  describe("Dynamic Related Resolution", () => {
+    it("should strip Related references when referenced tool is unavailable", () => {
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+
+      // Add a tool with Related reference to a tool that will be filtered
+      coreRegistry.set("browse_test", {
+        name: "browse_test",
+        description:
+          "Browse test items. Actions: list, get. Related: manage_test to create/update.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+
+      try {
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
+
+        const tool = registryManager.getTool("browse_test");
+        expect(tool).toBeDefined();
+        // manage_test doesn't exist, so Related should be stripped
+        expect(tool!.description).toBe("Browse test items. Actions: list, get.");
+        expect(tool!.description).not.toContain("Related:");
+      } finally {
+        coreRegistry.delete("browse_test");
+      }
+    });
+
+    it("should preserve Related when referenced tool is available", () => {
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+
+      coreRegistry.set("browse_with_ref", {
+        name: "browse_with_ref",
+        description: "Browse items. Related: manage_with_ref to modify.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+      coreRegistry.set("manage_with_ref", {
+        name: "manage_with_ref",
+        description: "Manage items.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+
+      try {
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
+
+        const tool = registryManager.getTool("browse_with_ref");
+        expect(tool).toBeDefined();
+        expect(tool!.description).toContain("Related: manage_with_ref");
+      } finally {
+        coreRegistry.delete("browse_with_ref");
+        coreRegistry.delete("manage_with_ref");
+      }
+    });
+
+    it("should strip Related in read-only mode for manage_ references", () => {
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+      const { getCoreReadOnlyToolNames } = require("../../src/entities/core/registry");
+
+      coreRegistry.set("browse_readonly_test", {
+        name: "browse_readonly_test",
+        description: "Browse items. Related: manage_readonly_test to create.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+      coreRegistry.set("manage_readonly_test", {
+        name: "manage_readonly_test",
+        description: "Manage items.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+
+      // Add browse_readonly_test to the read-only list
+      const origFn = getCoreReadOnlyToolNames;
+      require("../../src/entities/core/registry").getCoreReadOnlyToolNames = () => [
+        ...origFn(),
+        "browse_readonly_test",
+      ];
+
+      try {
+        process.env.GITLAB_READ_ONLY_MODE = "true";
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
+
+        const tool = registryManager.getTool("browse_readonly_test");
+        expect(tool).toBeDefined();
+        // manage_readonly_test is filtered by read-only mode, so Related should be stripped
+        expect(tool!.description).toBe("Browse items.");
+        expect(tool!.description).not.toContain("Related:");
+      } finally {
+        coreRegistry.delete("browse_readonly_test");
+        coreRegistry.delete("manage_readonly_test");
+        require("../../src/entities/core/registry").getCoreReadOnlyToolNames = origFn;
+        delete process.env.GITLAB_READ_ONLY_MODE;
+      }
+    });
+
+    it("should strip Related when GITLAB_DENIED_TOOLS_REGEX matches referenced tool", () => {
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+
+      coreRegistry.set("browse_deny_test", {
+        name: "browse_deny_test",
+        description: "Browse items. Related: manage_deny_target to create.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+      coreRegistry.set("manage_deny_target", {
+        name: "manage_deny_target",
+        description: "Manage items.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+
+      try {
+        process.env.GITLAB_DENIED_TOOLS_REGEX = "manage_deny_target";
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
+
+        const tool = registryManager.getTool("browse_deny_test");
+        expect(tool).toBeDefined();
+        // manage_deny_target is denied, so Related should be stripped
+        expect(tool!.description).toBe("Browse items.");
+        expect(tool!.description).not.toContain("Related:");
+      } finally {
+        coreRegistry.delete("browse_deny_test");
+        coreRegistry.delete("manage_deny_target");
+        delete process.env.GITLAB_DENIED_TOOLS_REGEX;
+      }
+    });
+
+    it("should not resolve Related when tool has custom description override", () => {
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+      const mockConfig = require("../../src/config");
+
+      coreRegistry.set("browse_override_test", {
+        name: "browse_override_test",
+        description: "Browse items. Related: manage_nonexistent to create.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+
+      // Set a custom override for this tool
+      mockConfig.getToolDescriptionOverrides = jest.fn(
+        () =>
+          new Map([
+            ["browse_override_test", "Custom description. Related: manage_nonexistent to create."],
+          ])
+      );
+
+      try {
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
+
+        const tool = registryManager.getTool("browse_override_test");
+        expect(tool).toBeDefined();
+        // Custom description should be used as-is, no resolution
+        expect(tool!.description).toBe(
+          "Custom description. Related: manage_nonexistent to create."
+        );
+      } finally {
+        coreRegistry.delete("browse_override_test");
+        mockConfig.getToolDescriptionOverrides = jest.fn(() => new Map());
+      }
+    });
+  });
+
   describe("getAllToolDefinitionsUnfiltered", () => {
     it("should return all tools without any filtering", () => {
       // Set up environment to filter tools

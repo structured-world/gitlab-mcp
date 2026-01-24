@@ -77,7 +77,6 @@ describe("Variables Registry", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("browse_variables");
-      expect(tool?.description).toContain("BROWSE");
       expect(tool?.description).toContain("CI/CD variables");
       expect(tool?.inputSchema).toBeDefined();
     });
@@ -87,8 +86,8 @@ describe("Variables Registry", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("manage_variable");
-      expect(tool?.description).toContain("MANAGE");
       expect(tool?.description).toContain("CI/CD variables");
+      expect(tool?.description).toContain("environment scoping");
       expect(tool?.inputSchema).toBeDefined();
     });
   });

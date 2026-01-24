@@ -23,7 +23,7 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: "browse_refs",
       description:
-        'BROWSE Git refs (branches and tags). Actions: "list_branches" lists all branches, "get_branch" gets branch details, "list_tags" lists all tags, "get_tag" gets tag details, "list_protected_branches" shows protected branches, "get_protected_branch" gets protection rules, "list_protected_tags" shows protected tags.',
+        "Inspect branches, tags, and their protection rules. Actions: list_branches, get_branch, list_tags, get_tag, list_protected_branches, get_protected_branch, list_protected_tags (protection details and access levels). Related: manage_ref to create/delete/protect, browse_commits for commit history.",
       inputSchema: z.toJSONSchema(BrowseRefsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseRefsSchema.parse(args);
@@ -99,7 +99,7 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: "manage_ref",
       description:
-        'MANAGE Git refs (branches and tags). Actions: "create_branch" creates branch from ref, "delete_branch" removes branch, "protect_branch" adds protection, "unprotect_branch" removes protection, "update_branch_protection" modifies rules, "create_tag" creates tag, "delete_tag" removes tag, "protect_tag" adds tag protection (Premium), "unprotect_tag" removes tag protection.',
+        "Create, delete, and protect branches and tags. Actions: create_branch (from ref), delete_branch, protect_branch (set allowed roles), unprotect_branch, update_branch_protection, create_tag (annotated or lightweight), delete_tag, protect_tag, unprotect_tag. Related: browse_refs for inspection.",
       inputSchema: z.toJSONSchema(ManageRefSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageRefSchema.parse(args);

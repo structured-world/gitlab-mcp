@@ -22,7 +22,7 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "browse_variables",
       description:
-        'BROWSE CI/CD variables. Actions: "list" shows all variables in project/group with pagination, "get" retrieves single variable details by key with optional environment scope filter.',
+        "List and inspect CI/CD variables for projects or groups. Actions: list (all variables with pagination), get (single variable by key with environment scope filter). Related: manage_variable to create/update/delete.",
       inputSchema: z.toJSONSchema(BrowseVariablesSchema),
       gate: { envVar: "USE_VARIABLES", defaultValue: true },
       handler: async (args: unknown) => {
@@ -74,7 +74,7 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "manage_variable",
       description:
-        'MANAGE CI/CD variables. Actions: "create" adds new variable (requires key and value), "update" modifies existing variable, "delete" removes variable permanently. Supports environment scoping and protection settings.',
+        "Create, update, or delete CI/CD variables with environment scoping. Actions: create (key + value, set scope/protection/masking), update (modify value or settings), delete (remove permanently). Related: browse_variables for discovery.",
       inputSchema: z.toJSONSchema(ManageVariableSchema),
       gate: { envVar: "USE_VARIABLES", defaultValue: true },
       handler: async (args: unknown) => {

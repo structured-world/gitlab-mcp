@@ -326,7 +326,7 @@ describe("MRS Registry", () => {
       const tool = mrsToolRegistry.get("browse_merge_requests");
       expect(tool).toBeDefined();
       expect(tool!.name).toBe("browse_merge_requests");
-      expect(tool!.description).toContain("BROWSE");
+      expect(tool!.description).toContain("merge requests");
       expect(tool!.description).toContain("list");
       expect(tool!.description).toContain("get");
       expect(tool!.description).toContain("diffs");
@@ -338,7 +338,7 @@ describe("MRS Registry", () => {
       const tool = mrsToolRegistry.get("browse_mr_discussions");
       expect(tool).toBeDefined();
       expect(tool!.name).toBe("browse_mr_discussions");
-      expect(tool!.description).toContain("BROWSE");
+      expect(tool!.description).toContain("discussion threads");
       expect(tool!.description).toContain("list");
       expect(tool!.description).toContain("drafts");
       expect(tool!.description).toContain("draft");
@@ -349,7 +349,7 @@ describe("MRS Registry", () => {
       const tool = mrsToolRegistry.get("manage_merge_request");
       expect(tool).toBeDefined();
       expect(tool!.name).toBe("manage_merge_request");
-      expect(tool!.description).toContain("MANAGE");
+      expect(tool!.description).toContain("merge requests");
       expect(tool!.description).toContain("create");
       expect(tool!.description).toContain("update");
       expect(tool!.description).toContain("merge");
@@ -363,7 +363,7 @@ describe("MRS Registry", () => {
       const tool = mrsToolRegistry.get("manage_mr_discussion");
       expect(tool).toBeDefined();
       expect(tool!.name).toBe("manage_mr_discussion");
-      expect(tool!.description).toContain("MANAGE");
+      expect(tool!.description).toContain("threads");
       expect(tool!.description).toContain("comment");
       expect(tool!.description).toContain("thread");
       expect(tool!.description).toContain("reply");
@@ -379,7 +379,7 @@ describe("MRS Registry", () => {
       const tool = mrsToolRegistry.get("manage_draft_notes");
       expect(tool).toBeDefined();
       expect(tool!.name).toBe("manage_draft_notes");
-      expect(tool!.description).toContain("MANAGE");
+      expect(tool!.description).toContain("draft");
       expect(tool!.description).toContain("create");
       expect(tool!.description).toContain("update");
       expect(tool!.description).toContain("publish");

@@ -20,7 +20,9 @@ describe("contextToolRegistry", () => {
     const tool = contextToolRegistry.get("manage_context");
     expect(tool).toBeDefined();
     expect(tool?.name).toBe("manage_context");
-    expect(tool?.description).toContain("CONTEXT");
+    expect(tool?.description).toContain("session configuration");
+    expect(tool?.description).toContain("show");
+    expect(tool?.description).toContain("switch_preset");
     expect(tool?.inputSchema).toBeDefined();
     expect(tool?.handler).toBeDefined();
     expect(typeof tool?.handler).toBe("function");

@@ -21,7 +21,7 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
     {
       name: "browse_releases",
       description:
-        'BROWSE GitLab project releases. Actions: "list" shows all releases sorted by date, "get" retrieves specific release by tag name, "assets" lists release asset links. Releases are versioned software distributions with changelogs, assets, and milestone associations.',
+        "View project releases and asset download links. Actions: list (releases sorted by date), get (release details by tag name), assets (download link list for release). Related: manage_release to create/publish.",
       inputSchema: z.toJSONSchema(BrowseReleasesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseReleasesSchema.parse(args);
@@ -78,7 +78,7 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
     {
       name: "manage_release",
       description:
-        'MANAGE GitLab releases. Actions: "create" creates release with optional assets, "update" modifies release metadata, "delete" removes release (preserves tag), "create_link" adds asset link, "delete_link" removes asset link.',
+        "Create, update, or delete project releases with asset management. Actions: create (release from tag with notes/assets), update (modify metadata), delete (remove release, tag preserved), create_link (add asset URL), delete_link (remove asset). Related: browse_releases for discovery.",
       inputSchema: z.toJSONSchema(ManageReleaseSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageReleaseSchema.parse(args);

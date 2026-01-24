@@ -224,7 +224,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "browse_work_items",
       description:
-        'BROWSE work items. Actions: "list" returns work items with numeric IDs (groups return epics, projects return issues/tasks), "get" retrieves single work item - use the numeric ID from list results (e.g., "5953") or namespace + iid from URL (e.g., namespace: "group/project", iid: "95" from /issues/95). Legacy GIDs like gid://gitlab/Issue/X are auto-normalized.',
+        "Find and inspect issues, epics, tasks, and other work items. Actions: list (groups return epics, projects return issues/tasks, filter by type/state/labels), get (by numeric ID or namespace+iid from URL path). Related: manage_work_item to create/update/delete.",
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),
       gate: { envVar: "USE_WORKITEMS", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -371,7 +371,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "manage_work_item",
       description:
-        'MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets using numeric ID, "delete" permanently removes, "add_link" creates relationship (BLOCKS/IS_BLOCKED_BY/RELATES_TO), "remove_link" removes relationship. Supports dates, time tracking, hierarchy, weight, iterations, health status, progress, color widgets. Legacy GIDs auto-normalized.',
+        "Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), add_link/remove_link (BLOCKS/IS_BLOCKED_BY/RELATES_TO). Related: browse_work_items for discovery.",
       inputSchema: z.toJSONSchema(ManageWorkItemSchema),
       gate: { envVar: "USE_WORKITEMS", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {

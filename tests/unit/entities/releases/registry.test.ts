@@ -81,7 +81,8 @@ describe("Releases Registry", () => {
       const tool = releasesToolRegistry.get("browse_releases");
       expect(tool).toBeDefined();
       expect(tool!.name).toBe("browse_releases");
-      expect(tool!.description).toContain("BROWSE");
+      expect(tool!.description).toContain("releases");
+      expect(tool!.description).toContain("assets");
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -89,7 +90,8 @@ describe("Releases Registry", () => {
       const tool = releasesToolRegistry.get("manage_release");
       expect(tool).toBeDefined();
       expect(tool!.name).toBe("manage_release");
-      expect(tool!.description).toContain("MANAGE");
+      expect(tool!.description).toContain("releases");
+      expect(tool!.description).toContain("create");
       expect(tool!.inputSchema).toBeDefined();
     });
   });

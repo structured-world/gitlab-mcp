@@ -1476,6 +1476,15 @@ describe("Workitems Registry - CQRS Tools", () => {
             linkType: "BLOCKED_BY",
           })
         ).rejects.toThrow("Add linked item failed - no work item returned");
+
+        // Verify BLOCKED_BY is passed directly to GraphQL API without mapping
+        expect(mockClient.request).toHaveBeenCalledWith(expect.anything(), {
+          input: {
+            id: "gid://gitlab/WorkItem/100",
+            workItemsIds: ["gid://gitlab/WorkItem/200"],
+            linkType: "BLOCKED_BY",
+          },
+        });
       });
     });
 

@@ -1,3 +1,10 @@
+## [6.41.2](https://github.com/structured-world/gitlab-mcp/compare/v6.41.1...v6.41.2) (2026-01-24)
+
+### Bug Fixes
+
+* **ci:** remove generated artifacts from repo, fix MCPB 404 race condition ([#181](https://github.com/structured-world/gitlab-mcp/issues/181)) ([#182](https://github.com/structured-world/gitlab-mcp/issues/182)) ([6f17c99](https://github.com/structured-world/gitlab-mcp/commit/6f17c9977aeec20f0e8acad4e96f6a03dece33b1))
+* **mcpb:** reduce bundle size from 84MB to ~45MB ([#184](https://github.com/structured-world/gitlab-mcp/issues/184)) ([37f9c29](https://github.com/structured-world/gitlab-mcp/commit/37f9c29f270073a6cc67d2094c813f21ebfd226f)), closes [#183](https://github.com/structured-world/gitlab-mcp/issues/183)
+
 ## [6.41.1](https://github.com/structured-world/gitlab-mcp/compare/v6.41.0...v6.41.1) (2026-01-24)
 
 ### Bug Fixes

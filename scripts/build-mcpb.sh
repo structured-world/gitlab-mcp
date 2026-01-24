@@ -37,12 +37,12 @@ if [ -f "$PROJECT_DIR/mcpb/icon.png" ]; then
   cp "$PROJECT_DIR/mcpb/icon.png" "$BUNDLE_DIR/icon.png"
 fi
 
-# 6. Strip unused Prisma WASM database runtimes (keep only SQLite)
+# 6. Strip unused Prisma WASM database runtimes (keep only PostgreSQL)
 if [ -d "$BUNDLE_DIR/node_modules/@prisma/client/runtime" ]; then
   find "$BUNDLE_DIR/node_modules/@prisma/client/runtime" \
-    \( -name "*sqlserver*" -o -name "*cockroachdb*" -o -name "*postgresql*" -o -name "*mysql*" \) \
+    \( -name "*sqlserver*" -o -name "*cockroachdb*" -o -name "*sqlite*" -o -name "*mysql*" \) \
     -type f -exec rm -f {} +
-  echo "Stripped non-SQLite Prisma runtimes"
+  echo "Stripped non-PostgreSQL Prisma runtimes"
 fi
 
 # 7. Clean up unnecessary files

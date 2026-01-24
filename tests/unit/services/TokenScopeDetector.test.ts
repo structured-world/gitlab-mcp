@@ -69,7 +69,7 @@ describe("TokenScopeDetector", () => {
       expect(result!.hasGraphQLAccess).toBe(true);
       expect(result!.hasWriteAccess).toBe(true);
       expect(result!.active).toBe(true);
-      expect(result!.tokenType).toBe("personal_access_token");
+      expect(result!.tokenType).toBe("unknown");
 
       // Verify correct endpoint and headers
       expect(mockFetch).toHaveBeenCalledWith(

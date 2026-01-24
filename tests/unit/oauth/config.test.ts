@@ -136,34 +136,26 @@ describe("OAuth Configuration", () => {
   });
 
   describe("validateStaticConfig", () => {
-    let mockExit: jest.SpyInstance;
-    let mockConsoleError: jest.SpyInstance;
+    it("should throw ConfigurationError with guidance when GITLAB_TOKEN is not set", async () => {
+      const { validateStaticConfig, ConfigurationError } =
+        await import("../../../src/oauth/config");
 
-    beforeEach(() => {
-      // Mock process.exit to prevent Jest worker from exiting
-      mockExit = jest.spyOn(process, "exit").mockImplementation(() => undefined as never);
-      mockConsoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+      expect(() => validateStaticConfig()).toThrow(ConfigurationError);
+
+      try {
+        validateStaticConfig();
+      } catch (err) {
+        // Verify the error carries user-friendly guidance for the entrypoint to display
+        expect(err).toBeInstanceOf(ConfigurationError);
+        expect((err as InstanceType<typeof ConfigurationError>).guidance).toContain("GITLAB_TOKEN");
+        expect((err as InstanceType<typeof ConfigurationError>).guidance).toContain("quick-start");
+      }
     });
 
-    afterEach(() => {
-      mockExit.mockRestore();
-      mockConsoleError.mockRestore();
-    });
-
-    it("should print guidance and exit when GITLAB_TOKEN is not set", async () => {
-      const { validateStaticConfig } = await import("../../../src/oauth/config");
-      validateStaticConfig();
-
-      expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining("GITLAB_TOKEN"));
-      expect(mockExit).toHaveBeenCalledWith(1);
-    });
-
-    it("should not exit when GITLAB_TOKEN is set", async () => {
+    it("should not throw when GITLAB_TOKEN is set", async () => {
       process.env.GITLAB_TOKEN = "test-token";
       const { validateStaticConfig } = await import("../../../src/oauth/config");
-      validateStaticConfig();
-
-      expect(mockExit).not.toHaveBeenCalled();
+      expect(() => validateStaticConfig()).not.toThrow();
     });
   });
 

@@ -234,6 +234,15 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  logger.error(`Failed to start GitLab MCP Server: ${String(error)}`);
+  // ConfigurationError carries user-friendly guidance — display it without stack trace
+  if (
+    error instanceof Error &&
+    "guidance" in error &&
+    typeof (error as { guidance: unknown }).guidance === "string"
+  ) {
+    console.error((error as { guidance: string }).guidance);
+  } else {
+    logger.error(`Failed to start GitLab MCP Server: ${String(error)}`);
+  }
   process.exit(1);
 });

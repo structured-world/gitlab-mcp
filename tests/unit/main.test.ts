@@ -40,6 +40,16 @@ const mockAutoDiscover = jest.fn().mockResolvedValue(null);
 const mockFormatDiscoveryResult = jest.fn().mockReturnValue("Discovery output");
 const mockRunWizard = jest.fn().mockResolvedValue(undefined);
 
+// Mock ConfigurationError matching the real class shape
+class MockConfigurationError extends Error {
+  public readonly guidance: string;
+  constructor(guidance: string) {
+    super("Missing required configuration");
+    this.name = "ConfigurationError";
+    this.guidance = guidance;
+  }
+}
+
 // Helper to run main() with isolated modules
 async function runMain(): Promise<void> {
   return new Promise((resolve, _reject) => {
@@ -130,6 +140,20 @@ describe("main", () => {
         "Failed to start GitLab MCP Server: Error: Server failed"
       );
       expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should display guidance without stack trace for ConfigurationError", async () => {
+      const mockConsoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+      const guidance = "Test guidance message";
+      mockStartServer.mockRejectedValue(new MockConfigurationError(guidance));
+
+      await runMain();
+
+      // ConfigurationError shows guidance via console.error, not logger
+      expect(mockConsoleError).toHaveBeenCalledWith(guidance);
+      expect(mockLogger.error).not.toHaveBeenCalled();
+      expect(mockExit).toHaveBeenCalledWith(1);
+      mockConsoleError.mockRestore();
     });
   });
 

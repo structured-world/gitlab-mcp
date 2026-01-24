@@ -211,6 +211,36 @@ describe("idConversion utils", () => {
       const result = cleanWorkItemResponse(workItem);
       expect(result.workItemType).toBe("Epic");
     });
+
+    it("should clean linked items widget GIDs and map RELATED to RELATES_TO", () => {
+      const workItem: GitLabWorkItem = {
+        id: "gid://gitlab/WorkItem/100",
+        widgets: [
+          {
+            type: "LINKED_ITEMS",
+            linkedItems: {
+              nodes: [
+                {
+                  linkType: "RELATED",
+                  workItem: { id: "gid://gitlab/WorkItem/200", title: "Linked" },
+                },
+                {
+                  linkType: "BLOCKS",
+                  workItem: { id: "gid://gitlab/WorkItem/300", title: "Blocked" },
+                },
+              ],
+            },
+          },
+        ],
+      };
+
+      const result = cleanWorkItemResponse(workItem);
+      const linkedWidget = result.widgets?.[0];
+      expect(linkedWidget?.linkedItems?.nodes?.[0].linkType).toBe("RELATES_TO");
+      expect(linkedWidget?.linkedItems?.nodes?.[0].workItem?.id).toBe("200");
+      expect(linkedWidget?.linkedItems?.nodes?.[1].linkType).toBe("BLOCKS");
+      expect(linkedWidget?.linkedItems?.nodes?.[1].workItem?.id).toBe("300");
+    });
   });
 
   describe("convertTypeNamesToGids", () => {

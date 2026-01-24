@@ -34,21 +34,28 @@ const TIER_HIERARCHY: Record<GitLabTier, number> = {
  * only triggers when the parameter is actually present in the handler input.
  */
 const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
-  // Current schema parameters
+  // Basic widget parameters
   assigneeIds: WorkItemWidgetTypes.ASSIGNEES,
   labelIds: WorkItemWidgetTypes.LABELS,
   milestoneId: WorkItemWidgetTypes.MILESTONE,
   description: WorkItemWidgetTypes.DESCRIPTION,
-  // Planned in #135: free tier
+  // Free tier: dates
   startDate: WorkItemWidgetTypes.START_AND_DUE_DATE,
   dueDate: WorkItemWidgetTypes.START_AND_DUE_DATE,
-  color: WorkItemWidgetTypes.COLOR,
-  // Planned in #135: premium tier
+  isFixed: WorkItemWidgetTypes.START_AND_DUE_DATE,
+  // Free tier: hierarchy
+  parentId: WorkItemWidgetTypes.HIERARCHY,
+  childrenIds: WorkItemWidgetTypes.HIERARCHY,
+  // Free tier: time tracking
+  timeEstimate: WorkItemWidgetTypes.TIME_TRACKING,
+  timeSpent: WorkItemWidgetTypes.TIME_TRACKING,
+  // Premium tier
   weight: WorkItemWidgetTypes.WEIGHT,
   iterationId: WorkItemWidgetTypes.ITERATION,
-  linkedItemIds: WorkItemWidgetTypes.LINKED_ITEMS,
-  // Planned in #135: ultimate tier
+  progressCurrentValue: WorkItemWidgetTypes.PROGRESS,
+  // Ultimate tier
   healthStatus: WorkItemWidgetTypes.HEALTH_STATUS,
+  color: WorkItemWidgetTypes.COLOR,
 };
 
 export class WidgetAvailability {
@@ -71,24 +78,26 @@ export class WidgetAvailability {
     [WorkItemWidgetTypes.TIME_TRACKING]: { tier: "free", minVersion: "15.0" },
     [WorkItemWidgetTypes.ERROR_TRACKING]: { tier: "free", minVersion: "15.0" },
 
+    // Free tier widgets (linked items available on CE)
+    [WorkItemWidgetTypes.LINKED_ITEMS]: { tier: "free", minVersion: "15.0" },
+
     // Premium tier widgets
     [WorkItemWidgetTypes.WEIGHT]: { tier: "premium", minVersion: "15.0" },
     [WorkItemWidgetTypes.ITERATION]: { tier: "premium", minVersion: "15.0" },
-    [WorkItemWidgetTypes.LINKED_ITEMS]: { tier: "premium", minVersion: "15.0" },
+    [WorkItemWidgetTypes.PROGRESS]: { tier: "premium", minVersion: "15.0" },
     [WorkItemWidgetTypes.CRM_CONTACTS]: { tier: "premium", minVersion: "16.0" },
     [WorkItemWidgetTypes.EMAIL_PARTICIPANTS]: { tier: "premium", minVersion: "16.0" },
     [WorkItemWidgetTypes.LINKED_RESOURCES]: { tier: "premium", minVersion: "16.5" },
 
     // Ultimate tier widgets
     [WorkItemWidgetTypes.HEALTH_STATUS]: { tier: "ultimate", minVersion: "15.0" },
+    [WorkItemWidgetTypes.COLOR]: { tier: "ultimate", minVersion: "15.0" },
     [WorkItemWidgetTypes.CUSTOM_FIELDS]: { tier: "ultimate", minVersion: "17.0" },
     [WorkItemWidgetTypes.VULNERABILITIES]: { tier: "ultimate", minVersion: "15.0" },
 
     // Legacy widgets (may not be available)
-    [WorkItemWidgetTypes.PROGRESS]: { tier: "free", minVersion: "15.0" },
     [WorkItemWidgetTypes.REQUIREMENT_LEGACY]: { tier: "ultimate", minVersion: "13.1" },
     [WorkItemWidgetTypes.TEST_REPORTS]: { tier: "ultimate", minVersion: "13.6" },
-    [WorkItemWidgetTypes.COLOR]: { tier: "free", minVersion: "15.0" },
   };
 
   public static isWidgetAvailable(widget: WorkItemWidgetType): boolean {

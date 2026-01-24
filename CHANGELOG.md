@@ -1,3 +1,9 @@
+## [6.38.0](https://github.com/structured-world/gitlab-mcp/compare/v6.37.0...v6.38.0) (2026-01-24)
+
+### Features
+
+* **tools:** consolidate legacy tool names into CQRS pattern ([#149](https://github.com/structured-world/gitlab-mcp/issues/149)) ([#166](https://github.com/structured-world/gitlab-mcp/issues/166)) ([82718ab](https://github.com/structured-world/gitlab-mcp/commit/82718abd4646f0c5f9634f19c951d80d6bdb124c))
+
 ## [6.37.0](https://github.com/structured-world/gitlab-mcp/compare/v6.36.0...v6.37.0) (2026-01-24)
 
 ### Features

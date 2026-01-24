@@ -44,7 +44,12 @@ export class ConnectionManager {
       }
 
       if (!oauthMode && !GITLAB_TOKEN) {
-        throw new Error("GitLab token is required in static authentication mode");
+        throw new Error(
+          "GITLAB_TOKEN is required in static authentication mode. " +
+            "Run `npx @structured-world/gitlab-mcp setup` for interactive configuration, " +
+            "or set the environment variable and restart. " +
+            "Docs: https://gitlab-mcp.sw.foundation/guide/quick-start"
+        );
       }
 
       // Construct GraphQL endpoint from base URL

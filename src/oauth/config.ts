@@ -90,13 +90,49 @@ export function loadOAuthConfig(): OAuthConfig | null {
 }
 
 /**
+ * Error thrown when required startup configuration is missing.
+ * Carries a user-facing guidance message that the entrypoint can display
+ * without a stack trace.
+ */
+export class ConfigurationError extends Error {
+  public readonly guidance: string;
+
+  constructor(guidance: string) {
+    super("Missing required configuration");
+    this.name = "ConfigurationError";
+    this.guidance = guidance;
+  }
+}
+
+/** User-friendly guidance shown when GITLAB_TOKEN is not configured */
+const MISSING_TOKEN_GUIDANCE = `
+┌──────────────────────────────────────────────────────────────────────┐
+│  GitLab MCP — no authentication configured                           │
+├──────────────────────────────────────────────────────────────────────┤
+│                                                                      │
+│  Quick setup (interactive):                                          │
+│    npx @structured-world/gitlab-mcp setup                            │
+│                                                                      │
+│  Manual setup:                                                       │
+│    export GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"                   │
+│    Required scopes: api,read_user (or read_api,read_user read-only)  │
+│                                                                      │
+│  For self-hosted GitLab, also set:                                    │
+│    export GITLAB_API_URL="https://your-gitlab.example.com"            │
+│                                                                      │
+│  Docs: https://gitlab-mcp.sw.foundation/guide/quick-start            │
+└──────────────────────────────────────────────────────────────────────┘
+`;
+
+/**
  * Validate static token configuration (used when OAuth is disabled)
  *
- * Throws an error if GITLAB_TOKEN is not set
+ * Throws ConfigurationError with user-friendly guidance if GITLAB_TOKEN is not set.
+ * The entrypoint (main.ts) catches this and displays the guidance without a stack trace.
  */
 export function validateStaticConfig(): void {
   if (!process.env.GITLAB_TOKEN) {
-    throw new Error("GITLAB_TOKEN is required when OAUTH_ENABLED is not true");
+    throw new ConfigurationError(MISSING_TOKEN_GUIDANCE);
   }
   logger.debug("Static token mode: GITLAB_TOKEN configured");
 }

@@ -136,9 +136,20 @@ describe("OAuth Configuration", () => {
   });
 
   describe("validateStaticConfig", () => {
-    it("should throw error when GITLAB_TOKEN is not set", async () => {
-      const { validateStaticConfig } = await import("../../../src/oauth/config");
-      expect(() => validateStaticConfig()).toThrow("GITLAB_TOKEN is required");
+    it("should throw ConfigurationError with guidance when GITLAB_TOKEN is not set", async () => {
+      const { validateStaticConfig, ConfigurationError } =
+        await import("../../../src/oauth/config");
+
+      expect(() => validateStaticConfig()).toThrow(ConfigurationError);
+
+      try {
+        validateStaticConfig();
+      } catch (err) {
+        // Verify the error carries user-friendly guidance for the entrypoint to display
+        expect(err).toBeInstanceOf(ConfigurationError);
+        expect((err as InstanceType<typeof ConfigurationError>).guidance).toContain("GITLAB_TOKEN");
+        expect((err as InstanceType<typeof ConfigurationError>).guidance).toContain("quick-start");
+      }
     });
 
     it("should not throw when GITLAB_TOKEN is set", async () => {

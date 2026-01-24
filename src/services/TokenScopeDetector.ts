@@ -8,6 +8,7 @@
  * - Show clean, actionable messages instead of error stack traces
  */
 
+import { z } from "zod";
 import { logger } from "../logger";
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from "../config";
 import { enhancedFetch } from "../utils/fetch";
@@ -39,6 +40,19 @@ export type GitLabScope =
   | "manage_runner"
   | "ai_features"
   | "k8s_proxy";
+
+/**
+ * Zod schema for the /api/v4/personal_access_tokens/self response.
+ * Validates the shape and types returned by GitLab before we use the data.
+ */
+const TokenSelfResponseSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  scopes: z.array(z.string()),
+  expires_at: z.string().nullable(),
+  active: z.boolean(),
+  revoked: z.boolean(),
+});
 
 /**
  * Result of token scope detection
@@ -77,7 +91,8 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   manage_project: ["api"],
   manage_namespace: ["api"],
   manage_todos: ["api"],
-  manage_context: ["api", "read_api", "read_user"],
+  // manage_context is intentionally excluded — it manages local session state
+  // and never calls GitLab API, so it's available with any token scope.
 
   // Labels
   browse_labels: ["api", "read_api"],
@@ -195,14 +210,16 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
       return null;
     }
 
-    const data = (await response.json()) as {
-      id: number;
-      name: string;
-      scopes: string[];
-      expires_at: string | null;
-      active: boolean;
-      revoked: boolean;
-    };
+    const raw: unknown = await response.json();
+    const parsed = TokenSelfResponseSchema.safeParse(raw);
+    if (!parsed.success) {
+      logger.debug(
+        { error: parsed.error.message },
+        "Token self-introspection response validation failed"
+      );
+      return null;
+    }
+    const data = parsed.data;
 
     const scopes = data.scopes as GitLabScope[];
     const hasGraphQLAccess = scopes.some(s => s === "api" || s === "read_api");

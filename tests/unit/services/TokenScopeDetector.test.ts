@@ -161,6 +161,41 @@ describe("TokenScopeDetector", () => {
       expect(result).toBeNull();
     });
 
+    it("should return null when response fails schema validation", async () => {
+      // Response missing required fields (e.g. no 'scopes' array)
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 50,
+          name: "bad-response",
+          // scopes missing entirely
+          expires_at: null,
+          active: true,
+        }),
+      });
+
+      const result = await detectTokenScopes();
+      expect(result).toBeNull();
+    });
+
+    it("should return null when response has wrong field types", async () => {
+      // 'scopes' is a string instead of array
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: "not-a-number",
+          name: 123,
+          scopes: "api",
+          expires_at: null,
+          active: true,
+          revoked: false,
+        }),
+      });
+
+      const result = await detectTokenScopes();
+      expect(result).toBeNull();
+    });
+
     it("should handle unexpected status codes (e.g. 500)", async () => {
       // Covers the generic non-401/403/404 error path
       mockFetch.mockResolvedValueOnce({
@@ -331,6 +366,7 @@ describe("TokenScopeDetector", () => {
       // These work with read_user
       expect(isToolAvailableForScopes("browse_users", scopes)).toBe(true);
       expect(isToolAvailableForScopes("browse_events", scopes)).toBe(true);
+      // manage_context is not in scope map — defaults to allowed (any token)
       expect(isToolAvailableForScopes("manage_context", scopes)).toBe(true);
       // These don't work with just read_user
       expect(isToolAvailableForScopes("browse_projects", scopes)).toBe(false);
@@ -384,18 +420,17 @@ describe("TokenScopeDetector", () => {
       // All browse_* tools should be available
       const browseTools = tools.filter(t => t.startsWith("browse_"));
       expect(browseTools.length).toBeGreaterThan(15);
-      // No manage_* tools (except manage_context which works with read_api)
-      const manageTools = tools.filter(t => t.startsWith("manage_") && t !== "manage_context");
+      // No manage_* tools (manage_context is not in scope map at all)
+      const manageTools = tools.filter(t => t.startsWith("manage_"));
       expect(manageTools).toHaveLength(0);
     });
 
     it("should return minimal tools for read_user scope", () => {
       const tools = getToolsForScopes(["read_user"]);
-      // Only browse_users, browse_events, manage_context
+      // Only browse_users and browse_events (manage_context is not scope-gated)
       expect(tools).toContain("browse_users");
       expect(tools).toContain("browse_events");
-      expect(tools).toContain("manage_context");
-      expect(tools.length).toBe(3);
+      expect(tools.length).toBe(2);
     });
   });
 
@@ -491,7 +526,7 @@ describe("TokenScopeDetector", () => {
       expect(logger.info).toHaveBeenCalledWith(
         expect.objectContaining({
           tokenName: "limited-token",
-          availableTools: 3,
+          availableTools: 2,
           totalTools: 45,
         }),
         expect.stringContaining("limited scopes")

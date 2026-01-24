@@ -325,7 +325,9 @@ jobs:
           VERSION="${{ needs.semantic-release.outputs.new-release-version }}"
           MCPB_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/gitlab-mcp-${VERSION}.mcpb"
           echo "Downloading MCPB from: ${MCPB_URL}"
-          curl -fL --retry 3 --retry-delay 5 -o "gitlab-mcp-${VERSION}.mcpb" "${MCPB_URL}"
+          # Brief wait for GitHub Release asset eventual consistency
+          sleep 5
+          curl -fL --retry 3 --retry-delay 10 -o "gitlab-mcp-${VERSION}.mcpb" "${MCPB_URL}"
           ls -la "gitlab-mcp-${VERSION}.mcpb"
 
       - name: Add MCPB entry to server.json

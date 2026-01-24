@@ -1141,6 +1141,7 @@ describe("inject-tool-refs", () => {
       expect(generatedContent).toContain("1 read-only");
       expect(generatedContent).not.toContain("__TOOL_COUNT__");
       expect(generatedContent).not.toContain("__ENTITY_COUNT__");
+      expect(generatedContent).not.toContain("__READONLY_TOOL_COUNT__");
     });
 
     it("should recursively process .in templates in subdirectories", () => {

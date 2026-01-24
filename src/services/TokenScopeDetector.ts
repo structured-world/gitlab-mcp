@@ -249,8 +249,8 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
     }
 
     // /personal_access_tokens/self works for PAT, project, and group tokens,
-    // but the type cannot be reliably inferred from user-controlled fields like name.
-    const tokenType: GitLabTokenType = "personal_access_token";
+    // but the type cannot be reliably inferred from user-controlled fields.
+    const tokenType: GitLabTokenType = "unknown";
 
     return {
       name: data.name,
@@ -364,7 +364,7 @@ export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): voi
         availableTools: availableTools.length,
         totalTools,
       },
-      `Token "${info.name}" has limited scopes - ${availableTools.length} of ${totalTools} tools available`
+      `Token "${info.name}" has limited scopes - ${availableTools.length} of ${totalTools} scope-gated tools available`
     );
 
     if (!info.hasGraphQLAccess) {

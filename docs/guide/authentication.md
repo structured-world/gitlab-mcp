@@ -108,7 +108,7 @@ With full access (`api` + `read_user`):
 
 With limited access (`read_user` only):
 ```
-[INFO] Token "gitlab-mcp" has limited scopes - 2 of 43 tools available
+[INFO] Token "gitlab-mcp" has limited scopes - 2 of 43 scope-gated tools available
 [INFO] GraphQL introspection skipped (requires 'api' or 'read_api' scope)
 [INFO] For full functionality, create a token with 'api' scope:
        https://gitlab.com/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=api%2Cread_user

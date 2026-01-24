@@ -347,6 +347,34 @@ describe("RegistryManager", () => {
       expect(names).not.toContain("unavailable_tool");
     });
 
+    it("should filter tools based on token scopes", () => {
+      // Setup: token has limited scopes — isToolAvailableForScopes returns false for some tools
+      const { ConnectionManager } = require("../../src/services/ConnectionManager");
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockReturnValue({ tier: "free", version: "17.0.0" }),
+        getTokenScopeInfo: jest.fn().mockReturnValue({ scopes: ["read_user"] }),
+      });
+
+      const { isToolAvailableForScopes } = require("../../src/services/TokenScopeDetector");
+      // Only allow tools whose name contains "core_tool_1" (simulate read_user scope)
+      isToolAvailableForScopes.mockImplementation((toolName: string) => toolName === "core_tool_1");
+
+      (RegistryManager as any).instance = null;
+      const scopedManager = RegistryManager.getInstance();
+      const names = scopedManager.getAvailableToolNames();
+
+      // core_tool_1 passes scope check, core_tool_2 does not
+      expect(names).toContain("core_tool_1");
+      expect(names).not.toContain("core_tool_2");
+
+      // Restore default mock
+      isToolAvailableForScopes.mockReturnValue(true);
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockReturnValue({ tier: "free", version: "17.0.0" }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+      });
+    });
+
     it("should strip tier-restricted parameters from tool schema", () => {
       // Add a tool with properties to test parameter stripping
       const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;

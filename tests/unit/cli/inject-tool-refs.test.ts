@@ -22,6 +22,8 @@ import {
   generateActionsTable,
   findMarkers,
   processFile,
+  replaceCountPlaceholders,
+  countEntities,
   main,
 } from "../../../src/cli/inject-tool-refs";
 import type { JsonSchemaProperty, ActionInfo } from "../../../src/cli/inject-tool-refs";
@@ -790,6 +792,74 @@ describe("inject-tool-refs", () => {
     });
   });
 
+  describe("replaceCountPlaceholders", () => {
+    it("should replace all count placeholders and return true", () => {
+      const counts = { toolCount: 44, entityCount: 18, readonlyToolCount: 24 };
+      mockedFs.readFileSync.mockReturnValue(
+        "We have __TOOL_COUNT__ tools, __ENTITY_COUNT__ entities, __READONLY_TOOL_COUNT__ read-only."
+      );
+      mockedFs.writeFileSync.mockImplementation(() => undefined);
+
+      const result = replaceCountPlaceholders("/some/file.md", counts);
+
+      expect(result).toBe(true);
+      expect(mockedFs.writeFileSync).toHaveBeenCalledWith(
+        "/some/file.md",
+        "We have 44 tools, 18 entities, 24 read-only.",
+        "utf8"
+      );
+    });
+
+    it("should return false when no placeholders found", () => {
+      const counts = { toolCount: 44, entityCount: 18, readonlyToolCount: 24 };
+      mockedFs.readFileSync.mockReturnValue("No placeholders here.");
+
+      const result = replaceCountPlaceholders("/some/file.md", counts);
+
+      expect(result).toBe(false);
+      expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
+    });
+  });
+
+  describe("countEntities", () => {
+    it("should return 0 when entities directory does not exist", () => {
+      mockedFs.existsSync.mockReturnValue(false);
+
+      const result = countEntities("/project");
+
+      expect(result).toBe(0);
+    });
+
+    it("should count only directories with registry.ts files", () => {
+      mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
+        const pathStr = p.toString();
+        if (pathStr.endsWith("entities")) return true;
+        if (pathStr.endsWith(path.join("core", "registry.ts"))) return true;
+        if (pathStr.endsWith(path.join("mrs", "registry.ts"))) return true;
+        // "utils" dir has no registry.ts
+        if (pathStr.endsWith(path.join("utils", "registry.ts"))) return false;
+        return true;
+      });
+
+      const mockDirent = (name: string, isDir: boolean) => ({
+        name,
+        isDirectory: () => isDir,
+        isFile: () => !isDir,
+      });
+
+      mockedFs.readdirSync.mockReturnValue([
+        mockDirent("core", true),
+        mockDirent("mrs", true),
+        mockDirent("utils", true),
+        mockDirent("README.md", false),
+      ] as never);
+
+      const result = countEntities("/project");
+
+      expect(result).toBe(2);
+    });
+  });
+
   describe("main", () => {
     let mockConsoleLog: jest.SpyInstance;
     let mockConsoleError: jest.SpyInstance;
@@ -1066,6 +1136,80 @@ describe("inject-tool-refs", () => {
       expect(generatedContent).toContain("1 read-only");
       expect(generatedContent).not.toContain("__TOOL_COUNT__");
       expect(generatedContent).not.toContain("__ENTITY_COUNT__");
+    });
+
+    it("should recursively process .in templates in subdirectories", () => {
+      mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
+        const pathStr = p.toString();
+        if (pathStr === path.join("/project", "package.json")) return true;
+        if (pathStr === path.join("/project", "docs")) return true;
+        if (pathStr === path.join("/project", "docs", "tools")) return true;
+        if (pathStr === path.join("/project", "src", "entities")) return true;
+        if (pathStr.endsWith("registry.ts")) return true;
+        return false;
+      });
+
+      mockGetAllToolDefinitionsUnfiltered.mockReturnValue([
+        { name: "browse_projects", inputSchema: { properties: { action: { enum: ["list"] } } } },
+        { name: "browse_files", inputSchema: { properties: { action: { enum: ["get"] } } } },
+        { name: "manage_project", inputSchema: { properties: { action: { enum: ["create"] } } } },
+      ]);
+
+      const mockDirent = (name: string, isDir: boolean) => ({
+        name,
+        isDirectory: () => isDir,
+        isFile: () => !isDir,
+      });
+
+      mockedFs.readdirSync.mockImplementation((dir: fs.PathLike, options?: unknown) => {
+        const dirStr = dir.toString();
+        const opts = options as { withFileTypes?: boolean } | undefined;
+        if (opts?.withFileTypes) {
+          if (dirStr === path.join("/project", "docs")) {
+            return [mockDirent("guide", true), mockDirent("public", true)] as never;
+          }
+          if (dirStr === path.join("/project", "docs", "guide")) {
+            return [mockDirent("index.md.in", false)] as never;
+          }
+          if (dirStr === path.join("/project", "docs", "public")) {
+            return [mockDirent("llms.txt.in", false)] as never;
+          }
+          if (dirStr === path.join("/project", "src", "entities")) {
+            return [mockDirent("core", true)] as never;
+          }
+          return [] as never;
+        }
+        return [] as never;
+      });
+
+      mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
+        const pathStr = filePath.toString();
+        if (pathStr.endsWith("index.md.in")) {
+          return "**__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types";
+        }
+        if (pathStr.endsWith("llms.txt.in")) {
+          return "> Provides __TOOL_COUNT__ tools (__READONLY_TOOL_COUNT__ read-only)";
+        }
+        return "";
+      });
+
+      mockedFs.writeFileSync.mockImplementation(() => undefined);
+
+      main();
+
+      const writeCalls = (mockedFs.writeFileSync as jest.Mock).mock.calls;
+      const mdWrite = writeCalls.find((c: unknown[]) =>
+        (c[0] as string).endsWith(path.join("guide", "index.md"))
+      );
+      const txtWrite = writeCalls.find((c: unknown[]) =>
+        (c[0] as string).endsWith(path.join("public", "llms.txt"))
+      );
+
+      expect(mdWrite).toBeDefined();
+      expect(mdWrite![1]).toBe("**3 tools** across 1 entity types");
+
+      expect(txtWrite).toBeDefined();
+      expect(txtWrite![1]).toBe("> Provides 3 tools (2 read-only)");
     });
 
     it("should build toolSchemas map from registry tool definitions", () => {

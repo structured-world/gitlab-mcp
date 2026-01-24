@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-24 | Tools: 44 | Version: 6.38.1
+> Generated: 2026-01-24 | Tools: 44 | Version: 6.39.0
 
 ## Table of Contents
 
@@ -412,7 +412,7 @@ Create, update, or delete GitLab groups/namespaces. Actions: create (new group w
 
 ### browse_files [tier: Free]
 
-BROWSE repository files. Actions: "tree" lists files/folders with pagination, "content" reads file contents. Use for exploring project structure or reading source code.
+Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.
 
 #### Actions
 
@@ -468,7 +468,7 @@ BROWSE repository files. Actions: "tree" lists files/folders with pagination, "c
 
 ### manage_files [tier: Free]
 
-MANAGE repository files. Actions: "single" creates/updates one file, "batch" commits multiple files atomically, "upload" adds markdown attachments.
+Create, update, or upload repository files. Actions: single (create/update one file with commit message), batch (atomic multi-file commit), upload (add attachment returning markdown link). Related: browse_files to read existing files.
 
 #### Actions
 
@@ -536,7 +536,7 @@ MANAGE repository files. Actions: "single" creates/updates one file, "batch" com
 
 ### browse_releases [tier: Free]
 
-BROWSE GitLab project releases. Actions: "list" shows all releases sorted by date, "get" retrieves specific release by tag name, "assets" lists release asset links. Releases are versioned software distributions with changelogs, assets, and milestone associations.
+View project releases and asset download links. Actions: list (releases sorted by date), get (release details by tag name), assets (download link list for release). Related: manage_release to create/publish.
 
 #### Actions
 
@@ -592,7 +592,7 @@ BROWSE GitLab project releases. Actions: "list" shows all releases sorted by dat
 
 ### manage_release [tier: Free]
 
-MANAGE GitLab releases. Actions: "create" creates release with optional assets, "update" modifies release metadata, "delete" removes release (preserves tag), "create_link" adds asset link, "delete_link" removes asset link.
+Create, update, or delete project releases with asset management. Actions: create (release from tag with notes/assets), update (modify metadata), delete (remove release, tag preserved), create_link (add asset URL), delete_link (remove asset). Related: browse_releases for discovery.
 
 #### Actions
 
@@ -663,7 +663,7 @@ MANAGE GitLab releases. Actions: "create" creates release with optional assets, 
 
 ### browse_refs [tier: Premium*]
 
-BROWSE Git refs (branches and tags). Actions: "list_branches" lists all branches, "get_branch" gets branch details, "list_tags" lists all tags, "get_tag" gets tag details, "list_protected_branches" shows protected branches, "get_protected_branch" gets protection rules, "list_protected_tags" shows protected tags.
+Inspect branches, tags, and their protection rules. Actions: list_branches, get_branch, list_tags, get_tag, list_protected_branches, get_protected_branch, list_protected_tags (protection details and access levels). Related: manage_ref to create/delete/protect, browse_commits for commit history.
 
 #### Actions
 
@@ -750,7 +750,7 @@ BROWSE Git refs (branches and tags). Actions: "list_branches" lists all branches
 
 ### manage_ref [tier: Premium*]
 
-MANAGE Git refs (branches and tags). Actions: "create_branch" creates branch from ref, "delete_branch" removes branch, "protect_branch" adds protection, "unprotect_branch" removes protection, "update_branch_protection" modifies rules, "create_tag" creates tag, "delete_tag" removes tag, "protect_tag" adds tag protection (Premium), "unprotect_tag" removes tag protection.
+Create, delete, and protect branches and tags. Actions: create_branch (from ref), delete_branch, protect_branch (set allowed roles), unprotect_branch, update_branch_protection, create_tag (annotated or lightweight), delete_tag, protect_tag, unprotect_tag. Related: browse_refs for inspection.
 
 #### Actions
 
@@ -986,7 +986,7 @@ Manage your GitLab todo queue. Actions: mark_done (complete a single todo), mark
 
 ### browse_merge_requests [tier: Premium*]
 
-BROWSE merge requests. Actions: "list" shows MRs with filtering, "get" retrieves single MR by IID or branch, "diffs" shows file changes, "compare" diffs two branches/commits.
+Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), diffs (file-level changes with inline suggestions), compare (diff between any two refs). Related: manage_merge_request to create/update/merge.
 
 #### Actions
 
@@ -1085,7 +1085,7 @@ BROWSE merge requests. Actions: "list" shows MRs with filtering, "get" retrieves
 
 ### browse_mr_discussions [tier: Free]
 
-BROWSE MR discussions and draft notes. Actions: "list" shows all discussion threads, "drafts" lists unpublished draft notes, "draft" gets single draft note.
+Read discussion threads and draft review notes on merge requests. Actions: list (all threads with resolution status), drafts (unpublished draft notes), draft (single draft details). Related: manage_mr_discussion to comment, manage_draft_notes to create drafts.
 
 #### Actions
 
@@ -1132,7 +1132,7 @@ BROWSE MR discussions and draft notes. Actions: "list" shows all discussion thre
 
 ### manage_merge_request [tier: Premium*]
 
-MANAGE merge requests. Actions: "create" creates new MR, "update" modifies existing MR, "merge" merges approved MR into target branch, "approve" approves MR, "unapprove" removes approval, "get_approval_state" gets approval status.
+Create, update, merge, or approve merge requests. Actions: create (new MR from source to target), update (title/description/assignees/reviewers/labels), merge (into target branch), approve/unapprove (review approval), get_approval_state (current approvals). Related: browse_merge_requests for discovery.
 
 #### Actions
 
@@ -1241,7 +1241,7 @@ MANAGE merge requests. Actions: "create" creates new MR, "update" modifies exist
 
 ### manage_mr_discussion [tier: Free]
 
-MANAGE MR discussions. Actions: "comment" adds comment, "thread" starts discussion, "reply" responds to thread, "update" modifies note, "apply_suggestion" applies code suggestion, "apply_suggestions" batch applies suggestions, "resolve" resolves/unresolves thread, "suggest" creates code suggestion.
+Post comments, start threads, and suggest code changes on merge requests. Actions: comment (simple note), thread (line-level discussion), reply (to existing thread), update (edit note text), resolve (toggle thread resolution), suggest (code suggestion block), apply_suggestion/apply_suggestions (accept code suggestions). Related: browse_mr_discussions to read threads.
 
 #### Actions
 
@@ -1351,7 +1351,7 @@ MANAGE MR discussions. Actions: "comment" adds comment, "thread" starts discussi
 
 ### manage_draft_notes [tier: Free]
 
-MANAGE draft notes. Actions: "create" creates draft note, "update" modifies draft, "publish" publishes single draft, "publish_all" publishes all drafts, "delete" removes draft.
+Create and manage unpublished review comments on merge requests. Actions: create (new draft), update (modify text), publish (make single draft visible), publish_all (submit entire review), delete (discard draft). Related: browse_mr_discussions action 'drafts' to list existing drafts.
 
 #### Actions
 
@@ -1416,7 +1416,7 @@ MANAGE draft notes. Actions: "create" creates draft note, "update" modifies draf
 
 ### browse_members [tier: Free]
 
-BROWSE team members in projects and groups. Actions: "list_project" lists project members, "list_group" lists group members, "get_project" gets project member details, "get_group" gets group member details, "list_all_project" includes inherited members, "list_all_group" includes inherited members. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.
+View team members and access levels in projects or groups. Actions: list_project, list_group, get_project, get_group (direct members), list_all_project, list_all_group (includes inherited). Levels: Guest(10), Reporter(20), Developer(30), Maintainer(40), Owner(50). Related: manage_member to add/remove, browse_users to find users by name.
 
 #### Actions
 
@@ -1503,7 +1503,7 @@ BROWSE team members in projects and groups. Actions: "list_project" lists projec
 
 ### manage_member [tier: Free]
 
-MANAGE team members in projects and groups. Actions: "add_to_project" adds member to project, "add_to_group" adds member to group, "remove_from_project" removes from project, "remove_from_group" removes from group, "update_project" changes project member access level, "update_group" changes group member access level. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.
+Add, remove, or update access levels for project/group members. Actions: add_to_project, add_to_group (with access level + optional expiry), remove_from_project, remove_from_group, update_project, update_group (change access level). Related: browse_members for current membership.
 
 #### Actions
 
@@ -1590,7 +1590,7 @@ MANAGE team members in projects and groups. Actions: "add_to_project" adds membe
 
 ### browse_labels [tier: Free]
 
-BROWSE labels. Actions: "list" shows all labels in project/group with filtering, "get" retrieves single label details by ID or name.
+List and inspect project or group labels. Actions: list (all labels with search filtering), get (single label by ID or name). Related: manage_label to create/update/delete.
 
 #### Actions
 
@@ -1637,7 +1637,7 @@ BROWSE labels. Actions: "list" shows all labels in project/group with filtering,
 
 ### manage_label [tier: Free]
 
-MANAGE labels. Actions: "create" adds new label (requires name and color), "update" modifies existing label, "delete" removes label permanently.
+Create, update, or delete project/group labels. Actions: create (name + hex color required), update (modify properties), delete (remove permanently). Related: browse_labels for discovery.
 
 #### Actions
 
@@ -1696,7 +1696,7 @@ MANAGE labels. Actions: "create" adds new label (requires name and color), "upda
 
 ### browse_milestones [tier: Premium*]
 
-BROWSE milestones. Actions: "list" shows milestones with filtering, "get" retrieves single milestone, "issues" lists issues in milestone, "merge_requests" lists MRs in milestone, "burndown" gets burndown chart data.
+Track milestone progress with associated issues and MRs. Actions: list (filter by state/title/search), get (milestone details), issues (items in milestone), merge_requests (MRs targeting milestone), burndown (chart data for sprint tracking). Related: manage_milestone to create/update.
 
 #### Actions
 
@@ -1774,7 +1774,7 @@ BROWSE milestones. Actions: "list" shows milestones with filtering, "get" retrie
 
 ### manage_milestone [tier: Free]
 
-MANAGE milestones. Actions: "create" creates new milestone, "update" modifies existing milestone, "delete" removes milestone, "promote" elevates project milestone to group level.
+Create, update, or delete project/group milestones. Actions: create (title + optional dates/description), update (modify properties or close/activate), delete (remove permanently), promote (elevate project milestone to group). Related: browse_milestones for progress tracking.
 
 #### Actions
 
@@ -1839,7 +1839,7 @@ MANAGE milestones. Actions: "create" creates new milestone, "update" modifies ex
 
 ### browse_work_items [tier: Free]
 
-BROWSE work items. Actions: "list" returns work items with numeric IDs (groups return epics, projects return issues/tasks), "get" retrieves single work item - use the numeric ID from list results (e.g., "5953") or namespace + iid from URL (e.g., namespace: "group/project", iid: "95" from /issues/95). Legacy GIDs like gid://gitlab/Issue/X are auto-normalized.
+Find and inspect issues, epics, tasks, and other work items. Actions: list (groups return epics, projects return issues/tasks, filter by type/state/labels), get (by numeric ID or namespace+iid from URL path). Related: manage_work_item to create/update/delete.
 
 #### Actions
 
@@ -1889,7 +1889,7 @@ BROWSE work items. Actions: "list" returns work items with numeric IDs (groups r
 
 ### manage_work_item [tier: Free]
 
-MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets using numeric ID, "delete" permanently removes, "add_link" creates relationship (BLOCKS/IS_BLOCKED_BY/RELATES_TO), "remove_link" removes relationship. Supports dates, time tracking, hierarchy, weight, iterations, health status, progress, color widgets. Legacy GIDs auto-normalized.
+Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), add_link/remove_link (BLOCKS/IS_BLOCKED_BY/RELATES_TO). Related: browse_work_items for discovery.
 
 #### Actions
 
@@ -2038,7 +2038,7 @@ View group iterations for agile sprint planning. Actions: list (filter by state:
 
 ### browse_pipelines [tier: Free]
 
-BROWSE pipelines. Actions: "list" searches pipelines with filtering, "get" retrieves single pipeline details, "jobs" lists jobs in pipeline, "triggers" lists bridge/trigger jobs, "job" gets single job details, "logs" fetches job console output.
+Monitor CI/CD pipelines and read job logs. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output). Related: manage_pipeline to trigger/retry/cancel, manage_pipeline_job for individual jobs.
 
 #### Actions
 
@@ -2133,7 +2133,7 @@ BROWSE pipelines. Actions: "list" searches pipelines with filtering, "get" retri
 
 ### manage_pipeline [tier: Free]
 
-MANAGE pipelines. Actions: "create" triggers new pipeline on branch/tag with optional variables, "retry" re-runs failed/canceled pipeline, "cancel" stops running pipeline.
+Trigger, retry, or cancel CI/CD pipelines. Actions: create (run pipeline on ref with variables), retry (re-run failed jobs), cancel (stop running pipeline). Related: browse_pipelines for monitoring.
 
 #### Actions
 
@@ -2184,7 +2184,7 @@ MANAGE pipelines. Actions: "create" triggers new pipeline on branch/tag with opt
 
 ### manage_pipeline_job [tier: Free]
 
-MANAGE pipeline jobs. Actions: "play" triggers manual job with optional variables, "retry" re-runs failed/canceled job, "cancel" stops running job.
+Control individual CI/CD jobs within a pipeline. Actions: play (trigger manual/delayed job with variables), retry (re-run single job), cancel (stop running job). Related: browse_pipelines actions 'job'/'logs' for job details.
 
 #### Actions
 
@@ -2229,7 +2229,7 @@ MANAGE pipeline jobs. Actions: "play" triggers manual job with optional variable
 
 ### browse_variables [tier: Free]
 
-BROWSE CI/CD variables. Actions: "list" shows all variables in project/group with pagination, "get" retrieves single variable details by key with optional environment scope filter.
+List and inspect CI/CD variables for projects or groups. Actions: list (all variables with pagination), get (single variable by key with environment scope filter). Related: manage_variable to create/update/delete.
 
 #### Actions
 
@@ -2274,7 +2274,7 @@ BROWSE CI/CD variables. Actions: "list" shows all variables in project/group wit
 
 ### manage_variable [tier: Free]
 
-MANAGE CI/CD variables. Actions: "create" adds new variable (requires key and value), "update" modifies existing variable, "delete" removes variable permanently. Supports environment scoping and protection settings.
+Create, update, or delete CI/CD variables with environment scoping. Actions: create (key + value, set scope/protection/masking), update (modify value or settings), delete (remove permanently). Related: browse_variables for discovery.
 
 #### Actions
 
@@ -2341,7 +2341,7 @@ MANAGE CI/CD variables. Actions: "create" adds new variable (requires key and va
 
 ### browse_wiki [tier: Free]
 
-BROWSE wiki pages. Actions: "list" shows all wiki pages in project/group, "get" retrieves single wiki page content by slug.
+Read wiki pages in projects or groups. Actions: list (all pages with metadata), get (page content by slug). Related: manage_wiki to create/update/delete.
 
 #### Actions
 
@@ -2386,7 +2386,7 @@ BROWSE wiki pages. Actions: "list" shows all wiki pages in project/group, "get" 
 
 ### manage_wiki [tier: Free]
 
-MANAGE wiki pages. Actions: "create" adds new wiki page, "update" modifies existing page, "delete" removes wiki page permanently.
+Create, update, or delete wiki pages. Actions: create (new page with title/content/format), update (modify content or title), delete (remove permanently). Related: browse_wiki to read pages.
 
 #### Actions
 
@@ -2442,7 +2442,7 @@ MANAGE wiki pages. Actions: "create" adds new wiki page, "update" modifies exist
 
 ### browse_snippets [tier: Free]
 
-BROWSE GitLab code snippets. Actions: "list" shows snippets by scope (personal/project/public) with filtering, "get" retrieves single snippet metadata or raw content. Snippets are reusable code blocks, configs, or text with versioning support.
+Find and read code snippets with versioning support. Actions: list (personal/project/public scope with filtering), get (snippet metadata or raw file content). Related: manage_snippet to create/update.
 
 #### Actions
 
@@ -2491,7 +2491,7 @@ BROWSE GitLab code snippets. Actions: "list" shows snippets by scope (personal/p
 
 ### manage_snippet [tier: Free]
 
-MANAGE GitLab snippets. Actions: "create" creates new snippet with multiple files and visibility control, "update" modifies title/description/visibility/files (supports file create/update/delete/move), "delete" permanently removes snippet. Supports personal and project snippets.
+Create, update, or delete code snippets with multi-file support. Actions: create (new snippet with files and visibility), update (modify content/metadata, file operations), delete (remove permanently). Related: browse_snippets for discovery.
 
 #### Actions
 
@@ -2549,7 +2549,7 @@ MANAGE GitLab snippets. Actions: "create" creates new snippet with multiple file
 
 ### browse_webhooks [tier: Free]
 
-BROWSE webhooks. Actions: "list" shows all webhooks configured for a project or group with pagination, "get" retrieves single webhook details by ID. Use to discover existing integrations, audit webhook configurations, debug delivery issues, or understand event subscriptions.
+List and inspect webhook configurations for projects or groups. Actions: list (all webhooks with event types and status), get (webhook details by ID). Related: manage_webhook to create/update/delete/test.
 
 #### Actions
 
@@ -2595,7 +2595,7 @@ BROWSE webhooks. Actions: "list" shows all webhooks configured for a project or 
 
 ### manage_webhook [tier: Premium*]
 
-Manage webhooks with full CRUD operations plus testing. Actions: 'create' (add new webhook with URL and event types), 'update' (modify URL, events, or settings), 'delete' (remove webhook), 'test' (trigger test delivery for specific event type). Use for setting up CI/CD automation, configuring notifications, integrating external systems, or managing event subscriptions.
+Create, update, delete, or test webhooks for event-driven automation. Actions: create (URL + event types + optional secret), update (modify settings), delete (remove), test (trigger delivery for specific event). Related: browse_webhooks for inspection.
 
 #### Actions
 
@@ -2702,7 +2702,7 @@ Manage webhooks with full CRUD operations plus testing. Actions: 'create' (add n
 
 ### browse_integrations [tier: Free]
 
-BROWSE project integrations. Actions: "list" shows all active integrations (Slack, Jira, Discord, Teams, Jenkins, etc.), "get" retrieves settings for a specific integration by type slug.
+Discover active project integrations and their configuration. Actions: list (all active: Slack, Jira, Discord, Teams, Jenkins, etc.), get (specific integration settings by slug). Related: manage_integration to configure/disable.
 
 #### Actions
 
@@ -2746,7 +2746,7 @@ BROWSE project integrations. Actions: "list" shows all active integrations (Slac
 
 ### manage_integration [tier: Free]
 
-MANAGE project integrations. Actions: "update" modifies or enables integration with specific config, "disable" removes integration. Supports 50+ integrations: Slack, Jira, Discord, Teams, Jenkins, etc. Note: gitlab-slack-application cannot be created via API - requires OAuth install from UI.
+Configure or disable project integrations (50+ supported). Actions: update (enable/modify with integration-specific config), disable (deactivate integration). Note: gitlab-slack-application requires OAuth install from GitLab UI. Related: browse_integrations for discovery.
 
 #### Actions
 
@@ -2799,7 +2799,7 @@ MANAGE project integrations. Actions: "update" modifies or enables integration w
 
 ### browse_search [tier: Free]
 
-SEARCH GitLab resources. Actions: "global" searches entire instance, "project" searches within a project, "group" searches within a group. Scopes: projects, issues, merge_requests, milestones, users, groups, blobs (code), commits, wiki_blobs, notes.
+Search across GitLab resources globally or within a scope. Actions: global (entire instance), project (within specific project), group (within specific group). Searchable: projects, issues, merge_requests, milestones, users, blobs (code), commits, wiki_blobs, notes.
 
 #### Actions
 
@@ -2854,7 +2854,7 @@ SEARCH GitLab resources. Actions: "global" searches entire instance, "project" s
 
 ### manage_context [tier: Free]
 
-CONTEXT: Manage runtime session context. Actions: 'show' returns current context (host, preset, scope, mode); 'list_presets' lists available presets with descriptions; 'list_profiles' lists OAuth profiles (OAuth mode only); 'switch_preset' changes active preset by name; 'switch_profile' changes OAuth profile (OAuth mode only); 'set_scope' restricts operations to a namespace (auto-detects group vs project); 'reset' restores initial context from session start.
+View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), list_profiles (OAuth users), switch_preset (change active preset), switch_profile (change OAuth user), set_scope (restrict to namespace), reset (restore initial state).
 
 #### Actions
 

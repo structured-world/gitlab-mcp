@@ -87,6 +87,18 @@ jobs:
           echo "$MANIFEST" | jq -e '.manifest_version and .name and .version and .server.entry_point and .server.mcp_config.command' > /dev/null
           echo "Manifest template is valid (JSON + required fields)"
 
+      - name: Validate MCPB bundle size
+        run: |
+          ./scripts/build-mcpb.sh "0.0.0-test"
+          SIZE=$(stat -c%s gitlab-mcp-0.0.0-test.mcpb 2>/dev/null || stat -f%z gitlab-mcp-0.0.0-test.mcpb)
+          MAX_SIZE=$((30 * 1024 * 1024))  # 30 MB max
+          echo "MCPB bundle size: $(echo "scale=1; $SIZE / 1048576" | bc) MB"
+          if [ "$SIZE" -gt "$MAX_SIZE" ]; then
+            echo "::error::MCPB bundle too large: $(($SIZE / 1024 / 1024))MB (max: 30MB)"
+            exit 1
+          fi
+          rm -f gitlab-mcp-0.0.0-test.mcpb
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
         with:

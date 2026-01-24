@@ -1,7 +1,7 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-24 | Tools: 47 | Version: 6.36.0
+> Generated: 2026-01-24 | Tools: 47 | Version: 6.37.0
 
 ## Table of Contents
 
@@ -2873,4 +2873,3 @@ SEARCH GitLab resources. Actions: "global" searches entire instance, "project" s
 
 ---
 
-[02:18:39.959] [32mINFO[39m (gitlab-mcp): [36mUsing in-memory session storage (sessions will be lost on restart)[39m

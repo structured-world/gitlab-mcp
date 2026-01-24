@@ -1,3 +1,8 @@
+---
+title: Release Notes
+description: "Prompts for generating release notes from GitLab — summarize MRs, issues, and changelog entries"
+---
+
 # Release Notes
 
 Generate changelogs, create releases, and manage release assets.

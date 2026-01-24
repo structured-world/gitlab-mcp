@@ -1,3 +1,8 @@
+---
+title: Client Issues
+description: "Troubleshoot MCP client integration — Claude Desktop, VS Code, Cursor, and other client problems"
+---
+
 # Client Issues
 
 Problems with MCP client detection, configuration, and connectivity.

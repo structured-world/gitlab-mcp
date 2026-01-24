@@ -1,3 +1,8 @@
+---
+title: TLS / HTTPS
+description: "Configure TLS/HTTPS for GitLab MCP Server — certificate setup, reverse proxy, and secure connections"
+---
+
 # TLS / HTTPS Configuration
 
 GitLab MCP Server supports secure HTTPS connections via direct TLS termination or reverse proxy.

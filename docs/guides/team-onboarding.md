@@ -1,3 +1,8 @@
+---
+title: Team Onboarding
+description: "Onboard your team to GitLab MCP — shared configurations, presets, and best practices for teams"
+---
+
 # Team Onboarding Guide
 
 Get your team started with GitLab MCP — from installation to daily workflows.

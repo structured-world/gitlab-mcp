@@ -1,3 +1,8 @@
+---
+title: Environment Variables
+description: "Configure GitLab MCP Server with environment variables for tokens, API URLs, transports, and tool filtering"
+---
+
 # Environment Variables
 
 Complete reference for all environment variables.

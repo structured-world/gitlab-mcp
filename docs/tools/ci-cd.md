@@ -1,3 +1,8 @@
+---
+title: "CI/CD Tools"
+description: "GitLab CI/CD tools — manage pipelines, jobs, variables, and deployment operations via MCP"
+---
+
 # CI/CD Tools
 
 Pipeline management, job control, logs, and CI/CD variable configuration.

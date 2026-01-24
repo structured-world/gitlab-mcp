@@ -1,3 +1,8 @@
+---
+title: Code Review Tools
+description: "GitLab code review tools — browse merge requests, manage discussions, and post review comments"
+---
+
 # Code Review Tools
 
 Tools for the complete merge request review workflow — browsing MRs, viewing diffs, adding comments, and managing approvals.

@@ -1,3 +1,8 @@
+---
+title: Setup CI Notifications
+description: "Configure CI/CD pipeline notifications using GitLab MCP — monitor builds and deployment status"
+---
+
 # Setup CI Notifications
 
 Configure pipeline alerts and notifications to stay informed about CI/CD events.

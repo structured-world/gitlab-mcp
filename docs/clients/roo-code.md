@@ -1,3 +1,8 @@
+---
+title: Roo Code
+description: "Configure GitLab MCP Server with Roo Code — AI assistant with GitLab MCP tool access"
+---
+
 # Roo Code
 
 Configure GitLab MCP for [Roo Code](https://roocode.com).

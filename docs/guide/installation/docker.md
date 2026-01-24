@@ -1,3 +1,8 @@
+---
+title: Docker Installation
+description: "Run GitLab MCP Server in Docker with SSE or StreamableHTTP transport for production deployments"
+---
+
 # Docker Installation
 
 Run GitLab MCP Server as a Docker container.

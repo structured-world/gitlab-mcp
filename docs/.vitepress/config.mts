@@ -1,11 +1,29 @@
-import { defineConfig } from "vitepress";
+import { defineConfig, type HeadConfig } from "vitepress";
 
 const base = (process.env.DOCS_BASE as `/${string}/` | undefined) ?? "/gitlab-mcp/";
+const hostname = "https://gitlab-mcp.sw.foundation";
 
 export default defineConfig({
   title: "GitLab MCP",
+  titleTemplate: "%s | GitLab MCP",
   description: "Model Context Protocol server for GitLab API",
   base,
+
+  transformHead({ pageData }) {
+    const head: HeadConfig[] = [];
+    const title = pageData.title || "GitLab MCP";
+    const description = pageData.description || "Model Context Protocol server for GitLab API";
+    const url = `${hostname}${base}${pageData.relativePath.replace(/(?:index)?\.md$/, "")}`;
+
+    head.push(["meta", { property: "og:title", content: title }]);
+    head.push(["meta", { property: "og:description", content: description }]);
+    head.push(["meta", { property: "og:url", content: url }]);
+    head.push(["meta", { name: "twitter:card", content: "summary_large_image" }]);
+    head.push(["meta", { name: "twitter:title", content: title }]);
+    head.push(["meta", { name: "twitter:description", content: description }]);
+
+    return head;
+  },
 
   // MCPB bundle is downloaded from GitHub releases during docs build.
   // Until first .mcpb release exists, the link is a dead link — safe to ignore.

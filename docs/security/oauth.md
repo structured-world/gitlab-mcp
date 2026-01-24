@@ -1,3 +1,8 @@
+---
+title: OAuth Authentication
+description: "Set up OAuth 2.1 authentication for GitLab MCP Server — per-user tokens via Claude Custom Connector"
+---
+
 # OAuth Authentication
 
 GitLab MCP Server supports OAuth 2.1 authentication for use as a **Claude Custom Connector**. This enables secure per-user authentication without sharing GitLab tokens.

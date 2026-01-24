@@ -1,3 +1,8 @@
+---
+title: "CLI: install"
+description: "Install GitLab MCP Server into MCP client configurations — auto-detect and configure clients"
+---
+
 # gitlab-mcp install
 
 Detect and install GitLab MCP configuration to MCP clients. Can run interactively (wizard) or non-interactively with flags.

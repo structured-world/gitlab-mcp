@@ -1,3 +1,8 @@
+---
+title: "CLI: setup"
+description: "Interactive setup wizard — detect MCP clients, configure tokens, and generate client config files"
+---
+
 # gitlab-mcp setup
 
 Interactive setup wizard that guides you through configuring GitLab MCP. Detects your environment, walks through GitLab authentication, and installs configuration to your MCP clients or Docker.

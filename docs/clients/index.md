@@ -1,3 +1,8 @@
+---
+title: MCP Clients
+description: "Supported MCP clients — Claude Desktop, Claude Code, VS Code, Cursor, Windsurf, Cline, and Roo Code"
+---
+
 # Supported Clients
 
 GitLab MCP works with all major AI coding assistants that support the Model Context Protocol.

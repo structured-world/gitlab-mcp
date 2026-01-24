@@ -1,3 +1,8 @@
+---
+title: Setup GitHub Secrets
+description: "Configure GitHub repository secrets for GitLab MCP CI/CD workflows and automated releases"
+---
+
 # GitHub Secrets Setup Guide
 
 ## 1. Navigate to GitHub Repository

@@ -1,3 +1,8 @@
+---
+title: Review an MR
+description: "Prompts for AI-powered merge request reviews — code quality, security, and best practices analysis"
+---
+
 # Review a Merge Request
 
 Complete workflow for performing a thorough code review using GitLab MCP.

@@ -1,3 +1,8 @@
+---
+title: Installation Overview
+description: "Choose your preferred installation method — npm, Docker, Claude Desktop, VS Code, or manual setup"
+---
+
 # Installation
 
 Choose the installation method that best fits your workflow.

@@ -1,3 +1,8 @@
+---
+title: Check Project Status
+description: "Prompts to check GitLab project status — open MRs, pipeline health, and recent activity overview"
+---
+
 # Check Status
 
 Prompts for monitoring merge requests, pipelines, and overall project health.

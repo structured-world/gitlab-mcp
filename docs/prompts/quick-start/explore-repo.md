@@ -1,3 +1,8 @@
+---
+title: Explore a Repo
+description: "Prompts for exploring GitLab repositories — browse files, view commits, and understand project structure"
+---
+
 # Explore a Repository
 
 Prompts to understand a project's structure, recent changes, and current state.

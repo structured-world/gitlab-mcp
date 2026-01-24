@@ -1,3 +1,8 @@
+---
+title: Check CI Status
+description: "Prompts for checking GitLab CI/CD status — pipeline progress, job results, and deployment state"
+---
+
 # Check Pipeline Status
 
 Monitor pipeline health and job progress across your projects.

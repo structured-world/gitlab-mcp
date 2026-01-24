@@ -1,3 +1,8 @@
+---
+title: Claude Code
+description: "Use GitLab MCP Server with Claude Code CLI — MCP configuration and tool access setup"
+---
+
 # Claude Code
 
 Configure GitLab MCP for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (CLI).

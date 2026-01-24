@@ -1,3 +1,8 @@
+---
+title: Auto-Discovery
+description: "Automatic GitLab instance detection from git remotes — zero-config setup for local repositories"
+---
+
 # Auto-Discovery
 
 The `--auto` flag automatically detects GitLab configuration from the current git repository's remote URL.

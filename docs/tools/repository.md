@@ -1,3 +1,8 @@
+---
+title: Repository Tools
+description: "GitLab repository tools — browse files, commits, refs, compare branches, and manage repository content"
+---
+
 # Repository Tools
 
 File browsing, commits, branches, tags, and repository management.

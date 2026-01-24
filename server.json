@@ -26,7 +26,7 @@
           "name": "GITLAB_TOKEN"
         },
         {
-          "description": "GitLab instance API URL (defaults to https://gitlab.com)",
+          "description": "GitLab instance API URL for self-hosted instances (defaults to https://gitlab.com)",
           "isRequired": false,
           "format": "string",
           "name": "GITLAB_API_URL"

@@ -225,7 +225,8 @@ function countEntities(projectRoot: string): number {
 
 /**
  * Main entry point. Scans docs/tools/*.md and injects action tables.
- * Also replaces __TOOL_COUNT__ and __ENTITY_COUNT__ placeholders in docs files.
+ * Also generates .md/.txt from .in templates with __TOOL_COUNT__, __ENTITY_COUNT__,
+ * and __READONLY_TOOL_COUNT__ placeholders replaced by actual counts.
  */
 export function main(): void {
   // Find project root (where package.json is)

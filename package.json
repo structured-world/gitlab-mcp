@@ -62,7 +62,8 @@
     "list-tools:dev": "node --env-file=.env.test -r source-map-support/register -r ts-node/register --experimental-specifier-resolution=node src/cli/list-tools.ts",
     "docs:dev": "DOCS_BASE=/ vitepress dev docs",
     "docs:build": "DOCS_BASE=/ vitepress build docs",
-    "docs:preview": "DOCS_BASE=/ vitepress preview docs"
+    "docs:preview": "DOCS_BASE=/ vitepress preview docs",
+    "build:mcpb": "./scripts/build-mcpb.sh"
   },
   "dependencies": {
     "@clack/prompts": "1.0.0-alpha.9",

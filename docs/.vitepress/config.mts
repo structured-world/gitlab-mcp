@@ -56,6 +56,7 @@ export default defineConfig({
             { text: "Setup Wizard", link: "/guide/installation/wizard" },
             { text: "npm / npx", link: "/guide/installation/npm" },
             { text: "Docker", link: "/guide/installation/docker" },
+            { text: "Claude Desktop", link: "/guide/installation/claude-desktop" },
             { text: "VS Code", link: "/guide/installation/vscode" },
             { text: "Codex", link: "/guide/installation/codex" },
             { text: "Manual", link: "/guide/installation/manual" },

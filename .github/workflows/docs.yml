@@ -44,6 +44,24 @@ jobs:
         env:
           DOCS_BASE: /
 
+      - name: Download latest MCPB bundle
+        run: |
+          LATEST_TAG=$(gh release view --json tagName -q .tagName 2>/dev/null || echo "")
+          if [ -n "$LATEST_TAG" ]; then
+            VERSION="${LATEST_TAG#v}"
+            MCPB_FILE="gitlab-mcp-${VERSION}.mcpb"
+            mkdir -p docs/.vitepress/dist/downloads
+            gh release download "$LATEST_TAG" --pattern "*.mcpb" --dir docs/.vitepress/dist/downloads/ || true
+            if [ -f "docs/.vitepress/dist/downloads/${MCPB_FILE}" ]; then
+              cp "docs/.vitepress/dist/downloads/${MCPB_FILE}" "docs/.vitepress/dist/downloads/gitlab-mcp-latest.mcpb"
+              echo "MCPB bundle included: ${MCPB_FILE}"
+            fi
+          else
+            echo "No release found, skipping MCPB inclusion"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Run tests with coverage
         run: yarn test:cov
 

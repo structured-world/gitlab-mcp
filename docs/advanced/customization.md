@@ -2,6 +2,10 @@
 
 Customize tool descriptions, filter actions, and configure schema output for optimal AI agent performance.
 
+::: tip MCPB Users
+If you installed via the [MCPB bundle](/guide/installation/claude-desktop), only the three core settings (token, URL, read-only mode) are configurable through the extension UI. For the advanced options below, switch to [manual JSON configuration](/clients/claude-desktop).
+:::
+
 ## Dynamic Tool Descriptions
 
 Override tool descriptions at runtime to optimize AI agent tool selection:

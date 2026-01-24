@@ -79,6 +79,11 @@ jobs:
       - name: Validate TOOLS.md generation
         run: yarn list-tools --export --toc > /dev/null
 
+      - name: Validate MCPB manifest template
+        run: |
+          sed 's/{{VERSION}}/0.0.0/g' mcpb/manifest.json.template | jq . > /dev/null
+          echo "Manifest template is valid JSON"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6
         with:
@@ -188,6 +193,52 @@ jobs:
             echo "new-release-published=false" >> $GITHUB_OUTPUT
           fi
 
+  # Job 3.5: Build and upload MCPB bundle
+  mcpb-bundle:
+    name: Build MCPB Bundle
+    runs-on: ubuntu-latest
+    needs: semantic-release
+    if: needs.semantic-release.outputs.new-release-published == 'true'
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: v${{ needs.semantic-release.outputs.new-release-version }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install Yarn
+        run: corepack prepare yarn@4.12.0 --activate
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build project
+        run: |
+          yarn prisma generate
+          yarn build
+
+      - name: Build MCPB bundle
+        run: ./scripts/build-mcpb.sh "${{ needs.semantic-release.outputs.new-release-version }}"
+
+      - name: Upload MCPB to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ needs.semantic-release.outputs.new-release-version }}
+          files: gitlab-mcp-${{ needs.semantic-release.outputs.new-release-version }}.mcpb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
   # Job 4: Publish Docker images with correct tags
   docker-publish:
     name: Publish Docker Images
@@ -245,7 +296,7 @@ jobs:
     name: Pipeline Summary
     runs-on: ubuntu-latest
     permissions: {}
-    needs: [quality-checks, docker-build, semantic-release, docker-publish]
+    needs: [quality-checks, docker-build, semantic-release, mcpb-bundle, docker-publish]
     if: always()
 
     steps:
@@ -271,4 +322,8 @@ jobs:
             echo "📦 Docker image: ghcr.io/${{ env.IMAGE_NAME }}:${{ needs.semantic-release.outputs.new-release-version }}" >> $GITHUB_STEP_SUMMARY
           else
             echo "ℹ️ No new version released" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ "${{ needs.mcpb-bundle.result }}" == "success" ]]; then
+            echo "📦 MCPB bundle: gitlab-mcp-${{ needs.semantic-release.outputs.new-release-version }}.mcpb" >> $GITHUB_STEP_SUMMARY
           fi

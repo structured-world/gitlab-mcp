@@ -112,7 +112,7 @@ export function validateStaticConfig(): void {
 │  For self-hosted GitLab, also set:                                │
 │    export GITLAB_API_URL="https://your-gitlab.example.com"        │
 │                                                                  │
-│  Docs: https://gitlab-mcp.sw.foundation/guide/installation/npm   │
+│  Docs: https://gitlab-mcp.sw.foundation/guide/quick-start        │
 └──────────────────────────────────────────────────────────────────┘
 `;
     console.error(message);

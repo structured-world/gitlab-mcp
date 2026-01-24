@@ -2,6 +2,7 @@
 
 import { startServer } from "./server";
 import { logger } from "./logger";
+import { ConfigurationError } from "./oauth/config";
 import { tryApplyProfileFromEnv, findProjectConfig, getProjectConfigSummary } from "./profiles";
 import { parseCliArgs, displayProjectConfig } from "./cli-utils";
 import { autoDiscover, formatDiscoveryResult, AutoDiscoveryResult } from "./discovery";
@@ -235,12 +236,8 @@ async function main(): Promise<void> {
 
 main().catch((error: unknown) => {
   // ConfigurationError carries user-friendly guidance — display it without stack trace
-  if (
-    error instanceof Error &&
-    "guidance" in error &&
-    typeof (error as { guidance: unknown }).guidance === "string"
-  ) {
-    console.error((error as { guidance: string }).guidance);
+  if (error instanceof ConfigurationError) {
+    console.error(error.guidance);
   } else {
     logger.error(`Failed to start GitLab MCP Server: ${String(error)}`);
   }

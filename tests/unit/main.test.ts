@@ -77,6 +77,9 @@ async function runMain(): Promise<void> {
       jest.doMock("../../src/cli/init", () => ({
         runWizard: mockRunWizard,
       }));
+      jest.doMock("../../src/oauth/config", () => ({
+        ConfigurationError: MockConfigurationError,
+      }));
 
       // Import main.ts - this triggers main() execution
 

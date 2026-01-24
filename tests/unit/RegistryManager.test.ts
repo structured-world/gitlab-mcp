@@ -93,6 +93,9 @@ jest.mock("../../src/config", () => ({
   get GITLAB_READ_ONLY_MODE() {
     return process.env.GITLAB_READ_ONLY_MODE === "true";
   },
+  get GITLAB_CROSS_REFS() {
+    return process.env.GITLAB_CROSS_REFS !== "false";
+  },
   get GITLAB_DENIED_TOOLS_REGEX() {
     return process.env.GITLAB_DENIED_TOOLS_REGEX
       ? new RegExp(process.env.GITLAB_DENIED_TOOLS_REGEX)
@@ -156,6 +159,7 @@ describe("RegistryManager", () => {
 
     // Reset environment variables to defaults
     delete process.env.GITLAB_READ_ONLY_MODE;
+    delete process.env.GITLAB_CROSS_REFS;
     delete process.env.GITLAB_DENIED_TOOLS_REGEX;
     delete process.env.USE_LABELS;
     delete process.env.USE_MRS;
@@ -819,6 +823,98 @@ describe("RegistryManager", () => {
       } finally {
         coreRegistry.delete("browse_override_test");
         mockConfig.getToolDescriptionOverrides = jest.fn(() => new Map());
+      }
+    });
+  });
+
+  describe("GITLAB_CROSS_REFS=false", () => {
+    it("should strip all Related sections from descriptions", () => {
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+
+      // Add a tool with Related reference that would normally be preserved
+      coreRegistry.set("browse_crossref_test", {
+        name: "browse_crossref_test",
+        description: "Browse items. Actions: list, get. Related: manage_crossref_test to modify.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+      coreRegistry.set("manage_crossref_test", {
+        name: "manage_crossref_test",
+        description: "Manage items.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+
+      try {
+        process.env.GITLAB_CROSS_REFS = "false";
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
+
+        const tool = registryManager.getTool("browse_crossref_test");
+        expect(tool).toBeDefined();
+        // Even though manage_crossref_test is available, Related should be stripped
+        expect(tool!.description).toBe("Browse items. Actions: list, get.");
+        expect(tool!.description).not.toContain("Related:");
+      } finally {
+        coreRegistry.delete("browse_crossref_test");
+        coreRegistry.delete("manage_crossref_test");
+        delete process.env.GITLAB_CROSS_REFS;
+      }
+    });
+
+    it("should not affect tools without Related section", () => {
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+
+      coreRegistry.set("browse_no_related", {
+        name: "browse_no_related",
+        description: "Browse items without cross-refs. Actions: list, get.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+
+      try {
+        process.env.GITLAB_CROSS_REFS = "false";
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
+
+        const tool = registryManager.getTool("browse_no_related");
+        expect(tool).toBeDefined();
+        expect(tool!.description).toBe("Browse items without cross-refs. Actions: list, get.");
+      } finally {
+        coreRegistry.delete("browse_no_related");
+        delete process.env.GITLAB_CROSS_REFS;
+      }
+    });
+
+    it("should not strip Related from tools with custom description overrides", () => {
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+      const mockConfig = require("../../src/config");
+
+      coreRegistry.set("browse_crossref_override", {
+        name: "browse_crossref_override",
+        description: "Original. Related: manage_something to do.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+
+      mockConfig.getToolDescriptionOverrides = jest.fn(
+        () =>
+          new Map([["browse_crossref_override", "Custom desc. Related: manage_something to do."]])
+      );
+
+      try {
+        process.env.GITLAB_CROSS_REFS = "false";
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
+
+        const tool = registryManager.getTool("browse_crossref_override");
+        expect(tool).toBeDefined();
+        // Custom override should be preserved as-is
+        expect(tool!.description).toBe("Custom desc. Related: manage_something to do.");
+      } finally {
+        coreRegistry.delete("browse_crossref_override");
+        mockConfig.getToolDescriptionOverrides = jest.fn(() => new Map());
+        delete process.env.GITLAB_CROSS_REFS;
       }
     });
   });

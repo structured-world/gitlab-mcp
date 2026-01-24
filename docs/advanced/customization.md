@@ -70,6 +70,21 @@ Tool descriptions include `Related:` sections that reference companion tools (e.
 - If all referenced tools are unavailable, the entire `Related:` clause is removed
 - Custom description overrides (`GITLAB_TOOL_*`) bypass resolution entirely — you control the full text
 
+### Disabling Cross-References
+
+To remove all "Related:" hints from tool descriptions:
+
+```bash
+GITLAB_CROSS_REFS=false
+```
+
+**When to disable:**
+- Context-constrained agents with strict token budgets
+- Deployments with very few tools enabled (cross-refs become noise)
+- When using custom `GITLAB_TOOL_*` descriptions exclusively
+
+When disabled, the dynamic resolution logic is skipped entirely — no Related sections appear in any tool description regardless of tool availability.
+
 ## Fine-Grained Action Filtering
 
 For CQRS tools, disable specific actions while keeping others available. This reduces AI context token usage by removing disabled actions and their exclusive parameters from the schema.

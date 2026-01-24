@@ -234,6 +234,20 @@ async function runAdvancedSettings(): Promise<ToolConfig | null> {
     envOverrides.GITLAB_READ_ONLY_MODE = "true";
   }
 
+  // Cross-reference hints in tool descriptions
+  const crossRefs = await p.confirm({
+    message: "Include cross-references in tool descriptions?",
+    initialValue: true,
+  });
+
+  if (p.isCancel(crossRefs)) {
+    return null;
+  }
+
+  if (!crossRefs) {
+    envOverrides.GITLAB_CROSS_REFS = "false";
+  }
+
   // Scope restrictions
   const configureScope = await p.confirm({
     message: "Configure scope restrictions?",

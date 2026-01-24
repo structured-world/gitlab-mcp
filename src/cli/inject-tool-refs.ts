@@ -235,6 +235,10 @@ export function main(): void {
   );
 }
 
+// Exported for unit testing
+export { extractActions, generateActionsTable, findMarkers, processFile };
+export type { JsonSchemaProperty, ActionInfo, MarkerMatch };
+
 // Auto-execute when run directly
 if (!process.env.NODE_ENV || process.env.NODE_ENV !== "test") {
   main();

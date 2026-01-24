@@ -313,6 +313,82 @@ describe("Files Registry", () => {
           ).rejects.toThrow("GitLab API error: 404 Error");
         });
       });
+
+      describe('action: "download_attachment"', () => {
+        it("should download attachment by secret and filename", async () => {
+          const mockArrayBuffer = new TextEncoder().encode("binary-content").buffer;
+          mockEnhancedFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            arrayBuffer: jest.fn().mockResolvedValue(mockArrayBuffer),
+            headers: {
+              get: jest.fn().mockReturnValue("image/png"),
+            },
+          } as unknown as Response);
+
+          const tool = filesToolRegistry.get("browse_files")!;
+          const result = await tool.handler({
+            action: "download_attachment",
+            project_id: "test/project",
+            secret: "abc123secret",
+            filename: "screenshot.png",
+          });
+
+          expect(mockEnhancedFetch).toHaveBeenCalledWith(
+            "https://gitlab.example.com/api/v4/projects/test%2Fproject/uploads/abc123secret/screenshot.png"
+          );
+          expect(result).toEqual({
+            filename: "screenshot.png",
+            content: Buffer.from(mockArrayBuffer).toString("base64"),
+            contentType: "image/png",
+          });
+        });
+
+        it("should use default content type when header is null", async () => {
+          const mockArrayBuffer = new ArrayBuffer(4);
+          mockEnhancedFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            arrayBuffer: jest.fn().mockResolvedValue(mockArrayBuffer),
+            headers: {
+              get: jest.fn().mockReturnValue(null),
+            },
+          } as unknown as Response);
+
+          const tool = filesToolRegistry.get("browse_files")!;
+          const result = await tool.handler({
+            action: "download_attachment",
+            project_id: "42",
+            secret: "secret-key",
+            filename: "data.bin",
+          });
+
+          expect(result).toEqual({
+            filename: "data.bin",
+            content: Buffer.from(mockArrayBuffer).toString("base64"),
+            contentType: "application/octet-stream",
+          });
+        });
+
+        it("should handle API error for attachment download", async () => {
+          mockEnhancedFetch.mockResolvedValueOnce({
+            ok: false,
+            status: 404,
+            statusText: "Not Found",
+          } as unknown as Response);
+
+          const tool = filesToolRegistry.get("browse_files")!;
+
+          await expect(
+            tool.handler({
+              action: "download_attachment",
+              project_id: "test/project",
+              secret: "invalid-secret",
+              filename: "missing.pdf",
+            })
+          ).rejects.toThrow("GitLab API error: 404 Not Found");
+        });
+      });
     });
 
     describe("manage_files handler", () => {

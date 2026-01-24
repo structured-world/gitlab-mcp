@@ -761,14 +761,14 @@ describe("handlers", () => {
       expect(parsed.retryable).toBe(true); // browse_* is idempotent
     });
 
-    it("should mark list_* tools as idempotent for timeout errors", async () => {
+    it("should mark browse_* tools as idempotent for timeout errors (CQRS pattern)", async () => {
       mockRegistryManager.executeTool.mockRejectedValue(
         new Error("GitLab API timeout after 5000ms")
       );
 
       const mockRequest = {
         params: {
-          name: "list_merge_requests",
+          name: "browse_merge_requests",
           arguments: {},
         },
       };
@@ -776,25 +776,27 @@ describe("handlers", () => {
       const result = await callToolHandler(mockRequest);
 
       const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.retryable).toBe(true); // list_* is idempotent
+      expect(parsed.retryable).toBe(true); // browse_* is idempotent
     });
 
-    it("should mark get_* tools as idempotent for timeout errors", async () => {
-      mockRegistryManager.executeTool.mockRejectedValue(
-        new Error("GitLab API timeout after 5000ms")
-      );
+    it("should mark legacy list_*/get_* patterns as idempotent (backwards compat)", async () => {
+      // isIdempotentOperation still recognizes legacy prefixes as a safety net
+      for (const legacyName of ["list_merge_requests", "get_pipeline"]) {
+        mockRegistryManager.executeTool.mockRejectedValue(
+          new Error("GitLab API timeout after 5000ms")
+        );
 
-      const mockRequest = {
-        params: {
-          name: "get_pipeline",
-          arguments: { project_id: "123", pipeline_id: 1 },
-        },
-      };
+        const mockRequest = {
+          params: {
+            name: legacyName,
+            arguments: {},
+          },
+        };
 
-      const result = await callToolHandler(mockRequest);
-
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.retryable).toBe(true); // get_* is idempotent
+        const result = await callToolHandler(mockRequest);
+        const parsed = JSON.parse(result.content[0].text);
+        expect(parsed.retryable).toBe(true);
+      }
     });
 
     it("should handle direct StructuredToolError without wrapping", async () => {

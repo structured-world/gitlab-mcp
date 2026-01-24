@@ -61,6 +61,7 @@ jest.mock("../../src/entities/labels/registry", () => ({
   "snippets",
   "webhooks",
   "integrations",
+  "iterations",
 ].forEach(entity => {
   jest.mock(`../../src/entities/${entity}/registry`, () => ({
     [`${entity}ToolRegistry`]: new Map(),
@@ -133,6 +134,9 @@ jest.mock("../../src/config", () => ({
   get USE_INTEGRATIONS() {
     return process.env.USE_INTEGRATIONS !== "false";
   },
+  get USE_ITERATIONS() {
+    return process.env.USE_ITERATIONS !== "false";
+  },
   getToolDescriptionOverrides: jest.fn(() => new Map()),
   getActionDescriptionOverrides: jest.fn(() => new Map()),
   getParamDescriptionOverrides: jest.fn(() => new Map()),
@@ -161,6 +165,7 @@ describe("RegistryManager", () => {
     delete process.env.USE_PIPELINE;
     delete process.env.USE_GITLAB_WIKI;
     delete process.env.USE_VARIABLES;
+    delete process.env.USE_ITERATIONS;
 
     // Reset default mocks
     mockConfig.getToolDescriptionOverrides = jest.fn(() => new Map());

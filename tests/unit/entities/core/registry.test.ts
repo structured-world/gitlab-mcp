@@ -1597,6 +1597,40 @@ describe("Core Registry", () => {
         expect(result).toEqual(mockApiResponse);
       });
 
+      it("should create group with all optional parameters", async () => {
+        // Test: Create group with description, visibility, parent_id, lfs, access, protection, avatar
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 201,
+          json: jest.fn().mockResolvedValue({ id: 200, name: "Full Group" }),
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_namespace");
+        await tool!.handler({
+          action: "create",
+          name: "Full Group",
+          path: "full-group",
+          description: "A fully configured group",
+          visibility: "internal",
+          parent_id: 42,
+          lfs_enabled: true,
+          request_access_enabled: false,
+          default_branch_protection: 2,
+          avatar: "https://example.com/avatar.png",
+        });
+
+        const body = (mockEnhancedFetch.mock.calls[0][1] as { body: string }).body;
+        expect(body).toContain("name=Full+Group");
+        expect(body).toContain("path=full-group");
+        expect(body).toContain("description=A+fully+configured+group");
+        expect(body).toContain("visibility=internal");
+        expect(body).toContain("parent_id=42");
+        expect(body).toContain("lfs_enabled=true");
+        expect(body).toContain("request_access_enabled=false");
+        expect(body).toContain("default_branch_protection=2");
+        expect(body).toContain("avatar=https%3A%2F%2Fexample.com%2Favatar.png");
+      });
+
       it("should handle API error for manage_namespace create", async () => {
         // Test: Error handling for group creation
         mockEnhancedFetch.mockResolvedValueOnce({
@@ -1609,6 +1643,15 @@ describe("Core Registry", () => {
         await expect(
           tool!.handler({ action: "create", name: "Existing", path: "existing" })
         ).rejects.toThrow("GitLab API error: 409 Conflict");
+      });
+
+      it("should throw when manage_namespace action is denied", async () => {
+        mockIsActionDenied.mockReturnValueOnce(true);
+
+        const tool = coreToolRegistry.get("manage_namespace");
+        await expect(
+          tool!.handler({ action: "create", name: "Test", path: "test" })
+        ).rejects.toThrow("Action 'create' is not allowed for manage_namespace tool");
       });
     });
 

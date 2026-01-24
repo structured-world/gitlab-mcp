@@ -328,6 +328,9 @@ const ListTodosActionSchema = z.object({
     .enum(["pending", "done"])
     .optional()
     .describe("Filter todos by state: pending=active, done=completed."),
+  // Named "todo_action" instead of "action" to avoid collision with the
+  // discriminated union's `action` field. The handler maps this back to
+  // the GitLab API's `action` query parameter.
   todo_action: z
     .enum([
       "assigned",

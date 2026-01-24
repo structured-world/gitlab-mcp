@@ -243,7 +243,6 @@ export const PRESET_DEFINITIONS: PresetDefinition[] = [
       "work-items",
       "pipelines",
       "files",
-      "commits",
       "refs",
       "releases",
       "labels",

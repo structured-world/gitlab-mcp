@@ -5,13 +5,27 @@ import {
   getFilteredCoreTools,
 } from "../../../../src/entities/core/registry";
 import { enhancedFetch } from "../../../../src/utils/fetch";
+import { smartUserSearch } from "../../../../src/utils/smart-user-search";
+import { isActionDenied } from "../../../../src/config";
 
 // Mock the fetch function to avoid actual API calls
 jest.mock("../../../../src/utils/fetch", () => ({
   enhancedFetch: jest.fn(),
 }));
 
+// Mock smart user search
+jest.mock("../../../../src/utils/smart-user-search", () => ({
+  smartUserSearch: jest.fn(),
+}));
+
+// Mock config module
+jest.mock("../../../../src/config", () => ({
+  isActionDenied: jest.fn(() => false),
+}));
+
 const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
+const mockSmartUserSearch = smartUserSearch as jest.MockedFunction<typeof smartUserSearch>;
+const mockIsActionDenied = isActionDenied as jest.MockedFunction<typeof isActionDenied>;
 
 // Mock environment variables
 const originalEnv = process.env;
@@ -699,6 +713,15 @@ describe("Core Registry", () => {
           "GitLab API error: 401 Unauthorized"
         );
       });
+
+      it("should throw when browse_todos action is denied", async () => {
+        mockIsActionDenied.mockReturnValueOnce(true);
+
+        const tool = coreToolRegistry.get("browse_todos");
+        await expect(tool!.handler({ action: "list" })).rejects.toThrow(
+          "Action 'list' is not allowed for browse_todos tool"
+        );
+      });
     });
 
     describe("browse_namespaces Handler", () => {
@@ -1373,6 +1396,15 @@ describe("Core Registry", () => {
           "GitLab API error: 404 Not Found"
         );
       });
+
+      it("should throw when manage_todos action is denied", async () => {
+        mockIsActionDenied.mockReturnValueOnce(true);
+
+        const tool = coreToolRegistry.get("manage_todos");
+        await expect(tool!.handler({ action: "mark_done", id: 1 })).rejects.toThrow(
+          "Action 'mark_done' is not allowed for manage_todos tool"
+        );
+      });
     });
 
     describe("browse_users Handler", () => {
@@ -1432,6 +1464,102 @@ describe("Core Registry", () => {
         const tool = coreToolRegistry.get("browse_users");
         await expect(tool!.handler({ action: "search", smart_search: false })).rejects.toThrow(
           "GitLab API error: 401 Unauthorized"
+        );
+      });
+
+      it("should use smart search when search query provided without explicit smart_search flag", async () => {
+        const mockResult = {
+          users: [{ id: 1, username: "john" }],
+          searchMetadata: {
+            query: "john",
+            pattern: { type: "name" as const, hasTransliteration: false, originalQuery: "john" },
+            searchPhases: [{ phase: "exact", params: {}, resultCount: 1 }],
+            totalApiCalls: 1,
+          },
+        };
+        mockSmartUserSearch.mockResolvedValueOnce(mockResult);
+
+        const tool = coreToolRegistry.get("browse_users");
+        const result = await tool!.handler({
+          action: "search",
+          search: "john",
+        });
+
+        expect(mockSmartUserSearch).toHaveBeenCalledWith(
+          "john",
+          expect.objectContaining({ per_page: 20 })
+        );
+        expect(result).toEqual(mockResult);
+      });
+
+      it("should use smart search with username parameter", async () => {
+        const mockResult = {
+          users: [{ id: 2, username: "jane" }],
+          searchMetadata: {
+            query: "jane",
+            pattern: {
+              type: "username" as const,
+              hasTransliteration: false,
+              originalQuery: "jane",
+            },
+            searchPhases: [{ phase: "exact", params: {}, resultCount: 1 }],
+            totalApiCalls: 1,
+          },
+        };
+        mockSmartUserSearch.mockResolvedValueOnce(mockResult);
+
+        const tool = coreToolRegistry.get("browse_users");
+        const result = await tool!.handler({
+          action: "search",
+          smart_search: true,
+          username: "jane",
+        });
+
+        expect(mockSmartUserSearch).toHaveBeenCalledWith(
+          "jane",
+          expect.objectContaining({ per_page: 20 })
+        );
+        expect(result).toEqual(mockResult);
+      });
+
+      it("should get user by ID", async () => {
+        const mockUser = { id: 42, username: "admin", name: "Admin User" };
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue(mockUser),
+        } as any);
+
+        const tool = coreToolRegistry.get("browse_users");
+        const result = await tool!.handler({
+          action: "get",
+          user_id: "42",
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          "https://gitlab.example.com/api/v4/users/42"
+        );
+        expect(result).toEqual(mockUser);
+      });
+
+      it("should handle get user API error", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
+        } as any);
+
+        const tool = coreToolRegistry.get("browse_users");
+        await expect(tool!.handler({ action: "get", user_id: "999" })).rejects.toThrow(
+          "GitLab API error: 404 Not Found"
+        );
+      });
+
+      it("should throw when browse_users action is denied", async () => {
+        mockIsActionDenied.mockReturnValueOnce(true);
+
+        const tool = coreToolRegistry.get("browse_users");
+        await expect(tool!.handler({ action: "search", smart_search: false })).rejects.toThrow(
+          "Action 'search' is not allowed for browse_users tool"
         );
       });
     });
@@ -1624,6 +1752,261 @@ describe("Core Registry", () => {
         expect(calledBody).toContain("request_access_enabled=false");
         expect(calledBody).toContain("only_allow_merge_if_pipeline_succeeds=true");
         expect(calledBody).toContain("only_allow_merge_if_all_discussions_are_resolved=true");
+      });
+
+      it("should update project", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ id: 1, name: "updated-name" }),
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_project");
+        const result = await tool!.handler({
+          action: "update",
+          project_id: "my-group/my-project",
+          name: "updated-name",
+          description: "New description",
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          "https://gitlab.example.com/api/v4/projects/my-group%2Fmy-project",
+          expect.objectContaining({ method: "PUT" })
+        );
+        expect(result).toEqual({ id: 1, name: "updated-name" });
+      });
+
+      it("should handle update project API error", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          statusText: "Forbidden",
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_project");
+        await expect(
+          tool!.handler({ action: "update", project_id: "123", name: "x" })
+        ).rejects.toThrow("GitLab API error: 403 Forbidden");
+      });
+
+      it("should delete project", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_project");
+        const result = await tool!.handler({
+          action: "delete",
+          project_id: "42",
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          "https://gitlab.example.com/api/v4/projects/42",
+          expect.objectContaining({ method: "DELETE" })
+        );
+        expect(result).toEqual({ success: true, message: "Project 42 deleted" });
+      });
+
+      it("should handle delete project API error", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_project");
+        await expect(tool!.handler({ action: "delete", project_id: "999" })).rejects.toThrow(
+          "GitLab API error: 404 Not Found"
+        );
+      });
+
+      it("should archive project", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ id: 1, archived: true }),
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_project");
+        const result = await tool!.handler({
+          action: "archive",
+          project_id: "my-group/my-project",
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          "https://gitlab.example.com/api/v4/projects/my-group%2Fmy-project/archive",
+          expect.objectContaining({ method: "POST" })
+        );
+        expect(result).toEqual({ id: 1, archived: true });
+      });
+
+      it("should handle archive project API error", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          statusText: "Forbidden",
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_project");
+        await expect(tool!.handler({ action: "archive", project_id: "1" })).rejects.toThrow(
+          "GitLab API error: 403 Forbidden"
+        );
+      });
+
+      it("should unarchive project", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ id: 1, archived: false }),
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_project");
+        const result = await tool!.handler({
+          action: "unarchive",
+          project_id: "10",
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          "https://gitlab.example.com/api/v4/projects/10/unarchive",
+          expect.objectContaining({ method: "POST" })
+        );
+        expect(result).toEqual({ id: 1, archived: false });
+      });
+
+      it("should handle unarchive project API error", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          statusText: "Forbidden",
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_project");
+        await expect(tool!.handler({ action: "unarchive", project_id: "1" })).rejects.toThrow(
+          "GitLab API error: 403 Forbidden"
+        );
+      });
+
+      it("should transfer project", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ id: 1, namespace: { path: "new-group" } }),
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_project");
+        const result = await tool!.handler({
+          action: "transfer",
+          project_id: "old-group/project",
+          namespace: "new-group",
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          "https://gitlab.example.com/api/v4/projects/old-group%2Fproject/transfer",
+          expect.objectContaining({ method: "PUT" })
+        );
+        const body = (mockEnhancedFetch.mock.calls[0][1] as { body: string }).body;
+        expect(body).toContain("namespace=new-group");
+        expect(result).toEqual({ id: 1, namespace: { path: "new-group" } });
+      });
+
+      it("should handle transfer project API error", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 400,
+          statusText: "Bad Request",
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_project");
+        await expect(
+          tool!.handler({ action: "transfer", project_id: "1", namespace: "invalid" })
+        ).rejects.toThrow("GitLab API error: 400 Bad Request");
+      });
+    });
+
+    describe("manage_namespace Handler (update/delete)", () => {
+      it("should update group", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ id: 5, name: "Updated Group" }),
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_namespace");
+        const result = await tool!.handler({
+          action: "update",
+          group_id: "my-group",
+          name: "Updated Group",
+          description: "New description",
+          visibility: "internal",
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          "https://gitlab.example.com/api/v4/groups/my-group",
+          expect.objectContaining({ method: "PUT" })
+        );
+        const body = (mockEnhancedFetch.mock.calls[0][1] as { body: string }).body;
+        expect(body).toContain("name=Updated+Group");
+        expect(body).toContain("description=New+description");
+        expect(body).toContain("visibility=internal");
+        expect(result).toEqual({ id: 5, name: "Updated Group" });
+      });
+
+      it("should handle update group API error", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 403,
+          statusText: "Forbidden",
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_namespace");
+        await expect(
+          tool!.handler({ action: "update", group_id: "123", name: "x" })
+        ).rejects.toThrow("GitLab API error: 403 Forbidden");
+      });
+
+      it("should delete group", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_namespace");
+        const result = await tool!.handler({
+          action: "delete",
+          group_id: "old-group",
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          "https://gitlab.example.com/api/v4/groups/old-group",
+          expect.objectContaining({ method: "DELETE" })
+        );
+        expect(result).toEqual({ success: true, message: "Group old-group deleted" });
+      });
+
+      it("should handle delete group API error", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          statusText: "Not Found",
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_namespace");
+        await expect(tool!.handler({ action: "delete", group_id: "nonexistent" })).rejects.toThrow(
+          "GitLab API error: 404 Not Found"
+        );
+      });
+
+      it("should encode group_id with special characters", async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ id: 10 }),
+        } as any);
+
+        const tool = coreToolRegistry.get("manage_namespace");
+        await tool!.handler({
+          action: "update",
+          group_id: "parent/child-group",
+          name: "Child",
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          "https://gitlab.example.com/api/v4/groups/parent%2Fchild-group",
+          expect.objectContaining({ method: "PUT" })
+        );
       });
     });
   });

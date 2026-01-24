@@ -85,9 +85,6 @@ describe("setup/presets", () => {
       const validIds = new Set(TOOL_CATEGORIES.map(c => c.id));
       for (const preset of PRESET_DEFINITIONS) {
         for (const catId of preset.enabledCategories) {
-          // Note: "commits" category was merged into "files" in Phase 4 refactoring.
-          // The preset definitions still reference it and should be cleaned up in src.
-          if (catId === "commits") continue;
           expect(validIds.has(catId)).toBe(true);
         }
       }

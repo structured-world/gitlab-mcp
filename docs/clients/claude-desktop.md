@@ -2,6 +2,14 @@
 
 Configure GitLab MCP for [Claude Desktop](https://claude.ai/download).
 
+## Recommended: MCPB Extension
+
+The easiest way to install — download and open the `.mcpb` bundle:
+
+[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge&logoColor=white)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-latest.mcpb)
+
+See [MCPB installation guide](/guide/installation/claude-desktop) for details.
+
 ## Auto-Setup
 
 ```bash

@@ -1,0 +1,64 @@
+{
+  "manifest_version": "0.3",
+  "name": "gitlab-mcp",
+  "version": "{{VERSION}}",
+  "display_name": "GitLab MCP",
+  "description": "Connect AI agents to GitLab — 44 tools across 18 entity types with CQRS architecture",
+  "long_description": "A Model Context Protocol server providing comprehensive GitLab API access. Supports projects, merge requests, pipelines, work items, CI/CD variables, webhooks, releases, wiki, and more. CQRS architecture with browse_* for queries and manage_* for commands.",
+  "author": {
+    "name": "Dmitry Prudnikov",
+    "email": "mail@polaz.com",
+    "url": "https://gitlab-mcp.sw.foundation"
+  },
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/structured-world/gitlab-mcp"
+  },
+  "homepage": "https://gitlab-mcp.sw.foundation",
+  "documentation": "https://gitlab-mcp.sw.foundation/guide/",
+  "server": {
+    "type": "node",
+    "entry_point": "dist/src/main.js",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/dist/src/main.js"],
+      "env": {
+        "GITLAB_TOKEN": "${user_config.GITLAB_TOKEN}",
+        "GITLAB_API_URL": "${user_config.GITLAB_API_URL}",
+        "GITLAB_READ_ONLY_MODE": "${user_config.GITLAB_READ_ONLY_MODE}"
+      }
+    }
+  },
+  "user_config": {
+    "GITLAB_TOKEN": {
+      "type": "string",
+      "title": "GitLab Personal Access Token",
+      "description": "Token with 'api' and 'read_user' scopes. Create at: Settings > Access Tokens > Personal Access Tokens",
+      "required": true,
+      "sensitive": true
+    },
+    "GITLAB_API_URL": {
+      "type": "string",
+      "title": "GitLab Instance URL",
+      "description": "Your GitLab instance URL. Leave default for GitLab.com",
+      "required": false,
+      "default": "https://gitlab.com"
+    },
+    "GITLAB_READ_ONLY_MODE": {
+      "type": "boolean",
+      "title": "Read-Only Mode",
+      "description": "When enabled, only browse_* tools are available (no write operations)",
+      "required": false,
+      "default": false
+    }
+  },
+  "tools_generated": true,
+  "keywords": ["gitlab", "devops", "ci-cd", "merge-requests", "pipelines", "code-review"],
+  "compatibility": {
+    "platforms": ["darwin", "win32", "linux"],
+    "runtimes": {
+      "node": ">=22.0.0"
+    }
+  }
+}

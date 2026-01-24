@@ -19,6 +19,7 @@ See [Setup Wizard](/guide/installation/wizard) for a detailed walkthrough.
 | [Setup Wizard](/guide/installation/wizard) | First-time setup, auto-configuration | Interactive, detects clients |
 | [npm / npx](/guide/installation/npm) | Quick start, CI/CD | Minimal config, no install |
 | [Docker](/guide/installation/docker) | Teams, server deployments | Isolated, scalable |
+| [Claude Desktop](/guide/installation/claude-desktop) | Claude Desktop users | One-click .mcpb extension |
 | [VS Code](/guide/installation/vscode) | VS Code + GitHub Copilot users | One-click install |
 | [Codex](/guide/installation/codex) | OpenAI Codex CLI users | Direct integration |
 | [Manual](/guide/installation/manual) | Custom setups, advanced users | Full control |

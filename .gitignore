@@ -28,6 +28,10 @@ scripts/
 !scripts/cleanup-test-groups.js
 !scripts/test_mcp.sh
 !scripts/deploy.sh
+!scripts/build-mcpb.sh
+
+# MCPB bundles (built artifacts)
+*.mcpb
 
 # Keep assets
 !assets/

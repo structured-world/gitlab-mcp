@@ -2,7 +2,7 @@
 
 [![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://gitlab-mcp.sw.foundation/coverage/)
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server that connects AI agents to the GitLab API — 47 tools across 17 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes.
+A [Model Context Protocol](https://modelcontextprotocol.io) server that connects AI agents to the GitLab API — 44 tools across 18 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes.
 
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
@@ -28,7 +28,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server that connects
 
 ## Highlights
 
-- **47 tools** across 17 entity types — projects, merge requests, pipelines, work items, wiki, and more
+- **44 tools** across 18 entity types — projects, merge requests, pipelines, work items, wiki, and more
 - **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
 - **Multiple transports** — stdio, SSE, StreamableHTTP
 - **OAuth 2.1** — Per-user authentication via Claude Custom Connector
@@ -45,7 +45,7 @@ Full documentation is available at **[gitlab-mcp.sw.foundation](https://gitlab-m
 |---------|-------------|
 | [Installation](https://gitlab-mcp.sw.foundation/guide/installation/npm) | npm, Docker, VS Code, Codex |
 | [Configuration](https://gitlab-mcp.sw.foundation/guide/configuration) | Environment variables, feature flags |
-| [Tool Reference](https://gitlab-mcp.sw.foundation/tools/) | All 47 tools with parameters |
+| [Tool Reference](https://gitlab-mcp.sw.foundation/tools/) | All 44 tools with parameters |
 | [OAuth Setup](https://gitlab-mcp.sw.foundation/security/oauth) | Team authentication with Claude |
 | [TLS/HTTPS](https://gitlab-mcp.sw.foundation/advanced/tls) | Production deployment with SSL |
 | [Customization](https://gitlab-mcp.sw.foundation/advanced/customization) | Tool descriptions, action filtering |

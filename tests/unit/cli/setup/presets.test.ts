@@ -160,7 +160,7 @@ describe("setup/presets", () => {
   describe("getToolCount", () => {
     it("should return total tools for given categories", () => {
       const count = getToolCount(["core"]);
-      expect(count).toBe(3); // browse_projects, browse_namespaces, get_users
+      expect(count).toBe(6); // browse_projects, browse_namespaces, browse_events, browse_users, manage_project, manage_namespace
     });
 
     it("should sum tools across multiple categories", () => {

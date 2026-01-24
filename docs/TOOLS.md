@@ -1,32 +1,25 @@
 # GitLab MCP Tools Reference
 
 > Auto-generated from source code. Do not edit manually.
-> Generated: 2026-01-24 | Tools: 47 | Version: 6.37.0
+> Generated: 2026-01-24 | Tools: 44 | Version: 6.37.0
 
 ## Table of Contents
 
-- [Core (11)](#core)
-- [Work Items (2)](#work-items)
-- [Merge Requests (5)](#merge-requests)
-- [Labels (2)](#labels)
-- [Milestones (2)](#milestones)
-- [Pipelines (3)](#pipelines)
-- [Variables (2)](#variables)
-- [Files (2)](#files)
-- [Wiki (2)](#wiki)
-- [Snippets (2)](#snippets)
-- [Webhooks (2)](#webhooks)
-- [Integrations (2)](#integrations)
-- [Todos (2)](#todos)
-- [Other (8)](#other)
+- [Projects & Repository (12)](#projects-&-repository)
+- [Collaboration (10)](#collaboration)
+- [Planning (7)](#planning)
+- [CI/CD (5)](#ci/cd)
+- [Integrations & Content (8)](#integrations-&-content)
+- [Discovery (1)](#discovery)
+- [Session (1)](#session)
 
 ---
 
-## Core
+## Projects & Repository
 
 ### browse_projects [tier: Free]
 
-PROJECT DISCOVERY: Find, browse, or inspect GitLab projects. Use 'search' to find projects by name/topic across all GitLab. Use 'list' to browse your accessible projects or projects within a specific group. Use 'get' with project_id to retrieve full details of a known project. Filter by visibility, language, or ownership.
+Find, list, or inspect GitLab projects. Actions: search (find by name/topic across GitLab), list (browse accessible projects or group projects), get (retrieve full project details). Related: manage_project to create/update/delete projects.
 
 #### Actions
 
@@ -92,7 +85,7 @@ PROJECT DISCOVERY: Find, browse, or inspect GitLab projects. Use 'search' to fin
 
 ### browse_namespaces [tier: Free]
 
-NAMESPACE OPERATIONS: Explore GitLab groups and user namespaces. Use 'list' to discover available namespaces for project creation. Use 'get' with namespace_id to retrieve full details including storage stats. Use 'verify' to check if a namespace path exists before creating projects or groups.
+Explore GitLab groups and user namespaces. Actions: list (discover available namespaces), get (retrieve details with storage stats), verify (check if path exists). Related: manage_namespace to create/update/delete groups.
 
 #### Actions
 
@@ -141,7 +134,7 @@ NAMESPACE OPERATIONS: Explore GitLab groups and user namespaces. Use 'list' to d
 
 ### browse_commits [tier: Free]
 
-COMMIT HISTORY: Explore repository commit history. Use 'list' to browse commits with optional date range, author, or file path filters. Use 'get' with sha to retrieve commit metadata and stats. Use 'diff' to see actual code changes in a commit. Essential for code review and change tracking.
+Explore repository commit history and diffs. Actions: list (browse commits with filters), get (retrieve commit metadata and stats), diff (view code changes). Related: browse_refs for branch/tag info.
 
 #### Actions
 
@@ -206,7 +199,7 @@ COMMIT HISTORY: Explore repository commit history. Use 'list' to browse commits 
 
 ### browse_events [tier: Free]
 
-ACTIVITY FEED: Track GitLab activity and events. Use 'user' to see YOUR recent activity across all projects (commits, issues, MRs). Use 'project' with project_id to monitor a specific project's activity feed. Filter by date range or action type (pushed, commented, merged, etc.).
+Track GitLab activity and events. Actions: user (your activity across all projects), project (specific project activity feed). Filter by date range, action type, or target type.
 
 #### Actions
 
@@ -246,9 +239,9 @@ ACTIVITY FEED: Track GitLab activity and events. Use 'user' to see YOUR recent a
 
 ---
 
-### manage_repository [tier: Free]
+### manage_project [tier: Free]
 
-REPOSITORY MANAGEMENT: Create or fork GitLab projects. Use 'create' to start a new project with custom settings (visibility, features, namespace). Use 'fork' with project_id to create your own copy of an existing project for independent development or contribution back via MRs.
+Create, update, or manage GitLab projects. Actions: create (new project with settings), fork (copy existing project), update (modify settings), delete (remove permanently), archive/unarchive (toggle read-only), transfer (move to different namespace). Related: browse_projects for discovery.
 
 #### Actions
 
@@ -256,13 +249,27 @@ REPOSITORY MANAGEMENT: Create or fork GitLab projects. Use 'create' to start a n
 |--------|------|-------------|
 | `create` | Free | Create a new project |
 | `fork` | Free | Fork an existing project |
+| `update` | Free | Update project settings |
+| `delete` | Free | Delete a project permanently |
+| `archive` | Free | Archive a project (read-only mode) |
+| `unarchive` | Free | Unarchive a project (restore from archive) |
+| `transfer` | Free | Transfer project to a different namespace |
 
 #### Parameters
 
-**Common** (all actions):
+**Action `archive`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path. |
+
+**Action `create`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Project name. |
+| `description` | string | No | Project description. |
+| `initialize_with_readme` | boolean | No | Create initial README.md file. |
 | `issues_enabled` | boolean | No | Enable issue tracking. |
 | `jobs_enabled` | boolean | No | Enable CI/CD jobs. |
 | `lfs_enabled` | boolean | No | Enable Git LFS. |
@@ -272,16 +279,14 @@ REPOSITORY MANAGEMENT: Create or fork GitLab projects. Use 'create' to start a n
 | `only_allow_merge_if_pipeline_succeeds` | boolean | No | Require passing pipelines for merge. |
 | `request_access_enabled` | boolean | No | Allow access requests. |
 | `snippets_enabled` | boolean | No | Enable code snippets. |
+| `visibility` | string | No | Project visibility level. |
 | `wiki_enabled` | boolean | No | Enable project wiki. |
 
-**Action `create`**:
+**Action `delete`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `name` | string | Yes | Project name. |
-| `description` | string | No | Project description. |
-| `initialize_with_readme` | boolean | No | Create initial README.md file. |
-| `visibility` | string | No | Project visibility level. |
+| `project_id` | string | Yes | Project ID or URL-encoded path. |
 
 **Action `fork`**:
 
@@ -290,7 +295,49 @@ REPOSITORY MANAGEMENT: Create or fork GitLab projects. Use 'create' to start a n
 | `project_id` | string | Yes | Source project to fork. Numeric ID or URL-encoded path. |
 | `fork_name` | string | No | New name for forked project (maps to API 'name' parameter). |
 | `fork_path` | string | No | New path for forked project (maps to API 'path' parameter). |
+| `issues_enabled` | boolean | No | Enable issue tracking. |
+| `jobs_enabled` | boolean | No | Enable CI/CD jobs. |
+| `lfs_enabled` | boolean | No | Enable Git LFS. |
+| `merge_requests_enabled` | boolean | No | Enable merge requests. |
+| `namespace` | string | No | Target namespace path. Omit for current user namespace. |
 | `namespace_path` | string | No | Target namespace path for fork. |
+| `only_allow_merge_if_all_discussions_are_resolved` | boolean | No | Require resolved discussions for merge. |
+| `only_allow_merge_if_pipeline_succeeds` | boolean | No | Require passing pipelines for merge. |
+| `request_access_enabled` | boolean | No | Allow access requests. |
+| `snippets_enabled` | boolean | No | Enable code snippets. |
+| `wiki_enabled` | boolean | No | Enable project wiki. |
+
+**Action `transfer`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `namespace` | string | Yes | Target namespace ID or path to transfer to. |
+| `project_id` | string | Yes | Project ID or URL-encoded path. |
+
+**Action `unarchive`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path. |
+
+**Action `update`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path. |
+| `default_branch` | string | No | Set default branch name. |
+| `description` | string | No | New project description. |
+| `issues_enabled` | boolean | No | Enable issue tracking. |
+| `jobs_enabled` | boolean | No | Enable CI/CD jobs. |
+| `lfs_enabled` | boolean | No | Enable Git LFS. |
+| `merge_requests_enabled` | boolean | No | Enable merge requests. |
+| `name` | string | No | New project name. |
+| `only_allow_merge_if_all_discussions_are_resolved` | boolean | No | Require resolved discussions for merge. |
+| `only_allow_merge_if_pipeline_succeeds` | boolean | No | Require passing pipelines for merge. |
+| `request_access_enabled` | boolean | No | Allow access requests. |
+| `snippets_enabled` | boolean | No | Enable code snippets. |
+| `visibility` | string | No | New visibility level. |
+| `wiki_enabled` | boolean | No | Enable project wiki. |
 
 #### Example
 
@@ -303,11 +350,537 @@ REPOSITORY MANAGEMENT: Create or fork GitLab projects. Use 'create' to start a n
 
 ---
 
-### get_users [tier: Free]
+### manage_namespace [tier: Free]
 
-FIND USERS: Search GitLab users with smart pattern detection. Auto-detects emails, usernames, or names. Supports transliteration and multi-phase fallback search.
+Create, update, or delete GitLab groups/namespaces. Actions: create (new group with visibility/settings), update (modify group settings), delete (remove permanently). Related: browse_namespaces for discovery.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `create` | Free | Create a new group/namespace |
+| `update` | Free | Update group settings |
+| `delete` | Free | Delete a group permanently |
 
 #### Parameters
+
+**Action `create`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Group display name. |
+| `path` | string | Yes | Group path for URLs (URL-safe). |
+| `visibility` | string | Yes | Group visibility level. |
+| `avatar` | string | No | Group avatar URL. |
+| `default_branch_protection` | number | No | Branch protection level: 0=none, 1=partial, 2=full. |
+| `description` | string | No | Group description. |
+| `lfs_enabled` | boolean | No | Enable Git LFS. |
+| `parent_id` | number | No | Parent group ID for subgroup. |
+| `request_access_enabled` | boolean | No | Allow access requests. |
+
+**Action `delete`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path. |
+
+**Action `update`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path. |
+| `default_branch_protection` | number | No | Branch protection level: 0=none, 1=partial, 2=full. |
+| `description` | string | No | New group description. |
+| `lfs_enabled` | boolean | No | Enable Git LFS. |
+| `name` | string | No | New group name. |
+| `path` | string | No | New group path (URL-safe). |
+| `request_access_enabled` | boolean | No | Allow access requests. |
+| `visibility` | string | No | New visibility level. |
+
+#### Example
+
+```json
+{
+  "action": "create",
+  "name": "example_name",
+  "path": "path/to/file.txt",
+  "visibility": "private"
+}
+```
+
+---
+
+### browse_files [tier: Free]
+
+BROWSE repository files. Actions: "tree" lists files/folders with pagination, "content" reads file contents. Use for exploring project structure or reading source code.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `tree` | Free | List files and folders in a directory |
+| `content` | Free | Read file contents |
+| `download_attachment` | Free | Download a file attachment from issues/MRs |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+
+**Action `content`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file_path` | string | Yes | Path to the file to read |
+| `ref` | string | No | Branch, tag, or commit SHA |
+
+**Action `download_attachment`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `filename` | string | Yes | Original filename of the attachment. |
+| `secret` | string | Yes | Security token from the attachment URL. |
+
+**Action `tree`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `page` | integer | No | Page number |
+| `path` | string | No | Directory path to list |
+| `recursive` | boolean | No | Include nested directories |
+| `ref` | string | No | Branch, tag, or commit SHA |
+
+#### Example
+
+```json
+{
+  "action": "tree",
+  "project_id": "my-group/my-project",
+  "per_page": 10
+}
+```
+
+---
+
+### manage_files [tier: Free]
+
+MANAGE repository files. Actions: "single" creates/updates one file, "batch" commits multiple files atomically, "upload" adds markdown attachments.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `single` | Free | Create or update a single file |
+| `batch` | Free | Commit multiple files atomically |
+| `upload` | Free | Upload a file as markdown attachment |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+
+**Action `batch`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `branch` | string | Yes | Target branch name |
+| `commit_message` | string | Yes | Commit message |
+| `files` | object[] | Yes | Files to commit (at least one required) |
+| `author_email` | string | No | Commit author email |
+| `author_name` | string | No | Commit author name |
+| `start_branch` | string | No | Base branch to start from |
+
+**Action `single`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `branch` | string | Yes | Target branch name |
+| `commit_message` | string | Yes | Commit message |
+| `content` | string | Yes | File content (text or base64 encoded) |
+| `file_path` | string | Yes | Path to the file |
+| `author_email` | string | No | Commit author email |
+| `author_name` | string | No | Commit author name |
+| `encoding` | string | No | Content encoding (default: text) |
+| `execute_filemode` | boolean | No | Set executable permission |
+| `last_commit_id` | string | No | Last known commit ID for conflict detection |
+| `start_branch` | string | No | Base branch to start from |
+
+**Action `upload`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `file` | string | Yes | Base64 encoded file content |
+| `filename` | string | Yes | Name of the file |
+
+#### Example
+
+```json
+{
+  "action": "single",
+  "project_id": "my-group/my-project",
+  "file_path": "path/to/file.txt",
+  "content": "File content here",
+  "commit_message": "example_commit_message",
+  "branch": "main"
+}
+```
+
+---
+
+### browse_releases [tier: Free]
+
+BROWSE GitLab project releases. Actions: "list" shows all releases sorted by date, "get" retrieves specific release by tag name, "assets" lists release asset links. Releases are versioned software distributions with changelogs, assets, and milestone associations.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `list` | Free | List all releases for a project, sorted by release date |
+| `get` | Free | Get a specific release by its tag name |
+| `assets` | Free | List all asset links for a specific release |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path (e.g., 'my-group/my-project') |
+
+**Action `assets`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tag_name` | string | Yes | The Git tag associated with the release (e.g., 'v1.0.0') |
+| `page` | integer | No | Page number |
+| `per_page` | integer | No | Number of items per page (max 100) |
+
+**Action `get`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tag_name` | string | Yes | The Git tag associated with the release (e.g., 'v1.0.0') |
+| `include_html_description` | boolean | No | Include HTML-rendered description in response |
+
+**Action `list`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `include_html_description` | boolean | No | Include HTML-rendered description in response |
+| `order_by` | string | No | Sort releases by field (default: released_at) |
+| `page` | integer | No | Page number |
+| `per_page` | integer | No | Number of items per page (max 100) |
+| `sort` | string | No | Sort direction (default: desc) |
+
+#### Example
+
+```json
+{
+  "action": "list",
+  "project_id": "my-group/my-project"
+}
+```
+
+---
+
+### manage_release [tier: Free]
+
+MANAGE GitLab releases. Actions: "create" creates release with optional assets, "update" modifies release metadata, "delete" removes release (preserves tag), "create_link" adds asset link, "delete_link" removes asset link.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `create` | Free | Create a new release for an existing or new tag |
+| `update` | Free | Update an existing release |
+| `delete` | Free | Delete a release (preserves the Git tag) |
+| `create_link` | Free | Add an asset link to an existing release |
+| `delete_link` | Free | Remove an asset link from a release |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path (e.g., 'my-group/my-project') |
+| `tag_name` | string | Yes | The Git tag associated with the release (e.g., 'v1.0.0') |
+
+**Action `create`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `assets` | object | No | Release assets configuration |
+| `description` | string | No | Release description (supports Markdown) |
+| `milestones` | string[] | No | Array of milestone titles to associate with the release |
+| `name` | string | No | The release title/name |
+| `ref` | string | No | Branch/commit SHA to create tag from (if tag does not exist) |
+| `released_at` | string | No | Release date/time in ISO 8601 format (e.g., '2024-01-15T12:00:00Z') |
+| `tag_message` | string | No | Annotation message for the tag (creates annotated tag) |
+
+**Action `create_link`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Display name for the asset link (must be unique per release) |
+| `url` | string | Yes | URL of the asset (must be unique per release) |
+| `direct_asset_path` | string | No | Path for direct asset download (e.g., '/binaries/linux-amd64') |
+| `link_type` | string | No | Type of asset link (default: other) |
+
+**Action `delete_link`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `link_id` | string | Yes | The ID of the asset link to delete |
+
+**Action `update`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `description` | string | No | Release description (supports Markdown) |
+| `milestones` | string[] | No | Array of milestone titles to associate with the release |
+| `name` | string | No | The release title/name |
+| `released_at` | string | No | Release date/time in ISO 8601 format (e.g., '2024-01-15T12:00:00Z') |
+
+#### Example
+
+```json
+{
+  "action": "create",
+  "project_id": "my-group/my-project",
+  "tag_name": "example_tag_name"
+}
+```
+
+---
+
+### browse_refs [tier: Premium*]
+
+BROWSE Git refs (branches and tags). Actions: "list_branches" lists all branches, "get_branch" gets branch details, "list_tags" lists all tags, "get_tag" gets tag details, "list_protected_branches" shows protected branches, "get_protected_branch" gets protection rules, "list_protected_tags" shows protected tags.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `list_branches` | Free | List all repository branches with optional search |
+| `get_branch` | Free | Get details of a specific branch |
+| `list_tags` | Free | List all repository tags |
+| `get_tag` | Free | Get details of a specific tag |
+| `list_protected_branches` | Free | List all protected branches with their protection rules |
+| `get_protected_branch` | Free | Get protection rules for a specific branch |
+| `list_protected_tags` | Premium | List all protected tags with their protection rules |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path (e.g., 'my-group/my-project') |
+
+**Action `get_branch`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `branch` | string | Yes | Branch name (URL-encoded if contains slashes) |
+
+**Action `get_protected_branch`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Branch name or wildcard pattern (e.g., 'main', 'release-*') |
+
+**Action `get_tag`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tag_name` | string | Yes | Tag name (URL-encoded if contains special characters) |
+
+**Action `list_branches`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `page` | integer | No | Page number |
+| `per_page` | integer | No | Number of items per page (max 100) |
+| `regex` | string | No | Filter branches by regex pattern |
+| `search` | string | No | Filter branches by name (supports wildcards) |
+
+**Action `list_protected_branches`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `page` | integer | No | Page number |
+| `per_page` | integer | No | Number of items per page (max 100) |
+| `search` | string | No | Filter protected branches by name |
+
+**Action `list_protected_tags`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `page` | integer | No | Page number |
+| `per_page` | integer | No | Number of items per page (max 100) |
+
+**Action `list_tags`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `order_by` | string | No | Sort by field (default: updated) |
+| `page` | integer | No | Page number |
+| `per_page` | integer | No | Number of items per page (max 100) |
+| `search` | string | No | Filter tags by name (supports wildcards) |
+| `sort` | string | No | Sort direction (default: desc) |
+
+#### Example
+
+```json
+{
+  "action": "list_branches",
+  "project_id": "my-group/my-project"
+}
+```
+
+---
+
+### manage_ref [tier: Premium*]
+
+MANAGE Git refs (branches and tags). Actions: "create_branch" creates branch from ref, "delete_branch" removes branch, "protect_branch" adds protection, "unprotect_branch" removes protection, "update_branch_protection" modifies rules, "create_tag" creates tag, "delete_tag" removes tag, "protect_tag" adds tag protection (Premium), "unprotect_tag" removes tag protection.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `create_branch` | Free | Create a new branch from an existing ref |
+| `delete_branch` | Free | Delete a branch from the repository |
+| `protect_branch` | Free | Add protection rules to a branch or pattern |
+| `unprotect_branch` | Free | Remove protection from a branch |
+| `update_branch_protection` | Free | Update protection rules for a branch |
+| `create_tag` | Free | Create a new tag in the repository |
+| `delete_tag` | Free | Delete a tag from the repository |
+| `protect_tag` | Premium | Add protection rules to a tag pattern (Premium) |
+| `unprotect_tag` | Premium | Remove protection from a tag pattern (Premium) |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path (e.g., 'my-group/my-project') |
+
+**Action `create_branch`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `branch` | string | Yes | Name for the new branch |
+| `ref` | string | Yes | Source branch name, tag, or commit SHA to create from |
+
+**Action `create_tag`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `ref` | string | Yes | Source branch name or commit SHA to create tag from |
+| `tag_name` | string | Yes | Name for the new tag (e.g., 'v1.0.0') |
+| `message` | string | No | Annotation message (creates annotated tag if provided) |
+
+**Action `delete_branch`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `branch` | string | Yes | Branch name to delete |
+
+**Action `delete_tag`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `tag_name` | string | Yes | Tag name to delete |
+
+**Action `protect_branch`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Branch name or wildcard pattern (e.g., 'main', 'release-*') |
+| `allow_force_push` | boolean | No | Allow force push to protected branch (default: false) |
+| `allowed_to_merge` | object[] | No | Granular merge access (Premium feature) |
+| `allowed_to_push` | object[] | No | Granular push access (Premium feature) |
+| `allowed_to_unprotect` | object[] | No | Granular unprotect access (Premium feature) |
+| `code_owner_approval_required` | boolean | No | Require code owner approval (Premium feature) |
+| `merge_access_level` | integer | No | Who can merge (default: 40=Maintainers) |
+| `push_access_level` | integer | No | Who can push (default: 40=Maintainers) |
+| `unprotect_access_level` | integer | No | Who can unprotect (default: 40=Maintainers) |
+
+**Action `protect_tag`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Tag name or wildcard pattern (e.g., 'v*', 'release-*') |
+| `allowed_to_create` | object[] | No | Granular create access (Premium feature) |
+| `create_access_level` | integer | No | Who can create matching tags (default: 40=Maintainers) |
+
+**Action `unprotect_branch`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Branch name or wildcard pattern to unprotect |
+
+**Action `unprotect_tag`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Tag name or wildcard pattern to unprotect |
+
+**Action `update_branch_protection`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `name` | string | Yes | Branch name or wildcard pattern |
+| `allow_force_push` | boolean | No | Allow force push to protected branch |
+| `allowed_to_merge` | object[] | No | Granular merge access (Premium feature) |
+| `allowed_to_push` | object[] | No | Granular push access (Premium feature) |
+| `allowed_to_unprotect` | object[] | No | Granular unprotect access (Premium feature) |
+| `code_owner_approval_required` | boolean | No | Require code owner approval (Premium feature) |
+
+#### Example
+
+```json
+{
+  "action": "create_branch",
+  "project_id": "my-group/my-project",
+  "branch": "main",
+  "ref": "main"
+}
+```
+
+---
+
+## Collaboration
+
+### browse_users [tier: Free]
+
+Find GitLab users with smart pattern detection. Actions: search (find users by name/email/username with transliteration support), get (retrieve specific user by ID). Related: browse_members for project/group membership.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `search` | Free | Search users with smart pattern detection |
+| `get` | Free | Get a specific user by ID |
+
+#### Parameters
+
+**Action `get`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `user_id` | string | Yes | User ID to retrieve. |
+
+**Action `search`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -333,294 +906,83 @@ FIND USERS: Search GitLab users with smart pattern detection. Auto-detects email
 
 ```json
 {
+  "action": "search",
   "per_page": 10
 }
 ```
 
 ---
 
-### list_project_members [tier: Free]
+### browse_todos [tier: Free]
 
-TEAM MEMBERS: List project members with access levels. Shows: 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `project_id` | string | Yes | Project ID or URL-encoded path. |
-| `page` | integer | No | Page number |
-| `query` | string | No | Search members by name or username. |
-| `user_ids` | string[] | No | Filter to specific user IDs. |
-
-#### Example
-
-```json
-{
-  "project_id": "my-group/my-project",
-  "per_page": 10
-}
-```
-
----
-
-### list_group_iterations [tier: Premium]
-
-SPRINTS: List iterations/sprints for agile planning. Filter by state: current, upcoming, closed.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `group_id` | string | Yes | Group ID or URL-encoded path. |
-| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `include_ancestors` | boolean | No | Include iterations from parent groups. |
-| `page` | integer | No | Page number |
-| `search` | string | No | Search iterations by title. |
-| `state` | string | No | Filter by iteration state. |
-
-#### Example
-
-```json
-{
-  "group_id": "my-group",
-  "per_page": 10
-}
-```
-
----
-
-### download_attachment [tier: Free]
-
-DOWNLOAD: Retrieve file attachments from issues/MRs. Requires secret token and filename from attachment URL.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `filename` | string | Yes | Original filename of the attachment. |
-| `project_id` | string | Yes | Project ID or URL-encoded path. |
-| `secret` | string | Yes | Security token from the attachment URL. |
-
-#### Example
-
-```json
-{
-  "project_id": "my-group/my-project",
-  "secret": "example_secret",
-  "filename": "example_filename"
-}
-```
-
----
-
-### create_branch [tier: Free]
-
-NEW BRANCH: Create a Git branch from existing ref. Required before creating MRs. Ref can be branch name, tag, or commit SHA.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `branch` | string | Yes | New branch name. |
-| `project_id` | string | Yes | Target project for new branch. |
-| `ref` | string | Yes | Source reference (branch name or commit SHA). |
-
-#### Example
-
-```json
-{
-  "project_id": "my-group/my-project",
-  "branch": "main",
-  "ref": "main"
-}
-```
-
----
-
-### create_group [tier: Free]
-
-CREATE GROUP: Create a new GitLab group/namespace. Groups organize projects and teams. Can create subgroups with parent_id.
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | Yes | Group display name. |
-| `path` | string | Yes | Group path for URLs (URL-safe). |
-| `visibility` | string | Yes | Group visibility level. |
-| `avatar` | string | No | Group avatar URL. |
-| `default_branch_protection` | number | No | Branch protection level: 0=none, 1=partial, 2=full. |
-| `description` | string | No | Group description. |
-| `lfs_enabled` | boolean | No | Enable Git LFS. |
-| `parent_id` | number | No | Parent group ID for subgroup. |
-| `request_access_enabled` | boolean | No | Allow access requests. |
-
-#### Example
-
-```json
-{
-  "name": "example_name",
-  "path": "path/to/file.txt",
-  "visibility": "private"
-}
-```
-
----
-
-## Work Items
-
-### browse_work_items [tier: Free]
-
-BROWSE work items. Actions: "list" returns work items with numeric IDs (groups return epics, projects return issues/tasks), "get" retrieves single work item - use the numeric ID from list results (e.g., "5953") or namespace + iid from URL (e.g., namespace: "group/project", iid: "95" from /issues/95). Legacy GIDs like gid://gitlab/Issue/X are auto-normalized.
+View your GitLab todo queue (notifications requiring action). Actions: list (filter by state, action type, target type). Todos are auto-created for assignments, mentions, reviews, and pipeline failures. Related: manage_todos to mark done/restore.
 
 #### Actions
 
 | Action | Tier | Description |
 |--------|------|-------------|
-| `list` | Free | List work items with filtering |
-| `get` | Free | Get single work item details |
+| `list` | Free | List your pending and completed todos |
 
 #### Parameters
 
-**Common** (all actions):
-
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `namespace` | string | No | Namespace path (group or project). Groups return epics, projects return issues/tasks. |
-
-**Action `get`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `id` | string | No | Work item ID to retrieve - use numeric ID from list results (e.g., '5953') |
-| `iid` | string | No | Internal ID from URL (e.g., '95' from /issues/95). Use with namespace parameter. |
-
-**Action `list`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `first` | number | Yes | Number of items to return |
-| `simple` | boolean | Yes | Return simplified structure with essential fields only. RECOMMENDED: Use default true for most cases. |
-| `state` | string[] | Yes | Filter by work item state. Defaults to OPEN items only. Use ["OPEN", "CLOSED"] for all items. |
-| `after` | string | No | Cursor for pagination (use endCursor from previous response) |
-| `types` | string[] | No | Filter by work item types |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `author_id` | number | No | Filter by author ID. |
+| `group_id` | number | No | Filter by group ID. |
+| `page` | integer | No | Page number |
+| `project_id` | number | No | Filter by project ID. |
+| `state` | string | No | Filter todos by state: pending=active, done=completed. |
+| `todo_action` | string | No | Filter by action type. |
+| `type` | string | No | Filter by target type. |
 
 #### Example
 
 ```json
 {
   "action": "list",
-  "namespace": "my-group/my-project",
-  "state": [],
-  "first": 10,
-  "simple": true
+  "per_page": 10
 }
 ```
 
 ---
 
-### manage_work_item [tier: Free]
+### manage_todos [tier: Free]
 
-MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets using numeric ID, "delete" permanently removes, "add_link" creates relationship (BLOCKS/IS_BLOCKED_BY/RELATES_TO), "remove_link" removes relationship. Supports dates, time tracking, hierarchy, weight, iterations, health status, progress, color widgets. Legacy GIDs auto-normalized.
+Manage your GitLab todo queue. Actions: mark_done (complete a single todo), mark_all_done (clear entire queue), restore (undo completion). Related: browse_todos to view your todo list.
 
 #### Actions
 
 | Action | Tier | Description |
 |--------|------|-------------|
-| `create` | Free | Create a new work item |
-| `update` | Free | Update an existing work item |
-| `delete` | Free | Delete a work item |
-| `add_link` | Free | Add a relationship link between two work items |
-| `remove_link` | Free | Remove a relationship link between two work items |
+| `mark_done` | Free | Mark a single todo as done |
+| `mark_all_done` | Free | Mark all todos as done (clears entire queue) |
+| `restore` | Free | Restore a completed todo to pending state |
 
 #### Parameters
 
-**Action `add_link`**:
+**Action `mark_done`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `id` | string | Yes | Source work item ID |
-| `linkType` | string | Yes | Relationship type: BLOCKS (this blocks target), IS_BLOCKED_BY (this is blocked by target), RELATES_TO (general relationship) |
-| `targetId` | string | Yes | Target work item ID to link to |
+| `id` | integer | Yes | Todo ID to mark as done |
 
-**Action `create`**:
+**Action `restore`**:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `namespace` | string | Yes | CRITICAL: Namespace path (group OR project). For Epics use GROUP path (e.g. "my-group"). For Issues/Tasks use PROJECT path (e.g. "my-group/my-project"). |
-| `title` | string | Yes | Title of the work item |
-| `workItemType` | string | Yes | Type of work item |
-| `assigneeIds` | string[] | No | Array of assignee user IDs |
-| `childrenIds` | string[] | No | Array of child work item IDs to add |
-| `color` | string | No | Custom hex color for epics (Ultimate tier) |
-| `description` | string | No | Description of the work item |
-| `dueDate` | string | No | Due date in YYYY-MM-DD format |
-| `healthStatus` | string | No | Health status indicator (Ultimate tier) |
-| `isFixed` | boolean | No | Fixed dates - not inherited from children (Premium tier) |
-| `iterationId` | string | No | Iteration/sprint ID to assign (Premium tier) |
-| `labelIds` | string[] | No | Array of label IDs |
-| `milestoneId` | string | No | Milestone ID |
-| `parentId` | string | No | Parent work item ID to set hierarchy relationship |
-| `progressCurrentValue` | integer | No | Current progress value 0-100 for OKR key results (Premium tier) |
-| `startDate` | string | No | Start date in YYYY-MM-DD format |
-| `timeEstimate` | string | No | Time estimate in human-readable format (e.g. "1h 30m", "2d") |
-| `weight` | integer | No | Story points / weight value (Premium tier) |
-
-**Action `delete`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `id` | string | Yes | Work item ID - use numeric ID from list results (e.g., '5953') |
-
-**Action `remove_link`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `id` | string | Yes | Source work item ID |
-| `linkType` | string | Yes | Relationship type: BLOCKS (this blocks target), IS_BLOCKED_BY (this is blocked by target), RELATES_TO (general relationship) |
-| `targetId` | string | Yes | Target work item ID to unlink |
-
-**Action `update`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `id` | string | Yes | Work item ID - use numeric ID from list results (e.g., '5953') |
-| `assigneeIds` | string[] | No | Array of assignee user IDs |
-| `childrenIds` | string[] | No | Array of child work item IDs to add |
-| `color` | string | No | Custom hex color for epics (Ultimate tier) |
-| `description` | string | No | Description of the work item |
-| `dueDate` | string | null | No | Due date in YYYY-MM-DD format (null to clear) |
-| `healthStatus` | string | null | No | Health status indicator, null to clear (Ultimate tier) |
-| `isFixed` | boolean | No | Fixed dates - not inherited from children (Premium tier) |
-| `iterationId` | string | null | No | Iteration/sprint ID, null to unassign (Premium tier) |
-| `labelIds` | string[] | No | Array of label IDs |
-| `milestoneId` | string | No | Milestone ID |
-| `parentId` | string | null | No | Parent work item ID (null to unlink parent) |
-| `progressCurrentValue` | integer | No | Current progress value 0-100 for OKR key results (Premium tier) |
-| `startDate` | string | null | No | Start date in YYYY-MM-DD format (null to clear) |
-| `state` | string | No | State event for the work item (CLOSE, REOPEN) |
-| `timeEstimate` | string | No | Time estimate in human-readable format (e.g. "1h 30m", "2d", "0h" to clear) |
-| `timeSpent` | string | No | Time spent to log as timelog entry (e.g. "2h", "1h 30m") |
-| `timeSpentAt` | string | No | When time was spent in ISO 8601 format (defaults to now) |
-| `timeSpentSummary` | string | No | Summary/description of work done for the timelog entry |
-| `title` | string | No | Title of the work item |
-| `weight` | integer | null | No | Story points / weight value, null to clear (Premium tier) |
+| `id` | integer | Yes | Todo ID to restore |
 
 #### Example
 
 ```json
 {
-  "action": "create",
-  "namespace": "my-group/my-project",
-  "workItemType": "EPIC",
-  "title": "Example title"
+  "action": "mark_done",
+  "id": "123"
 }
 ```
 
 ---
-
-## Merge Requests
 
 ### browse_merge_requests [tier: Premium*]
 
@@ -1052,7 +1414,179 @@ MANAGE draft notes. Actions: "create" creates draft note, "update" modifies draf
 
 ---
 
-## Labels
+### browse_members [tier: Free]
+
+BROWSE team members in projects and groups. Actions: "list_project" lists project members, "list_group" lists group members, "get_project" gets project member details, "get_group" gets group member details, "list_all_project" includes inherited members, "list_all_group" includes inherited members. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `list_project` | Free | List all members of a project |
+| `list_group` | Free | List all members of a group |
+| `get_project` | Free | Get a specific member of a project |
+| `get_group` | Free | Get a specific member of a group |
+| `list_all_project` | Free | List all project members including inherited from parent groups |
+| `list_all_group` | Free | List all group members including inherited from parent groups |
+
+#### Parameters
+
+**Action `get_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `user_id` | string | Yes | User ID of the member |
+| `include_inherited` | boolean | No | Include members inherited from parent groups |
+
+**Action `get_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `user_id` | string | Yes | User ID of the member |
+| `include_inherited` | boolean | No | Include members inherited from parent groups |
+
+**Action `list_all_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `page` | integer | No | Page number |
+| `query` | string | No | Search members by name or username |
+| `state` | string | No | Filter by member state |
+| `user_ids` | string[] | No | Filter to specific user IDs |
+
+**Action `list_all_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `page` | integer | No | Page number |
+| `query` | string | No | Search members by name or username |
+| `state` | string | No | Filter by member state |
+| `user_ids` | string[] | No | Filter to specific user IDs |
+
+**Action `list_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `page` | integer | No | Page number |
+| `query` | string | No | Search members by name or username |
+| `user_ids` | string[] | No | Filter to specific user IDs |
+
+**Action `list_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `page` | integer | No | Page number |
+| `query` | string | No | Search members by name or username |
+| `user_ids` | string[] | No | Filter to specific user IDs |
+
+#### Example
+
+```json
+{
+  "action": "list_project",
+  "project_id": "my-group/my-project",
+  "per_page": 10
+}
+```
+
+---
+
+### manage_member [tier: Free]
+
+MANAGE team members in projects and groups. Actions: "add_to_project" adds member to project, "add_to_group" adds member to group, "remove_from_project" removes from project, "remove_from_group" removes from group, "update_project" changes project member access level, "update_group" changes group member access level. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `add_to_project` | Free | Add a user as member to a project |
+| `add_to_group` | Free | Add a user as member to a group |
+| `remove_from_project` | Free | Remove a member from a project |
+| `remove_from_group` | Free | Remove a member from a group |
+| `update_project` | Free | Update access level of a project member |
+| `update_group` | Free | Update access level of a group member |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `user_id` | string | Yes | User ID to remove |
+
+**Action `add_to_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
+
+**Action `add_to_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
+
+**Action `remove_from_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `skip_subresources` | boolean | No | Skip removing from subgroups and projects |
+| `unassign_issuables` | boolean | No | Unassign member from issues and merge requests |
+
+**Action `remove_from_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `skip_subresources` | boolean | No | Skip removing from subprojects and forks |
+| `unassign_issuables` | boolean | No | Unassign member from issues and merge requests |
+
+**Action `update_group`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
+| `group_id` | string | Yes | Group ID or URL-encoded path |
+| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
+| `member_role_id` | integer | No | ID of a custom member role (Ultimate only) |
+
+**Action `update_project`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
+| `project_id` | string | Yes | Project ID or URL-encoded path |
+| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
+
+#### Example
+
+```json
+{
+  "action": "add_to_project",
+  "project_id": "my-group/my-project",
+  "user_id": "123",
+  "access_level": 10
+}
+```
+
+---
+
+## Planning
 
 ### browse_labels [tier: Free]
 
@@ -1159,8 +1693,6 @@ MANAGE labels. Actions: "create" adds new label (requires name and color), "upda
 ```
 
 ---
-
-## Milestones
 
 ### browse_milestones [tier: Premium*]
 
@@ -1305,7 +1837,204 @@ MANAGE milestones. Actions: "create" creates new milestone, "update" modifies ex
 
 ---
 
-## Pipelines
+### browse_work_items [tier: Free]
+
+BROWSE work items. Actions: "list" returns work items with numeric IDs (groups return epics, projects return issues/tasks), "get" retrieves single work item - use the numeric ID from list results (e.g., "5953") or namespace + iid from URL (e.g., namespace: "group/project", iid: "95" from /issues/95). Legacy GIDs like gid://gitlab/Issue/X are auto-normalized.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `list` | Free | List work items with filtering |
+| `get` | Free | Get single work item details |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `namespace` | string | No | Namespace path (group or project). Groups return epics, projects return issues/tasks. |
+
+**Action `get`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | No | Work item ID to retrieve - use numeric ID from list results (e.g., '5953') |
+| `iid` | string | No | Internal ID from URL (e.g., '95' from /issues/95). Use with namespace parameter. |
+
+**Action `list`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `first` | number | Yes | Number of items to return |
+| `simple` | boolean | Yes | Return simplified structure with essential fields only. RECOMMENDED: Use default true for most cases. |
+| `state` | string[] | Yes | Filter by work item state. Defaults to OPEN items only. Use ["OPEN", "CLOSED"] for all items. |
+| `after` | string | No | Cursor for pagination (use endCursor from previous response) |
+| `types` | string[] | No | Filter by work item types |
+
+#### Example
+
+```json
+{
+  "action": "list",
+  "namespace": "my-group/my-project",
+  "state": [],
+  "first": 10,
+  "simple": true
+}
+```
+
+---
+
+### manage_work_item [tier: Free]
+
+MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets using numeric ID, "delete" permanently removes, "add_link" creates relationship (BLOCKS/IS_BLOCKED_BY/RELATES_TO), "remove_link" removes relationship. Supports dates, time tracking, hierarchy, weight, iterations, health status, progress, color widgets. Legacy GIDs auto-normalized.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `create` | Free | Create a new work item |
+| `update` | Free | Update an existing work item |
+| `delete` | Free | Delete a work item |
+| `add_link` | Free | Add a relationship link between two work items |
+| `remove_link` | Free | Remove a relationship link between two work items |
+
+#### Parameters
+
+**Action `add_link`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | Source work item ID |
+| `linkType` | string | Yes | Relationship type: BLOCKS (this blocks target), IS_BLOCKED_BY (this is blocked by target), RELATES_TO (general relationship) |
+| `targetId` | string | Yes | Target work item ID to link to |
+
+**Action `create`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `namespace` | string | Yes | CRITICAL: Namespace path (group OR project). For Epics use GROUP path (e.g. "my-group"). For Issues/Tasks use PROJECT path (e.g. "my-group/my-project"). |
+| `title` | string | Yes | Title of the work item |
+| `workItemType` | string | Yes | Type of work item |
+| `assigneeIds` | string[] | No | Array of assignee user IDs |
+| `childrenIds` | string[] | No | Array of child work item IDs to add |
+| `color` | string | No | Custom hex color for epics (Ultimate tier) |
+| `description` | string | No | Description of the work item |
+| `dueDate` | string | No | Due date in YYYY-MM-DD format |
+| `healthStatus` | string | No | Health status indicator (Ultimate tier) |
+| `isFixed` | boolean | No | Fixed dates - not inherited from children (Premium tier) |
+| `iterationId` | string | No | Iteration/sprint ID to assign (Premium tier) |
+| `labelIds` | string[] | No | Array of label IDs |
+| `milestoneId` | string | No | Milestone ID |
+| `parentId` | string | No | Parent work item ID to set hierarchy relationship |
+| `progressCurrentValue` | integer | No | Current progress value 0-100 for OKR key results (Premium tier) |
+| `startDate` | string | No | Start date in YYYY-MM-DD format |
+| `timeEstimate` | string | No | Time estimate in human-readable format (e.g. "1h 30m", "2d") |
+| `weight` | integer | No | Story points / weight value (Premium tier) |
+
+**Action `delete`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | Work item ID - use numeric ID from list results (e.g., '5953') |
+
+**Action `remove_link`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | Source work item ID |
+| `linkType` | string | Yes | Relationship type: BLOCKS (this blocks target), IS_BLOCKED_BY (this is blocked by target), RELATES_TO (general relationship) |
+| `targetId` | string | Yes | Target work item ID to unlink |
+
+**Action `update`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `id` | string | Yes | Work item ID - use numeric ID from list results (e.g., '5953') |
+| `assigneeIds` | string[] | No | Array of assignee user IDs |
+| `childrenIds` | string[] | No | Array of child work item IDs to add |
+| `color` | string | No | Custom hex color for epics (Ultimate tier) |
+| `description` | string | No | Description of the work item |
+| `dueDate` | string | null | No | Due date in YYYY-MM-DD format (null to clear) |
+| `healthStatus` | string | null | No | Health status indicator, null to clear (Ultimate tier) |
+| `isFixed` | boolean | No | Fixed dates - not inherited from children (Premium tier) |
+| `iterationId` | string | null | No | Iteration/sprint ID, null to unassign (Premium tier) |
+| `labelIds` | string[] | No | Array of label IDs |
+| `milestoneId` | string | No | Milestone ID |
+| `parentId` | string | null | No | Parent work item ID (null to unlink parent) |
+| `progressCurrentValue` | integer | No | Current progress value 0-100 for OKR key results (Premium tier) |
+| `startDate` | string | null | No | Start date in YYYY-MM-DD format (null to clear) |
+| `state` | string | No | State event for the work item (CLOSE, REOPEN) |
+| `timeEstimate` | string | No | Time estimate in human-readable format (e.g. "1h 30m", "2d", "0h" to clear) |
+| `timeSpent` | string | No | Time spent to log as timelog entry (e.g. "2h", "1h 30m") |
+| `timeSpentAt` | string | No | When time was spent in ISO 8601 format (defaults to now) |
+| `timeSpentSummary` | string | No | Summary/description of work done for the timelog entry |
+| `title` | string | No | Title of the work item |
+| `weight` | integer | null | No | Story points / weight value, null to clear (Premium tier) |
+
+#### Example
+
+```json
+{
+  "action": "create",
+  "namespace": "my-group/my-project",
+  "workItemType": "EPIC",
+  "title": "Example title"
+}
+```
+
+---
+
+### browse_iterations [tier: Premium]
+
+View group iterations for agile sprint planning. Actions: list (filter by state: current, upcoming, closed), get (retrieve specific iteration details). Related: browse_work_items for items in an iteration.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `list` | Premium | List iterations for a group |
+| `get` | Premium | Get a specific iteration by ID |
+
+#### Parameters
+
+**Common** (all actions):
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `group_id` | string | Yes | Group ID or URL-encoded path. |
+
+**Action `get`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `iteration_id` | string | Yes | Iteration ID. |
+
+**Action `list`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
+| `include_ancestors` | boolean | No | Include iterations from parent groups. |
+| `page` | integer | No | Page number |
+| `search` | string | No | Search iterations by title. |
+| `state` | string | No | Filter by iteration state. |
+
+#### Example
+
+```json
+{
+  "action": "list",
+  "group_id": "my-group",
+  "per_page": 10
+}
+```
+
+---
+
+## CI/CD
 
 ### browse_pipelines [tier: Free]
 
@@ -1498,8 +2227,6 @@ MANAGE pipeline jobs. Actions: "play" triggers manual job with optional variable
 
 ---
 
-## Variables
-
 ### browse_variables [tier: Free]
 
 BROWSE CI/CD variables. Actions: "list" shows all variables in project/group with pagination, "get" retrieves single variable details by key with optional environment scope filter.
@@ -1610,124 +2337,7 @@ MANAGE CI/CD variables. Actions: "create" adds new variable (requires key and va
 
 ---
 
-## Files
-
-### browse_files [tier: Free]
-
-BROWSE repository files. Actions: "tree" lists files/folders with pagination, "content" reads file contents. Use for exploring project structure or reading source code.
-
-#### Actions
-
-| Action | Tier | Description |
-|--------|------|-------------|
-| `tree` | Free | List files and folders in a directory |
-| `content` | Free | Read file contents |
-
-#### Parameters
-
-**Common** (all actions):
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `project_id` | string | Yes | Project ID or URL-encoded path |
-| `ref` | string | No | Branch, tag, or commit SHA |
-
-**Action `content`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `file_path` | string | Yes | Path to the file to read |
-
-**Action `tree`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `page` | integer | No | Page number |
-| `path` | string | No | Directory path to list |
-| `recursive` | boolean | No | Include nested directories |
-
-#### Example
-
-```json
-{
-  "action": "tree",
-  "project_id": "my-group/my-project",
-  "per_page": 10
-}
-```
-
----
-
-### manage_files [tier: Free]
-
-MANAGE repository files. Actions: "single" creates/updates one file, "batch" commits multiple files atomically, "upload" adds markdown attachments.
-
-#### Actions
-
-| Action | Tier | Description |
-|--------|------|-------------|
-| `single` | Free | Create or update a single file |
-| `batch` | Free | Commit multiple files atomically |
-| `upload` | Free | Upload a file as markdown attachment |
-
-#### Parameters
-
-**Common** (all actions):
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `project_id` | string | Yes | Project ID or URL-encoded path |
-
-**Action `batch`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `branch` | string | Yes | Target branch name |
-| `commit_message` | string | Yes | Commit message |
-| `files` | object[] | Yes | Files to commit (at least one required) |
-| `author_email` | string | No | Commit author email |
-| `author_name` | string | No | Commit author name |
-| `start_branch` | string | No | Base branch to start from |
-
-**Action `single`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `branch` | string | Yes | Target branch name |
-| `commit_message` | string | Yes | Commit message |
-| `content` | string | Yes | File content (text or base64 encoded) |
-| `file_path` | string | Yes | Path to the file |
-| `author_email` | string | No | Commit author email |
-| `author_name` | string | No | Commit author name |
-| `encoding` | string | No | Content encoding (default: text) |
-| `execute_filemode` | boolean | No | Set executable permission |
-| `last_commit_id` | string | No | Last known commit ID for conflict detection |
-| `start_branch` | string | No | Base branch to start from |
-
-**Action `upload`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `file` | string | Yes | Base64 encoded file content |
-| `filename` | string | Yes | Name of the file |
-
-#### Example
-
-```json
-{
-  "action": "single",
-  "project_id": "my-group/my-project",
-  "file_path": "path/to/file.txt",
-  "content": "File content here",
-  "commit_message": "example_commit_message",
-  "branch": "main"
-}
-```
-
----
-
-## Wiki
+## Integrations & Content
 
 ### browse_wiki [tier: Free]
 
@@ -1829,8 +2439,6 @@ MANAGE wiki pages. Actions: "create" adds new wiki page, "update" modifies exist
 ```
 
 ---
-
-## Snippets
 
 ### browse_snippets [tier: Free]
 
@@ -1938,8 +2546,6 @@ MANAGE GitLab snippets. Actions: "create" creates new snippet with multiple file
 ```
 
 ---
-
-## Webhooks
 
 ### browse_webhooks [tier: Free]
 
@@ -2094,8 +2700,6 @@ Manage webhooks with full CRUD operations plus testing. Actions: 'create' (add n
 
 ---
 
-## Integrations
-
 ### browse_integrations [tier: Free]
 
 BROWSE project integrations. Actions: "list" shows all active integrations (Slack, Jira, Discord, Teams, Jenkins, etc.), "get" retrieves settings for a specific integration by type slug.
@@ -2191,634 +2795,7 @@ MANAGE project integrations. Actions: "update" modifies or enables integration w
 
 ---
 
-## Todos
-
-### list_todos [tier: Free]
-
-TASK QUEUE: View your GitLab todos (notifications requiring action). Todos are auto-created when you're assigned to issues/MRs, @mentioned, requested as reviewer, or CI pipelines fail. Filter by state (pending/done), action type (assigned, mentioned, review_requested), or target type (Issue, MergeRequest).
-
-#### Actions
-
-| Action | Tier | Description |
-|--------|------|-------------|
-| `assigned` | Free | Perform assigned operation |
-| `mentioned` | Free | Perform mentioned operation |
-| `build_failed` | Free | Perform build_failed operation |
-| `marked` | Free | Perform marked operation |
-| `approval_required` | Free | Perform approval_required operation |
-| `unmergeable` | Free | Perform unmergeable operation |
-| `directly_addressed` | Free | Perform directly_addressed operation |
-| `merge_train_removed` | Free | Perform merge_train_removed operation |
-| `review_requested` | Free | Perform review_requested operation |
-| `member_access_requested` | Free | Perform member_access_requested operation |
-| `review_submitted` | Free | Perform review_submitted operation |
-
-#### Parameters
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `action` | string | No | Filter by action type. |
-| `author_id` | number | No | Filter by author ID. |
-| `group_id` | number | No | Filter by group ID. |
-| `page` | integer | No | Page number |
-| `project_id` | number | No | Filter by project ID. |
-| `state` | string | No | Filter todos by state: pending=active, done=completed. |
-| `type` | string | No | Filter by target type. |
-
-#### Example
-
-```json
-{
-  "action": "assigned",
-  "per_page": 10
-}
-```
-
----
-
-### manage_todos [tier: Free]
-
-TODO ACTIONS: Manage your GitLab todo items. Use 'mark_done' with id to complete a single todo (returns the updated todo object). Use 'mark_all_done' to clear your entire todo queue (returns success status). Use 'restore' with id to undo a completed todo (returns the restored todo object).
-
-#### Actions
-
-| Action | Tier | Description |
-|--------|------|-------------|
-| `mark_done` | Free | Mark a single todo as done |
-| `mark_all_done` | Free | Mark all todos as done (clears entire queue) |
-| `restore` | Free | Restore a completed todo to pending state |
-
-#### Parameters
-
-**Action `mark_done`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `id` | integer | Yes | Todo ID to mark as done |
-
-**Action `restore`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `id` | integer | Yes | Todo ID to restore |
-
-#### Example
-
-```json
-{
-  "action": "mark_done",
-  "id": "123"
-}
-```
-
----
-
-## Other
-
-### manage_context [tier: Free]
-
-CONTEXT: Manage runtime session context. Actions: 'show' returns current context (host, preset, scope, mode); 'list_presets' lists available presets with descriptions; 'list_profiles' lists OAuth profiles (OAuth mode only); 'switch_preset' changes active preset by name; 'switch_profile' changes OAuth profile (OAuth mode only); 'set_scope' restricts operations to a namespace (auto-detects group vs project); 'reset' restores initial context from session start.
-
-#### Actions
-
-| Action | Tier | Description |
-|--------|------|-------------|
-| `show` | Free | Display current context including host, preset, scope, and mode |
-| `list_presets` | Free | List all available presets with descriptions |
-| `list_profiles` | Free | List available OAuth profiles - only works in OAuth mode |
-| `switch_preset` | Free | Switch to a different preset configuration |
-| `switch_profile` | Free | Switch to a different OAuth profile - OAuth mode only |
-| `set_scope` | Free | Set scope to restrict operations to a namespace |
-| `reset` | Free | Reset context to initial state from session start |
-
-#### Parameters
-
-**Action `set_scope`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `includeSubgroups` | boolean | Yes | Include subgroups when scope is a group (default: true) |
-| `namespace` | string | Yes | Namespace path (e.g., 'my-group' or 'group/project') - type is auto-detected |
-
-**Action `switch_preset`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `preset` | string | Yes | Name of the preset to activate |
-
-**Action `switch_profile`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `profile` | string | Yes | Name of the profile to activate |
-
-#### Example
-
-```json
-{
-  "action": "show"
-}
-```
-
----
-
-### browse_releases [tier: Free]
-
-BROWSE GitLab project releases. Actions: "list" shows all releases sorted by date, "get" retrieves specific release by tag name, "assets" lists release asset links. Releases are versioned software distributions with changelogs, assets, and milestone associations.
-
-#### Actions
-
-| Action | Tier | Description |
-|--------|------|-------------|
-| `list` | Free | List all releases for a project, sorted by release date |
-| `get` | Free | Get a specific release by its tag name |
-| `assets` | Free | List all asset links for a specific release |
-
-#### Parameters
-
-**Common** (all actions):
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `project_id` | string | Yes | Project ID or URL-encoded path (e.g., 'my-group/my-project') |
-
-**Action `assets`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `tag_name` | string | Yes | The Git tag associated with the release (e.g., 'v1.0.0') |
-| `page` | integer | No | Page number |
-| `per_page` | integer | No | Number of items per page (max 100) |
-
-**Action `get`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `tag_name` | string | Yes | The Git tag associated with the release (e.g., 'v1.0.0') |
-| `include_html_description` | boolean | No | Include HTML-rendered description in response |
-
-**Action `list`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `include_html_description` | boolean | No | Include HTML-rendered description in response |
-| `order_by` | string | No | Sort releases by field (default: released_at) |
-| `page` | integer | No | Page number |
-| `per_page` | integer | No | Number of items per page (max 100) |
-| `sort` | string | No | Sort direction (default: desc) |
-
-#### Example
-
-```json
-{
-  "action": "list",
-  "project_id": "my-group/my-project"
-}
-```
-
----
-
-### manage_release [tier: Free]
-
-MANAGE GitLab releases. Actions: "create" creates release with optional assets, "update" modifies release metadata, "delete" removes release (preserves tag), "create_link" adds asset link, "delete_link" removes asset link.
-
-#### Actions
-
-| Action | Tier | Description |
-|--------|------|-------------|
-| `create` | Free | Create a new release for an existing or new tag |
-| `update` | Free | Update an existing release |
-| `delete` | Free | Delete a release (preserves the Git tag) |
-| `create_link` | Free | Add an asset link to an existing release |
-| `delete_link` | Free | Remove an asset link from a release |
-
-#### Parameters
-
-**Common** (all actions):
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `project_id` | string | Yes | Project ID or URL-encoded path (e.g., 'my-group/my-project') |
-| `tag_name` | string | Yes | The Git tag associated with the release (e.g., 'v1.0.0') |
-
-**Action `create`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `assets` | object | No | Release assets configuration |
-| `description` | string | No | Release description (supports Markdown) |
-| `milestones` | string[] | No | Array of milestone titles to associate with the release |
-| `name` | string | No | The release title/name |
-| `ref` | string | No | Branch/commit SHA to create tag from (if tag does not exist) |
-| `released_at` | string | No | Release date/time in ISO 8601 format (e.g., '2024-01-15T12:00:00Z') |
-| `tag_message` | string | No | Annotation message for the tag (creates annotated tag) |
-
-**Action `create_link`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | Yes | Display name for the asset link (must be unique per release) |
-| `url` | string | Yes | URL of the asset (must be unique per release) |
-| `direct_asset_path` | string | No | Path for direct asset download (e.g., '/binaries/linux-amd64') |
-| `link_type` | string | No | Type of asset link (default: other) |
-
-**Action `delete_link`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `link_id` | string | Yes | The ID of the asset link to delete |
-
-**Action `update`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `description` | string | No | Release description (supports Markdown) |
-| `milestones` | string[] | No | Array of milestone titles to associate with the release |
-| `name` | string | No | The release title/name |
-| `released_at` | string | No | Release date/time in ISO 8601 format (e.g., '2024-01-15T12:00:00Z') |
-
-#### Example
-
-```json
-{
-  "action": "create",
-  "project_id": "my-group/my-project",
-  "tag_name": "example_tag_name"
-}
-```
-
----
-
-### browse_refs [tier: Premium*]
-
-BROWSE Git refs (branches and tags). Actions: "list_branches" lists all branches, "get_branch" gets branch details, "list_tags" lists all tags, "get_tag" gets tag details, "list_protected_branches" shows protected branches, "get_protected_branch" gets protection rules, "list_protected_tags" shows protected tags.
-
-#### Actions
-
-| Action | Tier | Description |
-|--------|------|-------------|
-| `list_branches` | Free | List all repository branches with optional search |
-| `get_branch` | Free | Get details of a specific branch |
-| `list_tags` | Free | List all repository tags |
-| `get_tag` | Free | Get details of a specific tag |
-| `list_protected_branches` | Free | List all protected branches with their protection rules |
-| `get_protected_branch` | Free | Get protection rules for a specific branch |
-| `list_protected_tags` | Premium | List all protected tags with their protection rules |
-
-#### Parameters
-
-**Common** (all actions):
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `project_id` | string | Yes | Project ID or URL-encoded path (e.g., 'my-group/my-project') |
-
-**Action `get_branch`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `branch` | string | Yes | Branch name (URL-encoded if contains slashes) |
-
-**Action `get_protected_branch`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | Yes | Branch name or wildcard pattern (e.g., 'main', 'release-*') |
-
-**Action `get_tag`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `tag_name` | string | Yes | Tag name (URL-encoded if contains special characters) |
-
-**Action `list_branches`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `page` | integer | No | Page number |
-| `per_page` | integer | No | Number of items per page (max 100) |
-| `regex` | string | No | Filter branches by regex pattern |
-| `search` | string | No | Filter branches by name (supports wildcards) |
-
-**Action `list_protected_branches`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `page` | integer | No | Page number |
-| `per_page` | integer | No | Number of items per page (max 100) |
-| `search` | string | No | Filter protected branches by name |
-
-**Action `list_protected_tags`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `page` | integer | No | Page number |
-| `per_page` | integer | No | Number of items per page (max 100) |
-
-**Action `list_tags`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `order_by` | string | No | Sort by field (default: updated) |
-| `page` | integer | No | Page number |
-| `per_page` | integer | No | Number of items per page (max 100) |
-| `search` | string | No | Filter tags by name (supports wildcards) |
-| `sort` | string | No | Sort direction (default: desc) |
-
-#### Example
-
-```json
-{
-  "action": "list_branches",
-  "project_id": "my-group/my-project"
-}
-```
-
----
-
-### manage_ref [tier: Premium*]
-
-MANAGE Git refs (branches and tags). Actions: "create_branch" creates branch from ref, "delete_branch" removes branch, "protect_branch" adds protection, "unprotect_branch" removes protection, "update_branch_protection" modifies rules, "create_tag" creates tag, "delete_tag" removes tag, "protect_tag" adds tag protection (Premium), "unprotect_tag" removes tag protection.
-
-#### Actions
-
-| Action | Tier | Description |
-|--------|------|-------------|
-| `create_branch` | Free | Create a new branch from an existing ref |
-| `delete_branch` | Free | Delete a branch from the repository |
-| `protect_branch` | Free | Add protection rules to a branch or pattern |
-| `unprotect_branch` | Free | Remove protection from a branch |
-| `update_branch_protection` | Free | Update protection rules for a branch |
-| `create_tag` | Free | Create a new tag in the repository |
-| `delete_tag` | Free | Delete a tag from the repository |
-| `protect_tag` | Premium | Add protection rules to a tag pattern (Premium) |
-| `unprotect_tag` | Premium | Remove protection from a tag pattern (Premium) |
-
-#### Parameters
-
-**Common** (all actions):
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `project_id` | string | Yes | Project ID or URL-encoded path (e.g., 'my-group/my-project') |
-
-**Action `create_branch`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `branch` | string | Yes | Name for the new branch |
-| `ref` | string | Yes | Source branch name, tag, or commit SHA to create from |
-
-**Action `create_tag`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `ref` | string | Yes | Source branch name or commit SHA to create tag from |
-| `tag_name` | string | Yes | Name for the new tag (e.g., 'v1.0.0') |
-| `message` | string | No | Annotation message (creates annotated tag if provided) |
-
-**Action `delete_branch`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `branch` | string | Yes | Branch name to delete |
-
-**Action `delete_tag`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `tag_name` | string | Yes | Tag name to delete |
-
-**Action `protect_branch`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | Yes | Branch name or wildcard pattern (e.g., 'main', 'release-*') |
-| `allow_force_push` | boolean | No | Allow force push to protected branch (default: false) |
-| `allowed_to_merge` | object[] | No | Granular merge access (Premium feature) |
-| `allowed_to_push` | object[] | No | Granular push access (Premium feature) |
-| `allowed_to_unprotect` | object[] | No | Granular unprotect access (Premium feature) |
-| `code_owner_approval_required` | boolean | No | Require code owner approval (Premium feature) |
-| `merge_access_level` | integer | No | Who can merge (default: 40=Maintainers) |
-| `push_access_level` | integer | No | Who can push (default: 40=Maintainers) |
-| `unprotect_access_level` | integer | No | Who can unprotect (default: 40=Maintainers) |
-
-**Action `protect_tag`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | Yes | Tag name or wildcard pattern (e.g., 'v*', 'release-*') |
-| `allowed_to_create` | object[] | No | Granular create access (Premium feature) |
-| `create_access_level` | integer | No | Who can create matching tags (default: 40=Maintainers) |
-
-**Action `unprotect_branch`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | Yes | Branch name or wildcard pattern to unprotect |
-
-**Action `unprotect_tag`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | Yes | Tag name or wildcard pattern to unprotect |
-
-**Action `update_branch_protection`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `name` | string | Yes | Branch name or wildcard pattern |
-| `allow_force_push` | boolean | No | Allow force push to protected branch |
-| `allowed_to_merge` | object[] | No | Granular merge access (Premium feature) |
-| `allowed_to_push` | object[] | No | Granular push access (Premium feature) |
-| `allowed_to_unprotect` | object[] | No | Granular unprotect access (Premium feature) |
-| `code_owner_approval_required` | boolean | No | Require code owner approval (Premium feature) |
-
-#### Example
-
-```json
-{
-  "action": "create_branch",
-  "project_id": "my-group/my-project",
-  "branch": "main",
-  "ref": "main"
-}
-```
-
----
-
-### browse_members [tier: Free]
-
-BROWSE team members in projects and groups. Actions: "list_project" lists project members, "list_group" lists group members, "get_project" gets project member details, "get_group" gets group member details, "list_all_project" includes inherited members, "list_all_group" includes inherited members. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.
-
-#### Actions
-
-| Action | Tier | Description |
-|--------|------|-------------|
-| `list_project` | Free | List all members of a project |
-| `list_group` | Free | List all members of a group |
-| `get_project` | Free | Get a specific member of a project |
-| `get_group` | Free | Get a specific member of a group |
-| `list_all_project` | Free | List all project members including inherited from parent groups |
-| `list_all_group` | Free | List all group members including inherited from parent groups |
-
-#### Parameters
-
-**Action `get_group`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `group_id` | string | Yes | Group ID or URL-encoded path |
-| `user_id` | string | Yes | User ID of the member |
-| `include_inherited` | boolean | No | Include members inherited from parent groups |
-
-**Action `get_project`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `project_id` | string | Yes | Project ID or URL-encoded path |
-| `user_id` | string | Yes | User ID of the member |
-| `include_inherited` | boolean | No | Include members inherited from parent groups |
-
-**Action `list_all_group`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `group_id` | string | Yes | Group ID or URL-encoded path |
-| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `page` | integer | No | Page number |
-| `query` | string | No | Search members by name or username |
-| `state` | string | No | Filter by member state |
-| `user_ids` | string[] | No | Filter to specific user IDs |
-
-**Action `list_all_project`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `project_id` | string | Yes | Project ID or URL-encoded path |
-| `page` | integer | No | Page number |
-| `query` | string | No | Search members by name or username |
-| `state` | string | No | Filter by member state |
-| `user_ids` | string[] | No | Filter to specific user IDs |
-
-**Action `list_group`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `group_id` | string | Yes | Group ID or URL-encoded path |
-| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `page` | integer | No | Page number |
-| `query` | string | No | Search members by name or username |
-| `user_ids` | string[] | No | Filter to specific user IDs |
-
-**Action `list_project`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `per_page` | integer | Yes | Number of items per page (default: 20, max: 100) |
-| `project_id` | string | Yes | Project ID or URL-encoded path |
-| `page` | integer | No | Page number |
-| `query` | string | No | Search members by name or username |
-| `user_ids` | string[] | No | Filter to specific user IDs |
-
-#### Example
-
-```json
-{
-  "action": "list_project",
-  "project_id": "my-group/my-project",
-  "per_page": 10
-}
-```
-
----
-
-### manage_member [tier: Free]
-
-MANAGE team members in projects and groups. Actions: "add_to_project" adds member to project, "add_to_group" adds member to group, "remove_from_project" removes from project, "remove_from_group" removes from group, "update_project" changes project member access level, "update_group" changes group member access level. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.
-
-#### Actions
-
-| Action | Tier | Description |
-|--------|------|-------------|
-| `add_to_project` | Free | Add a user as member to a project |
-| `add_to_group` | Free | Add a user as member to a group |
-| `remove_from_project` | Free | Remove a member from a project |
-| `remove_from_group` | Free | Remove a member from a group |
-| `update_project` | Free | Update access level of a project member |
-| `update_group` | Free | Update access level of a group member |
-
-#### Parameters
-
-**Common** (all actions):
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `user_id` | string | Yes | User ID to remove |
-
-**Action `add_to_group`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
-| `group_id` | string | Yes | Group ID or URL-encoded path |
-| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
-
-**Action `add_to_project`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
-| `project_id` | string | Yes | Project ID or URL-encoded path |
-| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
-
-**Action `remove_from_group`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `group_id` | string | Yes | Group ID or URL-encoded path |
-| `skip_subresources` | boolean | No | Skip removing from subgroups and projects |
-| `unassign_issuables` | boolean | No | Unassign member from issues and merge requests |
-
-**Action `remove_from_project`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `project_id` | string | Yes | Project ID or URL-encoded path |
-| `skip_subresources` | boolean | No | Skip removing from subprojects and forks |
-| `unassign_issuables` | boolean | No | Unassign member from issues and merge requests |
-
-**Action `update_group`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
-| `group_id` | string | Yes | Group ID or URL-encoded path |
-| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
-| `member_role_id` | integer | No | ID of a custom member role (Ultimate only) |
-
-**Action `update_project`**:
-
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `access_level` | integer | Yes | Access level: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner |
-| `project_id` | string | Yes | Project ID or URL-encoded path |
-| `expires_at` | string | No | Membership expiration date in ISO 8601 format (YYYY-MM-DD) |
-
-#### Example
-
-```json
-{
-  "action": "add_to_project",
-  "project_id": "my-group/my-project",
-  "user_id": "123",
-  "access_level": 10
-}
-```
-
----
+## Discovery
 
 ### browse_search [tier: Free]
 
@@ -2868,6 +2845,55 @@ SEARCH GitLab resources. Actions: "global" searches entire instance, "project" s
   "scope": "projects",
   "search": "example_search",
   "per_page": 10
+}
+```
+
+---
+
+## Session
+
+### manage_context [tier: Free]
+
+CONTEXT: Manage runtime session context. Actions: 'show' returns current context (host, preset, scope, mode); 'list_presets' lists available presets with descriptions; 'list_profiles' lists OAuth profiles (OAuth mode only); 'switch_preset' changes active preset by name; 'switch_profile' changes OAuth profile (OAuth mode only); 'set_scope' restricts operations to a namespace (auto-detects group vs project); 'reset' restores initial context from session start.
+
+#### Actions
+
+| Action | Tier | Description |
+|--------|------|-------------|
+| `show` | Free | Display current context including host, preset, scope, and mode |
+| `list_presets` | Free | List all available presets with descriptions |
+| `list_profiles` | Free | List available OAuth profiles - only works in OAuth mode |
+| `switch_preset` | Free | Switch to a different preset configuration |
+| `switch_profile` | Free | Switch to a different OAuth profile - OAuth mode only |
+| `set_scope` | Free | Set scope to restrict operations to a namespace |
+| `reset` | Free | Reset context to initial state from session start |
+
+#### Parameters
+
+**Action `set_scope`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `includeSubgroups` | boolean | Yes | Include subgroups when scope is a group (default: true) |
+| `namespace` | string | Yes | Namespace path (e.g., 'my-group' or 'group/project') - type is auto-detected |
+
+**Action `switch_preset`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `preset` | string | Yes | Name of the preset to activate |
+
+**Action `switch_profile`**:
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `profile` | string | Yes | Name of the profile to activate |
+
+#### Example
+
+```json
+{
+  "action": "show"
 }
 ```
 

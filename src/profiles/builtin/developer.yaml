@@ -33,7 +33,7 @@ features:
 
 # Block dangerous actions
 denied_actions:
-  - "manage_repository:delete"
+  - "manage_project:delete"
   - "manage_webhook:create"
   - "manage_webhook:update"
   - "manage_webhook:delete"

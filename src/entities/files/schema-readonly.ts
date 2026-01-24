@@ -70,10 +70,19 @@ const ContentActionSchema = z.object({
   file_path: z.string().describe("Path to the file to read"),
 });
 
+// --- Action: download_attachment ---
+const DownloadAttachmentActionSchema = z.object({
+  action: z.literal("download_attachment").describe("Download a file attachment from issues/MRs"),
+  project_id: projectIdField,
+  secret: z.string().describe("Security token from the attachment URL."),
+  filename: z.string().describe("Original filename of the attachment."),
+});
+
 // --- Discriminated union combining all actions ---
 export const BrowseFilesSchema = z.discriminatedUnion("action", [
   TreeActionSchema,
   ContentActionSchema,
+  DownloadAttachmentActionSchema,
 ]);
 
 // ============================================================================

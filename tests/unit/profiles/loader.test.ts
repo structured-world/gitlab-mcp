@@ -548,7 +548,7 @@ describe("ProfileLoader", () => {
       const profile: Profile = {
         host: "gitlab.example.com",
         auth: { type: "pat", token_env: "TOKEN" },
-        denied_actions: ["manage_repository:delete", "invalid_action"], // Missing colon
+        denied_actions: ["manage_project:delete", "invalid_action"], // Missing colon
       };
 
       const result = await loader.validateProfile(profile);

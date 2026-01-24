@@ -74,12 +74,13 @@ describe("flows/tool-selection", () => {
 
       expect(result).toBeDefined();
       expect(result!.mode).toBe("manual");
-      // Always-on categories (core, commits, context) are appended automatically
+      // Always-on categories (core, iterations, todos, context) are appended automatically
       expect(result!.enabledCategories).toEqual([
         "merge-requests",
         "work-items",
         "core",
-        "commits",
+        "iterations",
+        "todos",
         "context",
       ]);
     });

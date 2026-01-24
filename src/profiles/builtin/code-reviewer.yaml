@@ -31,8 +31,8 @@ features:
 
 # Block infrastructure-changing actions
 denied_actions:
-  - "manage_repository:create"
-  - "manage_repository:fork"
+  - "manage_project:create"
+  - "manage_project:fork"
   - "manage_pipeline:create"
   - "manage_pipeline:cancel"
   - "manage_webhook:create"

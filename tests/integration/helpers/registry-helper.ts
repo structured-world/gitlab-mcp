@@ -140,7 +140,7 @@ export class IntegrationTestHelper {
       page?: number;
     } = {}
   ): Promise<unknown> {
-    return this.executeTool("get_users", args);
+    return this.executeTool("browse_users", { action: "search", ...args });
   }
 
   // browse_namespaces: Consolidated CQRS tool (Issue #16)
@@ -525,7 +525,7 @@ export class IntegrationTestHelper {
   // ========================================
 
   async listTodos(args: {
-    action?:
+    todo_action?:
       | "assigned"
       | "mentioned"
       | "build_failed"
@@ -547,7 +547,7 @@ export class IntegrationTestHelper {
     per_page?: number;
     page?: number;
   }): Promise<unknown> {
-    return this.executeTool("list_todos", args);
+    return this.executeTool("browse_todos", { action: "list", ...args });
   }
 
   async markTodoDone(id: number): Promise<unknown> {

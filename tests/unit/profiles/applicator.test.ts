@@ -209,15 +209,13 @@ describe("Profile Applicator", () => {
       const profile: Profile = {
         host: "gitlab.example.com",
         auth: { type: "pat", token_env: "TOKEN" },
-        denied_actions: ["manage_repository:delete", "manage_webhook:create"],
+        denied_actions: ["manage_project:delete", "manage_webhook:create"],
       };
 
       const { applyProfile } = await import("../../../src/profiles/applicator");
       await applyProfile(profile, "safe");
 
-      expect(process.env.GITLAB_DENIED_ACTIONS).toBe(
-        "manage_repository:delete,manage_webhook:create"
-      );
+      expect(process.env.GITLAB_DENIED_ACTIONS).toBe("manage_project:delete,manage_webhook:create");
     });
 
     it("should apply feature flags", async () => {
@@ -352,15 +350,15 @@ describe("Profile Applicator", () => {
       const profile: Profile = {
         host: "gitlab.example.com",
         auth: { type: "pat", token_env: "TOKEN" },
-        allowed_tools: ["browse_projects", "browse_commits", "get_users"],
+        allowed_tools: ["browse_projects", "browse_commits", "browse_users"],
       };
 
       const { applyProfile } = await import("../../../src/profiles/applicator");
       const result = await applyProfile(profile, "tools-whitelist");
 
-      expect(process.env.GITLAB_ALLOWED_TOOLS).toBe("browse_projects,browse_commits,get_users");
+      expect(process.env.GITLAB_ALLOWED_TOOLS).toBe("browse_projects,browse_commits,browse_users");
       expect(result.appliedSettings).toContain(
-        "GITLAB_ALLOWED_TOOLS=browse_projects,browse_commits,get_users"
+        "GITLAB_ALLOWED_TOOLS=browse_projects,browse_commits,browse_users"
       );
     });
 
@@ -583,7 +581,7 @@ describe("Profile Applicator", () => {
 
     it("should apply preset with denied_actions", async () => {
       const preset: Preset = {
-        denied_actions: ["manage_repository:delete", "manage_webhook:create"],
+        denied_actions: ["manage_project:delete", "manage_webhook:create"],
         features: {},
       };
 
@@ -591,14 +589,12 @@ describe("Profile Applicator", () => {
       const result = await applyPreset(preset, "safe-preset");
 
       expect(result.success).toBe(true);
-      expect(process.env.GITLAB_DENIED_ACTIONS).toBe(
-        "manage_repository:delete,manage_webhook:create"
-      );
+      expect(process.env.GITLAB_DENIED_ACTIONS).toBe("manage_project:delete,manage_webhook:create");
     });
 
     it("should apply preset with allowed_tools whitelist", async () => {
       const preset: Preset = {
-        allowed_tools: ["browse_projects", "browse_commits", "get_users"],
+        allowed_tools: ["browse_projects", "browse_commits", "browse_users"],
         features: {},
       };
 
@@ -606,7 +602,7 @@ describe("Profile Applicator", () => {
       const result = await applyPreset(preset, "whitelist-preset");
 
       expect(result.success).toBe(true);
-      expect(process.env.GITLAB_ALLOWED_TOOLS).toBe("browse_projects,browse_commits,get_users");
+      expect(process.env.GITLAB_ALLOWED_TOOLS).toBe("browse_projects,browse_commits,browse_users");
     });
 
     it("should apply preset with feature flags", async () => {
@@ -684,7 +680,7 @@ describe("Profile Applicator", () => {
         read_only: true,
         denied_tools_regex: "^delete_",
         allowed_tools: ["browse_projects"],
-        denied_actions: ["manage_repository:delete"],
+        denied_actions: ["manage_project:delete"],
         timeout_ms: 30000,
         features: {
           wiki: true,
@@ -700,7 +696,7 @@ describe("Profile Applicator", () => {
       expect(process.env.GITLAB_READ_ONLY_MODE).toBe("true");
       expect(process.env.GITLAB_DENIED_TOOLS_REGEX).toBe("^delete_");
       expect(process.env.GITLAB_ALLOWED_TOOLS).toBe("browse_projects");
-      expect(process.env.GITLAB_DENIED_ACTIONS).toBe("manage_repository:delete");
+      expect(process.env.GITLAB_DENIED_ACTIONS).toBe("manage_project:delete");
       expect(process.env.GITLAB_API_TIMEOUT_MS).toBe("30000");
     });
   });

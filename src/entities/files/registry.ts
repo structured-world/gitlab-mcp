@@ -71,6 +71,23 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
             };
           }
 
+          case "download_attachment": {
+            // TypeScript knows: input has project_id, secret, filename (required)
+            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(input.project_id)}/uploads/${input.secret}/${input.filename}`;
+            const response = await enhancedFetch(apiUrl);
+
+            if (!response.ok) {
+              throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+            }
+
+            const attachment = await response.arrayBuffer();
+            return {
+              filename: input.filename,
+              content: Buffer.from(attachment).toString("base64"),
+              contentType: response.headers.get("content-type") ?? "application/octet-stream",
+            };
+          }
+
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
           default:
             throw new Error(`Unknown action: ${(input as { action: string }).action}`);

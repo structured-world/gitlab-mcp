@@ -9,18 +9,19 @@ describe("Core Entity Index", () => {
   });
 
   it("should export read-only schemas", () => {
-    // Consolidated CQRS schemas (Issue #16)
+    // Consolidated CQRS schemas
     expect(coreIndex.BrowseProjectsSchema).toBeDefined();
     expect(coreIndex.BrowseNamespacesSchema).toBeDefined();
     expect(coreIndex.BrowseCommitsSchema).toBeDefined();
     expect(coreIndex.BrowseEventsSchema).toBeDefined();
-    // Keep as-is schemas
-    expect(coreIndex.GetUsersSchema).toBeDefined();
-    expect(coreIndex.ListProjectMembersSchema).toBeDefined();
+    expect(coreIndex.BrowseUsersSchema).toBeDefined();
+    expect(coreIndex.BrowseTodosSchema).toBeDefined();
   });
 
   it("should export write schemas", () => {
-    expect(coreIndex.CreateBranchSchema).toBeDefined();
+    expect(coreIndex.ManageProjectSchema).toBeDefined();
+    expect(coreIndex.ManageNamespaceSchema).toBeDefined();
+    expect(coreIndex.ManageTodosSchema).toBeDefined();
   });
 
   it("should export registry functions", () => {

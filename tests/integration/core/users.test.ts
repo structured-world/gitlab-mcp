@@ -1,12 +1,12 @@
 /**
  * GitLab Users API Integration Tests
- * Tests the GetUsersSchema against GitLab 18.3 API using actual handler functions
+ * Tests the BrowseUsersSchema against GitLab 18.3 API using actual handler functions
  */
 
-import { GetUsersSchema } from "../../../src/entities/core/schema-readonly";
+import { BrowseUsersSchema } from "../../../src/entities/core/schema-readonly";
 import { IntegrationTestHelper } from "../helpers/registry-helper";
 
-describe("GitLab Users API - GetUsersSchema", () => {
+describe("GitLab Users API - BrowseUsersSchema", () => {
   let helper: IntegrationTestHelper;
 
   beforeAll(async () => {
@@ -21,25 +21,27 @@ describe("GitLab Users API - GetUsersSchema", () => {
     console.log("✅ Integration test helper initialized for users API testing");
   });
 
-  it("should validate GetUsersSchema parameters against GitLab API using handler functions", async () => {
-    // Test with various parameter combinations
+  it("should validate BrowseUsersSchema parameters against GitLab API using handler functions", async () => {
+    // Test with various parameter combinations (all with action: "search")
     const testCases = [
       // Basic query
-      {},
+      { action: "search" as const },
       // Single username search
-      { username: "root" },
+      { action: "search" as const, username: "root" },
       // Search with pagination
-      { search: "admin", page: 1, per_page: 5 },
+      { action: "search" as const, search: "admin", page: 1, per_page: 5 },
       // Filter active users
-      { active: true, per_page: 10 },
+      { action: "search" as const, active: true, per_page: 10 },
       // Filter with multiple parameters
       {
+        action: "search" as const,
         exclude_internal: true,
         without_project_bots: true,
         per_page: 20,
       },
       // Date range filtering
       {
+        action: "search" as const,
         created_after: "2023-01-01T00:00:00Z",
         created_before: "2024-12-31T23:59:59Z",
         per_page: 5,
@@ -47,15 +49,15 @@ describe("GitLab Users API - GetUsersSchema", () => {
     ];
 
     for (const params of testCases) {
-      console.log(`🔍 Testing users with params:`, params);
+      console.log(`Testing users with params:`, params);
 
       // Validate request schema
-      const validationResult = GetUsersSchema.safeParse(params);
+      const validationResult = BrowseUsersSchema.safeParse(params);
       expect(validationResult.success).toBe(true);
 
       if (validationResult.success) {
-        // Use executeTool directly since getUsers convenience method might not work
-        const rawData = (await helper.executeTool("get_users", validationResult.data)) as any;
+        // Use executeTool directly
+        const rawData = (await helper.executeTool("browse_users", validationResult.data)) as any;
 
         // Handle both smart search result format and legacy array format
         let data: any[];
@@ -105,17 +107,17 @@ describe("GitLab Users API - GetUsersSchema", () => {
   it("should handle invalid parameters correctly", async () => {
     const invalidCases = [
       // Invalid types for pagination
-      { page: "not-a-number" },
-      { per_page: -1 },
-      { per_page: 101 }, // Exceeds max
-      { page: 0 }, // Min value violation
+      { action: "search" as const, page: "not-a-number" },
+      { action: "search" as const, per_page: -1 },
+      { action: "search" as const, per_page: 101 }, // Exceeds max
+      { action: "search" as const, page: 0 }, // Min value violation
       // Invalid types for other fields
-      { username: 123 }, // Should be string
-      { search: [] }, // Should be string
+      { action: "search" as const, username: 123 }, // Should be string
+      { action: "search" as const, search: [] }, // Should be string
     ];
 
     for (const params of invalidCases) {
-      const validationResult = GetUsersSchema.safeParse(params);
+      const validationResult = BrowseUsersSchema.safeParse(params);
       expect(validationResult.success).toBe(false);
       console.log(`  ✅ Correctly rejected invalid params:`, params);
     }
@@ -124,6 +126,7 @@ describe("GitLab Users API - GetUsersSchema", () => {
   it("should correctly handle all filter parameters with handler function", async () => {
     // Test that all documented parameters are accepted
     const allParams = {
+      action: "search" as const,
       username: "test",
       search: "test",
       active: true,
@@ -141,7 +144,7 @@ describe("GitLab Users API - GetUsersSchema", () => {
 
     console.log(`🔍 Testing complete parameter set with handler function`);
 
-    const validationResult = GetUsersSchema.safeParse(allParams);
+    const validationResult = BrowseUsersSchema.safeParse(allParams);
     expect(validationResult.success).toBe(true);
 
     // Ensure all parameters are preserved
@@ -149,7 +152,7 @@ describe("GitLab Users API - GetUsersSchema", () => {
       expect(Object.keys(validationResult.data).length).toBe(Object.keys(allParams).length);
 
       // Test that handler accepts all parameters
-      const data = (await helper.executeTool("get_users", validationResult.data)) as any[];
+      const data = (await helper.executeTool("browse_users", validationResult.data)) as any[];
       expect(Array.isArray(data)).toBe(true);
       console.log(`  ✅ Handler accepted all parameters, returned ${data.length} users`);
     }

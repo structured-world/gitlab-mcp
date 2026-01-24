@@ -87,7 +87,7 @@ GITLAB_CROSS_REFS=false
 - Deployments with very few tools enabled (cross-refs become noise)
 - When using custom `GITLAB_TOOL_*` descriptions exclusively
 
-When disabled, the dynamic resolution logic is skipped entirely — no Related sections appear in any tool description regardless of tool availability.
+When disabled, Related sections are stripped from all generated tool descriptions regardless of tool availability. Tools with custom `GITLAB_TOOL_*` overrides are unaffected — any `Related:` text you include in a custom description is preserved as-is.
 
 ## Fine-Grained Action Filtering
 

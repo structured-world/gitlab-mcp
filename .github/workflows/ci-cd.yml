@@ -81,8 +81,11 @@ jobs:
 
       - name: Validate MCPB manifest template
         run: |
-          sed 's/{{VERSION}}/0.0.0/g' mcpb/manifest.json.template | jq . > /dev/null
-          echo "Manifest template is valid JSON"
+          MANIFEST=$(sed 's/{{VERSION}}/0.0.0/g' mcpb/manifest.json.template)
+          echo "$MANIFEST" | jq . > /dev/null
+          # Validate required MCPB fields
+          echo "$MANIFEST" | jq -e '.manifest_version and .name and .version and .server.entry_point and .server.mcp_config.command' > /dev/null
+          echo "Manifest template is valid (JSON + required fields)"
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v6

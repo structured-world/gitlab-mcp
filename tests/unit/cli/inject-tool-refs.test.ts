@@ -380,6 +380,17 @@ describe("inject-tool-refs", () => {
 
       expect(table).toContain("| `my_action` | My action description |");
     });
+
+    it("should escape pipe characters in descriptions", () => {
+      const actions: ActionInfo[] = [
+        { name: "filter", description: "Filter by type | status | priority" },
+      ];
+
+      const table = generateActionsTable(actions);
+
+      expect(table).toContain("| `filter` | Filter by type \\| status \\| priority |");
+      expect(table).not.toContain("| `filter` | Filter by type | status");
+    });
   });
 
   describe("findMarkers", () => {
@@ -733,6 +744,25 @@ describe("inject-tool-refs", () => {
       expect(() => processFile("/docs/tools/noactions.md", toolSchemas)).toThrow(
         "/docs/tools/noactions.md"
       );
+    });
+
+    it("should use provided content instead of reading file when passed", () => {
+      const toolSchemas = new Map<string, JsonSchemaProperty>();
+      toolSchemas.set("browse_refs", {
+        properties: {
+          action: { enum: ["list_branches", "get_branch"] },
+        },
+      });
+
+      const content = "<!-- @autogen:tool browse_refs -->\nold\n<!-- @autogen:end -->";
+
+      mockedFs.writeFileSync.mockImplementation(() => undefined);
+
+      processFile("/docs/refs.md", toolSchemas, content);
+
+      // Should NOT read the file since content was provided
+      expect(mockedFs.readFileSync).not.toHaveBeenCalled();
+      expect(mockedFs.writeFileSync).toHaveBeenCalled();
     });
 
     it("should list available tools in error message when tool is unknown", () => {

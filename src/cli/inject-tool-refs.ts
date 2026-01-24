@@ -103,7 +103,8 @@ function generateActionsTable(actions: ActionInfo[]): string {
   lines.push("| Action | Description |");
   lines.push("|--------|-------------|");
   for (const action of actions) {
-    lines.push(`| \`${action.name}\` | ${action.description} |`);
+    const desc = action.description.replace(/\|/g, "\\|");
+    lines.push(`| \`${action.name}\` | ${desc} |`);
   }
   return lines.join("\n");
 }
@@ -141,14 +142,18 @@ function findMarkers(content: string): MarkerMatch[] {
  * Process a single markdown file: find markers and inject action tables.
  * Returns true if file was modified.
  */
-function processFile(filePath: string, toolSchemas: Map<string, JsonSchemaProperty>): boolean {
-  const content = fs.readFileSync(filePath, "utf8");
-  const markers = findMarkers(content);
+function processFile(
+  filePath: string,
+  toolSchemas: Map<string, JsonSchemaProperty>,
+  content?: string
+): boolean {
+  const fileContent = content ?? fs.readFileSync(filePath, "utf8");
+  const markers = findMarkers(fileContent);
 
   if (markers.length === 0) return false;
 
   // Process markers from end to start to preserve indices
-  let result = content;
+  let result = fileContent;
   for (let i = markers.length - 1; i >= 0; i--) {
     const marker = markers[i];
     const schema = toolSchemas.get(marker.toolName);
@@ -173,7 +178,7 @@ function processFile(filePath: string, toolSchemas: Map<string, JsonSchemaProper
     result = result.slice(0, marker.startIdx) + replacement + result.slice(marker.endIdx);
   }
 
-  if (result !== content) {
+  if (result !== fileContent) {
     fs.writeFileSync(filePath, result, "utf8");
     return true;
   }
@@ -187,9 +192,10 @@ function processFile(filePath: string, toolSchemas: Map<string, JsonSchemaProper
 export function main(): void {
   // Find project root (where package.json is)
   let projectRoot = process.cwd();
-  for (let i = 0; i < 5; i++) {
-    if (fs.existsSync(path.join(projectRoot, "package.json"))) break;
-    projectRoot = path.dirname(projectRoot);
+  while (!fs.existsSync(path.join(projectRoot, "package.json"))) {
+    const parent = path.dirname(projectRoot);
+    if (parent === projectRoot) break;
+    projectRoot = parent;
   }
 
   const docsToolsDir = path.join(projectRoot, "docs", "tools");
@@ -221,7 +227,7 @@ export function main(): void {
     markerCount += markers.length;
 
     if (markers.length > 0) {
-      const modified = processFile(filePath, toolSchemas);
+      const modified = processFile(filePath, toolSchemas, content);
       if (modified) {
         modifiedCount++;
         const relPath = path.relative(projectRoot, filePath);
@@ -240,6 +246,6 @@ export { extractActions, generateActionsTable, findMarkers, processFile };
 export type { JsonSchemaProperty, ActionInfo, MarkerMatch };
 
 // Auto-execute when run directly
-if (!process.env.NODE_ENV || process.env.NODE_ENV !== "test") {
+if (process.env.NODE_ENV !== "test") {
   main();
 }

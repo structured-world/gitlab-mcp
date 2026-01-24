@@ -1,3 +1,9 @@
+## [6.41.1](https://github.com/structured-world/gitlab-mcp/compare/v6.41.0...v6.41.1) (2026-01-24)
+
+### Bug Fixes
+
+* **workitems:** align linkType enum to GitLab API values ([#178](https://github.com/structured-world/gitlab-mcp/issues/178)) ([3b4ba6e](https://github.com/structured-world/gitlab-mcp/commit/3b4ba6ecd1760856bcc45cee4ea8b79d0e6da224)), closes [#177](https://github.com/structured-world/gitlab-mcp/issues/177)
+
 ## [6.41.0](https://github.com/structured-world/gitlab-mcp/compare/v6.40.0...v6.41.0) (2026-01-24)
 
 ### Features

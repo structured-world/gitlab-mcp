@@ -36,7 +36,6 @@ import {
   WORK_ITEM_REMOVE_LINKED_ITEMS,
   WorkItemUpdateInput,
   WorkItem as GraphQLWorkItem,
-  WorkItemLinkType,
 } from "../../graphql/workItems";
 
 // Types for work item structure - flexible widget interface for runtime processing
@@ -785,7 +784,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               input: {
                 id: toGid(id, "WorkItem"),
                 workItemsIds: [toGid(targetId, "WorkItem")],
-                linkType: linkType as WorkItemLinkType,
+                linkType,
               },
             });
 
@@ -817,7 +816,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               input: {
                 id: toGid(id, "WorkItem"),
                 workItemsIds: [toGid(targetId, "WorkItem")],
-                linkType: linkType as WorkItemLinkType,
+                linkType,
               },
             });
 

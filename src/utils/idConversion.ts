@@ -257,13 +257,12 @@ export function cleanWorkItemResponse(workItem: GitLabWorkItem): GitLabWorkItem 
         };
       }
 
-      // Clean linked item IDs and normalize linkType in LINKED_ITEMS widget
+      // Clean linked item GIDs in LINKED_ITEMS widget
       if (widget.type === "LINKED_ITEMS" && widget.linkedItems?.nodes) {
         cleanedWidget.linkedItems = {
           ...widget.linkedItems,
           nodes: widget.linkedItems.nodes.map(node => ({
             ...node,
-            linkType: node.linkType,
             workItem: node.workItem
               ? { ...node.workItem, id: extractSimpleId(node.workItem.id) }
               : node.workItem,

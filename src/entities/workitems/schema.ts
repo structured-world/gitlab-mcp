@@ -44,8 +44,7 @@ const workItemIdField = WorkItemIdSchema.describe(
   "Work item ID - use numeric ID from list results (e.g., '5953')"
 );
 
-// --- Link type enum (matches GitLab GraphQL API values directly) ---
-// No aliases for legacy IS_BLOCKED_BY/RELATES_TO — those were broken (#177)
+// --- Link type enum (matches GitLab GraphQL API values directly, see #177) ---
 const LinkTypeSchema = z
   .enum(["BLOCKS", "BLOCKED_BY", "RELATED"])
   .describe(

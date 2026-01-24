@@ -2,6 +2,14 @@
 
 Run GitLab MCP Server as a Docker container.
 
+## Prerequisites
+
+Before running the container, ensure you have a GitLab Personal Access Token:
+
+1. Go to **GitLab → Settings → Access Tokens → Personal Access Token**
+2. Create a token with `api` scope (or `read_api` for read-only mode)
+3. Keep the token value ready — you'll pass it as `GITLAB_TOKEN` environment variable
+
 ::: tip
 For detailed deployment options (standalone, PostgreSQL, Compose), see [Deployment](/deployment/). For guided Docker setup, run:
 ```bash

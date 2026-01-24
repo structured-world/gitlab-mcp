@@ -40,12 +40,26 @@ features:
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 
+::: warning After one-click install
+You must configure `GITLAB_TOKEN` in your MCP client settings before the server can connect. See the [Installation Guide](/guide/installation/npm) for token setup.
+:::
+
 ## Quick Start
+
+::: tip Prerequisites
+Create a [GitLab Personal Access Token](https://docs.gitlab.com/user/profile/personal_access_tokens/) with `api` scope (or `read_api` for read-only mode) and export it:
+```bash
+export GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"
+```
+:::
 
 ```bash
 npx @structured-world/gitlab-mcp
 ```
 
-Set `GITLAB_TOKEN` and optionally `GITLAB_API_URL` for self-hosted instances.
+For self-hosted GitLab, also set `GITLAB_API_URL`:
+```bash
+export GITLAB_API_URL="https://your-gitlab.example.com"
+```
 
 See the [Installation Guide](/guide/installation/npm) for detailed setup instructions.

@@ -156,7 +156,11 @@ describe("ConnectionManager Enhanced Tests", () => {
       jest.doMock("../../../src/config", () => originalConfig);
     });
 
-    it("should throw error when GITLAB_TOKEN is missing in static mode", async () => {
+    it("should exit gracefully when GITLAB_TOKEN is missing in static mode", async () => {
+      // Mock process.exit to prevent Jest worker from exiting
+      const mockExit = jest.spyOn(process, "exit").mockImplementation(() => undefined as never);
+      const mockConsoleError = jest.spyOn(console, "error").mockImplementation(() => {});
+
       // Mock missing config by temporarily changing the environment
       const originalConfig = require("../../../src/config");
       jest.resetModules();
@@ -175,11 +179,15 @@ describe("ConnectionManager Enhanced Tests", () => {
       } = require("../../../src/services/ConnectionManager");
       const newManager = new TestConnectionManager();
 
-      await expect(newManager.initialize()).rejects.toThrow(
-        "GitLab token is required in static authentication mode"
-      );
+      await newManager.initialize();
 
-      // Restore original config
+      // Verify graceful exit with guidance message (no stack trace)
+      expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining("GITLAB_TOKEN"));
+      expect(mockExit).toHaveBeenCalledWith(1);
+
+      // Restore
+      mockExit.mockRestore();
+      mockConsoleError.mockRestore();
       jest.resetModules();
       jest.doMock("../../../src/config", () => originalConfig);
     });

@@ -92,11 +92,32 @@ export function loadOAuthConfig(): OAuthConfig | null {
 /**
  * Validate static token configuration (used when OAuth is disabled)
  *
- * Throws an error if GITLAB_TOKEN is not set
+ * Prints a user-friendly guidance message and exits if GITLAB_TOKEN is not set
  */
 export function validateStaticConfig(): void {
   if (!process.env.GITLAB_TOKEN) {
-    throw new Error("GITLAB_TOKEN is required when OAUTH_ENABLED is not true");
+    // User-friendly message without stack trace — this is the first thing new users see
+    const message = `
+┌──────────────────────────────────────────────────────────────────┐
+│  GitLab MCP — no authentication configured                       │
+├──────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│  Quick setup (interactive):                                      │
+│    npx @structured-world/gitlab-mcp setup                        │
+│                                                                  │
+│  Manual setup:                                                   │
+│    export GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"               │
+│    Required scopes: api (or read_api for read-only mode)         │
+│                                                                  │
+│  For self-hosted GitLab, also set:                                │
+│    export GITLAB_API_URL="https://your-gitlab.example.com"        │
+│                                                                  │
+│  Docs: https://gitlab-mcp.sw.foundation/guide/installation/npm   │
+└──────────────────────────────────────────────────────────────────┘
+`;
+    console.error(message);
+    process.exit(1);
+    return; // Unreachable but makes intent explicit for static analysis
   }
   logger.debug("Static token mode: GITLAB_TOKEN configured");
 }

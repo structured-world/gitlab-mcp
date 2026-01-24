@@ -136,15 +136,34 @@ describe("OAuth Configuration", () => {
   });
 
   describe("validateStaticConfig", () => {
-    it("should throw error when GITLAB_TOKEN is not set", async () => {
-      const { validateStaticConfig } = await import("../../../src/oauth/config");
-      expect(() => validateStaticConfig()).toThrow("GITLAB_TOKEN is required");
+    let mockExit: jest.SpyInstance;
+    let mockConsoleError: jest.SpyInstance;
+
+    beforeEach(() => {
+      // Mock process.exit to prevent Jest worker from exiting
+      mockExit = jest.spyOn(process, "exit").mockImplementation(() => undefined as never);
+      mockConsoleError = jest.spyOn(console, "error").mockImplementation(() => {});
     });
 
-    it("should not throw when GITLAB_TOKEN is set", async () => {
+    afterEach(() => {
+      mockExit.mockRestore();
+      mockConsoleError.mockRestore();
+    });
+
+    it("should print guidance and exit when GITLAB_TOKEN is not set", async () => {
+      const { validateStaticConfig } = await import("../../../src/oauth/config");
+      validateStaticConfig();
+
+      expect(mockConsoleError).toHaveBeenCalledWith(expect.stringContaining("GITLAB_TOKEN"));
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should not exit when GITLAB_TOKEN is set", async () => {
       process.env.GITLAB_TOKEN = "test-token";
       const { validateStaticConfig } = await import("../../../src/oauth/config");
-      expect(() => validateStaticConfig()).not.toThrow();
+      validateStaticConfig();
+
+      expect(mockExit).not.toHaveBeenCalled();
     });
   });
 

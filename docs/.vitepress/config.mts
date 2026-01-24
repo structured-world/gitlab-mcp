@@ -7,6 +7,10 @@ export default defineConfig({
   description: "Model Context Protocol server for GitLab API",
   base,
 
+  // MCPB bundle is downloaded from GitHub releases during docs build.
+  // Until first .mcpb release exists, the link is a dead link — safe to ignore.
+  ignoreDeadLinks: [/\/downloads\/.+\.mcpb$/],
+
   head: [
     ["link", { rel: "icon", type: "image/x-icon", href: "/favicon.ico" }],
     ["link", { rel: "icon", type: "image/png", sizes: "32x32", href: "/favicon-32x32.png" }],

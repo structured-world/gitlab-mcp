@@ -9,6 +9,7 @@
 export {
   loadOAuthConfig,
   validateStaticConfig,
+  ConfigurationError,
   isOAuthEnabled,
   getAuthModeDescription,
   resetOAuthConfigCache,

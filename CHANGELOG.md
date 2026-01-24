@@ -1,3 +1,9 @@
+## [6.39.0](https://github.com/structured-world/gitlab-mcp/compare/v6.38.1...v6.39.0) (2026-01-24)
+
+### Features
+
+* **descriptions:** intent-first tool descriptions with dynamic Related resolution ([#172](https://github.com/structured-world/gitlab-mcp/issues/172)) ([065e53b](https://github.com/structured-world/gitlab-mcp/commit/065e53bd53177b0696aed00abaf7a843dda9c58d)), closes [#169](https://github.com/structured-world/gitlab-mcp/issues/169)
+
 ## [6.38.1](https://github.com/structured-world/gitlab-mcp/compare/v6.38.0...v6.38.1) (2026-01-24)
 
 ### Bug Fixes

@@ -637,6 +637,77 @@ describe("RegistryManager", () => {
       );
       expect(hasFeatureTools).toBe(false);
     });
+
+    it("should strip Related sections when GITLAB_CROSS_REFS=false", () => {
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+
+      // Add a tool with Related reference
+      coreRegistry.set("browse_tierless_crossref", {
+        name: "browse_tierless_crossref",
+        description:
+          "Browse tierless items. Actions: list. Related: manage_tierless_crossref to modify.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+      coreRegistry.set("manage_tierless_crossref", {
+        name: "manage_tierless_crossref",
+        description: "Manage tierless items.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+
+      try {
+        process.env.GITLAB_CROSS_REFS = "false";
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
+
+        const tools = registryManager.getAllToolDefinitionsTierless();
+        const tool = tools.find(t => t.name === "browse_tierless_crossref");
+
+        expect(tool).toBeDefined();
+        // Related should be stripped even though manage_tierless_crossref is available
+        expect(tool!.description).toBe("Browse tierless items. Actions: list.");
+        expect(tool!.description).not.toContain("Related:");
+      } finally {
+        coreRegistry.delete("browse_tierless_crossref");
+        coreRegistry.delete("manage_tierless_crossref");
+        delete process.env.GITLAB_CROSS_REFS;
+      }
+    });
+
+    it("should resolve Related dynamically when GITLAB_CROSS_REFS is not false (tierless)", () => {
+      const coreRegistry = require("../../src/entities/core/registry").coreToolRegistry;
+
+      coreRegistry.set("browse_tierless_ref", {
+        name: "browse_tierless_ref",
+        description: "Browse items. Related: manage_tierless_ref to modify.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+      coreRegistry.set("manage_tierless_ref", {
+        name: "manage_tierless_ref",
+        description: "Manage items.",
+        inputSchema: { type: "object" },
+        handler: jest.fn(),
+      });
+
+      try {
+        // Default: GITLAB_CROSS_REFS not set (=true)
+        delete process.env.GITLAB_CROSS_REFS;
+        (RegistryManager as any).instance = null;
+        registryManager = RegistryManager.getInstance();
+
+        const tools = registryManager.getAllToolDefinitionsTierless();
+        const tool = tools.find(t => t.name === "browse_tierless_ref");
+
+        expect(tool).toBeDefined();
+        // Related should be preserved since manage_tierless_ref is available
+        expect(tool!.description).toContain("Related: manage_tierless_ref");
+      } finally {
+        coreRegistry.delete("browse_tierless_ref");
+        coreRegistry.delete("manage_tierless_ref");
+      }
+    });
   });
 
   describe("Additional Coverage Tests", () => {

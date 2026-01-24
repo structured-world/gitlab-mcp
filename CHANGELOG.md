@@ -1,3 +1,9 @@
+## [6.41.4](https://github.com/structured-world/gitlab-mcp/compare/v6.41.3...v6.41.4) (2026-01-24)
+
+### Bug Fixes
+
+* **auth:** use PRIVATE-TOKEN header for PAT authentication instead of Bearer ([#189](https://github.com/structured-world/gitlab-mcp/issues/189)) ([7799dde](https://github.com/structured-world/gitlab-mcp/commit/7799ddeeafa169273aed725774e3132c7ccb63db)), closes [#187](https://github.com/structured-world/gitlab-mcp/issues/187)
+
 ## [6.41.3](https://github.com/structured-world/gitlab-mcp/compare/v6.41.2...v6.41.3) (2026-01-24)
 
 ### Bug Fixes

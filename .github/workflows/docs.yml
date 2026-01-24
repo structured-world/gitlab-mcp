@@ -45,11 +45,9 @@ jobs:
           DOCS_BASE: /
 
       - name: Run tests with coverage
-        if: github.event_name == 'release'
         run: yarn test:cov
 
       - name: Integrate coverage into docs
-        if: github.event_name == 'release'
         run: |
           mkdir -p docs/.vitepress/dist/coverage
           cp -r coverage/lcov-report/* docs/.vitepress/dist/coverage/

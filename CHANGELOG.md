@@ -1,3 +1,9 @@
+## [6.41.0](https://github.com/structured-world/gitlab-mcp/compare/v6.40.0...v6.41.0) (2026-01-24)
+
+### Features
+
+* **ux:** graceful startup without credentials + docs clarity ([#180](https://github.com/structured-world/gitlab-mcp/issues/180)) ([6f77771](https://github.com/structured-world/gitlab-mcp/commit/6f77771c74cc7538a77db51ded8a84cb5eb22d03)), closes [#179](https://github.com/structured-world/gitlab-mcp/issues/179)
+
 ## [6.40.0](https://github.com/structured-world/gitlab-mcp/compare/v6.39.0...v6.40.0) (2026-01-24)
 
 ### Features

@@ -315,8 +315,10 @@ jobs:
 
       - name: Install mcp-publisher
         run: |
-          curl -fL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          curl -fL -o mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz"
+          tar xzf mcp-publisher.tar.gz mcp-publisher
           test -x ./mcp-publisher || { echo "Error: mcp-publisher not found after extraction"; exit 1; }
+          rm -f mcp-publisher.tar.gz
 
       - name: Download MCPB bundle from release
         run: |

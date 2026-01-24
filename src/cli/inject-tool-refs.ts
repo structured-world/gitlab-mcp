@@ -269,7 +269,7 @@ export function main(): void {
     function processTemplates(dir: string): void {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const fullPath = path.join(dir, entry.name);
-        if (entry.isDirectory() && entry.name !== ".vitepress" && entry.name !== "node_modules") {
+        if (entry.isDirectory() && !["node_modules", ".vitepress", "dist"].includes(entry.name)) {
           processTemplates(fullPath);
         } else if (
           entry.isFile() &&

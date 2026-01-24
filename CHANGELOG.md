@@ -1,3 +1,9 @@
+## [6.38.1](https://github.com/structured-world/gitlab-mcp/compare/v6.38.0...v6.38.1) (2026-01-24)
+
+### Bug Fixes
+
+* **docs:** add Codecov badge and always generate VitePress report ([#168](https://github.com/structured-world/gitlab-mcp/issues/168)) ([2e5e004](https://github.com/structured-world/gitlab-mcp/commit/2e5e0042b1870f91b4a942dc37d59e6702ce561a)), closes [#167](https://github.com/structured-world/gitlab-mcp/issues/167)
+
 ## [6.38.0](https://github.com/structured-world/gitlab-mcp/compare/v6.37.0...v6.38.0) (2026-01-24)
 
 ### Features

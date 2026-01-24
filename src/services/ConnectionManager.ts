@@ -1,9 +1,15 @@
 import { GraphQLClient } from "../graphql/client";
 import { GitLabVersionDetector, GitLabInstanceInfo } from "./GitLabVersionDetector";
 import { SchemaIntrospector, SchemaInfo } from "./SchemaIntrospector";
-import { detectTokenScopes, logTokenScopeInfo, TokenScopeInfo } from "./TokenScopeDetector";
+import {
+  detectTokenScopes,
+  logTokenScopeInfo,
+  getToolScopeRequirements,
+  TokenScopeInfo,
+} from "./TokenScopeDetector";
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from "../config";
 import { isOAuthEnabled } from "../oauth/index";
+import { enhancedFetch } from "../utils/fetch";
 import { logger } from "../logger";
 
 interface CacheEntry {
@@ -119,9 +125,9 @@ export class ConnectionManager {
       this.tokenScopeInfo = await detectTokenScopes();
 
       if (this.tokenScopeInfo) {
-        // Log token scope info (includes expiry warnings)
-        // Total tools count will be logged after registry is built
-        logTokenScopeInfo(this.tokenScopeInfo, 45);
+        // Log token scope info — derive total tools dynamically from scope requirements map
+        const totalTools = Object.keys(getToolScopeRequirements()).length;
+        logTokenScopeInfo(this.tokenScopeInfo, totalTools);
 
         // If token lacks GraphQL access, skip introspection entirely
         if (!this.tokenScopeInfo.hasGraphQLAccess) {
@@ -315,11 +321,12 @@ export class ConnectionManager {
    */
   private async detectVersionViaREST(): Promise<GitLabInstanceInfo> {
     try {
-      const response = await fetch(`${GITLAB_BASE_URL}/api/v4/version`, {
+      const response = await enhancedFetch(`${GITLAB_BASE_URL}/api/v4/version`, {
         headers: {
           "PRIVATE-TOKEN": GITLAB_TOKEN ?? "",
           Accept: "application/json",
         },
+        retry: false, // Don't retry version detection at startup
       });
 
       if (response.ok) {

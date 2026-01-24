@@ -88,6 +88,7 @@ jest.mock("../../src/services/ConnectionManager", () => ({
 
 jest.mock("../../src/services/TokenScopeDetector", () => ({
   isToolAvailableForScopes: jest.fn().mockReturnValue(true),
+  getToolScopeRequirements: jest.fn().mockReturnValue({}),
 }));
 
 jest.mock("../../src/logger", () => ({

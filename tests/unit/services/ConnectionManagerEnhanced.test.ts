@@ -19,6 +19,22 @@ jest.mock("../../../src/logger", () => ({
     warn: jest.fn(),
   },
 }));
+jest.mock("../../../src/services/TokenScopeDetector");
+jest.mock("../../../src/utils/fetch");
+
+import {
+  detectTokenScopes,
+  logTokenScopeInfo,
+  getToolScopeRequirements,
+} from "../../../src/services/TokenScopeDetector";
+import { enhancedFetch } from "../../../src/utils/fetch";
+
+const mockedDetectTokenScopes = detectTokenScopes as jest.MockedFunction<typeof detectTokenScopes>;
+const mockedLogTokenScopeInfo = logTokenScopeInfo as jest.MockedFunction<typeof logTokenScopeInfo>;
+const mockedGetToolScopeRequirements = getToolScopeRequirements as jest.MockedFunction<
+  typeof getToolScopeRequirements
+>;
+const mockedEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
 
 const MockedGraphQLClient = GraphQLClient as jest.MockedClass<typeof GraphQLClient>;
 const MockedGitLabVersionDetector = GitLabVersionDetector as jest.MockedClass<
@@ -57,6 +73,11 @@ describe("ConnectionManager Enhanced Tests", () => {
     (ConnectionManager as any).introspectionCache.clear();
 
     jest.clearAllMocks();
+
+    // Default: scope detection returns null (no scope info), so GraphQL path runs normally
+    mockedDetectTokenScopes.mockResolvedValue(null);
+    mockedGetToolScopeRequirements.mockReturnValue({});
+    mockedEnhancedFetch.mockResolvedValue({ ok: false, status: 404 } as Response);
 
     // Setup mocks
     mockClient = {
@@ -441,6 +462,201 @@ describe("ConnectionManager Enhanced Tests", () => {
       });
 
       await expect(connectionManager.initialize()).rejects.toThrow("Client creation failed");
+    });
+  });
+
+  describe("Token Scope Detection", () => {
+    it("should skip GraphQL introspection when token lacks GraphQL access", async () => {
+      // Token with only read_user scope - no GraphQL access
+      mockedDetectTokenScopes.mockResolvedValueOnce({
+        name: "limited-token",
+        scopes: ["read_user"],
+        expiresAt: null,
+        active: true,
+        tokenType: "personal_access_token",
+        hasGraphQLAccess: false,
+        hasWriteAccess: false,
+        daysUntilExpiry: null,
+      });
+
+      // Mock REST version detection via enhancedFetch
+      mockedEnhancedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          version: "16.8.0",
+          revision: "abc123",
+          enterprise: true,
+        }),
+      } as unknown as Response);
+
+      await connectionManager.initialize();
+
+      // GraphQL introspection should NOT have been called
+      expect(mockVersionDetector.detectInstance).not.toHaveBeenCalled();
+      expect(mockSchemaIntrospector.introspectSchema).not.toHaveBeenCalled();
+
+      // Version should be detected via REST
+      expect(connectionManager.getVersion()).toBe("16.8.0");
+      expect(connectionManager.getTier()).toBe("premium");
+    });
+
+    it("should detect non-enterprise GitLab as free tier via REST", async () => {
+      mockedDetectTokenScopes.mockResolvedValueOnce({
+        name: "limited-token",
+        scopes: ["read_user"],
+        expiresAt: null,
+        active: true,
+        tokenType: "personal_access_token",
+        hasGraphQLAccess: false,
+        hasWriteAccess: false,
+        daysUntilExpiry: null,
+      });
+
+      mockedEnhancedFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          version: "17.0.0",
+          revision: "def456",
+          enterprise: false,
+        }),
+      } as unknown as Response);
+
+      await connectionManager.initialize();
+
+      expect(connectionManager.getVersion()).toBe("17.0.0");
+      expect(connectionManager.getTier()).toBe("free");
+    });
+
+    it("should proceed with GraphQL introspection when token has api scope", async () => {
+      // Token with api scope - full GraphQL access
+      mockedDetectTokenScopes.mockResolvedValueOnce({
+        name: "full-token",
+        scopes: ["api", "read_user"],
+        expiresAt: null,
+        active: true,
+        tokenType: "personal_access_token",
+        hasGraphQLAccess: true,
+        hasWriteAccess: true,
+        daysUntilExpiry: null,
+      });
+
+      await connectionManager.initialize();
+
+      // GraphQL introspection should be called
+      expect(mockVersionDetector.detectInstance).toHaveBeenCalled();
+      expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalled();
+    });
+
+    it("should proceed with GraphQL if token scope detection fails", async () => {
+      // Scope detection returns null (failed) — already default mock value
+      await connectionManager.initialize();
+
+      // Should still attempt GraphQL introspection
+      expect(mockVersionDetector.detectInstance).toHaveBeenCalled();
+      expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalled();
+    });
+
+    it("should return token scope info via getTokenScopeInfo()", async () => {
+      const scopeInfo = {
+        name: "my-token",
+        scopes: ["api"] as any,
+        expiresAt: "2027-01-01",
+        active: true,
+        tokenType: "personal_access_token" as const,
+        hasGraphQLAccess: true,
+        hasWriteAccess: true,
+        daysUntilExpiry: 365,
+      };
+      mockedDetectTokenScopes.mockResolvedValueOnce(scopeInfo);
+
+      await connectionManager.initialize();
+
+      expect(connectionManager.getTokenScopeInfo()).toEqual(scopeInfo);
+    });
+
+    it("should call logTokenScopeInfo with dynamic tool count", async () => {
+      const scopeInfo = {
+        name: "my-token",
+        scopes: ["api"] as any,
+        expiresAt: null,
+        active: true,
+        tokenType: "personal_access_token" as const,
+        hasGraphQLAccess: true,
+        hasWriteAccess: true,
+        daysUntilExpiry: null,
+      };
+      mockedDetectTokenScopes.mockResolvedValueOnce(scopeInfo);
+      mockedGetToolScopeRequirements.mockReturnValueOnce({
+        browse_projects: ["api"],
+        manage_project: ["api"],
+        browse_files: ["api", "read_repository"],
+      });
+
+      await connectionManager.initialize();
+
+      // Should call logTokenScopeInfo with dynamically derived tool count (3)
+      expect(mockedLogTokenScopeInfo).toHaveBeenCalledWith(scopeInfo, 3);
+    });
+
+    it("should use REST fallback with defaults when /api/v4/version fails", async () => {
+      mockedDetectTokenScopes.mockResolvedValueOnce({
+        name: "no-graphql-token",
+        scopes: ["read_user"],
+        expiresAt: null,
+        active: true,
+        tokenType: "personal_access_token",
+        hasGraphQLAccess: false,
+        hasWriteAccess: false,
+        daysUntilExpiry: null,
+      });
+
+      // REST version detection fails (use default mock: ok: false, status: 404)
+
+      await connectionManager.initialize();
+
+      // Should fall back to "unknown" version
+      expect(connectionManager.getVersion()).toBe("unknown");
+      expect(connectionManager.getTier()).toBe("free");
+    });
+
+    it("should handle REST version detection network error gracefully", async () => {
+      mockedDetectTokenScopes.mockResolvedValueOnce({
+        name: "no-graphql-token",
+        scopes: ["read_repository"],
+        expiresAt: null,
+        active: true,
+        tokenType: "personal_access_token",
+        hasGraphQLAccess: false,
+        hasWriteAccess: false,
+        daysUntilExpiry: null,
+      });
+
+      // Network error during REST version detection
+      mockedEnhancedFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+
+      await connectionManager.initialize();
+
+      // Should fall back to defaults without throwing
+      expect(connectionManager.getVersion()).toBe("unknown");
+    });
+
+    it("should clear tokenScopeInfo on reset", async () => {
+      mockedDetectTokenScopes.mockResolvedValueOnce({
+        name: "test-token",
+        scopes: ["api"],
+        expiresAt: null,
+        active: true,
+        tokenType: "personal_access_token",
+        hasGraphQLAccess: true,
+        hasWriteAccess: true,
+        daysUntilExpiry: null,
+      });
+
+      await connectionManager.initialize();
+      expect(connectionManager.getTokenScopeInfo()).not.toBeNull();
+
+      connectionManager.reset();
+      expect(connectionManager.getTokenScopeInfo()).toBeNull();
     });
   });
 

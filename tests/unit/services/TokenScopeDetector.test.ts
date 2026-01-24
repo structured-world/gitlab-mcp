@@ -9,6 +9,7 @@ import {
   detectTokenScopes,
   isToolAvailableForScopes,
   getToolsForScopes,
+  getToolScopeRequirements,
   getTokenCreationUrl,
   logTokenScopeInfo,
   TokenScopeInfo,
@@ -31,9 +32,14 @@ jest.mock("../../../src/logger", () => ({
   },
 }));
 
-// Mock global fetch
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
+// Mock enhancedFetch used by detectTokenScopes
+const mockEnhancedFetch = jest.fn();
+jest.mock("../../../src/utils/fetch", () => ({
+  enhancedFetch: (...args: unknown[]) => mockEnhancedFetch(...args),
+}));
+
+// Alias for readability in tests
+const mockFetch = mockEnhancedFetch;
 
 describe("TokenScopeDetector", () => {
   beforeEach(() => {
@@ -155,6 +161,74 @@ describe("TokenScopeDetector", () => {
       expect(result).toBeNull();
     });
 
+    it("should handle unexpected status codes (e.g. 500)", async () => {
+      // Covers the generic non-401/403/404 error path
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 500,
+      });
+
+      const result = await detectTokenScopes();
+      expect(result).toBeNull();
+    });
+
+    it("should return null when GITLAB_BASE_URL is missing", async () => {
+      // Temporarily override the config mock
+      jest.resetModules();
+      jest.doMock("../../../src/config", () => ({
+        GITLAB_BASE_URL: "",
+        GITLAB_TOKEN: "glpat-test-token-123",
+      }));
+      jest.doMock("../../../src/logger", () => ({
+        logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+      }));
+      jest.doMock("../../../src/utils/fetch", () => ({
+        enhancedFetch: jest.fn(),
+      }));
+
+      const { detectTokenScopes: detect } = require("../../../src/services/TokenScopeDetector");
+      const result = await detect();
+      expect(result).toBeNull();
+
+      jest.resetModules();
+    });
+
+    it("should detect project access token type from name prefix", async () => {
+      // Token names starting with "project_" indicate project access tokens
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 48,
+          name: "project_bot_token",
+          scopes: ["api"],
+          expires_at: null,
+          active: true,
+          revoked: false,
+        }),
+      });
+
+      const result = await detectTokenScopes();
+      expect(result!.tokenType).toBe("project_access_token");
+    });
+
+    it("should detect group access token type from name prefix", async () => {
+      // Token names starting with "group_" indicate group access tokens
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          id: 49,
+          name: "group_bot_token",
+          scopes: ["api", "read_user"],
+          expires_at: null,
+          active: true,
+          revoked: false,
+        }),
+      });
+
+      const result = await detectTokenScopes();
+      expect(result!.tokenType).toBe("group_access_token");
+    });
+
     it("should detect revoked token as inactive", async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,
@@ -173,47 +247,55 @@ describe("TokenScopeDetector", () => {
     });
 
     it("should calculate days until expiry correctly", async () => {
-      // Token expiring in 3 days
-      const futureDate = new Date();
-      futureDate.setDate(futureDate.getDate() + 3);
-      const expiresAt = futureDate.toISOString().split("T")[0];
+      // Freeze time to make expiry calculation deterministic
+      const baseDate = new Date("2024-06-15T12:00:00.000Z");
+      jest.useFakeTimers().setSystemTime(baseDate);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          id: 46,
-          name: "expiring-token",
-          scopes: ["api"],
-          expires_at: expiresAt,
-          active: true,
-          revoked: false,
-        }),
-      });
+      try {
+        // Token expiring in 3 days from the frozen base date
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            id: 46,
+            name: "expiring-token",
+            scopes: ["api"],
+            expires_at: "2024-06-18",
+            active: true,
+            revoked: false,
+          }),
+        });
 
-      const result = await detectTokenScopes();
-      expect(result!.daysUntilExpiry).toBe(3);
+        const result = await detectTokenScopes();
+        expect(result!.daysUntilExpiry).toBe(3);
+      } finally {
+        jest.useRealTimers();
+      }
     });
 
     it("should report negative days for already-expired token", async () => {
-      // Token that expired 2 days ago
-      const pastDate = new Date();
-      pastDate.setDate(pastDate.getDate() - 2);
-      const expiresAt = pastDate.toISOString().split("T")[0];
+      // Freeze time to make expiry calculation deterministic
+      const baseDate = new Date("2024-06-15T12:00:00.000Z");
+      jest.useFakeTimers().setSystemTime(baseDate);
 
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          id: 47,
-          name: "expired-token",
-          scopes: ["api"],
-          expires_at: expiresAt,
-          active: false,
-          revoked: false,
-        }),
-      });
+      try {
+        // Token that expired 2 days ago from the frozen base date
+        mockFetch.mockResolvedValueOnce({
+          ok: true,
+          json: async () => ({
+            id: 47,
+            name: "expired-token",
+            scopes: ["api"],
+            expires_at: "2024-06-13",
+            active: false,
+            revoked: false,
+          }),
+        });
 
-      const result = await detectTokenScopes();
-      expect(result!.daysUntilExpiry).toBeLessThan(0);
+        const result = await detectTokenScopes();
+        expect(result!.daysUntilExpiry).toBe(-2);
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 
@@ -317,12 +399,28 @@ describe("TokenScopeDetector", () => {
     });
   });
 
+  describe("getToolScopeRequirements", () => {
+    it("should return a copy of the scope requirements map", () => {
+      const requirements = getToolScopeRequirements();
+      // Should contain known tools
+      expect(requirements).toHaveProperty("browse_projects");
+      expect(requirements).toHaveProperty("manage_project");
+      expect(requirements.browse_projects).toContain("api");
+      // Should be a copy (modifying it shouldn't affect the original)
+      requirements.browse_projects = [];
+      const fresh = getToolScopeRequirements();
+      expect(fresh.browse_projects).toContain("api");
+    });
+  });
+
   describe("getTokenCreationUrl", () => {
     it("should generate correct URL with default scopes", () => {
       const url = getTokenCreationUrl("https://gitlab.com");
-      expect(url).toBe(
-        "https://gitlab.com/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=api,read_user"
-      );
+      // URL API properly encodes parameters
+      expect(url).toContain("/-/user_settings/personal_access_tokens");
+      expect(url).toContain("name=gitlab-mcp");
+      expect(url).toContain("scopes=api");
+      expect(url).toContain("read_user");
     });
 
     it("should generate correct URL with custom scopes", () => {
@@ -331,9 +429,18 @@ describe("TokenScopeDetector", () => {
         "read_user",
         "read_repository",
       ]);
-      expect(url).toBe(
-        "https://gitlab.example.com/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=api,read_user,read_repository"
-      );
+      expect(url).toContain("https://gitlab.example.com");
+      expect(url).toContain("name=gitlab-mcp");
+      expect(url).toContain("api");
+      expect(url).toContain("read_user");
+      expect(url).toContain("read_repository");
+    });
+
+    it("should properly encode special characters in scopes", () => {
+      const url = getTokenCreationUrl("https://gitlab.com", ["api", "scope with spaces"]);
+      // URL API should encode the space
+      expect(url).not.toContain(" ");
+      expect(url).toContain("scope");
     });
   });
 

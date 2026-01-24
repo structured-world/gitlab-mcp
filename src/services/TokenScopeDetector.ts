@@ -10,6 +10,7 @@
 
 import { logger } from "../logger";
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from "../config";
+import { enhancedFetch } from "../utils/fetch";
 
 /**
  * GitLab token types that can be detected
@@ -164,11 +165,12 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
   }
 
   try {
-    const response = await fetch(`${GITLAB_BASE_URL}/api/v4/personal_access_tokens/self`, {
+    const response = await enhancedFetch(`${GITLAB_BASE_URL}/api/v4/personal_access_tokens/self`, {
       headers: {
         "PRIVATE-TOKEN": GITLAB_TOKEN,
         Accept: "application/json",
       },
+      retry: false, // Don't retry scope detection - it runs at startup
     });
 
     if (!response.ok) {
@@ -206,13 +208,21 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
     const hasGraphQLAccess = scopes.some(s => s === "api" || s === "read_api");
     const hasWriteAccess = scopes.includes("api");
 
-    // Calculate days until expiry
+    // Calculate days until expiry using UTC dates to avoid timezone off-by-one errors.
+    // expires_at is a date-only string (YYYY-MM-DD) — parse as UTC midnight.
     let daysUntilExpiry: number | null = null;
     if (data.expires_at) {
-      const expiryDate = new Date(data.expires_at);
-      const now = new Date();
-      const diffMs = expiryDate.getTime() - now.getTime();
-      daysUntilExpiry = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      const [yearStr, monthStr, dayStr] = data.expires_at.split("-");
+      const year = Number(yearStr);
+      const month = Number(monthStr);
+      const day = Number(dayStr);
+
+      if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
+        const expiryUtcMs = Date.UTC(year, month - 1, day);
+        const now = new Date();
+        const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+        daysUntilExpiry = Math.ceil((expiryUtcMs - todayUtcMs) / (1000 * 60 * 60 * 24));
+      }
     }
 
     // Determine token type from the endpoint response
@@ -282,8 +292,10 @@ export function getTokenCreationUrl(
   baseUrl: string,
   scopes: string[] = ["api", "read_user"]
 ): string {
-  const scopeParam = scopes.join(",");
-  return `${baseUrl}/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=${scopeParam}`;
+  const url = new URL("/-/user_settings/personal_access_tokens", baseUrl);
+  url.searchParams.set("name", "gitlab-mcp");
+  url.searchParams.set("scopes", scopes.join(","));
+  return url.toString();
 }
 
 /**

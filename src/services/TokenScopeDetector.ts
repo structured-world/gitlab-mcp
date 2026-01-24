@@ -314,13 +314,19 @@ export function getTokenCreationUrl(
   baseUrl: string,
   scopes: string[] = ["api", "read_user"]
 ): string {
-  const url = new URL(baseUrl);
-  // Preserve any existing subpath (e.g. https://host/gitlab) and append PAT settings path
-  const basePath = url.pathname === "/" ? "" : url.pathname.replace(/\/$/, "");
-  url.pathname = `${basePath}/-/user_settings/personal_access_tokens`;
-  url.searchParams.set("name", "gitlab-mcp");
-  url.searchParams.set("scopes", scopes.join(","));
-  return url.toString();
+  try {
+    const url = new URL(baseUrl);
+    // Preserve any existing subpath (e.g. https://host/gitlab) and append PAT settings path
+    const basePath = url.pathname === "/" ? "" : url.pathname.replace(/\/$/, "");
+    url.pathname = `${basePath}/-/user_settings/personal_access_tokens`;
+    url.searchParams.set("name", "gitlab-mcp");
+    url.searchParams.set("scopes", scopes.join(","));
+    return url.toString();
+  } catch {
+    // baseUrl lacks a scheme or is otherwise unparseable — fall back to string concat
+    const base = baseUrl.replace(/\/$/, "");
+    return `${base}/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=${scopes.join(",")}`;
+  }
 }
 
 /**
@@ -332,10 +338,15 @@ export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): voi
 
   // Token expiry warning (< 7 days)
   if (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 7) {
-    if (info.daysUntilExpiry <= 0) {
+    if (info.daysUntilExpiry < 0) {
       logger.warn(
         { tokenName: info.name, expiresAt: info.expiresAt },
         `Token "${info.name}" has expired! Please create a new token.`
+      );
+    } else if (info.daysUntilExpiry === 0) {
+      logger.warn(
+        { tokenName: info.name, expiresAt: info.expiresAt },
+        `Token "${info.name}" expires today!`
       );
     } else {
       logger.warn(

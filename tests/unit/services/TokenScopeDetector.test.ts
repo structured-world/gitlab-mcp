@@ -486,7 +486,7 @@ describe("TokenScopeDetector", () => {
         scopes: ["api", "read_user"],
         expiresAt: "2027-01-01",
         active: true,
-        tokenType: "personal_access_token",
+        tokenType: "unknown",
         hasGraphQLAccess: true,
         hasWriteAccess: true,
         daysUntilExpiry: 365,
@@ -512,7 +512,7 @@ describe("TokenScopeDetector", () => {
         scopes: ["read_user"],
         expiresAt: null,
         active: true,
-        tokenType: "personal_access_token",
+        tokenType: "unknown",
         hasGraphQLAccess: false,
         hasWriteAccess: false,
         daysUntilExpiry: null,
@@ -541,7 +541,7 @@ describe("TokenScopeDetector", () => {
         scopes: ["api"],
         expiresAt: "2026-01-27",
         active: true,
-        tokenType: "personal_access_token",
+        tokenType: "unknown",
         hasGraphQLAccess: true,
         hasWriteAccess: true,
         daysUntilExpiry: 3,
@@ -561,7 +561,7 @@ describe("TokenScopeDetector", () => {
         scopes: ["api"],
         expiresAt: "2025-12-01",
         active: false,
-        tokenType: "personal_access_token",
+        tokenType: "unknown",
         hasGraphQLAccess: true,
         hasWriteAccess: true,
         daysUntilExpiry: -30,
@@ -573,6 +573,36 @@ describe("TokenScopeDetector", () => {
         expect.objectContaining({ tokenName: "dead-token" }),
         expect.stringContaining("has expired")
       );
+    });
+
+    it("should warn 'expires today' when daysUntilExpiry is 0", () => {
+      const info: TokenScopeInfo = {
+        name: "today-token",
+        scopes: ["api"],
+        expiresAt: "2026-01-24",
+        active: true,
+        tokenType: "unknown",
+        hasGraphQLAccess: true,
+        hasWriteAccess: true,
+        daysUntilExpiry: 0,
+      };
+
+      logTokenScopeInfo(info, 45);
+
+      expect(logger.warn).toHaveBeenCalledWith(
+        expect.objectContaining({ tokenName: "today-token" }),
+        expect.stringContaining("expires today")
+      );
+    });
+  });
+
+  describe("getTokenCreationUrl edge cases", () => {
+    it("should handle baseUrl without scheme (fallback to string concat)", () => {
+      // URL constructor throws for schemeless input — fallback path
+      const url = getTokenCreationUrl("gitlab.example.com");
+      expect(url).toContain("gitlab.example.com/-/user_settings/personal_access_tokens");
+      expect(url).toContain("name=gitlab-mcp");
+      expect(url).toContain("scopes=api,read_user");
     });
   });
 });

@@ -203,7 +203,7 @@ See [OAuth details](/security/oauth) for full flow documentation.
 
 Your token is missing `api` or `read_api` scope. The server will show which scopes are detected:
 ```
-[INFO] Token "mcp" has limited scopes - 3 of 45 tools available
+[INFO] Token "mcp" has limited scopes - 2 of 43 scope-gated tools available
 [INFO] GraphQL introspection skipped (requires 'api' or 'read_api' scope)
 ```
 

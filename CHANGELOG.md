@@ -1,3 +1,13 @@
+## [6.40.0](https://github.com/structured-world/gitlab-mcp/compare/v6.39.0...v6.40.0) (2026-01-24)
+
+### Features
+
+* **config:** GITLAB_CROSS_REFS toggle for Related description hints ([#174](https://github.com/structured-world/gitlab-mcp/issues/174)) ([871dc6c](https://github.com/structured-world/gitlab-mcp/commit/871dc6cf6bfcabddb00df83499db82e8a36b9c20)), closes [#170](https://github.com/structured-world/gitlab-mcp/issues/170)
+
+### Bug Fixes
+
+* **docs:** reorder MCPB download before VitePress build ([#176](https://github.com/structured-world/gitlab-mcp/issues/176)) ([b4c1205](https://github.com/structured-world/gitlab-mcp/commit/b4c1205405be2a0d288300900091fd86c0af4a1d))
+
 ## [6.39.0](https://github.com/structured-world/gitlab-mcp/compare/v6.38.1...v6.39.0) (2026-01-24)
 
 ### Features

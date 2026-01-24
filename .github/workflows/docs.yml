@@ -5,11 +5,11 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
-      - 'package.json'
-      - 'yarn.lock'
       - '.github/workflows/docs.yml'
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -24,6 +24,8 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Skip if triggered by a failed CI/CD run
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
         with:

@@ -24,6 +24,7 @@ Configures GitLab MCP for local AI IDE clients. The wizard:
 2. Guides through token creation/entry
 3. Tests the connection
 4. Configures tool selection (preset/manual/advanced)
+   - Advanced mode includes: feature flags, read-only mode, cross-reference hints (`GITLAB_CROSS_REFS`), scope restrictions, and log level
 5. Detects and installs to selected MCP clients
 
 ```bash

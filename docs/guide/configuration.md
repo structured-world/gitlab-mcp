@@ -26,6 +26,7 @@ When `GITLAB_ALLOWED_PROJECT_IDS` is set:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `GITLAB_READ_ONLY_MODE` | Restrict to read-only operations | `false` |
+| `GITLAB_CROSS_REFS` | Include "Related:" cross-references in tool descriptions | `true` |
 | `GITLAB_DENIED_TOOLS_REGEX` | Regex to exclude matching tools | — |
 | `GITLAB_DENIED_ACTIONS` | Disable specific CQRS actions | — |
 

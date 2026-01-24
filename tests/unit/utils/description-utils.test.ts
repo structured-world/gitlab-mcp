@@ -3,7 +3,10 @@
  * Tests dynamic resolution of "Related:" cross-references in tool descriptions
  */
 
-import { resolveRelatedReferences } from "../../../src/utils/description-utils";
+import {
+  resolveRelatedReferences,
+  stripRelatedSection,
+} from "../../../src/utils/description-utils";
 
 describe("resolveRelatedReferences", () => {
   it("returns description unchanged when no Related section", () => {
@@ -72,5 +75,38 @@ describe("resolveRelatedReferences", () => {
     const desc = "Find items. Related: some_other_tool for testing.";
     const result = resolveRelatedReferences(desc, new Set(["some_other_tool"]));
     expect(result).toBe("Find items.");
+  });
+});
+
+describe("stripRelatedSection", () => {
+  it("strips Related section from description", () => {
+    const desc = "Find projects. Actions: search, list. Related: manage_project to create.";
+    expect(stripRelatedSection(desc)).toBe("Find projects. Actions: search, list.");
+  });
+
+  it("returns unchanged if no Related section", () => {
+    const desc = "Search across GitLab resources.";
+    expect(stripRelatedSection(desc)).toBe("Search across GitLab resources.");
+  });
+
+  it("handles multi-tool Related section", () => {
+    const desc = "Monitor CI/CD. Related: manage_pipeline to retry, manage_pipeline_job for jobs.";
+    expect(stripRelatedSection(desc)).toBe("Monitor CI/CD.");
+  });
+
+  it("preserves description with lowercase related (not a section marker)", () => {
+    // lowercase "related" in normal text should not be stripped
+    const desc = "View related items. Actions: list, get.";
+    expect(stripRelatedSection(desc)).toBe("View related items. Actions: list, get.");
+  });
+
+  it("handles Related section without trailing period", () => {
+    const desc = "Find items. Related: manage_work_item to create";
+    expect(stripRelatedSection(desc)).toBe("Find items.");
+  });
+
+  it("handles description with only Related section", () => {
+    const desc = "Related: manage_project to create.";
+    expect(stripRelatedSection(desc)).toBe("");
   });
 });

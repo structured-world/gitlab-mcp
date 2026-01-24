@@ -101,6 +101,7 @@ describe("flows/tool-selection", () => {
       mockMultiselect.mockResolvedValueOnce(["USE_MRS", "USE_PIPELINE"]); // features
       mockConfirm
         .mockResolvedValueOnce(false) // read-only
+        .mockResolvedValueOnce(true) // cross-refs (default yes)
         .mockResolvedValueOnce(false); // scope restrictions
 
       const result = await runToolSelectionFlow();
@@ -118,6 +119,7 @@ describe("flows/tool-selection", () => {
       mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
       mockConfirm
         .mockResolvedValueOnce(true) // read-only = yes
+        .mockResolvedValueOnce(true) // cross-refs
         .mockResolvedValueOnce(false); // no scope
 
       const result = await runToolSelectionFlow();
@@ -133,6 +135,7 @@ describe("flows/tool-selection", () => {
       mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
       mockConfirm
         .mockResolvedValueOnce(false) // no read-only
+        .mockResolvedValueOnce(true) // cross-refs
         .mockResolvedValueOnce(true); // yes scope
       mockText.mockResolvedValueOnce("my-group/my-project");
 
@@ -147,7 +150,10 @@ describe("flows/tool-selection", () => {
         .mockResolvedValueOnce("allowlist") // scope type
         .mockResolvedValueOnce("debug"); // log level
       mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
-      mockConfirm.mockResolvedValueOnce(false).mockResolvedValueOnce(true); // yes scope
+      mockConfirm
+        .mockResolvedValueOnce(false) // read-only
+        .mockResolvedValueOnce(true) // cross-refs
+        .mockResolvedValueOnce(true); // yes scope
       mockText.mockResolvedValueOnce("proj1,proj2");
 
       const result = await runToolSelectionFlow();
@@ -159,7 +165,10 @@ describe("flows/tool-selection", () => {
     it("should not set LOG_LEVEL for default info", async () => {
       mockSelect.mockResolvedValueOnce("advanced").mockResolvedValueOnce("info");
       mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
-      mockConfirm.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+      mockConfirm
+        .mockResolvedValueOnce(false) // read-only
+        .mockResolvedValueOnce(true) // cross-refs
+        .mockResolvedValueOnce(false); // no scope
 
       const result = await runToolSelectionFlow();
 
@@ -188,16 +197,60 @@ describe("flows/tool-selection", () => {
       expect(result).toBeNull();
     });
 
+    it("should set GITLAB_CROSS_REFS=false when cross-refs disabled", async () => {
+      mockSelect.mockResolvedValueOnce("advanced").mockResolvedValueOnce("info");
+      mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
+      mockConfirm
+        .mockResolvedValueOnce(false) // read-only
+        .mockResolvedValueOnce(false) // cross-refs = no
+        .mockResolvedValueOnce(false); // no scope
+
+      const result = await runToolSelectionFlow();
+
+      expect(result!.envOverrides!.GITLAB_CROSS_REFS).toBe("false");
+    });
+
+    it("should not set GITLAB_CROSS_REFS when cross-refs enabled (default)", async () => {
+      mockSelect.mockResolvedValueOnce("advanced").mockResolvedValueOnce("info");
+      mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
+      mockConfirm
+        .mockResolvedValueOnce(false) // read-only
+        .mockResolvedValueOnce(true) // cross-refs = yes (default)
+        .mockResolvedValueOnce(false); // no scope
+
+      const result = await runToolSelectionFlow();
+
+      expect(result!.envOverrides!.GITLAB_CROSS_REFS).toBeUndefined();
+    });
+
+    it("should return null when cross-refs confirm is cancelled", async () => {
+      mockSelect.mockResolvedValueOnce("advanced");
+      mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
+      mockConfirm
+        .mockResolvedValueOnce(false) // read-only
+        .mockResolvedValueOnce(Symbol("cancel")); // cross-refs cancel
+      mockIsCancel
+        .mockReturnValueOnce(false) // mode
+        .mockReturnValueOnce(false) // features
+        .mockReturnValueOnce(false) // read-only
+        .mockReturnValueOnce(true); // cross-refs cancel
+
+      const result = await runToolSelectionFlow();
+      expect(result).toBeNull();
+    });
+
     it("should return null when scope confirm is cancelled", async () => {
       mockSelect.mockResolvedValueOnce("advanced");
       mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
       mockConfirm
         .mockResolvedValueOnce(false) // read-only
+        .mockResolvedValueOnce(true) // cross-refs
         .mockResolvedValueOnce(Symbol("cancel")); // scope cancel
       mockIsCancel
         .mockReturnValueOnce(false) // mode
         .mockReturnValueOnce(false) // features
         .mockReturnValueOnce(false) // read-only
+        .mockReturnValueOnce(false) // cross-refs
         .mockReturnValueOnce(true); // scope cancel
 
       const result = await runToolSelectionFlow();
@@ -209,11 +262,13 @@ describe("flows/tool-selection", () => {
       mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
       mockConfirm
         .mockResolvedValueOnce(false) // read-only
+        .mockResolvedValueOnce(true) // cross-refs
         .mockResolvedValueOnce(true); // yes scope
       mockIsCancel
         .mockReturnValueOnce(false) // mode
         .mockReturnValueOnce(false) // features
         .mockReturnValueOnce(false) // read-only
+        .mockReturnValueOnce(false) // cross-refs
         .mockReturnValueOnce(false) // scope confirm
         .mockReturnValueOnce(true); // scope type cancel
 
@@ -224,14 +279,18 @@ describe("flows/tool-selection", () => {
     it("should return null when project text is cancelled", async () => {
       mockSelect.mockResolvedValueOnce("advanced").mockResolvedValueOnce("project");
       mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
-      mockConfirm.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+      mockConfirm
+        .mockResolvedValueOnce(false) // read-only
+        .mockResolvedValueOnce(true) // cross-refs
+        .mockResolvedValueOnce(true); // yes scope
       mockText.mockResolvedValueOnce(Symbol("cancel"));
       mockIsCancel
-        .mockReturnValueOnce(false)
-        .mockReturnValueOnce(false)
-        .mockReturnValueOnce(false)
-        .mockReturnValueOnce(false)
-        .mockReturnValueOnce(false)
+        .mockReturnValueOnce(false) // mode
+        .mockReturnValueOnce(false) // features
+        .mockReturnValueOnce(false) // read-only
+        .mockReturnValueOnce(false) // cross-refs
+        .mockReturnValueOnce(false) // scope confirm
+        .mockReturnValueOnce(false) // scope type
         .mockReturnValueOnce(true); // text cancel
 
       const result = await runToolSelectionFlow();
@@ -241,12 +300,16 @@ describe("flows/tool-selection", () => {
     it("should return null when log level is cancelled", async () => {
       mockSelect.mockResolvedValueOnce("advanced").mockResolvedValueOnce(Symbol("cancel")); // log level cancel
       mockMultiselect.mockResolvedValueOnce(["USE_MRS"]);
-      mockConfirm.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
+      mockConfirm
+        .mockResolvedValueOnce(false) // read-only
+        .mockResolvedValueOnce(true) // cross-refs
+        .mockResolvedValueOnce(false); // no scope
       mockIsCancel
-        .mockReturnValueOnce(false)
-        .mockReturnValueOnce(false)
-        .mockReturnValueOnce(false)
-        .mockReturnValueOnce(false)
+        .mockReturnValueOnce(false) // mode
+        .mockReturnValueOnce(false) // features
+        .mockReturnValueOnce(false) // read-only
+        .mockReturnValueOnce(false) // cross-refs
+        .mockReturnValueOnce(false) // scope
         .mockReturnValueOnce(true); // log level cancel
 
       const result = await runToolSelectionFlow();

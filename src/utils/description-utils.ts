@@ -34,3 +34,14 @@ export function resolveRelatedReferences(description: string, availableTools: Se
 
   return `${baseDescription.trimEnd()} Related: ${available.join(", ")}.`;
 }
+
+/**
+ * Remove the entire "Related:" section from a description.
+ * Used when GITLAB_CROSS_REFS=false to strip all cross-reference hints.
+ *
+ * Only matches "Related:" as a section marker (capital R).
+ * Does not affect lowercase "related" in normal description text.
+ */
+export function stripRelatedSection(description: string): string {
+  return description.replace(/\s*Related:\s*(.+?)\.?\s*$/, "").trimEnd();
+}

@@ -38,6 +38,7 @@ import {
 import {
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
+  GITLAB_CROSS_REFS,
   USE_GITLAB_WIKI,
   USE_MILESTONE,
   USE_PIPELINE,
@@ -66,7 +67,7 @@ import {
   shouldRemoveTool,
   extractActionsFromSchema,
 } from "./utils/schema-utils";
-import { resolveRelatedReferences } from "./utils/description-utils";
+import { resolveRelatedReferences, stripRelatedSection } from "./utils/description-utils";
 
 /**
  * Central registry manager that aggregates tools from all entity registries
@@ -355,15 +356,28 @@ class RegistryManager {
       }
     }
 
-    // Second pass: resolve Related references against available tools
-    const availableToolNames = new Set(this.toolLookupCache.keys());
-    for (const [toolName, tool] of this.toolLookupCache) {
-      // Skip tools with custom description overrides (user controls entire description)
-      if (this.descriptionOverrides.has(toolName)) continue;
+    // Second pass: handle Related references based on GITLAB_CROSS_REFS setting
+    if (GITLAB_CROSS_REFS) {
+      // Resolve Related references against available tools
+      const availableToolNames = new Set(this.toolLookupCache.keys());
+      for (const [toolName, tool] of this.toolLookupCache) {
+        // Skip tools with custom description overrides (user controls entire description)
+        if (this.descriptionOverrides.has(toolName)) continue;
 
-      const resolved = resolveRelatedReferences(tool.description, availableToolNames);
-      if (resolved !== tool.description) {
-        this.toolLookupCache.set(toolName, { ...tool, description: resolved });
+        const resolved = resolveRelatedReferences(tool.description, availableToolNames);
+        if (resolved !== tool.description) {
+          this.toolLookupCache.set(toolName, { ...tool, description: resolved });
+        }
+      }
+    } else {
+      // Cross-refs disabled: strip all "Related:" sections entirely
+      for (const [toolName, tool] of this.toolLookupCache) {
+        if (this.descriptionOverrides.has(toolName)) continue;
+
+        const stripped = stripRelatedSection(tool.description);
+        if (stripped !== tool.description) {
+          this.toolLookupCache.set(toolName, { ...tool, description: stripped });
+        }
       }
     }
 
@@ -524,16 +538,31 @@ class RegistryManager {
       }
     }
 
-    // Second pass: resolve Related references against available tools
-    const availableToolNames = new Set(allTools.map(t => t.name));
-    for (let i = 0; i < allTools.length; i++) {
-      const tool = allTools[i];
-      // Skip tools with custom description overrides
-      if (descOverrides.has(tool.name)) continue;
+    // Second pass: handle Related references based on GITLAB_CROSS_REFS setting
+    const crossRefsEnabled = process.env.GITLAB_CROSS_REFS !== "false";
+    if (crossRefsEnabled) {
+      // Resolve Related references against available tools
+      const availableToolNames = new Set(allTools.map(t => t.name));
+      for (let i = 0; i < allTools.length; i++) {
+        const tool = allTools[i];
+        // Skip tools with custom description overrides
+        if (descOverrides.has(tool.name)) continue;
 
-      const resolved = resolveRelatedReferences(tool.description, availableToolNames);
-      if (resolved !== tool.description) {
-        allTools[i] = { ...tool, description: resolved };
+        const resolved = resolveRelatedReferences(tool.description, availableToolNames);
+        if (resolved !== tool.description) {
+          allTools[i] = { ...tool, description: resolved };
+        }
+      }
+    } else {
+      // Cross-refs disabled: strip all "Related:" sections entirely
+      for (let i = 0; i < allTools.length; i++) {
+        const tool = allTools[i];
+        if (descOverrides.has(tool.name)) continue;
+
+        const stripped = stripRelatedSection(tool.description);
+        if (stripped !== tool.description) {
+          allTools[i] = { ...tool, description: stripped };
+        }
       }
     }
 

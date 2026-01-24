@@ -8,6 +8,15 @@ export const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
 export const GITLAB_AUTH_COOKIE_PATH = process.env.GITLAB_AUTH_COOKIE_PATH;
 export const IS_OLD = process.env.GITLAB_IS_OLD === "true";
 export const GITLAB_READ_ONLY_MODE = process.env.GITLAB_READ_ONLY_MODE === "true";
+
+/**
+ * Whether to include "Related:" cross-references in tool descriptions.
+ * When true (default), descriptions include hints to complementary tools.
+ * When false, "Related:" sections are stripped from all descriptions.
+ * Dynamic resolution (stripping refs to unavailable tools) still applies when enabled.
+ */
+export const GITLAB_CROSS_REFS = process.env.GITLAB_CROSS_REFS !== "false";
+
 export const GITLAB_DENIED_TOOLS_REGEX = process.env.GITLAB_DENIED_TOOLS_REGEX
   ? new RegExp(process.env.GITLAB_DENIED_TOOLS_REGEX)
   : undefined;

@@ -32,7 +32,7 @@ See [Setup Wizard](/guide/installation/wizard) for a detailed walkthrough.
 ## Prerequisites
 
 - **Node.js >= 24.0.0** (for npm/npx methods)
-- **GitLab Personal Access Token** with `api` and `read_user` scopes
+- **[GitLab Personal Access Token](/guide/authentication#pat)** with `api` and `read_user` scopes
 - One or more [supported MCP clients](/clients/)
 
 ## Next Steps

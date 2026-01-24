@@ -57,7 +57,7 @@ All configuration is done via environment variables. See [Configuration](/guide/
 
 | Variable | Description |
 |----------|-------------|
-| `GITLAB_TOKEN` | GitLab personal access token with `api` scope |
+| `GITLAB_TOKEN` | [GitLab personal access token](/guide/authentication#pat) with `api` scope |
 
 ### Optional
 

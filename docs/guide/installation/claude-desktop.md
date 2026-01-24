@@ -30,7 +30,7 @@ During installation, you'll be prompted for:
 
 | Setting | Required | Description |
 |---------|----------|-------------|
-| GitLab Token | Yes | Personal Access Token with `api` + `read_user` scopes |
+| GitLab Token | Yes | [Personal Access Token](/guide/authentication#pat) with `api` + `read_user` scopes |
 | GitLab URL | No | Instance URL (default: `https://gitlab.com`) |
 | Read-Only Mode | No | Disable all write operations |
 

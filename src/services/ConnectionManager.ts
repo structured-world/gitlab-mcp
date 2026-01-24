@@ -1,6 +1,7 @@
 import { GraphQLClient } from "../graphql/client";
 import { GitLabVersionDetector, GitLabInstanceInfo } from "./GitLabVersionDetector";
 import { SchemaIntrospector, SchemaInfo } from "./SchemaIntrospector";
+import { detectTokenScopes, logTokenScopeInfo, TokenScopeInfo } from "./TokenScopeDetector";
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from "../config";
 import { isOAuthEnabled } from "../oauth/index";
 import { logger } from "../logger";
@@ -18,6 +19,7 @@ export class ConnectionManager {
   private schemaIntrospector: SchemaIntrospector | null = null;
   private instanceInfo: GitLabInstanceInfo | null = null;
   private schemaInfo: SchemaInfo | null = null;
+  private tokenScopeInfo: TokenScopeInfo | null = null;
   private isInitialized: boolean = false;
   private static introspectionCache = new Map<string, CacheEntry>();
   private static readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
@@ -111,7 +113,25 @@ export class ConnectionManager {
         return;
       }
 
-      // Check cache first
+      // Step 1: Detect token scopes BEFORE GraphQL introspection
+      // This prevents ugly 401 stack traces when token lacks api/read_api scope
+      this.tokenScopeInfo = await detectTokenScopes();
+
+      if (this.tokenScopeInfo) {
+        // Log token scope info (includes expiry warnings)
+        // Total tools count will be logged after registry is built
+        logTokenScopeInfo(this.tokenScopeInfo, 45);
+
+        // If token lacks GraphQL access, skip introspection entirely
+        if (!this.tokenScopeInfo.hasGraphQLAccess) {
+          // Detect version via REST (doesn't require api scope for most GitLab versions)
+          this.instanceInfo = await this.detectVersionViaREST();
+          this.isInitialized = true;
+          return;
+        }
+      }
+
+      // Step 2: Full GraphQL introspection (token has api or read_api scope)
       const cached = ConnectionManager.introspectionCache.get(endpoint);
       const now = Date.now();
 
@@ -282,6 +302,64 @@ export class ConnectionManager {
   }
 
   /**
+   * Get detected token scope info (null if detection was skipped or failed)
+   */
+  public getTokenScopeInfo(): TokenScopeInfo | null {
+    return this.tokenScopeInfo;
+  }
+
+  /**
+   * Detect GitLab version via REST API (fallback when GraphQL is not available).
+   * Uses GET /api/v4/version which requires authentication but not api scope.
+   */
+  private async detectVersionViaREST(): Promise<GitLabInstanceInfo> {
+    try {
+      const response = await fetch(`${GITLAB_BASE_URL}/api/v4/version`, {
+        headers: {
+          "PRIVATE-TOKEN": GITLAB_TOKEN ?? "",
+          Accept: "application/json",
+        },
+      });
+
+      if (response.ok) {
+        const data = (await response.json()) as {
+          version: string;
+          revision: string;
+          enterprise?: boolean;
+        };
+
+        logger.info(
+          { version: data.version, enterprise: data.enterprise },
+          "Detected GitLab version via REST (GraphQL unavailable)"
+        );
+
+        return {
+          version: data.version,
+          tier: data.enterprise ? "premium" : "free",
+          features: this.getDefaultFeatures(data.enterprise ?? false),
+          detectedAt: new Date(),
+        };
+      }
+
+      // Version endpoint also failed - return minimal info
+      logger.info({ status: response.status }, "REST version detection failed, using defaults");
+    } catch (error) {
+      logger.info(
+        { error: error instanceof Error ? error.message : String(error) },
+        "REST version detection failed, using defaults"
+      );
+    }
+
+    // Fallback: return unknown version with default features
+    return {
+      version: "unknown",
+      tier: "free",
+      features: this.getDefaultFeatures(false),
+      detectedAt: new Date(),
+    };
+  }
+
+  /**
    * Get default features based on whether GitLab is enterprise edition.
    * In OAuth mode without full introspection, we default to enabling most features
    * to allow tools to be available - they will fail gracefully if not actually available.
@@ -324,6 +402,7 @@ export class ConnectionManager {
     this.schemaIntrospector = null;
     this.instanceInfo = null;
     this.schemaInfo = null;
+    this.tokenScopeInfo = null;
     this.isInitialized = false;
   }
 }

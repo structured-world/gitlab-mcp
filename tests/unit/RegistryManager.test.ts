@@ -81,8 +81,13 @@ jest.mock("../../src/services/ConnectionManager", () => ({
   ConnectionManager: {
     getInstance: jest.fn().mockReturnValue({
       getInstanceInfo: jest.fn().mockReturnValue({ tier: "free", version: "17.0.0" }),
+      getTokenScopeInfo: jest.fn().mockReturnValue(null),
     }),
   },
+}));
+
+jest.mock("../../src/services/TokenScopeDetector", () => ({
+  isToolAvailableForScopes: jest.fn().mockReturnValue(true),
 }));
 
 jest.mock("../../src/logger", () => ({

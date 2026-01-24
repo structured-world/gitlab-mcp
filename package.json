@@ -1,5 +1,6 @@
 {
   "name": "@structured-world/gitlab-mcp",
+  "mcpName": "io.github.structured-world/gitlab-mcp",
   "resolutions": {
     "lodash": "4.17.23",
     "lodash-es": "4.17.23",

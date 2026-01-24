@@ -1003,6 +1003,71 @@ describe("inject-tool-refs", () => {
       );
     });
 
+    it("should generate .md from .md.in templates with count placeholders", () => {
+      mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
+        const pathStr = p.toString();
+        if (pathStr === path.join("/project", "package.json")) return true;
+        if (pathStr === path.join("/project", "docs")) return true;
+        if (pathStr === path.join("/project", "docs", "tools")) return true;
+        if (pathStr === path.join("/project", "src", "entities")) return true;
+        if (pathStr.endsWith("registry.ts")) return true;
+        return false;
+      });
+
+      mockGetAllToolDefinitionsUnfiltered.mockReturnValue([
+        { name: "browse_projects", inputSchema: { properties: { action: { enum: ["list"] } } } },
+        { name: "manage_project", inputSchema: { properties: { action: { enum: ["create"] } } } },
+      ]);
+
+      // Mock Dirent objects for docs/ directory scan
+      const mockDirent = (name: string, isDir: boolean) => ({
+        name,
+        isDirectory: () => isDir,
+        isFile: () => !isDir,
+      });
+
+      mockedFs.readdirSync.mockImplementation((dir: fs.PathLike, options?: unknown) => {
+        const dirStr = dir.toString();
+        const opts = options as { withFileTypes?: boolean } | undefined;
+        if (opts?.withFileTypes) {
+          // Template scan (docs/ and src/entities/)
+          if (dirStr === path.join("/project", "docs")) {
+            return [mockDirent("index.md.in", false)] as never;
+          }
+          if (dirStr === path.join("/project", "src", "entities")) {
+            return [mockDirent("core", true), mockDirent("mrs", true)] as never;
+          }
+          return [] as never;
+        }
+        // docs/tools/ directory (autogen markers)
+        return [] as never;
+      });
+
+      mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
+        const pathStr = filePath.toString();
+        if (pathStr.endsWith("index.md.in")) {
+          return "# Home\n\nWe have __TOOL_COUNT__ tools across __ENTITY_COUNT__ entities (__READONLY_TOOL_COUNT__ read-only).";
+        }
+        return "";
+      });
+
+      mockedFs.writeFileSync.mockImplementation(() => undefined);
+
+      main();
+
+      // Verify generated file has replaced placeholders
+      const writeCall = (mockedFs.writeFileSync as jest.Mock).mock.calls.find((call: unknown[]) =>
+        (call[0] as string).endsWith("index.md")
+      );
+      expect(writeCall).toBeDefined();
+      const generatedContent = writeCall![1] as string;
+      expect(generatedContent).toContain("2 tools");
+      expect(generatedContent).toContain("2 entities");
+      expect(generatedContent).toContain("1 read-only");
+      expect(generatedContent).not.toContain("__TOOL_COUNT__");
+      expect(generatedContent).not.toContain("__ENTITY_COUNT__");
+    });
+
     it("should build toolSchemas map from registry tool definitions", () => {
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();

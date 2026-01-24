@@ -294,12 +294,63 @@ jobs:
           build-args: |
             VERSION=${{ needs.semantic-release.outputs.new-release-version }}
 
-  # Job 5: Summary
+  # Job 5: Publish to MCP Registry
+  mcp-registry-publish:
+    name: Publish to MCP Registry
+    runs-on: ubuntu-latest
+    needs: [semantic-release, mcpb-bundle]
+    if: needs.semantic-release.outputs.new-release-published == 'true'
+
+    permissions:
+      id-token: write  # Required for GitHub OIDC authentication
+      contents: read
+
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: v${{ needs.semantic-release.outputs.new-release-version }}
+
+      - name: Install mcp-publisher
+        run: |
+          curl -L "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+
+      - name: Download MCPB bundle from release
+        run: |
+          VERSION="${{ needs.semantic-release.outputs.new-release-version }}"
+          MCPB_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/gitlab-mcp-${VERSION}.mcpb"
+          echo "Downloading MCPB from: ${MCPB_URL}"
+          curl -L -o "gitlab-mcp-${VERSION}.mcpb" "${MCPB_URL}"
+          ls -la "gitlab-mcp-${VERSION}.mcpb"
+
+      - name: Add MCPB entry to server.json
+        run: |
+          VERSION="${{ needs.semantic-release.outputs.new-release-version }}"
+          MCPB_FILE="gitlab-mcp-${VERSION}.mcpb"
+          MCPB_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${MCPB_FILE}"
+          SHA256=$(openssl dgst -sha256 "${MCPB_FILE}" | awk '{print $NF}')
+          echo "MCPB SHA256: ${SHA256}"
+
+          # Add mcpb package entry to server.json
+          jq --arg url "$MCPB_URL" --arg sha "$SHA256" \
+            '.packages += [{"registryType": "mcpb", "identifier": $url, "fileSha256": $sha, "transport": {"type": "stdio"}}]' \
+            server.json > server.tmp && mv server.tmp server.json
+
+          echo "Final server.json:"
+          cat server.json
+
+      - name: Authenticate to MCP Registry (OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish
+
+  # Job 6: Summary
   summary:
     name: Pipeline Summary
     runs-on: ubuntu-latest
     permissions: {}
-    needs: [quality-checks, docker-build, semantic-release, mcpb-bundle, docker-publish]
+    needs: [quality-checks, docker-build, semantic-release, mcpb-bundle, docker-publish, mcp-registry-publish]
     if: always()
 
     steps:
@@ -329,4 +380,10 @@ jobs:
 
           if [[ "${{ needs.mcpb-bundle.result }}" == "success" ]]; then
             echo "📦 MCPB bundle: gitlab-mcp-${{ needs.semantic-release.outputs.new-release-version }}.mcpb" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          if [[ "${{ needs.mcp-registry-publish.result }}" == "success" ]]; then
+            echo "🌐 MCP Registry: io.github.structured-world/gitlab-mcp v${{ needs.semantic-release.outputs.new-release-version }}" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.mcp-registry-publish.result }}" == "failure" ]]; then
+            echo "❌ MCP Registry: publish failed" >> $GITHUB_STEP_SUMMARY
           fi

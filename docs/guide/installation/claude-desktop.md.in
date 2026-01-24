@@ -22,7 +22,7 @@ Or drag-and-drop the `.mcpb` file into your Claude Desktop window.
 1. Claude Desktop shows the extension details
 2. You enter your GitLab token and instance URL
 3. The extension installs locally — no external services needed
-4. All 44 tools become available in your Claude conversations
+4. All __TOOL_COUNT__ tools become available in your Claude conversations
 
 ## Configuration
 

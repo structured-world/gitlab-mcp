@@ -50,7 +50,8 @@ describe("Members Schema - GitLab Integration", () => {
 
     // Find a test user that we can use for member operations
     // We'll search for a user that is NOT the current user to avoid issues
-    const users = (await helper.executeTool("get_users", {
+    const users = (await helper.executeTool("browse_users", {
+      action: "search",
       per_page: 20,
       active: true,
     })) as { id: number; username: string; name: string }[];

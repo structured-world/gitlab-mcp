@@ -12,7 +12,6 @@ Work items, milestones, labels, and team collaboration tools.
 | `manage_milestone` | Command | Create, update, delete milestones |
 | `browse_labels` | Query | List and get labels |
 | `manage_label` | Command | Create, update, delete labels |
-| `list_project_members` | Query | List project members with access levels |
 | `browse_members` | Query | Team member information (projects and groups) |
 | `manage_member` | Command | Add/remove team members |
 

@@ -32,6 +32,10 @@ import { membersToolRegistry, getMembersReadOnlyToolNames } from "./entities/mem
 import { searchToolRegistry, getSearchReadOnlyToolNames } from "./entities/search/registry";
 import { contextToolRegistry, getContextReadOnlyToolNames } from "./entities/context/registry";
 import {
+  iterationsToolRegistry,
+  getIterationsReadOnlyToolNames,
+} from "./entities/iterations/registry";
+import {
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
   USE_GITLAB_WIKI,
@@ -49,6 +53,7 @@ import {
   USE_REFS,
   USE_MEMBERS,
   USE_SEARCH,
+  USE_ITERATIONS,
   getToolDescriptionOverrides,
 } from "./config";
 import { ToolAvailability } from "./services/ToolAvailability";
@@ -165,6 +170,10 @@ class RegistryManager {
       this.registries.set("search", searchToolRegistry);
     }
 
+    if (USE_ITERATIONS) {
+      this.registries.set("iterations", iterationsToolRegistry);
+    }
+
     // All entity registries have been migrated to the new pattern!
   }
 
@@ -253,6 +262,10 @@ class RegistryManager {
 
     if (USE_SEARCH) {
       readOnlyTools.push(...getSearchReadOnlyToolNames());
+    }
+
+    if (USE_ITERATIONS) {
+      readOnlyTools.push(...getIterationsReadOnlyToolNames());
     }
 
     return readOnlyTools;
@@ -432,6 +445,7 @@ class RegistryManager {
     const useRefs = process.env.USE_REFS !== "false";
     const useMembers = process.env.USE_MEMBERS !== "false";
     const useSearch = process.env.USE_SEARCH !== "false";
+    const useIterations = process.env.USE_ITERATIONS !== "false";
 
     // Build registries map based on dynamic feature flags
     const registriesToUse = new Map<string, ToolRegistry>();
@@ -458,6 +472,7 @@ class RegistryManager {
     if (useRefs) registriesToUse.set("refs", refsToolRegistry);
     if (useMembers) registriesToUse.set("members", membersToolRegistry);
     if (useSearch) registriesToUse.set("search", searchToolRegistry);
+    if (useIterations) registriesToUse.set("iterations", iterationsToolRegistry);
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -527,6 +542,7 @@ class RegistryManager {
       refsToolRegistry,
       membersToolRegistry,
       searchToolRegistry,
+      iterationsToolRegistry,
     ];
 
     for (const registry of allRegistries) {

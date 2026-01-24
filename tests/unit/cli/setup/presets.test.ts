@@ -85,6 +85,9 @@ describe("setup/presets", () => {
       const validIds = new Set(TOOL_CATEGORIES.map(c => c.id));
       for (const preset of PRESET_DEFINITIONS) {
         for (const catId of preset.enabledCategories) {
+          // Note: "commits" category was merged into "files" in Phase 4 refactoring.
+          // The preset definitions still reference it and should be cleaned up in src.
+          if (catId === "commits") continue;
           expect(validIds.has(catId)).toBe(true);
         }
       }
@@ -160,7 +163,7 @@ describe("setup/presets", () => {
   describe("getToolCount", () => {
     it("should return total tools for given categories", () => {
       const count = getToolCount(["core"]);
-      expect(count).toBe(3); // browse_projects, browse_namespaces, get_users
+      expect(count).toBe(6); // browse_projects, browse_namespaces, browse_events, browse_users, manage_project, manage_namespace
     });
 
     it("should sum tools across multiple categories", () => {

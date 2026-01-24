@@ -4,7 +4,7 @@ GitLab MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/
 
 ## Features
 
-- **47 tools** across 17 entity types covering the full GitLab API
+- **44 tools** across 18 entity types covering the full GitLab API
 - **CQRS pattern** — `browse_*` for read operations, `manage_*` for writes
 - **Multiple transports** — stdio, SSE, and StreamableHTTP
 - **OAuth 2.1** — Per-user authentication for teams via Claude Custom Connector

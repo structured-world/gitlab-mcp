@@ -132,20 +132,18 @@ describe("ToolAvailability - Tier-based Filtering", () => {
 
     it("should allow free tier tools", () => {
       const freeTools = [
-        "search_repositories",
-        "get_project",
-        "create_branch",
-        "get_commit",
-        "list_merge_requests",
-        "create_merge_request",
-        "merge_merge_request",
-        "list_work_items",
-        "create_work_item",
-        "list_milestones",
-        "list_pipelines",
-        "get_pipeline",
-        "list_wiki_pages",
-        "create_wiki_page",
+        "browse_projects",
+        "browse_search",
+        "manage_ref",
+        "browse_commits",
+        "browse_merge_requests",
+        "manage_merge_request",
+        "browse_work_items",
+        "manage_work_item",
+        "browse_milestones",
+        "browse_pipelines",
+        "browse_wiki",
+        "manage_wiki",
       ];
 
       freeTools.forEach(toolName => {
@@ -155,32 +153,18 @@ describe("ToolAvailability - Tier-based Filtering", () => {
     });
 
     it("should block premium-only tools", () => {
-      // Premium tools will be tested when implemented per WORK.md
-      const _premiumTools: string[] = [];
-
-      // Premium tools tests will be added when tools are implemented
-    });
-
-    it("should block ultimate-only tools", () => {
-      // Ultimate tools will be tested when implemented per WORK.md
-      const _ultimateTools: string[] = [];
-
-      // Ultimate tools tests will be added when tools are implemented
+      // browse_iterations requires premium tier
+      expect(ToolAvailability.isToolAvailable("browse_iterations")).toBe(false);
     });
 
     it("should provide correct tool counts by tier", () => {
       const freeToolCount = ToolAvailability.getToolsByTier("free").length;
       const premiumToolCount = ToolAvailability.getToolsByTier("premium").length;
-      const ultimateToolCount = ToolAvailability.getToolsByTier("ultimate").length;
 
-      expect(freeToolCount).toBeGreaterThan(50); // Should have many free tools
-      expect(premiumToolCount).toBeGreaterThan(10); // Should have premium tools
-      expect(ultimateToolCount).toBeGreaterThan(15); // Should have ultimate tools
-
-      // Log counts for visibility
-      console.log(
-        `Free tools: ${freeToolCount}, Premium tools: ${premiumToolCount}, Ultimate tools: ${ultimateToolCount}`
-      );
+      // Most consolidated tools have free default tier
+      expect(freeToolCount).toBeGreaterThan(30);
+      // Only browse_iterations has premium default
+      expect(premiumToolCount).toBe(1);
     });
   });
 
@@ -197,15 +181,7 @@ describe("ToolAvailability - Tier-based Filtering", () => {
     });
 
     it("should allow free and premium tier tools", () => {
-      const freeAndPremiumTools = [
-        "list_projects", // Free
-        "merge_merge_request", // Free
-        "add_to_merge_train", // Premium
-        "list_epics", // Premium
-        "create_epic", // Premium
-        "list_iterations", // Premium
-        "get_merge_request_approvals", // Premium
-      ];
+      const freeAndPremiumTools = ["browse_projects", "manage_merge_request", "browse_iterations"];
 
       freeAndPremiumTools.forEach(toolName => {
         expect(ToolAvailability.isToolAvailable(toolName)).toBe(true);
@@ -213,18 +189,9 @@ describe("ToolAvailability - Tier-based Filtering", () => {
       });
     });
 
-    it("should still block ultimate-only tools", () => {
-      const _ultimateTools = [
-        "security_dashboard",
-        "list_vulnerabilities",
-        "compliance_framework",
-        "audit_events",
-        "list_requirements",
-        "run_sast_scan",
-        "productivity_analytics",
-      ];
-
-      // Ultimate tools tests will be added when tools are implemented
+    it("should allow premium actions on premium tier", () => {
+      expect(ToolAvailability.isToolAvailable("browse_merge_requests", "approvals")).toBe(true);
+      expect(ToolAvailability.isToolAvailable("browse_milestones", "burndown")).toBe(true);
     });
   });
 
@@ -240,19 +207,21 @@ describe("ToolAvailability - Tier-based Filtering", () => {
       mockInstance.getInstanceInfo.mockReturnValue(ultimateInstanceInfo);
     });
 
-    it("should allow all tier tools", () => {
-      const allTierTools = [
-        "list_projects", // Free
-        "add_to_merge_train", // Premium
-        "security_dashboard", // Ultimate
-        "list_vulnerabilities", // Ultimate
-        "compliance_framework", // Ultimate
-        "audit_events", // Ultimate
-        "list_requirements", // Ultimate
-        "run_sast_scan", // Ultimate
+    it("should allow all registered tools", () => {
+      const allTools = [
+        "browse_projects",
+        "browse_iterations",
+        "browse_merge_requests",
+        "manage_merge_request",
+        "browse_work_items",
+        "browse_refs",
+        "manage_ref",
+        "browse_members",
+        "manage_member",
+        "browse_search",
       ];
 
-      allTierTools.forEach(toolName => {
+      allTools.forEach(toolName => {
         expect(ToolAvailability.isToolAvailable(toolName)).toBe(true);
         expect(ToolAvailability.getUnavailableReason(toolName)).toBe(null);
       });
@@ -266,8 +235,8 @@ describe("ToolAvailability - Tier-based Filtering", () => {
         tier: "ultimate" as GitLabTier,
         features: {
           ...createFeatures("free"),
-          workItems: false, // Not available in 10.0
-          epics: false, // Not available in 10.0
+          workItems: false,
+          epics: false,
         },
         detectedAt: new Date(),
       };
@@ -275,13 +244,13 @@ describe("ToolAvailability - Tier-based Filtering", () => {
       mockInstance.getInstanceInfo.mockReturnValue(oldInstanceInfo);
 
       // Work Items require 15.0+
-      expect(ToolAvailability.isToolAvailable("list_work_items")).toBe(false);
-      const reason = ToolAvailability.getUnavailableReason("list_work_items");
-      expect(reason?.toLowerCase()).toContain("version");
+      expect(ToolAvailability.isToolAvailable("browse_work_items")).toBe(false);
+      const reason = ToolAvailability.getUnavailableReason("browse_work_items");
+      expect(reason).toContain("15.0+");
 
       // But basic tools from 8.0 should work
-      expect(ToolAvailability.isToolAvailable("list_projects")).toBe(true);
-      expect(ToolAvailability.isToolAvailable("get_project")).toBe(true);
+      expect(ToolAvailability.isToolAvailable("browse_projects")).toBe(true);
+      expect(ToolAvailability.isToolAvailable("browse_commits")).toBe(true);
     });
 
     it("should allow tools when version meets requirements", () => {
@@ -295,12 +264,12 @@ describe("ToolAvailability - Tier-based Filtering", () => {
       mockInstance.getInstanceInfo.mockReturnValue(modernInstanceInfo);
 
       // Work Items should be available (version 18.0 >= required 15.0)
-      expect(ToolAvailability.isToolAvailable("list_work_items")).toBe(true);
-      expect(ToolAvailability.isToolAvailable("create_work_item")).toBe(true);
+      expect(ToolAvailability.isToolAvailable("browse_work_items")).toBe(true);
+      expect(ToolAvailability.isToolAvailable("manage_work_item")).toBe(true);
 
       // But premium features should still be blocked
-      expect(ToolAvailability.isToolAvailable("list_epics")).toBe(false);
-      expect(ToolAvailability.getUnavailableReason("list_epics")).toContain("premium tier");
+      expect(ToolAvailability.isToolAvailable("browse_iterations")).toBe(false);
+      expect(ToolAvailability.getUnavailableReason("browse_iterations")).toContain("premium tier");
     });
   });
 
@@ -320,8 +289,8 @@ describe("ToolAvailability - Tier-based Filtering", () => {
     it("should handle missing connection manager gracefully", () => {
       mockConnectionManager.getInstance.mockReturnValue(null as any);
 
-      expect(ToolAvailability.isToolAvailable("list_projects")).toBe(false);
-      expect(ToolAvailability.getUnavailableReason("list_projects")).toContain(
+      expect(ToolAvailability.isToolAvailable("browse_projects")).toBe(false);
+      expect(ToolAvailability.getUnavailableReason("browse_projects")).toContain(
         "GitLab connection not initialized"
       );
     });
@@ -336,7 +305,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
       });
 
       it("should return action-specific requirement when action has higher tier", () => {
-        // browse_merge_requests has approvals action requiring premium
         const req = ToolAvailability.getActionRequirement("browse_merge_requests", "approvals");
         expect(req).toBeDefined();
         expect(req?.tier).toBe("premium");
@@ -361,24 +329,16 @@ describe("ToolAvailability - Tier-based Filtering", () => {
       });
 
       it("should return premium for tools with premium actions", () => {
-        // browse_merge_requests has approvals action requiring premium
         const tier = ToolAvailability.getHighestTier("browse_merge_requests");
         expect(tier).toBe("premium");
       });
 
       it("should return premium for browse_milestones with burndown action", () => {
-        // browse_milestones has burndown action requiring premium
         const tier = ToolAvailability.getHighestTier("browse_milestones");
         expect(tier).toBe("premium");
       });
 
-      it("should fallback to legacy requirements for unknown consolidated tools", () => {
-        // get_project is not in actionRequirements but is in toolRequirements
-        const tier = ToolAvailability.getHighestTier("get_project");
-        expect(tier).toBe("free");
-      });
-
-      it("should return free for completely unknown tools", () => {
+      it("should return free for unknown tools", () => {
         const tier = ToolAvailability.getHighestTier("totally_unknown_tool");
         expect(tier).toBe("free");
       });
@@ -386,7 +346,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
 
     describe("getTierRestrictedActions", () => {
       it("should return premium actions for tool with mixed tiers", () => {
-        // browse_merge_requests has approvals action requiring premium
         const actions = ToolAvailability.getTierRestrictedActions(
           "browse_merge_requests",
           "premium"
@@ -405,7 +364,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
       });
 
       it("should include ultimate actions when querying for premium", () => {
-        // Ultimate actions are >= premium in tier order
         const premiumAndAbove = ToolAvailability.getTierRestrictedActions(
           "browse_milestones",
           "premium"
@@ -435,9 +393,8 @@ describe("ToolAvailability - Tier-based Filtering", () => {
       });
 
       it("should block action when version is too old", () => {
-        // Test that version checking works for actions
         mockInstance.getInstanceInfo.mockReturnValue({
-          version: "7.0.0", // Very old version, before merge requests API (8.0)
+          version: "7.0.0",
           tier: "ultimate" as GitLabTier,
           features: createFeatures("ultimate"),
           detectedAt: new Date(),
@@ -456,7 +413,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
           detectedAt: new Date(),
         });
 
-        // With sufficient version and tier, action should be available
         const available = ToolAvailability.isToolAvailable("browse_merge_requests", "approvals");
         expect(available).toBe(true);
       });
@@ -481,13 +437,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
         expect(req?.requiredTier).toBe("free");
       });
 
-      it("should fallback to legacy requirements for non-consolidated tools", () => {
-        const req = ToolAvailability.getToolRequirement("get_project");
-        expect(req).toBeDefined();
-        expect(req?.requiredTier).toBe("free");
-        expect(req?.minVersion).toBe("8.0");
-      });
-
       it("should return undefined for unknown tools", () => {
         const req = ToolAvailability.getToolRequirement("completely_unknown_tool_xyz");
         expect(req).toBeUndefined();
@@ -504,19 +453,16 @@ describe("ToolAvailability - Tier-based Filtering", () => {
         });
       });
 
-      it("should include tools from both legacy and action requirements", () => {
+      it("should include consolidated tools from actionRequirements", () => {
         const tools = ToolAvailability.getAvailableTools();
-        // Should include legacy tools
-        expect(tools).toContain("get_project");
-        expect(tools).toContain("list_projects");
-        // Should include consolidated tools from actionRequirements
         expect(tools).toContain("browse_merge_requests");
         expect(tools).toContain("browse_projects");
+        expect(tools).toContain("browse_iterations");
+        expect(tools).toContain("manage_project");
       });
 
       it("should not include duplicate tools", () => {
         const tools = ToolAvailability.getAvailableTools();
-        // Check that tools are unique
         const uniqueTools = new Set(tools);
         expect(tools.length).toBe(uniqueTools.size);
       });
@@ -535,7 +481,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
 
       const restricted = ToolAvailability.getRestrictedParameters("manage_work_item");
 
-      // Free tier should not see premium/ultimate parameters
       expect(restricted).toContain("weight");
       expect(restricted).toContain("iterationId");
       expect(restricted).toContain("healthStatus");
@@ -552,7 +497,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
 
       const restricted = ToolAvailability.getRestrictedParameters("manage_work_item");
 
-      // Premium tier should see premium params but not ultimate
       expect(restricted).not.toContain("weight");
       expect(restricted).not.toContain("iterationId");
       expect(restricted).toContain("healthStatus");
@@ -573,7 +517,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
     });
 
     it("should restrict parameters when version is too low", () => {
-      // Version 14.0 is below minVersion 15.0 for all manage_work_item params
       const oldInstanceInfo: GitLabInstanceInfo = {
         version: "14.0.0",
         tier: "ultimate" as GitLabTier,
@@ -584,7 +527,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
 
       const restricted = ToolAvailability.getRestrictedParameters("manage_work_item");
 
-      // All params require minVersion 15.0, so all should be restricted
       expect(restricted).toContain("weight");
       expect(restricted).toContain("iterationId");
       expect(restricted).toContain("healthStatus");
@@ -615,7 +557,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
     });
 
     it("should use cachedInstanceInfo when provided instead of ConnectionManager", () => {
-      // Even if ConnectionManager would throw, cachedInstanceInfo should be used
       mockInstance.getInstanceInfo.mockImplementation(() => {
         throw new Error("Should not be called");
       });
@@ -625,11 +566,9 @@ describe("ToolAvailability - Tier-based Filtering", () => {
         version: "17.0.0",
       });
 
-      // Free tier should restrict all premium/ultimate params
       expect(restricted).toContain("weight");
       expect(restricted).toContain("iterationId");
       expect(restricted).toContain("healthStatus");
-      // ConnectionManager should NOT have been called
       expect(mockInstance.getInstanceInfo).not.toHaveBeenCalled();
     });
 
@@ -639,7 +578,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
         version: "17.0.0",
       });
 
-      // Premium tier: weight and iterationId allowed, healthStatus restricted
       expect(restricted).not.toContain("weight");
       expect(restricted).not.toContain("iterationId");
       expect(restricted).toContain("healthStatus");
@@ -651,7 +589,6 @@ describe("ToolAvailability - Tier-based Filtering", () => {
         version: "14.0.0",
       });
 
-      // Ultimate tier but old version: all params restricted (minVersion 15.0)
       expect(restricted).toContain("weight");
       expect(restricted).toContain("iterationId");
       expect(restricted).toContain("healthStatus");

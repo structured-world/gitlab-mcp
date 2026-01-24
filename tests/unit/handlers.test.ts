@@ -743,6 +743,24 @@ describe("handlers", () => {
       expect(parsed.retryable).toBe(false); // manage_* is NOT idempotent
     });
 
+    it("should mark browse_* tools as idempotent for timeout errors", async () => {
+      mockRegistryManager.executeTool.mockRejectedValue(
+        new Error("GitLab API timeout after 5000ms")
+      );
+
+      const mockRequest = {
+        params: {
+          name: "browse_members",
+          arguments: { action: "list_project" },
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.retryable).toBe(true); // browse_* is idempotent
+    });
+
     it("should mark list_* tools as idempotent for timeout errors", async () => {
       mockRegistryManager.executeTool.mockRejectedValue(
         new Error("GitLab API timeout after 5000ms")
@@ -750,8 +768,8 @@ describe("handlers", () => {
 
       const mockRequest = {
         params: {
-          name: "list_project_members",
-          arguments: { action: "list" },
+          name: "list_merge_requests",
+          arguments: {},
         },
       };
 
@@ -768,8 +786,8 @@ describe("handlers", () => {
 
       const mockRequest = {
         params: {
-          name: "get_users",
-          arguments: {},
+          name: "get_pipeline",
+          arguments: { project_id: "123", pipeline_id: 1 },
         },
       };
 
@@ -777,24 +795,6 @@ describe("handlers", () => {
 
       const parsed = JSON.parse(result.content[0].text);
       expect(parsed.retryable).toBe(true); // get_* is idempotent
-    });
-
-    it("should mark download_* tools as idempotent for timeout errors", async () => {
-      mockRegistryManager.executeTool.mockRejectedValue(
-        new Error("GitLab API timeout after 5000ms")
-      );
-
-      const mockRequest = {
-        params: {
-          name: "download_attachment",
-          arguments: { project_id: "123", secret: "abc", filename: "test.txt" },
-        },
-      };
-
-      const result = await callToolHandler(mockRequest);
-
-      const parsed = JSON.parse(result.content[0].text);
-      expect(parsed.retryable).toBe(true); // download_* is idempotent
     });
 
     it("should handle direct StructuredToolError without wrapping", async () => {

@@ -68,13 +68,12 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      const result = ToolAvailability.isToolAvailable("list_projects");
+      const result = ToolAvailability.isToolAvailable("browse_projects");
 
       // In OAuth mode, tools are allowed when connection not yet initialized
-      // They will be properly filtered on actual use after authentication
       expect(result).toBe(true);
       expect(mockLogger.debug).toHaveBeenCalledWith(
-        "Tool availability check for 'list_projects': instance info not available yet, allowing"
+        "Tool availability check for 'browse_projects': instance info not available yet, allowing"
       );
       expect(mockLogger.warn).not.toHaveBeenCalled();
     });
@@ -87,11 +86,11 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      const result = ToolAvailability.isToolAvailable("list_projects");
+      const result = ToolAvailability.isToolAvailable("browse_projects");
 
       expect(result).toBe(false);
       expect(mockLogger.warn).toHaveBeenCalledWith(
-        "Failed to check tool availability for 'list_projects': Network timeout occurred"
+        "Failed to check tool availability for 'browse_projects': Network timeout occurred"
       );
       expect(mockLogger.debug).not.toHaveBeenCalled();
     });
@@ -104,11 +103,11 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      const result = ToolAvailability.isToolAvailable("get_project");
+      const result = ToolAvailability.isToolAvailable("browse_commits");
 
       expect(result).toBe(false);
       expect(mockLogger.warn).toHaveBeenCalledWith(
-        "Failed to check tool availability for 'get_project': Invalid type conversion"
+        "Failed to check tool availability for 'browse_commits': Invalid type conversion"
       );
     });
 
@@ -119,11 +118,11 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      const result = ToolAvailability.isToolAvailable("create_project");
+      const result = ToolAvailability.isToolAvailable("manage_project");
 
       expect(result).toBe(false);
       expect(mockLogger.warn).toHaveBeenCalledWith(
-        "Failed to check tool availability for 'create_project': String error message"
+        "Failed to check tool availability for 'manage_project': String error message"
       );
     });
 
@@ -134,25 +133,25 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      const result = ToolAvailability.isToolAvailable("delete_project");
+      const result = ToolAvailability.isToolAvailable("manage_namespace");
 
       expect(result).toBe(false);
       expect(mockLogger.warn).toHaveBeenCalledWith(
-        "Failed to check tool availability for 'delete_project': [object Object]"
+        "Failed to check tool availability for 'manage_namespace': [object Object]"
       );
     });
   });
 
   describe("getAvailableTools method", () => {
     it("should return only available tools when instance is configured", () => {
-      // Default mock is already set up in beforeEach
       const availableTools = ToolAvailability.getAvailableTools();
 
       expect(Array.isArray(availableTools)).toBe(true);
       expect(availableTools.length).toBeGreaterThan(0);
       // Should include tools that meet premium tier and version requirements
-      expect(availableTools).toContain("list_projects");
-      expect(availableTools).toContain("create_merge_request");
+      expect(availableTools).toContain("browse_projects");
+      expect(availableTools).toContain("manage_merge_request");
+      expect(availableTools).toContain("browse_iterations");
     });
 
     it("should return all tools when connection not initialized (OAuth mode)", () => {
@@ -166,7 +165,7 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
 
       // In OAuth mode with deferred introspection, all tools are allowed initially
       expect(availableTools.length).toBeGreaterThan(0);
-      expect(availableTools).toContain("list_projects");
+      expect(availableTools).toContain("browse_projects");
     });
 
     it("should filter based on version requirements", () => {
@@ -183,15 +182,15 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
       const availableTools = ToolAvailability.getAvailableTools();
 
       // Should include tools that work with 12.x
-      expect(availableTools).toContain("list_projects");
+      expect(availableTools).toContain("browse_projects");
       // Should exclude tools that require newer versions
-      expect(availableTools).not.toContain("get_draft_note"); // requires 13.2+
+      expect(availableTools).not.toContain("manage_draft_notes"); // requires 13.2+
     });
   });
 
   describe("getToolRequirement method", () => {
     it("should return requirement for existing tools", () => {
-      const requirement = ToolAvailability.getToolRequirement("list_projects");
+      const requirement = ToolAvailability.getToolRequirement("browse_projects");
 
       expect(requirement).toBeDefined();
       expect(requirement?.minVersion).toBe("8.0");
@@ -205,10 +204,10 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
     });
 
     it("should return requirement with notes when available", () => {
-      const requirement = ToolAvailability.getToolRequirement("get_merge_request_approvals");
+      const requirement = ToolAvailability.getToolRequirement("browse_iterations");
 
       expect(requirement).toBeDefined();
-      expect(requirement?.notes).toBe("MR approval rules");
+      expect(requirement?.notes).toBe("Iterations/Sprints");
     });
   });
 
@@ -223,13 +222,12 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      const reason = ToolAvailability.getUnavailableReason("list_projects");
+      const reason = ToolAvailability.getUnavailableReason("browse_projects");
 
       expect(reason).toBeNull();
     });
 
     it("should return tool not recognized message", () => {
-      // Use default mock setup
       const reason = ToolAvailability.getUnavailableReason("unknown_tool");
 
       expect(reason).toBe("Tool 'unknown_tool' is not recognized");
@@ -245,7 +243,7 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      const reason = ToolAvailability.getUnavailableReason("list_projects");
+      const reason = ToolAvailability.getUnavailableReason("browse_projects");
 
       expect(reason).toBe("Requires GitLab 8.0+, current version is 7.0.0");
     });
@@ -260,7 +258,7 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      const reason = ToolAvailability.getUnavailableReason("get_merge_request_approvals");
+      const reason = ToolAvailability.getUnavailableReason("browse_iterations");
 
       expect(reason).toBe("Requires GitLab premium tier or higher, current tier is free");
     });
@@ -272,7 +270,7 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      const reason = ToolAvailability.getUnavailableReason("list_projects");
+      const reason = ToolAvailability.getUnavailableReason("browse_projects");
 
       expect(reason).toBe("GitLab connection not initialized");
     });
@@ -281,11 +279,11 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
   describe("filterToolsByAvailability method", () => {
     it("should filter available tools correctly", () => {
       // Use default mock (premium tier, v16)
-      const inputTools = ["list_projects", "get_merge_request_approvals", "unknown_tool"];
+      const inputTools = ["browse_projects", "browse_iterations", "unknown_tool"];
       const filteredTools = ToolAvailability.filterToolsByAvailability(inputTools);
 
-      expect(filteredTools).toContain("list_projects");
-      expect(filteredTools).toContain("get_merge_request_approvals"); // premium tier
+      expect(filteredTools).toContain("browse_projects");
+      expect(filteredTools).toContain("browse_iterations"); // premium tier
       // unknown_tool is allowed because version 16.0 >= 15.0 (default for unknown tools)
       expect(filteredTools).toContain("unknown_tool");
     });
@@ -297,7 +295,7 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      const inputTools = ["list_projects", "create_project"];
+      const inputTools = ["browse_projects", "manage_project"];
       const filteredTools = ToolAvailability.filterToolsByAvailability(inputTools);
 
       // In OAuth mode with deferred introspection, all tools pass through
@@ -305,7 +303,6 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
     });
 
     it("should handle empty input array", () => {
-      // Use default mock
       const filteredTools = ToolAvailability.filterToolsByAvailability([]);
 
       expect(filteredTools).toEqual([]);
@@ -322,10 +319,10 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      const inputTools = ["list_projects", "unknown_tool"];
+      const inputTools = ["browse_projects", "unknown_tool"];
       const filteredTools = ToolAvailability.filterToolsByAvailability(inputTools);
 
-      expect(filteredTools).toContain("list_projects");
+      expect(filteredTools).toContain("browse_projects");
       expect(filteredTools).not.toContain("unknown_tool"); // Should be filtered out on v14
     });
   });
@@ -336,24 +333,23 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
 
       expect(Array.isArray(freeTools)).toBe(true);
       expect(freeTools.length).toBeGreaterThan(0);
-      expect(freeTools).toContain("list_projects");
-      expect(freeTools).toContain("create_merge_request");
-      expect(freeTools).not.toContain("get_merge_request_approvals"); // premium only
+      expect(freeTools).toContain("browse_projects");
+      expect(freeTools).toContain("manage_merge_request");
+      expect(freeTools).not.toContain("browse_iterations"); // premium default
     });
 
     it("should return tools for premium tier", () => {
       const premiumTools = ToolAvailability.getToolsByTier("premium");
 
       expect(Array.isArray(premiumTools)).toBe(true);
-      expect(premiumTools).toContain("get_merge_request_approvals");
-      expect(premiumTools).toContain("approve_merge_request");
+      expect(premiumTools).toContain("browse_iterations");
     });
 
-    it("should return tools for ultimate tier", () => {
+    it("should return empty array for ultimate tier (no tools with ultimate default)", () => {
       const ultimateTools = ToolAvailability.getToolsByTier("ultimate");
 
       expect(Array.isArray(ultimateTools)).toBe(true);
-      // Should include tools that require ultimate tier
+      expect(ultimateTools).toHaveLength(0);
     });
   });
 
@@ -362,9 +358,9 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
       const tools = ToolAvailability.getToolsByMinVersion("13.0");
 
       expect(Array.isArray(tools)).toBe(true);
-      expect(tools).toContain("get_draft_note"); // requires 13.2
-      expect(tools).toContain("create_draft_note"); // requires 13.2
-      expect(tools).not.toContain("list_projects"); // requires 8.0
+      expect(tools).toContain("manage_draft_notes"); // requires 13.2
+      expect(tools).toContain("browse_iterations"); // requires 13.1
+      expect(tools).not.toContain("browse_projects"); // requires 8.0
     });
 
     it("should return tools that require minimum version 15", () => {
@@ -405,8 +401,8 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
         }),
       } as any);
 
-      // cherry_pick_commit requires 8.15
-      const available = ToolAvailability.isToolAvailable("cherry_pick_commit");
+      // browse_snippets requires 8.15
+      const available = ToolAvailability.isToolAvailable("browse_snippets");
       expect(available).toBe(true);
     });
 
@@ -421,7 +417,7 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
       } as any);
 
       // Should not be available for 8.15 requirement
-      const available = ToolAvailability.isToolAvailable("cherry_pick_commit");
+      const available = ToolAvailability.isToolAvailable("browse_snippets");
       expect(available).toBe(false);
     });
   });

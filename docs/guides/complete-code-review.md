@@ -28,11 +28,12 @@ Start by identifying merge requests that need your attention.
 You can also check your todo list for review requests:
 
 ```jsonc
-// list_todos
+// browse_todos
 {
+  "action": "list",
   "per_page": 20,
   "state": "pending",
-  "action": "review_requested"
+  "todo_action": "review_requested"
 }
 ```
 

@@ -346,45 +346,65 @@ function getToolTierInfo(toolName: string, action?: string): string {
 }
 
 /**
- * Map of entity names to their CQRS tool names.
- * Organization notes:
- * - Core: Project/namespace/commit/event tools (consolidated from 18 to ~11 tools)
- * - Todos: Separate category for list_todos and manage_todos (originally part of core registry
- *   but categorized separately for documentation clarity)
- * - Each entity maps to browse_ and manage_ prefixed tools (or legacy list_ and get_ prefixed)
+ * Map of category names to their CQRS tool names.
+ * All tools follow browse_* / manage_* naming convention.
+ * 7 categories reflecting functional grouping.
  */
 const ENTITY_TOOLS: Record<string, string[]> = {
-  Core: [
+  "Projects & Repository": [
     "browse_projects",
     "browse_namespaces",
     "browse_commits",
     "browse_events",
-    "create_branch",
-    "create_group",
-    "manage_repository",
-    "list_project_members",
-    "list_group_iterations",
-    "download_attachment",
-    "get_users",
+    "browse_files",
+    "browse_refs",
+    "manage_project",
+    "manage_namespace",
+    "manage_files",
+    "manage_ref",
+    "browse_releases",
+    "manage_release",
   ],
-  "Work Items": ["browse_work_items", "manage_work_item"],
-  "Merge Requests": [
+  Collaboration: [
     "browse_merge_requests",
     "browse_mr_discussions",
     "manage_merge_request",
     "manage_mr_discussion",
     "manage_draft_notes",
+    "browse_members",
+    "manage_member",
+    "browse_users",
+    "browse_todos",
+    "manage_todos",
   ],
-  Labels: ["browse_labels", "manage_label"],
-  Wiki: ["browse_wiki", "manage_wiki"],
-  Pipelines: ["browse_pipelines", "manage_pipeline", "manage_pipeline_job"],
-  Variables: ["browse_variables", "manage_variable"],
-  Milestones: ["browse_milestones", "manage_milestone"],
-  Files: ["browse_files", "manage_files"],
-  Snippets: ["browse_snippets", "manage_snippet"],
-  Webhooks: ["browse_webhooks", "manage_webhook"],
-  Integrations: ["browse_integrations", "manage_integration"],
-  Todos: ["list_todos", "manage_todos"],
+  Planning: [
+    "browse_work_items",
+    "manage_work_item",
+    "browse_milestones",
+    "manage_milestone",
+    "browse_labels",
+    "manage_label",
+    "browse_iterations",
+  ],
+  "CI/CD": [
+    "browse_pipelines",
+    "manage_pipeline",
+    "manage_pipeline_job",
+    "browse_variables",
+    "manage_variable",
+  ],
+  "Integrations & Content": [
+    "browse_wiki",
+    "manage_wiki",
+    "browse_snippets",
+    "manage_snippet",
+    "browse_webhooks",
+    "manage_webhook",
+    "browse_integrations",
+    "manage_integration",
+  ],
+  Discovery: ["browse_search"],
+  Session: ["manage_context"],
 };
 
 function groupToolsByEntity(tools: any[]): Map<string, any[]> {
@@ -409,19 +429,13 @@ function groupToolsByEntity(tools: any[]): Map<string, any[]> {
 
   // Sort entities in a logical order
   const entityOrder = [
-    "Core",
-    "Work Items",
-    "Merge Requests",
-    "Labels",
-    "Milestones",
-    "Pipelines",
-    "Variables",
-    "Files",
-    "Wiki",
-    "Snippets",
-    "Webhooks",
-    "Integrations",
-    "Todos",
+    "Projects & Repository",
+    "Collaboration",
+    "Planning",
+    "CI/CD",
+    "Integrations & Content",
+    "Discovery",
+    "Session",
     "Other",
   ];
 
@@ -1027,6 +1041,7 @@ const FEATURE_TO_TOOLS: Record<string, string[]> = {
   webhooks: ["browse_webhooks", "manage_webhook"],
   snippets: ["browse_snippets", "manage_snippet"],
   integrations: ["browse_integrations", "manage_integration"],
+  iterations: ["browse_iterations"],
 };
 
 /**

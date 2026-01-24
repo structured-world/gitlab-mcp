@@ -114,7 +114,7 @@ describe("Profile Types and Schemas", () => {
         allowed_groups: ["group1"],
         denied_tools_regex: "^manage_",
         allowed_tools: ["browse_projects"],
-        denied_actions: ["manage_repository:delete"],
+        denied_actions: ["manage_project:delete"],
         features: {
           wiki: true,
           milestones: true,
@@ -202,7 +202,7 @@ describe("Profile Types and Schemas", () => {
     it("should validate preset with denied_actions", () => {
       const preset = {
         read_only: false,
-        denied_actions: ["manage_repository:delete", "manage_webhook:create"],
+        denied_actions: ["manage_project:delete", "manage_webhook:create"],
         features: {
           pipelines: true,
         },
@@ -211,7 +211,7 @@ describe("Profile Types and Schemas", () => {
       expect(result.success).toBe(true);
       if (result.success) {
         expect(result.data.denied_actions).toEqual([
-          "manage_repository:delete",
+          "manage_project:delete",
           "manage_webhook:create",
         ]);
       }
@@ -219,7 +219,7 @@ describe("Profile Types and Schemas", () => {
 
     it("should validate preset with allowed_tools whitelist", () => {
       const preset = {
-        allowed_tools: ["browse_projects", "browse_commits", "get_users"],
+        allowed_tools: ["browse_projects", "browse_commits", "browse_users"],
         features: {},
       };
       const result = PresetSchema.safeParse(preset);

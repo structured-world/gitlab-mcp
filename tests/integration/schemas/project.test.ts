@@ -4,7 +4,7 @@
  */
 
 import { GitLabProjectSchema } from "../../../src/entities/shared";
-import { ManageRepositorySchema } from "../../../src/entities/core/schema";
+import { ManageProjectSchema } from "../../../src/entities/core/schema";
 import { IntegrationTestHelper } from "../helpers/registry-helper";
 
 describe("Project Schema - GitLab 18.3 Integration", () => {
@@ -206,13 +206,13 @@ describe("Project Schema - GitLab 18.3 Integration", () => {
     }
   });
 
-  it("should validate ManageRepositorySchema against test project creation parameters", async () => {
+  it("should validate ManageProjectSchema against test project creation parameters", async () => {
     if (process.env.INTEGRATION_TESTS_ENABLED !== "true") {
       console.log("⚠️  Skipping test - integration tests disabled");
       return;
     }
 
-    // ManageRepositorySchema uses discriminated union with action field (Issue #16)
+    // ManageProjectSchema uses discriminated union with action field (Issue #16)
     const testProjectData = {
       action: "create" as const,
       name: `schema-test-project-${testTimestamp}`,
@@ -227,7 +227,7 @@ describe("Project Schema - GitLab 18.3 Integration", () => {
     };
 
     // Validate the schema against project creation parameters
-    const result = ManageRepositorySchema.safeParse(testProjectData);
+    const result = ManageProjectSchema.safeParse(testProjectData);
     expect(result.success).toBe(true);
 
     if (result.success && result.data.action === "create") {
@@ -236,7 +236,7 @@ describe("Project Schema - GitLab 18.3 Integration", () => {
       expect(result.data.namespace).toBe(testProjectData.namespace);
     }
 
-    console.log("✅ ManageRepositorySchema validates project creation parameters correctly");
+    console.log("✅ ManageProjectSchema validates project creation parameters correctly");
   });
 
   it("should validate real GitLab project API response using created test projects", async () => {

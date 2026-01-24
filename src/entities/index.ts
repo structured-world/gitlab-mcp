@@ -14,5 +14,6 @@ export * from "./refs";
 export * from "./members";
 export * from "./search";
 export * from "./context";
+export * from "./iterations";
 
 // All entities now use the registry pattern with embedded handlers

@@ -1,5 +1,5 @@
 > GitLab MCP - Model Context Protocol server for GitLab API
-> Provides 47 tools across 17 entity types using CQRS pattern (browse_* for reads, manage_* for writes)
+> Provides 44 tools across 18 entity types using CQRS pattern (browse_* for reads, manage_* for writes)
 
 # Quick Start
 
@@ -10,13 +10,13 @@ npx @structured-world/gitlab-mcp init
 Required: GITLAB_TOKEN (Personal Access Token or OAuth)
 Optional: GITLAB_API_URL (defaults to https://gitlab.com)
 
-# Tools (47 total, CQRS pattern: browse_* = read, manage_* = write)
+# Tools (44 total, CQRS pattern: browse_* = read, manage_* = write)
 
 ## Projects & Namespaces
 - browse_projects: Search, list, or get project details. Actions: search, list, get.
-- manage_repository: Create or fork projects. Actions: create, fork.
+- manage_project: Create, fork, update, delete, archive, unarchive, transfer projects. Actions: create, fork, update, delete, archive, unarchive, transfer.
 - browse_namespaces: Explore groups and namespaces. Actions: list, get, verify.
-- create_group: Create new groups/subgroups.
+- manage_namespace: Create, update, or delete groups. Actions: create, update, delete.
 
 ## Code Review (Merge Requests)
 - browse_merge_requests: List, get, diffs, compare MRs. Filter by state, author, reviewer, labels.
@@ -35,12 +35,11 @@ Optional: GITLAB_API_URL (defaults to https://gitlab.com)
 - manage_variable: Create, update, delete CI/CD variables with environment scoping.
 
 ## Repository (Files)
-- browse_files: Tree listing (directory structure) and file content reading.
+- browse_files: Tree listing (directory structure), file content reading, download attachments.
 - manage_files: Create/update single files, batch commit multiple files, upload attachments.
 
 ## Repository (Commits & Branches)
 - browse_commits: List commits with filters, get commit details and stats, view commit diffs.
-- create_branch: Create new branches from any ref.
 - browse_refs: List branches/tags, get details, view protection rules.
 - manage_ref: Create/delete branches and tags, manage branch/tag protection.
 
@@ -57,7 +56,6 @@ Optional: GITLAB_API_URL (defaults to https://gitlab.com)
 - manage_label: Create, update, delete labels.
 
 ## Team Members
-- list_project_members: List members with access levels.
 - browse_members: Browse members in projects and groups with inherited members.
 - manage_member: Add/remove members, change access levels.
 
@@ -84,14 +82,15 @@ Optional: GITLAB_API_URL (defaults to https://gitlab.com)
 
 ## Activity & Notifications
 - browse_events: User activity feed or project activity. Filter by action type.
-- list_todos: View pending/done todos. Filter by action, target type.
+- browse_todos: View pending/done todos. Filter by action, target type.
 - manage_todos: Mark todos as done, mark all done, restore.
-- list_group_iterations: List sprint iterations (Premium). Filter by state.
+
+## Iterations (Premium)
+- browse_iterations: List sprint iterations, get iteration details. Filter by state.
 
 ## Users & Context
-- get_users: Search users by name, email, username. Smart search with transliteration.
+- browse_users: Search users by name, email, username. Smart search with transliteration.
 - manage_context: Show/switch presets, profiles, set namespace scope.
-- download_attachment: Retrieve file attachments from issues/MRs.
 
 # Authentication Methods
 
@@ -116,7 +115,7 @@ All default to true. Set to false to disable tool groups:
 USE_MRS, USE_PIPELINE, USE_FILES, USE_WORKITEMS, USE_LABELS,
 USE_VARIABLES, USE_WEBHOOKS, USE_SNIPPETS, USE_INTEGRATIONS,
 USE_GITLAB_WIKI, USE_MILESTONE, USE_RELEASES, USE_REFS,
-USE_MEMBERS, USE_SEARCH
+USE_MEMBERS, USE_SEARCH, USE_ITERATIONS
 
 [Full documentation: https://gitlab-mcp.sw.foundation/]
 [Source code: https://github.com/structured-world/gitlab-mcp]

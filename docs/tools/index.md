@@ -1,6 +1,6 @@
 # Tool Reference
 
-GitLab MCP Server provides **47 tools** across 17 entity types.
+GitLab MCP Server provides **44 tools** across 18 entity types.
 
 ## Architecture
 
@@ -17,19 +17,21 @@ Each tool accepts an `action` parameter selecting the specific operation.
 | Tool | Type | Description |
 |------|------|-------------|
 | `browse_projects` | Query | Find, browse, or inspect projects |
-| `manage_repository` | Command | Create or fork projects |
+| `manage_project` | Command | Create, fork, update, delete, archive, transfer projects |
 | `browse_namespaces` | Query | Explore groups and namespaces |
-| `create_group` | Command | Create groups/namespaces |
+| `manage_namespace` | Command | Create, update, delete groups |
 | `browse_commits` | Query | Explore commit history |
-| `create_branch` | Command | Create branches |
 | `browse_events` | Query | Track activity feeds |
-| `list_group_iterations` | Query | List sprints (Premium) |
-| `get_users` | Query | Search users |
-| `download_attachment` | Query | Download issue/MR attachments |
-| `list_todos` | Query | View todo notifications |
+| `browse_users` | Query | Search users |
+| `browse_todos` | Query | View todo notifications |
 | `manage_todos` | Command | Mark todos done/restore |
 | `manage_context` | Mixed | Manage session context |
-| `list_project_members` | Query | List project members |
+
+### Iterations (`USE_ITERATIONS=true`, default: enabled)
+
+| Tool | Type | Description |
+|------|------|-------------|
+| `browse_iterations` | Query | List and get group iterations (Premium) |
 
 ### Releases (`USE_RELEASES=true`, default: enabled)
 
@@ -79,7 +81,7 @@ Each tool accepts an `action` parameter selecting the specific operation.
 
 | Tool | Type | Description |
 |------|------|-------------|
-| `browse_files` | Query | Tree listing and file content |
+| `browse_files` | Query | Tree listing, file content, download attachments |
 | `manage_files` | Command | Create, update, upload files |
 
 ### CI/CD Variables (`USE_VARIABLES=true`, default: enabled)
@@ -189,15 +191,18 @@ See [role-based prompts](/prompts/by-role/developer) for workflows tailored to e
 
 | Category | Query (browse_*) | Command (manage_*) |
 |----------|-------------------|---------------------|
+| **Projects** | `browse_projects` (search, list, get) | `manage_project` (create, fork, update, delete, archive, transfer) |
+| **Namespaces** | `browse_namespaces` (list, get, verify) | `manage_namespace` (create, update, delete) |
 | **Merge Requests** | `browse_merge_requests` (list, get, diffs, compare) | `manage_merge_request` (create, update, merge, approve) |
 | **Discussions** | `browse_mr_discussions` (list, drafts, draft) | `manage_mr_discussion` (comment, thread, suggest, resolve) |
 | **Pipelines** | `browse_pipelines` (list, get, jobs, logs) | `manage_pipeline` (create, retry, cancel) |
 | **Jobs** | — (via browse_pipelines) | `manage_pipeline_job` (play, retry, cancel) |
 | **Variables** | `browse_variables` (list, get) | `manage_variable` (create, update, delete) |
-| **Files** | `browse_files` (tree, content) | `manage_files` (single, batch, upload) |
+| **Files** | `browse_files` (tree, content, download_attachment) | `manage_files` (single, batch, upload) |
 | **Work Items** | `browse_work_items` (list, get) | `manage_work_item` (create, update, delete) |
 | **Milestones** | `browse_milestones` (list, get, issues, burndown) | `manage_milestone` (create, update, delete, promote) |
 | **Labels** | `browse_labels` (list, get) | `manage_label` (create, update, delete) |
+| **Iterations** | `browse_iterations` (list, get) | — |
 | **Releases** | `browse_releases` (list, get, assets) | `manage_release` (create, update, delete, links) |
 | **Refs** | `browse_refs` (branches, tags, protection) | `manage_ref` (create, delete, protect) |
 | **Members** | `browse_members` (list, get) | `manage_member` (add, remove, update) |
@@ -205,6 +210,8 @@ See [role-based prompts](/prompts/by-role/developer) for workflows tailored to e
 | **Integrations** | `browse_integrations` (list, get) | `manage_integration` (update, disable) |
 | **Wiki** | `browse_wiki` (list, get) | `manage_wiki` (create, update, delete) |
 | **Snippets** | `browse_snippets` (list, get) | `manage_snippet` (create, update, delete) |
+| **Users** | `browse_users` (search, get) | — |
+| **Todos** | `browse_todos` (list) | `manage_todos` (done, done_all, restore) |
 
 ## Detailed Documentation
 

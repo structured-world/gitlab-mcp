@@ -43,25 +43,17 @@ describe("Core Registry", () => {
     it("should contain expected consolidated tools", () => {
       const toolNames = Array.from(coreToolRegistry.keys());
 
-      // Consolidated read-only tools
+      // Consolidated read-only (browse) tools
       expect(toolNames).toContain("browse_projects");
       expect(toolNames).toContain("browse_namespaces");
       expect(toolNames).toContain("browse_commits");
       expect(toolNames).toContain("browse_events");
+      expect(toolNames).toContain("browse_users");
+      expect(toolNames).toContain("browse_todos");
 
-      // Consolidated write tools
-      expect(toolNames).toContain("manage_repository");
-
-      // Kept as-is tools
-      expect(toolNames).toContain("get_users");
-      expect(toolNames).toContain("list_project_members");
-      expect(toolNames).toContain("list_group_iterations");
-      expect(toolNames).toContain("download_attachment");
-      expect(toolNames).toContain("create_branch");
-      expect(toolNames).toContain("create_group");
-
-      // New todos tools
-      expect(toolNames).toContain("list_todos");
+      // Consolidated write (manage) tools
+      expect(toolNames).toContain("manage_project");
+      expect(toolNames).toContain("manage_namespace");
       expect(toolNames).toContain("manage_todos");
     });
 
@@ -85,7 +77,7 @@ describe("Core Registry", () => {
     });
 
     it("should have substantial number of tools", () => {
-      expect(coreToolRegistry.size).toBeGreaterThanOrEqual(12);
+      expect(coreToolRegistry.size).toBeGreaterThanOrEqual(9);
     });
   });
 
@@ -95,7 +87,7 @@ describe("Core Registry", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("browse_projects");
-      expect(tool?.description).toContain("PROJECT DISCOVERY");
+      expect(tool?.description).toContain("projects");
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -104,7 +96,7 @@ describe("Core Registry", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("browse_namespaces");
-      expect(tool?.description).toContain("NAMESPACE OPERATIONS");
+      expect(tool?.description).toContain("namespaces");
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -113,7 +105,7 @@ describe("Core Registry", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("browse_commits");
-      expect(tool?.description).toContain("COMMIT HISTORY");
+      expect(tool?.description).toContain("commit");
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -122,34 +114,31 @@ describe("Core Registry", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("browse_events");
-      expect(tool?.description).toContain("ACTIVITY FEED");
+      expect(tool?.description).toContain("activity");
       expect(tool?.inputSchema).toBeDefined();
     });
 
-    it("should have proper manage_repository tool", () => {
-      const tool = coreToolRegistry.get("manage_repository");
+    it("should have proper manage_project tool", () => {
+      const tool = coreToolRegistry.get("manage_project");
 
       expect(tool).toBeDefined();
-      expect(tool?.name).toBe("manage_repository");
-      expect(tool?.description).toContain("REPOSITORY MANAGEMENT");
+      expect(tool?.name).toBe("manage_project");
       expect(tool?.inputSchema).toBeDefined();
     });
 
-    it("should have proper get_users tool", () => {
-      const tool = coreToolRegistry.get("get_users");
+    it("should have proper browse_users tool", () => {
+      const tool = coreToolRegistry.get("browse_users");
 
       expect(tool).toBeDefined();
-      expect(tool?.name).toBe("get_users");
-      expect(tool?.description).toContain("FIND USERS");
+      expect(tool?.name).toBe("browse_users");
       expect(tool?.inputSchema).toBeDefined();
     });
 
-    it("should have proper list_todos tool", () => {
-      const tool = coreToolRegistry.get("list_todos");
+    it("should have proper browse_todos tool", () => {
+      const tool = coreToolRegistry.get("browse_todos");
 
       expect(tool).toBeDefined();
-      expect(tool?.name).toBe("list_todos");
-      expect(tool?.description).toContain("TASK QUEUE");
+      expect(tool?.name).toBe("browse_todos");
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -158,7 +147,7 @@ describe("Core Registry", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("manage_todos");
-      expect(tool?.description).toContain("TODO ACTIONS");
+      expect(tool?.description).toContain("todo");
       expect(tool?.inputSchema).toBeDefined();
     });
   });
@@ -174,26 +163,20 @@ describe("Core Registry", () => {
     it("should include expected read-only tools", () => {
       const readOnlyTools = getCoreReadOnlyToolNames();
 
-      // Consolidated read tools
+      // Consolidated browse (read-only) tools
       expect(readOnlyTools).toContain("browse_projects");
       expect(readOnlyTools).toContain("browse_namespaces");
       expect(readOnlyTools).toContain("browse_commits");
       expect(readOnlyTools).toContain("browse_events");
-
-      // Kept as-is read tools
-      expect(readOnlyTools).toContain("get_users");
-      expect(readOnlyTools).toContain("list_project_members");
-      expect(readOnlyTools).toContain("list_group_iterations");
-      expect(readOnlyTools).toContain("download_attachment");
-      expect(readOnlyTools).toContain("list_todos");
+      expect(readOnlyTools).toContain("browse_users");
+      expect(readOnlyTools).toContain("browse_todos");
     });
 
     it("should not include write tools", () => {
       const readOnlyTools = getCoreReadOnlyToolNames();
 
-      expect(readOnlyTools).not.toContain("manage_repository");
-      expect(readOnlyTools).not.toContain("create_branch");
-      expect(readOnlyTools).not.toContain("create_group");
+      expect(readOnlyTools).not.toContain("manage_project");
+      expect(readOnlyTools).not.toContain("manage_namespace");
       expect(readOnlyTools).not.toContain("manage_todos");
     });
 
@@ -260,7 +243,7 @@ describe("Core Registry", () => {
 
     it("should not include write tools in read-only mode", () => {
       const readOnlyTools = getFilteredCoreTools(true);
-      const writeTools = ["manage_repository", "create_branch", "create_group", "manage_todos"];
+      const writeTools = ["manage_project", "manage_namespace", "manage_todos"];
 
       for (const tool of readOnlyTools) {
         expect(writeTools).not.toContain(tool.name);
@@ -285,21 +268,16 @@ describe("Core Registry", () => {
   describe("Registry Consistency", () => {
     it("should have all expected essential tools", () => {
       const essentialTools = [
-        // Consolidated tools
+        // Browse (read-only) tools
         "browse_projects",
         "browse_namespaces",
         "browse_commits",
         "browse_events",
-        "manage_repository",
-        // Kept as-is tools
-        "get_users",
-        "list_project_members",
-        "list_group_iterations",
-        "download_attachment",
-        "create_branch",
-        "create_group",
-        // Todos tools
-        "list_todos",
+        "browse_users",
+        "browse_todos",
+        // Manage (write) tools
+        "manage_project",
+        "manage_namespace",
         "manage_todos",
       ];
 
@@ -523,7 +501,7 @@ describe("Core Registry", () => {
       });
     });
 
-    describe("manage_repository Handler", () => {
+    describe("manage_project Handler", () => {
       it("should create repository with action: create", async () => {
         // Mock namespace check (doesn't exist)
         mockEnhancedFetch.mockResolvedValueOnce({
@@ -542,7 +520,7 @@ describe("Core Registry", () => {
           }),
         } as any);
 
-        const tool = coreToolRegistry.get("manage_repository");
+        const tool = coreToolRegistry.get("manage_project");
         const result = await tool!.handler({
           action: "create",
           name: "new-repo",
@@ -568,7 +546,7 @@ describe("Core Registry", () => {
           }),
         } as any);
 
-        const tool = coreToolRegistry.get("manage_repository");
+        const tool = coreToolRegistry.get("manage_project");
         const result = await tool!.handler({
           action: "fork",
           project_id: "1000",
@@ -589,7 +567,7 @@ describe("Core Registry", () => {
       });
     });
 
-    describe("list_todos Handler", () => {
+    describe("browse_todos Handler", () => {
       it("should list todos with no filters (default behavior)", async () => {
         // Test: Default list todos call with no filters
         // Why this matters: Verifies basic API endpoint is correct when no filters applied
@@ -605,8 +583,8 @@ describe("Core Registry", () => {
           json: jest.fn().mockResolvedValue(mockApiResponse),
         } as any);
 
-        const tool = coreToolRegistry.get("list_todos");
-        const result = await tool!.handler({});
+        const tool = coreToolRegistry.get("browse_todos");
+        const result = await tool!.handler({ action: "list" });
 
         const calledUrl = mockEnhancedFetch.mock.calls[0][0];
         // per_page has a default value in schema, so it's always included
@@ -625,14 +603,14 @@ describe("Core Registry", () => {
           json: jest.fn().mockResolvedValue([{ id: 1, state: "pending" }]),
         } as any);
 
-        const tool = coreToolRegistry.get("list_todos");
-        await tool!.handler({ state: "pending" });
+        const tool = coreToolRegistry.get("browse_todos");
+        await tool!.handler({ action: "list", state: "pending" });
 
         const calledUrl = mockEnhancedFetch.mock.calls[0][0];
         expect(calledUrl).toContain("state=pending");
       });
 
-      it("should filter todos by action type", async () => {
+      it("should filter todos by todo_action type", async () => {
         // Test: Filter by specific action types (assigned, mentioned, review_requested, etc.)
         // Why this matters: Users may want to see only review requests or only mentions
         mockEnhancedFetch.mockResolvedValueOnce({
@@ -641,8 +619,8 @@ describe("Core Registry", () => {
           json: jest.fn().mockResolvedValue([]),
         } as any);
 
-        const tool = coreToolRegistry.get("list_todos");
-        await tool!.handler({ action: "review_requested" });
+        const tool = coreToolRegistry.get("browse_todos");
+        await tool!.handler({ action: "list", todo_action: "review_requested" });
 
         const calledUrl = mockEnhancedFetch.mock.calls[0][0];
         expect(calledUrl).toContain("action=review_requested");
@@ -658,8 +636,8 @@ describe("Core Registry", () => {
           json: jest.fn().mockResolvedValue([]),
         } as any);
 
-        const tool = coreToolRegistry.get("list_todos");
-        await tool!.handler({ type: "MergeRequest" });
+        const tool = coreToolRegistry.get("browse_todos");
+        await tool!.handler({ action: "list", type: "MergeRequest" });
 
         const calledUrl = mockEnhancedFetch.mock.calls[0][0];
         expect(calledUrl).toContain("type=MergeRequest");
@@ -674,10 +652,11 @@ describe("Core Registry", () => {
           json: jest.fn().mockResolvedValue([]),
         } as any);
 
-        const tool = coreToolRegistry.get("list_todos");
+        const tool = coreToolRegistry.get("browse_todos");
         await tool!.handler({
+          action: "list",
           state: "pending",
-          action: "assigned",
+          todo_action: "assigned",
           type: "Issue",
           per_page: 50,
         });
@@ -698,8 +677,8 @@ describe("Core Registry", () => {
           json: jest.fn().mockResolvedValue([]),
         } as any);
 
-        const tool = coreToolRegistry.get("list_todos");
-        await tool!.handler({ page: 2, per_page: 20 });
+        const tool = coreToolRegistry.get("browse_todos");
+        await tool!.handler({ action: "list", page: 2, per_page: 20 });
 
         const calledUrl = mockEnhancedFetch.mock.calls[0][0];
         expect(calledUrl).toContain("page=2");
@@ -715,8 +694,10 @@ describe("Core Registry", () => {
           statusText: "Unauthorized",
         } as any);
 
-        const tool = coreToolRegistry.get("list_todos");
-        await expect(tool!.handler({})).rejects.toThrow("GitLab API error: 401 Unauthorized");
+        const tool = coreToolRegistry.get("browse_todos");
+        await expect(tool!.handler({ action: "list" })).rejects.toThrow(
+          "GitLab API error: 401 Unauthorized"
+        );
       });
     });
 
@@ -1394,9 +1375,9 @@ describe("Core Registry", () => {
       });
     });
 
-    describe("get_users Handler", () => {
-      it("should get users with basic parameters (non-smart search)", async () => {
-        // Test: Get users without smart search (direct API call)
+    describe("browse_users Handler", () => {
+      it("should search users with basic parameters (non-smart search)", async () => {
+        // Test: Search users without smart search (direct API call)
         // Why this matters: Basic user listing functionality
         const mockApiResponse = [
           { id: 1, username: "user1", name: "User One" },
@@ -1409,24 +1390,25 @@ describe("Core Registry", () => {
           json: jest.fn().mockResolvedValue(mockApiResponse),
         } as any);
 
-        const tool = coreToolRegistry.get("get_users");
-        const result = await tool!.handler({ smart_search: false });
+        const tool = coreToolRegistry.get("browse_users");
+        const result = await tool!.handler({ action: "search", smart_search: false });
 
         const calledUrl = mockEnhancedFetch.mock.calls[0][0];
         expect(calledUrl).toContain("/api/v4/users?");
         expect(result).toEqual(mockApiResponse);
       });
 
-      it("should get users with filter parameters", async () => {
-        // Test: Get users with various filters
+      it("should search users with filter parameters", async () => {
+        // Test: Search users with various filters
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: true,
           status: 200,
           json: jest.fn().mockResolvedValue([]),
         } as any);
 
-        const tool = coreToolRegistry.get("get_users");
+        const tool = coreToolRegistry.get("browse_users");
         await tool!.handler({
+          action: "search",
           smart_search: false,
           active: true,
           blocked: false,
@@ -1439,7 +1421,7 @@ describe("Core Registry", () => {
         expect(calledUrl).toContain("per_page=50");
       });
 
-      it("should handle API error for get_users", async () => {
+      it("should handle API error for browse_users", async () => {
         // Test: Error handling for user listing
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: false,
@@ -1447,244 +1429,14 @@ describe("Core Registry", () => {
           statusText: "Unauthorized",
         } as any);
 
-        const tool = coreToolRegistry.get("get_users");
-        await expect(tool!.handler({ smart_search: false })).rejects.toThrow(
+        const tool = coreToolRegistry.get("browse_users");
+        await expect(tool!.handler({ action: "search", smart_search: false })).rejects.toThrow(
           "GitLab API error: 401 Unauthorized"
         );
       });
     });
 
-    describe("list_project_members Handler", () => {
-      it("should list project members with basic parameters", async () => {
-        // Test: List members of a project
-        // Why this matters: Team management and access control
-        const mockApiResponse = [
-          { id: 1, username: "member1", access_level: 30 },
-          { id: 2, username: "member2", access_level: 40 },
-        ];
-
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: jest.fn().mockResolvedValue(mockApiResponse),
-        } as any);
-
-        const tool = coreToolRegistry.get("list_project_members");
-        const result = await tool!.handler({ project_id: "123" });
-
-        const calledUrl = mockEnhancedFetch.mock.calls[0][0];
-        expect(calledUrl).toContain("/api/v4/projects/123/members?");
-        expect(result).toEqual(mockApiResponse);
-      });
-
-      it("should list project members with query filter", async () => {
-        // Test: Filter members by search query
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: jest.fn().mockResolvedValue([]),
-        } as any);
-
-        const tool = coreToolRegistry.get("list_project_members");
-        await tool!.handler({ project_id: "test/project", query: "john", per_page: 20 });
-
-        const calledUrl = mockEnhancedFetch.mock.calls[0][0];
-        expect(calledUrl).toContain("/api/v4/projects/test%2Fproject/members?");
-        expect(calledUrl).toContain("query=john");
-        expect(calledUrl).toContain("per_page=20");
-      });
-
-      it("should handle API error for list_project_members", async () => {
-        // Test: Error handling for project members
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: false,
-          status: 404,
-          statusText: "Not Found",
-        } as any);
-
-        const tool = coreToolRegistry.get("list_project_members");
-        await expect(tool!.handler({ project_id: "nonexistent" })).rejects.toThrow(
-          "GitLab API error: 404 Not Found"
-        );
-      });
-    });
-
-    describe("list_group_iterations Handler", () => {
-      it("should list group iterations with basic parameters", async () => {
-        // Test: List iterations/sprints for a group
-        // Why this matters: Agile planning and sprint tracking
-        const mockApiResponse = [
-          { id: 1, title: "Sprint 1", state: "current" },
-          { id: 2, title: "Sprint 2", state: "upcoming" },
-        ];
-
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: jest.fn().mockResolvedValue(mockApiResponse),
-        } as any);
-
-        const tool = coreToolRegistry.get("list_group_iterations");
-        const result = await tool!.handler({ group_id: "my-group" });
-
-        const calledUrl = mockEnhancedFetch.mock.calls[0][0];
-        expect(calledUrl).toContain("/api/v4/groups/my-group/iterations?");
-        expect(result).toEqual(mockApiResponse);
-      });
-
-      it("should list group iterations with all filters", async () => {
-        // Test: Filter iterations by state and search
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: jest.fn().mockResolvedValue([]),
-        } as any);
-
-        const tool = coreToolRegistry.get("list_group_iterations");
-        await tool!.handler({
-          group_id: "test/group",
-          state: "current",
-          search: "Sprint",
-          include_ancestors: true,
-          per_page: 10,
-        });
-
-        const calledUrl = mockEnhancedFetch.mock.calls[0][0];
-        expect(calledUrl).toContain("/api/v4/groups/test%2Fgroup/iterations?");
-        expect(calledUrl).toContain("state=current");
-        expect(calledUrl).toContain("search=Sprint");
-        expect(calledUrl).toContain("include_ancestors=true");
-        expect(calledUrl).toContain("per_page=10");
-      });
-
-      it("should handle API error for list_group_iterations", async () => {
-        // Test: Error handling for iterations (Premium feature)
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: false,
-          status: 403,
-          statusText: "Forbidden",
-        } as any);
-
-        const tool = coreToolRegistry.get("list_group_iterations");
-        await expect(tool!.handler({ group_id: "non-premium" })).rejects.toThrow(
-          "GitLab API error: 403 Forbidden"
-        );
-      });
-    });
-
-    describe("download_attachment Handler", () => {
-      it("should download attachment successfully", async () => {
-        // Test: Download file attachment from issue/MR
-        // Why this matters: Access uploaded files from GitLab
-        const mockContent = Buffer.from("file content here");
-
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          arrayBuffer: jest.fn().mockResolvedValue(mockContent.buffer),
-          headers: new Map([["content-type", "image/png"]]) as any,
-        } as any);
-
-        const tool = coreToolRegistry.get("download_attachment");
-        const result = await tool!.handler({
-          project_id: "123",
-          secret: "abc123secret",
-          filename: "screenshot.png",
-        });
-
-        const calledUrl = mockEnhancedFetch.mock.calls[0][0];
-        expect(calledUrl).toContain("/api/v4/projects/123/uploads/abc123secret/screenshot.png");
-        expect(result).toMatchObject({
-          filename: "screenshot.png",
-          content: expect.any(String), // base64 encoded
-          contentType: "image/png",
-        });
-      });
-
-      it("should handle missing content-type header", async () => {
-        // Test: Default content-type when header is missing
-        const mockContent = Buffer.from("binary data");
-
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          arrayBuffer: jest.fn().mockResolvedValue(mockContent.buffer),
-          headers: { get: () => null } as any,
-        } as any);
-
-        const tool = coreToolRegistry.get("download_attachment");
-        const result = (await tool!.handler({
-          project_id: "test/project",
-          secret: "xyz789",
-          filename: "data.bin",
-        })) as { contentType: string };
-
-        expect(result.contentType).toBe("application/octet-stream");
-      });
-
-      it("should handle API error for download_attachment", async () => {
-        // Test: Error handling for attachment download
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: false,
-          status: 404,
-          statusText: "Not Found",
-        } as any);
-
-        const tool = coreToolRegistry.get("download_attachment");
-        await expect(
-          tool!.handler({ project_id: "123", secret: "invalid", filename: "missing.png" })
-        ).rejects.toThrow("GitLab API error: 404 Not Found");
-      });
-    });
-
-    describe("create_branch Handler", () => {
-      it("should create branch successfully", async () => {
-        // Test: Create a new branch from existing ref
-        // Why this matters: Required before creating MRs
-        const mockApiResponse = {
-          name: "feature-branch",
-          commit: { id: "abc123", short_id: "abc", title: "Initial commit" },
-        };
-
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 201,
-          json: jest.fn().mockResolvedValue(mockApiResponse),
-        } as any);
-
-        const tool = coreToolRegistry.get("create_branch");
-        const result = await tool!.handler({
-          project_id: "123",
-          branch: "feature-branch",
-          ref: "main",
-        });
-
-        expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          "https://gitlab.example.com/api/v4/projects/123/repository/branches",
-          expect.objectContaining({
-            method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
-          })
-        );
-        expect(result).toEqual(mockApiResponse);
-      });
-
-      it("should handle API error for create_branch", async () => {
-        // Test: Error handling for branch creation
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: false,
-          status: 400,
-          statusText: "Bad Request",
-        } as any);
-
-        const tool = coreToolRegistry.get("create_branch");
-        await expect(
-          tool!.handler({ project_id: "123", branch: "invalid branch", ref: "main" })
-        ).rejects.toThrow("GitLab API error: 400 Bad Request");
-      });
-    });
-
-    describe("create_group Handler", () => {
+    describe("manage_namespace Handler", () => {
       it("should create group with basic parameters", async () => {
         // Test: Create a new GitLab group
         // Why this matters: Group creation for project organization
@@ -1701,8 +1453,9 @@ describe("Core Registry", () => {
           json: jest.fn().mockResolvedValue(mockApiResponse),
         } as any);
 
-        const tool = coreToolRegistry.get("create_group");
+        const tool = coreToolRegistry.get("manage_namespace");
         const result = await tool!.handler({
+          action: "create",
           name: "New Group",
           path: "new-group",
         });
@@ -1711,46 +1464,12 @@ describe("Core Registry", () => {
           "https://gitlab.example.com/api/v4/groups",
           expect.objectContaining({
             method: "POST",
-            headers: { "Content-Type": "application/x-www-form-urlencoded" },
           })
         );
         expect(result).toEqual(mockApiResponse);
       });
 
-      it("should create group with all optional parameters", async () => {
-        // Test: Create group with all optional settings
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 201,
-          json: jest.fn().mockResolvedValue({ id: 101, name: "Full Group" }),
-        } as any);
-
-        const tool = coreToolRegistry.get("create_group");
-        await tool!.handler({
-          name: "Full Group",
-          path: "full-group",
-          description: "A fully configured group",
-          visibility: "internal",
-          parent_id: 50,
-          lfs_enabled: true,
-          request_access_enabled: false,
-          default_branch_protection: 2,
-          avatar: "https://example.com/avatar.png",
-        });
-
-        const calledBody = (mockEnhancedFetch.mock.calls[0][1] as { body: string }).body;
-        expect(calledBody).toContain("name=Full+Group");
-        expect(calledBody).toContain("path=full-group");
-        expect(calledBody).toContain("description=A+fully+configured+group");
-        expect(calledBody).toContain("visibility=internal");
-        expect(calledBody).toContain("parent_id=50");
-        expect(calledBody).toContain("lfs_enabled=true");
-        expect(calledBody).toContain("request_access_enabled=false");
-        expect(calledBody).toContain("default_branch_protection=2");
-        expect(calledBody).toContain("avatar=https%3A%2F%2Fexample.com%2Favatar.png");
-      });
-
-      it("should handle API error for create_group", async () => {
+      it("should handle API error for manage_namespace create", async () => {
         // Test: Error handling for group creation
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: false,
@@ -1758,14 +1477,14 @@ describe("Core Registry", () => {
           statusText: "Conflict",
         } as any);
 
-        const tool = coreToolRegistry.get("create_group");
-        await expect(tool!.handler({ name: "Existing", path: "existing" })).rejects.toThrow(
-          "GitLab API error: 409 Conflict"
-        );
+        const tool = coreToolRegistry.get("manage_namespace");
+        await expect(
+          tool!.handler({ action: "create", name: "Existing", path: "existing" })
+        ).rejects.toThrow("GitLab API error: 409 Conflict");
       });
     });
 
-    describe("manage_repository Handler (additional edge cases)", () => {
+    describe("manage_project Handler (additional edge cases)", () => {
       it("should fork with all optional parameters", async () => {
         // Test: Fork with custom name, path, and namespace
         mockEnhancedFetch.mockResolvedValueOnce({
@@ -1778,7 +1497,7 @@ describe("Core Registry", () => {
           }),
         } as any);
 
-        const tool = coreToolRegistry.get("manage_repository");
+        const tool = coreToolRegistry.get("manage_project");
         const result = await tool!.handler({
           action: "fork",
           project_id: "original/project",
@@ -1811,7 +1530,7 @@ describe("Core Registry", () => {
           statusText: "Forbidden",
         } as any);
 
-        const tool = coreToolRegistry.get("manage_repository");
+        const tool = coreToolRegistry.get("manage_project");
         await expect(tool!.handler({ action: "fork", project_id: "private/repo" })).rejects.toThrow(
           "GitLab API error: 403 Forbidden"
         );
@@ -1825,7 +1544,7 @@ describe("Core Registry", () => {
           statusText: "Not Found",
         } as any);
 
-        const tool = coreToolRegistry.get("manage_repository");
+        const tool = coreToolRegistry.get("manage_project");
         await expect(
           tool!.handler({
             action: "create",
@@ -1851,7 +1570,7 @@ describe("Core Registry", () => {
           json: jest.fn().mockResolvedValue({ id: 999 }),
         } as any);
 
-        const tool = coreToolRegistry.get("manage_repository");
+        const tool = coreToolRegistry.get("manage_project");
         await expect(
           tool!.handler({
             action: "create",
@@ -1876,7 +1595,7 @@ describe("Core Registry", () => {
           json: jest.fn().mockResolvedValue({ id: 4000, name: "full-featured" }),
         } as any);
 
-        const tool = coreToolRegistry.get("manage_repository");
+        const tool = coreToolRegistry.get("manage_project");
         await tool!.handler({
           action: "create",
           name: "full-featured",

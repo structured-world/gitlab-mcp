@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { flexibleBoolean, requiredId, paginationFields } from "../utils";
-import { PaginationOptionsSchema } from "../shared";
 
 // ============================================================================
 // READ-ONLY RESPONSE SCHEMAS
@@ -273,112 +272,97 @@ export const BrowseEventsSchema = z.discriminatedUnion("action", [
 ]);
 
 // ============================================================================
-// KEPT AS-IS SCHEMAS (not consolidated - have unique purposes)
+// CONSOLIDATED CQRS SCHEMAS - browse_users, browse_todos
 // ============================================================================
 
-// Get Users Schema (kept as-is - complex smart search)
-export const GetUsersSchema = z
-  .object({
-    username: z.string().optional().describe("Exact username to search for. Case-sensitive."),
-    public_email: z.string().optional().describe("Find user by exact public email address."),
-    search: z.string().optional().describe("Partial text search across name, username, and email."),
-    active: flexibleBoolean
-      .optional()
-      .describe("Filter for active (true) or inactive (false) users."),
-    external: flexibleBoolean.optional().describe("Filter for external users with limited access."),
-    blocked: flexibleBoolean.optional().describe("Filter for blocked users."),
-    humans: flexibleBoolean.optional().describe("Filter for human users only (exclude bots)."),
-    created_after: z
-      .string()
-      .optional()
-      .describe("Filter users created after this date (ISO 8601)."),
-    created_before: z
-      .string()
-      .optional()
-      .describe("Filter users created before this date (ISO 8601)."),
-    exclude_active: flexibleBoolean.optional().describe("Exclude active users."),
-    exclude_external: flexibleBoolean.optional().describe("Exclude external users."),
-    exclude_humans: flexibleBoolean.optional().describe("Exclude human users."),
-    exclude_internal: flexibleBoolean.optional().describe("Exclude internal system users."),
-    without_project_bots: flexibleBoolean.optional().describe("Exclude project bot users."),
-    smart_search: flexibleBoolean
-      .optional()
-      .describe(
-        "Enable smart search with auto-detection and transliteration. Auto-enabled for search parameter."
-      ),
-  })
-  .merge(PaginationOptionsSchema);
+// --- Shared fields for browse_users ---
+const userSearchFields = {
+  active: flexibleBoolean
+    .optional()
+    .describe("Filter for active (true) or inactive (false) users."),
+  external: flexibleBoolean.optional().describe("Filter for external users with limited access."),
+  blocked: flexibleBoolean.optional().describe("Filter for blocked users."),
+  humans: flexibleBoolean.optional().describe("Filter for human users only (exclude bots)."),
+  created_after: z.string().optional().describe("Filter users created after this date (ISO 8601)."),
+  created_before: z
+    .string()
+    .optional()
+    .describe("Filter users created before this date (ISO 8601)."),
+  exclude_active: flexibleBoolean.optional().describe("Exclude active users."),
+  exclude_external: flexibleBoolean.optional().describe("Exclude external users."),
+  exclude_humans: flexibleBoolean.optional().describe("Exclude human users."),
+  exclude_internal: flexibleBoolean.optional().describe("Exclude internal system users."),
+  without_project_bots: flexibleBoolean.optional().describe("Exclude project bot users."),
+};
 
-// List Project Members (kept as-is - different scope)
-export const ListProjectMembersSchema = z
-  .object({
-    project_id: requiredId.describe("Project ID or URL-encoded path."),
-    query: z.string().optional().describe("Search members by name or username."),
-    user_ids: z.array(z.string()).optional().describe("Filter to specific user IDs."),
-  })
-  .merge(PaginationOptionsSchema);
-
-// List Group Iterations (kept as-is - Premium feature)
-export const ListGroupIterationsSchema = z
-  .object({
-    group_id: requiredId.describe("Group ID or URL-encoded path."),
-    state: z
-      .enum(["opened", "upcoming", "current", "closed", "all"])
-      .optional()
-      .describe("Filter by iteration state."),
-    search: z.string().optional().describe("Search iterations by title."),
-    include_ancestors: flexibleBoolean
-      .optional()
-      .describe("Include iterations from parent groups."),
-  })
-  .merge(PaginationOptionsSchema);
-
-// Download Attachment (kept as-is - binary operation)
-export const DownloadAttachmentSchema = z.object({
-  project_id: requiredId.describe("Project ID or URL-encoded path."),
-  secret: z.string().describe("Security token from the attachment URL."),
-  filename: z.string().describe("Original filename of the attachment."),
+// --- Action: search ---
+const SearchUsersSchema = z.object({
+  action: z.literal("search").describe("Search users with smart pattern detection"),
+  username: z.string().optional().describe("Exact username to search for. Case-sensitive."),
+  public_email: z.string().optional().describe("Find user by exact public email address."),
+  search: z.string().optional().describe("Partial text search across name, username, and email."),
+  smart_search: flexibleBoolean
+    .optional()
+    .describe(
+      "Enable smart search with auto-detection and transliteration. Auto-enabled for search parameter."
+    ),
+  ...userSearchFields,
+  ...paginationFields(),
 });
 
-// Todos (read-only listing)
-export const ListTodosSchema = z
-  .object({
-    state: z
-      .enum(["pending", "done"])
-      .optional()
-      .describe("Filter todos by state: pending=active, done=completed."),
-    action: z
-      .enum([
-        "assigned",
-        "mentioned",
-        "build_failed",
-        "marked",
-        "approval_required",
-        "unmergeable",
-        "directly_addressed",
-        "merge_train_removed",
-        "review_requested",
-        "member_access_requested",
-        "review_submitted",
-      ])
-      .optional()
-      .describe("Filter by action type."),
-    type: z
-      .enum([
-        "Issue",
-        "MergeRequest",
-        "Commit",
-        "Epic",
-        "DesignManagement::Design",
-        "AlertManagement::Alert",
-      ])
-      .optional()
-      .describe("Filter by target type."),
-    project_id: z.number().optional().describe("Filter by project ID."),
-    group_id: z.number().optional().describe("Filter by group ID."),
-    author_id: z.number().optional().describe("Filter by author ID."),
-  })
-  .merge(PaginationOptionsSchema);
+// --- Action: get ---
+const GetUserSchema = z.object({
+  action: z.literal("get").describe("Get a specific user by ID"),
+  user_id: requiredId.describe("User ID to retrieve."),
+});
+
+// --- Discriminated union combining all actions ---
+export const BrowseUsersSchema = z.discriminatedUnion("action", [SearchUsersSchema, GetUserSchema]);
+
+// browse_todos: discriminated union schema for list action
+
+// --- Action: list ---
+const ListTodosActionSchema = z.object({
+  action: z.literal("list").describe("List your pending and completed todos"),
+  state: z
+    .enum(["pending", "done"])
+    .optional()
+    .describe("Filter todos by state: pending=active, done=completed."),
+  todo_action: z
+    .enum([
+      "assigned",
+      "mentioned",
+      "build_failed",
+      "marked",
+      "approval_required",
+      "unmergeable",
+      "directly_addressed",
+      "merge_train_removed",
+      "review_requested",
+      "member_access_requested",
+      "review_submitted",
+    ])
+    .optional()
+    .describe("Filter by action type."),
+  type: z
+    .enum([
+      "Issue",
+      "MergeRequest",
+      "Commit",
+      "Epic",
+      "DesignManagement::Design",
+      "AlertManagement::Alert",
+    ])
+    .optional()
+    .describe("Filter by target type."),
+  project_id: z.number().optional().describe("Filter by project ID."),
+  group_id: z.number().optional().describe("Filter by group ID."),
+  author_id: z.number().optional().describe("Filter by author ID."),
+  ...paginationFields(),
+});
+
+// --- Discriminated union combining all actions ---
+export const BrowseTodosSchema = z.discriminatedUnion("action", [ListTodosActionSchema]);
 
 // ============================================================================
 // TYPE EXPORTS
@@ -393,10 +377,5 @@ export type BrowseProjectsOptions = z.infer<typeof BrowseProjectsSchema>;
 export type BrowseNamespacesOptions = z.infer<typeof BrowseNamespacesSchema>;
 export type BrowseCommitsOptions = z.infer<typeof BrowseCommitsSchema>;
 export type BrowseEventsOptions = z.infer<typeof BrowseEventsSchema>;
-
-// Kept as-is types
-export type GetUsersOptions = z.infer<typeof GetUsersSchema>;
-export type ListProjectMembersOptions = z.infer<typeof ListProjectMembersSchema>;
-export type ListGroupIterationsOptions = z.infer<typeof ListGroupIterationsSchema>;
-export type DownloadAttachmentOptions = z.infer<typeof DownloadAttachmentSchema>;
-export type ListTodosOptions = z.infer<typeof ListTodosSchema>;
+export type BrowseUsersOptions = z.infer<typeof BrowseUsersSchema>;
+export type BrowseTodosOptions = z.infer<typeof BrowseTodosSchema>;

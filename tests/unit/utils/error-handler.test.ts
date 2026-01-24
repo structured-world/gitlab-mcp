@@ -65,11 +65,11 @@ describe("Error Handler", () => {
           message: "403 Forbidden",
         };
 
-        // list_group_iterations is a Premium-only feature
-        const result = handleGitLabError(error, "list_group_iterations", "list");
+        // browse_iterations is a Premium-only feature
+        const result = handleGitLabError(error, "browse_iterations", "list");
 
         expect(result.error_code).toBe("TIER_RESTRICTED");
-        expect(result.tool).toBe("list_group_iterations");
+        expect(result.tool).toBe("browse_iterations");
         expect(result.action).toBe("list");
         if (result.error_code === "TIER_RESTRICTED") {
           expect(result.http_status).toBe(403);
@@ -104,7 +104,7 @@ describe("Error Handler", () => {
         };
 
         // Iterations have alternatives
-        const result = handleGitLabError(error, "list_group_iterations", "list");
+        const result = handleGitLabError(error, "browse_iterations", "list");
 
         expect(result.error_code).toBe("TIER_RESTRICTED");
         if (result.error_code === "TIER_RESTRICTED") {
@@ -353,7 +353,7 @@ describe("Error Handler", () => {
           message: "404 User Not Found",
         };
 
-        const result = handleGitLabError(error, "get_users", "get");
+        const result = handleGitLabError(error, "browse_users", "get");
 
         if (result.error_code === "NOT_FOUND") {
           expect(result.resource_type).toBe("user");
@@ -522,7 +522,7 @@ describe("Error Handler", () => {
         };
 
         // Should fall back to PERMISSION_DENIED when ConnectionManager unavailable
-        const result = handleGitLabError(error, "list_group_iterations", "list");
+        const result = handleGitLabError(error, "browse_iterations", "list");
 
         expect(result.error_code).toBe("PERMISSION_DENIED");
 

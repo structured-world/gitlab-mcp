@@ -11,7 +11,6 @@ File browsing, commits, branches, tags, and repository management.
 | `browse_commits` | Query | Commit history, details, diffs |
 | `browse_refs` | Query | Branches, tags, protection rules |
 | `manage_ref` | Command | Create/delete/protect branches and tags |
-| `create_branch` | Command | Create a new branch (standalone tool) |
 | `browse_releases` | Query | Release history and assets |
 | `manage_release` | Command | Create releases with assets |
 

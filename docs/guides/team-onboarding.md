@@ -6,7 +6,7 @@ Get your team started with GitLab MCP — from installation to daily workflows.
 
 This guide helps team leads onboard developers to use GitLab MCP effectively. It covers installation, access setup, and learning the key workflows.
 
-**Tools used:** `browse_projects`, `list_project_members`, `manage_member`, `browse_merge_requests`, `browse_pipelines`
+**Tools used:** `browse_projects`, `browse_members`, `manage_member`, `browse_merge_requests`, `browse_pipelines`
 
 ## Step 1: Install GitLab MCP
 
@@ -86,8 +86,9 @@ Access levels:
 > "Show me all members of `my-org/api`"
 
 ```json
-// list_project_members
+// browse_members
 {
+  "action": "list_project",
   "project_id": "my-org/api",
   "per_page": 50
 }

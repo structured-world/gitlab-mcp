@@ -468,7 +468,7 @@ function detectTierRestriction(
   }
 
   // Check for iterations
-  if (tool === "list_group_iterations") {
+  if (tool === "browse_iterations") {
     if (!connectionManager.isFeatureAvailable("iterations")) {
       return createRestrictionInfo("iterations", currentTier);
     }

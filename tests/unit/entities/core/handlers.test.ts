@@ -386,13 +386,13 @@ describe("Core Registry Handlers", () => {
   });
 
   // ==========================================
-  // CONSOLIDATED TOOL: manage_repository
-  // Replaces: create_repository, fork_repository
+  // CONSOLIDATED TOOL: manage_project
+  // Replaces: create_repository, fork_repository, manage_repository
   // ==========================================
-  describe("manage_repository handler", () => {
+  describe("manage_project handler", () => {
     describe("action: create", () => {
       it("should create repository with correct API call", async () => {
-        const handler = coreToolRegistry.get("manage_repository")?.handler;
+        const handler = coreToolRegistry.get("manage_project")?.handler;
 
         // Mock project existence check (step 1) - project doesn't exist
         mockEnhancedFetch.mockResolvedValueOnce({
@@ -427,7 +427,7 @@ describe("Core Registry Handlers", () => {
       });
 
       it("should handle repository creation failure", async () => {
-        const handler = coreToolRegistry.get("manage_repository")?.handler;
+        const handler = coreToolRegistry.get("manage_project")?.handler;
 
         // Mock project existence check (step 1) - project doesn't exist
         mockEnhancedFetch.mockResolvedValueOnce({
@@ -453,7 +453,7 @@ describe("Core Registry Handlers", () => {
 
     describe("action: fork", () => {
       it("should fork repository with correct parameters", async () => {
-        const handler = coreToolRegistry.get("manage_repository")?.handler;
+        const handler = coreToolRegistry.get("manage_project")?.handler;
 
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: true,
@@ -484,7 +484,7 @@ describe("Core Registry Handlers", () => {
       });
 
       it("should handle fork permission errors", async () => {
-        const handler = coreToolRegistry.get("manage_repository")?.handler;
+        const handler = coreToolRegistry.get("manage_project")?.handler;
 
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: false,
@@ -503,159 +503,22 @@ describe("Core Registry Handlers", () => {
   });
 
   // ==========================================
-  // KEPT TOOLS: get_users
+  // CONSOLIDATED TOOL: browse_users
+  // Replaces: get_users
   // ==========================================
-  describe("get_users handler", () => {
-    it("should make correct API call for getting users", async () => {
-      const handler = coreToolRegistry.get("get_users")?.handler;
+  describe("browse_users handler", () => {
+    it("should make correct API call for searching users", async () => {
+      const handler = coreToolRegistry.get("browse_users")?.handler;
       mockEnhancedFetch.mockResolvedValueOnce({
         ok: true,
         json: jest.fn().mockResolvedValue([{ id: 1, username: "testuser", name: "Test User" }]),
       } as any);
 
-      await handler?.({ username: "testuser" });
+      await handler?.({ action: "search", username: "testuser", smart_search: false });
 
-      expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        "https://test-gitlab.com/api/v4/users?username=testuser&per_page=20"
-      );
-    });
-  });
-
-  // ==========================================
-  // KEPT TOOLS: list_project_members
-  // ==========================================
-  describe("list_project_members handler", () => {
-    it("should list project members correctly", async () => {
-      const handler = coreToolRegistry.get("list_project_members")?.handler;
-      mockEnhancedFetch.mockResolvedValueOnce({
-        ok: true,
-        json: jest.fn().mockResolvedValue([
-          { id: 1, username: "user1", access_level: 40 },
-          { id: 2, username: "user2", access_level: 30 },
-        ]),
-      } as any);
-
-      await handler?.({ project_id: "123", per_page: 25 });
-
-      expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        "https://test-gitlab.com/api/v4/projects/123/members?per_page=25"
-      );
-    });
-  });
-
-  // ==========================================
-  // KEPT TOOLS: list_group_iterations
-  // ==========================================
-  describe("list_group_iterations handler", () => {
-    it("should list group iterations", async () => {
-      const handler = coreToolRegistry.get("list_group_iterations")?.handler;
-
-      mockEnhancedFetch.mockResolvedValueOnce({
-        ok: true,
-        json: jest.fn().mockResolvedValue([
-          { id: 1, title: "Sprint 1", state: "opened" },
-          { id: 2, title: "Sprint 2", state: "closed" },
-        ]),
-      } as any);
-
-      await handler?.({ group_id: "789" });
-
-      expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        "https://test-gitlab.com/api/v4/groups/789/iterations?per_page=20"
-      );
-    });
-  });
-
-  // ==========================================
-  // KEPT TOOLS: download_attachment
-  // ==========================================
-  describe("download_attachment handler", () => {
-    it("should download attachment with correct URL", async () => {
-      const handler = coreToolRegistry.get("download_attachment")?.handler;
-
-      const mockBuffer = Buffer.from("file content");
-      mockEnhancedFetch.mockResolvedValueOnce({
-        ok: true,
-        arrayBuffer: jest.fn().mockResolvedValue(mockBuffer),
-        headers: new Map([["content-type", "application/pdf"]]),
-      } as any);
-
-      await handler?.({ project_id: "123", secret: "abc123", filename: "attachment.pdf" });
-
-      expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        "https://test-gitlab.com/api/v4/projects/123/uploads/abc123/attachment.pdf"
-      );
-    });
-  });
-
-  // ==========================================
-  // KEPT TOOLS: create_branch
-  // ==========================================
-  describe("create_branch handler", () => {
-    it("should create branch with correct API call", async () => {
-      const handler = coreToolRegistry.get("create_branch")?.handler;
-
-      mockEnhancedFetch.mockResolvedValueOnce({
-        ok: true,
-        json: jest.fn().mockResolvedValue({
-          name: "feature-branch",
-          commit: { id: "abc123", message: "Initial commit" },
-          protected: false,
-        }),
-      } as any);
-
-      await handler?.({
-        project_id: "123",
-        branch: "feature-branch",
-        ref: "main",
-      });
-
-      expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        "https://test-gitlab.com/api/v4/projects/123/repository/branches",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body: "branch=feature-branch&ref=main",
-        }
-      );
-    });
-
-    it("should handle branch creation conflicts", async () => {
-      const handler = coreToolRegistry.get("create_branch")?.handler;
-
-      mockEnhancedFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 409,
-        statusText: "Conflict",
-      } as any);
-
-      await expect(
-        handler?.({
-          project_id: "123",
-          branch: "existing-branch",
-          ref: "main",
-        })
-      ).rejects.toThrow("GitLab API error: 409 Conflict");
-    });
-
-    it("should handle invalid reference errors", async () => {
-      const handler = coreToolRegistry.get("create_branch")?.handler;
-
-      mockEnhancedFetch.mockResolvedValueOnce({
-        ok: false,
-        status: 400,
-        statusText: "Bad Request",
-      } as any);
-
-      await expect(
-        handler?.({
-          project_id: "123",
-          branch: "new-branch",
-          ref: "nonexistent-ref",
-        })
-      ).rejects.toThrow("GitLab API error: 400 Bad Request");
+      const calledUrl = mockEnhancedFetch.mock.calls[0][0];
+      expect(calledUrl).toContain("/api/v4/users?");
+      expect(calledUrl).toContain("username=testuser");
     });
   });
 
@@ -696,26 +559,18 @@ describe("Core Registry Handlers", () => {
         { handler: "browse_namespaces", invalidArgs: { action: "get" } },
         // browse_namespaces verify: requires namespace_id
         { handler: "browse_namespaces", invalidArgs: { action: "verify" } },
-        // list_project_members: requires project_id
-        { handler: "list_project_members", invalidArgs: {} },
         // browse_commits: requires project_id
         { handler: "browse_commits", invalidArgs: { action: "list" } },
         // browse_commits get: requires sha
         { handler: "browse_commits", invalidArgs: { action: "get", project_id: "123" } },
         // browse_commits diff: requires sha
         { handler: "browse_commits", invalidArgs: { action: "diff", project_id: "123" } },
-        // list_group_iterations: requires group_id
-        { handler: "list_group_iterations", invalidArgs: {} },
-        // download_attachment: requires project_id/secret/filename
-        { handler: "download_attachment", invalidArgs: {} },
         // browse_events project: requires project_id
         { handler: "browse_events", invalidArgs: { action: "project" } },
-        // manage_repository create: requires name
-        { handler: "manage_repository", invalidArgs: { action: "create" } },
-        // manage_repository fork: requires project_id
-        { handler: "manage_repository", invalidArgs: { action: "fork" } },
-        // create_branch: requires branch or ref
-        { handler: "create_branch", invalidArgs: { project_id: "123" } },
+        // manage_project create: requires name
+        { handler: "manage_project", invalidArgs: { action: "create" } },
+        // manage_project fork: requires project_id
+        { handler: "manage_project", invalidArgs: { action: "fork" } },
       ];
 
       for (const testCase of testCases) {

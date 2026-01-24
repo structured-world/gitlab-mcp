@@ -31,7 +31,7 @@ export default defineConfig({
   ignoreDeadLinks: [/\/downloads\/.+\.mcpb$/],
 
   sitemap: {
-    hostname: "https://gitlab-mcp.sw.foundation",
+    hostname,
   },
 
   head: [

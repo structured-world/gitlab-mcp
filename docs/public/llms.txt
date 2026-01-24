@@ -118,6 +118,6 @@ USE_VARIABLES, USE_WEBHOOKS, USE_SNIPPETS, USE_INTEGRATIONS,
 USE_GITLAB_WIKI, USE_MILESTONE, USE_RELEASES, USE_REFS,
 USE_MEMBERS, USE_SEARCH
 
-[Full documentation: https://structured-world.github.io/gitlab-mcp/]
+[Full documentation: https://gitlab-mcp.sw.foundation/]
 [Source code: https://github.com/structured-world/gitlab-mcp]
 [npm package: https://www.npmjs.com/package/@structured-world/gitlab-mcp]

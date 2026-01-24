@@ -43,6 +43,13 @@ export interface GitLabWidget {
     id: string;
     [key: string]: unknown;
   };
+  linkedItems?: {
+    nodes?: Array<{
+      linkType?: string;
+      workItem?: { id: string; [key: string]: unknown };
+      [key: string]: unknown;
+    }>;
+  };
   [key: string]: unknown;
 }
 
@@ -247,6 +254,21 @@ export function cleanWorkItemResponse(workItem: GitLabWorkItem): GitLabWorkItem 
         cleanedWidget.parent = {
           ...widget.parent,
           id: extractSimpleId(widget.parent.id),
+        };
+      }
+
+      // Clean linked item IDs and normalize linkType in LINKED_ITEMS widget
+      if (widget.type === "LINKED_ITEMS" && widget.linkedItems?.nodes) {
+        cleanedWidget.linkedItems = {
+          ...widget.linkedItems,
+          nodes: widget.linkedItems.nodes.map(node => ({
+            ...node,
+            // Map GraphQL RELATED back to user-facing RELATES_TO
+            linkType: node.linkType === "RELATED" ? "RELATES_TO" : node.linkType,
+            workItem: node.workItem
+              ? { ...node.workItem, id: extractSimpleId(node.workItem.id) }
+              : node.workItem,
+          })),
         };
       }
 

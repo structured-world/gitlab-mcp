@@ -25,7 +25,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server that connects
 }
 ```
 
-**Requirements:** Node.js >= 24.0.0
+**Requirements:** Node.js >= 24
 
 ## Highlights
 

@@ -1113,14 +1113,19 @@ describe("inject-tool-refs", () => {
         return [] as never;
       });
 
+      const templateContent =
+        "# Home\n\nWe have __TOOL_COUNT__ tools across __ENTITY_COUNT__ entities (__READONLY_TOOL_COUNT__ read-only).";
+
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
-        if (pathStr.endsWith("index.md.in")) {
-          return "# Home\n\nWe have __TOOL_COUNT__ tools across __ENTITY_COUNT__ entities (__READONLY_TOOL_COUNT__ read-only).";
+        // After copyFileSync, readFileSync is called on the output path
+        if (pathStr.endsWith("index.md.in") || pathStr.endsWith("index.md")) {
+          return templateContent;
         }
         return "";
       });
 
+      mockedFs.copyFileSync.mockImplementation(() => undefined);
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
       main();
@@ -1182,17 +1187,22 @@ describe("inject-tool-refs", () => {
         return [] as never;
       });
 
+      const mdTemplate = "**__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types";
+      const txtTemplate = "> Provides __TOOL_COUNT__ tools (__READONLY_TOOL_COUNT__ read-only)";
+
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
-        if (pathStr.endsWith("index.md.in")) {
-          return "**__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types";
+        // After copyFileSync, readFileSync is called on the output path
+        if (pathStr.endsWith("index.md.in") || pathStr.endsWith("index.md")) {
+          return mdTemplate;
         }
-        if (pathStr.endsWith("llms.txt.in")) {
-          return "> Provides __TOOL_COUNT__ tools (__READONLY_TOOL_COUNT__ read-only)";
+        if (pathStr.endsWith("llms.txt.in") || pathStr.endsWith("llms.txt")) {
+          return txtTemplate;
         }
         return "";
       });
 
+      mockedFs.copyFileSync.mockImplementation(() => undefined);
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
       main();

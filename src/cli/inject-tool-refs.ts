@@ -276,12 +276,8 @@ export function main(): void {
           (entry.name.endsWith(".md.in") || entry.name.endsWith(".txt.in"))
         ) {
           const outputPath = fullPath.replace(/\.in$/, "");
-          const content = fs.readFileSync(fullPath, "utf8");
-          const result = content
-            .replace(/__TOOL_COUNT__/g, String(counts.toolCount))
-            .replace(/__ENTITY_COUNT__/g, String(counts.entityCount))
-            .replace(/__READONLY_TOOL_COUNT__/g, String(counts.readonlyToolCount));
-          fs.writeFileSync(outputPath, result, "utf8");
+          fs.copyFileSync(fullPath, outputPath);
+          replaceCountPlaceholders(outputPath, counts);
           templateCount++;
           const relPath = path.relative(projectRoot, outputPath);
           console.log(`  Generated: ${relPath} (from ${entry.name})`);

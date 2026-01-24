@@ -18,12 +18,14 @@ Find and inspect merge requests.
 
 ### Actions
 
+<!-- @autogen:tool browse_merge_requests -->
 | Action | Description |
 |--------|-------------|
-| `list` | Search MRs with filters (state, author, reviewer, labels, dates) |
-| `get` | Get single MR details by IID or branch name |
-| `diffs` | View file changes in an MR |
-| `compare` | Compare any two branches or commits |
+| `list` | List merge requests with filtering |
+| `get` | Get single MR by IID or branch name |
+| `diffs` | Get file changes/diffs for an MR |
+| `compare` | Compare two branches or commits |
+<!-- @autogen:end -->
 
 ### Examples
 
@@ -90,14 +92,16 @@ Create and manage merge requests.
 
 ### Actions
 
+<!-- @autogen:tool manage_merge_request -->
 | Action | Description |
 |--------|-------------|
-| `create` | Create a new MR |
-| `update` | Modify title, description, assignees, labels |
-| `merge` | Merge an approved MR |
-| `approve` | Approve an MR |
-| `unapprove` | Remove your approval |
-| `get_approval_state` | Check approval status |
+| `create` | Create a new merge request |
+| `update` | Update an existing merge request |
+| `merge` | Merge an approved merge request |
+| `approve` | Approve a merge request |
+| `unapprove` | Remove your approval from a merge request |
+| `get_approval_state` | Get current approval status and rules |
+<!-- @autogen:end -->
 
 ### Examples
 
@@ -142,16 +146,18 @@ Add comments, suggestions, and manage discussion threads.
 
 ### Actions
 
+<!-- @autogen:tool manage_mr_discussion -->
 | Action | Description |
 |--------|-------------|
-| `comment` | Add a general comment |
-| `thread` | Start a new discussion thread (optionally on a diff line) |
-| `reply` | Reply to an existing thread |
-| `resolve` | Resolve or unresolve a thread |
-| `suggest` | Add a code suggestion |
-| `apply_suggestion` | Apply a single suggestion |
-| `apply_suggestions` | Batch apply multiple suggestions |
-| `update` | Edit a note |
+| `comment` | Add a comment to an issue or merge request |
+| `thread` | Start a new discussion thread on an MR |
+| `reply` | Reply to an existing discussion thread |
+| `update` | Update an existing note/comment |
+| `apply_suggestion` | Apply a single code suggestion from a review |
+| `apply_suggestions` | Batch apply multiple code suggestions |
+| `resolve` | Resolve or unresolve a discussion thread |
+| `suggest` | Create a code suggestion on a diff line |
+<!-- @autogen:end -->
 
 ### Examples
 
@@ -203,13 +209,15 @@ Prepare all review comments before publishing them at once.
 
 ### Actions
 
+<!-- @autogen:tool manage_draft_notes -->
 | Action | Description |
 |--------|-------------|
-| `create` | Create a draft note |
-| `update` | Modify a draft |
-| `publish` | Publish a single draft |
-| `publish_all` | Publish all drafts at once |
-| `delete` | Remove a draft |
+| `create` | Create a new draft note |
+| `update` | Update an existing draft note |
+| `publish` | Publish a single draft note |
+| `publish_all` | Publish all draft notes at once |
+| `delete` | Delete a draft note |
+<!-- @autogen:end -->
 
 ### Workflow
 

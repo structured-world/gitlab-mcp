@@ -215,7 +215,7 @@ See [role-based prompts](/prompts/by-role/developer) for workflows tailored to e
 
 ## Detailed Documentation
 
-For complete parameter documentation, action matrices, and example requests, see the auto-generated [TOOLS.md](https://github.com/structured-world/gitlab-mcp/blob/main/docs/TOOLS.md).
+For complete parameter documentation, action matrices, and example requests, see the auto-generated [Full API Reference](/TOOLS).
 
 Generate locally:
 

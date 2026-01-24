@@ -18,10 +18,13 @@ File browsing, commits, branches, tags, and repository management.
 
 ### browse_files
 
+<!-- @autogen:tool browse_files -->
 | Action | Description |
 |--------|-------------|
-| `tree` | List directory contents (paginated) |
-| `content` | Read file content |
+| `tree` | List files and folders in a directory |
+| `content` | Read file contents |
+| `download_attachment` | Download a file attachment from issues/MRs |
+<!-- @autogen:end -->
 
 ::: code-group
 
@@ -58,11 +61,13 @@ File browsing, commits, branches, tags, and repository management.
 
 ### manage_files
 
+<!-- @autogen:tool manage_files -->
 | Action | Description |
 |--------|-------------|
-| `single` | Create or update one file |
+| `single` | Create or update a single file |
 | `batch` | Commit multiple files atomically |
-| `upload` | Upload markdown attachments |
+| `upload` | Upload a file as markdown attachment |
+<!-- @autogen:end -->
 
 ::: code-group
 
@@ -102,11 +107,13 @@ File browsing, commits, branches, tags, and repository management.
 
 ### browse_commits
 
+<!-- @autogen:tool browse_commits -->
 | Action | Description |
 |--------|-------------|
-| `list` | Browse commit history with filters |
-| `get` | Get commit metadata and stats |
-| `diff` | View code changes in a commit |
+| `list` | Browse commit history |
+| `get` | Retrieve commit details |
+| `diff` | Get code changes in a commit |
+<!-- @autogen:end -->
 
 ::: code-group
 
@@ -154,15 +161,17 @@ File browsing, commits, branches, tags, and repository management.
 
 ### browse_refs
 
+<!-- @autogen:tool browse_refs -->
 | Action | Description |
 |--------|-------------|
-| `list_branches` | List all branches |
-| `get_branch` | Get branch details |
-| `list_tags` | List all tags |
-| `get_tag` | Get tag details |
-| `list_protected_branches` | Show protection rules |
-| `get_protected_branch` | Get specific protection rules |
-| `list_protected_tags` | Show tag protection |
+| `list_branches` | List all repository branches with optional search |
+| `get_branch` | Get details of a specific branch |
+| `list_tags` | List all repository tags |
+| `get_tag` | Get details of a specific tag |
+| `list_protected_branches` | List all protected branches with their protection rules |
+| `get_protected_branch` | Get protection rules for a specific branch |
+| `list_protected_tags` | List all protected tags with their protection rules |
+<!-- @autogen:end -->
 
 ::: code-group
 
@@ -194,17 +203,19 @@ File browsing, commits, branches, tags, and repository management.
 
 ### manage_ref
 
+<!-- @autogen:tool manage_ref -->
 | Action | Description |
 |--------|-------------|
-| `create_branch` | Create a new branch |
-| `delete_branch` | Delete a branch |
-| `protect_branch` | Add branch protection rules |
-| `unprotect_branch` | Remove branch protection |
-| `update_branch_protection` | Modify existing protection rules |
-| `create_tag` | Create a tag |
-| `delete_tag` | Delete a tag |
-| `protect_tag` | Add tag protection (Premium) |
-| `unprotect_tag` | Remove tag protection (Premium) |
+| `create_branch` | Create a new branch from an existing ref |
+| `delete_branch` | Delete a branch from the repository |
+| `protect_branch` | Add protection rules to a branch or pattern |
+| `unprotect_branch` | Remove protection from a branch |
+| `update_branch_protection` | Update protection rules for a branch |
+| `create_tag` | Create a new tag in the repository |
+| `delete_tag` | Delete a tag from the repository |
+| `protect_tag` | Add protection rules to a tag pattern (Premium) |
+| `unprotect_tag` | Remove protection from a tag pattern (Premium) |
+<!-- @autogen:end -->
 
 ::: code-group
 

@@ -130,7 +130,10 @@ export default defineConfig({
       "/tools/": [
         {
           text: "Tool Reference",
-          items: [{ text: "Overview", link: "/tools/" }],
+          items: [
+            { text: "Overview", link: "/tools/" },
+            { text: "Full API Reference", link: "/TOOLS" },
+          ],
         },
         {
           text: "By Use-Case",

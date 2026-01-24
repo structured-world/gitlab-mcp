@@ -8,8 +8,10 @@ on:
       - 'package.json'
       - 'yarn.lock'
       - '.github/workflows/docs.yml'
-  release:
-    types: [published]
+  workflow_run:
+    workflows: ["CI/CD Pipeline"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -24,6 +26,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    if: >
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,6 +43,14 @@ jobs:
 
       - name: Install dependencies
         run: yarn install --immutable
+
+      - name: Build project
+        run: yarn build
+
+      - name: Generate dynamic documentation
+        run: |
+          yarn list-tools --export --toc > docs/TOOLS.md
+          yarn inject-tool-refs
 
       - name: Download latest MCPB bundle
         run: |

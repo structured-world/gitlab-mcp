@@ -113,11 +113,49 @@ describe("ConnectionManager Enhanced Tests", () => {
 
       expect(MockedGraphQLClient).toHaveBeenCalledWith("https://test-gitlab.com/api/graphql", {
         headers: {
-          Authorization: "Bearer test-token-123",
+          "PRIVATE-TOKEN": "test-token-123",
         },
       });
       expect(mockVersionDetector.detectInstance).toHaveBeenCalled();
       expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalled();
+    });
+
+    it("should initialize with empty headers in OAuth mode", async () => {
+      // OAuth mode: auth is handled per-request via enhancedFetch, not via static headers
+      jest.resetModules();
+      jest.doMock("../../../src/config", () => ({
+        GITLAB_BASE_URL: "https://test-gitlab.com",
+        GITLAB_TOKEN: "test-token-123",
+      }));
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: () => true,
+      }));
+      jest.doMock("../../../src/logger", () => ({
+        logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
+      }));
+      jest.doMock("../../../src/graphql/client");
+      jest.doMock("../../../src/services/GitLabVersionDetector");
+      jest.doMock("../../../src/services/SchemaIntrospector");
+
+      const {
+        ConnectionManager: OAuthConnectionManager,
+      } = require("../../../src/services/ConnectionManager");
+      const { GraphQLClient: OAuthGraphQLClient } = require("../../../src/graphql/client");
+
+      // Mock global fetch for version detection attempt
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+      }) as unknown as typeof fetch;
+
+      const manager = OAuthConnectionManager.getInstance();
+      await manager.initialize();
+
+      // In OAuth mode, GraphQLClient should receive empty headers
+      expect(OAuthGraphQLClient).toHaveBeenCalledWith("https://test-gitlab.com/api/graphql", {});
+
+      manager.reset();
+      jest.resetModules();
     });
 
     it("should handle multiple initialization calls gracefully", async () => {

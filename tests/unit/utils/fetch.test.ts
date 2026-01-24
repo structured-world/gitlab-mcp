@@ -45,7 +45,10 @@ jest.mock("../../../src/oauth/index", () => ({
 
 // Import the actual implementation (not mocked)
 const fetchModule = jest.requireActual("../../../src/utils/fetch");
-const { enhancedFetch, createFetchOptions, DEFAULT_HEADERS } = fetchModule;
+const { enhancedFetch, createFetchOptions, DEFAULT_HEADERS, getAuthHeaders } = fetchModule;
+
+// Import mocked OAuth module to control behavior per test
+const { isOAuthEnabled, getTokenContext } = require("../../../src/oauth/index");
 
 describe("Enhanced Fetch Utilities", () => {
   let mockFetch: jest.MockedFunction<typeof fetch>;
@@ -124,7 +127,7 @@ describe("Enhanced Fetch Utilities", () => {
             "User-Agent": "GitLab MCP Server",
             "Content-Type": "application/json",
             Accept: "application/json",
-            Authorization: "Bearer test-token",
+            "PRIVATE-TOKEN": "test-token",
           }),
         })
       );
@@ -145,7 +148,7 @@ describe("Enhanced Fetch Utilities", () => {
           headers: expect.objectContaining({
             "User-Agent": "GitLab MCP Server",
             "X-Custom-Header": "custom-value",
-            Authorization: "Bearer test-token",
+            "PRIVATE-TOKEN": "test-token",
           }),
         })
       );
@@ -360,8 +363,8 @@ describe("Enhanced Fetch Utilities", () => {
   });
 
   describe("Edge Cases and Error Handling", () => {
-    it("should include Authorization header when token is available", async () => {
-      // In static token mode with GITLAB_TOKEN set, Authorization should be added
+    it("should include PRIVATE-TOKEN header when PAT token is available", async () => {
+      // In static token mode with GITLAB_TOKEN set, PRIVATE-TOKEN header should be used
       const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
 
@@ -371,7 +374,7 @@ describe("Enhanced Fetch Utilities", () => {
         "https://example.com",
         expect.objectContaining({
           headers: expect.objectContaining({
-            Authorization: "Bearer test-token",
+            "PRIVATE-TOKEN": "test-token",
           }),
         })
       );
@@ -991,6 +994,47 @@ describe("Enhanced Fetch Utilities", () => {
 
       // Only 1 call - no retries for AbortError
       expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe("getAuthHeaders", () => {
+    afterEach(() => {
+      // Reset OAuth mock to default (static/PAT mode)
+      (isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (getTokenContext as jest.Mock).mockReturnValue(undefined);
+    });
+
+    it("should return PRIVATE-TOKEN header in static/PAT mode", () => {
+      // Default mock: isOAuthEnabled returns false, GITLAB_TOKEN is "test-token"
+      const headers = getAuthHeaders();
+      expect(headers).toEqual({ "PRIVATE-TOKEN": "test-token" });
+    });
+
+    it("should return Authorization Bearer header in OAuth mode", () => {
+      // Switch to OAuth mode with a token in context
+      (isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      (getTokenContext as jest.Mock).mockReturnValue({ gitlabToken: "oauth-token-abc" });
+
+      const headers = getAuthHeaders();
+      expect(headers).toEqual({ Authorization: "Bearer oauth-token-abc" });
+    });
+
+    it("should return empty object when no token is available", () => {
+      // OAuth mode but no token context
+      (isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      (getTokenContext as jest.Mock).mockReturnValue(undefined);
+
+      const headers = getAuthHeaders();
+      expect(headers).toEqual({});
+    });
+
+    it("should return empty object when OAuth context has no gitlabToken", () => {
+      // OAuth mode with context but no gitlabToken
+      (isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      (getTokenContext as jest.Mock).mockReturnValue({ gitlabUserId: "user-1" });
+
+      const headers = getAuthHeaders();
+      expect(headers).toEqual({});
     });
   });
 });

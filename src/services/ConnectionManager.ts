@@ -57,11 +57,12 @@ export class ConnectionManager {
       // Construct GraphQL endpoint from base URL
       const endpoint = `${GITLAB_BASE_URL}/api/graphql`;
 
-      // In OAuth mode, don't set static Authorization header
+      // In OAuth mode, don't set static auth header
       // enhancedFetch will add the token from request context
-      const clientOptions = oauthMode
+      // GITLAB_TOKEN is guaranteed non-empty here (validated above for non-OAuth mode)
+      const clientOptions: { headers?: Record<string, string> } = oauthMode
         ? {}
-        : { headers: { Authorization: `Bearer ${GITLAB_TOKEN}` } };
+        : { headers: { "PRIVATE-TOKEN": String(GITLAB_TOKEN) } };
 
       this.client = new GraphQLClient(endpoint, clientOptions);
 

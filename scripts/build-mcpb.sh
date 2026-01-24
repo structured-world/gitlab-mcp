@@ -37,15 +37,7 @@ if [ -f "$PROJECT_DIR/mcpb/icon.png" ]; then
   cp "$PROJECT_DIR/mcpb/icon.png" "$BUNDLE_DIR/icon.png"
 fi
 
-# 6. Strip unused Prisma WASM database runtimes (keep only PostgreSQL)
-if [ -d "$BUNDLE_DIR/node_modules/@prisma/client/runtime" ]; then
-  find "$BUNDLE_DIR/node_modules/@prisma/client/runtime" \
-    \( -name "*sqlserver*" -o -name "*cockroachdb*" -o -name "*sqlite*" -o -name "*mysql*" \) \
-    -type f -exec rm -f {} +
-  echo "Stripped non-PostgreSQL Prisma runtimes"
-fi
-
-# 7. Clean up unnecessary files
+# 6. Clean up unnecessary files
 rm -rf "$BUNDLE_DIR/yarn.lock" "$BUNDLE_DIR/.yarn"
 rm -f "$BUNDLE_DIR/package-lock.json"
 
@@ -69,12 +61,12 @@ find "$BUNDLE_DIR/node_modules" \( -name "fixture" -o -name "fixtures" -o -name 
 rm -f "$BUNDLE_DIR/dist/tsconfig.build.tsbuildinfo"
 find "$BUNDLE_DIR/dist" -name "*.js.map" -type f -exec rm -f {} + 2>/dev/null || true
 
-# 8. Create .mcpb (ZIP archive)
+# 7. Create .mcpb (ZIP archive)
 OUTPUT="$PROJECT_DIR/gitlab-mcp-${VERSION}.mcpb"
 cd "$BUNDLE_DIR"
 zip -r "$OUTPUT" . -x "*.DS_Store" > /dev/null
 
-# 9. Cleanup
+# 8. Cleanup
 rm -rf "$BUNDLE_DIR"
 
 SIZE=$(stat -f%z "$OUTPUT" 2>/dev/null || stat -c%s "$OUTPUT")

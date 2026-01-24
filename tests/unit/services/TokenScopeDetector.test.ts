@@ -602,7 +602,7 @@ describe("TokenScopeDetector", () => {
       const url = getTokenCreationUrl("gitlab.example.com");
       expect(url).toContain("gitlab.example.com/-/user_settings/personal_access_tokens");
       expect(url).toContain("name=gitlab-mcp");
-      expect(url).toContain("scopes=api,read_user");
+      expect(url).toContain("scopes=api%2Cread_user");
     });
   });
 });

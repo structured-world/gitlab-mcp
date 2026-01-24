@@ -26,29 +26,35 @@ export type GitLabTokenType =
 /**
  * Known GitLab token scopes
  */
-export type GitLabScope =
-  | "api"
-  | "read_api"
-  | "read_user"
-  | "read_repository"
-  | "write_repository"
-  | "read_registry"
-  | "write_registry"
-  | "sudo"
-  | "admin_mode"
-  | "create_runner"
-  | "manage_runner"
-  | "ai_features"
-  | "k8s_proxy";
+const GITLAB_SCOPES = [
+  "api",
+  "read_api",
+  "read_user",
+  "read_repository",
+  "write_repository",
+  "read_registry",
+  "write_registry",
+  "sudo",
+  "admin_mode",
+  "create_runner",
+  "manage_runner",
+  "ai_features",
+  "k8s_proxy",
+] as const;
+
+const GitLabScopeSchema = z.enum(GITLAB_SCOPES);
+export type GitLabScope = z.infer<typeof GitLabScopeSchema>;
 
 /**
  * Zod schema for the /api/v4/personal_access_tokens/self response.
- * Validates the shape and types returned by GitLab before we use the data.
+ * Validates shape and types; filters scopes to known values only.
  */
 const TokenSelfResponseSchema = z.object({
   id: z.number(),
   name: z.string(),
-  scopes: z.array(z.string()),
+  scopes: z
+    .array(z.string())
+    .transform(arr => arr.filter((s): s is GitLabScope => GitLabScopeSchema.safeParse(s).success)),
   expires_at: z.string().nullable(),
   active: z.boolean(),
   revoked: z.boolean(),
@@ -221,7 +227,7 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
     }
     const data = parsed.data;
 
-    const scopes = data.scopes as GitLabScope[];
+    const scopes = data.scopes;
     const hasGraphQLAccess = scopes.some(s => s === "api" || s === "read_api");
     const hasWriteAccess = scopes.includes("api");
 
@@ -242,14 +248,9 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
       }
     }
 
-    // Determine token type from the endpoint response
-    // /personal_access_tokens/self works for PAT, project, and group tokens
-    let tokenType: GitLabTokenType = "personal_access_token";
-    if (data.name?.startsWith("project_")) {
-      tokenType = "project_access_token";
-    } else if (data.name?.startsWith("group_")) {
-      tokenType = "group_access_token";
-    }
+    // /personal_access_tokens/self works for PAT, project, and group tokens,
+    // but the type cannot be reliably inferred from user-controlled fields like name.
+    const tokenType: GitLabTokenType = "personal_access_token";
 
     return {
       name: data.name,

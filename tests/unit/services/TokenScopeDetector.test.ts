@@ -228,14 +228,14 @@ describe("TokenScopeDetector", () => {
       jest.resetModules();
     });
 
-    it("should detect project access token type from name prefix", async () => {
-      // Token names starting with "project_" indicate project access tokens
+    it("should filter unknown scopes from response", async () => {
+      // GitLab may return scopes not in our known list — they should be filtered out
       mockFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
           id: 48,
-          name: "project_bot_token",
-          scopes: ["api"],
+          name: "future-token",
+          scopes: ["api", "unknown_future_scope", "read_user", "another_new_scope"],
           expires_at: null,
           active: true,
           revoked: false,
@@ -243,25 +243,10 @@ describe("TokenScopeDetector", () => {
       });
 
       const result = await detectTokenScopes();
-      expect(result!.tokenType).toBe("project_access_token");
-    });
-
-    it("should detect group access token type from name prefix", async () => {
-      // Token names starting with "group_" indicate group access tokens
-      mockFetch.mockResolvedValueOnce({
-        ok: true,
-        json: async () => ({
-          id: 49,
-          name: "group_bot_token",
-          scopes: ["api", "read_user"],
-          expires_at: null,
-          active: true,
-          revoked: false,
-        }),
-      });
-
-      const result = await detectTokenScopes();
-      expect(result!.tokenType).toBe("group_access_token");
+      // Only known scopes should remain
+      expect(result!.scopes).toEqual(["api", "read_user"]);
+      expect(result!.hasGraphQLAccess).toBe(true);
+      expect(result!.hasWriteAccess).toBe(true);
     });
 
     it("should detect revoked token as inactive", async () => {

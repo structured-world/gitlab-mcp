@@ -39,28 +39,27 @@ jobs:
       - name: Install dependencies
         run: yarn install --immutable
 
+      - name: Download latest MCPB bundle
+        run: |
+          mkdir -p docs/public/downloads
+          LATEST_TAG=$(gh release view --json tagName --jq '.tagName' 2>/dev/null || echo "")
+          if [ -n "$LATEST_TAG" ]; then
+            VERSION="${LATEST_TAG#v}"
+            gh release download "$LATEST_TAG" --pattern "*.mcpb" --dir docs/public/downloads/ || true
+            MCPB_FILE="docs/public/downloads/gitlab-mcp-${VERSION}.mcpb"
+            if [ -f "$MCPB_FILE" ]; then
+              cp "$MCPB_FILE" docs/public/downloads/gitlab-mcp-latest.mcpb
+              echo "MCPB bundle included: ${VERSION}"
+            fi
+          fi
+          # If no .mcpb release exists yet, ignoreDeadLinks in config.mts handles the link checker
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
       - name: Build documentation
         run: yarn docs:build
         env:
           DOCS_BASE: /
-
-      - name: Download latest MCPB bundle
-        run: |
-          LATEST_TAG=$(gh release view --json tagName -q .tagName 2>/dev/null || echo "")
-          if [ -n "$LATEST_TAG" ]; then
-            VERSION="${LATEST_TAG#v}"
-            MCPB_FILE="gitlab-mcp-${VERSION}.mcpb"
-            mkdir -p docs/.vitepress/dist/downloads
-            gh release download "$LATEST_TAG" --pattern "*.mcpb" --dir docs/.vitepress/dist/downloads/ || true
-            if [ -f "docs/.vitepress/dist/downloads/${MCPB_FILE}" ]; then
-              cp "docs/.vitepress/dist/downloads/${MCPB_FILE}" "docs/.vitepress/dist/downloads/gitlab-mcp-latest.mcpb"
-              echo "MCPB bundle included: ${MCPB_FILE}"
-            fi
-          else
-            echo "No release found, skipping MCPB inclusion"
-          fi
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Run tests with coverage
         run: yarn test:cov

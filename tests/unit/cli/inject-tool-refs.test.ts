@@ -391,6 +391,14 @@ describe("inject-tool-refs", () => {
       expect(table).toContain("| `filter` | Filter by type \\| status \\| priority |");
       expect(table).not.toContain("| `filter` | Filter by type | status");
     });
+
+    it("should escape backslash characters before pipe characters", () => {
+      const actions: ActionInfo[] = [{ name: "test", description: "Path is C:\\Users\\name" }];
+
+      const table = generateActionsTable(actions);
+
+      expect(table).toContain("| `test` | Path is C:\\\\Users\\\\name |");
+    });
   });
 
   describe("findMarkers", () => {

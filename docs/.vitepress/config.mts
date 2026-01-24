@@ -13,7 +13,8 @@ export default defineConfig({
     const head: HeadConfig[] = [];
     const title = pageData.title || "GitLab MCP";
     const description = pageData.description || "Model Context Protocol server for GitLab API";
-    const url = `${hostname}${base}${pageData.relativePath.replace(/(?:index)?\.md$/, "")}`;
+    const cleanPath = pageData.relativePath.replace(/(?:index)?\.md$/, "");
+    const url = new URL(cleanPath, `${hostname}${base}`).href;
 
     head.push(["meta", { property: "og:title", content: title }]);
     head.push(["meta", { property: "og:description", content: description }]);

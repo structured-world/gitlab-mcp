@@ -103,7 +103,7 @@ function generateActionsTable(actions: ActionInfo[]): string {
   lines.push("| Action | Description |");
   lines.push("|--------|-------------|");
   for (const action of actions) {
-    const desc = action.description.replace(/\|/g, "\\|");
+    const desc = action.description.replace(/\\/g, "\\\\").replace(/\|/g, "\\|");
     lines.push(`| \`${action.name}\` | ${desc} |`);
   }
   return lines.join("\n");

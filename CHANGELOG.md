@@ -1,3 +1,9 @@
+## [6.41.3](https://github.com/structured-world/gitlab-mcp/compare/v6.41.2...v6.41.3) (2026-01-24)
+
+### Bug Fixes
+
+* **docs:** use raw HTML for MCPB download link to prevent VitePress .html suffix ([#186](https://github.com/structured-world/gitlab-mcp/issues/186)) ([fffe90b](https://github.com/structured-world/gitlab-mcp/commit/fffe90bf04f932c2089aa9bb67a0e8754fb781dc)), closes [#185](https://github.com/structured-world/gitlab-mcp/issues/185)
+
 ## [6.41.2](https://github.com/structured-world/gitlab-mcp/compare/v6.41.1...v6.41.2) (2026-01-24)
 
 ### Bug Fixes

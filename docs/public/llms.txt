@@ -108,6 +108,7 @@ Optional: GITLAB_API_URL (defaults to https://gitlab.com)
 - Tool filtering: GITLAB_DENIED_TOOLS_REGEX to disable specific tools
 - Action filtering: GITLAB_DENIED_ACTIONS to block specific actions
 - Project scoping: GITLAB_ALLOWED_PROJECT_IDS to restrict access
+- Dynamic cross-references: Related tool hints auto-stripped when referenced tools are disabled
 
 # Feature Flags (USE_* environment variables)
 

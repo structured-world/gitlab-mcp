@@ -75,7 +75,7 @@ describe("Pipelines Registry - CQRS Tools", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("browse_pipelines");
-      expect(tool?.description).toContain("BROWSE pipelines");
+      expect(tool?.description).toContain("CI/CD pipelines");
       expect(tool?.description).toContain("list");
       expect(tool?.description).toContain("get");
       expect(tool?.description).toContain("jobs");
@@ -89,7 +89,7 @@ describe("Pipelines Registry - CQRS Tools", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("manage_pipeline");
-      expect(tool?.description).toContain("MANAGE pipelines");
+      expect(tool?.description).toContain("pipelines");
       expect(tool?.description).toContain("create");
       expect(tool?.description).toContain("retry");
       expect(tool?.description).toContain("cancel");
@@ -101,7 +101,7 @@ describe("Pipelines Registry - CQRS Tools", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("manage_pipeline_job");
-      expect(tool?.description).toContain("MANAGE pipeline jobs");
+      expect(tool?.description).toContain("individual CI/CD jobs");
       expect(tool?.description).toContain("play");
       expect(tool?.description).toContain("retry");
       expect(tool?.description).toContain("cancel");

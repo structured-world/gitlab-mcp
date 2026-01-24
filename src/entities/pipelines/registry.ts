@@ -25,7 +25,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "browse_pipelines",
       description:
-        'BROWSE pipelines. Actions: "list" searches pipelines with filtering, "get" retrieves single pipeline details, "jobs" lists jobs in pipeline, "triggers" lists bridge/trigger jobs, "job" gets single job details, "logs" fetches job console output.',
+        "Monitor CI/CD pipelines and read job logs. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output). Related: manage_pipeline to trigger/retry/cancel, manage_pipeline_job for individual jobs.",
       inputSchema: z.toJSONSchema(BrowsePipelinesSchema),
       gate: { envVar: "USE_PIPELINE", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -173,7 +173,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "manage_pipeline",
       description:
-        'MANAGE pipelines. Actions: "create" triggers new pipeline on branch/tag with optional variables, "retry" re-runs failed/canceled pipeline, "cancel" stops running pipeline.',
+        "Trigger, retry, or cancel CI/CD pipelines. Actions: create (run pipeline on ref with variables), retry (re-run failed jobs), cancel (stop running pipeline). Related: browse_pipelines for monitoring.",
       inputSchema: z.toJSONSchema(ManagePipelineSchema),
       gate: { envVar: "USE_PIPELINE", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -291,7 +291,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "manage_pipeline_job",
       description:
-        'MANAGE pipeline jobs. Actions: "play" triggers manual job with optional variables, "retry" re-runs failed/canceled job, "cancel" stops running job.',
+        "Control individual CI/CD jobs within a pipeline. Actions: play (trigger manual/delayed job with variables), retry (re-run single job), cancel (stop running job). Related: browse_pipelines actions 'job'/'logs' for job details.",
       inputSchema: z.toJSONSchema(ManagePipelineJobSchema),
       gate: { envVar: "USE_PIPELINE", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {

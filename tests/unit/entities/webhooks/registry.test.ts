@@ -81,7 +81,7 @@ describe("Webhooks Registry", () => {
       const tool = webhooksToolRegistry.get("browse_webhooks");
       expect(tool).toBeDefined();
       expect(tool!.name).toBe("browse_webhooks");
-      expect(tool!.description).toContain("BROWSE webhooks");
+      expect(tool!.description).toContain("webhook configurations");
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -89,7 +89,9 @@ describe("Webhooks Registry", () => {
       const tool = webhooksToolRegistry.get("manage_webhook");
       expect(tool).toBeDefined();
       expect(tool!.name).toBe("manage_webhook");
-      expect(tool!.description).toContain("Manage webhooks with full CRUD");
+      expect(tool!.description).toContain("webhooks");
+      expect(tool!.description).toContain("create");
+      expect(tool!.description).toContain("test");
       expect(tool!.inputSchema).toBeDefined();
     });
   });

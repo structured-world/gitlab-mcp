@@ -27,14 +27,7 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
     {
       name: "manage_context",
       description:
-        "CONTEXT: Manage runtime session context. Actions: " +
-        "'show' returns current context (host, preset, scope, mode); " +
-        "'list_presets' lists available presets with descriptions; " +
-        "'list_profiles' lists OAuth profiles (OAuth mode only); " +
-        "'switch_preset' changes active preset by name; " +
-        "'switch_profile' changes OAuth profile (OAuth mode only); " +
-        "'set_scope' restricts operations to a namespace (auto-detects group vs project); " +
-        "'reset' restores initial context from session start.",
+        "View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), list_profiles (OAuth users), switch_preset (change active preset), switch_profile (change OAuth user), set_scope (restrict to namespace), reset (restore initial state).",
       inputSchema: z.toJSONSchema(ManageContextSchema),
       // No gate - context management is always available
       handler: async (args: unknown) => {

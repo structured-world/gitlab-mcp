@@ -86,7 +86,8 @@ describe("Integrations Registry", () => {
       const tool = integrationsToolRegistry.get("browse_integrations");
       expect(tool).toBeDefined();
       expect(tool!.name).toBe("browse_integrations");
-      expect(tool!.description).toContain("BROWSE project integrations");
+      expect(tool!.description).toContain("integrations");
+      expect(tool!.description).toContain("list");
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -94,22 +95,15 @@ describe("Integrations Registry", () => {
       const tool = integrationsToolRegistry.get("manage_integration");
       expect(tool).toBeDefined();
       expect(tool!.name).toBe("manage_integration");
-      expect(tool!.description).toContain("MANAGE project integrations");
+      expect(tool!.description).toContain("integrations");
+      expect(tool!.description).toContain("update");
       expect(tool!.inputSchema).toBeDefined();
-    });
-
-    it("should mention supported integrations in manage_integration description", () => {
-      const tool = integrationsToolRegistry.get("manage_integration");
-      expect(tool).toBeDefined();
-      expect(tool!.description).toContain("Slack");
-      expect(tool!.description).toContain("Jira");
-      expect(tool!.description).toContain("Discord");
     });
 
     it("should mention gitlab-slack-application limitation in description", () => {
       const tool = integrationsToolRegistry.get("manage_integration");
       expect(tool).toBeDefined();
-      expect(tool!.description).toContain("gitlab-slack-application cannot be created via API");
+      expect(tool!.description).toContain("gitlab-slack-application");
     });
   });
 

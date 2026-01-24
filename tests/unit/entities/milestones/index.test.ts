@@ -21,13 +21,13 @@ describe("Milestone Index Exports", () => {
     it("should include browse_milestones tool", () => {
       const browseTool = allTools.find(t => t.name === "browse_milestones");
       expect(browseTool).toBeDefined();
-      expect(browseTool?.description).toContain("BROWSE");
+      expect(browseTool?.description).toContain("milestone");
     });
 
     it("should include manage_milestone tool", () => {
       const manageTool = allTools.find(t => t.name === "manage_milestone");
       expect(manageTool).toBeDefined();
-      expect(manageTool?.description).toContain("MANAGE");
+      expect(manageTool?.description).toContain("milestone");
     });
 
     it("should have valid tool definition structure", () => {

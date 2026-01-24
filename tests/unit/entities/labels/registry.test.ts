@@ -74,7 +74,7 @@ describe("Labels Registry - CQRS Tools", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("browse_labels");
-      expect(tool?.description).toContain("BROWSE labels");
+      expect(tool?.description).toContain("labels");
       expect(tool?.description).toContain("list");
       expect(tool?.description).toContain("get");
       expect(tool?.inputSchema).toBeDefined();
@@ -85,7 +85,7 @@ describe("Labels Registry - CQRS Tools", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("manage_label");
-      expect(tool?.description).toContain("MANAGE labels");
+      expect(tool?.description).toContain("labels");
       expect(tool?.description).toContain("create");
       expect(tool?.description).toContain("update");
       expect(tool?.description).toContain("delete");

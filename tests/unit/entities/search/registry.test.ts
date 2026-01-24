@@ -56,7 +56,7 @@ describe("Search Tool Registry", () => {
     });
 
     it("should have proper description", () => {
-      expect(browseSearchTool?.description).toContain("SEARCH GitLab resources");
+      expect(browseSearchTool?.description).toContain("Search across GitLab");
       expect(browseSearchTool?.description).toContain("global");
       expect(browseSearchTool?.description).toContain("project");
       expect(browseSearchTool?.description).toContain("group");

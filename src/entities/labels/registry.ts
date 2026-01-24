@@ -22,7 +22,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
     {
       name: "browse_labels",
       description:
-        'BROWSE labels. Actions: "list" shows all labels in project/group with filtering, "get" retrieves single label details by ID or name.',
+        "List and inspect project or group labels. Actions: list (all labels with search filtering), get (single label by ID or name). Related: manage_label to create/update/delete.",
       inputSchema: z.toJSONSchema(BrowseLabelsSchema),
       gate: { envVar: "USE_LABELS", defaultValue: true },
       handler: async (args: unknown) => {
@@ -73,7 +73,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
     {
       name: "manage_label",
       description:
-        'MANAGE labels. Actions: "create" adds new label (requires name and color), "update" modifies existing label, "delete" removes label permanently.',
+        "Create, update, or delete project/group labels. Actions: create (name + hex color required), update (modify properties), delete (remove permanently). Related: browse_labels for discovery.",
       inputSchema: z.toJSONSchema(ManageLabelSchema),
       gate: { envVar: "USE_LABELS", defaultValue: true },
       handler: async (args: unknown) => {

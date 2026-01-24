@@ -17,33 +17,49 @@ cp -r "$PROJECT_DIR/dist" "$BUNDLE_DIR/dist"
 
 # 2. Install production dependencies into bundle
 cp "$PROJECT_DIR/package.json" "$BUNDLE_DIR/"
-cp "$PROJECT_DIR/yarn.lock" "$BUNDLE_DIR/"
 cd "$BUNDLE_DIR"
 # Use npm for production install (simpler for bundling, no yarn PnP)
-if ! npm install --production --ignore-scripts 2>/dev/null; then
+# --omit=peer prevents installing prisma CLI and typescript as @prisma/client peer deps
+if ! npm install --production --ignore-scripts --omit=peer 2>/dev/null; then
   echo "Warning: npm install --production failed; continuing bundle build" >&2
 fi
 
-# 3. Copy prisma schema and generate
+# 3. Copy prisma schema (needed for runtime migrations)
 if [ -d "$PROJECT_DIR/prisma" ]; then
   cp -r "$PROJECT_DIR/prisma" "$BUNDLE_DIR/prisma"
-  if ! npx prisma generate 2>/dev/null; then
-    echo "Warning: prisma generate failed; continuing bundle build" >&2
-  fi
 fi
 
 # 4. Generate manifest from template
 sed "s/{{VERSION}}/$VERSION/g" "$PROJECT_DIR/mcpb/manifest.json.template" > "$BUNDLE_DIR/manifest.json"
 
-# 5. Copy icon if exists
+# 5. Copy icon
 if [ -f "$PROJECT_DIR/mcpb/icon.png" ]; then
   cp "$PROJECT_DIR/mcpb/icon.png" "$BUNDLE_DIR/icon.png"
 fi
 
 # 6. Clean up unnecessary files
 rm -rf "$BUNDLE_DIR/yarn.lock" "$BUNDLE_DIR/.yarn"
+rm -f "$BUNDLE_DIR/package-lock.json"
+
+# Remove docs, licenses, changelogs, TypeScript source files
 find "$BUNDLE_DIR/node_modules" \( -name "*.md" -o -name "*.ts" -o -name "LICENSE*" -o -name "CHANGELOG*" \) -type f -exec rm -f {} + 2>/dev/null || true
+
+# Remove test directories
 find "$BUNDLE_DIR/node_modules" \( -name "__tests__" -o -name "test" -o -name "tests" \) -type d -exec rm -rf {} + 2>/dev/null || true
+
+# Remove source maps from node_modules
+find "$BUNDLE_DIR/node_modules" -name "*.js.map" -type f -exec rm -f {} + 2>/dev/null || true
+
+# Remove TypeScript declarations from node_modules (not needed at runtime)
+find "$BUNDLE_DIR/node_modules" -name "*.d.ts" -type f -exec rm -f {} + 2>/dev/null || true
+find "$BUNDLE_DIR/node_modules" -name "*.d.mts" -type f -exec rm -f {} + 2>/dev/null || true
+
+# Remove fixture/example/doc directories
+find "$BUNDLE_DIR/node_modules" \( -name "fixture" -o -name "fixtures" -o -name "examples" -o -name "example" -o -name "doc" -o -name "docs" \) -type d -exec rm -rf {} + 2>/dev/null || true
+
+# Remove build artifacts from dist/
+rm -f "$BUNDLE_DIR/dist/tsconfig.build.tsbuildinfo"
+find "$BUNDLE_DIR/dist" -name "*.js.map" -type f -exec rm -f {} + 2>/dev/null || true
 
 # 7. Create .mcpb (ZIP archive)
 OUTPUT="$PROJECT_DIR/gitlab-mcp-${VERSION}.mcpb"
@@ -53,4 +69,6 @@ zip -r "$OUTPUT" . -x "*.DS_Store" > /dev/null
 # 8. Cleanup
 rm -rf "$BUNDLE_DIR"
 
-echo "Bundle created: $OUTPUT ($(du -h "$OUTPUT" | cut -f1))"
+SIZE=$(stat -f%z "$OUTPUT" 2>/dev/null || stat -c%s "$OUTPUT")
+SIZE_MB=$(echo "scale=1; $SIZE / 1048576" | bc)
+echo "Bundle created: $OUTPUT (${SIZE_MB} MB)"

@@ -50,6 +50,7 @@ mcp-publisher
 docs/TOOLS.md
 docs/index.md
 docs/guide/index.md
+docs/guide/authentication.md
 docs/guide/installation/claude-desktop.md
 docs/tools/index.md
 docs/public/llms.txt

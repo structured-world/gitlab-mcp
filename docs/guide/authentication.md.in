@@ -125,11 +125,11 @@ When your token expires within 7 days:
 
 | Token Scopes | Available Tools | GraphQL | REST Projects | What Works |
 |-------------|----------------|---------|---------------|------------|
-| `api, read_user` | **43/43** | Full | Full | Everything |
-| `read_api, read_user` | **23/43** | Read-only | Read-only | All browse_* tools |
-| `read_user` only | **2/43** | Blocked | Blocked | Only browse_users, browse_events |
-| `read_repository` only | **1/43** | Blocked | Blocked | Only browse_files |
-| No scopes | **0/43** | Blocked | Blocked | Nothing |
+| `api, read_user` | **__TOOL_COUNT__/__TOOL_COUNT__** | Full | Full | Everything |
+| `read_api, read_user` | **__READONLY_TOOL_COUNT__/__TOOL_COUNT__** | Read-only | Read-only | All browse_* tools |
+| `read_user` only | **2/__TOOL_COUNT__** | Blocked | Blocked | Only browse_users, browse_events |
+| `read_repository` only | **1/__TOOL_COUNT__** | Blocked | Blocked | Only browse_files |
+| No scopes | **0/__TOOL_COUNT__** | Blocked | Blocked | Nothing |
 
 ## Option B: OAuth (Server/Team Deployment) {#oauth}
 

@@ -1926,7 +1926,7 @@ export const CREATE_WORK_ITEM_WITH_WIDGETS: TypedDocumentNode<
 `;
 
 // Linked items mutations (Free tier)
-export type WorkItemLinkType = "RELATED" | "BLOCKS" | "IS_BLOCKED_BY";
+export type WorkItemLinkType = "RELATED" | "BLOCKS" | "BLOCKED_BY";
 
 export interface WorkItemAddLinkedItemsInput {
   id: string;

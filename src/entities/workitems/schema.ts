@@ -44,11 +44,11 @@ const workItemIdField = WorkItemIdSchema.describe(
   "Work item ID - use numeric ID from list results (e.g., '5953')"
 );
 
-// --- Link type enum ---
+// --- Link type enum (matches GitLab GraphQL API values directly, see #177) ---
 const LinkTypeSchema = z
-  .enum(["BLOCKS", "IS_BLOCKED_BY", "RELATES_TO"])
+  .enum(["BLOCKS", "BLOCKED_BY", "RELATED"])
   .describe(
-    "Relationship type: BLOCKS (this blocks target), IS_BLOCKED_BY (this is blocked by target), RELATES_TO (general relationship)"
+    "Relationship type: BLOCKS (this blocks target), BLOCKED_BY (this is blocked by target), RELATED (general relationship)"
   );
 
 // --- Date validation pattern ---

@@ -212,7 +212,7 @@ describe("idConversion utils", () => {
       expect(result.workItemType).toBe("Epic");
     });
 
-    it("should clean linked items widget GIDs and map RELATED to RELATES_TO", () => {
+    it("should clean linked items widget GIDs", () => {
       const workItem: GitLabWorkItem = {
         id: "gid://gitlab/WorkItem/100",
         widgets: [
@@ -236,7 +236,7 @@ describe("idConversion utils", () => {
 
       const result = cleanWorkItemResponse(workItem);
       const linkedWidget = result.widgets?.[0];
-      expect(linkedWidget?.linkedItems?.nodes?.[0].linkType).toBe("RELATES_TO");
+      expect(linkedWidget?.linkedItems?.nodes?.[0].linkType).toBe("RELATED");
       expect(linkedWidget?.linkedItems?.nodes?.[0].workItem?.id).toBe("200");
       expect(linkedWidget?.linkedItems?.nodes?.[1].linkType).toBe("BLOCKS");
       expect(linkedWidget?.linkedItems?.nodes?.[1].workItem?.id).toBe("300");

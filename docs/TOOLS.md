@@ -1889,7 +1889,7 @@ Find and inspect issues, epics, tasks, and other work items. Actions: list (grou
 
 ### manage_work_item [tier: Free]
 
-Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), add_link/remove_link (BLOCKS/IS_BLOCKED_BY/RELATES_TO). Related: browse_work_items for discovery.
+Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), add_link/remove_link (BLOCKS/BLOCKED_BY/RELATED). Related: browse_work_items for discovery.
 
 #### Actions
 
@@ -1908,7 +1908,7 @@ Create, update, delete, or link work items (issues, epics, tasks). Actions: crea
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | string | Yes | Source work item ID |
-| `linkType` | string | Yes | Relationship type: BLOCKS (this blocks target), IS_BLOCKED_BY (this is blocked by target), RELATES_TO (general relationship) |
+| `linkType` | string | Yes | Relationship type: BLOCKS (this blocks target), BLOCKED_BY (this is blocked by target), RELATED (general relationship) |
 | `targetId` | string | Yes | Target work item ID to link to |
 
 **Action `create`**:
@@ -1945,7 +1945,7 @@ Create, update, delete, or link work items (issues, epics, tasks). Actions: crea
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `id` | string | Yes | Source work item ID |
-| `linkType` | string | Yes | Relationship type: BLOCKS (this blocks target), IS_BLOCKED_BY (this is blocked by target), RELATES_TO (general relationship) |
+| `linkType` | string | Yes | Relationship type: BLOCKS (this blocks target), BLOCKED_BY (this is blocked by target), RELATED (general relationship) |
 | `targetId` | string | Yes | Target work item ID to unlink |
 
 **Action `update`**:

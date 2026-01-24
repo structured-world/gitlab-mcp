@@ -21,7 +21,7 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
     {
       name: "browse_search",
       description:
-        'SEARCH GitLab resources. Actions: "global" searches entire instance, "project" searches within a project, "group" searches within a group. Scopes: projects, issues, merge_requests, milestones, users, groups, blobs (code), commits, wiki_blobs, notes.',
+        "Search across GitLab resources globally or within a scope. Actions: global (entire instance), project (within specific project), group (within specific group). Searchable: projects, issues, merge_requests, milestones, users, blobs (code), commits, wiki_blobs, notes.",
       inputSchema: z.toJSONSchema(BrowseSearchSchema),
       gate: { envVar: "USE_SEARCH", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {

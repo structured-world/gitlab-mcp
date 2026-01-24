@@ -46,6 +46,30 @@ export GITLAB_TOOL_MANAGE_WORK_ITEM="Create and manage tickets for our sprint pl
 - Tool names in variables must be UPPERCASE
 - Invalid tool names are ignored with a debug warning
 
+## Dynamic Cross-References
+
+Tool descriptions include `Related:` sections that reference companion tools (e.g., browse→manage pairs). These references are resolved dynamically at startup — if a referenced tool is unavailable (disabled via `USE_*`, `GITLAB_DENIED_TOOLS_REGEX`, read-only mode, or tier/version gating), it is automatically stripped from the description.
+
+### How It Works
+
+```
+# Source description (in registry):
+"List labels. Related: manage_label to create/update/delete."
+
+# If manage_label is disabled (USE_LABELS_MANAGE=false or read-only mode):
+"List labels."
+
+# If manage_label is available:
+"List labels. Related: manage_label to create/update/delete."
+```
+
+### Notes
+
+- References are identified by `browse_*` or `manage_*` prefixes in the `Related:` section
+- Multiple comma-separated references are resolved individually — only unavailable ones are stripped
+- If all referenced tools are unavailable, the entire `Related:` clause is removed
+- Custom description overrides (`GITLAB_TOOL_*`) bypass resolution entirely — you control the full text
+
 ## Fine-Grained Action Filtering
 
 For CQRS tools, disable specific actions while keeping others available. This reduces AI context token usage by removing disabled actions and their exclusive parameters from the schema.

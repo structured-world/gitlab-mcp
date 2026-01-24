@@ -88,7 +88,7 @@ describe("Milestones Registry - CQRS Tools", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("browse_milestones");
-      expect(tool?.description).toContain("BROWSE milestones");
+      expect(tool?.description).toContain("milestone");
       expect(tool?.description).toContain("list");
       expect(tool?.description).toContain("get");
       expect(tool?.description).toContain("issues");
@@ -102,7 +102,7 @@ describe("Milestones Registry - CQRS Tools", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("manage_milestone");
-      expect(tool?.description).toContain("MANAGE milestones");
+      expect(tool?.description).toContain("milestone");
       expect(tool?.description).toContain("create");
       expect(tool?.description).toContain("update");
       expect(tool?.description).toContain("delete");

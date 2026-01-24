@@ -22,7 +22,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
     {
       name: "browse_integrations",
       description:
-        'BROWSE project integrations. Actions: "list" shows all active integrations (Slack, Jira, Discord, Teams, Jenkins, etc.), "get" retrieves settings for a specific integration by type slug.',
+        "Discover active project integrations and their configuration. Actions: list (all active: Slack, Jira, Discord, Teams, Jenkins, etc.), get (specific integration settings by slug). Related: manage_integration to configure/disable.",
       inputSchema: z.toJSONSchema(BrowseIntegrationsSchema, {}),
       gate: { envVar: "USE_INTEGRATIONS", defaultValue: true },
       handler: async (args: unknown) => {
@@ -72,7 +72,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
     {
       name: "manage_integration",
       description:
-        'MANAGE project integrations. Actions: "update" modifies or enables integration with specific config, "disable" removes integration. Supports 50+ integrations: Slack, Jira, Discord, Teams, Jenkins, etc. Note: gitlab-slack-application cannot be created via API - requires OAuth install from UI.',
+        "Configure or disable project integrations (50+ supported). Actions: update (enable/modify with integration-specific config), disable (deactivate integration). Note: gitlab-slack-application requires OAuth install from GitLab UI. Related: browse_integrations for discovery.",
       inputSchema: z.toJSONSchema(ManageIntegrationSchema, {}),
       gate: { envVar: "USE_INTEGRATIONS", defaultValue: true },
       handler: async (args: unknown) => {

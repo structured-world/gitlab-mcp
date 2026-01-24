@@ -74,7 +74,7 @@ describe("Wiki Registry - CQRS Tools", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("browse_wiki");
-      expect(tool?.description).toContain("BROWSE wiki");
+      expect(tool?.description).toContain("wiki pages");
       expect(tool?.description).toContain("list");
       expect(tool?.description).toContain("get");
       expect(tool?.inputSchema).toBeDefined();
@@ -85,7 +85,7 @@ describe("Wiki Registry - CQRS Tools", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("manage_wiki");
-      expect(tool?.description).toContain("MANAGE wiki");
+      expect(tool?.description).toContain("wiki pages");
       expect(tool?.description).toContain("create");
       expect(tool?.description).toContain("update");
       expect(tool?.description).toContain("delete");

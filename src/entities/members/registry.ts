@@ -22,7 +22,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
     {
       name: "browse_members",
       description:
-        'BROWSE team members in projects and groups. Actions: "list_project" lists project members, "list_group" lists group members, "get_project" gets project member details, "get_group" gets group member details, "list_all_project" includes inherited members, "list_all_group" includes inherited members. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.',
+        "View team members and access levels in projects or groups. Actions: list_project, list_group, get_project, get_group (direct members), list_all_project, list_all_group (includes inherited). Levels: Guest(10), Reporter(20), Developer(30), Maintainer(40), Owner(50). Related: manage_member to add/remove, browse_users to find users by name.",
       inputSchema: z.toJSONSchema(BrowseMembersSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseMembersSchema.parse(args);
@@ -101,7 +101,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
     {
       name: "manage_member",
       description:
-        'MANAGE team members in projects and groups. Actions: "add_to_project" adds member to project, "add_to_group" adds member to group, "remove_from_project" removes from project, "remove_from_group" removes from group, "update_project" changes project member access level, "update_group" changes group member access level. Access levels: 0=No access, 5=Minimal, 10=Guest, 20=Reporter, 30=Developer, 40=Maintainer, 50=Owner.',
+        "Add, remove, or update access levels for project/group members. Actions: add_to_project, add_to_group (with access level + optional expiry), remove_from_project, remove_from_group, update_project, update_group (change access level). Related: browse_members for current membership.",
       inputSchema: z.toJSONSchema(ManageMemberSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageMemberSchema.parse(args);

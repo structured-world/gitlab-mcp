@@ -21,7 +21,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
     {
       name: "browse_webhooks",
       description:
-        'BROWSE webhooks. Actions: "list" shows all webhooks configured for a project or group with pagination, "get" retrieves single webhook details by ID. Use to discover existing integrations, audit webhook configurations, debug delivery issues, or understand event subscriptions.',
+        "List and inspect webhook configurations for projects or groups. Actions: list (all webhooks with event types and status), get (webhook details by ID). Related: manage_webhook to create/update/delete/test.",
       inputSchema: z.toJSONSchema(BrowseWebhooksSchema),
       gate: { envVar: "USE_WEBHOOKS", defaultValue: true },
       handler: async (args: unknown) => {
@@ -81,7 +81,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
     {
       name: "manage_webhook",
       description:
-        "Manage webhooks with full CRUD operations plus testing. Actions: 'create' (add new webhook with URL and event types), 'update' (modify URL, events, or settings), 'delete' (remove webhook), 'test' (trigger test delivery for specific event type). Use for setting up CI/CD automation, configuring notifications, integrating external systems, or managing event subscriptions.",
+        "Create, update, delete, or test webhooks for event-driven automation. Actions: create (URL + event types + optional secret), update (modify settings), delete (remove), test (trigger delivery for specific event). Related: browse_webhooks for inspection.",
       inputSchema: z.toJSONSchema(ManageWebhookSchema),
       gate: { envVar: "USE_WEBHOOKS", defaultValue: true },
       handler: async (args: unknown) => {

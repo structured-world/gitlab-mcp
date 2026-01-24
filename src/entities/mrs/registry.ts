@@ -67,7 +67,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: "browse_merge_requests",
       description:
-        'BROWSE merge requests. Actions: "list" shows MRs with filtering, "get" retrieves single MR by IID or branch, "diffs" shows file changes, "compare" diffs two branches/commits.',
+        "Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), diffs (file-level changes with inline suggestions), compare (diff between any two refs). Related: manage_merge_request to create/update/merge.",
       inputSchema: z.toJSONSchema(BrowseMergeRequestsSchema),
       gate: { envVar: "USE_MRS", defaultValue: true },
       handler: async (args: unknown) => {
@@ -172,7 +172,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: "browse_mr_discussions",
       description:
-        'BROWSE MR discussions and draft notes. Actions: "list" shows all discussion threads, "drafts" lists unpublished draft notes, "draft" gets single draft note.',
+        "Read discussion threads and draft review notes on merge requests. Actions: list (all threads with resolution status), drafts (unpublished draft notes), draft (single draft details). Related: manage_mr_discussion to comment, manage_draft_notes to create drafts.",
       inputSchema: z.toJSONSchema(BrowseMrDiscussionsSchema),
       gate: { envVar: "USE_MRS", defaultValue: true },
       handler: async (args: unknown) => {
@@ -228,7 +228,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: "manage_merge_request",
       description:
-        'MANAGE merge requests. Actions: "create" creates new MR, "update" modifies existing MR, "merge" merges approved MR into target branch, "approve" approves MR, "unapprove" removes approval, "get_approval_state" gets approval status.',
+        "Create, update, merge, or approve merge requests. Actions: create (new MR from source to target), update (title/description/assignees/reviewers/labels), merge (into target branch), approve/unapprove (review approval), get_approval_state (current approvals). Related: browse_merge_requests for discovery.",
       inputSchema: z.toJSONSchema(ManageMergeRequestSchema),
       gate: { envVar: "USE_MRS", defaultValue: true },
       handler: async (args: unknown) => {
@@ -338,7 +338,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: "manage_mr_discussion",
       description:
-        'MANAGE MR discussions. Actions: "comment" adds comment, "thread" starts discussion, "reply" responds to thread, "update" modifies note, "apply_suggestion" applies code suggestion, "apply_suggestions" batch applies suggestions, "resolve" resolves/unresolves thread, "suggest" creates code suggestion.',
+        "Post comments, start threads, and suggest code changes on merge requests. Actions: comment (simple note), thread (line-level discussion), reply (to existing thread), update (edit note text), resolve (toggle thread resolution), suggest (code suggestion block), apply_suggestion/apply_suggestions (accept code suggestions). Related: browse_mr_discussions to read threads.",
       inputSchema: z.toJSONSchema(ManageMrDiscussionSchema),
       gate: { envVar: "USE_MRS", defaultValue: true },
       handler: async (args: unknown) => {
@@ -509,7 +509,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: "manage_draft_notes",
       description:
-        'MANAGE draft notes. Actions: "create" creates draft note, "update" modifies draft, "publish" publishes single draft, "publish_all" publishes all drafts, "delete" removes draft.',
+        "Create and manage unpublished review comments on merge requests. Actions: create (new draft), update (modify text), publish (make single draft visible), publish_all (submit entire review), delete (discard draft). Related: browse_mr_discussions action 'drafts' to list existing drafts.",
       inputSchema: z.toJSONSchema(ManageDraftNotesSchema),
       gate: { envVar: "USE_MRS", defaultValue: true },
       handler: async (args: unknown) => {

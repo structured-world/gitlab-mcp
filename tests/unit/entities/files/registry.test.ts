@@ -74,7 +74,9 @@ describe("Files Registry", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("browse_files");
-      expect(tool?.description).toContain("BROWSE");
+      expect(tool?.description).toContain("file structure");
+      expect(tool?.description).toContain("tree");
+      expect(tool?.description).toContain("content");
       expect(tool?.inputSchema).toBeDefined();
     });
 
@@ -83,7 +85,9 @@ describe("Files Registry", () => {
 
       expect(tool).toBeDefined();
       expect(tool?.name).toBe("manage_files");
-      expect(tool?.description).toContain("MANAGE");
+      expect(tool?.description).toContain("Create, update, or upload");
+      expect(tool?.description).toContain("single");
+      expect(tool?.description).toContain("batch");
       expect(tool?.inputSchema).toBeDefined();
     });
   });

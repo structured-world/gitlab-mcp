@@ -306,6 +306,8 @@ jobs:
       contents: read
 
     steps:
+      # The release tag already contains updated server.json (version + description)
+      # from prepare-release.sh, committed by @semantic-release/git before tagging.
       - name: Checkout release tag
         uses: actions/checkout@v6
         with:

@@ -34,7 +34,7 @@
         {
           "description": "Enable read-only mode (disable all manage_* write operations)",
           "isRequired": false,
-          "format": "string",
+          "format": "boolean",
           "name": "GITLAB_READ_ONLY_MODE"
         }
       ]

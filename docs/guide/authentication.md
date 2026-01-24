@@ -53,7 +53,7 @@ You MUST select `api` scope for full functionality. Without it, most tools will 
 
 | Scope | Required? | What it enables |
 |-------|-----------|-----------------|
-| `api` | **YES** | All 45+ tools (projects, MRs, issues, pipelines, etc.) |
+| `api` | **YES** | All 43 scope-gated tools (projects, MRs, issues, pipelines, etc.) |
 | `read_user` | Recommended | User info display, avatar, email |
 | `read_api` | Alternative | Read-only access (use with `GITLAB_READ_ONLY_MODE=true`) |
 | `read_repository` | Optional | File content access (covered by `api`) |
@@ -64,7 +64,7 @@ You MUST select `api` scope for full functionality. Without it, most tools will 
 **Minimum for read-only:** `read_api` + `read_user`
 
 ::: warning Common mistake
-Selecting only `read_user` gives access to just 3 of 45 tools (user search and events only).
+Selecting only `read_user` gives access to just 2 of 43 tools (user search and events only).
 GraphQL API is completely blocked without `api` or `read_api`.
 :::
 
@@ -108,10 +108,10 @@ With full access (`api` + `read_user`):
 
 With limited access (`read_user` only):
 ```
-[INFO] Token "gitlab-mcp" has limited scopes - 3 of 45 tools available
+[INFO] Token "gitlab-mcp" has limited scopes - 2 of 43 tools available
 [INFO] GraphQL introspection skipped (requires 'api' or 'read_api' scope)
 [INFO] For full functionality, create a token with 'api' scope:
-       https://gitlab.com/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=api,read_user
+       https://gitlab.com/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=api%2Cread_user
 ```
 
 ### Token expiry warnings
@@ -125,11 +125,11 @@ When your token expires within 7 days:
 
 | Token Scopes | Available Tools | GraphQL | REST Projects | What Works |
 |-------------|----------------|---------|---------------|------------|
-| `api, read_user` | **45/45** | Full | Full | Everything |
-| `read_api, read_user` | ~25/45 | Read-only | Read-only | All browse_* tools |
-| `read_user` only | **3/45** | Blocked | Blocked | Only browse_users, browse_events |
-| `read_repository` only | **1/45** | Blocked | Blocked | Only browse_files |
-| No scopes | **0/45** | Blocked | Blocked | Nothing |
+| `api, read_user` | **43/43** | Full | Full | Everything |
+| `read_api, read_user` | **23/43** | Read-only | Read-only | All browse_* tools |
+| `read_user` only | **2/43** | Blocked | Blocked | Only browse_users, browse_events |
+| `read_repository` only | **1/43** | Blocked | Blocked | Only browse_files |
+| No scopes | **0/43** | Blocked | Blocked | Nothing |
 
 ## Option B: OAuth (Server/Team Deployment) {#oauth}
 

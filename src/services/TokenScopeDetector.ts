@@ -296,10 +296,14 @@ export function getToolsForScopes(scopes: GitLabScope[]): string[] {
 }
 
 /**
- * Get all known tool scope requirements
+ * Get all known tool scope requirements.
+ * Returns a deep clone so callers can safely mutate the returned
+ * arrays without affecting the internal TOOL_SCOPE_REQUIREMENTS map.
  */
 export function getToolScopeRequirements(): Record<string, GitLabScope[]> {
-  return { ...TOOL_SCOPE_REQUIREMENTS };
+  return Object.fromEntries(
+    Object.entries(TOOL_SCOPE_REQUIREMENTS).map(([toolName, scopes]) => [toolName, [...scopes]])
+  );
 }
 
 /**
@@ -309,7 +313,10 @@ export function getTokenCreationUrl(
   baseUrl: string,
   scopes: string[] = ["api", "read_user"]
 ): string {
-  const url = new URL("/-/user_settings/personal_access_tokens", baseUrl);
+  const url = new URL(baseUrl);
+  // Preserve any existing subpath (e.g. https://host/gitlab) and append PAT settings path
+  const basePath = url.pathname === "/" ? "" : url.pathname.replace(/\/$/, "");
+  url.pathname = `${basePath}/-/user_settings/personal_access_tokens`;
   url.searchParams.set("name", "gitlab-mcp");
   url.searchParams.set("scopes", scopes.join(","));
   return url.toString();

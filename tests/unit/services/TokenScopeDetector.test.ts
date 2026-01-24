@@ -435,16 +435,21 @@ describe("TokenScopeDetector", () => {
   });
 
   describe("getToolScopeRequirements", () => {
-    it("should return a copy of the scope requirements map", () => {
+    it("should return a deep copy of the scope requirements map", () => {
       const requirements = getToolScopeRequirements();
       // Should contain known tools
       expect(requirements).toHaveProperty("browse_projects");
       expect(requirements).toHaveProperty("manage_project");
       expect(requirements.browse_projects).toContain("api");
-      // Should be a copy (modifying it shouldn't affect the original)
+      // Replacing a key shouldn't affect the original
       requirements.browse_projects = [];
       const fresh = getToolScopeRequirements();
       expect(fresh.browse_projects).toContain("api");
+      // Mutating an array value shouldn't affect the original either (deep clone)
+      const req2 = getToolScopeRequirements();
+      req2.browse_projects.push("read_user" as GitLabScope);
+      const req3 = getToolScopeRequirements();
+      expect(req3.browse_projects).not.toContain("read_user");
     });
   });
 
@@ -469,6 +474,14 @@ describe("TokenScopeDetector", () => {
       expect(url).toContain("api");
       expect(url).toContain("read_user");
       expect(url).toContain("read_repository");
+    });
+
+    it("should preserve subpath in base URL", () => {
+      // Self-hosted GitLab instances may run under a subpath
+      const url = getTokenCreationUrl("https://host.example.com/gitlab");
+      expect(url).toBe(
+        "https://host.example.com/gitlab/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=api%2Cread_user"
+      );
     });
 
     it("should properly encode special characters in scopes", () => {

@@ -32,8 +32,11 @@ import {
   GET_WORK_ITEM_BY_IID,
   UPDATE_WORK_ITEM,
   DELETE_WORK_ITEM,
+  WORK_ITEM_ADD_LINKED_ITEMS,
+  WORK_ITEM_REMOVE_LINKED_ITEMS,
   WorkItemUpdateInput,
   WorkItem as GraphQLWorkItem,
+  WorkItemLinkType,
 } from "../../graphql/workItems";
 
 // Types for work item structure - flexible widget interface for runtime processing
@@ -368,7 +371,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "manage_work_item",
       description:
-        'MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets using numeric ID from list, "delete" permanently removes. Legacy GIDs auto-normalized.',
+        'MANAGE work items. Actions: "create" creates new work item (Epics need GROUP namespace, Issues/Tasks need PROJECT), "update" modifies properties/widgets using numeric ID, "delete" permanently removes, "add_link" creates relationship (BLOCKS/IS_BLOCKED_BY/RELATES_TO), "remove_link" removes relationship. Supports dates, time tracking, hierarchy, weight, iterations, health status, progress, color widgets. Legacy GIDs auto-normalized.',
       inputSchema: z.toJSONSchema(ManageWorkItemSchema),
       gate: { envVar: "USE_WORKITEMS", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -381,7 +384,6 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
         switch (input.action) {
           case "create": {
-            // TypeScript knows: input has namespace, title, workItemType (required), description, assigneeIds, labelIds, milestoneId (optional)
             const {
               namespace,
               title,
@@ -390,15 +392,38 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               assigneeIds,
               labelIds,
               milestoneId,
+              startDate,
+              dueDate,
+              parentId,
+              childrenIds,
+              timeEstimate,
+              isFixed,
+              weight,
+              iterationId,
+              progressCurrentValue,
+              healthStatus,
+              color,
             } = input;
             const namespacePath = namespace;
             const workItemTitle = title;
             const workItemTypeName = workItemType;
 
             // Validate widget parameters against instance version/tier.
-            // Only include array-based widgets when non-empty, matching the
-            // conditions used when building the GraphQL input below.
-            const widgetParams: Record<string, unknown> = { description, milestoneId };
+            const widgetParams: Record<string, unknown> = {
+              description,
+              milestoneId,
+              startDate,
+              dueDate,
+              parentId,
+              childrenIds,
+              timeEstimate,
+              isFixed,
+              weight,
+              iterationId,
+              progressCurrentValue,
+              healthStatus,
+              color,
+            };
             if (assigneeIds && assigneeIds.length > 0) {
               widgetParams.assigneeIds = assigneeIds;
             }
@@ -464,6 +489,57 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               createInput.milestoneWidget = { milestoneId: toGid(milestoneId, "Milestone") };
             }
 
+            // Start and due date widget
+            if (startDate !== undefined || dueDate !== undefined || isFixed !== undefined) {
+              createInput.startAndDueDateWidget = {};
+              if (startDate !== undefined) createInput.startAndDueDateWidget.startDate = startDate;
+              if (dueDate !== undefined) createInput.startAndDueDateWidget.dueDate = dueDate;
+              if (isFixed !== undefined) createInput.startAndDueDateWidget.isFixed = isFixed;
+            }
+
+            // Hierarchy widget
+            if (parentId !== undefined || (childrenIds !== undefined && childrenIds.length > 0)) {
+              createInput.hierarchyWidget = {};
+              if (parentId !== undefined) {
+                createInput.hierarchyWidget.parentId = toGid(parentId, "WorkItem");
+              }
+              if (childrenIds !== undefined && childrenIds.length > 0) {
+                createInput.hierarchyWidget.childrenIds = toGids(childrenIds, "WorkItem");
+              }
+            }
+
+            // Time tracking widget (only estimate on create)
+            if (timeEstimate !== undefined) {
+              createInput.timeTrackingWidget = { timeEstimate };
+            }
+
+            // Weight widget (Premium)
+            if (weight !== undefined) {
+              createInput.weightWidget = { weight };
+            }
+
+            // Iteration widget (Premium)
+            if (iterationId !== undefined) {
+              createInput.iterationWidget = {
+                iterationId: toGid(iterationId, "Iteration"),
+              };
+            }
+
+            // Health status widget (Ultimate)
+            if (healthStatus !== undefined) {
+              createInput.healthStatusWidget = { healthStatus };
+            }
+
+            // Progress widget (Premium, OKR)
+            if (progressCurrentValue !== undefined) {
+              createInput.progressWidget = { currentValue: progressCurrentValue };
+            }
+
+            // Color widget (Ultimate, epics)
+            if (color !== undefined) {
+              createInput.colorWidget = { color };
+            }
+
             // Use comprehensive mutation with widgets support
             const response = await client.request(CREATE_WORK_ITEM_WITH_WIDGETS, {
               input: createInput,
@@ -488,14 +564,50 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           }
 
           case "update": {
-            // TypeScript knows: input has id (required), title, description, state, assigneeIds, labelIds, milestoneId (optional)
-            const { id, title, description, state, assigneeIds, labelIds, milestoneId } = input;
+            const {
+              id,
+              title,
+              description,
+              state,
+              assigneeIds,
+              labelIds,
+              milestoneId,
+              startDate,
+              dueDate,
+              parentId,
+              childrenIds,
+              timeEstimate,
+              timeSpent,
+              timeSpentAt,
+              timeSpentSummary,
+              isFixed,
+              weight,
+              iterationId,
+              progressCurrentValue,
+              healthStatus,
+              color,
+            } = input;
             const workItemId = id;
 
             // Validate widget parameters against instance version/tier.
-            // On update, all provided parameters are validated including empty arrays,
-            // since the user explicitly specified them (intent to modify the widget).
-            const widgetParams = { description, assigneeIds, labelIds, milestoneId };
+            const widgetParams: Record<string, unknown> = {
+              description,
+              assigneeIds,
+              labelIds,
+              milestoneId,
+              startDate,
+              dueDate,
+              parentId,
+              childrenIds,
+              timeEstimate,
+              timeSpent,
+              isFixed,
+              weight,
+              iterationId,
+              progressCurrentValue,
+              healthStatus,
+              color,
+            };
             const validationFailure = WidgetAvailability.validateWidgetParams(widgetParams);
             if (validationFailure) {
               throw new StructuredToolError(
@@ -532,18 +644,88 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             }
 
             if (assigneeIds !== undefined) {
-              // Convert assignee IDs to GIDs (empty array clears assignees)
               updateInput.assigneesWidget = { assigneeIds: toGids(assigneeIds, "User") };
             }
 
             if (labelIds !== undefined) {
-              // Convert label IDs to GIDs (empty array clears labels)
               updateInput.labelsWidget = { addLabelIds: toGids(labelIds, "Label") };
             }
 
             if (milestoneId !== undefined) {
-              // Convert milestone ID to GID
               updateInput.milestoneWidget = { milestoneId: toGid(milestoneId, "Milestone") };
+            }
+
+            // Start and due date widget
+            if (startDate !== undefined || dueDate !== undefined || isFixed !== undefined) {
+              updateInput.startAndDueDateWidget = {};
+              if (startDate !== undefined) updateInput.startAndDueDateWidget.startDate = startDate;
+              if (dueDate !== undefined) updateInput.startAndDueDateWidget.dueDate = dueDate;
+              if (isFixed !== undefined) updateInput.startAndDueDateWidget.isFixed = isFixed;
+            }
+
+            // Hierarchy widget
+            if (parentId !== undefined || (childrenIds !== undefined && childrenIds.length > 0)) {
+              updateInput.hierarchyWidget = {};
+              if (parentId !== undefined) {
+                // null means unlink parent, string means set parent
+                updateInput.hierarchyWidget.parentId =
+                  parentId === null ? null : toGid(parentId, "WorkItem");
+              }
+              if (childrenIds !== undefined && childrenIds.length > 0) {
+                updateInput.hierarchyWidget.childrenIds = toGids(childrenIds, "WorkItem");
+              }
+            }
+
+            // Validate timelog-related params require timeSpent
+            if (
+              (timeSpentAt !== undefined || timeSpentSummary !== undefined) &&
+              timeSpent === undefined
+            ) {
+              throw new Error(
+                "timeSpentAt and timeSpentSummary require timeSpent to be specified (they are timelog entry properties)"
+              );
+            }
+
+            // Time tracking widget
+            if (timeEstimate !== undefined || timeSpent !== undefined) {
+              updateInput.timeTrackingWidget = {};
+              if (timeEstimate !== undefined) {
+                updateInput.timeTrackingWidget.timeEstimate = timeEstimate;
+              }
+              if (timeSpent !== undefined) {
+                updateInput.timeTrackingWidget.timelog = {
+                  timeSpent,
+                  ...(timeSpentAt !== undefined && { spentAt: timeSpentAt }),
+                  ...(timeSpentSummary !== undefined && { summary: timeSpentSummary }),
+                };
+              }
+            }
+
+            // Weight widget (Premium)
+            if (weight !== undefined) {
+              updateInput.weightWidget = { weight };
+            }
+
+            // Iteration widget (Premium)
+            if (iterationId !== undefined) {
+              updateInput.iterationWidget = {
+                iterationId: iterationId === null ? null : toGid(iterationId, "Iteration"),
+              };
+            }
+
+            // Health status widget (Ultimate)
+            if (healthStatus !== undefined) {
+              updateInput.healthStatusWidget = { healthStatus };
+            }
+
+            // Progress widget (Premium, OKR)
+            if (progressCurrentValue !== undefined) {
+              updateInput.progressWidget = { currentValue: progressCurrentValue };
+            }
+
+            // Color widget (Ultimate, epics)
+            if (color !== undefined) {
+              updateInput.colorWidget = { color };
             }
 
             // Use single GraphQL mutation with dynamic input
@@ -568,7 +750,6 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           }
 
           case "delete": {
-            // TypeScript knows: input has id (required)
             const workItemId = input.id;
 
             // Get GraphQL client from ConnectionManager
@@ -592,6 +773,78 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             // Return success indicator for deletion
             return { deleted: true };
+          }
+
+          case "add_link": {
+            const { id, targetId, linkType } = input;
+
+            const connectionManager = ConnectionManager.getInstance();
+            const client = connectionManager.getClient();
+
+            // Map user-facing link type to GraphQL enum
+            const graphqlLinkType: WorkItemLinkType =
+              linkType === "RELATES_TO" ? "RELATED" : linkType;
+
+            const response = await client.request(WORK_ITEM_ADD_LINKED_ITEMS, {
+              input: {
+                id: toGid(id, "WorkItem"),
+                workItemsIds: [toGid(targetId, "WorkItem")],
+                linkType: graphqlLinkType,
+              },
+            });
+
+            if (
+              response.workItemAddLinkedItems?.errors?.length &&
+              response.workItemAddLinkedItems.errors.length > 0
+            ) {
+              throw new Error(
+                `GitLab GraphQL errors: ${response.workItemAddLinkedItems.errors.join(", ")}`
+              );
+            }
+
+            if (!response.workItemAddLinkedItems?.workItem) {
+              throw new Error("Add linked item failed - no work item returned");
+            }
+
+            return cleanWorkItemResponse(
+              response.workItemAddLinkedItems.workItem as unknown as GitLabWorkItem
+            );
+          }
+
+          case "remove_link": {
+            const { id, targetId, linkType } = input;
+
+            const connectionManager = ConnectionManager.getInstance();
+            const client = connectionManager.getClient();
+
+            // Map user-facing link type to GraphQL enum
+            const graphqlLinkType: WorkItemLinkType =
+              linkType === "RELATES_TO" ? "RELATED" : linkType;
+
+            const response = await client.request(WORK_ITEM_REMOVE_LINKED_ITEMS, {
+              input: {
+                id: toGid(id, "WorkItem"),
+                workItemsIds: [toGid(targetId, "WorkItem")],
+                linkType: graphqlLinkType,
+              },
+            });
+
+            if (
+              response.workItemRemoveLinkedItems?.errors?.length &&
+              response.workItemRemoveLinkedItems.errors.length > 0
+            ) {
+              throw new Error(
+                `GitLab GraphQL errors: ${response.workItemRemoveLinkedItems.errors.join(", ")}`
+              );
+            }
+
+            if (!response.workItemRemoveLinkedItems?.workItem) {
+              throw new Error("Remove linked item failed - no work item returned");
+            }
+
+            return cleanWorkItemResponse(
+              response.workItemRemoveLinkedItems.workItem as unknown as GitLabWorkItem
+            );
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

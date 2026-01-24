@@ -1,3 +1,9 @@
+## [6.37.0](https://github.com/structured-world/gitlab-mcp/compare/v6.36.0...v6.37.0) (2026-01-24)
+
+### Features
+
+* **workitems:** extend manage_work_item with date, time tracking, and tier-specific widgets ([#163](https://github.com/structured-world/gitlab-mcp/issues/163)) ([d63a757](https://github.com/structured-world/gitlab-mcp/commit/d63a757c3cb1d0a7eddecae6612aeace2d39e849)), closes [#135](https://github.com/structured-world/gitlab-mcp/issues/135)
+
 ## [6.36.0](https://github.com/structured-world/gitlab-mcp/compare/v6.35.0...v6.36.0) (2026-01-23)
 
 ### Features

@@ -1,3 +1,8 @@
+---
+title: OpenAI Codex Setup
+description: "Configure GitLab MCP Server with OpenAI Codex CLI for AI-assisted GitLab development workflows"
+---
+
 # Codex Installation
 
 Configure GitLab MCP Server for use with OpenAI Codex.

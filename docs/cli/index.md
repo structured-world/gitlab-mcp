@@ -1,3 +1,8 @@
+---
+title: CLI Reference
+description: "Command-line interface for GitLab MCP Server — setup, init, install, docker, and list-tools commands"
+---
+
 # CLI Reference
 
 GitLab MCP provides several CLI commands for setup, installation, and management.

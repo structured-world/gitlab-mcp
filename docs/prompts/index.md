@@ -1,3 +1,8 @@
+---
+title: Prompt Library
+description: "Copy-paste prompts for GitLab MCP — quick start, code review, CI/CD, and project management workflows"
+---
+
 # Prompt Library
 
 Get the best results from GitLab MCP by using well-crafted prompts. This library provides ready-to-use examples organized by workflow.

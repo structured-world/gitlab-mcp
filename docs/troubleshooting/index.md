@@ -1,3 +1,8 @@
+---
+title: Common Issues
+description: "Troubleshoot GitLab MCP Server — common problems with tokens, connections, and tool availability"
+---
+
 # Troubleshooting
 
 Solutions for common issues with GitLab MCP.

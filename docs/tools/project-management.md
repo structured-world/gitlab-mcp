@@ -1,3 +1,8 @@
+---
+title: Project Management Tools
+description: "GitLab project management tools — work items, milestones, labels, and iteration tracking via MCP"
+---
+
 # Project Management Tools
 
 Work items, milestones, labels, and team collaboration tools.
@@ -21,10 +26,12 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 
 ### browse_work_items
 
+<!-- @autogen:tool browse_work_items -->
 | Action | Description |
 |--------|-------------|
-| `list` | List work items with type and state filters |
-| `get` | Get work item by numeric ID or namespace + IID |
+| `list` | List work items with filtering |
+| `get` | Get single work item details |
+<!-- @autogen:end -->
 
 ::: code-group
 
@@ -70,11 +77,15 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 
 ### manage_work_item
 
+<!-- @autogen:tool manage_work_item -->
 | Action | Description |
 |--------|-------------|
-| `create` | Create new work item (Epics → group namespace, Issues → project) |
-| `update` | Modify properties, assign users, add labels |
-| `delete` | Permanently remove a work item |
+| `create` | Create a new work item |
+| `update` | Update an existing work item |
+| `delete` | Delete a work item |
+| `add_link` | Add a relationship link between two work items |
+| `remove_link` | Remove a relationship link between two work items |
+<!-- @autogen:end -->
 
 ::: code-group
 
@@ -127,13 +138,15 @@ Track sprint progress and release planning.
 
 ### browse_milestones
 
+<!-- @autogen:tool browse_milestones -->
 | Action | Description |
 |--------|-------------|
-| `list` | List milestones (filter by state, search) |
-| `get` | Get milestone details |
-| `issues` | List issues in a milestone |
-| `merge_requests` | List MRs in a milestone |
-| `burndown` | Get burndown chart data |
+| `list` | List milestones with optional filtering |
+| `get` | Get a single milestone by ID |
+| `issues` | List issues assigned to a milestone |
+| `merge_requests` | List merge requests assigned to a milestone |
+| `burndown` | Get burndown chart data for a milestone |
+<!-- @autogen:end -->
 
 ::: code-group
 

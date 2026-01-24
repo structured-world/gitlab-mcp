@@ -1,3 +1,8 @@
+---
+title: Cursor
+description: "Configure GitLab MCP Server with Cursor IDE — MCP settings and AI-assisted GitLab workflows"
+---
+
 # Cursor
 
 Configure GitLab MCP for [Cursor](https://cursor.sh).

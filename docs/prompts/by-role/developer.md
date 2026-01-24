@@ -1,3 +1,8 @@
+---
+title: Developer Prompts
+description: "GitLab MCP prompts for developers — code review, branch management, and CI/CD debugging workflows"
+---
+
 # Developer Prompts
 
 Focused prompts for daily development workflows — code, MRs, pipelines, and debugging.

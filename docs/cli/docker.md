@@ -1,3 +1,8 @@
+---
+title: "CLI: docker"
+description: "Generate Docker run commands for GitLab MCP Server with proper environment and network settings"
+---
+
 # gitlab-mcp docker
 
 Manage the GitLab MCP Docker container and GitLab instances.

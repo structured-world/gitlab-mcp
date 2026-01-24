@@ -1,3 +1,8 @@
+---
+title: Docker Issues
+description: "Troubleshoot GitLab MCP Docker deployments — container networking, volumes, and health checks"
+---
+
 # Docker Issues
 
 Problems with Docker container startup, networking, and configuration.

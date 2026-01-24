@@ -38,6 +38,9 @@ scripts/
 
 /generated/prisma
 
+# Generated documentation (built in CI)
+docs/TOOLS.md
+
 # VitePress
 docs/.vitepress/dist
 docs/.vitepress/cache

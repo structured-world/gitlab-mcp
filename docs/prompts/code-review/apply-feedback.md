@@ -1,3 +1,8 @@
+---
+title: Apply Feedback
+description: "Prompts for applying review feedback — resolve discussions, update code, and respond to reviewers"
+---
+
 # Apply Feedback
 
 Handle review feedback on your merge requests — resolve discussions, apply suggestions, and respond to reviewers.

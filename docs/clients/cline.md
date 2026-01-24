@@ -1,3 +1,8 @@
+---
+title: Cline
+description: "Configure GitLab MCP Server with Cline — autonomous AI coding agent with GitLab access"
+---
+
 # Cline
 
 Configure GitLab MCP for [Cline](https://github.com/cline/cline) (VS Code extension).

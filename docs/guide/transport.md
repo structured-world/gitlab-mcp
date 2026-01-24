@@ -1,3 +1,8 @@
+---
+title: Transport Modes
+description: "Choose between stdio, SSE, and StreamableHTTP transport modes for GitLab MCP Server"
+---
+
 # Transport Modes
 
 The server automatically selects the appropriate transport mode based on configuration.

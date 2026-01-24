@@ -1,3 +1,8 @@
+---
+title: Sprint Planning
+description: "Prompts for sprint planning with GitLab — create milestones, assign issues, and plan iterations"
+---
+
 # Sprint Planning
 
 Use GitLab MCP for milestone management, sprint planning, and iteration tracking.

@@ -1,3 +1,8 @@
+---
+title: Claude Desktop
+description: "Configure GitLab MCP Server with Claude Desktop — stdio transport setup and token configuration"
+---
+
 # Claude Desktop
 
 Configure GitLab MCP for [Claude Desktop](https://claude.ai/download).

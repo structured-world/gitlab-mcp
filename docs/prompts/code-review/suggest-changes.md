@@ -1,3 +1,8 @@
+---
+title: Suggest Changes
+description: "Prompts for suggesting code changes in GitLab MRs — inline comments and improvement recommendations"
+---
+
 # Suggest Changes
 
 Use code suggestions to provide concrete fixes during code review. Suggestions can be applied directly from the MR interface.

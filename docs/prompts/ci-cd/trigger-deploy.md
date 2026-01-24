@@ -1,3 +1,8 @@
+---
+title: Trigger Deploy
+description: "Prompts for triggering GitLab deployments — run pipelines, play manual jobs, and manage environments"
+---
+
 # Trigger Deployments
 
 Run pipelines, trigger manual jobs, and manage deployments with GitLab MCP.

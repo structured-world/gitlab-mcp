@@ -1,5 +1,6 @@
 ---
 layout: home
+description: "MCP server connecting AI agents to GitLab API with 44 tools across 18 entity types"
 
 hero:
   name: GitLab MCP

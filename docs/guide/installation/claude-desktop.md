@@ -1,3 +1,8 @@
+---
+title: Claude Desktop Setup
+description: "Configure GitLab MCP Server as a Claude Desktop extension with one-click install or manual config"
+---
+
 # Claude Desktop (MCPB)
 
 Install GitLab MCP as a Claude Desktop Extension with one click.

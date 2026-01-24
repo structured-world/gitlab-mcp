@@ -1,3 +1,8 @@
+---
+title: Windsurf
+description: "Configure GitLab MCP Server with Windsurf IDE — Cascade AI integration for GitLab workflows"
+---
+
 # Windsurf
 
 Configure GitLab MCP for [Windsurf](https://codeium.com/windsurf).

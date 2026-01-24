@@ -1,3 +1,8 @@
+---
+title: "CI/CD Tools"
+description: "GitLab CI/CD tools — manage pipelines, jobs, variables, and deployment operations via MCP"
+---
+
 # CI/CD Tools
 
 Pipeline management, job control, logs, and CI/CD variable configuration.
@@ -18,14 +23,16 @@ View pipeline status, job details, and console output.
 
 ### Actions
 
+<!-- @autogen:tool browse_pipelines -->
 | Action | Description |
 |--------|-------------|
-| `list` | List pipelines with filters (status, ref, source) |
-| `get` | Get pipeline details |
+| `list` | List pipelines with filtering |
+| `get` | Get single pipeline details |
 | `jobs` | List jobs in a pipeline |
-| `triggers` | List bridge/trigger jobs |
+| `triggers` | List bridge/trigger jobs in a pipeline |
 | `job` | Get single job details |
-| `logs` | Read job console output |
+| `logs` | Get job console output/logs |
+<!-- @autogen:end -->
 
 ### Examples
 
@@ -85,11 +92,13 @@ Trigger and control pipeline execution.
 
 ### Actions
 
+<!-- @autogen:tool manage_pipeline -->
 | Action | Description |
 |--------|-------------|
-| `create` | Trigger a new pipeline on a branch/tag |
+| `create` | Trigger a new pipeline on branch/tag |
 | `retry` | Re-run a failed/canceled pipeline |
 | `cancel` | Stop a running pipeline |
+<!-- @autogen:end -->
 
 ### Examples
 
@@ -130,11 +139,13 @@ Control individual jobs within a pipeline.
 
 ### Actions
 
+<!-- @autogen:tool manage_pipeline_job -->
 | Action | Description |
 |--------|-------------|
 | `play` | Trigger a manual job |
 | `retry` | Re-run a failed/canceled job |
 | `cancel` | Stop a running job |
+<!-- @autogen:end -->
 
 ### Examples
 

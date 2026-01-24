@@ -1,3 +1,8 @@
+---
+title: Manual Installation
+description: "Build GitLab MCP Server from source — clone, install dependencies, build, and configure manually"
+---
+
 # Manual Configuration
 
 For users who prefer full control over their setup, you can configure GitLab MCP manually by editing your MCP client's configuration file directly.

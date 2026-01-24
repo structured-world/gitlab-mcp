@@ -1,3 +1,8 @@
+---
+title: Step-by-Step Guides
+description: "In-depth tutorials for GitLab MCP Server — code review, CI notifications, releases, and team setup"
+---
+
 # Step-by-Step Guides
 
 Comprehensive walkthroughs for common GitLab MCP workflows.

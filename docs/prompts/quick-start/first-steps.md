@@ -1,3 +1,8 @@
+---
+title: First Steps
+description: "Getting started prompts for GitLab MCP — connect to projects, list tools, and explore repositories"
+---
+
 # First Steps
 
 Your first interactions with GitLab MCP. These prompts help you explore what's available and understand the basics.

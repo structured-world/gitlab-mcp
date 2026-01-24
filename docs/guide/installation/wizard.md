@@ -1,3 +1,8 @@
+---
+title: Setup Wizard
+description: "Interactive setup wizard for GitLab MCP Server — guided configuration for any MCP client"
+---
+
 # Setup Wizard
 
 The interactive setup wizard (`gitlab-mcp setup`) guides you through configuring GitLab MCP for your environment. It auto-detects installed clients, Docker availability, and existing configurations.

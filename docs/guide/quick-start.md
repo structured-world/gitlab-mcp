@@ -1,3 +1,8 @@
+---
+title: Quick Start
+description: "Get GitLab MCP Server running with your AI agent in under a minute using npx or Docker"
+---
+
 # Quick Start
 
 Get GitLab MCP Server running with your AI agent in under a minute.

@@ -1,3 +1,8 @@
+---
+title: Docker + PostgreSQL
+description: "Deploy GitLab MCP Server with PostgreSQL for OAuth session persistence and multi-user support"
+---
+
 # Docker + PostgreSQL
 
 Run GitLab MCP with an external PostgreSQL database for OAuth session persistence and multi-instance support.

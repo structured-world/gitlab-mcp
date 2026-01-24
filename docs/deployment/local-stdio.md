@@ -1,3 +1,8 @@
+---
+title: Local stdio
+description: "Run GitLab MCP Server locally with stdio transport — simplest deployment for single-user setups"
+---
+
 # Local stdio Deployment
 
 Run GitLab MCP locally via standard I/O. The MCP client spawns the server process directly — no network, no ports, no containers.

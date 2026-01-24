@@ -1,3 +1,8 @@
+---
+title: Product Manager Prompts
+description: "GitLab MCP prompts for product managers — roadmap tracking, milestone progress, and release planning"
+---
+
 # Product Manager Prompts
 
 Work items, roadmap planning, milestone tracking, and release coordination.

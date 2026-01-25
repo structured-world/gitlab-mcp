@@ -10,6 +10,7 @@
     "source": "github"
   },
   "version": "6.41.3",
+  "_versionNote": "Updated dynamically by prepare-release.sh during semantic-release",
   "packages": [
     {
       "registryType": "npm",

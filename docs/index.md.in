@@ -1,11 +1,11 @@
 ---
 layout: home
-description: "MCP server connecting AI agents to GitLab API with 44 tools across 18 entity types"
+description: "MCP server connecting AI agents to GitLab API with __TOOL_COUNT__ tools across __ENTITY_COUNT__ entity types"
 
 hero:
   name: GitLab MCP
   text: Model Context Protocol Server
-  tagline: Connect AI agents to GitLab with 44 tools across 18 entity types
+  tagline: Connect AI agents to GitLab with __TOOL_COUNT__ tools across __ENTITY_COUNT__ entity types
   image:
     src: /logo-hero.png
     alt: GitLab MCP Logo
@@ -22,7 +22,7 @@ hero:
 
 features:
   - icon: "\U0001F527"
-    title: 44 Tools, 18 Entities
+    title: __TOOL_COUNT__ Tools, __ENTITY_COUNT__ Entities
     details: Complete GitLab API coverage — projects, merge requests, pipelines, work items, wikis, and more.
   - icon: "\U0001F512"
     title: OAuth 2.1 & Read-Only Mode

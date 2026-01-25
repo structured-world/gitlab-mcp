@@ -30,7 +30,9 @@ if [ -d "$PROJECT_DIR/prisma" ]; then
 fi
 
 # 4. Generate manifest from template
-sed "s/{{VERSION}}/$VERSION/g" "$PROJECT_DIR/mcpb/manifest.json.template" > "$BUNDLE_DIR/manifest.json"
+TOOL_COUNT=$(node -e "const r=require('$PROJECT_DIR/dist/src/registry-manager.js');console.log(r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered().length)" 2>/dev/null || echo 44)
+ENTITY_COUNT=$(node -e "const fs=require('fs'),p=require('path'),d='$PROJECT_DIR/src/entities';console.log(fs.readdirSync(d,{withFileTypes:true}).filter(e=>e.isDirectory()&&fs.existsSync(p.join(d,e.name,'registry.ts'))).length)" 2>/dev/null || echo 18)
+sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{TOOL_COUNT}}/$TOOL_COUNT/g" -e "s/{{ENTITY_COUNT}}/$ENTITY_COUNT/g" "$PROJECT_DIR/mcpb/manifest.json.template" > "$BUNDLE_DIR/manifest.json"
 
 # 5. Copy icon
 if [ -f "$PROJECT_DIR/mcpb/icon.png" ]; then

@@ -1,5 +1,5 @@
 > GitLab MCP - Model Context Protocol server for GitLab API
-> Provides 44 tools across 18 entity types using CQRS pattern (browse_* for reads, manage_* for writes)
+> Provides __TOOL_COUNT__ tools across __ENTITY_COUNT__ entity types using CQRS pattern (browse_* for reads, manage_* for writes)
 
 # Quick Start
 
@@ -10,7 +10,7 @@ npx @structured-world/gitlab-mcp init
 Required: GITLAB_TOKEN (Personal Access Token or OAuth)
 Optional: GITLAB_API_URL (defaults to https://gitlab.com)
 
-# Tools (44 total, CQRS pattern: browse_* = read, manage_* = write)
+# Tools (__TOOL_COUNT__ total, CQRS pattern: browse_* = read, manage_* = write)
 
 ## Projects & Namespaces
 - browse_projects: Search, list, or get project details. Actions: search, list, get.

@@ -19,7 +19,7 @@
 import { AsyncLocalStorage } from "async_hooks";
 import type { RequestStack } from "./types.js";
 import { formatAccessLog, createAccessLogEntry } from "./access-log.js";
-import { logger } from "../logger.js";
+import { logger, LOG_JSON } from "../logger.js";
 
 /**
  * Request context stored in AsyncLocalStorage
@@ -253,8 +253,13 @@ export class RequestTracker {
     const logLine = formatAccessLog(entry);
 
     // Output the condensed access log at info level
-    // The formatted line is logged as a single structured field for machine parsing
-    logger.info({ accessLog: entry }, logLine);
+    // JSON mode: include full accessLog object for log aggregators (Loki, ELK, etc.)
+    // Plain mode: message only - prevents pino-pretty from outputting multiline JSON
+    if (LOG_JSON) {
+      logger.info({ accessLog: entry }, logLine);
+    } else {
+      logger.info(logLine);
+    }
 
     return logLine;
   }

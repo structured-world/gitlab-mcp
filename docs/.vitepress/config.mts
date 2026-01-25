@@ -27,8 +27,9 @@ export default defineConfig({
   },
 
   // MCPB bundle is downloaded from GitHub releases during docs build.
+  // Links use versioned filenames (e.g., gitlab-mcp-6.43.0.mcpb) injected at build time.
   // Until first .mcpb release exists, the link is a dead link — safe to ignore.
-  ignoreDeadLinks: [/\/downloads\/.+\.mcpb$/],
+  ignoreDeadLinks: [/\/downloads\/gitlab-mcp-[\d.]+\.mcpb$/],
 
   sitemap: {
     hostname,

@@ -186,22 +186,24 @@ function processFile(
   return false;
 }
 
-interface CountPlaceholders {
+interface Placeholders {
   toolCount: number;
   entityCount: number;
   readonlyToolCount: number;
+  version: string;
 }
 
 /**
- * Replace __TOOL_COUNT__, __ENTITY_COUNT__, and __READONLY_TOOL_COUNT__ placeholders in a file.
+ * Replace __TOOL_COUNT__, __ENTITY_COUNT__, __READONLY_TOOL_COUNT__, and __VERSION__ placeholders.
  * Returns true if file was modified.
  */
-function replaceCountPlaceholders(filePath: string, counts: CountPlaceholders): boolean {
+function replacePlaceholders(filePath: string, placeholders: Placeholders): boolean {
   const content = fs.readFileSync(filePath, "utf8");
   const result = content
-    .replace(/__TOOL_COUNT__/g, String(counts.toolCount))
-    .replace(/__ENTITY_COUNT__/g, String(counts.entityCount))
-    .replace(/__READONLY_TOOL_COUNT__/g, String(counts.readonlyToolCount));
+    .replace(/__TOOL_COUNT__/g, String(placeholders.toolCount))
+    .replace(/__ENTITY_COUNT__/g, String(placeholders.entityCount))
+    .replace(/__READONLY_TOOL_COUNT__/g, String(placeholders.readonlyToolCount))
+    .replace(/__VERSION__/g, placeholders.version);
 
   if (result !== content) {
     fs.writeFileSync(filePath, result, "utf8");
@@ -226,9 +228,31 @@ function countEntities(projectRoot: string): number {
 }
 
 /**
+ * Get version from RELEASE_VERSION env var or package.json.
+ * RELEASE_VERSION is set by CI from the latest GitHub release tag.
+ */
+function getVersion(projectRoot: string): string {
+  // CI provides RELEASE_VERSION from latest GitHub release
+  if (process.env.RELEASE_VERSION) {
+    return process.env.RELEASE_VERSION;
+  }
+
+  // Fallback to package.json version (may be dev version)
+  const packageJsonPath = path.join(projectRoot, "package.json");
+  if (fs.existsSync(packageJsonPath)) {
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
+      version?: string;
+    };
+    return packageJson.version ?? "0.0.0";
+  }
+
+  return "0.0.0";
+}
+
+/**
  * Main entry point. Scans docs/tools/*.md and injects action tables.
  * Also generates .md/.txt from .in templates with __TOOL_COUNT__, __ENTITY_COUNT__,
- * and __READONLY_TOOL_COUNT__ placeholders replaced by actual counts.
+ * __READONLY_TOOL_COUNT__, and __VERSION__ placeholders replaced by actual values.
  */
 export function main(): void {
   // Find project root (where package.json is)
@@ -260,11 +284,12 @@ export function main(): void {
   const readonlyToolCount = allTools.filter(
     t => t.name.startsWith("browse_") || t.name === "manage_context"
   ).length;
+  const version = getVersion(projectRoot);
   console.log(
-    `  Tool count: ${toolCount}, Entity count: ${entityCount}, Read-only: ${readonlyToolCount}`
+    `  Tool count: ${toolCount}, Entity count: ${entityCount}, Read-only: ${readonlyToolCount}, Version: ${version}`
   );
 
-  const counts: CountPlaceholders = { toolCount, entityCount, readonlyToolCount };
+  const placeholders: Placeholders = { toolCount, entityCount, readonlyToolCount, version };
 
   // Generate docs from .in templates (*.md.in -> *.md, *.txt.in -> *.txt)
   const docsDir = path.join(projectRoot, "docs");
@@ -282,7 +307,7 @@ export function main(): void {
         ) {
           const outputPath = fullPath.replace(/\.in$/, "");
           fs.copyFileSync(fullPath, outputPath);
-          replaceCountPlaceholders(outputPath, counts);
+          replacePlaceholders(outputPath, placeholders);
           templateCount++;
           const relPath = path.relative(projectRoot, outputPath);
           console.log(`  Generated: ${relPath} (from ${entry.name})`);
@@ -330,10 +355,11 @@ export {
   generateActionsTable,
   findMarkers,
   processFile,
-  replaceCountPlaceholders,
+  replacePlaceholders,
   countEntities,
+  getVersion,
 };
-export type { JsonSchemaProperty, ActionInfo, MarkerMatch };
+export type { JsonSchemaProperty, ActionInfo, MarkerMatch, Placeholders };
 
 // Auto-execute when run directly
 if (process.env.NODE_ENV !== "test") {

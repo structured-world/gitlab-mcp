@@ -1,11 +1,11 @@
-import { h, watch } from "vue";
+import { h, watch, nextTick } from "vue";
 import DefaultTheme from "vitepress/theme";
 import type { Theme } from "vitepress";
 import { inBrowser } from "vitepress";
 import "./style.css";
 import BugReportWidget from "./components/BugReportWidget.vue";
 
-// GA4 tracking ID
+// GA4 tracking ID - fallback is gitlab-mcp.sw.foundation production property
 const GA_ID = import.meta.env.VITE_GA_ID || "G-RY1XJ7LR5F";
 
 // Declare gtag types
@@ -59,15 +59,15 @@ export default {
     if (inBrowser) {
       initGoogleAnalytics();
 
-      // Track initial page view
-      trackPageView(window.location.pathname);
+      // Track initial page view after DOM is ready
+      nextTick(() => trackPageView(window.location.pathname));
 
       // Track subsequent SPA navigations
       watch(
         () => router.route.path,
-        path => {
-          // Small delay to ensure document.title is updated
-          setTimeout(() => trackPageView(path), 100);
+        (path: string) => {
+          // Wait for Vue to update DOM (including document.title) before tracking
+          nextTick(() => trackPageView(path));
         }
       );
     }

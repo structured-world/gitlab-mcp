@@ -22,8 +22,9 @@ import {
   generateActionsTable,
   findMarkers,
   processFile,
-  replaceCountPlaceholders,
+  replacePlaceholders,
   countEntities,
+  getVersion,
   main,
 } from "../../../src/cli/inject-tool-refs";
 import type { JsonSchemaProperty, ActionInfo } from "../../../src/cli/inject-tool-refs";
@@ -792,32 +793,104 @@ describe("inject-tool-refs", () => {
     });
   });
 
-  describe("replaceCountPlaceholders", () => {
-    it("should replace all count placeholders and return true", () => {
-      const counts = { toolCount: 44, entityCount: 18, readonlyToolCount: 24 };
+  describe("replacePlaceholders", () => {
+    it("should replace all placeholders including version and return true", () => {
+      const placeholders = {
+        toolCount: 44,
+        entityCount: 18,
+        readonlyToolCount: 24,
+        version: "6.43.0",
+      };
       mockedFs.readFileSync.mockReturnValue(
-        "We have __TOOL_COUNT__ tools, __ENTITY_COUNT__ entities, __READONLY_TOOL_COUNT__ read-only."
+        "We have __TOOL_COUNT__ tools, __ENTITY_COUNT__ entities, __READONLY_TOOL_COUNT__ read-only. Version: __VERSION__"
       );
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = replaceCountPlaceholders("/some/file.md", counts);
+      const result = replacePlaceholders("/some/file.md", placeholders);
 
       expect(result).toBe(true);
       expect(mockedFs.writeFileSync).toHaveBeenCalledWith(
         "/some/file.md",
-        "We have 44 tools, 18 entities, 24 read-only.",
+        "We have 44 tools, 18 entities, 24 read-only. Version: 6.43.0",
         "utf8"
       );
     });
 
     it("should return false when no placeholders found", () => {
-      const counts = { toolCount: 44, entityCount: 18, readonlyToolCount: 24 };
+      const placeholders = {
+        toolCount: 44,
+        entityCount: 18,
+        readonlyToolCount: 24,
+        version: "1.0.0",
+      };
       mockedFs.readFileSync.mockReturnValue("No placeholders here.");
 
-      const result = replaceCountPlaceholders("/some/file.md", counts);
+      const result = replacePlaceholders("/some/file.md", placeholders);
 
       expect(result).toBe(false);
       expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
+    });
+
+    it("should replace version placeholder in download URLs", () => {
+      const placeholders = {
+        toolCount: 44,
+        entityCount: 18,
+        readonlyToolCount: 24,
+        version: "6.43.0",
+      };
+      mockedFs.readFileSync.mockReturnValue(
+        '<a href="/downloads/gitlab-mcp-__VERSION__.mcpb" download>Download</a>'
+      );
+      mockedFs.writeFileSync.mockImplementation(() => undefined);
+
+      const result = replacePlaceholders("/some/file.md", placeholders);
+
+      expect(result).toBe(true);
+      expect(mockedFs.writeFileSync).toHaveBeenCalledWith(
+        "/some/file.md",
+        '<a href="/downloads/gitlab-mcp-6.43.0.mcpb" download>Download</a>',
+        "utf8"
+      );
+    });
+  });
+
+  describe("getVersion", () => {
+    const originalEnv = process.env;
+
+    beforeEach(() => {
+      process.env = { ...originalEnv };
+    });
+
+    afterEach(() => {
+      process.env = originalEnv;
+    });
+
+    it("should return RELEASE_VERSION from environment when set", () => {
+      process.env.RELEASE_VERSION = "7.0.0";
+      mockedFs.existsSync.mockReturnValue(true);
+
+      const result = getVersion("/project");
+
+      expect(result).toBe("7.0.0");
+    });
+
+    it("should fall back to package.json version when RELEASE_VERSION not set", () => {
+      delete process.env.RELEASE_VERSION;
+      mockedFs.existsSync.mockReturnValue(true);
+      mockedFs.readFileSync.mockReturnValue('{"version": "6.42.0"}');
+
+      const result = getVersion("/project");
+
+      expect(result).toBe("6.42.0");
+    });
+
+    it("should return 0.0.0 when no version source available", () => {
+      delete process.env.RELEASE_VERSION;
+      mockedFs.existsSync.mockReturnValue(false);
+
+      const result = getVersion("/project");
+
+      expect(result).toBe("0.0.0");
     });
   });
 
@@ -947,7 +1020,11 @@ describe("inject-tool-refs", () => {
         "old\n" +
         "<!-- @autogen:end -->\n";
 
-      mockedFs.readFileSync.mockReturnValue(mdContent);
+      mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
+        const pathStr = filePath.toString();
+        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
+        return mdContent;
+      });
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
       main();
@@ -969,7 +1046,11 @@ describe("inject-tool-refs", () => {
 
       mockGetAllToolDefinitionsUnfiltered.mockReturnValue([]);
       mockedFs.readdirSync.mockReturnValue(["page.md"] as never);
-      mockedFs.readFileSync.mockReturnValue("# No markers\n\nJust text.");
+      mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
+        const pathStr = filePath.toString();
+        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
+        return "# No markers\n\nJust text.";
+      });
 
       main();
 
@@ -1026,7 +1107,11 @@ describe("inject-tool-refs", () => {
         "| `list` | List items with filtering and pagination |\n" +
         "<!-- @autogen:end -->\n";
 
-      mockedFs.readFileSync.mockReturnValue(upToDateContent);
+      mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
+        const pathStr = filePath.toString();
+        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
+        return upToDateContent;
+      });
 
       main();
 
@@ -1059,6 +1144,7 @@ describe("inject-tool-refs", () => {
       // First file has marker, second doesn't
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
+        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
         if (pathStr.includes("projects.md")) {
           return "<!-- @autogen:tool browse_projects -->\nold\n<!-- @autogen:end -->";
         }
@@ -1073,7 +1159,7 @@ describe("inject-tool-refs", () => {
       );
     });
 
-    it("should generate .md from .md.in templates with count placeholders", () => {
+    it("should generate .md from .md.in templates with all placeholders including version", () => {
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
         if (pathStr === path.join("/project", "package.json")) return true;
@@ -1114,13 +1200,16 @@ describe("inject-tool-refs", () => {
       });
 
       const templateContent =
-        "# Home\n\nWe have __TOOL_COUNT__ tools across __ENTITY_COUNT__ entities (__READONLY_TOOL_COUNT__ read-only).";
+        "# Home\n\nWe have __TOOL_COUNT__ tools across __ENTITY_COUNT__ entities (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__";
 
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
         // After copyFileSync, readFileSync is called on the output path
         if (pathStr.endsWith("index.md.in") || pathStr.endsWith("index.md")) {
           return templateContent;
+        }
+        if (pathStr.endsWith("package.json")) {
+          return '{"version": "6.43.0"}';
         }
         return "";
       });
@@ -1139,9 +1228,11 @@ describe("inject-tool-refs", () => {
       expect(generatedContent).toContain("2 tools");
       expect(generatedContent).toContain("2 entities");
       expect(generatedContent).toContain("1 read-only");
+      expect(generatedContent).toContain("6.43.0");
       expect(generatedContent).not.toContain("__TOOL_COUNT__");
       expect(generatedContent).not.toContain("__ENTITY_COUNT__");
       expect(generatedContent).not.toContain("__READONLY_TOOL_COUNT__");
+      expect(generatedContent).not.toContain("__VERSION__");
     });
 
     it("should recursively process .in templates in subdirectories", () => {
@@ -1188,11 +1279,14 @@ describe("inject-tool-refs", () => {
         return [] as never;
       });
 
-      const mdTemplate = "**__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types";
-      const txtTemplate = "> Provides __TOOL_COUNT__ tools (__READONLY_TOOL_COUNT__ read-only)";
+      const mdTemplate =
+        "**__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types. Version: __VERSION__";
+      const txtTemplate =
+        "> Provides __TOOL_COUNT__ tools (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__";
 
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
+        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
         // After copyFileSync, readFileSync is called on the output path
         if (pathStr.endsWith("index.md.in") || pathStr.endsWith("index.md")) {
           return mdTemplate;
@@ -1217,10 +1311,10 @@ describe("inject-tool-refs", () => {
       );
 
       expect(mdWrite).toBeDefined();
-      expect(mdWrite![1]).toBe("**3 tools** across 1 entity types");
+      expect(mdWrite![1]).toBe("**3 tools** across 1 entity types. Version: 1.0.0");
 
       expect(txtWrite).toBeDefined();
-      expect(txtWrite![1]).toBe("> Provides 3 tools (2 read-only)");
+      expect(txtWrite![1]).toBe("> Provides 3 tools (2 read-only). Version: 1.0.0");
     });
 
     it("should build toolSchemas map from registry tool definitions", () => {
@@ -1247,7 +1341,11 @@ describe("inject-tool-refs", () => {
 
       const fileContent = "<!-- @autogen:tool manage_wiki -->\nold\n<!-- @autogen:end -->";
 
-      mockedFs.readFileSync.mockReturnValue(fileContent);
+      mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
+        const pathStr = filePath.toString();
+        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
+        return fileContent;
+      });
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
       main();

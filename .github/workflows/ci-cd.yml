@@ -329,7 +329,8 @@ jobs:
           echo "Downloading MCPB from: ${MCPB_URL}"
           # Brief wait for GitHub Release asset eventual consistency
           # Total max wait: 5s initial + 3 retries * 10s delay = 35s (sufficient for GH CDN propagation)
-          # curl --retry handles transient failures; combined with initial sleep this covers CDN edge cases
+          # curl -f fails fast on HTTP errors (no HTML error pages); --retry handles transient failures
+          # Note: exponential backoff unnecessary - linear 10s delay is adequate for CDN propagation
           sleep 5
           curl -fL --retry 3 --retry-delay 10 -o "gitlab-mcp-${VERSION}.mcpb" "${MCPB_URL}"
           ls -la "gitlab-mcp-${VERSION}.mcpb"
@@ -343,6 +344,8 @@ jobs:
           echo "MCPB SHA256: ${SHA256}"
 
           # Add mcpb package entry to server.json
+          # Note: jq validation after transform catches both syntax errors and empty output;
+          # -e flag is unnecessary since .packages append never produces null
           jq --arg url "$MCPB_URL" --arg sha "$SHA256" \
             '.packages += [{"registryType": "mcpb", "identifier": $url, "fileSha256": $sha, "transport": {"type": "stdio"}}]' \
             server.json > server.tmp
@@ -395,6 +398,8 @@ jobs:
             echo "📦 MCPB bundle: gitlab-mcp-${{ needs.semantic-release.outputs.new-release-version }}.mcpb" >> $GITHUB_STEP_SUMMARY
           fi
 
+          # mcp-registry-publish only runs when new-release-published=true;
+          # handle all three states: success, failure, skipped (no release)
           if [[ "${{ needs.mcp-registry-publish.result }}" == "success" ]]; then
             echo "🌐 MCP Registry: io.github.structured-world/gitlab-mcp v${{ needs.semantic-release.outputs.new-release-version }}" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.mcp-registry-publish.result }}" == "failure" ]]; then

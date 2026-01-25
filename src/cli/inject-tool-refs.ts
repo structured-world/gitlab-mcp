@@ -240,8 +240,10 @@ function getVersion(projectRoot: string): string {
   // Fallback to package.json version (may be dev version)
   const packageJsonPath = path.join(projectRoot, "package.json");
   if (fs.existsSync(packageJsonPath)) {
-    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as { version: string };
-    return packageJson.version;
+    const packageJson = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
+      version?: string;
+    };
+    return packageJson.version ?? "0.0.0";
   }
 
   return "0.0.0";

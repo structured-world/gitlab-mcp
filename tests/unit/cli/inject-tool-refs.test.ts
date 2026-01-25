@@ -892,6 +892,17 @@ describe("inject-tool-refs", () => {
 
       expect(result).toBe("0.0.0");
     });
+
+    it("should return 0.0.0 when package.json exists but has no version field", () => {
+      // Edge case: package.json exists but is missing the version field
+      delete process.env.RELEASE_VERSION;
+      mockedFs.existsSync.mockReturnValue(true);
+      mockedFs.readFileSync.mockReturnValue('{"name": "some-package"}');
+
+      const result = getVersion("/project");
+
+      expect(result).toBe("0.0.0");
+    });
   });
 
   describe("countEntities", () => {

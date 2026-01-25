@@ -18,7 +18,7 @@ import { sessionStore } from "../oauth/session-store";
 import { verifyMCPToken, isTokenExpiringSoon, calculateTokenExpiry } from "../oauth/token-utils";
 import { refreshGitLabToken } from "../oauth/gitlab-device-flow";
 import { getBaseUrl } from "../oauth/endpoints/metadata";
-import { logWarn, logError, logDebug } from "../logger";
+import { logWarn, logError, logDebug, truncateId } from "../logger";
 import { OAuthErrorResponse } from "../oauth/types";
 import { getMinimalRequestContext } from "../utils/request-logger";
 
@@ -102,7 +102,7 @@ export async function oauthAuthMiddleware(
       });
 
       logDebug("GitLab token refreshed during request", {
-        sessionId: sessionId.substring(0, 8) + "...",
+        sessionId: truncateId(sessionId),
       });
     } catch (error: unknown) {
       logError("Failed to refresh GitLab token during request", { err: error as Error });
@@ -138,7 +138,7 @@ export async function oauthAuthMiddleware(
   res.locals.gitlabUsername = updatedSession.gitlabUsername;
 
   logDebug("OAuth session validated, passing to route handler", {
-    sessionId: updatedSession.id.substring(0, 8) + "...",
+    sessionId: truncateId(updatedSession.id),
     method: req.method,
     path: req.path,
   });

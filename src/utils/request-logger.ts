@@ -30,9 +30,9 @@ export interface RequestContext {
   hasOAuthSession: boolean;
   /** Whether request has MCP-Session-Id header */
   hasMcpSessionHeader: boolean;
-  /** Truncated OAuth session ID (first 8 chars + "...") */
+  /** Truncated OAuth session ID (first 4 + ".." + last 4) */
   oauthSessionId?: string;
-  /** Truncated MCP session ID (first 8 chars + "...") */
+  /** Truncated MCP session ID (first 4 + ".." + last 4) */
   mcpSessionId?: string;
 }
 
@@ -69,15 +69,21 @@ export function getIpAddress(req: Request): string {
   return req.ip ?? req.socket?.remoteAddress ?? "unknown";
 }
 
+// Re-export truncateId from logger for backward compatibility
+// This module used to have its own implementation, now uses centralized version
+import { truncateId as baseTruncateId } from "../logger";
+
 /**
  * Truncate a session ID for safe logging
  *
- * Shows first 8 characters followed by "..." to avoid exposing full IDs.
+ * Shows first 4 characters + ".." + last 4 characters to avoid exposing full IDs
+ * while maintaining identifiability.
+ *
+ * Example: "9fd82b35-6789-abcd" → "9fd8..abcd"
  */
 export function truncateId(id: string | undefined): string | undefined {
   if (!id) return undefined;
-  if (id.length <= 8) return id;
-  return id.substring(0, 8) + "...";
+  return baseTruncateId(id);
 }
 
 /**

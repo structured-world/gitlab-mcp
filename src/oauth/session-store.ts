@@ -12,7 +12,7 @@
 
 import { OAuthSession, DeviceFlowState, AuthorizationCode, AuthCodeFlowState } from "./types";
 import { SessionStorageBackend, createStorageBackend } from "./storage";
-import { logInfo, logWarn, logError, logDebug } from "../logger";
+import { logInfo, logWarn, logError, logDebug, truncateId } from "../logger";
 
 /**
  * Session store with pluggable storage backends
@@ -270,11 +270,11 @@ export class SessionStore {
     this.backend.storeAuthCodeFlow(internalState, flow).catch(err => {
       logError("Failed to persist auth code flow", {
         err,
-        internalState: internalState.substring(0, 8) + "...",
+        internalState: truncateId(internalState),
       });
     });
 
-    logDebug("Auth code flow stored", { internalState: internalState.substring(0, 8) + "..." });
+    logDebug("Auth code flow stored", { internalState: truncateId(internalState) });
   }
 
   /**
@@ -294,10 +294,10 @@ export class SessionStore {
       this.backend.deleteAuthCodeFlow(internalState).catch(err => {
         logError("Failed to delete auth code flow", {
           err,
-          internalState: internalState.substring(0, 8) + "...",
+          internalState: truncateId(internalState),
         });
       });
-      logDebug("Auth code flow deleted", { internalState: internalState.substring(0, 8) + "..." });
+      logDebug("Auth code flow deleted", { internalState: truncateId(internalState) });
     }
 
     return deleted;
@@ -321,10 +321,10 @@ export class SessionStore {
     this.authCodes.set(code.code, code);
 
     this.backend.storeAuthCode(code).catch(err => {
-      logError("Failed to persist auth code", { err, code: code.code.substring(0, 8) + "..." });
+      logError("Failed to persist auth code", { err, code: truncateId(code.code) });
     });
 
-    logDebug("Auth code stored", { code: code.code.substring(0, 8) + "..." });
+    logDebug("Auth code stored", { code: truncateId(code.code) });
   }
 
   /**
@@ -342,9 +342,9 @@ export class SessionStore {
 
     if (deleted) {
       this.backend.deleteAuthCode(code).catch(err => {
-        logError("Failed to delete auth code", { err, code: code.substring(0, 8) + "..." });
+        logError("Failed to delete auth code", { err, code: truncateId(code) });
       });
-      logDebug("Auth code deleted", { code: code.substring(0, 8) + "..." });
+      logDebug("Auth code deleted", { code: truncateId(code) });
     }
 
     return deleted;
@@ -373,7 +373,7 @@ export class SessionStore {
 
     logDebug("MCP session associated with OAuth session", {
       mcpSessionId,
-      oauthSessionId: oauthSessionId.substring(0, 8) + "...",
+      oauthSessionId: truncateId(oauthSessionId),
     });
   }
 

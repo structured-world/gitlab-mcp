@@ -33,14 +33,16 @@ describe("AccessLogFormatter", () => {
       expect(truncateSessionId("")).toBe("-");
     });
 
-    it("returns full ID for short sessions (<=8 chars)", () => {
+    it("returns full ID for short sessions (<=10 chars)", () => {
       expect(truncateSessionId("abc123")).toBe("abc123");
-      expect(truncateSessionId("12345678")).toBe("12345678");
+      expect(truncateSessionId("1234567890")).toBe("1234567890");
     });
 
-    it("truncates long session IDs with '..'", () => {
-      expect(truncateSessionId("abc12345-6789-0abc")).toBe("abc12345..");
-      expect(truncateSessionId("550e8400-e29b-41d4-a716-446655440000")).toBe("550e8400..");
+    it("truncates long session IDs to first4..last4 format", () => {
+      // "abc12345-6789-0abc" -> first 4 "abc1" + ".." + last 4 "0abc"
+      expect(truncateSessionId("abc12345-6789-0abc")).toBe("abc1..0abc");
+      // "550e8400-e29b-41d4-a716-446655440000" -> "550e..0000"
+      expect(truncateSessionId("550e8400-e29b-41d4-a716-446655440000")).toBe("550e..0000");
     });
   });
 
@@ -162,7 +164,7 @@ describe("AccessLogFormatter", () => {
       const entry = createAccessLogEntry(stack);
 
       expect(entry.clientIp).toBe("192.168.1.100");
-      expect(entry.session).toBe("abc12345..");
+      expect(entry.session).toBe("abc1..0abc");
       expect(entry.ctx).toBe("mygroup/myproject");
       expect(entry.ro).toBe("-");
       expect(entry.method).toBe("POST");
@@ -226,7 +228,7 @@ describe("AccessLogFormatter", () => {
       const entry = {
         timestamp: "2026-01-25T12:34:56Z",
         clientIp: "192.168.1.100",
-        session: "abc12345..",
+        session: "abc1..0abc",
         ctx: "mygroup/proj",
         ro: "-",
         method: "POST",
@@ -244,7 +246,7 @@ describe("AccessLogFormatter", () => {
 
       // Timestamp omitted from message - pino adds it in log prefix
       expect(log).toBe(
-        "192.168.1.100 abc12345.. mygroup/proj - POST /mcp 200 142ms | browse_projects list | GL:200 98ms | namespace=test/backend items=15"
+        "192.168.1.100 abc1..0abc mygroup/proj - POST /mcp 200 142ms | browse_projects list | GL:200 98ms | namespace=test/backend items=15"
       );
     });
 
@@ -276,7 +278,7 @@ describe("AccessLogFormatter", () => {
       const entry = {
         timestamp: "2026-01-25T12:34:56Z",
         clientIp: "192.168.1.100",
-        session: "abc12345..",
+        session: "abc1..0abc",
         ctx: "test/api",
         ro: "-",
         method: "POST",
@@ -311,7 +313,7 @@ describe("AccessLogFormatter", () => {
       const entry = createConnectionCloseEntry(stats, "client_disconnect");
 
       expect(entry.clientIp).toBe("192.168.1.100");
-      expect(entry.session).toBe("abc12345..");
+      expect(entry.session).toBe("abc1..0abc");
       expect(entry.duration).toBe("5m32s");
       expect(entry.reason).toBe("client_disconnect");
       expect(entry.requests).toBe(42);
@@ -343,7 +345,7 @@ describe("AccessLogFormatter", () => {
       const entry = {
         timestamp: "2026-01-25T12:40:00Z",
         clientIp: "192.168.1.100",
-        session: "abc12345..",
+        session: "abc1..0abc",
         duration: "5m32s",
         reason: "client_disconnect" as const,
         requests: 42,
@@ -354,7 +356,7 @@ describe("AccessLogFormatter", () => {
       const log = formatConnectionClose(entry);
 
       expect(log).toBe(
-        "[2026-01-25T12:40:00Z] CONN_CLOSE 192.168.1.100 abc12345.. 5m32s client_disconnect | reqs=42 tools=15 errs=0"
+        "[2026-01-25T12:40:00Z] CONN_CLOSE 192.168.1.100 abc1..0abc 5m32s client_disconnect | reqs=42 tools=15 errs=0"
       );
     });
 
@@ -362,7 +364,7 @@ describe("AccessLogFormatter", () => {
       const entry = {
         timestamp: "2026-01-25T12:40:00Z",
         clientIp: "192.168.1.100",
-        session: "abc12345..",
+        session: "abc1..0abc",
         duration: "45s",
         reason: "transport_error" as const,
         requests: 5,
@@ -374,7 +376,7 @@ describe("AccessLogFormatter", () => {
       const log = formatConnectionClose(entry);
 
       expect(log).toBe(
-        '[2026-01-25T12:40:00Z] CONN_CLOSE 192.168.1.100 abc12345.. 45s transport_error | reqs=5 tools=3 errs=1 last_err="write EPIPE"'
+        '[2026-01-25T12:40:00Z] CONN_CLOSE 192.168.1.100 abc1..0abc 45s transport_error | reqs=5 tools=3 errs=1 last_err="write EPIPE"'
       );
     });
 
@@ -382,7 +384,7 @@ describe("AccessLogFormatter", () => {
       const entry = {
         timestamp: "2026-01-25T12:40:00Z",
         clientIp: "192.168.1.100",
-        session: "abc12345..",
+        session: "abc1..0abc",
         duration: "10s",
         reason: "transport_error" as const,
         requests: 1,

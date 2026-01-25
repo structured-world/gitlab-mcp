@@ -28,7 +28,7 @@ import {
   calculateTokenExpiry,
 } from "../token-utils";
 import { getBaseUrl } from "./metadata";
-import { logInfo, logWarn, logError } from "../../logger";
+import { logInfo, logWarn, logError, truncateId } from "../../logger";
 import { DeviceFlowPollResponse, OAuthErrorResponse } from "../types";
 import { getIpAddress } from "../../utils/request-logger";
 
@@ -155,7 +155,7 @@ async function handleAuthorizationCodeFlow(
   const gitlabAuthUrl = buildGitLabAuthUrl(config, callbackUri, internalState);
 
   logInfo("Authorization Code Flow initiated, redirecting to GitLab", {
-    internalState: internalState.substring(0, 8) + "...",
+    internalState: truncateId(internalState),
     clientRedirectUri: params.redirectUri,
   });
 
@@ -202,7 +202,7 @@ async function handleDeviceFlow(
     });
 
     logInfo("Device flow initiated for authorization", {
-      flowState: flowState.substring(0, 8) + "...",
+      flowState: truncateId(flowState),
       userCode: deviceResponse.user_code,
     });
 
@@ -313,7 +313,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
       sessionStore.deleteDeviceFlow(flow_state);
 
       logInfo("Device flow authorization completed", {
-        sessionId: sessionId.substring(0, 8) + "...",
+        sessionId: truncateId(sessionId),
         userId: userInfo.id,
         username: userInfo.username,
       });

@@ -1732,6 +1732,40 @@ describe("Workitems Registry - CQRS Tools", () => {
         expect(result._warning?.failedProperties).toHaveProperty("timeEstimate");
       });
 
+      it("should return partial success when timeEstimate update returns empty workItem", async () => {
+        // Step 1: Create succeeds
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        // Step 2: Update returns no work item but also no errors (edge case)
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: null, errors: [] },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        const result = (await tool?.handler({
+          action: "create",
+          namespace: "group/project",
+          title: "Estimated Item",
+          workItemType: "ISSUE",
+          timeEstimate: "4h",
+        })) as {
+          id: string;
+          _warning?: { message: string; failedProperties: { timeEstimate: { error: string } } };
+        };
+
+        // Work item should still be created
+        expect(result.id).toBe("100");
+
+        // Should include warning about failed timeEstimate
+        expect(result._warning).toBeDefined();
+        expect(result._warning?.message).toContain("could not be applied");
+        expect(result._warning?.failedProperties.timeEstimate.error).toContain(
+          "returned no work item"
+        );
+      });
+
       it("should create work item with weight", async () => {
         mockClient.request.mockResolvedValueOnce({
           workItemCreate: { workItem: mockWorkItemResponse, errors: [] },

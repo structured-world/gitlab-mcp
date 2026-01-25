@@ -580,7 +580,7 @@ describe("whoami handler", () => {
       mockRegistryManager.getFilterStats.mockReturnValue({
         available: 10,
         total: 45,
-        filteredByScopes: 0, // No scope filtering (canManage=true)
+        filteredByScopes: 35, // write_repository without api filters most tools
         filteredByReadOnly: 0,
         filteredByTier: 0,
         filteredByDeniedRegex: 0,

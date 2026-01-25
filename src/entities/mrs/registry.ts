@@ -11,6 +11,112 @@ import { ToolRegistry, EnhancedToolDefinition } from "../../types";
 import { isActionDenied } from "../../config";
 
 /**
+ * Response shape for MR status check before merge.
+ * Contains fields needed to determine mergeability.
+ */
+interface MergeRequestStatusResponse {
+  detailed_merge_status: string;
+  merge_status: string;
+  has_conflicts: boolean;
+  blocking_discussions_resolved: boolean;
+  state: string;
+  draft: boolean;
+}
+
+/**
+ * Structured response when MR cannot be merged.
+ * Provides actionable information for AI agents.
+ */
+export interface MergeBlockedResponse {
+  error: true;
+  message: string;
+  detailed_merge_status: string;
+  merge_status: string;
+  has_conflicts: boolean;
+  blocking_discussions_resolved: boolean;
+  hint: string;
+  is_retryable: boolean;
+  can_auto_merge: boolean;
+  suggested_action: string;
+}
+
+/**
+ * Statuses that are transient and may resolve on their own.
+ * Agent should wait and retry for these statuses.
+ */
+export const RETRYABLE_MERGE_STATUSES = [
+  "checking",
+  "unchecked",
+  "ci_still_running",
+  "ci_must_pass",
+  "approvals_syncing",
+] as const;
+
+/**
+ * Statuses where auto-merge (merge_when_pipeline_succeeds) is applicable.
+ * Agent can suggest using auto-merge for these statuses.
+ */
+export const AUTO_MERGE_ELIGIBLE_STATUSES = ["ci_still_running", "ci_must_pass"] as const;
+
+/**
+ * Returns actionable hint for a given merge status.
+ * Helps agents understand why merge failed and what action to take.
+ *
+ * @see https://docs.gitlab.com/ee/api/merge_requests.html#merge-status
+ * @see https://gitlab.com/gitlab-org/gitlab/-/issues/364102
+ */
+export function getMergeStatusHint(status: string): string {
+  const hints: Record<string, string> = {
+    // Async check in progress - agent should wait and retry
+    checking: "Wait a moment and retry - GitLab is calculating mergeability",
+    unchecked: "Wait a moment and retry - GitLab has not checked mergeability yet",
+
+    // CI/Pipeline related - suggest auto-merge
+    ci_must_pass:
+      "Pipeline must pass. Use merge_when_pipeline_succeeds: true for auto-merge, or wait for pipeline",
+    ci_still_running:
+      "Pipeline is running. Use merge_when_pipeline_succeeds: true for auto-merge, or wait for completion",
+
+    // Approval related
+    not_approved: "MR requires approval before merging",
+    approvals_syncing: "Approvals are being synchronized - wait and retry",
+
+    // Conflict related
+    conflict: "Resolve merge conflicts before merging",
+    need_rebase: "Rebase the source branch before merging",
+
+    // Status related
+    draft_status:
+      "Remove draft status before merging by updating the title to remove any 'Draft:' or 'WIP:' prefix",
+    discussions_not_resolved: "Resolve all blocking discussions before merging",
+    blocked_status: "MR is blocked by another MR or issue",
+
+    // External checks
+    external_status_checks: "External status checks are pending",
+    jira_association_missing: "Jira issue association is required",
+
+    // Other statuses
+    not_open: "MR is not in open state - cannot merge closed or already merged MRs",
+    mergeable: "MR is ready to merge",
+  };
+
+  return hints[status] || `Check MR detailed status: ${status}`;
+}
+
+/**
+ * Build suggested action message based on merge status.
+ */
+export function getSuggestedAction(isRetryable: boolean, canAutoMerge: boolean): string {
+  if (canAutoMerge) {
+    return "Consider using merge_when_pipeline_succeeds: true to auto-merge when pipeline passes";
+  }
+  if (isRetryable) {
+    return "Wait a moment and retry the merge";
+  }
+  return "Resolve the blocking condition before merging";
+}
+
+/**
  * Flattens a position object into form-encoded fields with bracket notation.
  * GitLab API expects: position[base_sha]=xxx, position[head_sha]=xxx, etc.
  * NOT: position={"base_sha":"xxx","head_sha":"xxx"}
@@ -282,12 +388,60 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
           case "merge": {
             // TypeScript knows: input has merge_request_iid (required)
-            const { action: _action, project_id, merge_request_iid, ...body } = input;
+            const {
+              action: _action,
+              project_id,
+              merge_request_iid,
+              merge_when_pipeline_succeeds,
+              ...body
+            } = input;
+            const projectPath = normalizeProjectId(project_id);
+            const mergeEndpoint = `projects/${projectPath}/merge_requests/${merge_request_iid}/merge`;
 
-            return gitlab.put(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/merge`,
-              { body, contentType: "form" }
+            // If auto-merge is explicitly requested, try it directly
+            // This allows setting auto-merge even when pipeline is running
+            if (merge_when_pipeline_succeeds) {
+              return gitlab.put(mergeEndpoint, {
+                body: { ...body, merge_when_pipeline_succeeds: true },
+                contentType: "form",
+              });
+            }
+
+            // Pre-check mergeability to provide actionable errors instead of 405
+            const mrStatus = await gitlab.get<MergeRequestStatusResponse>(
+              `projects/${projectPath}/merge_requests/${merge_request_iid}`
             );
+
+            const detailedStatus = mrStatus.detailed_merge_status;
+
+            // If mergeable, proceed with merge
+            if (detailedStatus === "mergeable") {
+              return gitlab.put(mergeEndpoint, { body, contentType: "form" });
+            }
+
+            // Determine if status is retryable or eligible for auto-merge
+            const isRetryable = (RETRYABLE_MERGE_STATUSES as readonly string[]).includes(
+              detailedStatus
+            );
+            const canAutoMerge = (AUTO_MERGE_ELIGIBLE_STATUSES as readonly string[]).includes(
+              detailedStatus
+            );
+
+            // Return structured error with actionable guidance
+            const blockedResponse: MergeBlockedResponse = {
+              error: true,
+              message: `MR cannot be merged: ${detailedStatus}`,
+              detailed_merge_status: detailedStatus,
+              merge_status: mrStatus.merge_status,
+              has_conflicts: mrStatus.has_conflicts,
+              blocking_discussions_resolved: mrStatus.blocking_discussions_resolved,
+              hint: getMergeStatusHint(detailedStatus),
+              is_retryable: isRetryable,
+              can_auto_merge: canAutoMerge,
+              suggested_action: getSuggestedAction(isRetryable, canAutoMerge),
+            };
+
+            return blockedResponse;
           }
 
           case "approve": {

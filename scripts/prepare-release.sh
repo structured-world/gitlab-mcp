@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# This script must be executable (chmod +x) for semantic-release to invoke it.
 set -euo pipefail
 
 # Called by semantic-release @semantic-release/exec prepareCmd

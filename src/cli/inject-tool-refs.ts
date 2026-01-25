@@ -212,12 +212,13 @@ function replaceCountPlaceholders(filePath: string, counts: CountPlaceholders): 
 
 /**
  * Count entity types by scanning src/entities/ subdirectories with registry.ts files.
+ * Note: fs.existsSync is safe (returns boolean, never throws) so no try/catch needed.
  */
 function countEntities(projectRoot: string): number {
   const entitiesDir = path.join(projectRoot, "src", "entities");
   if (!fs.existsSync(entitiesDir)) return 0;
 
-  // fs.existsSync returns boolean (never throws), so no try/catch needed
+  // readdirSync may throw on permission errors, but that's a fatal misconfiguration
   return fs
     .readdirSync(entitiesDir, { withFileTypes: true })
     .filter(d => d.isDirectory() && fs.existsSync(path.join(entitiesDir, d.name, "registry.ts")))
@@ -272,7 +273,7 @@ export function main(): void {
     function processTemplates(dir: string): void {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const fullPath = path.join(dir, entry.name);
-        // Skip build artifacts and dependencies; process only docs source directories
+        // Skip build artifacts and dependencies; .git/coverage/tmp are not present in docs/
         if (entry.isDirectory() && !["node_modules", ".vitepress", "dist"].includes(entry.name)) {
           processTemplates(fullPath);
         } else if (

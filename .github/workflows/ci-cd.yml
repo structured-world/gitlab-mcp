@@ -305,7 +305,7 @@ jobs:
 
     permissions:
       id-token: write  # Required for GitHub OIDC authentication
-      contents: read
+      contents: read   # server.json is already updated in the tag by prepare-release.sh
 
     steps:
       # The release tag already contains updated server.json (version + description)

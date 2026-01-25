@@ -126,20 +126,23 @@ export function createAccessLogEntry(stack: RequestStack): AccessLogEntry {
  * Format AccessLogEntry into single condensed line
  *
  * All fields are always present (nginx-style alignment with "-" for missing values).
+ * Timestamp is NOT included in the message - pino already adds it in both modes:
+ * - Plain mode: pino-pretty adds [HH:MM:SS.mmm] prefix
+ * - JSON mode: pino adds "time" field in JSON output
  *
  * Format:
- * [timestamp] client_ip session ctx ro method path status duration_ms | tool action | gitlab_status gitlab_duration_ms | details
+ * client_ip session ctx ro method path status duration_ms | tool action | gitlab_status gitlab_duration_ms | details
  *
  * Examples:
- * [2026-01-25T12:34:56Z] 192.168.1.100 abc123.. mygroup/proj - POST /mcp 200 142ms | browse_projects list | GL:200 98ms | namespace=test/backend items=15
- * [2026-01-25T12:34:56Z] 192.168.1.100 abc123.. mygroup/proj RO POST /mcp 200 85ms | browse_files list | GL:200 45ms | path=src/
- * [2026-01-25T12:34:56Z] 192.168.1.100 - - - POST /mcp 429 2ms | - - | - - | rate_limit=true
- * [2026-01-25T12:34:56Z] 192.168.1.100 - - - GET /health 200 5ms | - - | - - | -
+ * 192.168.1.100 abc123.. mygroup/proj - POST /mcp 200 142ms | browse_projects list | GL:200 98ms | namespace=test/backend items=15
+ * 192.168.1.100 abc123.. mygroup/proj RO POST /mcp 200 85ms | browse_files list | GL:200 45ms | path=src/
+ * 192.168.1.100 - - - POST /mcp 429 2ms | - - | - - | rate_limit=true
+ * 192.168.1.100 - - - GET /health 200 5ms | - - | - - | -
  */
 export function formatAccessLog(entry: AccessLogEntry): string {
   // All fields always present with "-" for missing values (nginx-style alignment)
+  // Timestamp omitted - pino adds it in the log prefix
   const parts = [
-    `[${entry.timestamp}]`,
     entry.clientIp,
     entry.session,
     entry.ctx,

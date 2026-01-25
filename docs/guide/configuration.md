@@ -114,3 +114,53 @@ See [OAuth Authentication](/security/oauth) for setup guide.
 | `GITLAB_SCHEMA_MODE` | Schema output format (`flat` or `discriminated`) | `flat` |
 
 See [Customization](/advanced/customization) for schema mode details.
+
+## Logging Configuration
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
+| `LOG_JSON` | `false` | Output logs as JSON (NDJSON) for log aggregators |
+
+### Plain Text Mode (default)
+
+Human-readable single-line format suitable for journald, systemd, and console viewing:
+
+```bash
+# Default - no configuration needed
+gitlab-mcp
+```
+
+Output:
+```
+[12:34:56.789] INFO: 192.168.1.100 abc123.. mygroup/proj - POST /mcp 200 142ms | browse_projects list | GL:200 98ms | items=15
+[12:34:57.123] INFO: Session created
+```
+
+### JSON Mode
+
+Full JSON output for log aggregation systems (Loki, Elasticsearch, Datadog):
+
+```bash
+LOG_JSON=true gitlab-mcp
+```
+
+Output:
+```json
+{"level":30,"time":1737781833989,"name":"gitlab-mcp","msg":"192.168.1.100 abc123.. - - POST /mcp 200 142ms | browse_projects list | GL:200 98ms | items=15","accessLog":{"timestamp":"2026-01-25T04:10:33.989Z","clientIp":"192.168.1.100","session":"abc123..","method":"POST","path":"/mcp","status":200,"durationMs":142,"tool":"browse_projects","action":"list"}}
+```
+
+Each line is a valid JSON object (NDJSON format), suitable for ingestion by log aggregators.
+
+**Docker example:**
+```bash
+docker run -e LOG_JSON=true -e GITLAB_TOKEN=xxx ghcr.io/structured-world/gitlab-mcp:latest
+```
+
+**systemd example:**
+```ini
+[Service]
+Environment="LOG_JSON=true"
+Environment="GITLAB_TOKEN=xxx"
+ExecStart=/usr/bin/node /opt/gitlab-mcp/dist/server.js
+```

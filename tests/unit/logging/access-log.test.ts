@@ -219,6 +219,9 @@ describe("AccessLogFormatter", () => {
   });
 
   describe("formatAccessLog", () => {
+    // Note: formatAccessLog no longer includes timestamp in output
+    // Timestamp is added by pino (plain mode: pino-pretty prefix, JSON mode: time field)
+
     it("formats successful tool call", () => {
       const entry = {
         timestamp: "2026-01-25T12:34:56Z",
@@ -239,8 +242,9 @@ describe("AccessLogFormatter", () => {
 
       const log = formatAccessLog(entry);
 
+      // Timestamp omitted from message - pino adds it in log prefix
       expect(log).toBe(
-        "[2026-01-25T12:34:56Z] 192.168.1.100 abc12345.. mygroup/proj - POST /mcp 200 142ms | browse_projects list | GL:200 98ms | namespace=test/backend items=15"
+        "192.168.1.100 abc12345.. mygroup/proj - POST /mcp 200 142ms | browse_projects list | GL:200 98ms | namespace=test/backend items=15"
       );
     });
 
@@ -264,9 +268,8 @@ describe("AccessLogFormatter", () => {
 
       const log = formatAccessLog(entry);
 
-      expect(log).toBe(
-        "[2026-01-25T12:34:56Z] 192.168.1.100 - - - GET /health 200 5ms | - - | - - | -"
-      );
+      // Timestamp omitted from message - pino adds it in log prefix
+      expect(log).toBe("192.168.1.100 - - - GET /health 200 5ms | - - | - - | -");
     });
 
     it("formats error response", () => {

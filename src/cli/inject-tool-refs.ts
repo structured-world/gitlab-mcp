@@ -253,6 +253,8 @@ export function main(): void {
 
   const toolCount = allTools.length;
   const entityCount = countEntities(projectRoot);
+  // Read-only tools: browse_* (queries) + manage_context (read-only despite manage_ prefix)
+  // Same pattern used in prepare-release.sh for consistency
   const readonlyToolCount = allTools.filter(
     t => t.name.startsWith("browse_") || t.name === "manage_context"
   ).length;

@@ -435,6 +435,12 @@ export async function startServer(): Promise<void> {
         const sessionId = transport.sessionId;
         const clientIp = getIpAddress(req);
 
+        // Update request stack with SSE session ID (middleware has no session ID for initial GET)
+        const accessLogRequestId = res.locals?.accessLogRequestId as string | undefined;
+        if (accessLogRequestId) {
+          requestTracker.setSessionId(accessLogRequestId, sessionId);
+        }
+
         try {
           // Each SSE session gets its own Server instance
           await sessionManager.createSession(sessionId, transport);
@@ -443,6 +449,8 @@ export async function startServer(): Promise<void> {
 
           // Track connection for access logging
           connectionTracker.openConnection(sessionId, clientIp);
+          // Count the initial GET /sse request that established this connection
+          connectionTracker.incrementRequests(sessionId);
         } catch (error: unknown) {
           logger.error({ err: error, sessionId }, "Failed to create SSE session");
           if (!res.headersSent) {

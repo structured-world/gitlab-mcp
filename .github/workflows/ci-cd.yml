@@ -148,11 +148,11 @@ jobs:
 
     steps:
       - name: Generate release token
-        uses: tibdex/github-app-token@v2
+        uses: actions/create-github-app-token@v1
         id: app-token
         with:
-          app_id: ${{ secrets.RELEASER_APP_ID }}
-          private_key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
 
       - name: Checkout code
         uses: actions/checkout@v6

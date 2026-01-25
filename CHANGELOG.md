@@ -1,3 +1,13 @@
+## [6.45.0](https://github.com/structured-world/gitlab-mcp/compare/v6.44.0...v6.45.0) (2026-01-25)
+
+### Features
+
+* **logging:** Implement condensed access log format with request stack aggregation ([#196](https://github.com/structured-world/gitlab-mcp/issues/196)) ([8871fad](https://github.com/structured-world/gitlab-mcp/commit/8871fadfcefc43752d8526fd6e786199f546d8df)), closes [#194](https://github.com/structured-world/gitlab-mcp/issues/194)
+
+### Bug Fixes
+
+* **docs:** replace hardcoded 'latest' MCPB link with versioned URL in README ([#206](https://github.com/structured-world/gitlab-mcp/issues/206)) ([a0266a4](https://github.com/structured-world/gitlab-mcp/commit/a0266a443288ac6ed01b8f2d07248214b863afe7)), closes [#204](https://github.com/structured-world/gitlab-mcp/issues/204)
+
 ## [6.44.0](https://github.com/structured-world/gitlab-mcp/compare/v6.43.1...v6.44.0) (2026-01-25)
 
 ### Features

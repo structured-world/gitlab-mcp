@@ -16,6 +16,7 @@ import {
   TRUST_PROXY,
   SSE_HEARTBEAT_MS,
   HTTP_KEEPALIVE_TIMEOUT_MS,
+  LOG_FORMAT,
 } from "./config";
 import { TransportMode } from "./types";
 import { logger } from "./logger";
@@ -42,7 +43,14 @@ import {
 import { oauthAuthMiddleware, rateLimiterMiddleware } from "./middleware/index";
 
 // Request logging utilities
-import { getRequestContext } from "./utils/request-logger";
+import { getRequestContext, getIpAddress } from "./utils/request-logger";
+
+// Condensed access logging
+import {
+  getRequestTracker,
+  getConnectionTracker,
+  runWithRequestContextAsync,
+} from "./logging/index";
 
 /**
  * Send a tools/list_changed notification to ALL connected clients.
@@ -300,6 +308,14 @@ export async function startServer(): Promise<void> {
   const sessionManager = getSessionManager();
   sessionManager.start();
 
+  // Initialize access logging based on LOG_FORMAT
+  const requestTracker = getRequestTracker();
+  const connectionTracker = getConnectionTracker();
+  const useCondensedLogging = LOG_FORMAT === "condensed";
+  requestTracker.setEnabled(useCondensedLogging);
+  connectionTracker.setEnabled(useCondensedLogging);
+  logger.info({ logFormat: LOG_FORMAT }, `Access log format: ${LOG_FORMAT}`);
+
   const transportMode = determineTransportMode();
 
   switch (transportMode) {
@@ -317,6 +333,64 @@ export async function startServer(): Promise<void> {
 
       // Configure trust proxy for reverse proxy deployments
       configureTrustProxy(app);
+
+      // Access logging middleware - tracks request lifecycle for condensed logs
+      // Opens request stack on request start, closes on response finish
+      // IMPORTANT: Must be registered BEFORE rate limiter to log 429 responses
+      app.use((req, res, next) => {
+        if (!useCondensedLogging) {
+          next();
+          return;
+        }
+
+        const requestId = crypto.randomUUID();
+        const clientIp = getIpAddress(req);
+        const sessionId = req.headers["mcp-session-id"] as string | undefined;
+
+        // Store requestId on response for later use
+        res.locals.accessLogRequestId = requestId;
+
+        // Open request stack
+        // NOTE: For new sessions (no mcp-session-id header), sessionId will be undefined
+        // at this point. The session ID is generated later by StreamableHTTPServerTransport
+        // and tracked via ConnectionTracker. When the session is initialized,
+        // requestTracker.setSessionIdForCurrentRequest(...) associates the new session ID
+        // with this request's stack, so even the first request that creates a session
+        // will have session info reflected in the access log. Connection stats are tracked
+        // separately.
+        requestTracker.openStack(requestId, clientIp, req.method, req.path, sessionId);
+
+        // Close stack when response finishes
+        res.on("finish", () => {
+          requestTracker.closeStack(requestId, res.statusCode);
+        });
+
+        // Handle aborted requests and normal teardown of long-lived streaming/SSE responses.
+        // NOTE: Both 'finish' and 'close' may fire. If 'finish' fires first,
+        // the stack is removed from the map, so any subsequent close handling
+        // becomes a no-op. This is safe - RequestTracker.closeStack removes
+        // the stack immediately to prevent duplicate processing.
+        res.on("close", () => {
+          if (res.writableFinished) {
+            // Response has already finished and been logged.
+            return;
+          }
+
+          if (!res.headersSent) {
+            // Connection closed before we could send any headers: treat as abort.
+            requestTracker.closeStackWithError(requestId, "connection_closed");
+            return;
+          }
+
+          // Headers were sent but the stream ended without 'finish' firing.
+          // This is typical for long-lived streaming/SSE responses where the
+          // client disconnects. Treat as a normal completion and log using
+          // the current status code instead of an error status.
+          requestTracker.closeStack(requestId, res.statusCode);
+        });
+
+        next();
+      });
 
       // Rate limiting middleware (protects anonymous requests, authenticated users skip)
       app.use(rateLimiterMiddleware());
@@ -359,12 +433,24 @@ export async function startServer(): Promise<void> {
         logger.debug("SSE endpoint hit!");
         const transport = new SSEServerTransport("/messages", res);
         const sessionId = transport.sessionId;
+        const clientIp = getIpAddress(req);
+
+        // Update request stack with SSE session ID (middleware has no session ID for initial GET)
+        const accessLogRequestId = res.locals?.accessLogRequestId as string | undefined;
+        if (accessLogRequestId) {
+          requestTracker.setSessionId(accessLogRequestId, sessionId);
+        }
 
         try {
           // Each SSE session gets its own Server instance
           await sessionManager.createSession(sessionId, transport);
           sseTransports[sessionId] = transport;
           logger.debug(`SSE transport created with session: ${sessionId}`);
+
+          // Track connection for access logging
+          connectionTracker.openConnection(sessionId, clientIp);
+          // Count the initial GET /sse request that established this connection
+          connectionTracker.incrementRequests(sessionId);
         } catch (error: unknown) {
           logger.error({ err: error, sessionId }, "Failed to create SSE session");
           if (!res.headersSent) {
@@ -380,6 +466,10 @@ export async function startServer(): Promise<void> {
         res.on("close", () => {
           stopHeartbeat();
           delete sseTransports[sessionId];
+
+          // Log connection close
+          connectionTracker.closeConnection(sessionId, "client_disconnect");
+
           sessionManager.removeSession(sessionId).catch((error: unknown) => {
             logger.debug({ err: error, sessionId }, "Error removing SSE session on disconnect");
           });
@@ -395,10 +485,31 @@ export async function startServer(): Promise<void> {
           return;
         }
 
+        // Increment request count for connection tracking (SSE mode)
+        connectionTracker.incrementRequests(sessionId);
+
+        // Get access log request ID from middleware (res.locals may be undefined in tests)
+        const accessLogRequestId = res.locals?.accessLogRequestId as string | undefined;
+
+        // Update request stack with SSE session ID (middleware uses header, SSE uses query param)
+        if (accessLogRequestId) {
+          requestTracker.setSessionId(accessLogRequestId, sessionId);
+        }
+
         try {
           sessionManager.touchSession(sessionId);
           const transport = sseTransports[sessionId];
-          await transport.handlePostMessage(req, res, req.body);
+
+          // Wrap in request context for access logging so handlers can track tool calls
+          const doHandle = async () => {
+            await transport.handlePostMessage(req, res, req.body);
+          };
+
+          if (accessLogRequestId) {
+            await runWithRequestContextAsync(accessLogRequestId, doHandle);
+          } else {
+            await doHandle();
+          }
         } catch (error: unknown) {
           logger.error({ err: error }, "Error handling SSE message");
           if (!res.headersSent) {
@@ -411,6 +522,8 @@ export async function startServer(): Promise<void> {
       // Also mounted at "/" for Claude.ai custom connector compatibility
       app.all(["/", "/mcp"], async (req, res) => {
         const sessionId = req.headers["mcp-session-id"] as string;
+        const accessLogRequestId = res.locals.accessLogRequestId as string | undefined;
+        const clientIp = getIpAddress(req);
 
         // Get OAuth token info from middleware (stored in res.locals)
         const oauthSessionId = res.locals.oauthSessionId as string | undefined;
@@ -418,38 +531,49 @@ export async function startServer(): Promise<void> {
         const gitlabUserId = res.locals.gitlabUserId as number | undefined;
         const gitlabUsername = res.locals.gitlabUsername as string | undefined;
 
-        // Get full request context for logging
-        const requestContext = getRequestContext(req, res);
+        // Get full request context for logging (verbose mode)
+        if (!useCondensedLogging) {
+          const requestContext = getRequestContext(req, res);
+          logger.info(
+            {
+              event: "mcp_request",
+              ...requestContext,
+              hasToken: !!gitlabToken,
+            },
+            "MCP endpoint request received"
+          );
+        }
 
-        logger.info(
-          {
-            event: "mcp_request",
-            ...requestContext,
-            hasToken: !!gitlabToken,
-          },
-          "MCP endpoint request received"
-        );
-
-        // Helper to handle request with proper token context
+        // Helper to handle request with proper token and request contexts
         const handleWithContext = async (
           transport: StreamableHTTPServerTransport
         ): Promise<void> => {
-          if (gitlabToken && oauthSessionId && gitlabUserId && gitlabUsername) {
-            // Wrap transport.handleRequest in token context so MCP handlers have access
-            await runWithTokenContext(
-              {
-                gitlabToken,
-                gitlabUserId,
-                gitlabUsername,
-                sessionId: oauthSessionId,
-              },
-              async () => {
-                await transport.handleRequest(req, res, req.body);
-              }
-            );
+          // Wrap in request context for access logging
+          const doHandle = async () => {
+            if (gitlabToken && oauthSessionId && gitlabUserId && gitlabUsername) {
+              // Wrap transport.handleRequest in token context so MCP handlers have access
+              await runWithTokenContext(
+                {
+                  gitlabToken,
+                  gitlabUserId,
+                  gitlabUsername,
+                  sessionId: oauthSessionId,
+                },
+                async () => {
+                  await transport.handleRequest(req, res, req.body);
+                }
+              );
+            } else {
+              // No OAuth token - direct handling (static token mode or unauthenticated)
+              await transport.handleRequest(req, res, req.body);
+            }
+          };
+
+          // If we have a request ID for access logging, wrap with context
+          if (accessLogRequestId) {
+            await runWithRequestContextAsync(accessLogRequestId, doHandle);
           } else {
-            // No OAuth token - direct handling (static token mode or unauthenticated)
-            await transport.handleRequest(req, res, req.body);
+            await doHandle();
           }
         };
 
@@ -460,6 +584,10 @@ export async function startServer(): Promise<void> {
           if (sessionId && sessionId in streamableTransports) {
             effectiveSessionId = sessionId;
             sessionManager.touchSession(sessionId);
+
+            // Increment request count for connection tracking
+            connectionTracker.incrementRequests(sessionId);
+
             transport = streamableTransports[sessionId];
             await handleWithContext(transport);
           } else {
@@ -469,18 +597,33 @@ export async function startServer(): Promise<void> {
 
             transport = new StreamableHTTPServerTransport({
               sessionIdGenerator: () => newSessionId,
-              onsessioninitialized: (sessionId: string) => {
-                streamableTransports[sessionId] = transport;
-                logger.info(`MCP session initialized: ${sessionId} (method: ${req.method})`);
+              onsessioninitialized: (initializedSessionId: string) => {
+                streamableTransports[initializedSessionId] = transport;
+                logger.info(
+                  `MCP session initialized: ${initializedSessionId} (method: ${req.method})`
+                );
+
+                // Track connection for access logging
+                connectionTracker.openConnection(initializedSessionId, clientIp);
+                // Count the initial request that created this session
+                connectionTracker.incrementRequests(initializedSessionId);
+
+                // Update the current request stack with the newly assigned session ID
+                // so that access log shows the session and tool counting works
+                requestTracker.setSessionIdForCurrentRequest(initializedSessionId);
 
                 // Associate MCP session with OAuth session if authenticated
                 if (oauthSessionId) {
-                  sessionStore.associateMcpSession(sessionId, oauthSessionId);
+                  sessionStore.associateMcpSession(initializedSessionId, oauthSessionId);
                 }
               },
               onsessionclosed: (closedSessionId: string) => {
                 delete streamableTransports[closedSessionId];
                 sessionStore.removeMcpSessionAssociation(closedSessionId);
+
+                // Log connection close
+                connectionTracker.closeConnection(closedSessionId, "client_disconnect");
+
                 sessionManager.removeSession(closedSessionId).catch((err: unknown) => {
                   logger.debug(
                     { err, sessionId: closedSessionId },
@@ -542,6 +685,15 @@ export async function startServer(): Promise<void> {
 // Graceful shutdown - close all sessions and save to storage backend before exit
 async function gracefulShutdown(signal: string): Promise<void> {
   logger.info({ signal }, "Shutting down GitLab MCP Server...");
+
+  // Close all tracked connections with server_shutdown reason
+  try {
+    const connTracker = getConnectionTracker();
+    connTracker.closeAllConnections("server_shutdown");
+    logger.info("All connections closed for shutdown");
+  } catch (error) {
+    logger.error({ err: error as Error }, "Error closing connections");
+  }
 
   try {
     // Shut down session manager (closes all per-session Server instances)

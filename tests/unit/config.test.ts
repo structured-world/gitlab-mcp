@@ -154,6 +154,38 @@ describe("config.ts", () => {
 
       expect(config.GITLAB_ALLOWED_PROJECT_IDS).toEqual([]);
     });
+
+    it("should default LOG_FORMAT to condensed", () => {
+      delete process.env.LOG_FORMAT;
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FORMAT).toBe("condensed");
+    });
+
+    it("should parse LOG_FORMAT=verbose", () => {
+      process.env.LOG_FORMAT = "verbose";
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FORMAT).toBe("verbose");
+    });
+
+    it("should parse LOG_FORMAT case-insensitively", () => {
+      process.env.LOG_FORMAT = "VERBOSE";
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FORMAT).toBe("verbose");
+    });
+
+    it("should default to condensed for invalid LOG_FORMAT", () => {
+      process.env.LOG_FORMAT = "invalid";
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FORMAT).toBe("condensed");
+    });
   });
 
   describe("GitLab URL normalization", () => {

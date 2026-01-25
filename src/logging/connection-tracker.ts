@@ -15,7 +15,7 @@
 
 import type { ConnectionStats, ConnectionCloseReason } from "./types.js";
 import { formatConnectionClose, createConnectionCloseEntry } from "./access-log.js";
-import { logger } from "../logger.js";
+import { logger, LOG_JSON } from "../logger.js";
 
 /**
  * Connection tracker manages statistics for persistent connections.
@@ -135,7 +135,13 @@ export class ConnectionTracker {
     const logLine = formatConnectionClose(entry);
 
     // Output connection close log at info level
-    logger.info({ connectionClose: entry }, logLine);
+    // JSON mode: include full connectionClose object for log aggregators
+    // Plain mode: message only - prevents pino-pretty from outputting multiline JSON
+    if (LOG_JSON) {
+      logger.info({ connectionClose: entry }, logLine);
+    } else {
+      logger.info(logLine);
+    }
 
     return logLine;
   }

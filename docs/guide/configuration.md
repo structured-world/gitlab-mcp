@@ -121,7 +121,6 @@ See [Customization](/advanced/customization) for schema mode details.
 |----------|---------|-------------|
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `LOG_JSON` | `false` | Output logs as JSON (NDJSON) for log aggregators |
-| `LOG_FORMAT` | `condensed` | Access log format: `condensed` (single-line) or `verbose` |
 
 ### Plain Text Mode (default)
 

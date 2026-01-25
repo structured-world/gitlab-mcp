@@ -1,3 +1,9 @@
+## [6.46.0](https://github.com/structured-world/gitlab-mcp/compare/v6.45.1...v6.46.0) (2026-01-25)
+
+### Features
+
+* **context:** add whoami action for token introspection ([#203](https://github.com/structured-world/gitlab-mcp/issues/203)) ([#205](https://github.com/structured-world/gitlab-mcp/issues/205)) ([fc0c568](https://github.com/structured-world/gitlab-mcp/commit/fc0c568ac1ad054ea6b0b27789470a7d1e465a36))
+
 ## [6.45.1](https://github.com/structured-world/gitlab-mcp/compare/v6.45.0...v6.45.1) (2026-01-25)
 
 ### Bug Fixes

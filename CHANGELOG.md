@@ -1,3 +1,9 @@
+## [6.47.1](https://github.com/structured-world/gitlab-mcp/compare/v6.47.0...v6.47.1) (2026-01-25)
+
+### Bug Fixes
+
+* **docs:** redirect edit links for generated .md files to .md.in templates ([#218](https://github.com/structured-world/gitlab-mcp/issues/218)) ([2889e23](https://github.com/structured-world/gitlab-mcp/commit/2889e2378e988b157d96ad65c967392d7429801f)), closes [#217](https://github.com/structured-world/gitlab-mcp/issues/217)
+
 ## [6.47.0](https://github.com/structured-world/gitlab-mcp/compare/v6.46.1...v6.47.0) (2026-01-25)
 
 ### Features

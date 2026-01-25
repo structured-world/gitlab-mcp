@@ -25,7 +25,8 @@
       "streamable-http"
     ],
     "authentication": {
-      "required": true,
+      "required": false,
+      "requiredForToolExecution": true,
       "methods": [
         "token",
         "oauth2"
@@ -33,7 +34,8 @@
       "envVars": [
         "GITLAB_TOKEN",
         "GITLAB_PERSONAL_ACCESS_TOKEN"
-      ]
+      ],
+      "note": "Server starts without token (tools/list works), but tool execution requires authentication"
     },
     "meta": {
       "avatar": "https://gitlab-mcp.sw.foundation/logo.png",
@@ -139,7 +141,7 @@
         "name": "manage_context",
         "description": "View and manage runtime session configuration.",
         "category": "Session",
-        "tier": "unknown",
+        "tier": "free",
         "readOnly": true
       },
       {

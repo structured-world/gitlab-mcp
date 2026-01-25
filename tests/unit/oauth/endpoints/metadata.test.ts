@@ -8,6 +8,7 @@ import {
   metadataHandler,
   healthHandler,
   getBaseUrl,
+  MCP_PROTOCOL_VERSION,
 } from "../../../../src/oauth/endpoints/metadata";
 
 // Mock config
@@ -216,7 +217,7 @@ describe("OAuth Metadata Endpoint", () => {
       expect(health.status).toBe("ok");
       expect(health.timestamp).toBeDefined();
       expect(health.mcp).toBeDefined();
-      expect(health.mcp.protocol).toBe("2025-03-26");
+      expect(health.mcp.protocol).toBe(MCP_PROTOCOL_VERSION);
       expect(health.mcp.transports).toEqual(["stdio", "sse", "streamable-http"]);
       expect(health.mcp.toolCount).toBeGreaterThanOrEqual(0);
       expect(typeof health.mcp.authenticated).toBe("boolean");

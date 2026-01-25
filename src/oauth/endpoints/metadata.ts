@@ -11,6 +11,12 @@ import { Request, Response } from "express";
 import { HOST, PORT } from "../../config";
 
 /**
+ * MCP Protocol version supported by this server
+ * @see https://modelcontextprotocol.io/spec
+ */
+export const MCP_PROTOCOL_VERSION = "2025-03-26";
+
+/**
  * Get the base URL from the request
  *
  * Handles reverse proxy scenarios by checking X-Forwarded-* headers.
@@ -75,7 +81,7 @@ export function metadataHandler(req: Request, res: Response): void {
     registration_endpoint: `${baseUrl}/register`,
 
     // MCP-specific metadata
-    mcp_version: "2025-03-26",
+    mcp_version: MCP_PROTOCOL_VERSION,
   };
 
   res.json(metadata);
@@ -151,7 +157,7 @@ export async function healthHandler(req: Request, res: Response): Promise<void> 
     status: "ok",
     timestamp: new Date().toISOString(),
     mcp: {
-      protocol: "2025-03-26",
+      protocol: MCP_PROTOCOL_VERSION,
       transports: ["stdio", "sse", "streamable-http"],
       toolCount,
       authenticated: authMode !== "none",

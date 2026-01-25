@@ -107,11 +107,14 @@ function isReadOnly(toolName) {
  * @returns {Object} - Simplified tool for manifest
  */
 function transformTool(tool) {
+  // Normalize tier: "unknown" means tool has no tier requirement, treat as "free"
+  const tier = tool.tier && tool.tier !== "unknown" ? tool.tier : "free";
+
   return {
     name: tool.name,
     description: truncateDescription(tool.description),
     category: extractCategory(tool.name),
-    tier: tool.tier || "free",
+    tier,
     readOnly: isReadOnly(tool.name),
   };
 }

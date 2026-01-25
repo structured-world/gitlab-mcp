@@ -334,11 +334,9 @@ export async function startServer(): Promise<void> {
       // Configure trust proxy for reverse proxy deployments
       configureTrustProxy(app);
 
-      // Rate limiting middleware (protects anonymous requests, authenticated users skip)
-      app.use(rateLimiterMiddleware());
-
       // Access logging middleware - tracks request lifecycle for condensed logs
       // Opens request stack on request start, closes on response finish
+      // IMPORTANT: Must be registered BEFORE rate limiter to log 429 responses
       app.use((req, res, next) => {
         if (!useCondensedLogging) {
           next();
@@ -353,11 +351,13 @@ export async function startServer(): Promise<void> {
         res.locals.accessLogRequestId = requestId;
 
         // Open request stack
-        // NOTE: For new sessions (no mcp-session-id header), sessionId will be undefined.
-        // The session ID is generated later by StreamableHTTPServerTransport and tracked
-        // separately via ConnectionTracker. This is intentional - first request that
-        // creates a session won't have session info in the access log, but subsequent
-        // requests will. Connection stats are tracked separately.
+        // NOTE: For new sessions (no mcp-session-id header), sessionId will be undefined
+        // at this point. The session ID is generated later by StreamableHTTPServerTransport
+        // and tracked via ConnectionTracker. When the session is initialized,
+        // requestTracker.setSessionIdForCurrentRequest(...) associates the new session ID
+        // with this request's stack, so even the first request that creates a session
+        // will have session info reflected in the access log. Connection stats are tracked
+        // separately.
         requestTracker.openStack(requestId, clientIp, req.method, req.path, sessionId);
 
         // Close stack when response finishes
@@ -391,6 +391,9 @@ export async function startServer(): Promise<void> {
 
         next();
       });
+
+      // Rate limiting middleware (protects anonymous requests, authenticated users skip)
+      app.use(rateLimiterMiddleware());
 
       // Register OAuth endpoints if OAuth mode is enabled
       if (isOAuthEnabled()) {

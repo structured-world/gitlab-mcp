@@ -5,7 +5,7 @@
  * Inspired by nginx/envoy access log format.
  *
  * Format:
- * [timestamp] client_ip session method path status duration_ms | tool action | gitlab_status gitlab_duration_ms | details
+ * [timestamp] client_ip session ctx ro method path status duration_ms | tool action | gitlab_status gitlab_duration_ms | details
  */
 
 import type {

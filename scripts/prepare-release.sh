@@ -46,6 +46,7 @@ fi
 sed -e "s/__TOOL_COUNT__/${TOOL_COUNT}/g" \
     -e "s/__ENTITY_COUNT__/${ENTITY_COUNT}/g" \
     -e "s/__READONLY_TOOL_COUNT__/${READONLY_TOOL_COUNT}/g" \
+    -e "s/__VERSION__/${VERSION}/g" \
     README.md.in > README.md
 
 # Write version file for CI

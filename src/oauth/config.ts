@@ -162,5 +162,26 @@ export function getAuthModeDescription(): string {
   if (isOAuthEnabled()) {
     return "OAuth mode (per-user authentication via GitLab Device Flow)";
   }
-  return "Static token mode (shared GITLAB_TOKEN)";
+  if (process.env.GITLAB_TOKEN) {
+    return "Static token mode (shared GITLAB_TOKEN)";
+  }
+  return "Unauthenticated mode (tools/list only, tool calls require GITLAB_TOKEN)";
+}
+
+/**
+ * Check if static token authentication is configured
+ *
+ * @returns true if GITLAB_TOKEN is set
+ */
+export function isStaticTokenConfigured(): boolean {
+  return !!process.env.GITLAB_TOKEN;
+}
+
+/**
+ * Check if any authentication method is available (OAuth or static token)
+ *
+ * @returns true if server can authenticate to GitLab
+ */
+export function isAuthenticationConfigured(): boolean {
+  return isOAuthEnabled() || isStaticTokenConfigured();
 }

@@ -50,6 +50,13 @@ jest.mock("../../src/registry-manager", () => ({
   },
 }));
 
+// Mock OAuth module for authentication checks
+jest.mock("../../src/oauth/index", () => ({
+  isOAuthEnabled: jest.fn().mockReturnValue(false),
+  isAuthenticationConfigured: jest.fn().mockReturnValue(true),
+  getTokenContext: jest.fn().mockReturnValue(null),
+}));
+
 describe("handlers", () => {
   let mockServer: jest.Mocked<Server>;
   let listToolsHandler: any;
@@ -829,6 +836,33 @@ describe("handlers", () => {
       expect(parsed.error_code).toBe("TIMEOUT");
       expect(parsed.tool).toBe("direct_tool");
       expect(parsed.timeout_ms).toBe(15000);
+    });
+  });
+
+  describe("authentication check", () => {
+    it("should return error when no authentication configured", async () => {
+      // Mock no auth configured
+      const { isAuthenticationConfigured } = await import("../../src/oauth/index");
+      (isAuthenticationConfigured as jest.Mock).mockReturnValue(false);
+
+      await setupHandlers(mockServer);
+      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1];
+
+      const mockRequest = {
+        params: {
+          name: "test_tool",
+          arguments: {},
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("GITLAB_TOKEN");
+      expect(result.content[0].text).toContain("environment variable is required");
+
+      // Restore mock
+      (isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
     });
   });
 

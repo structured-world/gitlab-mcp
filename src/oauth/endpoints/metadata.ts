@@ -11,6 +11,12 @@ import { Request, Response } from "express";
 import { HOST, PORT } from "../../config";
 
 /**
+ * MCP Protocol version supported by this server
+ * @see https://modelcontextprotocol.io/spec
+ */
+export const MCP_PROTOCOL_VERSION = "2025-03-26";
+
+/**
  * Get the base URL from the request
  *
  * Handles reverse proxy scenarios by checking X-Forwarded-* headers.
@@ -75,7 +81,7 @@ export function metadataHandler(req: Request, res: Response): void {
     registration_endpoint: `${baseUrl}/register`,
 
     // MCP-specific metadata
-    mcp_version: "2025-03-26",
+    mcp_version: MCP_PROTOCOL_VERSION,
   };
 
   res.json(metadata);
@@ -114,15 +120,58 @@ export function protectedResourceHandler(req: Request, res: Response): void {
 /**
  * Health check endpoint handler
  *
- * Returns server health status for monitoring.
+ * Returns server health status for monitoring and MCP discovery.
+ * Includes MCP-specific metadata for ecosystem compatibility:
+ * - Protocol version for client compatibility checks
+ * - Transport modes supported
+ * - Tool count for capacity planning
+ * - Authentication status for connection diagnostics
  *
  * @param req - Express request
  * @param res - Express response
  */
-export function healthHandler(req: Request, res: Response): void {
+export async function healthHandler(req: Request, res: Response): Promise<void> {
+  const { isOAuthEnabled, isAuthenticationConfigured } = await import("../config");
+
+  // Determine authentication mode
+  let authMode: "oauth" | "token" | "none";
+  if (isOAuthEnabled()) {
+    authMode = "oauth";
+  } else if (isAuthenticationConfigured()) {
+    authMode = "token";
+  } else {
+    authMode = "none";
+  }
+
+  // Get tool count from registry (lazy import to avoid circular deps)
+  let toolCount = 0;
+  try {
+    const { RegistryManager } = await import("../../registry-manager");
+    toolCount = RegistryManager.getInstance().getAllToolDefinitions().length;
+  } catch {
+    // Registry not initialized - read from package.json manifest
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const pkgPath = path.join(__dirname, "../../../package.json");
+      const pkgContent = fs.readFileSync(pkgPath, "utf-8");
+      const pkg = JSON.parse(pkgContent) as { mcp?: { tools?: unknown[] } };
+      toolCount = pkg.mcp?.tools?.length ?? 0;
+    } catch {
+      // Fallback if package.json read fails (e.g., bundled environment)
+      toolCount = 0;
+    }
+  }
+
   res.json({
     status: "ok",
-    mode: "oauth",
     timestamp: new Date().toISOString(),
+    mcp: {
+      protocol: MCP_PROTOCOL_VERSION,
+      transports: ["stdio", "sse", "streamable-http"],
+      toolCount,
+      authenticated: authMode !== "none",
+      authMode,
+    },
   });
 }

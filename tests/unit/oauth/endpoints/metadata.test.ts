@@ -235,5 +235,69 @@ describe("OAuth Metadata Endpoint", () => {
       expect(health.timestamp >= beforeCall).toBe(true);
       expect(health.timestamp <= afterCall).toBe(true);
     });
+
+    it("should return oauth authMode when OAuth is enabled", async () => {
+      // Mock OAuth enabled - use correct path from test file location
+      jest.doMock("../../../../src/oauth/config", () => ({
+        isOAuthEnabled: jest.fn().mockReturnValue(true),
+        isAuthenticationConfigured: jest.fn().mockReturnValue(true),
+      }));
+
+      // Re-import to get fresh module with new mock
+      jest.resetModules();
+      const { healthHandler: freshHealthHandler } =
+        await import("../../../../src/oauth/endpoints/metadata");
+
+      const req = createMockRequest() as Request;
+      const res = createMockResponse() as Response;
+
+      await freshHealthHandler(req, res);
+
+      const health = (res.json as jest.Mock).mock.calls[0][0];
+      expect(health.mcp.authMode).toBe("oauth");
+      expect(health.mcp.authenticated).toBe(true);
+    });
+
+    it("should return token authMode when static token is configured", async () => {
+      // Mock static token mode - use correct path from test file location
+      jest.doMock("../../../../src/oauth/config", () => ({
+        isOAuthEnabled: jest.fn().mockReturnValue(false),
+        isAuthenticationConfigured: jest.fn().mockReturnValue(true),
+      }));
+
+      jest.resetModules();
+      const { healthHandler: freshHealthHandler } =
+        await import("../../../../src/oauth/endpoints/metadata");
+
+      const req = createMockRequest() as Request;
+      const res = createMockResponse() as Response;
+
+      await freshHealthHandler(req, res);
+
+      const health = (res.json as jest.Mock).mock.calls[0][0];
+      expect(health.mcp.authMode).toBe("token");
+      expect(health.mcp.authenticated).toBe(true);
+    });
+
+    it("should return none authMode when no authentication configured", async () => {
+      // Mock no auth mode - use correct path from test file location
+      jest.doMock("../../../../src/oauth/config", () => ({
+        isOAuthEnabled: jest.fn().mockReturnValue(false),
+        isAuthenticationConfigured: jest.fn().mockReturnValue(false),
+      }));
+
+      jest.resetModules();
+      const { healthHandler: freshHealthHandler } =
+        await import("../../../../src/oauth/endpoints/metadata");
+
+      const req = createMockRequest() as Request;
+      const res = createMockResponse() as Response;
+
+      await freshHealthHandler(req, res);
+
+      const health = (res.json as jest.Mock).mock.calls[0][0];
+      expect(health.mcp.authMode).toBe("none");
+      expect(health.mcp.authenticated).toBe(false);
+    });
   });
 });

@@ -835,6 +835,33 @@ describe("handlers", () => {
     });
   });
 
+  describe("authentication check", () => {
+    it("should return error when no authentication configured", async () => {
+      // Mock no auth configured
+      const { isAuthenticationConfigured } = await import("../../src/oauth/index");
+      (isAuthenticationConfigured as jest.Mock).mockReturnValue(false);
+
+      await setupHandlers(mockServer);
+      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1];
+
+      const mockRequest = {
+        params: {
+          name: "test_tool",
+          arguments: {},
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      expect(result.isError).toBe(true);
+      expect(result.content[0].text).toContain("GITLAB_TOKEN");
+      expect(result.content[0].text).toContain("environment variable is required");
+
+      // Restore mock
+      (isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
+    });
+  });
+
   describe("list tools handler - resolveRefs edge cases", () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);

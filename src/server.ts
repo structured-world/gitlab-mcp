@@ -25,7 +25,6 @@ import { getSessionManager } from "./session-manager";
 // OAuth imports
 import {
   loadOAuthConfig,
-  validateStaticConfig,
   isOAuthEnabled,
   getAuthModeDescription,
   metadataHandler,
@@ -286,15 +285,20 @@ function determineTransportMode(): TransportMode {
 }
 
 export async function startServer(): Promise<void> {
-  // Validate configuration based on auth mode
+  // Detect configuration based on auth mode
   const oauthConfig = loadOAuthConfig();
   if (oauthConfig) {
     logger.info("Starting in OAuth mode (per-user authentication)");
     logger.info(`OAuth client ID: ${oauthConfig.gitlabClientId}`);
-  } else {
-    // Validate static token configuration
-    validateStaticConfig();
+  } else if (process.env.GITLAB_TOKEN) {
+    // Static token mode with token configured
     logger.info("Starting in static token mode (shared GITLAB_TOKEN)");
+  } else {
+    // Graceful startup without token - server will accept tools/list requests
+    // but tool calls will return clear errors until token is configured
+    logger.warn(
+      "Starting without authentication - tools/list will work, but tool calls require GITLAB_TOKEN"
+    );
   }
 
   logger.info(`Authentication mode: ${getAuthModeDescription()}`);

@@ -201,9 +201,18 @@ describe("OAuth Configuration", () => {
       );
     });
 
-    it("should return static mode description when OAuth is disabled", async () => {
+    it("should return static mode description when OAuth is disabled but token is configured", async () => {
+      process.env.GITLAB_TOKEN = "test-token";
       const { getAuthModeDescription } = await import("../../../src/oauth/config");
       expect(getAuthModeDescription()).toBe("Static token mode (shared GITLAB_TOKEN)");
+    });
+
+    it("should return unauthenticated mode description when no auth configured", async () => {
+      delete process.env.GITLAB_TOKEN;
+      const { getAuthModeDescription } = await import("../../../src/oauth/config");
+      expect(getAuthModeDescription()).toBe(
+        "Unauthenticated mode (tools/list only, tool calls require GITLAB_TOKEN)"
+      );
     });
   });
 });

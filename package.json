@@ -10,6 +10,378 @@
   },
   "version": "6.46.0",
   "description": "MCP server for using the GitLab API",
+  "mcp": {
+    "name": "GitLab MCP Server",
+    "description": "Model Context Protocol server for GitLab API - 44 tools across 13 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes",
+    "repository": "https://github.com/structured-world/gitlab-mcp",
+    "homepage": "https://gitlab-mcp.sw.foundation",
+    "author": "Dmitry Prudnikov",
+    "license": "Apache-2.0",
+    "runtime": "node",
+    "minNodeVersion": "24.0.0",
+    "transports": [
+      "stdio",
+      "sse",
+      "streamable-http"
+    ],
+    "authentication": {
+      "required": true,
+      "methods": [
+        "token",
+        "oauth2"
+      ],
+      "envVars": [
+        "GITLAB_TOKEN",
+        "GITLAB_PERSONAL_ACCESS_TOKEN"
+      ]
+    },
+    "meta": {
+      "avatar": "https://gitlab-mcp.sw.foundation/logo.png",
+      "tags": [
+        "gitlab",
+        "devops",
+        "ci-cd",
+        "merge-requests",
+        "issues",
+        "pipelines",
+        "developer-tools"
+      ],
+      "categories": [
+        "Developer Tools",
+        "Version Control",
+        "CI/CD"
+      ]
+    },
+    "featureFlags": {
+      "USE_PIPELINE": "Enable pipeline and CI/CD tools",
+      "USE_MILESTONE": "Enable milestone management tools",
+      "USE_GITLAB_WIKI": "Enable wiki page tools",
+      "USE_WORKITEMS": "Enable work items (issues/epics) tools",
+      "USE_LABELS": "Enable label management tools",
+      "USE_MRS": "Enable merge request tools",
+      "USE_FILES": "Enable file management tools",
+      "USE_VARIABLES": "Enable CI/CD variables tools",
+      "USE_SNIPPETS": "Enable snippet tools",
+      "USE_WEBHOOKS": "Enable webhook tools",
+      "USE_INTEGRATIONS": "Enable integration tools",
+      "USE_RELEASES": "Enable release management tools",
+      "USE_REFS": "Enable refs (branches/tags) tools",
+      "USE_MEMBERS": "Enable member management tools",
+      "USE_SEARCH": "Enable search tools",
+      "USE_ITERATIONS": "Enable iteration tools",
+      "GITLAB_READ_ONLY_MODE": "Restrict to read-only operations"
+    },
+    "tools": [
+      {
+        "name": "browse_projects",
+        "description": "Find, list, or inspect GitLab projects.",
+        "category": "Projects",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "browse_namespaces",
+        "description": "Explore GitLab groups and user namespaces.",
+        "category": "Projects",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "browse_commits",
+        "description": "Explore repository commit history and diffs.",
+        "category": "Repository",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "browse_events",
+        "description": "Track GitLab activity and events.",
+        "category": "Activity",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "browse_users",
+        "description": "Find GitLab users with smart pattern detection.",
+        "category": "Users",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "browse_todos",
+        "description": "View your GitLab todo queue (notifications requiring action).",
+        "category": "Activity",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_project",
+        "description": "Create, update, or manage GitLab projects.",
+        "category": "Projects",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "manage_namespace",
+        "description": "Create, update, or delete GitLab groups/namespaces.",
+        "category": "Projects",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "manage_todos",
+        "description": "Manage your GitLab todo queue.",
+        "category": "Activity",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "manage_context",
+        "description": "View and manage runtime session configuration.",
+        "category": "Session",
+        "tier": "unknown",
+        "readOnly": true
+      },
+      {
+        "name": "browse_labels",
+        "description": "List and inspect project or group labels.",
+        "category": "Planning",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_label",
+        "description": "Create, update, or delete project/group labels.",
+        "category": "Planning",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_merge_requests",
+        "description": "Find and inspect merge requests.",
+        "category": "Merge Requests",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "browse_mr_discussions",
+        "description": "Read discussion threads and draft review notes on merge requests.",
+        "category": "Merge Requests",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_merge_request",
+        "description": "Create, update, merge, or approve merge requests.",
+        "category": "Merge Requests",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "manage_mr_discussion",
+        "description": "Post comments, start threads, and suggest code changes on merge requests.",
+        "category": "Merge Requests",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "manage_draft_notes",
+        "description": "Create and manage unpublished review comments on merge requests.",
+        "category": "Merge Requests",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_files",
+        "description": "Explore project file structure and read source code.",
+        "category": "Repository",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_files",
+        "description": "Create, update, or upload repository files.",
+        "category": "Repository",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_milestones",
+        "description": "Track milestone progress with associated issues and MRs.",
+        "category": "Planning",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_milestone",
+        "description": "Create, update, or delete project/group milestones.",
+        "category": "Planning",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_pipelines",
+        "description": "Monitor CI/CD pipelines and read job logs.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_pipeline",
+        "description": "Trigger, retry, or cancel CI/CD pipelines.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "manage_pipeline_job",
+        "description": "Control individual CI/CD jobs within a pipeline.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_variables",
+        "description": "List and inspect CI/CD variables for projects or groups.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_variable",
+        "description": "Create, update, or delete CI/CD variables with environment scoping.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_wiki",
+        "description": "Read wiki pages in projects or groups.",
+        "category": "Content",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_wiki",
+        "description": "Create, update, or delete wiki pages.",
+        "category": "Content",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_work_items",
+        "description": "Find and inspect issues, epics, tasks, and other work items.",
+        "category": "Planning",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_work_item",
+        "description": "Create, update, delete, or link work items (issues, epics, tasks).",
+        "category": "Planning",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_snippets",
+        "description": "Find and read code snippets with versioning support.",
+        "category": "Content",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_snippet",
+        "description": "Create, update, or delete code snippets with multi-file support.",
+        "category": "Content",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_webhooks",
+        "description": "List and inspect webhook configurations for projects or groups.",
+        "category": "Integrations",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_webhook",
+        "description": "Create, update, delete, or test webhooks for event-driven automation.",
+        "category": "Integrations",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_integrations",
+        "description": "Discover active project integrations and their configuration.",
+        "category": "Integrations",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_integration",
+        "description": "Configure or disable project integrations (50+ supported).",
+        "category": "Integrations",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_releases",
+        "description": "View project releases and asset download links.",
+        "category": "Releases",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_release",
+        "description": "Create, update, or delete project releases with asset management.",
+        "category": "Releases",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_refs",
+        "description": "Inspect branches, tags, and their protection rules.",
+        "category": "Repository",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_ref",
+        "description": "Create, delete, and protect branches and tags.",
+        "category": "Repository",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_members",
+        "description": "View team members and access levels in projects or groups.",
+        "category": "Access",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_member",
+        "description": "Add, remove, or update access levels for project/group members.",
+        "category": "Access",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_search",
+        "description": "Search across GitLab resources globally or within a scope.",
+        "category": "Discovery",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "browse_iterations",
+        "description": "View group iterations for agile sprint planning.",
+        "category": "Planning",
+        "tier": "premium",
+        "readOnly": true
+      }
+    ]
+  },
   "license": "Apache-2.0",
   "author": "Dmitry Prudnikov <mail@polaz.com>",
   "packageManager": "yarn@4.12.0",

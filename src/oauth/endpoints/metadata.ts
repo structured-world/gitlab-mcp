@@ -114,15 +114,48 @@ export function protectedResourceHandler(req: Request, res: Response): void {
 /**
  * Health check endpoint handler
  *
- * Returns server health status for monitoring.
+ * Returns server health status for monitoring and MCP discovery.
+ * Includes MCP-specific metadata for ecosystem compatibility:
+ * - Protocol version for client compatibility checks
+ * - Transport modes supported
+ * - Tool count for capacity planning
+ * - Authentication status for connection diagnostics
  *
  * @param req - Express request
  * @param res - Express response
  */
-export function healthHandler(req: Request, res: Response): void {
+export async function healthHandler(req: Request, res: Response): Promise<void> {
+  const { isOAuthEnabled, isAuthenticationConfigured } = await import("../config");
+
+  // Determine authentication mode
+  let authMode: "oauth" | "token" | "none";
+  if (isOAuthEnabled()) {
+    authMode = "oauth";
+  } else if (isAuthenticationConfigured()) {
+    authMode = "token";
+  } else {
+    authMode = "none";
+  }
+
+  // Get tool count from registry (lazy import to avoid circular deps)
+  let toolCount = 0;
+  try {
+    const { RegistryManager } = await import("../../registry-manager");
+    toolCount = RegistryManager.getInstance().getAllToolDefinitions().length;
+  } catch {
+    // Registry not initialized - use fallback from package.json
+    toolCount = 44;
+  }
+
   res.json({
     status: "ok",
-    mode: "oauth",
     timestamp: new Date().toISOString(),
+    mcp: {
+      protocol: "2025-03-26",
+      transports: ["stdio", "sse", "streamable-http"],
+      toolCount,
+      authenticated: authMode !== "none",
+      authMode,
+    },
   });
 }

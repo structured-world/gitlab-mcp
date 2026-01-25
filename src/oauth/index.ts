@@ -13,6 +13,8 @@ export {
   isOAuthEnabled,
   getAuthModeDescription,
   resetOAuthConfigCache,
+  isStaticTokenConfigured,
+  isAuthenticationConfigured,
 } from "./config";
 export type { OAuthConfig } from "./config";
 

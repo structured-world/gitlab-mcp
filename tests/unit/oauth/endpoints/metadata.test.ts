@@ -204,26 +204,31 @@ describe("OAuth Metadata Endpoint", () => {
   });
 
   describe("healthHandler", () => {
-    it("should return health status JSON", () => {
+    it("should return health status JSON with MCP metadata", async () => {
       const req = createMockRequest() as Request;
       const res = createMockResponse() as Response;
 
-      healthHandler(req, res);
+      await healthHandler(req, res);
 
       expect(res.json).toHaveBeenCalledTimes(1);
       const health = (res.json as jest.Mock).mock.calls[0][0];
 
       expect(health.status).toBe("ok");
-      expect(health.mode).toBe("oauth");
       expect(health.timestamp).toBeDefined();
+      expect(health.mcp).toBeDefined();
+      expect(health.mcp.protocol).toBe("2025-03-26");
+      expect(health.mcp.transports).toEqual(["stdio", "sse", "streamable-http"]);
+      expect(health.mcp.toolCount).toBeGreaterThanOrEqual(0);
+      expect(typeof health.mcp.authenticated).toBe("boolean");
+      expect(["oauth", "token", "none"]).toContain(health.mcp.authMode);
     });
 
-    it("should return valid ISO timestamp", () => {
+    it("should return valid ISO timestamp", async () => {
       const req = createMockRequest() as Request;
       const res = createMockResponse() as Response;
 
       const beforeCall = new Date().toISOString();
-      healthHandler(req, res);
+      await healthHandler(req, res);
       const afterCall = new Date().toISOString();
 
       const health = (res.json as jest.Mock).mock.calls[0][0];

@@ -46,6 +46,13 @@ jest.mock("../../src/registry-manager", () => ({
   },
 }));
 
+// Mock OAuth module for authentication checks
+jest.mock("../../src/oauth/index", () => ({
+  isOAuthEnabled: jest.fn().mockReturnValue(false),
+  isAuthenticationConfigured: jest.fn().mockReturnValue(true),
+  getTokenContext: jest.fn().mockReturnValue(null),
+}));
+
 describe("handlers", () => {
   let mockServer: jest.Mocked<Server>;
   let listToolsHandler: any;

@@ -107,6 +107,20 @@ describe("AccessLogFormatter", () => {
       expect(result).toContain("items=15");
       expect(result).toContain("ready=true");
     });
+
+    it("escapes quotes in values", () => {
+      expect(formatDetails({ msg: 'He said "hello"' })).toBe('msg="He said \\"hello\\""');
+    });
+
+    it("escapes backslashes in values", () => {
+      expect(formatDetails({ path: "C:\\Users\\test" })).toBe('path="C:\\\\Users\\\\test"');
+    });
+
+    it("escapes both quotes and backslashes", () => {
+      expect(formatDetails({ err: 'Error: "file\\not found"' })).toBe(
+        'err="Error: \\"file\\\\not found\\""'
+      );
+    });
   });
 
   describe("createAccessLogEntry", () => {
@@ -204,7 +218,9 @@ describe("AccessLogFormatter", () => {
 
       const log = formatAccessLog(entry);
 
-      expect(log).toBe("[2026-01-25T12:34:56Z] 192.168.1.100 - GET /health 200 5ms | - - | - -");
+      expect(log).toBe(
+        "[2026-01-25T12:34:56Z] 192.168.1.100 - GET /health 200 5ms | - - | - - | -"
+      );
     });
 
     it("formats error response", () => {
@@ -309,6 +325,24 @@ describe("AccessLogFormatter", () => {
       expect(log).toBe(
         '[2026-01-25T12:40:00Z] CONN_CLOSE 192.168.1.100 abc12345.. 45s transport_error | reqs=5 tools=3 errs=1 last_err="write EPIPE"'
       );
+    });
+
+    it("escapes quotes in last_err", () => {
+      const entry = {
+        timestamp: "2026-01-25T12:40:00Z",
+        clientIp: "192.168.1.100",
+        session: "abc12345..",
+        duration: "10s",
+        reason: "transport_error" as const,
+        requests: 1,
+        tools: 0,
+        errors: 1,
+        lastError: 'Error: "connection refused"',
+      };
+
+      const log = formatConnectionClose(entry);
+
+      expect(log).toContain('last_err="Error: \\"connection refused\\""');
     });
   });
 

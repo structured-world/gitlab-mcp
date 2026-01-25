@@ -66,10 +66,10 @@ function parseDeniedActions(envValue?: string): Map<string, Set<string>> {
 
 export const GITLAB_DENIED_ACTIONS = parseDeniedActions(process.env.GITLAB_DENIED_ACTIONS);
 
-// Logging format configuration
+// Logging format configuration - type imported from logging module to avoid duplication
 // - 'condensed' (default): Single-line access log per request with stack aggregation
 // - 'verbose': Traditional multi-line logging (existing behavior)
-export type LogFormat = "condensed" | "verbose";
+import type { LogFormat } from "./logging/types.js";
 
 function parseLogFormat(value?: string): LogFormat {
   const format = value?.toLowerCase();
@@ -80,6 +80,9 @@ function parseLogFormat(value?: string): LogFormat {
 }
 
 export const LOG_FORMAT: LogFormat = parseLogFormat(process.env.LOG_FORMAT);
+
+// Re-export LogFormat type for consumers of config module
+export type { LogFormat };
 
 // Schema mode configuration
 // - 'flat' (default): Flatten discriminated unions for AI clients that don't support oneOf well

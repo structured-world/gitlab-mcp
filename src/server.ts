@@ -353,6 +353,11 @@ export async function startServer(): Promise<void> {
         res.locals.accessLogRequestId = requestId;
 
         // Open request stack
+        // NOTE: For new sessions (no mcp-session-id header), sessionId will be undefined.
+        // The session ID is generated later by StreamableHTTPServerTransport and tracked
+        // separately via ConnectionTracker. This is intentional - first request that
+        // creates a session won't have session info in the access log, but subsequent
+        // requests will. Connection stats are tracked separately.
         requestTracker.openStack(requestId, clientIp, req.method, req.path, sessionId);
 
         // Close stack when response finishes
@@ -360,7 +365,11 @@ export async function startServer(): Promise<void> {
           requestTracker.closeStack(requestId, res.statusCode);
         });
 
-        // Handle aborted requests
+        // Handle aborted requests (client disconnect before response completes)
+        // NOTE: Both 'finish' and 'close' may fire. If 'finish' fires first,
+        // the stack is removed from the map, so closeStackWithError becomes a no-op.
+        // This is safe - RequestTracker.closeStack removes the stack immediately
+        // to prevent duplicate processing.
         res.on("close", () => {
           if (!res.writableFinished) {
             requestTracker.closeStackWithError(requestId, "connection_closed");

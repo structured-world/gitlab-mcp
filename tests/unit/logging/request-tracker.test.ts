@@ -204,7 +204,11 @@ describe("RequestTracker", () => {
       const logLine = tracker.closeStackWithError("req-1", "connection_lost");
 
       expect(tracker.hasStack("req-1")).toBe(false);
-      expect(logLine).toContain("0ms"); // status 0 (not shown explicitly but duration ends with ms)
+      // Verify log contains the error message and status 0
+      // Using regex to match duration pattern (Nms) since exact value depends on timing
+      expect(logLine).toMatch(/\d+ms/); // Duration is present
+      expect(logLine).toContain("connection_lost"); // Error is logged in details
+      expect(logLine).toContain("POST /mcp 0"); // Status 0 for error close
     });
   });
 

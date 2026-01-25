@@ -57,8 +57,16 @@ export function formatGitLabStatus(status?: number | "timeout" | "error"): strin
 }
 
 /**
+ * Escape special characters in log values
+ * Escapes backslashes and double quotes for safe embedding in quoted strings
+ */
+function escapeLogValue(value: string): string {
+  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+}
+
+/**
  * Format details map into key=value string
- * Values are quoted if they contain spaces
+ * Values are quoted if they contain spaces, quotes, or backslashes
  */
 export function formatDetails(details: Record<string, string | number | boolean>): string {
   const entries = Object.entries(details);
@@ -67,9 +75,9 @@ export function formatDetails(details: Record<string, string | number | boolean>
   return entries
     .map(([key, value]) => {
       const strValue = String(value);
-      // Quote values containing spaces
-      if (strValue.includes(" ")) {
-        return `${key}="${strValue}"`;
+      // Quote values containing spaces, quotes, or backslashes
+      if (strValue.includes(" ") || strValue.includes('"') || strValue.includes("\\")) {
+        return `${key}="${escapeLogValue(strValue)}"`;
       }
       return `${key}=${strValue}`;
     })
@@ -102,15 +110,19 @@ export function createAccessLogEntry(stack: RequestStack): AccessLogEntry {
 /**
  * Format AccessLogEntry into single condensed line
  *
+ * All fields are always present (nginx-style alignment with "-" for missing values).
+ *
  * Format:
  * [timestamp] client_ip session method path status duration_ms | tool action | gitlab_status gitlab_duration_ms | details
  *
  * Examples:
  * [2026-01-25T12:34:56Z] 192.168.1.100 abc123.. POST /mcp 200 142ms | browse_projects list | GL:200 98ms | namespace=test/backend items=15
  * [2026-01-25T12:34:56Z] 192.168.1.100 abc123.. POST /mcp 200 85ms | manage_merge_request approve | GL:403 45ms | project=test/api mr_iid=42 err="403 Forbidden"
- * [2026-01-25T12:34:56Z] 192.168.1.100 - POST /mcp 429 2ms | - | - | rate_limit ip=192.168.1.100 used=101/100
+ * [2026-01-25T12:34:56Z] 192.168.1.100 - POST /mcp 429 2ms | - - | - - | rate_limit=true
+ * [2026-01-25T12:34:56Z] 192.168.1.100 - GET /health 200 5ms | - - | - - | -
  */
 export function formatAccessLog(entry: AccessLogEntry): string {
+  // All fields always present with "-" for missing values (nginx-style alignment)
   const parts = [
     `[${entry.timestamp}]`,
     entry.clientIp,
@@ -126,14 +138,10 @@ export function formatAccessLog(entry: AccessLogEntry): string {
     entry.gitlabStatus,
     entry.gitlabDurationMs,
     "|",
-    entry.details || "",
+    entry.details || "-",
   ];
 
-  // Filter out trailing empty parts and join
-  return parts
-    .join(" ")
-    .replace(/\|\s*$/, "")
-    .trim();
+  return parts.join(" ");
 }
 
 /**
@@ -184,7 +192,8 @@ export function formatConnectionClose(entry: ConnectionCloseEntry): string {
   ];
 
   if (entry.lastError) {
-    parts.push(`last_err="${entry.lastError}"`);
+    // Escape quotes and backslashes in error message for safe log parsing
+    parts.push(`last_err="${escapeLogValue(entry.lastError)}"`);
   }
 
   return parts.join(" ");

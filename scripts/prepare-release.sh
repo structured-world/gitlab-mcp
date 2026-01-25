@@ -32,6 +32,8 @@ if [ -z "$READONLY_TOOL_COUNT" ]; then READONLY_TOOL_COUNT=24; echo "WARNING: Us
 echo "prepare-release: v${VERSION}, ${TOOL_COUNT} tools (${READONLY_TOOL_COUNT} read-only), ${ENTITY_COUNT} entities"
 
 # Update server.json: version + description
+# Note: set -e ensures script exits on jq failure; leftover server.tmp is benign
+# (gitignored, cleaned by next successful run, doesn't affect release)
 jq --arg v "$VERSION" --arg tc "$TOOL_COUNT" \
   '.version = $v | .packages[0].version = $v | .description = "GitLab MCP server with " + $tc + " tools for projects, MRs, pipelines, and more"' \
   server.json > server.tmp && mv server.tmp server.json

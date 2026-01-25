@@ -217,6 +217,7 @@ function countEntities(projectRoot: string): number {
   const entitiesDir = path.join(projectRoot, "src", "entities");
   if (!fs.existsSync(entitiesDir)) return 0;
 
+  // fs.existsSync returns boolean (never throws), so no try/catch needed
   return fs
     .readdirSync(entitiesDir, { withFileTypes: true })
     .filter(d => d.isDirectory() && fs.existsSync(path.join(entitiesDir, d.name, "registry.ts")))
@@ -271,6 +272,7 @@ export function main(): void {
     function processTemplates(dir: string): void {
       for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
         const fullPath = path.join(dir, entry.name);
+        // Skip build artifacts and dependencies; process only docs source directories
         if (entry.isDirectory() && !["node_modules", ".vitepress", "dist"].includes(entry.name)) {
           processTemplates(fullPath);
         } else if (

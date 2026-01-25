@@ -1,5 +1,6 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "$comment": "Schema version 2025-12-11 is the current MCP Registry standard",
   "name": "io.github.structured-world/gitlab-mcp",
   "title": "GitLab MCP Server",
   "description": "GitLab MCP server with 44 tools for projects, MRs, pipelines, and more",

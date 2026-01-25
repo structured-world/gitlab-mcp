@@ -22,6 +22,7 @@ if [ -z "$ENTITY_COUNT" ]; then ENTITY_COUNT=18; echo "WARNING: Using fallback E
 # Read-only tools: browse_* (queries) + manage_context (read-only despite manage_ prefix)
 # Same pattern used in inject-tool-refs.ts for consistency
 READONLY_TOOL_COUNT=$(node -e 'const r=require("./dist/src/registry-manager.js");const t=r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered();console.log(t.filter(x=>x.name.startsWith("browse_")||x.name==="manage_context").length)' 2>/dev/null)
+# Fallback emits WARNING to stderr for CI visibility; release continues with safe defaults
 if [ -z "$READONLY_TOOL_COUNT" ]; then READONLY_TOOL_COUNT=24; echo "WARNING: Using fallback READONLY_TOOL_COUNT=$READONLY_TOOL_COUNT"; fi
 
 echo "prepare-release: v${VERSION}, ${TOOL_COUNT} tools (${READONLY_TOOL_COUNT} read-only), ${ENTITY_COUNT} entities"

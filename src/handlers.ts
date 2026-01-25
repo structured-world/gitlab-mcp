@@ -9,6 +9,7 @@ import {
   createTimeoutError,
   parseTimeoutError,
 } from "./utils/error-handler";
+import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from "./logging/index";
 
 interface JsonSchemaProperty {
   type?: string;
@@ -319,6 +320,23 @@ export async function setupHandlers(server: Server): Promise<void> {
 
       // Dynamic tool dispatch using the new registry manager
       const toolName = request.params.name;
+      const toolArgs = request.params.arguments;
+      const action = toolArgs && typeof toolArgs.action === "string" ? toolArgs.action : undefined;
+
+      // Set tool and action for access logging
+      const requestTracker = getRequestTracker();
+      requestTracker.setToolForCurrentRequest(toolName, action);
+
+      // Increment tool count for connection tracking
+      const currentRequestId = getCurrentRequestId();
+      if (currentRequestId) {
+        // Get session ID from the request stack to update connection stats
+        const stack = requestTracker.getStack(currentRequestId);
+        if (stack?.sessionId) {
+          const connectionTracker = getConnectionTracker();
+          connectionTracker.incrementTools(stack.sessionId);
+        }
+      }
 
       try {
         // Import the registry manager
@@ -359,9 +377,22 @@ export async function setupHandlers(server: Server): Promise<void> {
         throw new Error(`Failed to execute tool '${toolName}': ${errorMessage}`, { cause: error });
       }
     } catch (error) {
-      logger.error(
-        `Error in tool handler: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error in tool handler: ${errMsg}`);
+
+      // Record error for access logging
+      const reqTracker = getRequestTracker();
+      reqTracker.setErrorForCurrentRequest(errMsg);
+
+      // Record error on connection stats
+      const curRequestId = getCurrentRequestId();
+      if (curRequestId) {
+        const stack = reqTracker.getStack(curRequestId);
+        if (stack?.sessionId) {
+          const connTracker = getConnectionTracker();
+          connTracker.recordError(stack.sessionId, errMsg);
+        }
+      }
 
       // Try to convert to structured error for better LLM feedback
       const toolName = request.params.name;

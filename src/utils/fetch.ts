@@ -28,6 +28,7 @@ import {
   API_RETRY_MAX_DELAY_MS,
 } from "../config";
 import { isOAuthEnabled, getTokenContext } from "../oauth/index";
+import { getRequestTracker } from "../logging/index";
 
 // Dynamic require to avoid TypeScript analyzing complex undici types at compile time
 const undici = require("undici") as {
@@ -488,6 +489,8 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
   }
 
   const startTime = Date.now();
+  const requestTracker = getRequestTracker();
+
   try {
     const response = await fetch(url, fetchOptions as RequestInit);
     cleanup();
@@ -497,6 +500,9 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
       { url: safeUrl, method, status: response.status, duration },
       "GitLab API request completed"
     );
+
+    // Capture GitLab response for access logging
+    requestTracker.setGitLabResponseForCurrentRequest(response.status, duration);
 
     return response;
   } catch (error) {
@@ -515,6 +521,10 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
           { url: safeUrl, method, timeout: API_TIMEOUT_MS, duration },
           "GitLab API request timed out"
         );
+
+        // Capture timeout for access logging
+        requestTracker.setGitLabResponseForCurrentRequest("timeout", duration);
+
         throw new Error(`GitLab API timeout after ${API_TIMEOUT_MS}ms`);
       } else {
         // Caller abort - re-throw original error to preserve abort reason
@@ -536,6 +546,10 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
       },
       "GitLab API request failed"
     );
+
+    // Capture error for access logging
+    requestTracker.setGitLabResponseForCurrentRequest("error", duration);
+
     throw error;
   }
 }

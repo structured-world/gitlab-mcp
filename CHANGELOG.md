@@ -1,3 +1,10 @@
+## [6.48.1](https://github.com/structured-world/gitlab-mcp/compare/v6.48.0...v6.48.1) (2026-01-25)
+
+### Bug Fixes
+
+* **ci:** remove deleted worker deploy job ([#227](https://github.com/structured-world/gitlab-mcp/issues/227)) ([f33f3ba](https://github.com/structured-world/gitlab-mcp/commit/f33f3ba7d11474d426b14a4a54bcc0d6fd2cb6b6)), closes [#223](https://github.com/structured-world/gitlab-mcp/issues/223) [#226](https://github.com/structured-world/gitlab-mcp/issues/226)
+* **docs:** track SPA navigation in Google Analytics ([#221](https://github.com/structured-world/gitlab-mcp/issues/221)) ([252f0be](https://github.com/structured-world/gitlab-mcp/commit/252f0bed2be4213ec6bb867f25cb44159088f728)), closes [#220](https://github.com/structured-world/gitlab-mcp/issues/220)
+
 ## [6.48.0](https://github.com/structured-world/gitlab-mcp/compare/v6.47.1...v6.48.0) (2026-01-25)
 
 ### Features

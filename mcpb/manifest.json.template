@@ -3,7 +3,7 @@
   "name": "gitlab-mcp",
   "version": "{{VERSION}}",
   "display_name": "GitLab MCP",
-  "description": "Connect AI agents to GitLab — 44 tools across 18 entity types with CQRS architecture",
+  "description": "Connect AI agents to GitLab — {{TOOL_COUNT}} tools across {{ENTITY_COUNT}} entity types with CQRS architecture",
   "long_description": "A Model Context Protocol server providing comprehensive GitLab API access. Supports projects, merge requests, pipelines, work items, CI/CD variables, webhooks, releases, wiki, and more. CQRS architecture with browse_* for queries and manage_* for commands.",
   "author": {
     "name": "Dmitry Prudnikov",
@@ -26,7 +26,24 @@
       "env": {
         "GITLAB_TOKEN": "${user_config.GITLAB_TOKEN}",
         "GITLAB_API_URL": "${user_config.GITLAB_API_URL}",
-        "GITLAB_READ_ONLY_MODE": "${user_config.GITLAB_READ_ONLY_MODE}"
+        "GITLAB_READ_ONLY_MODE": "${user_config.GITLAB_READ_ONLY_MODE}",
+        "GITLAB_CROSS_REFS": "${user_config.GITLAB_CROSS_REFS}",
+        "USE_MRS": "${user_config.USE_MRS}",
+        "USE_PIPELINE": "${user_config.USE_PIPELINE}",
+        "USE_WORKITEMS": "${user_config.USE_WORKITEMS}",
+        "USE_FILES": "${user_config.USE_FILES}",
+        "USE_LABELS": "${user_config.USE_LABELS}",
+        "USE_MILESTONE": "${user_config.USE_MILESTONE}",
+        "USE_VARIABLES": "${user_config.USE_VARIABLES}",
+        "USE_GITLAB_WIKI": "${user_config.USE_GITLAB_WIKI}",
+        "USE_SNIPPETS": "${user_config.USE_SNIPPETS}",
+        "USE_WEBHOOKS": "${user_config.USE_WEBHOOKS}",
+        "USE_INTEGRATIONS": "${user_config.USE_INTEGRATIONS}",
+        "USE_RELEASES": "${user_config.USE_RELEASES}",
+        "USE_REFS": "${user_config.USE_REFS}",
+        "USE_MEMBERS": "${user_config.USE_MEMBERS}",
+        "USE_SEARCH": "${user_config.USE_SEARCH}",
+        "USE_ITERATIONS": "${user_config.USE_ITERATIONS}"
       }
     }
   },
@@ -51,6 +68,125 @@
       "description": "When enabled, only browse_* tools are available (no write operations)",
       "required": false,
       "default": false
+    },
+    "GITLAB_CROSS_REFS": {
+      "type": "boolean",
+      "title": "Cross-Project References",
+      "description": "Enable cross-project reference resolution in work items and MRs",
+      "required": false,
+      "default": true
+    },
+    "USE_MRS": {
+      "type": "boolean",
+      "title": "Merge Requests",
+      "description": "Enable merge request tools (browse/manage MRs, discussions, approvals)",
+      "required": false,
+      "default": true
+    },
+    "USE_PIPELINE": {
+      "type": "boolean",
+      "title": "Pipelines",
+      "description": "Enable CI/CD pipeline tools (browse/manage pipelines and jobs)",
+      "required": false,
+      "default": true
+    },
+    "USE_WORKITEMS": {
+      "type": "boolean",
+      "title": "Work Items",
+      "description": "Enable work item tools (issues, epics, tasks, incidents)",
+      "required": false,
+      "default": true
+    },
+    "USE_FILES": {
+      "type": "boolean",
+      "title": "Files",
+      "description": "Enable repository file tools (browse/manage files and trees)",
+      "required": false,
+      "default": true
+    },
+    "USE_LABELS": {
+      "type": "boolean",
+      "title": "Labels",
+      "description": "Enable label tools (browse/manage project and group labels)",
+      "required": false,
+      "default": true
+    },
+    "USE_MILESTONE": {
+      "type": "boolean",
+      "title": "Milestones",
+      "description": "Enable milestone tools (browse/manage project and group milestones)",
+      "required": false,
+      "default": true
+    },
+    "USE_VARIABLES": {
+      "type": "boolean",
+      "title": "CI/CD Variables",
+      "description": "Enable CI/CD variable tools (browse/manage project and group variables)",
+      "required": false,
+      "default": true
+    },
+    "USE_GITLAB_WIKI": {
+      "type": "boolean",
+      "title": "Wiki",
+      "description": "Enable wiki tools (browse/manage wiki pages)",
+      "required": false,
+      "default": true
+    },
+    "USE_SNIPPETS": {
+      "type": "boolean",
+      "title": "Snippets",
+      "description": "Enable snippet tools (browse/manage project and personal snippets)",
+      "required": false,
+      "default": true
+    },
+    "USE_WEBHOOKS": {
+      "type": "boolean",
+      "title": "Webhooks",
+      "description": "Enable webhook tools (browse/manage project webhooks)",
+      "required": false,
+      "default": true
+    },
+    "USE_INTEGRATIONS": {
+      "type": "boolean",
+      "title": "Integrations",
+      "description": "Enable integration tools (browse/manage project integrations)",
+      "required": false,
+      "default": true
+    },
+    "USE_RELEASES": {
+      "type": "boolean",
+      "title": "Releases",
+      "description": "Enable release tools (browse/manage project releases)",
+      "required": false,
+      "default": true
+    },
+    "USE_REFS": {
+      "type": "boolean",
+      "title": "Branches & Tags",
+      "description": "Enable ref tools (browse/manage branches and tags)",
+      "required": false,
+      "default": true
+    },
+    "USE_MEMBERS": {
+      "type": "boolean",
+      "title": "Members",
+      "description": "Enable member tools (browse/manage project and group members)",
+      "required": false,
+      "default": true
+    },
+    "USE_SEARCH": {
+      "type": "boolean",
+      "title": "Search",
+      "description": "Enable search tools (search across projects, groups, and global scope)",
+      "required": false,
+      "default": true
+    },
+    "USE_ITERATIONS": {
+      "type": "boolean",
+      "title": "Iterations",
+      "description": "Enable iteration tools (browse group and project iterations)",
+      "required": false,
+      "default": true
     }
   },
   "tools_generated": true,
@@ -58,7 +194,7 @@
   "compatibility": {
     "platforms": ["darwin", "win32", "linux"],
     "runtimes": {
-      "node": ">=22.0.0"
+      "node": ">=24"
     }
   }
 }

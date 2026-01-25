@@ -186,8 +186,49 @@ function processFile(
   return false;
 }
 
+interface CountPlaceholders {
+  toolCount: number;
+  entityCount: number;
+  readonlyToolCount: number;
+}
+
+/**
+ * Replace __TOOL_COUNT__, __ENTITY_COUNT__, and __READONLY_TOOL_COUNT__ placeholders in a file.
+ * Returns true if file was modified.
+ */
+function replaceCountPlaceholders(filePath: string, counts: CountPlaceholders): boolean {
+  const content = fs.readFileSync(filePath, "utf8");
+  const result = content
+    .replace(/__TOOL_COUNT__/g, String(counts.toolCount))
+    .replace(/__ENTITY_COUNT__/g, String(counts.entityCount))
+    .replace(/__READONLY_TOOL_COUNT__/g, String(counts.readonlyToolCount));
+
+  if (result !== content) {
+    fs.writeFileSync(filePath, result, "utf8");
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Count entity types by scanning src/entities/ subdirectories with registry.ts files.
+ * Note: fs.existsSync is safe (returns boolean, never throws) so no try/catch needed.
+ */
+function countEntities(projectRoot: string): number {
+  const entitiesDir = path.join(projectRoot, "src", "entities");
+  if (!fs.existsSync(entitiesDir)) return 0;
+
+  // readdirSync may throw on permission errors, but that's a fatal misconfiguration
+  return fs
+    .readdirSync(entitiesDir, { withFileTypes: true })
+    .filter(d => d.isDirectory() && fs.existsSync(path.join(entitiesDir, d.name, "registry.ts")))
+    .length;
+}
+
 /**
  * Main entry point. Scans docs/tools/*.md and injects action tables.
+ * Also generates .md/.txt from .in templates with __TOOL_COUNT__, __ENTITY_COUNT__,
+ * and __READONLY_TOOL_COUNT__ placeholders replaced by actual counts.
  */
 export function main(): void {
   // Find project root (where package.json is)
@@ -210,6 +251,48 @@ export function main(): void {
   const toolSchemas = new Map<string, JsonSchemaProperty>();
   for (const tool of allTools) {
     toolSchemas.set(tool.name, tool.inputSchema as JsonSchemaProperty);
+  }
+
+  const toolCount = allTools.length;
+  const entityCount = countEntities(projectRoot);
+  // Read-only tools: browse_* (queries) + manage_context (read-only despite manage_ prefix)
+  // Same pattern used in prepare-release.sh for consistency
+  const readonlyToolCount = allTools.filter(
+    t => t.name.startsWith("browse_") || t.name === "manage_context"
+  ).length;
+  console.log(
+    `  Tool count: ${toolCount}, Entity count: ${entityCount}, Read-only: ${readonlyToolCount}`
+  );
+
+  const counts: CountPlaceholders = { toolCount, entityCount, readonlyToolCount };
+
+  // Generate docs from .in templates (*.md.in -> *.md, *.txt.in -> *.txt)
+  const docsDir = path.join(projectRoot, "docs");
+  let templateCount = 0;
+  if (fs.existsSync(docsDir)) {
+    function processTemplates(dir: string): void {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const fullPath = path.join(dir, entry.name);
+        // Skip build artifacts and dependencies; .git/coverage/tmp are not present in docs/
+        if (entry.isDirectory() && !["node_modules", ".vitepress", "dist"].includes(entry.name)) {
+          processTemplates(fullPath);
+        } else if (
+          entry.isFile() &&
+          (entry.name.endsWith(".md.in") || entry.name.endsWith(".txt.in"))
+        ) {
+          const outputPath = fullPath.replace(/\.in$/, "");
+          fs.copyFileSync(fullPath, outputPath);
+          replaceCountPlaceholders(outputPath, counts);
+          templateCount++;
+          const relPath = path.relative(projectRoot, outputPath);
+          console.log(`  Generated: ${relPath} (from ${entry.name})`);
+        }
+      }
+    }
+    processTemplates(docsDir);
+    if (templateCount > 0) {
+      console.log(`  Generated ${templateCount} file(s) from .in templates`);
+    }
   }
 
   // Find all .md files in docs/tools/
@@ -242,7 +325,14 @@ export function main(): void {
 }
 
 // Exported for unit testing
-export { extractActions, generateActionsTable, findMarkers, processFile };
+export {
+  extractActions,
+  generateActionsTable,
+  findMarkers,
+  processFile,
+  replaceCountPlaceholders,
+  countEntities,
+};
 export type { JsonSchemaProperty, ActionInfo, MarkerMatch };
 
 // Auto-execute when run directly

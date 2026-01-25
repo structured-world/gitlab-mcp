@@ -1,11 +1,11 @@
 ---
 title: Tool Reference
-description: "Complete reference for 44 GitLab MCP tools across 18 entity types — browse and manage operations"
+description: "Complete reference for __TOOL_COUNT__ GitLab MCP tools across __ENTITY_COUNT__ entity types — browse and manage operations"
 ---
 
 # Tool Reference
 
-GitLab MCP Server provides **44 tools** across 18 entity types.
+GitLab MCP Server provides **__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types.
 
 ## Architecture
 

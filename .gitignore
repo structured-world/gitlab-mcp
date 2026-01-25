@@ -29,17 +29,31 @@ scripts/
 !scripts/test_mcp.sh
 !scripts/deploy.sh
 !scripts/build-mcpb.sh
+!scripts/prepare-release.sh
 
 # MCPB bundles (built artifacts)
 *.mcpb
+
+# MCP Registry (local auth tokens and publisher binary)
+.mcpregistry_*
+mcp-publisher
+
+# Semantic release version file
+.semantic-release-version
 
 # Keep assets
 !assets/
 
 /generated/prisma
 
-# Generated documentation (built in CI)
+# Generated documentation (built from .in templates by inject-tool-refs)
 docs/TOOLS.md
+docs/index.md
+docs/guide/index.md
+docs/guide/authentication.md
+docs/guide/installation/claude-desktop.md
+docs/tools/index.md
+docs/public/llms.txt
 
 # VitePress
 docs/.vitepress/dist

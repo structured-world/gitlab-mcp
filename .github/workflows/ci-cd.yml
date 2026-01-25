@@ -294,12 +294,84 @@ jobs:
           build-args: |
             VERSION=${{ needs.semantic-release.outputs.new-release-version }}
 
-  # Job 5: Summary
+  # Job 5: Publish to MCP Registry
+  mcp-registry-publish:
+    name: Publish to MCP Registry
+    runs-on: ubuntu-latest
+    # Depends on mcpb-bundle to ensure .mcpb file is uploaded before we download it
+    # docker-publish runs in parallel (no dependency needed)
+    needs: [semantic-release, mcpb-bundle]
+    if: needs.semantic-release.outputs.new-release-published == 'true'
+
+    permissions:
+      id-token: write  # Required for GitHub OIDC authentication
+      contents: read   # server.json is already updated in the tag by prepare-release.sh
+
+    steps:
+      # The release tag already contains updated server.json (version + description)
+      # from prepare-release.sh, committed by @semantic-release/git before tagging.
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: v${{ needs.semantic-release.outputs.new-release-version }}
+
+      - name: Install mcp-publisher
+        # Security: Using HTTPS from official MCP Registry repo. Sigstore signatures exist
+        # but "latest" tag complicates pinning. GitHub Actions runner integrity is our trust anchor.
+        # Future: consider pinning to specific version with checksum when stable.
+        run: |
+          curl -fL -o mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz"
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+          test -x ./mcp-publisher || { echo "Error: mcp-publisher not found after extraction"; exit 1; }
+          rm -f mcp-publisher.tar.gz
+
+      - name: Download MCPB bundle from release
+        run: |
+          VERSION="${{ needs.semantic-release.outputs.new-release-version }}"
+          MCPB_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/gitlab-mcp-${VERSION}.mcpb"
+          echo "Downloading MCPB from: ${MCPB_URL}"
+          # Brief wait for GitHub Release asset eventual consistency
+          # Total max wait: 5s initial + 3 retries * 10s delay = 35s (sufficient for GH CDN propagation)
+          # curl -f fails fast on HTTP errors (no HTML error pages); --retry handles transient failures
+          # Note: exponential backoff unnecessary - linear 10s delay is adequate for CDN propagation
+          sleep 5
+          curl -fL --retry 3 --retry-delay 10 -o "gitlab-mcp-${VERSION}.mcpb" "${MCPB_URL}"
+          ls -la "gitlab-mcp-${VERSION}.mcpb"
+
+      - name: Add MCPB entry to server.json
+        run: |
+          VERSION="${{ needs.semantic-release.outputs.new-release-version }}"
+          MCPB_FILE="gitlab-mcp-${VERSION}.mcpb"
+          MCPB_URL="https://github.com/${{ github.repository }}/releases/download/v${VERSION}/${MCPB_FILE}"
+          SHA256=$(openssl dgst -sha256 "${MCPB_FILE}" | awk '{print $NF}')
+          echo "MCPB SHA256: ${SHA256}"
+
+          # Add mcpb package entry to server.json
+          # Note: jq validation after transform catches both syntax errors and empty output;
+          # -e flag is unnecessary since .packages append never produces null
+          jq --arg url "$MCPB_URL" --arg sha "$SHA256" \
+            '.packages += [{"registryType": "mcpb", "identifier": $url, "fileSha256": $sha, "transport": {"type": "stdio"}}]' \
+            server.json > server.tmp
+          jq . server.tmp > /dev/null || { echo "Error: invalid JSON produced by jq"; exit 1; }
+          mv server.tmp server.json
+
+          echo "Final server.json:"
+          cat server.json
+
+      - name: Authenticate to MCP Registry (OIDC)
+        # OIDC auth failure will exit non-zero; GitHub Actions fails the step automatically
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        # Publish failure exits non-zero; step fails and job stops — no extra handling needed
+        run: ./mcp-publisher publish
+
+  # Job 6: Summary
   summary:
     name: Pipeline Summary
     runs-on: ubuntu-latest
     permissions: {}
-    needs: [quality-checks, docker-build, semantic-release, mcpb-bundle, docker-publish]
+    needs: [quality-checks, docker-build, semantic-release, mcpb-bundle, docker-publish, mcp-registry-publish]
     if: always()
 
     steps:
@@ -329,4 +401,14 @@ jobs:
 
           if [[ "${{ needs.mcpb-bundle.result }}" == "success" ]]; then
             echo "📦 MCPB bundle: gitlab-mcp-${{ needs.semantic-release.outputs.new-release-version }}.mcpb" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # mcp-registry-publish only runs when new-release-published=true;
+          # handle all three states: success, failure, skipped (no release)
+          if [[ "${{ needs.mcp-registry-publish.result }}" == "success" ]]; then
+            echo "🌐 MCP Registry: io.github.structured-world/gitlab-mcp v${{ needs.semantic-release.outputs.new-release-version }}" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.mcp-registry-publish.result }}" == "failure" ]]; then
+            echo "❌ MCP Registry: publish failed" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.mcp-registry-publish.result }}" == "skipped" ]]; then
+            echo "⏭️ MCP Registry: skipped (no new release)" >> $GITHUB_STEP_SUMMARY
           fi

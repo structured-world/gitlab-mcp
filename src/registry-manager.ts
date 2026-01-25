@@ -645,6 +645,108 @@ class RegistryManager {
 
     return this.toolNamesCache;
   }
+
+  /**
+   * Get filter statistics showing how tools were filtered
+   * Used by whoami action to explain tool availability
+   */
+  public getFilterStats(): FilterStats {
+    // Count total tools across all registries
+    let totalTools = 0;
+    for (const registry of this.registries.values()) {
+      totalTools += registry.size;
+    }
+
+    const availableTools = this.toolLookupCache.size;
+
+    // Calculate filtered counts by re-running filter logic
+    let filteredByReadOnly = 0;
+    let filteredByDeniedRegex = 0;
+    let filteredByScopes = 0;
+    let filteredByTier = 0;
+    let filteredByActionDenial = 0;
+
+    // Get token scopes for scope filtering check
+    let tokenScopes: GitLabScope[] | undefined;
+    try {
+      const scopeInfo = ConnectionManager.getInstance().getTokenScopeInfo();
+      if (scopeInfo) {
+        tokenScopes = scopeInfo.scopes;
+      }
+    } catch {
+      // Connection not initialized
+    }
+
+    for (const registry of this.registries.values()) {
+      for (const [toolName, tool] of registry) {
+        // Check if already in cache (passed all filters)
+        if (this.toolLookupCache.has(toolName)) {
+          continue;
+        }
+
+        // Tool was filtered - determine why (in same order as buildToolLookupCache)
+        if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) {
+          filteredByReadOnly++;
+          continue;
+        }
+
+        if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) {
+          filteredByDeniedRegex++;
+          continue;
+        }
+
+        if (tokenScopes && !isToolAvailableForScopes(toolName, tokenScopes)) {
+          filteredByScopes++;
+          continue;
+        }
+
+        if (!ToolAvailability.isToolAvailable(toolName)) {
+          filteredByTier++;
+          continue;
+        }
+
+        // Check if all actions are denied for this CQRS tool
+        const allActions = extractActionsFromSchema(tool.inputSchema);
+        if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) {
+          filteredByActionDenial++;
+          continue;
+        }
+
+        // Unknown filtering reason - count as tier
+        filteredByTier++;
+      }
+    }
+
+    return {
+      available: availableTools,
+      total: totalTools,
+      filteredByScopes,
+      filteredByReadOnly,
+      filteredByTier,
+      filteredByDeniedRegex,
+      filteredByActionDenial,
+    };
+  }
+}
+
+/**
+ * Filter statistics interface
+ */
+export interface FilterStats {
+  /** Number of tools available after filtering */
+  available: number;
+  /** Total number of registered tools */
+  total: number;
+  /** Tools filtered due to insufficient token scopes */
+  filteredByScopes: number;
+  /** Tools filtered due to read-only mode */
+  filteredByReadOnly: number;
+  /** Tools filtered due to GitLab tier/version restrictions */
+  filteredByTier: number;
+  /** Tools filtered due to denied tools regex */
+  filteredByDeniedRegex: number;
+  /** Tools filtered due to all actions being denied */
+  filteredByActionDenial: number;
 }
 
 export { RegistryManager };

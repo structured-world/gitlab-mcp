@@ -316,6 +316,54 @@ export class ConnectionManager {
   }
 
   /**
+   * Re-detect token scopes and update internal state.
+   * Returns true if scopes changed (requiring tool registry refresh).
+   *
+   * Used by whoami action to pick up token permission changes without restart.
+   */
+  public async refreshTokenScopes(): Promise<boolean> {
+    // Skip in OAuth mode - scopes come from request context, not static token
+    if (isOAuthEnabled()) {
+      return false;
+    }
+
+    const previousScopes = this.tokenScopeInfo?.scopes ?? [];
+    const previousHasGraphQL = this.tokenScopeInfo?.hasGraphQLAccess ?? false;
+    const previousHasWrite = this.tokenScopeInfo?.hasWriteAccess ?? false;
+
+    // Re-detect token scopes
+    const newScopeInfo = await detectTokenScopes();
+
+    if (!newScopeInfo) {
+      // Detection failed - keep existing state
+      return false;
+    }
+
+    // Check if scopes changed
+    const newScopes = newScopeInfo.scopes;
+    const scopesChanged =
+      previousScopes.length !== newScopes.length ||
+      !previousScopes.every(s => newScopes.includes(s)) ||
+      previousHasGraphQL !== newScopeInfo.hasGraphQLAccess ||
+      previousHasWrite !== newScopeInfo.hasWriteAccess;
+
+    if (scopesChanged) {
+      this.tokenScopeInfo = newScopeInfo;
+      logger.info(
+        {
+          previousScopes,
+          newScopes,
+          hasGraphQLAccess: newScopeInfo.hasGraphQLAccess,
+          hasWriteAccess: newScopeInfo.hasWriteAccess,
+        },
+        "Token scopes changed - tool registry will be refreshed"
+      );
+    }
+
+    return scopesChanged;
+  }
+
+  /**
    * Detect GitLab version via REST API (fallback when GraphQL is not available).
    * Uses GET /api/v4/version; authentication requirements depend on instance
    * configuration. This helper always sends the configured token as a fallback.

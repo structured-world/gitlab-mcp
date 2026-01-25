@@ -21,6 +21,12 @@ export interface RequestStack {
   /** Session ID (MCP or OAuth), if available */
   sessionId?: string;
 
+  /** Selected context path (project or group) */
+  context?: string;
+
+  /** Read-only mode flag */
+  readOnly?: boolean;
+
   /** HTTP method (GET, POST, etc.) */
   method: string;
 
@@ -103,6 +109,12 @@ export interface AccessLogEntry {
 
   /** Truncated session ID (8 chars + ..) or "-" */
   session: string;
+
+  /** Selected context path or "-" */
+  ctx: string;
+
+  /** Read-only mode: "RO" or "-" */
+  ro: string;
 
   /** HTTP method */
   method: string;

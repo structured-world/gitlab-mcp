@@ -121,6 +121,24 @@ describe("AccessLogFormatter", () => {
         'err="Error: \\"file\\\\not found\\""'
       );
     });
+
+    it("escapes newlines to maintain single-line format", () => {
+      expect(formatDetails({ msg: "line1\nline2" })).toBe('msg="line1\\nline2"');
+    });
+
+    it("escapes carriage returns", () => {
+      expect(formatDetails({ msg: "line1\rline2" })).toBe('msg="line1\\rline2"');
+    });
+
+    it("escapes tabs", () => {
+      expect(formatDetails({ msg: "col1\tcol2" })).toBe('msg="col1\\tcol2"');
+    });
+
+    it("escapes mixed control characters", () => {
+      expect(formatDetails({ msg: 'Error:\n\t"details"\r\nend' })).toBe(
+        'msg="Error:\\n\\t\\"details\\"\\r\\nend"'
+      );
+    });
   });
 
   describe("createAccessLogEntry", () => {
@@ -129,6 +147,8 @@ describe("AccessLogFormatter", () => {
         startTime: Date.now() - 142,
         clientIp: "192.168.1.100",
         sessionId: "abc12345-6789-0abc",
+        context: "mygroup/myproject",
+        readOnly: false,
         method: "POST",
         path: "/mcp",
         tool: "browse_projects",
@@ -143,6 +163,8 @@ describe("AccessLogFormatter", () => {
 
       expect(entry.clientIp).toBe("192.168.1.100");
       expect(entry.session).toBe("abc12345..");
+      expect(entry.ctx).toBe("mygroup/myproject");
+      expect(entry.ro).toBe("-");
       expect(entry.method).toBe("POST");
       expect(entry.path).toBe("/mcp");
       expect(entry.status).toBe(200);
@@ -153,6 +175,24 @@ describe("AccessLogFormatter", () => {
       expect(entry.gitlabDurationMs).toBe("98ms");
       expect(entry.details).toContain("namespace=test/backend");
       expect(entry.details).toContain("items=15");
+    });
+
+    it("shows RO for read-only mode", () => {
+      const stack: RequestStack = {
+        startTime: Date.now() - 50,
+        clientIp: "127.0.0.1",
+        context: "mygroup/proj",
+        readOnly: true,
+        method: "POST",
+        path: "/mcp",
+        details: {},
+        status: 200,
+      };
+
+      const entry = createAccessLogEntry(stack);
+
+      expect(entry.ctx).toBe("mygroup/proj");
+      expect(entry.ro).toBe("RO");
     });
 
     it("uses defaults for missing optional fields", () => {
@@ -168,6 +208,8 @@ describe("AccessLogFormatter", () => {
       const entry = createAccessLogEntry(stack);
 
       expect(entry.session).toBe("-");
+      expect(entry.ctx).toBe("-");
+      expect(entry.ro).toBe("-");
       expect(entry.tool).toBe("-");
       expect(entry.action).toBe("-");
       expect(entry.gitlabStatus).toBe("-");
@@ -182,6 +224,8 @@ describe("AccessLogFormatter", () => {
         timestamp: "2026-01-25T12:34:56Z",
         clientIp: "192.168.1.100",
         session: "abc12345..",
+        ctx: "mygroup/proj",
+        ro: "-",
         method: "POST",
         path: "/mcp",
         status: 200,
@@ -196,7 +240,7 @@ describe("AccessLogFormatter", () => {
       const log = formatAccessLog(entry);
 
       expect(log).toBe(
-        "[2026-01-25T12:34:56Z] 192.168.1.100 abc12345.. POST /mcp 200 142ms | browse_projects list | GL:200 98ms | namespace=test/backend items=15"
+        "[2026-01-25T12:34:56Z] 192.168.1.100 abc12345.. mygroup/proj - POST /mcp 200 142ms | browse_projects list | GL:200 98ms | namespace=test/backend items=15"
       );
     });
 
@@ -205,6 +249,8 @@ describe("AccessLogFormatter", () => {
         timestamp: "2026-01-25T12:34:56Z",
         clientIp: "192.168.1.100",
         session: "-",
+        ctx: "-",
+        ro: "-",
         method: "GET",
         path: "/health",
         status: 200,
@@ -219,7 +265,7 @@ describe("AccessLogFormatter", () => {
       const log = formatAccessLog(entry);
 
       expect(log).toBe(
-        "[2026-01-25T12:34:56Z] 192.168.1.100 - GET /health 200 5ms | - - | - - | -"
+        "[2026-01-25T12:34:56Z] 192.168.1.100 - - - GET /health 200 5ms | - - | - - | -"
       );
     });
 
@@ -228,6 +274,8 @@ describe("AccessLogFormatter", () => {
         timestamp: "2026-01-25T12:34:56Z",
         clientIp: "192.168.1.100",
         session: "abc12345..",
+        ctx: "test/api",
+        ro: "-",
         method: "POST",
         path: "/mcp",
         status: 200,

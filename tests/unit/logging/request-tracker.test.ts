@@ -168,6 +168,57 @@ describe("RequestTracker", () => {
     });
   });
 
+  describe("setContext", () => {
+    it("sets context on stack", () => {
+      tracker.openStack("req-1", "127.0.0.1", "POST", "/mcp");
+      tracker.setContext("req-1", "mygroup/myproject");
+
+      const stack = tracker.getStack("req-1");
+      expect(stack?.context).toBe("mygroup/myproject");
+    });
+
+    it("ignores if stack does not exist", () => {
+      // Should not throw
+      tracker.setContext("non-existent", "mygroup/myproject");
+    });
+  });
+
+  describe("setReadOnly", () => {
+    it("sets readOnly true on stack", () => {
+      tracker.openStack("req-1", "127.0.0.1", "POST", "/mcp");
+      tracker.setReadOnly("req-1", true);
+
+      const stack = tracker.getStack("req-1");
+      expect(stack?.readOnly).toBe(true);
+    });
+
+    it("sets readOnly false on stack", () => {
+      tracker.openStack("req-1", "127.0.0.1", "POST", "/mcp");
+      tracker.setReadOnly("req-1", false);
+
+      const stack = tracker.getStack("req-1");
+      expect(stack?.readOnly).toBe(false);
+    });
+  });
+
+  describe("setSessionId", () => {
+    it("sets sessionId on stack", () => {
+      tracker.openStack("req-1", "127.0.0.1", "POST", "/mcp");
+      tracker.setSessionId("req-1", "new-session-id");
+
+      const stack = tracker.getStack("req-1");
+      expect(stack?.sessionId).toBe("new-session-id");
+    });
+
+    it("updates existing sessionId", () => {
+      tracker.openStack("req-1", "127.0.0.1", "POST", "/mcp", "old-session");
+      tracker.setSessionId("req-1", "new-session");
+
+      const stack = tracker.getStack("req-1");
+      expect(stack?.sessionId).toBe("new-session");
+    });
+  });
+
   describe("closeStack", () => {
     it("removes stack and returns log line", () => {
       tracker.openStack("req-1", "127.0.0.1", "POST", "/mcp", "session-1");
@@ -354,6 +405,39 @@ describe("Context-aware methods", () => {
     expect(stack?.error).toBe("Something went wrong");
   });
 
+  it("setContextForCurrentRequest works within context", () => {
+    tracker.openStack("ctx-req", "127.0.0.1", "POST", "/mcp");
+
+    runWithRequestContext("ctx-req", () => {
+      tracker.setContextForCurrentRequest("mygroup/myproject");
+    });
+
+    const stack = tracker.getStack("ctx-req");
+    expect(stack?.context).toBe("mygroup/myproject");
+  });
+
+  it("setReadOnlyForCurrentRequest works within context", () => {
+    tracker.openStack("ctx-req", "127.0.0.1", "POST", "/mcp");
+
+    runWithRequestContext("ctx-req", () => {
+      tracker.setReadOnlyForCurrentRequest(true);
+    });
+
+    const stack = tracker.getStack("ctx-req");
+    expect(stack?.readOnly).toBe(true);
+  });
+
+  it("setSessionIdForCurrentRequest works within context", () => {
+    tracker.openStack("ctx-req", "127.0.0.1", "POST", "/mcp");
+
+    runWithRequestContext("ctx-req", () => {
+      tracker.setSessionIdForCurrentRequest("new-session-id");
+    });
+
+    const stack = tracker.getStack("ctx-req");
+    expect(stack?.sessionId).toBe("new-session-id");
+  });
+
   it("context-aware methods are no-op without context", () => {
     tracker.openStack("some-req", "127.0.0.1", "POST", "/mcp");
 
@@ -362,6 +446,9 @@ describe("Context-aware methods", () => {
     tracker.setGitLabResponseForCurrentRequest(200);
     tracker.addDetailForCurrentRequest("key", "value");
     tracker.setErrorForCurrentRequest("error");
+    tracker.setContextForCurrentRequest("mygroup/proj");
+    tracker.setReadOnlyForCurrentRequest(true);
+    tracker.setSessionIdForCurrentRequest("new-session");
 
     // Stack should be unchanged
     const stack = tracker.getStack("some-req");
@@ -369,5 +456,8 @@ describe("Context-aware methods", () => {
     expect(stack?.gitlabStatus).toBeUndefined();
     expect(stack?.details.key).toBeUndefined();
     expect(stack?.error).toBeUndefined();
+    expect(stack?.context).toBeUndefined();
+    expect(stack?.readOnly).toBeUndefined();
+    expect(stack?.sessionId).toBeUndefined();
   });
 });

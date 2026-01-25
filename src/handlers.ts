@@ -327,6 +327,15 @@ export async function setupHandlers(server: Server): Promise<void> {
       const requestTracker = getRequestTracker();
       requestTracker.setToolForCurrentRequest(toolName, action);
 
+      // Capture current context and read-only state for access logging
+      const { getContextManager } = await import("./entities/context/context-manager");
+      const contextManager = getContextManager();
+      const sessionContext = contextManager.getContext();
+      if (sessionContext.scope?.path) {
+        requestTracker.setContextForCurrentRequest(sessionContext.scope.path);
+      }
+      requestTracker.setReadOnlyForCurrentRequest(sessionContext.readOnly);
+
       // Increment tool count for connection tracking
       const currentRequestId = getCurrentRequestId();
       if (currentRequestId) {

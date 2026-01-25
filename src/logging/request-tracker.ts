@@ -194,6 +194,37 @@ export class RequestTracker {
   }
 
   /**
+   * Set context path on the request
+   */
+  setContext(requestId: string, context: string): void {
+    const stack = this.stacks.get(requestId);
+    if (!stack) return;
+
+    stack.context = context;
+  }
+
+  /**
+   * Set read-only mode flag on the request
+   */
+  setReadOnly(requestId: string, readOnly: boolean): void {
+    const stack = this.stacks.get(requestId);
+    if (!stack) return;
+
+    stack.readOnly = readOnly;
+  }
+
+  /**
+   * Update session ID on the request
+   * Used when session ID is assigned after request stack is opened
+   */
+  setSessionId(requestId: string, sessionId: string): void {
+    const stack = this.stacks.get(requestId);
+    if (!stack) return;
+
+    stack.sessionId = sessionId;
+  }
+
+  /**
    * Close the request stack and output access log
    *
    * @param requestId - Request identifier
@@ -318,6 +349,36 @@ export class RequestTracker {
     const requestId = getCurrentRequestId();
     if (requestId) {
       this.setError(requestId, error);
+    }
+  }
+
+  /**
+   * Set context for current request (context-aware)
+   */
+  setContextForCurrentRequest(context: string): void {
+    const requestId = getCurrentRequestId();
+    if (requestId) {
+      this.setContext(requestId, context);
+    }
+  }
+
+  /**
+   * Set read-only for current request (context-aware)
+   */
+  setReadOnlyForCurrentRequest(readOnly: boolean): void {
+    const requestId = getCurrentRequestId();
+    if (requestId) {
+      this.setReadOnly(requestId, readOnly);
+    }
+  }
+
+  /**
+   * Set session ID for current request (context-aware)
+   */
+  setSessionIdForCurrentRequest(sessionId: string): void {
+    const requestId = getCurrentRequestId();
+    if (requestId) {
+      this.setSessionId(requestId, sessionId);
     }
   }
 }

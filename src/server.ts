@@ -365,15 +365,28 @@ export async function startServer(): Promise<void> {
           requestTracker.closeStack(requestId, res.statusCode);
         });
 
-        // Handle aborted requests (client disconnect before response completes)
+        // Handle aborted requests and normal teardown of long-lived streaming/SSE responses.
         // NOTE: Both 'finish' and 'close' may fire. If 'finish' fires first,
-        // the stack is removed from the map, so closeStackWithError becomes a no-op.
-        // This is safe - RequestTracker.closeStack removes the stack immediately
-        // to prevent duplicate processing.
+        // the stack is removed from the map, so any subsequent close handling
+        // becomes a no-op. This is safe - RequestTracker.closeStack removes
+        // the stack immediately to prevent duplicate processing.
         res.on("close", () => {
-          if (!res.writableFinished) {
-            requestTracker.closeStackWithError(requestId, "connection_closed");
+          if (res.writableFinished) {
+            // Response has already finished and been logged.
+            return;
           }
+
+          if (!res.headersSent) {
+            // Connection closed before we could send any headers: treat as abort.
+            requestTracker.closeStackWithError(requestId, "connection_closed");
+            return;
+          }
+
+          // Headers were sent but the stream ended without 'finish' firing.
+          // This is typical for long-lived streaming/SSE responses where the
+          // client disconnects. Treat as a normal completion and log using
+          // the current status code instead of an error status.
+          requestTracker.closeStack(requestId, res.statusCode);
         });
 
         next();
@@ -560,6 +573,12 @@ export async function startServer(): Promise<void> {
 
                 // Track connection for access logging
                 connectionTracker.openConnection(initializedSessionId, clientIp);
+                // Count the initial request that created this session
+                connectionTracker.incrementRequests(initializedSessionId);
+
+                // Update the current request stack with the newly assigned session ID
+                // so that access log shows the session and tool counting works
+                requestTracker.setSessionIdForCurrentRequest(initializedSessionId);
 
                 // Associate MCP session with OAuth session if authenticated
                 if (oauthSessionId) {

@@ -58,15 +58,29 @@ export function formatGitLabStatus(status?: number | "timeout" | "error"): strin
 
 /**
  * Escape special characters in log values
- * Escapes backslashes and double quotes for safe embedding in quoted strings
+ * Escapes backslashes, double quotes, and control characters (newlines, tabs)
+ * to maintain single-line log format and enable safe log parsing
  */
 function escapeLogValue(value: string): string {
-  return value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t");
+}
+
+/**
+ * Check if a value needs quoting (contains special characters)
+ */
+function needsQuoting(value: string): boolean {
+  // Quote values containing spaces, quotes, backslashes, or control characters
+  return /[\s"\\]/.test(value) || /[\n\r\t]/.test(value);
 }
 
 /**
  * Format details map into key=value string
- * Values are quoted if they contain spaces, quotes, or backslashes
+ * Values are quoted if they contain spaces, quotes, backslashes, or control characters
  */
 export function formatDetails(details: Record<string, string | number | boolean>): string {
   const entries = Object.entries(details);
@@ -75,8 +89,7 @@ export function formatDetails(details: Record<string, string | number | boolean>
   return entries
     .map(([key, value]) => {
       const strValue = String(value);
-      // Quote values containing spaces, quotes, or backslashes
-      if (strValue.includes(" ") || strValue.includes('"') || strValue.includes("\\")) {
+      if (needsQuoting(strValue)) {
         return `${key}="${escapeLogValue(strValue)}"`;
       }
       return `${key}=${strValue}`;
@@ -95,6 +108,8 @@ export function createAccessLogEntry(stack: RequestStack): AccessLogEntry {
     timestamp: new Date(now).toISOString(),
     clientIp: stack.clientIp,
     session: truncateSessionId(stack.sessionId),
+    ctx: stack.context ?? "-",
+    ro: stack.readOnly ? "RO" : "-",
     method: stack.method,
     path: stack.path,
     status: stack.status ?? 0,
@@ -113,13 +128,13 @@ export function createAccessLogEntry(stack: RequestStack): AccessLogEntry {
  * All fields are always present (nginx-style alignment with "-" for missing values).
  *
  * Format:
- * [timestamp] client_ip session method path status duration_ms | tool action | gitlab_status gitlab_duration_ms | details
+ * [timestamp] client_ip session ctx ro method path status duration_ms | tool action | gitlab_status gitlab_duration_ms | details
  *
  * Examples:
- * [2026-01-25T12:34:56Z] 192.168.1.100 abc123.. POST /mcp 200 142ms | browse_projects list | GL:200 98ms | namespace=test/backend items=15
- * [2026-01-25T12:34:56Z] 192.168.1.100 abc123.. POST /mcp 200 85ms | manage_merge_request approve | GL:403 45ms | project=test/api mr_iid=42 err="403 Forbidden"
- * [2026-01-25T12:34:56Z] 192.168.1.100 - POST /mcp 429 2ms | - - | - - | rate_limit=true
- * [2026-01-25T12:34:56Z] 192.168.1.100 - GET /health 200 5ms | - - | - - | -
+ * [2026-01-25T12:34:56Z] 192.168.1.100 abc123.. mygroup/proj - POST /mcp 200 142ms | browse_projects list | GL:200 98ms | namespace=test/backend items=15
+ * [2026-01-25T12:34:56Z] 192.168.1.100 abc123.. mygroup/proj RO POST /mcp 200 85ms | browse_files list | GL:200 45ms | path=src/
+ * [2026-01-25T12:34:56Z] 192.168.1.100 - - - POST /mcp 429 2ms | - - | - - | rate_limit=true
+ * [2026-01-25T12:34:56Z] 192.168.1.100 - - - GET /health 200 5ms | - - | - - | -
  */
 export function formatAccessLog(entry: AccessLogEntry): string {
   // All fields always present with "-" for missing values (nginx-style alignment)
@@ -127,6 +142,8 @@ export function formatAccessLog(entry: AccessLogEntry): string {
     `[${entry.timestamp}]`,
     entry.clientIp,
     entry.session,
+    entry.ctx,
+    entry.ro,
     entry.method,
     entry.path,
     String(entry.status),

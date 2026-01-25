@@ -9,6 +9,8 @@ import {
   createTimeoutError,
   parseTimeoutError,
 } from "./utils/error-handler";
+import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from "./logging/index";
+import { LOG_FORMAT } from "./config";
 
 interface JsonSchemaProperty {
   type?: string;
@@ -274,7 +276,11 @@ export async function setupHandlers(server: Server): Promise<void> {
         throw new Error("Arguments are required");
       }
 
-      logger.info(`Tool called: ${request.params.name}`);
+      // In condensed mode, tool/action is captured via request tracker for single-line log
+      // In verbose mode, emit per-request INFO logs
+      if (LOG_FORMAT === "verbose") {
+        logger.info(`Tool called: ${request.params.name}`);
+      }
 
       // Check if connection is initialized - try to initialize if needed
       const connectionManager = ConnectionManager.getInstance();
@@ -291,9 +297,13 @@ export async function setupHandlers(server: Server): Promise<void> {
         }
 
         const instanceInfo = connectionManager.getInstanceInfo();
-        logger.info(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
+        if (LOG_FORMAT === "verbose") {
+          logger.info(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
+        }
       } catch {
-        logger.info("Connection not initialized, attempting to initialize...");
+        if (LOG_FORMAT === "verbose") {
+          logger.info("Connection not initialized, attempting to initialize...");
+        }
         try {
           await connectionManager.initialize();
           connectionManager.getClient();
@@ -304,7 +314,9 @@ export async function setupHandlers(server: Server): Promise<void> {
           }
 
           const instanceInfo = connectionManager.getInstanceInfo();
-          logger.info(`Connection initialized: ${instanceInfo.version} ${instanceInfo.tier}`);
+          if (LOG_FORMAT === "verbose") {
+            logger.info(`Connection initialized: ${instanceInfo.version} ${instanceInfo.tier}`);
+          }
 
           // Rebuild registry cache now that tier/version info is available
           const { RegistryManager } = await import("./registry-manager");
@@ -319,6 +331,34 @@ export async function setupHandlers(server: Server): Promise<void> {
 
       // Dynamic tool dispatch using the new registry manager
       const toolName = request.params.name;
+      const toolArgs = request.params.arguments;
+      const action = toolArgs && typeof toolArgs.action === "string" ? toolArgs.action : undefined;
+
+      // Access log tracking only runs in condensed mode (verbose mode uses per-line logs)
+      if (LOG_FORMAT === "condensed") {
+        const requestTracker = getRequestTracker();
+        requestTracker.setToolForCurrentRequest(toolName, action);
+
+        // Capture current context and read-only state for access logging
+        const { getContextManager } = await import("./entities/context/context-manager");
+        const contextManager = getContextManager();
+        const sessionContext = contextManager.getContext();
+        if (sessionContext.scope?.path) {
+          requestTracker.setContextForCurrentRequest(sessionContext.scope.path);
+        }
+        requestTracker.setReadOnlyForCurrentRequest(sessionContext.readOnly);
+
+        // Increment tool count for connection tracking
+        const currentRequestId = getCurrentRequestId();
+        if (currentRequestId) {
+          // Get session ID from the request stack to update connection stats
+          const stack = requestTracker.getStack(currentRequestId);
+          if (stack?.sessionId) {
+            const connectionTracker = getConnectionTracker();
+            connectionTracker.incrementTools(stack.sessionId);
+          }
+        }
+      }
 
       try {
         // Import the registry manager
@@ -330,7 +370,9 @@ export async function setupHandlers(server: Server): Promise<void> {
           throw new Error(`Tool '${toolName}' is not available or has been filtered out`);
         }
 
-        logger.info(`Executing tool: ${toolName}`);
+        if (LOG_FORMAT === "verbose") {
+          logger.info(`Executing tool: ${toolName}`);
+        }
 
         // Check OAuth context
         const { isOAuthEnabled, getTokenContext } = await import("./oauth/index");
@@ -359,9 +401,22 @@ export async function setupHandlers(server: Server): Promise<void> {
         throw new Error(`Failed to execute tool '${toolName}': ${errorMessage}`, { cause: error });
       }
     } catch (error) {
-      logger.error(
-        `Error in tool handler: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logger.error(`Error in tool handler: ${errMsg}`);
+
+      // Record error for access logging
+      const reqTracker = getRequestTracker();
+      reqTracker.setErrorForCurrentRequest(errMsg);
+
+      // Record error on connection stats
+      const curRequestId = getCurrentRequestId();
+      if (curRequestId) {
+        const stack = reqTracker.getStack(curRequestId);
+        if (stack?.sessionId) {
+          const connTracker = getConnectionTracker();
+          connTracker.recordError(stack.sessionId, errMsg);
+        }
+      }
 
       // Try to convert to structured error for better LLM feedback
       const toolName = request.params.name;

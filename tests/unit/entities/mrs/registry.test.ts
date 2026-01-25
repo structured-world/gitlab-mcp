@@ -4,6 +4,10 @@ import {
   getMrsToolDefinitions,
   getFilteredMrsTools,
   flattenPositionToFormFields,
+  getMergeStatusHint,
+  getSuggestedAction,
+  RETRYABLE_MERGE_STATUSES,
+  AUTO_MERGE_ELIGIBLE_STATUSES,
 } from "../../../../src/entities/mrs/registry";
 import { mrsTools, mrsReadOnlyTools } from "../../../../src/entities/mrs/index";
 import { gitlab } from "../../../../src/utils/gitlab-api";
@@ -277,6 +281,90 @@ describe("flattenPositionToFormFields", () => {
       "position[old_line]": 42,
       "position[position_type]": "text",
     });
+  });
+});
+
+describe("Merge Status Constants", () => {
+  it("should define retryable merge statuses", () => {
+    expect(RETRYABLE_MERGE_STATUSES).toContain("checking");
+    expect(RETRYABLE_MERGE_STATUSES).toContain("unchecked");
+    expect(RETRYABLE_MERGE_STATUSES).toContain("ci_still_running");
+    expect(RETRYABLE_MERGE_STATUSES).toContain("ci_must_pass");
+    expect(RETRYABLE_MERGE_STATUSES).toContain("approvals_syncing");
+  });
+
+  it("should define auto-merge eligible statuses", () => {
+    expect(AUTO_MERGE_ELIGIBLE_STATUSES).toContain("ci_still_running");
+    expect(AUTO_MERGE_ELIGIBLE_STATUSES).toContain("ci_must_pass");
+  });
+
+  it("should have auto-merge statuses as subset of retryable", () => {
+    // All auto-merge eligible statuses should also be retryable
+    for (const status of AUTO_MERGE_ELIGIBLE_STATUSES) {
+      expect(RETRYABLE_MERGE_STATUSES).toContain(status);
+    }
+  });
+});
+
+describe("getMergeStatusHint", () => {
+  it("should return hint for CI-related statuses suggesting auto-merge", () => {
+    const ciRunningHint = getMergeStatusHint("ci_still_running");
+    expect(ciRunningHint).toContain("auto-merge");
+    expect(ciRunningHint).toContain("merge_when_pipeline_succeeds");
+
+    const ciMustPassHint = getMergeStatusHint("ci_must_pass");
+    expect(ciMustPassHint).toContain("auto-merge");
+    expect(ciMustPassHint).toContain("merge_when_pipeline_succeeds");
+  });
+
+  it("should return hint for checking status suggesting retry", () => {
+    const hint = getMergeStatusHint("checking");
+    expect(hint).toContain("Wait");
+    expect(hint).toContain("retry");
+  });
+
+  it("should return hint for approval status", () => {
+    const hint = getMergeStatusHint("not_approved");
+    expect(hint).toContain("approval");
+  });
+
+  it("should return hint for conflict status", () => {
+    const hint = getMergeStatusHint("conflict");
+    expect(hint).toContain("conflicts");
+  });
+
+  it("should return hint for draft status", () => {
+    const hint = getMergeStatusHint("draft_status");
+    expect(hint).toContain("draft");
+  });
+
+  it("should return generic hint for unknown status", () => {
+    const hint = getMergeStatusHint("unknown_status_xyz");
+    expect(hint).toContain("unknown_status_xyz");
+  });
+
+  it("should return hint for mergeable status", () => {
+    const hint = getMergeStatusHint("mergeable");
+    expect(hint).toContain("ready");
+  });
+});
+
+describe("getSuggestedAction", () => {
+  it("should suggest auto-merge when canAutoMerge is true", () => {
+    const action = getSuggestedAction("ci_still_running", true, true);
+    expect(action).toContain("merge_when_pipeline_succeeds");
+  });
+
+  it("should suggest wait when retryable but not auto-merge", () => {
+    const action = getSuggestedAction("checking", true, false);
+    expect(action).toContain("Wait");
+    expect(action).toContain("retry");
+  });
+
+  it("should suggest resolving blocking condition when not retryable", () => {
+    const action = getSuggestedAction("conflict", false, false);
+    expect(action).toContain("Resolve");
+    expect(action).toContain("blocking");
   });
 });
 
@@ -962,7 +1050,19 @@ describe("MRS Registry", () => {
       });
 
       describe("action: merge", () => {
-        it("should merge MR with options", async () => {
+        it("should merge MR with options when status is mergeable", async () => {
+          // Mock pre-check GET request
+          const mockMrStatus = {
+            detailed_merge_status: "mergeable",
+            merge_status: "can_be_merged",
+            has_conflicts: false,
+            blocking_discussions_resolved: true,
+            state: "opened",
+            draft: false,
+          };
+          mockGitlab.get.mockResolvedValueOnce(mockMrStatus);
+
+          // Mock merge PUT request
           const mockResult = { state: "merged" };
           mockGitlab.put.mockResolvedValueOnce(mockResult);
 
@@ -975,6 +1075,10 @@ describe("MRS Registry", () => {
             should_remove_source_branch: true,
           });
 
+          // Verify pre-check GET was called
+          expect(mockGitlab.get).toHaveBeenCalledWith("projects/test%2Fproject/merge_requests/1");
+
+          // Verify merge PUT was called
           expect(mockGitlab.put).toHaveBeenCalledWith(
             "projects/test%2Fproject/merge_requests/1/merge",
             expect.objectContaining({
@@ -986,6 +1090,151 @@ describe("MRS Registry", () => {
             })
           );
           expect(result).toEqual(mockResult);
+        });
+
+        it("should skip pre-check and use auto-merge when merge_when_pipeline_succeeds is true", async () => {
+          const mockResult = { state: "merged", merge_when_pipeline_succeeds: true };
+          mockGitlab.put.mockResolvedValueOnce(mockResult);
+
+          const tool = mrsToolRegistry.get("manage_merge_request")!;
+          const result = await tool.handler({
+            action: "merge",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            merge_when_pipeline_succeeds: true,
+          });
+
+          // Should NOT call GET for pre-check when auto-merge requested
+          expect(mockGitlab.get).not.toHaveBeenCalled();
+
+          // Should call PUT with auto-merge flag
+          expect(mockGitlab.put).toHaveBeenCalledWith(
+            "projects/test%2Fproject/merge_requests/1/merge",
+            expect.objectContaining({
+              body: expect.objectContaining({
+                merge_when_pipeline_succeeds: true,
+              }),
+              contentType: "form",
+            })
+          );
+          expect(result).toEqual(mockResult);
+        });
+
+        it("should return structured error when pipeline is running", async () => {
+          // Mock pre-check showing pipeline running
+          const mockMrStatus = {
+            detailed_merge_status: "ci_still_running",
+            merge_status: "can_be_merged",
+            has_conflicts: false,
+            blocking_discussions_resolved: true,
+            state: "opened",
+            draft: false,
+          };
+          mockGitlab.get.mockResolvedValueOnce(mockMrStatus);
+
+          const tool = mrsToolRegistry.get("manage_merge_request")!;
+          const result = (await tool.handler({
+            action: "merge",
+            project_id: "test/project",
+            merge_request_iid: 1,
+          })) as Record<string, unknown>;
+
+          // Should return structured error, not throw
+          expect(result.error).toBe(true);
+          expect(result.detailed_merge_status).toBe("ci_still_running");
+          expect(result.is_retryable).toBe(true);
+          expect(result.can_auto_merge).toBe(true);
+          expect(result.suggested_action).toContain("merge_when_pipeline_succeeds");
+          expect(result.hint).toContain("auto-merge");
+
+          // Should NOT attempt to merge
+          expect(mockGitlab.put).not.toHaveBeenCalled();
+        });
+
+        it("should return structured error when approval required", async () => {
+          // Mock pre-check showing approval required
+          const mockMrStatus = {
+            detailed_merge_status: "not_approved",
+            merge_status: "cannot_be_merged",
+            has_conflicts: false,
+            blocking_discussions_resolved: true,
+            state: "opened",
+            draft: false,
+          };
+          mockGitlab.get.mockResolvedValueOnce(mockMrStatus);
+
+          const tool = mrsToolRegistry.get("manage_merge_request")!;
+          const result = (await tool.handler({
+            action: "merge",
+            project_id: "test/project",
+            merge_request_iid: 1,
+          })) as Record<string, unknown>;
+
+          // Should return structured error
+          expect(result.error).toBe(true);
+          expect(result.detailed_merge_status).toBe("not_approved");
+          expect(result.is_retryable).toBe(false);
+          expect(result.can_auto_merge).toBe(false);
+          expect(result.hint).toContain("approval");
+
+          // Should NOT attempt to merge
+          expect(mockGitlab.put).not.toHaveBeenCalled();
+        });
+
+        it("should return structured error when conflicts exist", async () => {
+          // Mock pre-check showing conflicts
+          const mockMrStatus = {
+            detailed_merge_status: "conflict",
+            merge_status: "cannot_be_merged",
+            has_conflicts: true,
+            blocking_discussions_resolved: true,
+            state: "opened",
+            draft: false,
+          };
+          mockGitlab.get.mockResolvedValueOnce(mockMrStatus);
+
+          const tool = mrsToolRegistry.get("manage_merge_request")!;
+          const result = (await tool.handler({
+            action: "merge",
+            project_id: "test/project",
+            merge_request_iid: 1,
+          })) as Record<string, unknown>;
+
+          // Should return structured error
+          expect(result.error).toBe(true);
+          expect(result.detailed_merge_status).toBe("conflict");
+          expect(result.has_conflicts).toBe(true);
+          expect(result.is_retryable).toBe(false);
+          expect(result.can_auto_merge).toBe(false);
+          expect(result.hint).toContain("conflicts");
+        });
+
+        it("should suggest retry for checking status", async () => {
+          // Mock pre-check showing mergeability check in progress
+          const mockMrStatus = {
+            detailed_merge_status: "checking",
+            merge_status: "checking",
+            has_conflicts: false,
+            blocking_discussions_resolved: true,
+            state: "opened",
+            draft: false,
+          };
+          mockGitlab.get.mockResolvedValueOnce(mockMrStatus);
+
+          const tool = mrsToolRegistry.get("manage_merge_request")!;
+          const result = (await tool.handler({
+            action: "merge",
+            project_id: "test/project",
+            merge_request_iid: 1,
+          })) as Record<string, unknown>;
+
+          // Should return structured error with retry suggestion
+          expect(result.error).toBe(true);
+          expect(result.detailed_merge_status).toBe("checking");
+          expect(result.is_retryable).toBe(true);
+          expect(result.can_auto_merge).toBe(false);
+          expect(result.suggested_action).toContain("Wait");
+          expect(result.hint).toContain("retry");
         });
       });
 

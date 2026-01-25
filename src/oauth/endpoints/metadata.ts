@@ -149,8 +149,18 @@ export async function healthHandler(req: Request, res: Response): Promise<void> 
     const { RegistryManager } = await import("../../registry-manager");
     toolCount = RegistryManager.getInstance().getAllToolDefinitions().length;
   } catch {
-    // Registry not initialized - use fallback from package.json
-    toolCount = 44;
+    // Registry not initialized - read from package.json manifest
+    try {
+      const fs = await import("fs");
+      const path = await import("path");
+      const pkgPath = path.join(__dirname, "../../../package.json");
+      const pkgContent = fs.readFileSync(pkgPath, "utf-8");
+      const pkg = JSON.parse(pkgContent) as { mcp?: { tools?: unknown[] } };
+      toolCount = pkg.mcp?.tools?.length ?? 0;
+    } catch {
+      // Fallback if package.json read fails (e.g., bundled environment)
+      toolCount = 0;
+    }
   }
 
   res.json({

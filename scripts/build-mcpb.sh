@@ -19,10 +19,16 @@ cp -r "$PROJECT_DIR/dist" "$BUNDLE_DIR/dist"
 cp "$PROJECT_DIR/package.json" "$BUNDLE_DIR/"
 cd "$BUNDLE_DIR"
 # Use npm for production install (simpler for bundling, no yarn PnP)
-# --omit=peer prevents installing prisma CLI and typescript as @prisma/client peer deps
-if ! npm install --production --ignore-scripts --omit=peer 2>/dev/null; then
-  echo "Warning: npm install --production failed; continuing bundle build" >&2
+# Note: We need peer dependencies (zod is required by @modelcontextprotocol/sdk)
+# but we skip optional peer deps to avoid large packages like prisma CLI
+if ! npm install --omit=dev --ignore-scripts 2>/dev/null; then
+  echo "Warning: npm install --omit=dev failed; continuing bundle build" >&2
 fi
+
+# Remove optional peer dependencies that are not needed at runtime
+# (prisma CLI is only needed for migrations, not runtime)
+rm -rf "$BUNDLE_DIR/node_modules/prisma" 2>/dev/null || true
+rm -rf "$BUNDLE_DIR/node_modules/typescript" 2>/dev/null || true
 
 # 3. Copy prisma schema (needed for runtime migrations)
 if [ -d "$PROJECT_DIR/prisma" ]; then
@@ -57,7 +63,10 @@ find "$BUNDLE_DIR/node_modules" -name "*.d.ts" -type f -exec rm -f {} + 2>/dev/n
 find "$BUNDLE_DIR/node_modules" -name "*.d.mts" -type f -exec rm -f {} + 2>/dev/null || true
 
 # Remove fixture/example/doc directories
-find "$BUNDLE_DIR/node_modules" \( -name "fixture" -o -name "fixtures" -o -name "examples" -o -name "example" -o -name "doc" -o -name "docs" \) -type d -exec rm -rf {} + 2>/dev/null || true
+# Note: yaml package has dist/doc/ with actual code (directives.js), so exclude it
+find "$BUNDLE_DIR/node_modules" \( -name "fixture" -o -name "fixtures" -o -name "examples" -o -name "example" -o -name "docs" \) -type d -exec rm -rf {} + 2>/dev/null || true
+# Remove doc directories only from packages that use it for documentation (not yaml)
+find "$BUNDLE_DIR/node_modules" -name "doc" -type d ! -path "*/yaml/*" -exec rm -rf {} + 2>/dev/null || true
 
 # Remove build artifacts from dist/
 rm -f "$BUNDLE_DIR/dist/tsconfig.build.tsbuildinfo"

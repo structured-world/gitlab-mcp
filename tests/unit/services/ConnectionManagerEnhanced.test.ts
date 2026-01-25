@@ -18,6 +18,10 @@ jest.mock("../../../src/logger", () => ({
     error: jest.fn(),
     warn: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 jest.mock("../../../src/services/TokenScopeDetector");
 jest.mock("../../../src/utils/fetch");
@@ -154,6 +158,10 @@ describe("ConnectionManager Enhanced Tests", () => {
       }));
       jest.doMock("../../../src/logger", () => ({
         logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
+        logInfo: jest.fn(),
+        logWarn: jest.fn(),
+        logError: jest.fn(),
+        logDebug: jest.fn(),
       }));
       jest.doMock("../../../src/graphql/client");
       jest.doMock("../../../src/services/GitLabVersionDetector");

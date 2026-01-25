@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { startServer } from "./server";
-import { logger } from "./logger";
+import { logInfo, logWarn, logError, logDebug } from "./logger";
 import { ConfigurationError } from "./oauth/config";
 import { tryApplyProfileFromEnv, findProjectConfig, getProjectConfigSummary } from "./profiles";
 import { parseCliArgs, displayProjectConfig } from "./cli-utils";
@@ -73,7 +73,7 @@ async function main(): Promise<void> {
       process.exit(0);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ error: message }, "Failed to load project config");
+      logError("Failed to load project config", { error: message });
       process.exit(1);
     }
   }
@@ -98,20 +98,17 @@ async function main(): Promise<void> {
           process.exit(0);
         }
 
-        logger.info(
-          {
-            host: autoDiscoveryResult.host,
-            project: autoDiscoveryResult.projectPath,
-            profile: autoDiscoveryResult.matchedProfile?.profileName,
-          },
-          "Auto-discovery detected GitLab configuration"
-        );
+        logInfo("Auto-discovery detected GitLab configuration", {
+          host: autoDiscoveryResult.host,
+          project: autoDiscoveryResult.projectPath,
+          profile: autoDiscoveryResult.matchedProfile?.profileName,
+        });
       } else {
-        logger.warn("Auto-discovery failed: not in a git repository or no remote found");
+        logWarn("Auto-discovery failed: not in a git repository or no remote found");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ error: message }, "Auto-discovery failed");
+      logError("Auto-discovery failed", { error: message });
       process.exit(1);
     }
   }
@@ -123,12 +120,12 @@ async function main(): Promise<void> {
       const result = await tryApplyProfileFromEnv(cliArgs.profileName);
       if (result) {
         if ("profileName" in result) {
-          logger.info(
-            { profile: result.profileName, host: result.host },
-            "Using CLI-specified profile"
-          );
+          logInfo("Using CLI-specified profile", {
+            profile: result.profileName,
+            host: result.host,
+          });
         } else {
-          logger.info({ preset: result.presetName }, "Using CLI-specified preset");
+          logInfo("Using CLI-specified preset", { preset: result.presetName });
         }
 
         // Warn if auto-discovery found a different profile
@@ -136,18 +133,15 @@ async function main(): Promise<void> {
           autoDiscoveryResult?.matchedProfile &&
           autoDiscoveryResult.matchedProfile.profileName !== cliArgs.profileName
         ) {
-          logger.warn(
-            {
-              cliProfile: cliArgs.profileName,
-              autoProfile: autoDiscoveryResult.matchedProfile.profileName,
-            },
-            "Auto-discovered profile ignored: --profile takes precedence"
-          );
+          logWarn("Auto-discovered profile ignored: --profile takes precedence", {
+            cliProfile: cliArgs.profileName,
+            autoProfile: autoDiscoveryResult.matchedProfile.profileName,
+          });
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ error: message }, "Failed to load profile");
+      logError("Failed to load profile", { error: message });
       process.exit(1);
     }
   } else if (autoDiscoveryResult?.matchedProfile) {
@@ -155,14 +149,14 @@ async function main(): Promise<void> {
     try {
       const result = await tryApplyProfileFromEnv(autoDiscoveryResult.matchedProfile.profileName);
       if (result && "profileName" in result) {
-        logger.info(
-          { profile: result.profileName, host: result.host },
-          "Using auto-discovered profile"
-        );
+        logInfo("Using auto-discovered profile", {
+          profile: result.profileName,
+          host: result.host,
+        });
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.warn({ error: message }, "Failed to apply auto-discovered profile");
+      logWarn("Failed to apply auto-discovered profile", { error: message });
     }
   } else {
     // No CLI profile and no auto-discovery - try default from env
@@ -170,17 +164,17 @@ async function main(): Promise<void> {
       const result = await tryApplyProfileFromEnv();
       if (result) {
         if ("profileName" in result) {
-          logger.info(
-            { profile: result.profileName, host: result.host },
-            "Using configuration profile"
-          );
+          logInfo("Using configuration profile", {
+            profile: result.profileName,
+            host: result.host,
+          });
         } else {
-          logger.info({ preset: result.presetName }, "Using configuration preset");
+          logInfo("Using configuration preset", { preset: result.presetName });
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ error: message }, "Failed to load profile");
+      logError("Failed to load profile", { error: message });
       process.exit(1);
     }
   }
@@ -191,14 +185,11 @@ async function main(): Promise<void> {
       const projectConfig = await findProjectConfig(process.cwd());
       if (projectConfig) {
         const summary = getProjectConfigSummary(projectConfig);
-        logger.info(
-          {
-            path: projectConfig.configPath,
-            preset: summary.presetSummary,
-            profile: summary.profileSummary,
-          },
-          "Loaded project configuration (restrictions applied)"
-        );
+        logInfo("Loaded project configuration (restrictions applied)", {
+          path: projectConfig.configPath,
+          preset: summary.presetSummary,
+          profile: summary.profileSummary,
+        });
 
         // Note: Project config is loaded and logged but not yet enforced.
         // Scope restrictions require integration with tool execution layer.
@@ -206,7 +197,7 @@ async function main(): Promise<void> {
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.warn({ error: message }, "Failed to load project config, continuing without it");
+      logWarn("Failed to load project config, continuing without it", { error: message });
     }
   }
 
@@ -221,13 +212,10 @@ async function main(): Promise<void> {
       process.env.GITLAB_DEFAULT_NAMESPACE ??= namespace;
     }
 
-    logger.debug(
-      {
-        defaultProject: process.env.GITLAB_DEFAULT_PROJECT,
-        defaultNamespace: process.env.GITLAB_DEFAULT_NAMESPACE,
-      },
-      "Default context set from auto-discovery"
-    );
+    logDebug("Default context set from auto-discovery", {
+      defaultProject: process.env.GITLAB_DEFAULT_PROJECT,
+      defaultNamespace: process.env.GITLAB_DEFAULT_NAMESPACE,
+    });
   }
 
   // Start the server
@@ -239,7 +227,7 @@ main().catch((error: unknown) => {
   if (error instanceof ConfigurationError) {
     console.error(error.guidance);
   } else {
-    logger.error(`Failed to start GitLab MCP Server: ${String(error)}`);
+    logError("Failed to start GitLab MCP Server", { error: String(error) });
   }
   process.exit(1);
 });

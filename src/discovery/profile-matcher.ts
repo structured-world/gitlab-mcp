@@ -5,7 +5,7 @@
  */
 
 import { ProfileLoader, ProfileInfo } from "../profiles";
-import { logger } from "../logger";
+import { logDebug } from "../logger";
 
 // ============================================================================
 // Types
@@ -51,10 +51,11 @@ export function matchProfileByHost(
   for (const profile of userProfiles) {
     const profileHost = profile.host.toLowerCase();
     if (normalizedHost === profileHost) {
-      logger.debug(
-        { host, profile: profile.name, matchType: "exact" },
-        "Matched profile by exact host"
-      );
+      logDebug("Matched profile by exact host", {
+        host,
+        profile: profile.name,
+        matchType: "exact",
+      });
       return {
         profileName: profile.name,
         profile,
@@ -68,10 +69,11 @@ export function matchProfileByHost(
   for (const profile of userProfiles) {
     const profileHost = profile.host.toLowerCase();
     if (normalizedHost.endsWith(`.${profileHost}`)) {
-      logger.debug(
-        { host, profile: profile.name, matchType: "subdomain" },
-        "Matched profile by subdomain"
-      );
+      logDebug("Matched profile by subdomain", {
+        host,
+        profile: profile.name,
+        matchType: "subdomain",
+      });
       return {
         profileName: profile.name,
         profile,
@@ -80,7 +82,7 @@ export function matchProfileByHost(
     }
   }
 
-  logger.debug({ host, availableHosts: userProfiles.map(p => p.host) }, "No profile match found");
+  logDebug("No profile match found", { host, availableHosts: userProfiles.map(p => p.host) });
   return null;
 }
 

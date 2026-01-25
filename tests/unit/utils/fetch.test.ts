@@ -35,6 +35,10 @@ jest.mock("../../../src/logger", () => ({
     error: jest.fn(),
     info: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 // Mock OAuth module - static token mode
@@ -443,57 +447,57 @@ describe("Enhanced Fetch Utilities", () => {
     it("should redact upload secrets in URL paths", async () => {
       const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
-      const { logger } = require("../../../src/logger");
+      const { logDebug } = require("../../../src/logger");
 
       await enhancedFetch("https://gitlab.com/uploads/abc123def456/secret.txt");
 
-      // Check that logger.debug was called with redacted URL
-      expect(logger.debug).toHaveBeenCalledWith(
+      // Check that logDebug was called with redacted URL
+      expect(logDebug).toHaveBeenCalledWith(
+        expect.any(String),
         expect.objectContaining({
           url: expect.stringContaining("[REDACTED]"),
-        }),
-        expect.any(String)
+        })
       );
     });
 
     it("should redact long hex tokens in URL paths", async () => {
       const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
-      const { logger } = require("../../../src/logger");
+      const { logDebug } = require("../../../src/logger");
 
       // 32+ character hex string should be redacted
       await enhancedFetch(
         "https://gitlab.com/api/v4/projects/1/repository/files/abcdef0123456789abcdef0123456789ab/raw"
       );
 
-      expect(logger.debug).toHaveBeenCalledWith(
+      expect(logDebug).toHaveBeenCalledWith(
+        expect.any(String),
         expect.objectContaining({
           url: expect.not.stringContaining("abcdef0123456789abcdef0123456789ab"),
-        }),
-        expect.any(String)
+        })
       );
     });
 
     it("should redact sensitive query parameters", async () => {
       const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
-      const { logger } = require("../../../src/logger");
+      const { logDebug } = require("../../../src/logger");
 
       await enhancedFetch("https://gitlab.com/api?private_token=secret123&other=value");
 
       // Should redact private_token but keep other
       // Note: URL.searchParams.set() URL-encodes the value, so [REDACTED] becomes %5BREDACTED%5D
-      expect(logger.debug).toHaveBeenCalledWith(
+      expect(logDebug).toHaveBeenCalledWith(
+        expect.any(String),
         expect.objectContaining({
           url: expect.stringContaining("%5BREDACTED%5D"),
-        }),
-        expect.any(String)
+        })
       );
-      expect(logger.debug).toHaveBeenCalledWith(
+      expect(logDebug).toHaveBeenCalledWith(
+        expect.any(String),
         expect.objectContaining({
           url: expect.stringContaining("other=value"),
-        }),
-        expect.any(String)
+        })
       );
     });
 
@@ -501,11 +505,11 @@ describe("Enhanced Fetch Utilities", () => {
       // Test that valid URLs are properly logged with debug
       const mockResponse = createMockResponse();
       mockFetch.mockResolvedValue(mockResponse);
-      const { logger } = require("../../../src/logger");
+      const { logDebug } = require("../../../src/logger");
 
       await enhancedFetch("https://gitlab.com/api/v4");
 
-      expect(logger.debug).toHaveBeenCalled();
+      expect(logDebug).toHaveBeenCalled();
     });
   });
 

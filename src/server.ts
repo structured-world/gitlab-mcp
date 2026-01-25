@@ -19,7 +19,7 @@ import {
   LOG_FORMAT,
 } from "./config";
 import { TransportMode } from "./types";
-import { logger } from "./logger";
+import { logInfo, logError, logDebug } from "./logger";
 import { getSessionManager } from "./session-manager";
 
 // OAuth imports
@@ -64,7 +64,7 @@ export async function sendToolsListChangedNotification(): Promise<void> {
     const sessionManager = getSessionManager();
     await sessionManager.broadcastToolsListChanged();
   } catch (error: unknown) {
-    logger.error({ err: error }, "Failed to broadcast tools/list_changed notification");
+    logError("Failed to broadcast tools/list_changed notification", { err: error });
   }
 }
 
@@ -118,7 +118,7 @@ function registerOAuthEndpoints(app: Express): void {
   // Health check endpoint (rate limited via global rateLimiterMiddleware at line 400)
   app.get("/health", healthHandler);
 
-  logger.info("OAuth endpoints registered");
+  logInfo("OAuth endpoints registered");
 }
 
 /**
@@ -144,17 +144,17 @@ function loadTLSOptions(): https.ServerOptions | undefined {
 
     if (SSL_CA_PATH) {
       options.ca = fs.readFileSync(SSL_CA_PATH);
-      logger.info(`CA certificate loaded from ${SSL_CA_PATH}`);
+      logInfo("CA certificate loaded", { path: SSL_CA_PATH });
     }
 
     if (SSL_PASSPHRASE) {
       options.passphrase = SSL_PASSPHRASE;
     }
 
-    logger.info(`TLS certificates loaded from ${SSL_CERT_PATH}`);
+    logInfo("TLS certificates loaded", { path: SSL_CERT_PATH });
     return options;
   } catch (error: unknown) {
-    logger.error({ err: error }, "Failed to load TLS certificates");
+    logError("Failed to load TLS certificates", { err: error });
     throw new Error(`Failed to load TLS certificates: ${String(error)}`);
   }
 }
@@ -178,7 +178,7 @@ function configureTrustProxy(app: Express): void {
   }
 
   app.set("trust proxy", trustValue);
-  logger.info(`Trust proxy configured: ${String(trustValue)}`);
+  logInfo("Trust proxy configured", { trustValue: String(trustValue) });
 }
 
 /**
@@ -194,14 +194,11 @@ function configureServerTimeouts(server: http.Server | https.Server): void {
   server.headersTimeout = HTTP_KEEPALIVE_TIMEOUT_MS + 5000; // Must be > keepAliveTimeout
   server.timeout = 0; // No socket timeout for SSE streaming
 
-  logger.info(
-    {
-      keepAliveTimeout: server.keepAliveTimeout,
-      headersTimeout: server.headersTimeout,
-      timeout: server.timeout,
-    },
-    "HTTP server timeouts configured for SSE streaming"
-  );
+  logInfo("HTTP server timeouts configured for SSE streaming", {
+    keepAliveTimeout: server.keepAliveTimeout,
+    headersTimeout: server.headersTimeout,
+    timeout: server.timeout,
+  });
 }
 
 /**
@@ -252,35 +249,35 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
     }
   }, SSE_HEARTBEAT_MS);
 
-  logger.debug({ sessionId, intervalMs: SSE_HEARTBEAT_MS }, "SSE heartbeat started");
+  logDebug("SSE heartbeat started", { sessionId, intervalMs: SSE_HEARTBEAT_MS });
 
   return () => {
     clearInterval(interval);
-    logger.debug({ sessionId }, "SSE heartbeat stopped");
+    logDebug("SSE heartbeat stopped", { sessionId });
   };
 }
 
 function determineTransportMode(): TransportMode {
   const args = process.argv.slice(2);
 
-  logger.info(`Transport mode detection: args=${JSON.stringify(args)}, PORT=${PORT}`);
+  logInfo("Transport mode detection", { args, PORT });
 
   // Check for explicit stdio mode first
   if (args.includes("stdio")) {
-    logger.info("Selected stdio mode (explicit argument)");
+    logInfo("Selected stdio mode (explicit argument)");
     return "stdio" as TransportMode;
   }
 
   // If PORT environment variable is present, start in dual transport mode (SSE + StreamableHTTP)
   if (process.env.PORT) {
-    logger.info(
+    logInfo(
       "Selected dual transport mode (SSE + StreamableHTTP) - PORT environment variable detected"
     );
     return "dual" as TransportMode;
   }
 
   // Default to stdio mode when no PORT is specified
-  logger.info("Selected stdio mode (no PORT environment variable)");
+  logInfo("Selected stdio mode (no PORT environment variable)");
   return "stdio" as TransportMode;
 }
 
@@ -288,20 +285,20 @@ export async function startServer(): Promise<void> {
   // Detect configuration based on auth mode
   const oauthConfig = loadOAuthConfig();
   if (oauthConfig) {
-    logger.info("Starting in OAuth mode (per-user authentication)");
-    logger.info(`OAuth client ID: ${oauthConfig.gitlabClientId}`);
+    logInfo("Starting in OAuth mode (per-user authentication)");
+    logInfo("OAuth client ID configured", { clientId: oauthConfig.gitlabClientId });
   } else if (process.env.GITLAB_TOKEN) {
     // Static token mode with token configured
-    logger.info("Starting in static token mode (shared GITLAB_TOKEN)");
+    logInfo("Starting in static token mode (shared GITLAB_TOKEN)");
   } else {
     // Graceful startup without token - server will accept tools/list requests
     // but tool calls will return clear errors until token is configured
-    logger.warn(
+    logInfo(
       "Starting without authentication - tools/list will work, but tool calls require GITLAB_TOKEN"
     );
   }
 
-  logger.info(`Authentication mode: ${getAuthModeDescription()}`);
+  logInfo("Authentication mode", { mode: getAuthModeDescription() });
 
   // Initialize session store (required for file-based and PostgreSQL persistence)
   if (oauthConfig) {
@@ -318,7 +315,7 @@ export async function startServer(): Promise<void> {
   const useCondensedLogging = LOG_FORMAT === "condensed";
   requestTracker.setEnabled(useCondensedLogging);
   connectionTracker.setEnabled(useCondensedLogging);
-  logger.info({ logFormat: LOG_FORMAT }, `Access log format: ${LOG_FORMAT}`);
+  logInfo("Access log format", { logFormat: LOG_FORMAT });
 
   const transportMode = determineTransportMode();
 
@@ -326,12 +323,12 @@ export async function startServer(): Promise<void> {
     case "stdio": {
       const transport = new StdioServerTransport();
       await sessionManager.createSession("stdio", transport);
-      logger.info("GitLab MCP Server running on stdio");
+      logInfo("GitLab MCP Server running on stdio");
       break;
     }
 
     case "dual": {
-      logger.info("Setting up dual transport mode (SSE + StreamableHTTP)...");
+      logInfo("Setting up dual transport mode (SSE + StreamableHTTP)...");
       const app = express();
       app.use(express.json());
 
@@ -414,10 +411,10 @@ export async function startServer(): Promise<void> {
           req.headers.accept = accept
             ? `${accept}, text/event-stream`
             : "application/json, text/event-stream";
-          logger.debug(
-            { originalAccept: accept, newAccept: req.headers.accept },
-            "Modified Accept header for MCP compatibility"
-          );
+          logDebug("Modified Accept header for MCP compatibility", {
+            originalAccept: accept,
+            newAccept: req.headers.accept,
+          });
         }
         next();
       });
@@ -434,7 +431,7 @@ export async function startServer(): Promise<void> {
 
       // SSE Transport Endpoints (backwards compatibility)
       app.get("/sse", async (req, res) => {
-        logger.debug("SSE endpoint hit!");
+        logDebug("SSE endpoint hit!");
         const transport = new SSEServerTransport("/messages", res);
         const sessionId = transport.sessionId;
         const clientIp = getIpAddress(req);
@@ -449,14 +446,14 @@ export async function startServer(): Promise<void> {
           // Each SSE session gets its own Server instance
           await sessionManager.createSession(sessionId, transport);
           sseTransports[sessionId] = transport;
-          logger.debug(`SSE transport created with session: ${sessionId}`);
+          logDebug("SSE transport created with session", { sessionId });
 
           // Track connection for access logging
           connectionTracker.openConnection(sessionId, clientIp);
           // Count the initial GET /sse request that established this connection
           connectionTracker.incrementRequests(sessionId);
         } catch (error: unknown) {
-          logger.error({ err: error, sessionId }, "Failed to create SSE session");
+          logError("Failed to create SSE session", { err: error, sessionId });
           if (!res.headersSent) {
             res.status(500).end();
           }
@@ -475,13 +472,13 @@ export async function startServer(): Promise<void> {
           connectionTracker.closeConnection(sessionId, "client_disconnect");
 
           sessionManager.removeSession(sessionId).catch((error: unknown) => {
-            logger.debug({ err: error, sessionId }, "Error removing SSE session on disconnect");
+            logDebug("Error removing SSE session on disconnect", { err: error, sessionId });
           });
         });
       });
 
       app.post("/messages", async (req, res): Promise<void> => {
-        logger.debug("SSE messages endpoint hit!");
+        logDebug("SSE messages endpoint hit!");
         const sessionId = req.query.sessionId as string;
 
         if (!sessionId || !sseTransports[sessionId]) {
@@ -515,7 +512,7 @@ export async function startServer(): Promise<void> {
             await doHandle();
           }
         } catch (error: unknown) {
-          logger.error({ err: error }, "Error handling SSE message");
+          logError("Error handling SSE message", { err: error });
           if (!res.headersSent) {
             res.status(500).json({ error: "Internal server error" });
           }
@@ -538,14 +535,11 @@ export async function startServer(): Promise<void> {
         // Get full request context for logging (verbose mode)
         if (!useCondensedLogging) {
           const requestContext = getRequestContext(req, res);
-          logger.info(
-            {
-              event: "mcp_request",
-              ...requestContext,
-              hasToken: !!gitlabToken,
-            },
-            "MCP endpoint request received"
-          );
+          logInfo("MCP endpoint request received", {
+            event: "mcp_request",
+            ...requestContext,
+            hasToken: !!gitlabToken,
+          });
         }
 
         // Helper to handle request with proper token and request contexts
@@ -603,9 +597,10 @@ export async function startServer(): Promise<void> {
               sessionIdGenerator: () => newSessionId,
               onsessioninitialized: (initializedSessionId: string) => {
                 streamableTransports[initializedSessionId] = transport;
-                logger.info(
-                  `MCP session initialized: ${initializedSessionId} (method: ${req.method})`
-                );
+                logInfo("MCP session initialized", {
+                  sessionId: initializedSessionId,
+                  method: req.method,
+                });
 
                 // Track connection for access logging
                 connectionTracker.openConnection(initializedSessionId, clientIp);
@@ -629,12 +624,9 @@ export async function startServer(): Promise<void> {
                 connectionTracker.closeConnection(closedSessionId, "client_disconnect");
 
                 sessionManager.removeSession(closedSessionId).catch((err: unknown) => {
-                  logger.debug(
-                    { err, sessionId: closedSessionId },
-                    "Error removing closed session"
-                  );
+                  logDebug("Error removing closed session", { err, sessionId: closedSessionId });
                 });
-                logger.info(`MCP session closed: ${closedSessionId}`);
+                logInfo("MCP session closed", { sessionId: closedSessionId });
               },
             });
 
@@ -653,7 +645,7 @@ export async function startServer(): Promise<void> {
             });
           }
         } catch (error: unknown) {
-          logger.error({ err: error }, "Error in StreamableHTTP transport");
+          logError("Error in StreamableHTTP transport", { err: error });
           if (!res.headersSent) {
             res.status(500).json({ error: "Internal server error" });
           }
@@ -662,24 +654,27 @@ export async function startServer(): Promise<void> {
 
       startHttpServer(app, () => {
         const url = `${getProtocol()}://${HOST}:${PORT}`;
-        logger.info(`GitLab MCP Server running on ${url}`);
+        logInfo("GitLab MCP Server running", { url });
         if (isTLSEnabled()) {
-          logger.info("TLS/HTTPS enabled");
+          logInfo("TLS/HTTPS enabled");
         }
-        logger.info("Dual Transport Mode Active:");
-        logger.info(`  SSE endpoint: ${url}/sse (backwards compatibility)`);
-        logger.info(`  StreamableHTTP endpoint: ${url}/mcp (modern, supports SSE + JSON-RPC)`);
+        logInfo("Dual Transport Mode Active");
+        logInfo("SSE endpoint", { endpoint: `${url}/sse`, note: "backwards compatibility" });
+        logInfo("StreamableHTTP endpoint", {
+          endpoint: `${url}/mcp`,
+          note: "modern, supports SSE + JSON-RPC",
+        });
         if (isOAuthEnabled()) {
-          logger.info("OAuth Mode Active:");
-          logger.info(`  OAuth metadata: ${url}/.well-known/oauth-authorization-server`);
-          logger.info(`  Authorization: ${url}/authorize`);
-          logger.info(`  Token exchange: ${url}/token`);
+          logInfo("OAuth Mode Active");
+          logInfo("OAuth metadata", { endpoint: `${url}/.well-known/oauth-authorization-server` });
+          logInfo("Authorization endpoint", { endpoint: `${url}/authorize` });
+          logInfo("Token exchange endpoint", { endpoint: `${url}/token` });
         }
-        logger.info(
-          { heartbeatMs: SSE_HEARTBEAT_MS, keepAliveTimeoutMs: HTTP_KEEPALIVE_TIMEOUT_MS },
-          "SSE keepalive configured for proxy chain compatibility"
-        );
-        logger.info("Clients can use either transport as needed");
+        logInfo("SSE keepalive configured for proxy chain compatibility", {
+          heartbeatMs: SSE_HEARTBEAT_MS,
+          keepAliveTimeoutMs: HTTP_KEEPALIVE_TIMEOUT_MS,
+        });
+        logInfo("Clients can use either transport as needed");
       });
       break;
     }
@@ -688,32 +683,32 @@ export async function startServer(): Promise<void> {
 
 // Graceful shutdown - close all sessions and save to storage backend before exit
 async function gracefulShutdown(signal: string): Promise<void> {
-  logger.info({ signal }, "Shutting down GitLab MCP Server...");
+  logInfo("Shutting down GitLab MCP Server...", { signal });
 
   // Close all tracked connections with server_shutdown reason
   try {
     const connTracker = getConnectionTracker();
     connTracker.closeAllConnections("server_shutdown");
-    logger.info("All connections closed for shutdown");
+    logInfo("All connections closed for shutdown");
   } catch (error) {
-    logger.error({ err: error as Error }, "Error closing connections");
+    logError("Error closing connections", { err: error as Error });
   }
 
   try {
     // Shut down session manager (closes all per-session Server instances)
     const sm = getSessionManager();
     await sm.shutdown();
-    logger.info("Session manager shut down successfully");
+    logInfo("Session manager shut down successfully");
   } catch (error) {
-    logger.error({ err: error as Error }, "Error shutting down session manager");
+    logError("Error shutting down session manager", { err: error as Error });
   }
 
   try {
     // Close session store (saves file-based sessions, disconnects PostgreSQL)
     await sessionStore.close();
-    logger.info("Session store closed successfully");
+    logInfo("Session store closed successfully");
   } catch (error) {
-    logger.error({ err: error as Error }, "Error closing session store");
+    logError("Error closing session store", { err: error as Error });
   }
 
   process.exit(0);
@@ -721,14 +716,14 @@ async function gracefulShutdown(signal: string): Promise<void> {
 
 process.on("SIGINT", () => {
   gracefulShutdown("SIGINT").catch(err => {
-    logger.error({ err }, "Error during graceful shutdown");
+    logError("Error during graceful shutdown", { err });
     process.exit(1);
   });
 });
 
 process.on("SIGTERM", () => {
   gracefulShutdown("SIGTERM").catch(err => {
-    logger.error({ err }, "Error during graceful shutdown");
+    logError("Error during graceful shutdown", { err });
     process.exit(1);
   });
 });

@@ -11,7 +11,7 @@
 import { GITLAB_BASE_URL } from "../config";
 import { OAuthConfig } from "./config";
 import { GitLabDeviceResponse, GitLabTokenResponse, GitLabUserInfo } from "./types";
-import { logger } from "../logger";
+import { logInfo, logWarn, logError, logDebug } from "../logger";
 
 /**
  * Device flow error types from GitLab
@@ -46,7 +46,7 @@ interface DeviceFlowErrorResponse {
 export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDeviceResponse> {
   const url = `${GITLAB_BASE_URL}/oauth/authorize_device`;
 
-  logger.debug({ url, clientId: config.gitlabClientId }, "Initiating GitLab device flow");
+  logDebug("Initiating GitLab device flow", { url, clientId: config.gitlabClientId });
 
   // Convert comma-separated scopes to space-separated (GitLab requirement)
   const scopes = config.gitlabScopes.replace(/,/g, " ");
@@ -65,20 +65,17 @@ export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDev
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error({ status: response.status, error: errorText }, "Failed to initiate device flow");
+    logError("Failed to initiate device flow", { status: response.status, error: errorText });
     throw new Error(`Failed to initiate device flow: ${response.status} ${errorText}`);
   }
 
   const data = (await response.json()) as GitLabDeviceResponse;
 
-  logger.info(
-    {
-      userCode: data.user_code,
-      verificationUri: data.verification_uri,
-      expiresIn: data.expires_in,
-    },
-    "Device flow initiated"
-  );
+  logInfo("Device flow initiated", {
+    userCode: data.user_code,
+    verificationUri: data.verification_uri,
+    expiresIn: data.expires_in,
+  });
 
   return data;
 }
@@ -122,7 +119,7 @@ export async function pollDeviceFlowOnce(
 
   if (response.ok) {
     const data = (await response.json()) as GitLabTokenResponse;
-    logger.info("Device flow authorization completed successfully");
+    logInfo("Device flow authorization completed successfully");
     return data;
   }
 
@@ -137,7 +134,7 @@ export async function pollDeviceFlowOnce(
     case "slow_down":
       // GitLab is asking us to slow down - we should increase the interval
       // The caller should handle this by increasing poll interval
-      logger.debug("Device flow: slow_down received, should increase poll interval");
+      logDebug("Device flow: slow_down received, should increase poll interval");
       return null;
 
     case "expired_token":
@@ -201,7 +198,7 @@ export async function pollForToken(
       }
 
       // Log but continue for transient errors
-      logger.warn({ err: error as Error }, "Device flow poll error, will retry");
+      logWarn("Device flow poll error, will retry", { err: error as Error });
     }
   }
 
@@ -236,7 +233,7 @@ export async function refreshGitLabToken(
     params.client_secret = config.gitlabClientSecret;
   }
 
-  logger.debug("Refreshing GitLab token");
+  logDebug("Refreshing GitLab token");
 
   const response = await fetch(url, {
     method: "POST",
@@ -249,12 +246,12 @@ export async function refreshGitLabToken(
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error({ status: response.status, error: errorText }, "Failed to refresh GitLab token");
+    logError("Failed to refresh GitLab token", { status: response.status, error: errorText });
     throw new Error(`Failed to refresh token: ${response.status} ${errorText}`);
   }
 
   const data = (await response.json()) as GitLabTokenResponse;
-  logger.info("GitLab token refreshed successfully");
+  logInfo("GitLab token refreshed successfully");
   return data;
 }
 
@@ -279,13 +276,13 @@ export async function getGitLabUser(accessToken: string): Promise<GitLabUserInfo
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error({ status: response.status, error: errorText }, "Failed to get GitLab user info");
+    logError("Failed to get GitLab user info", { status: response.status, error: errorText });
     throw new Error(`Failed to get GitLab user info: ${response.status}`);
   }
 
   const user = (await response.json()) as GitLabUserInfo;
 
-  logger.debug({ userId: user.id, username: user.username }, "Retrieved GitLab user info");
+  logDebug("Retrieved GitLab user info", { userId: user.id, username: user.username });
 
   return {
     id: user.id,
@@ -350,7 +347,7 @@ export async function exchangeGitLabAuthCode(
     params.client_secret = config.gitlabClientSecret;
   }
 
-  logger.debug({ redirectUri }, "Exchanging GitLab authorization code for tokens");
+  logDebug("Exchanging GitLab authorization code for tokens", { redirectUri });
 
   const response = await fetch(url, {
     method: "POST",
@@ -363,15 +360,12 @@ export async function exchangeGitLabAuthCode(
 
   if (!response.ok) {
     const errorText = await response.text();
-    logger.error(
-      { status: response.status, error: errorText },
-      "Failed to exchange GitLab auth code"
-    );
+    logError("Failed to exchange GitLab auth code", { status: response.status, error: errorText });
     throw new Error(`Failed to exchange authorization code: ${response.status} ${errorText}`);
   }
 
   const data = (await response.json()) as GitLabTokenResponse;
-  logger.info("GitLab authorization code exchanged successfully");
+  logInfo("GitLab authorization code exchanged successfully");
   return data;
 }
 

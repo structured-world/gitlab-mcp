@@ -18,7 +18,7 @@ import { sessionStore } from "../oauth/session-store";
 import { verifyMCPToken, isTokenExpiringSoon, calculateTokenExpiry } from "../oauth/token-utils";
 import { refreshGitLabToken } from "../oauth/gitlab-device-flow";
 import { getBaseUrl } from "../oauth/endpoints/metadata";
-import { logger } from "../logger";
+import { logWarn, logError, logDebug } from "../logger";
 import { OAuthErrorResponse } from "../oauth/types";
 import { getMinimalRequestContext } from "../utils/request-logger";
 
@@ -101,12 +101,11 @@ export async function oauthAuthMiddleware(
         gitlabTokenExpiry: calculateTokenExpiry(newTokens.expires_in),
       });
 
-      logger.debug(
-        { sessionId: sessionId.substring(0, 8) + "..." },
-        "GitLab token refreshed during request"
-      );
+      logDebug("GitLab token refreshed during request", {
+        sessionId: sessionId.substring(0, 8) + "...",
+      });
     } catch (error: unknown) {
-      logger.error({ err: error as Error }, "Failed to refresh GitLab token during request");
+      logError("Failed to refresh GitLab token during request", { err: error as Error });
       sendUnauthorized(
         req,
         res,
@@ -138,10 +137,11 @@ export async function oauthAuthMiddleware(
   res.locals.gitlabUserId = updatedSession.gitlabUserId;
   res.locals.gitlabUsername = updatedSession.gitlabUsername;
 
-  logger.debug(
-    { sessionId: updatedSession.id.substring(0, 8) + "...", method: req.method, path: req.path },
-    "OAuth session validated, passing to route handler"
-  );
+  logDebug("OAuth session validated, passing to route handler", {
+    sessionId: updatedSession.id.substring(0, 8) + "...",
+    method: req.method,
+    path: req.path,
+  });
 
   // Continue to route handler - token context will be set up there
   next();
@@ -224,15 +224,12 @@ export async function optionalOAuthMiddleware(
  */
 function sendUnauthorized(req: Request, res: Response, error: string, description: string): void {
   // Log auth rejection with structured context
-  logger.warn(
-    {
-      event: "auth_rejected",
-      ...getMinimalRequestContext(req),
-      reason: error,
-      description,
-    },
-    "Authentication rejected"
-  );
+  logWarn("Authentication rejected", {
+    event: "auth_rejected",
+    ...getMinimalRequestContext(req),
+    reason: error,
+    description,
+  });
 
   const response: OAuthErrorResponse = {
     error,

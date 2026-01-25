@@ -1,7 +1,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import { ConnectionManager } from "./services/ConnectionManager";
-import { logger } from "./logger";
+import { logInfo, logWarn, logError, logDebug } from "./logger";
 import {
   handleGitLabError,
   GitLabStructuredError,
@@ -166,27 +166,27 @@ export async function setupHandlers(server: Server): Promise<void> {
     const connectionManager = ConnectionManager.getInstance();
     try {
       await connectionManager.initialize();
-      logger.info("Connection initialized during server setup");
+      logInfo("Connection initialized during server setup");
     } catch (error) {
-      logger.warn(
+      logWarn(
         `Initial connection failed during setup, will retry on first tool call: ${error instanceof Error ? error.message : String(error)}`
       );
       // Continue without initialization - tools will handle gracefully on first call
     }
   } else {
     // No authentication configured - server will respond to tools/list but tool calls will fail
-    logger.info("Skipping connection initialization - no authentication configured");
+    logInfo("Skipping connection initialization - no authentication configured");
   }
   // List tools handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    logger.info("ListToolsRequest received");
+    logInfo("ListToolsRequest received");
 
     // Get tools from registry manager (already filtered)
     const { RegistryManager } = await import("./registry-manager");
     const registryManager = RegistryManager.getInstance();
     const tools = registryManager.getAllToolDefinitions();
 
-    logger.info({ toolCount: tools.length }, "Returning tools list");
+    logInfo("Returning tools list", { toolCount: tools.length });
 
     // Helper function to resolve $ref references in JSON schema
     function resolveRefs(
@@ -287,7 +287,7 @@ export async function setupHandlers(server: Server): Promise<void> {
       // In condensed mode, tool/action is captured via request tracker for single-line log
       // In verbose mode, emit per-request INFO logs
       if (LOG_FORMAT === "verbose") {
-        logger.info(`Tool called: ${request.params.name}`);
+        logInfo(`Tool called: ${request.params.name}`);
       }
 
       // Check if authentication is configured
@@ -318,11 +318,11 @@ export async function setupHandlers(server: Server): Promise<void> {
 
         const instanceInfo = connectionManager.getInstanceInfo();
         if (LOG_FORMAT === "verbose") {
-          logger.info(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
+          logInfo(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
         }
       } catch {
         if (LOG_FORMAT === "verbose") {
-          logger.info("Connection not initialized, attempting to initialize...");
+          logInfo("Connection not initialized, attempting to initialize...");
         }
         try {
           await connectionManager.initialize();
@@ -335,14 +335,14 @@ export async function setupHandlers(server: Server): Promise<void> {
 
           const instanceInfo = connectionManager.getInstanceInfo();
           if (LOG_FORMAT === "verbose") {
-            logger.info(`Connection initialized: ${instanceInfo.version} ${instanceInfo.tier}`);
+            logInfo(`Connection initialized: ${instanceInfo.version} ${instanceInfo.tier}`);
           }
 
           // Rebuild registry cache now that tier/version info is available
           const { RegistryManager } = await import("./registry-manager");
           RegistryManager.getInstance().refreshCache();
         } catch (initError) {
-          logger.error(
+          logError(
             `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`
           );
           throw new Error("Bad Request: Server not initialized");
@@ -391,17 +391,18 @@ export async function setupHandlers(server: Server): Promise<void> {
         }
 
         if (LOG_FORMAT === "verbose") {
-          logger.info(`Executing tool: ${toolName}`);
+          logInfo(`Executing tool: ${toolName}`);
         }
 
         // Check OAuth context
         const { isOAuthEnabled, getTokenContext } = await import("./oauth/index");
         if (isOAuthEnabled()) {
           const context = getTokenContext();
-          logger.debug(
-            { hasContext: !!context, hasToken: !!context?.gitlabToken, tool: toolName },
-            "OAuth context check before tool execution"
-          );
+          logDebug("OAuth context check before tool execution", {
+            hasContext: !!context,
+            hasToken: !!context?.gitlabToken,
+            tool: toolName,
+          });
         }
 
         // Execute the tool using the registry manager
@@ -422,7 +423,7 @@ export async function setupHandlers(server: Server): Promise<void> {
       }
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
-      logger.error(`Error in tool handler: ${errMsg}`);
+      logError(`Error in tool handler: ${errMsg}`);
 
       // Record error for access logging
       const reqTracker = getRequestTracker();
@@ -444,7 +445,7 @@ export async function setupHandlers(server: Server): Promise<void> {
       const structuredError = toStructuredError(error, toolName, toolArgs);
 
       if (structuredError) {
-        logger.debug({ structuredError }, "Returning structured error response");
+        logDebug("Returning structured error response", { structuredError });
         return {
           content: [
             {

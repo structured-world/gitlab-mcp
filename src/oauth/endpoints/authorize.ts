@@ -28,7 +28,7 @@ import {
   calculateTokenExpiry,
 } from "../token-utils";
 import { getBaseUrl } from "./metadata";
-import { logger } from "../../logger";
+import { logInfo, logWarn, logError } from "../../logger";
 import { DeviceFlowPollResponse, OAuthErrorResponse } from "../types";
 import { getIpAddress } from "../../utils/request-logger";
 
@@ -154,13 +154,10 @@ async function handleAuthorizationCodeFlow(
   // Build GitLab authorization URL
   const gitlabAuthUrl = buildGitLabAuthUrl(config, callbackUri, internalState);
 
-  logger.info(
-    {
-      internalState: internalState.substring(0, 8) + "...",
-      clientRedirectUri: params.redirectUri,
-    },
-    "Authorization Code Flow initiated, redirecting to GitLab"
-  );
+  logInfo("Authorization Code Flow initiated, redirecting to GitLab", {
+    internalState: internalState.substring(0, 8) + "...",
+    clientRedirectUri: params.redirectUri,
+  });
 
   // Redirect user to GitLab for authorization
   res.redirect(gitlabAuthUrl);
@@ -204,13 +201,10 @@ async function handleDeviceFlow(
       redirectUri: undefined,
     });
 
-    logger.info(
-      {
-        flowState: flowState.substring(0, 8) + "...",
-        userCode: deviceResponse.user_code,
-      },
-      "Device flow initiated for authorization"
-    );
+    logInfo("Device flow initiated for authorization", {
+      flowState: flowState.substring(0, 8) + "...",
+      userCode: deviceResponse.user_code,
+    });
 
     // Return HTML page with device flow instructions
     const baseUrl = getBaseUrl(req);
@@ -226,7 +220,7 @@ async function handleDeviceFlow(
     res.setHeader("Content-Type", "text/html");
     res.send(html);
   } catch (error: unknown) {
-    logger.error({ err: error as Error }, "Failed to initiate device flow");
+    logError("Failed to initiate device flow", { err: error as Error });
     sendError(req, res, 500, "server_error", "Failed to initiate authentication");
   }
 }
@@ -318,14 +312,11 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
       // Clean up device flow
       sessionStore.deleteDeviceFlow(flow_state);
 
-      logger.info(
-        {
-          sessionId: sessionId.substring(0, 8) + "...",
-          userId: userInfo.id,
-          username: userInfo.username,
-        },
-        "Device flow authorization completed"
-      );
+      logInfo("Device flow authorization completed", {
+        sessionId: sessionId.substring(0, 8) + "...",
+        userId: userInfo.id,
+        username: userInfo.username,
+      });
 
       // Return success with redirect info
       const response: DeviceFlowPollResponse = {
@@ -349,7 +340,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
       res.json({ status: "failed", error: message } as DeviceFlowPollResponse);
     } else {
       // Transient error - report as pending
-      logger.warn({ err: error as Error }, "Device flow poll error");
+      logWarn("Device flow poll error", { err: error as Error });
       res.json({ status: "pending" } as DeviceFlowPollResponse);
     }
   }
@@ -380,16 +371,13 @@ function sendError(
   description: string
 ): void {
   // Log OAuth error with structured context
-  logger.warn(
-    {
-      event: "oauth_error",
-      endpoint: "/authorize",
-      ip: getIpAddress(req),
-      error,
-      description,
-    },
-    "OAuth authorize request failed"
-  );
+  logWarn("OAuth authorize request failed", {
+    event: "oauth_error",
+    endpoint: "/authorize",
+    ip: getIpAddress(req),
+    error,
+    description,
+  });
 
   const response: OAuthErrorResponse = {
     error,

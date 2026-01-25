@@ -9,7 +9,7 @@
  */
 
 import { z } from "zod";
-import { logger } from "../logger";
+import { logInfo, logWarn, logDebug } from "../logger";
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from "../config";
 import { enhancedFetch } from "../utils/fetch";
 
@@ -197,32 +197,28 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
     if (!response.ok) {
       // 401 = invalid token, 403 = insufficient permissions, 404 = endpoint not available
       if (response.status === 404) {
-        logger.debug("Token self-introspection endpoint not available (older GitLab version)");
+        logDebug("Token self-introspection endpoint not available (older GitLab version)");
         return null;
       }
       if (response.status === 401) {
-        logger.info("Token is invalid or expired");
+        logInfo("Token is invalid or expired");
         return null;
       }
       if (response.status === 403) {
         // Some token types (e.g. deploy tokens) can't self-introspect
-        logger.debug("Token self-introspection not permitted for this token type");
+        logDebug("Token self-introspection not permitted for this token type");
         return null;
       }
-      logger.debug(
-        { status: response.status },
-        "Unexpected response from token self-introspection"
-      );
+      logDebug("Unexpected response from token self-introspection", { status: response.status });
       return null;
     }
 
     const raw: unknown = await response.json();
     const parsed = TokenSelfResponseSchema.safeParse(raw);
     if (!parsed.success) {
-      logger.debug(
-        { error: parsed.error.message },
-        "Token self-introspection response validation failed"
-      );
+      logDebug("Token self-introspection response validation failed", {
+        error: parsed.error.message,
+      });
       return null;
     }
     const data = parsed.data;
@@ -264,10 +260,9 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
     };
   } catch (error) {
     // Network errors, DNS failures, etc. - don't block startup
-    logger.debug(
-      { error: error instanceof Error ? error.message : String(error) },
-      "Token scope detection failed (network error)"
-    );
+    logDebug("Token scope detection failed (network error)", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }
@@ -343,53 +338,48 @@ export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): voi
   // Token expiry warning (< 7 days)
   if (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 7) {
     if (info.daysUntilExpiry < 0) {
-      logger.warn(
-        { tokenName: info.name, expiresAt: info.expiresAt },
-        `Token "${info.name}" has expired! Please create a new token.`
-      );
+      logWarn(`Token "${info.name}" has expired! Please create a new token.`, {
+        tokenName: info.name,
+        expiresAt: info.expiresAt,
+      });
     } else if (info.daysUntilExpiry === 0) {
-      logger.warn(
-        { tokenName: info.name, expiresAt: info.expiresAt },
-        `Token "${info.name}" expires today!`
-      );
+      logWarn(`Token "${info.name}" expires today!`, {
+        tokenName: info.name,
+        expiresAt: info.expiresAt,
+      });
     } else {
-      logger.warn(
-        { tokenName: info.name, daysUntilExpiry: info.daysUntilExpiry, expiresAt: info.expiresAt },
-        `Token "${info.name}" expires in ${info.daysUntilExpiry} day(s)`
-      );
+      logWarn(`Token "${info.name}" expires in ${info.daysUntilExpiry} day(s)`, {
+        tokenName: info.name,
+        daysUntilExpiry: info.daysUntilExpiry,
+        expiresAt: info.expiresAt,
+      });
     }
   }
 
   if (info.hasWriteAccess) {
     // Full access (api scope) - brief message
-    logger.info(
-      {
-        tokenName: info.name,
-        scopes: scopeList,
-        expiresAt: info.expiresAt ?? "never",
-      },
-      `Token "${info.name}" detected (scopes: ${scopeList})`
-    );
+    logInfo(`Token "${info.name}" detected`, {
+      tokenName: info.name,
+      scopes: scopeList,
+      expiresAt: info.expiresAt ?? "never",
+    });
   } else {
     // Limited access - explain what's available and how to fix
-    logger.info(
+    logInfo(
+      `Token "${info.name}" has limited scopes - ${availableTools.length} of ${totalTools} scope-gated tools available`,
       {
         tokenName: info.name,
         scopes: scopeList,
         availableTools: availableTools.length,
         totalTools,
-      },
-      `Token "${info.name}" has limited scopes - ${availableTools.length} of ${totalTools} scope-gated tools available`
+      }
     );
 
     if (!info.hasGraphQLAccess) {
-      logger.info("GraphQL introspection skipped (requires 'api' or 'read_api' scope)");
+      logInfo("GraphQL introspection skipped (requires 'api' or 'read_api' scope)");
     }
 
     const fixUrl = getTokenCreationUrl(GITLAB_BASE_URL);
-    logger.info(
-      { url: fixUrl },
-      `For full functionality, create a token with 'api' scope: ${fixUrl}`
-    );
+    logInfo(`For full functionality, create a token with 'api' scope: ${fixUrl}`, { url: fixUrl });
   }
 }

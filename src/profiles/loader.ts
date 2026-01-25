@@ -26,7 +26,7 @@ import {
   ProfileInfo,
   ProfileValidationResult,
 } from "./types";
-import { logger } from "../logger";
+import { logInfo, logWarn, logError, logDebug } from "../logger";
 
 // ============================================================================
 // Constants
@@ -169,7 +169,7 @@ export class ProfileLoader {
     }
 
     if (!fs.existsSync(this.userConfigPath)) {
-      logger.debug({ path: this.userConfigPath }, "User profiles config not found");
+      logDebug("User profiles config not found", { path: this.userConfigPath });
       return null;
     }
 
@@ -178,14 +178,14 @@ export class ProfileLoader {
       const parsed = yaml.parse(content) as unknown;
       const validated = ProfilesConfigSchema.parse(parsed);
       this.configCache = validated;
-      logger.debug(
-        { path: this.userConfigPath, profiles: Object.keys(validated.profiles) },
-        "Loaded user profiles config"
-      );
+      logDebug("Loaded user profiles config", {
+        path: this.userConfigPath,
+        profiles: Object.keys(validated.profiles),
+      });
       return validated;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ error: message, path: this.userConfigPath }, "Failed to parse user profiles");
+      logError("Failed to parse user profiles", { error: message, path: this.userConfigPath });
       throw new Error(`Invalid profiles config: ${message}`);
     }
   }
@@ -205,7 +205,7 @@ export class ProfileLoader {
     const presetPath = path.join(this.builtinDir, `${name}.yaml`);
 
     if (!fs.existsSync(presetPath)) {
-      logger.debug({ name, path: presetPath }, "Built-in preset not found");
+      logDebug("Built-in preset not found", { name, path: presetPath });
       return null;
     }
 
@@ -213,11 +213,11 @@ export class ProfileLoader {
       const content = fs.readFileSync(presetPath, "utf8");
       const parsed = yaml.parse(content) as unknown;
       const validated = PresetSchema.parse(parsed);
-      logger.debug({ name }, "Loaded built-in preset");
+      logDebug("Loaded built-in preset", { name });
       return validated;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ error: message, name }, "Failed to parse built-in preset");
+      logError("Failed to parse built-in preset", { error: message, name });
       throw new Error(`Invalid built-in preset '${name}': ${message}`);
     }
   }
@@ -262,7 +262,7 @@ export class ProfileLoader {
           }
         } catch {
           // Skip invalid presets
-          logger.warn({ name }, "Skipping invalid built-in preset");
+          logWarn("Skipping invalid built-in preset", { name });
         }
       }
     }
@@ -405,7 +405,7 @@ export class ProfileLoader {
   static ensureConfigDir(): void {
     if (!fs.existsSync(USER_CONFIG_DIR)) {
       fs.mkdirSync(USER_CONFIG_DIR, { recursive: true });
-      logger.info({ path: USER_CONFIG_DIR }, "Created config directory");
+      logInfo("Created config directory", { path: USER_CONFIG_DIR });
     }
   }
 

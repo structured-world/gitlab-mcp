@@ -7,7 +7,7 @@
 
 import * as fs from "fs/promises";
 import * as path from "path";
-import { logger } from "../logger";
+import { logWarn, logDebug } from "../logger";
 
 // ============================================================================
 // Types
@@ -92,7 +92,7 @@ export function parseRemoteUrl(url: string): Omit<GitRemoteInfo, "remoteName"> |
     };
   }
 
-  logger.debug({ url: normalizedUrl }, "Could not parse remote URL");
+  logDebug("Could not parse remote URL", { url: normalizedUrl });
   return null;
 }
 
@@ -221,7 +221,7 @@ export async function parseGitRemote(
   try {
     await fs.access(gitConfigPath);
   } catch {
-    logger.debug({ path: repoPath }, "No .git/config found - not a git repository");
+    logDebug("No .git/config found - not a git repository", { path: repoPath });
     return null;
   }
 
@@ -231,14 +231,14 @@ export async function parseGitRemote(
     content = await fs.readFile(gitConfigPath, "utf-8");
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.warn({ error: message, path: gitConfigPath }, "Failed to read git config");
+    logWarn("Failed to read git config", { error: message, path: gitConfigPath });
     return null;
   }
 
   // Parse remotes from config
   const remotes = parseGitConfig(content);
   if (remotes.size === 0) {
-    logger.debug({ path: repoPath }, "No remotes found in git config");
+    logDebug("No remotes found in git config", { path: repoPath });
     return null;
   }
 
@@ -251,19 +251,16 @@ export async function parseGitRemote(
   // Parse the remote URL
   const parsed = parseRemoteUrl(selected.url);
   if (!parsed) {
-    logger.warn({ remote: selected.name, url: selected.url }, "Could not parse remote URL format");
+    logWarn("Could not parse remote URL format", { remote: selected.name, url: selected.url });
     return null;
   }
 
-  logger.debug(
-    {
-      remote: selected.name,
-      host: parsed.host,
-      projectPath: parsed.projectPath,
-      protocol: parsed.protocol,
-    },
-    "Parsed git remote"
-  );
+  logDebug("Parsed git remote", {
+    remote: selected.name,
+    host: parsed.host,
+    projectPath: parsed.projectPath,
+    protocol: parsed.protocol,
+  });
 
   return {
     ...parsed,

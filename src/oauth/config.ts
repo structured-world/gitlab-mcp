@@ -6,7 +6,7 @@
  */
 
 import { z } from "zod";
-import { logger } from "../logger";
+import { logDebug, logInfo } from "../logger";
 
 /**
  * Zod schema for OAuth configuration
@@ -60,7 +60,7 @@ export function loadOAuthConfig(): OAuthConfig | null {
   // Check if OAuth mode is enabled
   if (process.env.OAUTH_ENABLED !== "true") {
     cachedOAuthConfig = null;
-    logger.debug("OAuth mode disabled (OAUTH_ENABLED !== 'true')");
+    logDebug("OAuth mode disabled (OAUTH_ENABLED !== 'true')");
     return null;
   }
 
@@ -85,7 +85,7 @@ export function loadOAuthConfig(): OAuthConfig | null {
   }
 
   cachedOAuthConfig = result.data;
-  logger.info("OAuth mode enabled with valid configuration");
+  logInfo("OAuth mode enabled with valid configuration");
   return result.data;
 }
 
@@ -134,7 +134,7 @@ export function validateStaticConfig(): void {
   if (!process.env.GITLAB_TOKEN) {
     throw new ConfigurationError(MISSING_TOKEN_GUIDANCE);
   }
-  logger.debug("Static token mode: GITLAB_TOKEN configured");
+  logDebug("Static token mode: GITLAB_TOKEN configured");
 }
 
 /**

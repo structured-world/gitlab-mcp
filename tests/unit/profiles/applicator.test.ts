@@ -13,6 +13,10 @@ jest.mock("../../../src/logger", () => ({
     error: jest.fn(),
     debug: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 // Mock fs for ProfileLoader validation
@@ -405,14 +409,14 @@ describe("Profile Applicator", () => {
         auth: { type: "pat", token_env: "MISSING_TOKEN" },
       };
 
-      const { logger } = await import("../../../src/logger");
+      const { logWarn } = await import("../../../src/logger");
       const { applyProfile } = await import("../../../src/profiles/applicator");
       const result = await applyProfile(profile, "warning-profile");
 
       // Should succeed despite warnings
       expect(result.success).toBe(true);
       expect(result.validation.warnings.length).toBeGreaterThan(0);
-      expect(logger.warn).toHaveBeenCalled();
+      expect(logWarn).toHaveBeenCalled();
     });
 
     it("should track all applied settings", async () => {
@@ -663,14 +667,14 @@ describe("Profile Applicator", () => {
       };
 
       const { applyPreset } = await import("../../../src/profiles/applicator");
-      const { logger } = await import("../../../src/logger");
+      const { logWarn } = await import("../../../src/logger");
 
       await applyPreset(preset, "no-auth-preset");
 
       // Verify warning was logged
-      expect(logger.warn).toHaveBeenCalledWith(
-        { preset: "no-auth-preset" },
-        "Preset applied but GITLAB_API_URL/GITLAB_TOKEN not set - connection may fail"
+      expect(logWarn).toHaveBeenCalledWith(
+        "Preset applied but GITLAB_API_URL/GITLAB_TOKEN not set - connection may fail",
+        { preset: "no-auth-preset" }
       );
     });
 

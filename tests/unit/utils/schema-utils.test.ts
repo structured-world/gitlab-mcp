@@ -44,6 +44,10 @@ jest.mock("../../../src/logger", () => ({
     info: jest.fn(),
     error: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 import {

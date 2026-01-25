@@ -19,6 +19,10 @@ const mockLogger = {
   warn: jest.fn(),
   debug: jest.fn(),
 };
+const mockLogInfo = jest.fn();
+const mockLogWarn = jest.fn();
+const mockLogError = jest.fn();
+const mockLogDebug = jest.fn();
 const mockTryApplyProfileFromEnv = jest.fn().mockResolvedValue(undefined);
 const mockFindProjectConfig = jest.fn().mockResolvedValue(null);
 const mockGetProjectConfigSummary = jest.fn().mockReturnValue({
@@ -60,6 +64,10 @@ async function runMain(): Promise<void> {
       }));
       jest.doMock("../../src/logger", () => ({
         logger: mockLogger,
+        logInfo: mockLogInfo,
+        logWarn: mockLogWarn,
+        logError: mockLogError,
+        logDebug: mockLogDebug,
       }));
       jest.doMock("../../src/profiles", () => ({
         tryApplyProfileFromEnv: mockTryApplyProfileFromEnv,
@@ -139,9 +147,9 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        "Failed to start GitLab MCP Server: Error: Server failed"
-      );
+      expect(mockLogError).toHaveBeenCalledWith("Failed to start GitLab MCP Server", {
+        error: "Error: Server failed",
+      });
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
@@ -154,7 +162,7 @@ describe("main", () => {
 
       // ConfigurationError shows guidance via console.error, not logger
       expect(mockConsoleError).toHaveBeenCalledWith(guidance);
-      expect(mockLogger.error).not.toHaveBeenCalled();
+      expect(mockLogError).not.toHaveBeenCalled();
       expect(mockExit).toHaveBeenCalledWith(1);
       mockConsoleError.mockRestore();
     });
@@ -198,10 +206,9 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        { error: "Config parse error" },
-        "Failed to load project config"
-      );
+      expect(mockLogError).toHaveBeenCalledWith("Failed to load project config", {
+        error: "Config parse error",
+      });
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
@@ -244,9 +251,9 @@ describe("main", () => {
         noProjectConfig: true,
         dryRun: false,
       });
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.objectContaining({ host: "gitlab.company.com" }),
-        "Auto-discovery detected GitLab configuration"
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        "Auto-discovery detected GitLab configuration",
+        expect.objectContaining({ host: "gitlab.company.com" })
       );
     });
 
@@ -304,7 +311,7 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(mockLogWarn).toHaveBeenCalledWith(
         "Auto-discovery failed: not in a git repository or no remote found"
       );
     });
@@ -324,10 +331,7 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        { error: "Git error" },
-        "Auto-discovery failed"
-      );
+      expect(mockLogError).toHaveBeenCalledWith("Auto-discovery failed", { error: "Git error" });
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
@@ -355,10 +359,10 @@ describe("main", () => {
       await runMain();
 
       expect(mockTryApplyProfileFromEnv).toHaveBeenCalledWith("work");
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        { profile: "work", host: "gitlab.work.com" },
-        "Using CLI-specified profile"
-      );
+      expect(mockLogInfo).toHaveBeenCalledWith("Using CLI-specified profile", {
+        profile: "work",
+        host: "gitlab.work.com",
+      });
     });
 
     it("should apply CLI preset", async () => {
@@ -381,10 +385,9 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        { preset: "readonly" },
-        "Using CLI-specified preset"
-      );
+      expect(mockLogInfo).toHaveBeenCalledWith("Using CLI-specified preset", {
+        preset: "readonly",
+      });
     });
 
     it("should warn when CLI profile overrides auto-discovered profile", async () => {
@@ -435,9 +438,9 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        { cliProfile: "work", autoProfile: "personal" },
-        "Auto-discovered profile ignored: --profile takes precedence"
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        "Auto-discovered profile ignored: --profile takes precedence",
+        { cliProfile: "work", autoProfile: "personal" }
       );
     });
 
@@ -490,10 +493,10 @@ describe("main", () => {
       await runMain();
 
       expect(mockTryApplyProfileFromEnv).toHaveBeenCalledWith("work");
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        { profile: "work", host: "gitlab.work.com" },
-        "Using auto-discovered profile"
-      );
+      expect(mockLogInfo).toHaveBeenCalledWith("Using auto-discovered profile", {
+        profile: "work",
+        host: "gitlab.work.com",
+      });
     });
 
     it("should warn when auto-discovered profile loading fails", async () => {
@@ -538,10 +541,9 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        { error: "Token expired" },
-        "Failed to apply auto-discovered profile"
-      );
+      expect(mockLogWarn).toHaveBeenCalledWith("Failed to apply auto-discovered profile", {
+        error: "Token expired",
+      });
     });
 
     it("should apply default profile from env when no CLI and no auto-discovery", async () => {
@@ -556,10 +558,10 @@ describe("main", () => {
       await runMain();
 
       expect(mockTryApplyProfileFromEnv).toHaveBeenCalledWith();
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        { profile: "default", host: "gitlab.com" },
-        "Using configuration profile"
-      );
+      expect(mockLogInfo).toHaveBeenCalledWith("Using configuration profile", {
+        profile: "default",
+        host: "gitlab.com",
+      });
     });
 
     it("should apply default preset from env", async () => {
@@ -572,10 +574,9 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        { preset: "readonly" },
-        "Using configuration preset"
-      );
+      expect(mockLogInfo).toHaveBeenCalledWith("Using configuration preset", {
+        preset: "readonly",
+      });
     });
 
     it("should handle profile loading error", async () => {
@@ -593,10 +594,9 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        { error: "Profile not found" },
-        "Failed to load profile"
-      );
+      expect(mockLogError).toHaveBeenCalledWith("Failed to load profile", {
+        error: "Profile not found",
+      });
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
@@ -605,10 +605,9 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        { error: "Config error" },
-        "Failed to load profile"
-      );
+      expect(mockLogError).toHaveBeenCalledWith("Failed to load profile", {
+        error: "Config error",
+      });
       expect(mockExit).toHaveBeenCalledWith(1);
     });
   });
@@ -627,9 +626,9 @@ describe("main", () => {
       await runMain();
 
       expect(mockFindProjectConfig).toHaveBeenCalled();
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.objectContaining({ path: "/project/.gitlab-mcp" }),
-        "Loaded project configuration (restrictions applied)"
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        "Loaded project configuration (restrictions applied)",
+        expect.objectContaining({ path: "/project/.gitlab-mcp" })
       );
     });
 
@@ -649,9 +648,9 @@ describe("main", () => {
 
       // findProjectConfig is still called for tryApplyProfileFromEnv,
       // but project config loading step is skipped
-      expect(mockLogger.info).not.toHaveBeenCalledWith(
-        expect.anything(),
-        "Loaded project configuration (restrictions applied)"
+      expect(mockLogInfo).not.toHaveBeenCalledWith(
+        "Loaded project configuration (restrictions applied)",
+        expect.anything()
       );
     });
 
@@ -660,9 +659,9 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        { error: "Parse error" },
-        "Failed to load project config, continuing without it"
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        "Failed to load project config, continuing without it",
+        { error: "Parse error" }
       );
     });
   });
@@ -839,13 +838,10 @@ describe("main", () => {
 
       await runMain();
 
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        {
-          defaultProject: "team/project",
-          defaultNamespace: "team",
-        },
-        "Default context set from auto-discovery"
-      );
+      expect(mockLogDebug).toHaveBeenCalledWith("Default context set from auto-discovery", {
+        defaultProject: "team/project",
+        defaultNamespace: "team",
+      });
     });
   });
 });

@@ -1,7 +1,7 @@
 import { gql } from "graphql-tag";
 import { TypedDocumentNode } from "@graphql-typed-document-node/core";
 import { SchemaIntrospector, FieldInfo } from "../services/SchemaIntrospector";
-import { logger } from "../logger";
+import { logInfo } from "../logger";
 
 export interface DynamicWorkItem {
   id: string;
@@ -44,14 +44,11 @@ export class DynamicWorkItemsQueryBuilder {
       this.schemaIntrospector.isWidgetTypeAvailable(widget)
     );
 
-    logger.info(
-      {
-        requested: widgets.length,
-        available: availableWidgets.length,
-        widgetTypes: availableWidgets.slice(0, 5),
-      },
-      "Building dynamic WorkItems query"
-    );
+    logInfo("Building dynamic WorkItems query", {
+      requested: widgets.length,
+      available: availableWidgets.length,
+      widgetTypes: availableWidgets.slice(0, 5),
+    });
 
     const widgetFragments = this.buildWidgetFragments(availableWidgets);
 

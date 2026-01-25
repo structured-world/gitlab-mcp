@@ -31,6 +31,10 @@ jest.mock("../../src/logger", () => ({
     warn: jest.fn(),
     debug: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 // Mock RegistryManager

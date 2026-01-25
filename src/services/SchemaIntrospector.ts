@@ -1,6 +1,6 @@
 import { GraphQLClient } from "../graphql/client";
 import { gql } from "graphql-tag";
-import { logger } from "../logger";
+import { logDebug, logInfo, logWarn } from "../logger";
 
 export interface FieldInfo {
   name: string;
@@ -79,7 +79,7 @@ export class SchemaIntrospector {
     }
 
     try {
-      logger.debug("Introspecting GitLab GraphQL schema...");
+      logDebug("Introspecting GitLab GraphQL schema...");
 
       const result = await this.client.request<IntrospectionResult>(INTROSPECTION_QUERY);
       const types = result.__schema.types;
@@ -123,21 +123,17 @@ export class SchemaIntrospector {
         availableFeatures,
       };
 
-      logger.info(
-        {
-          widgetTypes: workItemWidgetTypes.length,
-          typeDefinitions: typeDefinitions.size,
-          features: availableFeatures.size,
-        },
-        "GraphQL schema introspection completed"
-      );
+      logInfo("GraphQL schema introspection completed", {
+        widgetTypes: workItemWidgetTypes.length,
+        typeDefinitions: typeDefinitions.size,
+        features: availableFeatures.size,
+      });
 
       return this.cachedSchema;
     } catch (error) {
-      logger.warn(
-        { err: error as Error },
-        "Schema introspection failed, using fallback schema info"
-      );
+      logWarn("Schema introspection failed, using fallback schema info", {
+        err: error as Error,
+      });
 
       // Provide fallback schema info when introspection fails
       this.cachedSchema = {

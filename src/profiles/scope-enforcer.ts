@@ -11,7 +11,7 @@
  */
 
 import { ProjectPreset, ScopeConfig } from "./types";
-import { logger } from "../logger";
+import { logDebug, logWarn } from "../logger";
 
 // Re-export ScopeConfig for backward compatibility
 export type { ScopeConfig } from "./types";
@@ -133,15 +133,12 @@ export class ScopeEnforcer {
       this.allowedGroupsSet.add(normalizeProjectPath(scope.group));
     }
 
-    logger.debug(
-      {
-        scope: getScopeDescription(scope),
-        allowedProjectsCount: this.allowedProjectsSet.size,
-        allowedGroupsCount: this.allowedGroupsSet.size,
-        includeSubgroups: this.includeSubgroups,
-      },
-      "ScopeEnforcer initialized"
-    );
+    logDebug("ScopeEnforcer initialized", {
+      scope: getScopeDescription(scope),
+      allowedProjectsCount: this.allowedProjectsSet.size,
+      allowedGroupsCount: this.allowedGroupsSet.size,
+      includeSubgroups: this.includeSubgroups,
+    });
   }
 
   /**
@@ -203,10 +200,9 @@ export class ScopeEnforcer {
     // Check if numeric ID is in allowed projects (can't validate without API call)
     // For security, we deny numeric IDs unless they're in the explicit list
     if (/^\d+$/.test(normalized)) {
-      logger.warn(
-        { projectId: normalized },
-        "Numeric project ID not in allowed scope - denying access"
-      );
+      logWarn("Numeric project ID not in allowed scope - denying access", {
+        projectId: normalized,
+      });
       return false;
     }
 
@@ -249,10 +245,7 @@ export class ScopeEnforcer {
     // Check if numeric ID is in allowed groups (can't validate without API call)
     // For security, we deny numeric IDs unless they're in the explicit list
     if (/^\d+$/.test(normalized)) {
-      logger.warn(
-        { groupId: normalized },
-        "Numeric group ID not in allowed scope - denying access"
-      );
+      logWarn("Numeric group ID not in allowed scope - denying access", { groupId: normalized });
       return false;
     }
 
@@ -267,13 +260,10 @@ export class ScopeEnforcer {
    */
   enforce(projectPath: string): void {
     if (!this.isAllowed(projectPath)) {
-      logger.warn(
-        {
-          attempted: projectPath,
-          scope: getScopeDescription(this.scope),
-        },
-        "Project scope violation attempted"
-      );
+      logWarn("Project scope violation attempted", {
+        attempted: projectPath,
+        scope: getScopeDescription(this.scope),
+      });
       throw new ScopeViolationError(projectPath, this.scope);
     }
   }
@@ -286,13 +276,10 @@ export class ScopeEnforcer {
    */
   enforceGroup(groupPath: string): void {
     if (!this.isGroupAllowed(groupPath)) {
-      logger.warn(
-        {
-          attempted: groupPath,
-          scope: getScopeDescription(this.scope),
-        },
-        "Group scope violation attempted"
-      );
+      logWarn("Group scope violation attempted", {
+        attempted: groupPath,
+        scope: getScopeDescription(this.scope),
+      });
       throw new ScopeViolationError(groupPath, this.scope);
     }
   }

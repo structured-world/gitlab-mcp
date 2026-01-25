@@ -1,3 +1,10 @@
+## [6.48.0](https://github.com/structured-world/gitlab-mcp/compare/v6.47.1...v6.48.0) (2026-01-25)
+
+### Features
+
+* **logging:** add LOG_FORMAT env var and improve session ID truncation ([#215](https://github.com/structured-world/gitlab-mcp/issues/215)) ([df655f2](https://github.com/structured-world/gitlab-mcp/commit/df655f2bdfb5ff82fadafd80771471f3f6880209)), closes [#213](https://github.com/structured-world/gitlab-mcp/issues/213)
+* **mcp:** MCP Ecosystem Compatibility - Graceful Startup, Static Manifest, and Release Pipeline Improvements ([#212](https://github.com/structured-world/gitlab-mcp/issues/212)) ([2ecb70d](https://github.com/structured-world/gitlab-mcp/commit/2ecb70dc2cac68f50593ba05c79958d0ec24565d)), closes [#210](https://github.com/structured-world/gitlab-mcp/issues/210)
+
 ## [6.47.1](https://github.com/structured-world/gitlab-mcp/compare/v6.47.0...v6.47.1) (2026-01-25)
 
 ### Bug Fixes

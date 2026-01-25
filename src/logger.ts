@@ -42,7 +42,18 @@ export const logger = createLogger("gitlab-mcp");
  */
 function formatDataPairs(data: Record<string, unknown>): string {
   return Object.entries(data)
-    .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : String(v)}`)
+    .map(([k, v]) => {
+      if (v instanceof Error) {
+        return `${k}=${v.stack ?? v.message}`;
+      }
+      if (v === null || v === undefined) {
+        return `${k}=${String(v)}`;
+      }
+      if (typeof v === "object") {
+        return `${k}=${JSON.stringify(v)}`;
+      }
+      return `${k}=${String(v)}`;
+    })
     .join(" ");
 }
 

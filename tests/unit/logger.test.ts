@@ -310,6 +310,42 @@ describe("logger", () => {
         "Test str=text num=42 bool=true nullVal=null arr=[1,2,3]"
       );
     });
+
+    it("should handle Error objects preserving message and stack", async () => {
+      jest.doMock("pino", () => ({
+        pino: jest.fn(() => ({
+          info: mockInfo,
+          warn: mockWarn,
+          error: mockError,
+          debug: mockDebug,
+        })),
+      }));
+
+      const { logError } = await import("../../src/logger");
+      const testError = new Error("Something went wrong");
+      logError("Operation failed", { err: testError });
+
+      // Error should be formatted with stack trace, not as "{}"
+      expect(mockError).toHaveBeenCalledWith(
+        expect.stringContaining("Operation failed err=Error: Something went wrong")
+      );
+    });
+
+    it("should handle undefined values", async () => {
+      jest.doMock("pino", () => ({
+        pino: jest.fn(() => ({
+          info: mockInfo,
+          warn: mockWarn,
+          error: mockError,
+          debug: mockDebug,
+        })),
+      }));
+
+      const { logInfo } = await import("../../src/logger");
+      logInfo("Test", { value: undefined });
+
+      expect(mockInfo).toHaveBeenCalledWith("Test value=undefined");
+    });
   });
 
   describe("LOG_JSON constant", () => {

@@ -1024,6 +1024,122 @@ describe("RegistryManager", () => {
     });
   });
 
+  describe("getFilterStats", () => {
+    it("should return filter statistics with all zeros when no filters active", () => {
+      registryManager = RegistryManager.getInstance();
+      const stats = registryManager.getFilterStats();
+
+      expect(stats).toHaveProperty("available");
+      expect(stats).toHaveProperty("total");
+      expect(stats).toHaveProperty("filteredByScopes");
+      expect(stats).toHaveProperty("filteredByReadOnly");
+      expect(stats).toHaveProperty("filteredByTier");
+      expect(stats).toHaveProperty("filteredByDeniedRegex");
+      expect(stats).toHaveProperty("filteredByActionDenial");
+
+      // With no filtering, available should equal total
+      expect(stats.available).toBe(stats.total);
+      expect(stats.filteredByScopes).toBe(0);
+      expect(stats.filteredByReadOnly).toBe(0);
+      expect(stats.filteredByTier).toBe(0);
+      expect(stats.filteredByDeniedRegex).toBe(0);
+      expect(stats.filteredByActionDenial).toBe(0);
+    });
+
+    it("should count tools filtered by read-only mode", () => {
+      process.env.GITLAB_READ_ONLY_MODE = "true";
+      (RegistryManager as any).instance = null;
+      registryManager = RegistryManager.getInstance();
+
+      const stats = registryManager.getFilterStats();
+
+      // Some tools should be filtered by read-only mode
+      expect(stats.filteredByReadOnly).toBeGreaterThan(0);
+      expect(stats.available).toBeLessThan(stats.total);
+    });
+
+    it("should count tools filtered by denied regex", () => {
+      process.env.GITLAB_DENIED_TOOLS_REGEX = "^core_tool";
+      (RegistryManager as any).instance = null;
+      registryManager = RegistryManager.getInstance();
+
+      const stats = registryManager.getFilterStats();
+
+      // core_tool_1 should be filtered
+      expect(stats.filteredByDeniedRegex).toBeGreaterThan(0);
+      expect(stats.available).toBeLessThan(stats.total);
+    });
+
+    it("should count tools filtered by token scopes", () => {
+      const { ConnectionManager } = require("../../src/services/ConnectionManager");
+      const { isToolAvailableForScopes } = require("../../src/services/TokenScopeDetector");
+
+      // Setup limited token scopes
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockReturnValue({ tier: "free", version: "17.0.0" }),
+        getTokenScopeInfo: jest.fn().mockReturnValue({ scopes: ["read_user"] }),
+      });
+
+      // Only allow core_tool_1
+      isToolAvailableForScopes.mockImplementation((toolName: string) => toolName === "core_tool_1");
+
+      (RegistryManager as any).instance = null;
+      registryManager = RegistryManager.getInstance();
+
+      const stats = registryManager.getFilterStats();
+
+      // Multiple tools should be filtered by scopes
+      expect(stats.filteredByScopes).toBeGreaterThan(0);
+
+      // Restore mocks
+      isToolAvailableForScopes.mockReturnValue(true);
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockReturnValue({ tier: "free", version: "17.0.0" }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+      });
+    });
+
+    it("should count tools filtered by tier restrictions", () => {
+      const { ToolAvailability } = require("../../src/services/ToolAvailability");
+
+      // Make some tools unavailable due to tier
+      ToolAvailability.isToolAvailable.mockImplementation(
+        (name: string) => !name.includes("labels")
+      );
+      ToolAvailability.getUnavailableReason.mockImplementation((name: string) =>
+        name.includes("labels") ? "Requires Premium tier" : ""
+      );
+
+      (RegistryManager as any).instance = null;
+      registryManager = RegistryManager.getInstance();
+
+      const stats = registryManager.getFilterStats();
+
+      // labels tools should be filtered by tier
+      expect(stats.filteredByTier).toBeGreaterThan(0);
+
+      // Restore mocks
+      ToolAvailability.isToolAvailable.mockReturnValue(true);
+      ToolAvailability.getUnavailableReason.mockReturnValue("");
+    });
+
+    it("should handle multiple filters combined", () => {
+      process.env.GITLAB_READ_ONLY_MODE = "true";
+      process.env.GITLAB_DENIED_TOOLS_REGEX = "core_readonly";
+
+      (RegistryManager as any).instance = null;
+      registryManager = RegistryManager.getInstance();
+
+      const stats = registryManager.getFilterStats();
+
+      // Should have filtering from multiple sources
+      expect(stats.available).toBeLessThan(stats.total);
+      // Since core_readonly matches both read-only list AND denied regex,
+      // it gets counted in denied regex (first filter that matches)
+      expect(stats.filteredByDeniedRegex + stats.filteredByReadOnly).toBeGreaterThan(0);
+    });
+  });
+
   describe("getAllToolDefinitionsUnfiltered", () => {
     it("should return all tools without any filtering", () => {
       // Set up environment to filter tools

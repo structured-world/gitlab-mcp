@@ -10,12 +10,13 @@ import { ManageContextSchema } from "./schema";
 import { handleManageContext } from "./handlers";
 
 /**
- * Context tools registry - 1 CQRS tool with 7 actions
+ * Context tools registry - 1 CQRS tool with 8 actions
  *
  * manage_context: Runtime context management
  *   - show: Display current context (Query)
  *   - list_presets: List available presets (Query)
  *   - list_profiles: List available profiles - OAuth only (Query)
+ *   - whoami: Token introspection and capability discovery (Query)
  *   - switch_preset: Change active preset (Command)
  *   - switch_profile: Change active profile - OAuth only (Command)
  *   - set_scope: Set namespace scope with auto-detection (Command)
@@ -27,7 +28,7 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
     {
       name: "manage_context",
       description:
-        "View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), list_profiles (OAuth users), switch_preset (change active preset), switch_profile (change OAuth user), set_scope (restrict to namespace), reset (restore initial state).",
+        "View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), list_profiles (OAuth users), whoami (token introspection with live refresh - detects permission changes and updates available tools), switch_preset (change active preset), switch_profile (change OAuth user), set_scope (restrict to namespace), reset (restore initial state). Use whoami to diagnose access issues and verify token permissions.",
       inputSchema: z.toJSONSchema(ManageContextSchema),
       // No gate - context management is always available
       handler: async (args: unknown) => {

@@ -14,6 +14,7 @@ import {
   ShowContextInput,
   SwitchPresetInput,
   SwitchProfileInput,
+  WhoamiInput,
 } from "./schema";
 import {
   PresetInfo,
@@ -22,7 +23,9 @@ import {
   SessionContext,
   SetScopeResult,
   SwitchResult,
+  WhoamiResult,
 } from "./types";
+import { executeWhoami } from "./whoami";
 
 /**
  * Handle show action - return current context
@@ -81,12 +84,25 @@ export async function handleResetContext(_input: ResetContextInput): Promise<Res
 }
 
 /**
+ * Handle whoami action - return authentication status and capabilities
+ */
+export async function handleWhoami(_input: WhoamiInput): Promise<WhoamiResult> {
+  return executeWhoami();
+}
+
+/**
  * Main handler dispatcher for manage_context tool
  */
 export async function handleManageContext(
   input: ManageContextInput
 ): Promise<
-  SessionContext | PresetInfo[] | ProfileInfo[] | SwitchResult | SetScopeResult | ResetResult
+  | SessionContext
+  | PresetInfo[]
+  | ProfileInfo[]
+  | SwitchResult
+  | SetScopeResult
+  | ResetResult
+  | WhoamiResult
 > {
   switch (input.action) {
     case "show":
@@ -103,6 +119,8 @@ export async function handleManageContext(
       return handleSetScope(input);
     case "reset":
       return handleResetContext(input);
+    case "whoami":
+      return handleWhoami(input);
     /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
     default:
       throw new Error(`Unknown action: ${(input as { action: string }).action}`);

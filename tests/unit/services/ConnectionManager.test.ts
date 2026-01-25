@@ -238,4 +238,31 @@ describe("ConnectionManager Unit", () => {
       expect(updatedInfo?.hasWriteAccess).toBe(true);
     });
   });
+
+  describe("ensureIntrospected", () => {
+    let manager: ConnectionManager;
+
+    beforeEach(() => {
+      manager = ConnectionManager.getInstance();
+      mockIsOAuthEnabled.mockReturnValue(false);
+    });
+
+    it("should throw error when called before initialization", async () => {
+      await expect(manager.ensureIntrospected()).rejects.toThrow(
+        "Connection not initialized. Call initialize() first."
+      );
+    });
+
+    it("should return early if already introspected", async () => {
+      // Simulate introspected state
+      (manager as any).instanceInfo = { version: "16.0.0", tier: "premium" };
+      (manager as any).schemaInfo = { workItemWidgetTypes: [] };
+      (manager as any).client = {};
+      (manager as any).versionDetector = {};
+      (manager as any).schemaIntrospector = {};
+
+      // Should not throw and return quickly
+      await expect(manager.ensureIntrospected()).resolves.toBeUndefined();
+    });
+  });
 });

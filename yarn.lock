@@ -2657,6 +2657,7 @@ __metadata:
     typescript: "npm:^5.9.3"
     undici: "npm:^7.19.1"
     vitepress: "npm:^1.6.4"
+    vitepress-plugin-google-analytics: "npm:^1.0.2"
     yaml: "npm:^2.8.2"
     zod: "npm:^4.3.6"
   bin:
@@ -11046,6 +11047,13 @@ __metadata:
   bin:
     vite: bin/vite.js
   checksum: 10c0/468336a1409f728b464160cbf02672e72271fb688d0e605e776b74a89d27e1029509eef3a3a6c755928d8011e474dbf234824d054d07960be5f23cd176bc72de
+  languageName: node
+  linkType: hard
+
+"vitepress-plugin-google-analytics@npm:^1.0.2":
+  version: 1.0.2
+  resolution: "vitepress-plugin-google-analytics@npm:1.0.2"
+  checksum: 10c0/17b09ff91cf7f3bdd43373386f37315e88094576834dd5256071c8f357f43b23a0cb3a059f014cabccd80aea5f685c3947451f81b79d8f82add7e263ed80ccde
   languageName: node
   linkType: hard
 

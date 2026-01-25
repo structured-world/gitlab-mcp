@@ -97,6 +97,7 @@ docker run -i --rm -e GITLAB_TOKEN=your_token \
 | `USE_REFS` | `true` | Branch & tag management |
 | `USE_MEMBERS` | `true` | Team members |
 | `USE_SEARCH` | `true` | Cross-project search |
+| `USE_ITERATIONS` | `true` | Iteration planning (sprints) |
 
 ## Contributing
 

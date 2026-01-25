@@ -1,3 +1,13 @@
+## [6.42.0](https://github.com/structured-world/gitlab-mcp/compare/v6.41.4...v6.42.0) (2026-01-25)
+
+### Features
+
+* Token scope detection at startup with graceful degradation ([#190](https://github.com/structured-world/gitlab-mcp/issues/190)) ([28bab03](https://github.com/structured-world/gitlab-mcp/commit/28bab03809638414e9891fd0b3d689e67be98e81)), closes [#188](https://github.com/structured-world/gitlab-mcp/issues/188)
+
+### Bug Fixes
+
+* **workitems:** use two-step approach for timeEstimate on create ([#195](https://github.com/structured-world/gitlab-mcp/issues/195)) ([98abf4e](https://github.com/structured-world/gitlab-mcp/commit/98abf4ec5393d19078c05f96e810062d2e586877)), closes [#193](https://github.com/structured-world/gitlab-mcp/issues/193)
+
 ## [6.41.4](https://github.com/structured-world/gitlab-mcp/compare/v6.41.3...v6.41.4) (2026-01-24)
 
 ### Bug Fixes

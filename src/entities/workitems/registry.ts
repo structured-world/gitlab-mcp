@@ -507,10 +507,9 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               }
             }
 
-            // Time tracking widget (only estimate on create)
-            if (timeEstimate !== undefined) {
-              createInput.timeTrackingWidget = { timeEstimate };
-            }
+            // NOTE: timeTrackingWidget is NOT supported on WorkItemCreateInput by GitLab API
+            // Time estimate will be applied via a follow-up update call after creation
+            // See: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/143507
 
             // Weight widget (Premium)
             if (weight !== undefined) {
@@ -557,9 +556,94 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               throw new Error("Work item creation failed - no work item returned");
             }
 
-            return cleanWorkItemResponse(
-              response.workItemCreate.workItem as unknown as GitLabWorkItem
-            );
+            const createdWorkItem = response.workItemCreate.workItem;
+
+            // Step 2: Apply timeEstimate via update if requested
+            // GitLab API does NOT support timeTrackingWidget on WorkItemCreateInput
+            // so we must apply it via a follow-up update call
+            if (timeEstimate !== undefined) {
+              try {
+                const updateInput: WorkItemUpdateInput = {
+                  id: createdWorkItem.id,
+                  timeTrackingWidget: { timeEstimate },
+                };
+
+                const updateResponse = await client.request(UPDATE_WORK_ITEM, {
+                  input: updateInput,
+                });
+
+                if (
+                  updateResponse.workItemUpdate?.errors?.length &&
+                  updateResponse.workItemUpdate.errors.length > 0
+                ) {
+                  // Update failed - return create result with warning
+                  const cleanedResult = cleanWorkItemResponse(
+                    createdWorkItem as unknown as GitLabWorkItem
+                  );
+                  return {
+                    ...cleanedResult,
+                    _warning: {
+                      message:
+                        "Work item created successfully, but some properties could not be applied",
+                      failedProperties: {
+                        timeEstimate: {
+                          requestedValue: timeEstimate,
+                          error: updateResponse.workItemUpdate.errors.join(", "),
+                        },
+                      },
+                    },
+                  };
+                }
+
+                if (updateResponse.workItemUpdate?.workItem) {
+                  // Return updated work item with time estimate applied
+                  return cleanWorkItemResponse(
+                    updateResponse.workItemUpdate.workItem as unknown as GitLabWorkItem
+                  );
+                }
+
+                // Update returned no work item but also no errors - return create result with warning
+                const cleanedResult = cleanWorkItemResponse(
+                  createdWorkItem as unknown as GitLabWorkItem
+                );
+                return {
+                  ...cleanedResult,
+                  _warning: {
+                    message:
+                      "Work item created successfully, but some properties could not be applied",
+                    failedProperties: {
+                      timeEstimate: {
+                        requestedValue: timeEstimate,
+                        error: "Time estimate update returned no work item",
+                      },
+                    },
+                  },
+                };
+              } catch (updateError) {
+                // Update failed with exception - return create result with warning
+                const cleanedResult = cleanWorkItemResponse(
+                  createdWorkItem as unknown as GitLabWorkItem
+                );
+                return {
+                  ...cleanedResult,
+                  _warning: {
+                    message:
+                      "Work item created successfully, but some properties could not be applied",
+                    failedProperties: {
+                      timeEstimate: {
+                        requestedValue: timeEstimate,
+                        error:
+                          updateError instanceof Error
+                            ? updateError.message
+                            : "Unknown error applying time estimate",
+                      },
+                    },
+                  },
+                };
+              }
+            }
+
+            return cleanWorkItemResponse(createdWorkItem as unknown as GitLabWorkItem);
           }
 
           case "update": {

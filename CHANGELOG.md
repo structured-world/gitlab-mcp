@@ -1,3 +1,9 @@
+## [6.44.0](https://github.com/structured-world/gitlab-mcp/compare/v6.43.1...v6.44.0) (2026-01-25)
+
+### Features
+
+* **docs:** use versioned MCPB download links with __VERSION__ placeholder ([#200](https://github.com/structured-world/gitlab-mcp/issues/200)) ([68b284f](https://github.com/structured-world/gitlab-mcp/commit/68b284f3f7bf499e67747a7f88e5f27346b53613)), closes [#199](https://github.com/structured-world/gitlab-mcp/issues/199)
+
 ## [6.43.1](https://github.com/structured-world/gitlab-mcp/compare/v6.43.0...v6.43.1) (2026-01-25)
 
 ### Bug Fixes

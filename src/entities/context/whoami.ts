@@ -14,8 +14,6 @@
  * is automatically refreshed and a tools/list_changed notification is sent to the client.
  * This enables users to update their token permissions and immediately access new tools
  * without restarting the MCP server.
- *
- * @author Pavel Oliynyk <pavel@structured.world>
  */
 
 import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from "../../config";
@@ -35,7 +33,6 @@ import {
   WhoamiCapabilities,
   WhoamiContextInfo,
   WhoamiRecommendation,
-  RuntimeScope,
 } from "./types";
 
 /**
@@ -200,15 +197,10 @@ function buildContextInfo(): WhoamiContextInfo {
   const contextManager = getContextManager();
   const context = contextManager.getContext();
 
-  let scope: RuntimeScope | null = null;
-  if (context.scope) {
-    scope = context.scope;
-  }
-
   return {
     activePreset: context.presetName ?? null,
     activeProfile: context.profileName ?? null,
-    scope,
+    scope: context.scope ?? null,
   };
 }
 

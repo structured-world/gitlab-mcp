@@ -474,10 +474,31 @@ export async function startServer(): Promise<void> {
           return;
         }
 
+        // Increment request count for connection tracking (SSE mode)
+        connectionTracker.incrementRequests(sessionId);
+
+        // Get access log request ID from middleware
+        const accessLogRequestId = res.locals.accessLogRequestId as string | undefined;
+
+        // Update request stack with SSE session ID (middleware uses header, SSE uses query param)
+        if (accessLogRequestId) {
+          requestTracker.setSessionId(accessLogRequestId, sessionId);
+        }
+
         try {
           sessionManager.touchSession(sessionId);
           const transport = sseTransports[sessionId];
-          await transport.handlePostMessage(req, res, req.body);
+
+          // Wrap in request context for access logging so handlers can track tool calls
+          const doHandle = async () => {
+            await transport.handlePostMessage(req, res, req.body);
+          };
+
+          if (accessLogRequestId) {
+            await runWithRequestContextAsync(accessLogRequestId, doHandle);
+          } else {
+            await doHandle();
+          }
         } catch (error: unknown) {
           logger.error({ err: error }, "Error handling SSE message");
           if (!res.headersSent) {

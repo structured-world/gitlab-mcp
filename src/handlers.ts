@@ -334,27 +334,29 @@ export async function setupHandlers(server: Server): Promise<void> {
       const toolArgs = request.params.arguments;
       const action = toolArgs && typeof toolArgs.action === "string" ? toolArgs.action : undefined;
 
-      // Set tool and action for access logging
-      const requestTracker = getRequestTracker();
-      requestTracker.setToolForCurrentRequest(toolName, action);
+      // Access log tracking only runs in condensed mode (verbose mode uses per-line logs)
+      if (LOG_FORMAT === "condensed") {
+        const requestTracker = getRequestTracker();
+        requestTracker.setToolForCurrentRequest(toolName, action);
 
-      // Capture current context and read-only state for access logging
-      const { getContextManager } = await import("./entities/context/context-manager");
-      const contextManager = getContextManager();
-      const sessionContext = contextManager.getContext();
-      if (sessionContext.scope?.path) {
-        requestTracker.setContextForCurrentRequest(sessionContext.scope.path);
-      }
-      requestTracker.setReadOnlyForCurrentRequest(sessionContext.readOnly);
+        // Capture current context and read-only state for access logging
+        const { getContextManager } = await import("./entities/context/context-manager");
+        const contextManager = getContextManager();
+        const sessionContext = contextManager.getContext();
+        if (sessionContext.scope?.path) {
+          requestTracker.setContextForCurrentRequest(sessionContext.scope.path);
+        }
+        requestTracker.setReadOnlyForCurrentRequest(sessionContext.readOnly);
 
-      // Increment tool count for connection tracking
-      const currentRequestId = getCurrentRequestId();
-      if (currentRequestId) {
-        // Get session ID from the request stack to update connection stats
-        const stack = requestTracker.getStack(currentRequestId);
-        if (stack?.sessionId) {
-          const connectionTracker = getConnectionTracker();
-          connectionTracker.incrementTools(stack.sessionId);
+        // Increment tool count for connection tracking
+        const currentRequestId = getCurrentRequestId();
+        if (currentRequestId) {
+          // Get session ID from the request stack to update connection stats
+          const stack = requestTracker.getStack(currentRequestId);
+          if (stack?.sessionId) {
+            const connectionTracker = getConnectionTracker();
+            connectionTracker.incrementTools(stack.sessionId);
+          }
         }
       }
 

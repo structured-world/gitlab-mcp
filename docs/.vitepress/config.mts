@@ -271,7 +271,23 @@ export default defineConfig({
     },
 
     editLink: {
-      pattern: "https://github.com/structured-world/gitlab-mcp/edit/main/docs/:path",
+      pattern: ({ filePath }) => {
+        // Files generated from .md.in templates - these don't exist in git as .md
+        const templatedFiles = [
+          "index.md",
+          "guide/index.md",
+          "guide/authentication.md",
+          "guide/installation/claude-desktop.md",
+          "tools/index.md",
+          "clients/claude-desktop.md",
+        ];
+
+        const relativePath = filePath.replace(/^docs\//, "");
+        const isTemplated = templatedFiles.includes(relativePath);
+        const targetPath = isTemplated ? `${filePath}.in` : filePath;
+
+        return `https://github.com/structured-world/gitlab-mcp/edit/main/${targetPath}`;
+      },
       text: "Edit this page on GitHub",
     },
 

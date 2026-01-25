@@ -82,10 +82,13 @@ const CreateWorkItemSchema = z.object({
     .optional()
     .describe("Array of child work item IDs to add"),
   // Free tier: time tracking
+  // NOTE: timeEstimate is applied via update after create (GitLab API limitation)
   timeEstimate: z
     .string()
     .optional()
-    .describe('Time estimate in human-readable format (e.g. "1h 30m", "2d")'),
+    .describe(
+      'Time estimate (e.g. "1h 30m", "2d"). Applied via update after create. Check _warning in response if application failed.'
+    ),
   // Premium tier
   isFixed: z
     .boolean()

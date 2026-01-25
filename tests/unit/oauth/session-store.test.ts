@@ -4,7 +4,12 @@
  */
 
 import { SessionStore } from "../../../src/oauth/session-store";
-import { OAuthSession, DeviceFlowState, AuthorizationCode } from "../../../src/oauth/types";
+import {
+  OAuthSession,
+  DeviceFlowState,
+  AuthorizationCode,
+  AuthCodeFlowState,
+} from "../../../src/oauth/types";
 
 describe("OAuth Session Store", () => {
   let store: SessionStore;
@@ -344,6 +349,146 @@ describe("OAuth Session Store", () => {
     });
   });
 
+  describe("Authorization Code Flow Operations", () => {
+    const createTestAuthCodeFlow = (): AuthCodeFlowState => ({
+      clientId: "test-client",
+      codeChallenge: "challenge-123",
+      codeChallengeMethod: "S256",
+      clientState: "client-state-123",
+      internalState: "internal-state-123",
+      clientRedirectUri: "https://client.example.com/callback",
+      callbackUri: "https://server.example.com/oauth/callback",
+      expiresAt: Date.now() + 600000,
+    });
+
+    describe("storeAuthCodeFlow", () => {
+      it("should store auth code flow by internal state", () => {
+        const flow = createTestAuthCodeFlow();
+        store.storeAuthCodeFlow("internal-state-123", flow);
+
+        const retrieved = store.getAuthCodeFlow("internal-state-123");
+        expect(retrieved).toBeDefined();
+        expect(retrieved?.clientId).toBe("test-client");
+      });
+    });
+
+    describe("getAuthCodeFlow", () => {
+      it("should return undefined for non-existent flow", () => {
+        const flow = store.getAuthCodeFlow("non-existent");
+        expect(flow).toBeUndefined();
+      });
+    });
+
+    describe("deleteAuthCodeFlow", () => {
+      it("should delete existing flow", () => {
+        const flow = createTestAuthCodeFlow();
+        store.storeAuthCodeFlow("test-state", flow);
+
+        const deleted = store.deleteAuthCodeFlow("test-state");
+
+        expect(deleted).toBe(true);
+        expect(store.getAuthCodeFlow("test-state")).toBeUndefined();
+      });
+
+      it("should return false for non-existent flow", () => {
+        const deleted = store.deleteAuthCodeFlow("non-existent");
+        expect(deleted).toBe(false);
+      });
+    });
+
+    describe("getAuthCodeFlowCount", () => {
+      it("should return count of auth code flows", () => {
+        expect(store.getAuthCodeFlowCount()).toBe(0);
+
+        store.storeAuthCodeFlow("flow-1", createTestAuthCodeFlow());
+        expect(store.getAuthCodeFlowCount()).toBe(1);
+
+        store.storeAuthCodeFlow("flow-2", createTestAuthCodeFlow());
+        expect(store.getAuthCodeFlowCount()).toBe(2);
+      });
+    });
+
+    describe("cleanup expired auth code flows", () => {
+      it("should remove expired auth code flows", () => {
+        const expiredFlow = { ...createTestAuthCodeFlow(), expiresAt: Date.now() - 1000 };
+        const validFlow = { ...createTestAuthCodeFlow(), expiresAt: Date.now() + 600000 };
+
+        store.storeAuthCodeFlow("expired-flow", expiredFlow);
+        store.storeAuthCodeFlow("valid-flow", validFlow);
+
+        store.cleanup();
+
+        expect(store.getAuthCodeFlow("expired-flow")).toBeUndefined();
+        expect(store.getAuthCodeFlow("valid-flow")).toBeDefined();
+      });
+    });
+  });
+
+  describe("MCP Session Mapping Operations", () => {
+    describe("associateMcpSession", () => {
+      it("should associate MCP session with OAuth session", () => {
+        const session = createTestSession();
+        store.createSession(session);
+
+        store.associateMcpSession("mcp-session-123", session.id);
+
+        const retrieved = store.getSessionByMcpSessionId("mcp-session-123");
+        expect(retrieved?.id).toBe(session.id);
+      });
+    });
+
+    describe("getSessionByMcpSessionId", () => {
+      it("should return undefined for non-existent MCP session", () => {
+        const session = store.getSessionByMcpSessionId("non-existent");
+        expect(session).toBeUndefined();
+      });
+
+      it("should return undefined when OAuth session was deleted", () => {
+        const session = createTestSession();
+        store.createSession(session);
+        store.associateMcpSession("mcp-session-123", session.id);
+        store.deleteSession(session.id);
+
+        const retrieved = store.getSessionByMcpSessionId("mcp-session-123");
+        expect(retrieved).toBeUndefined();
+      });
+    });
+
+    describe("getGitLabTokenByMcpSessionId", () => {
+      it("should return GitLab token for valid MCP session", () => {
+        const session = createTestSession({ gitlabAccessToken: "gitlab-token-xyz" });
+        store.createSession(session);
+        store.associateMcpSession("mcp-session-123", session.id);
+
+        const token = store.getGitLabTokenByMcpSessionId("mcp-session-123");
+        expect(token).toBe("gitlab-token-xyz");
+      });
+
+      it("should return undefined for non-existent MCP session", () => {
+        const token = store.getGitLabTokenByMcpSessionId("non-existent");
+        expect(token).toBeUndefined();
+      });
+    });
+
+    describe("removeMcpSessionAssociation", () => {
+      it("should remove MCP session association", () => {
+        const session = createTestSession();
+        store.createSession(session);
+        store.associateMcpSession("mcp-session-123", session.id);
+
+        const deleted = store.removeMcpSessionAssociation("mcp-session-123");
+
+        expect(deleted).toBe(true);
+        expect(store.getSessionByMcpSessionId("mcp-session-123")).toBeUndefined();
+      });
+
+      it("should return false for non-existent association", () => {
+        const deleted = store.removeMcpSessionAssociation("non-existent");
+        expect(deleted).toBe(false);
+      });
+    });
+  });
+
   describe("Session Enumeration", () => {
     describe("getAllSessions", () => {
       it("should return empty iterator when no sessions", () => {
@@ -377,6 +522,105 @@ describe("OAuth Session Store", () => {
 
         const retrieved = store.getSessionByRefreshToken("unique-refresh-token");
         expect(retrieved?.id).toBe(session.id);
+      });
+    });
+
+    describe("getSessionCount", () => {
+      it("should return count of sessions", () => {
+        expect(store.getSessionCount()).toBe(0);
+
+        store.createSession(createTestSession({ id: "session-1" }));
+        expect(store.getSessionCount()).toBe(1);
+
+        store.createSession(createTestSession({ id: "session-2" }));
+        expect(store.getSessionCount()).toBe(2);
+      });
+    });
+
+    describe("getDeviceFlowCount", () => {
+      it("should return count of device flows", () => {
+        expect(store.getDeviceFlowCount()).toBe(0);
+
+        store.storeDeviceFlow("flow-1", createTestDeviceFlow());
+        expect(store.getDeviceFlowCount()).toBe(1);
+      });
+    });
+
+    describe("getAuthCodeCount", () => {
+      it("should return count of auth codes", () => {
+        expect(store.getAuthCodeCount()).toBe(0);
+
+        store.storeAuthCode(createTestAuthCode({ code: "code-1" }));
+        expect(store.getAuthCodeCount()).toBe(1);
+      });
+    });
+  });
+
+  describe("updateSession edge cases", () => {
+    it("should return false for non-existent session", () => {
+      const result = store.updateSession("non-existent", { gitlabAccessToken: "new" });
+      expect(result).toBe(false);
+    });
+
+    it("should update refresh token index when refresh token changes", () => {
+      const session = createTestSession({ mcpRefreshToken: "old-refresh" });
+      store.createSession(session);
+
+      store.updateSession(session.id, { mcpRefreshToken: "new-refresh" });
+
+      expect(store.getSessionByRefreshToken("old-refresh")).toBeUndefined();
+      expect(store.getSessionByRefreshToken("new-refresh")?.id).toBe(session.id);
+    });
+  });
+
+  describe("Store Management", () => {
+    describe("getBackendType", () => {
+      it("should return backend type", () => {
+        const type = store.getBackendType();
+        expect(type).toBe("memory");
+      });
+    });
+
+    describe("getStats", () => {
+      it("should return store statistics", () => {
+        store.createSession(createTestSession({ id: "s1" }));
+        store.createSession(createTestSession({ id: "s2" }));
+        store.storeDeviceFlow("df1", createTestDeviceFlow());
+        store.storeAuthCode(createTestAuthCode({ code: "ac1" }));
+
+        const stats = store.getStats();
+
+        expect(stats.sessions).toBe(2);
+        expect(stats.deviceFlows).toBe(1);
+        expect(stats.authCodes).toBe(1);
+        expect(stats.authCodeFlows).toBe(0);
+      });
+    });
+
+    describe("clear", () => {
+      it("should clear all data", () => {
+        store.createSession(createTestSession({ id: "s1" }));
+        store.storeDeviceFlow("df1", createTestDeviceFlow());
+        store.storeAuthCode(createTestAuthCode({ code: "ac1" }));
+
+        store.clear();
+
+        expect(store.getSessionCount()).toBe(0);
+        expect(store.getDeviceFlowCount()).toBe(0);
+        expect(store.getAuthCodeCount()).toBe(0);
+      });
+    });
+
+    describe("stopCleanupInterval", () => {
+      it("should stop cleanup interval without error", () => {
+        expect(() => store.stopCleanupInterval()).not.toThrow();
+      });
+
+      it("should be safe to call multiple times", () => {
+        expect(() => {
+          store.stopCleanupInterval();
+          store.stopCleanupInterval();
+        }).not.toThrow();
       });
     });
   });

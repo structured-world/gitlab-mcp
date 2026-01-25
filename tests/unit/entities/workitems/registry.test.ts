@@ -1612,13 +1612,29 @@ describe("Workitems Registry - CQRS Tools", () => {
         );
       });
 
-      it("should create work item with time estimate", async () => {
+      it("should create work item with time estimate via two-step approach", async () => {
+        // Step 1: Create work item (without timeTrackingWidget - not supported by GitLab API)
         mockClient.request.mockResolvedValueOnce({
           workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
         });
 
+        // Step 2: Update with timeEstimate
+        const updatedWorkItemResponse = {
+          ...mockWorkItemResponse,
+          widgets: [
+            {
+              type: "TIME_TRACKING",
+              timeEstimate: 14400, // 4 hours in seconds
+              totalTimeSpent: 0,
+            },
+          ],
+        };
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: { workItem: updatedWorkItemResponse, errors: [] },
+        });
+
         const tool = workitemsToolRegistry.get("manage_work_item");
-        await tool?.handler({
+        const result = await tool?.handler({
           action: "create",
           namespace: "group/project",
           title: "Estimated Item",
@@ -1626,14 +1642,94 @@ describe("Workitems Registry - CQRS Tools", () => {
           timeEstimate: "4h",
         });
 
-        expect(mockClient.request).toHaveBeenCalledWith(
+        // Verify two API calls were made: create (without timeTrackingWidget) + update
+        expect(mockClient.request).toHaveBeenCalledTimes(2);
+
+        // First call: create WITHOUT timeTrackingWidget
+        expect(mockClient.request).toHaveBeenNthCalledWith(
+          1,
+          expect.anything(),
+          expect.objectContaining({
+            input: expect.not.objectContaining({
+              timeTrackingWidget: expect.anything(),
+            }),
+          })
+        );
+
+        // Second call: update WITH timeTrackingWidget
+        expect(mockClient.request).toHaveBeenNthCalledWith(
+          2,
           expect.anything(),
           expect.objectContaining({
             input: expect.objectContaining({
+              id: "gid://gitlab/WorkItem/100",
               timeTrackingWidget: { timeEstimate: "4h" },
             }),
           })
         );
+
+        // Result should be the updated work item
+        expect(result).toMatchObject({
+          id: "100",
+        });
+      });
+
+      it("should return partial success when timeEstimate update fails with errors", async () => {
+        // Step 1: Create succeeds
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        // Step 2: Update fails with GraphQL errors
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: {
+            workItem: null,
+            errors: ["Time tracking update not allowed"],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        const result = (await tool?.handler({
+          action: "create",
+          namespace: "group/project",
+          title: "Estimated Item",
+          workItemType: "ISSUE",
+          timeEstimate: "4h",
+        })) as { id: string; _warning?: { message: string; failedProperties: unknown } };
+
+        // Work item should still be created
+        expect(result.id).toBe("100");
+
+        // Should include warning about failed timeEstimate
+        expect(result._warning).toBeDefined();
+        expect(result._warning?.message).toContain("could not be applied");
+        expect(result._warning?.failedProperties).toHaveProperty("timeEstimate");
+      });
+
+      it("should return partial success when timeEstimate update throws exception", async () => {
+        // Step 1: Create succeeds
+        mockClient.request.mockResolvedValueOnce({
+          workItemCreate: { workItem: mockWorkItemResponse, errors: [] },
+        });
+
+        // Step 2: Update throws exception
+        mockClient.request.mockRejectedValueOnce(new Error("Network timeout"));
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        const result = (await tool?.handler({
+          action: "create",
+          namespace: "group/project",
+          title: "Estimated Item",
+          workItemType: "ISSUE",
+          timeEstimate: "4h",
+        })) as { id: string; _warning?: { message: string; failedProperties: unknown } };
+
+        // Work item should still be created
+        expect(result.id).toBe("100");
+
+        // Should include warning about failed timeEstimate
+        expect(result._warning).toBeDefined();
+        expect(result._warning?.failedProperties).toHaveProperty("timeEstimate");
       });
 
       it("should create work item with weight", async () => {

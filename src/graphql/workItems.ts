@@ -1718,6 +1718,9 @@ export const GET_WORK_ITEM_TYPES: TypedDocumentNode<
 `;
 
 // Work item creation input interface for widgets
+// NOTE: timeTrackingWidget is NOT supported on WorkItemCreateInput by GitLab API
+// Time tracking must be applied via a follow-up update call after creation
+// See: https://gitlab.com/gitlab-org/gitlab/-/merge_requests/143507
 export interface WorkItemCreateInput {
   namespacePath: string;
   title: string;
@@ -1741,9 +1744,7 @@ export interface WorkItemCreateInput {
     parentId?: string | null;
     childrenIds?: string[];
   };
-  timeTrackingWidget?: {
-    timeEstimate?: string;
-  };
+  // timeTrackingWidget is NOT supported on create - use update mutation instead
   weightWidget?: {
     weight?: number | null;
   };

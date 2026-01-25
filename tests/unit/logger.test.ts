@@ -400,7 +400,7 @@ describe("logger", () => {
     });
 
     it("should use custom format when LOG_FORMAT is set", async () => {
-      process.env.LOG_FORMAT = "[%time] %level (%name): %msg";
+      process.env.LOG_FORMAT = "full";
 
       jest.doMock("pino", () => ({
         pino: jest.fn(() => ({
@@ -412,7 +412,7 @@ describe("logger", () => {
       }));
 
       const { LOG_FORMAT } = await import("../../src/logger");
-      expect(LOG_FORMAT).toBe("[%time] %level (%name): %msg");
+      expect(LOG_FORMAT).toBe("full");
     });
   });
 

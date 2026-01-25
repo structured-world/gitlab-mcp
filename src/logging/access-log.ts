@@ -15,6 +15,7 @@ import type {
   ConnectionCloseEntry,
   ConnectionCloseReason,
 } from "./types.js";
+import { truncateId } from "../logger.js";
 
 /**
  * Truncate session ID to first 4 + ".." + last 4 characters
@@ -24,8 +25,7 @@ import type {
  */
 export function truncateSessionId(sessionId?: string): string {
   if (!sessionId) return "-";
-  if (sessionId.length <= 10) return sessionId;
-  return sessionId.substring(0, 4) + ".." + sessionId.slice(-4);
+  return truncateId(sessionId);
 }
 
 /**

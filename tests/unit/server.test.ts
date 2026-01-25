@@ -117,6 +117,8 @@ jest.mock("../../src/logger", () => ({
   logWarn: mockLogWarn,
   logError: mockLogError,
   logDebug: mockLogDebug,
+  // Real implementation - pure function with no side effects
+  truncateId: (id: string) => (id.length <= 10 ? id : id.substring(0, 4) + ".." + id.slice(-4)),
 }));
 
 // Mock OAuth config module

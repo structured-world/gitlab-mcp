@@ -69,6 +69,10 @@ export function getIpAddress(req: Request): string {
   return req.ip ?? req.socket?.remoteAddress ?? "unknown";
 }
 
+// Re-export truncateId from logger for backward compatibility
+// This module used to have its own implementation, now uses centralized version
+import { truncateId as baseTruncateId } from "../logger";
+
 /**
  * Truncate a session ID for safe logging
  *
@@ -79,8 +83,7 @@ export function getIpAddress(req: Request): string {
  */
 export function truncateId(id: string | undefined): string | undefined {
   if (!id) return undefined;
-  if (id.length <= 10) return id;
-  return id.substring(0, 4) + ".." + id.slice(-4);
+  return baseTruncateId(id);
 }
 
 /**

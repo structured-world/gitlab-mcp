@@ -9,6 +9,8 @@ import { pino, type LoggerOptions } from "pino";
  * @example truncateId("9fd82b35-6789-abcd") → "9fd8..abcd"
  */
 export function truncateId(id: string): string {
+  // Runtime type guard for CodeQL - ensures string methods are safe
+  if (typeof id !== "string") return String(id);
   if (id.length <= 10) return id;
   return id.substring(0, 4) + ".." + id.slice(-4);
 }
@@ -39,14 +41,38 @@ export const LOG_JSON = process.env.LOG_JSON === "true";
  *
  * @example LOG_FORMAT="%msg"
  * @example LOG_FORMAT="[%time] %level (%name): %msg"
+ * @example LOG_FORMAT="%level: %msg"
  */
 export const LOG_FORMAT = process.env.LOG_FORMAT ?? "%msg";
 
 /**
- * Check if log format is minimal (message only)
+ * Convert LOG_FORMAT tokens to pino-pretty messageFormat template.
+ *
+ * Transforms nginx-style tokens to pino-pretty placeholders:
+ * - %time  → {time}
+ * - %level → {levelLabel}
+ * - %name  → {name}
+ * - %msg   → {msg}
  */
-function isMinimalFormat(format: string): boolean {
-  return format.trim() === "%msg";
+function convertToPinoFormat(format: string): string {
+  return format
+    .replace(/%time/g, "{time}")
+    .replace(/%level/g, "{levelLabel}")
+    .replace(/%name/g, "{name}")
+    .replace(/%msg/g, "{msg}");
+}
+
+/**
+ * Determine which fields to include based on LOG_FORMAT tokens.
+ */
+function getIgnoredFields(format: string): string {
+  const ignored: string[] = ["pid", "hostname"];
+
+  if (!format.includes("%time")) ignored.push("time");
+  if (!format.includes("%level")) ignored.push("level");
+  if (!format.includes("%name")) ignored.push("name");
+
+  return ignored.join(",");
 }
 
 /**
@@ -57,26 +83,20 @@ function buildPrettyOptions(format: string): Record<string, unknown> {
     destination: 2, // stderr - keeps stdout clean for CLI tools (list-tools --export)
   };
 
-  if (isMinimalFormat(format)) {
-    // Minimal format: message only, no timestamp/level/name prefix
-    // Perfect for daemonized environments where journald adds metadata
-    return {
-      ...baseOptions,
-      colorize: false,
-      translateTime: false,
-      ignore: "pid,hostname,time,level,name",
-      messageFormat: "{msg}",
-      hideObject: true,
-    };
-  }
+  const hasTime = format.includes("%time");
+  const pinoFormat = convertToPinoFormat(format);
+  const ignored = getIgnoredFields(format);
 
-  // Full format: include timestamp, level, name
-  // Format: [HH:MM:SS.mmm] LEVEL (name): message
+  // Minimal format (just %msg) - no colors, pure message output
+  const isMinimal = format.trim() === "%msg";
+
   return {
     ...baseOptions,
-    colorize: true,
-    translateTime: "HH:MM:ss.l",
-    ignore: "pid,hostname",
+    colorize: !isMinimal,
+    translateTime: hasTime ? "HH:MM:ss.l" : false,
+    ignore: ignored,
+    messageFormat: pinoFormat,
+    hideObject: true, // Hide the JSON object, use messageFormat only
   };
 }
 

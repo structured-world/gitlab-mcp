@@ -1,3 +1,9 @@
+## [6.47.0](https://github.com/structured-world/gitlab-mcp/compare/v6.46.1...v6.47.0) (2026-01-25)
+
+### Features
+
+* **docs:** add Google Analytics tracking to VitePress documentation ([#216](https://github.com/structured-world/gitlab-mcp/issues/216)) ([675ea12](https://github.com/structured-world/gitlab-mcp/commit/675ea12cb1104250361f8131934eb5b98bb9aa9e)), closes [#214](https://github.com/structured-world/gitlab-mcp/issues/214)
+
 ## [6.46.1](https://github.com/structured-world/gitlab-mcp/compare/v6.46.0...v6.46.1) (2026-01-25)
 
 ### Bug Fixes

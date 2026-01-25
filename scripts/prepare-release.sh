@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # IMPORTANT: This script must be executable (chmod +x) for semantic-release to invoke it.
-# Git tracks executable bit, so no runtime check needed — just ensure correct mode on commit.
+# Git preserves executable bit in commits, so no runtime chmod check needed — the bit
+# is set once at initial commit and preserved across clones/checkouts.
 set -euo pipefail
 
 # Called by semantic-release @semantic-release/exec prepareCmd
@@ -14,7 +15,9 @@ set -euo pipefail
 VERSION="${1:?Usage: prepare-release.sh <version>}"
 
 # Get dynamic tool counts from built registry
-# Fallback values are safety nets; if used, a warning is emitted for CI visibility
+# Design: stderr is redirected to suppress noisy Node.js errors (module resolution, etc.)
+# If the node command fails, result is empty → triggers fallback with WARNING to stderr.
+# This ensures clean stdout for release output while surfacing fallback usage in CI logs.
 TOOL_COUNT=$(node -e 'const r=require("./dist/src/registry-manager.js");console.log(r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered().length)' 2>/dev/null)
 if [ -z "$TOOL_COUNT" ]; then TOOL_COUNT=44; echo "WARNING: Using fallback TOOL_COUNT=$TOOL_COUNT" >&2; fi
 

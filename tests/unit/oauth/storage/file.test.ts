@@ -647,42 +647,6 @@ describe("FileStorageBackend", () => {
     });
   });
 
-  describe("Pretty Print Option", () => {
-    it("should pretty print when enabled", async () => {
-      storage = new FileStorageBackend({
-        filePath,
-        prettyPrint: true,
-        saveDebounce: 10,
-        saveInterval: 60000,
-      });
-      await storage.initialize();
-
-      await storage.createSession(createTestSession({ id: "pretty-test" }));
-      await storage.forceSave();
-
-      const content = fs.readFileSync(filePath, "utf-8");
-      expect(content).toContain("\n"); // Pretty printed has newlines
-      expect(content).toContain("  "); // Pretty printed has indentation
-    });
-
-    it("should not pretty print when disabled", async () => {
-      storage = new FileStorageBackend({
-        filePath,
-        prettyPrint: false,
-        saveDebounce: 10,
-        saveInterval: 60000,
-      });
-      await storage.initialize();
-
-      await storage.createSession(createTestSession({ id: "compact-test" }));
-      await storage.forceSave();
-
-      const content = fs.readFileSync(filePath, "utf-8");
-      // Compact JSON is all on one line
-      expect(content.split("\n").length).toBe(1);
-    });
-  });
-
   describe("Atomic Writes", () => {
     it("should not leave temp files after successful write", async () => {
       storage = new FileStorageBackend({ filePath, saveDebounce: 10, saveInterval: 60000 });

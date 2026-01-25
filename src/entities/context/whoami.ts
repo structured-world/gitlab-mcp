@@ -17,7 +17,7 @@
  */
 
 import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from "../../config";
-import { logger } from "../../logger";
+import { logInfo, logDebug } from "../../logger";
 import { isOAuthEnabled } from "../../oauth/index.js";
 import { ConnectionManager } from "../../services/ConnectionManager";
 import { getTokenCreationUrl } from "../../services/TokenScopeDetector";
@@ -58,7 +58,7 @@ async function fetchCurrentUser(): Promise<WhoamiUserInfo | null> {
     });
 
     if (!response.ok) {
-      logger.debug({ status: response.status }, "Failed to fetch current user");
+      logDebug("Failed to fetch current user", { status: response.status });
       return null;
     }
 
@@ -82,10 +82,9 @@ async function fetchCurrentUser(): Promise<WhoamiUserInfo | null> {
       state: data.state as "active" | "blocked" | "deactivated",
     };
   } catch (error) {
-    logger.debug(
-      { error: error instanceof Error ? error.message : String(error) },
-      "Error fetching current user"
-    );
+    logDebug("Error fetching current user", {
+      error: error instanceof Error ? error.message : String(error),
+    });
     return null;
   }
 }
@@ -366,15 +365,14 @@ export async function executeWhoami(): Promise<WhoamiResult> {
 
     if (scopesRefreshed) {
       // Token scopes changed - refresh the tool registry and notify clients
-      logger.info("Token scopes changed - refreshing tool registry");
+      logInfo("Token scopes changed - refreshing tool registry");
       RegistryManager.getInstance().refreshCache();
       await sendToolsListChangedNotification();
     }
   } catch (error) {
-    logger.debug(
-      { error: error instanceof Error ? error.message : String(error) },
-      "Failed to refresh token scopes"
-    );
+    logDebug("Failed to refresh token scopes", {
+      error: error instanceof Error ? error.message : String(error),
+    });
   }
 
   // Step 2: Fetch all information (AFTER refresh so we get updated data)
@@ -389,17 +387,14 @@ export async function executeWhoami(): Promise<WhoamiResult> {
   const warnings = generateWarnings(tokenInfo, capabilities);
   const recommendations = generateRecommendations(tokenInfo, capabilities, serverInfo);
 
-  logger.debug(
-    {
-      hasUser: userInfo !== null,
-      hasToken: tokenInfo !== null,
-      availableTools: capabilities.availableToolCount,
-      warnings: warnings.length,
-      recommendations: recommendations.length,
-      scopesRefreshed,
-    },
-    "Whoami executed"
-  );
+  logDebug("Whoami executed", {
+    hasUser: userInfo !== null,
+    hasToken: tokenInfo !== null,
+    availableTools: capabilities.availableToolCount,
+    warnings: warnings.length,
+    recommendations: recommendations.length,
+    scopesRefreshed,
+  });
 
   return {
     user: userInfo,

@@ -3,7 +3,7 @@ import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import { packageName, packageVersion } from "./config";
 import { setupHandlers } from "./handlers";
 import { setDetectedSchemaMode } from "./utils/schema-utils";
-import { logger } from "./logger";
+import { logInfo, logWarn, logError, logDebug } from "./logger";
 
 /** Default session idle timeout: 30 minutes */
 const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -45,7 +45,7 @@ export class SessionManager {
     // Don't keep the process alive just for cleanup
     this.cleanupInterval.unref();
 
-    logger.info({ sessionTimeoutMs: this.sessionTimeoutMs }, "Session manager started");
+    logInfo("Session manager started", { sessionTimeoutMs: this.sessionTimeoutMs });
   }
 
   /**
@@ -55,7 +55,7 @@ export class SessionManager {
   async createSession(sessionId: string, transport: Transport): Promise<Server> {
     // Guard against duplicate session IDs — close existing before allocating new resources
     if (this.sessions.has(sessionId)) {
-      logger.warn({ sessionId }, "Duplicate sessionId detected — closing existing session");
+      logWarn("Duplicate sessionId detected — closing existing session", { sessionId });
       await this.removeSession(sessionId);
     }
 
@@ -87,7 +87,7 @@ export class SessionManager {
       lastActivityAt: now,
     });
 
-    logger.info({ sessionId, activeSessions: this.sessions.size }, "Session created");
+    logInfo("Session created", { sessionId, activeSessions: this.sessions.size });
 
     return server;
   }
@@ -114,13 +114,10 @@ export class SessionManager {
     try {
       await session.server.close();
     } catch (error) {
-      logger.debug(
-        { err: error, sessionId },
-        "Error closing session server (may already be closed)"
-      );
+      logDebug("Error closing session server (may already be closed)", { err: error, sessionId });
     }
 
-    logger.info({ sessionId, activeSessions: this.sessions.size }, "Session removed");
+    logInfo("Session removed", { sessionId, activeSessions: this.sessions.size });
   }
 
   /**
@@ -134,20 +131,17 @@ export class SessionManager {
         session.server
           .notification({ method: "notifications/tools/list_changed" })
           .then(() => {
-            logger.debug({ sessionId }, "Sent tools/list_changed to session");
+            logDebug("Sent tools/list_changed to session", { sessionId });
           })
           .catch((error: unknown) => {
-            logger.debug({ err: error, sessionId }, "Failed to send tools/list_changed to session");
+            logDebug("Failed to send tools/list_changed to session", { err: error, sessionId });
           })
       );
     }
 
     await Promise.allSettled(promises);
 
-    logger.info(
-      { sessionCount: this.sessions.size },
-      "Broadcast tools/list_changed to all sessions"
-    );
+    logInfo("Broadcast tools/list_changed to all sessions", { sessionCount: this.sessions.size });
   }
 
   /**
@@ -172,15 +166,15 @@ export class SessionManager {
 
     if (stale.length === 0) return;
 
-    logger.info(
-      { staleCount: stale.length, activeSessions: this.sessions.size },
-      "Cleaning up stale sessions"
-    );
+    logInfo("Cleaning up stale sessions", {
+      staleCount: stale.length,
+      activeSessions: this.sessions.size,
+    });
 
     for (const sessionId of stale) {
       // Fire-and-forget cleanup
       this.removeSession(sessionId).catch((error: unknown) => {
-        logger.error({ err: error, sessionId }, "Error during stale session cleanup");
+        logError("Error during stale session cleanup", { err: error, sessionId });
       });
     }
   }
@@ -197,7 +191,7 @@ export class SessionManager {
     const sessionIds = [...this.sessions.keys()];
     await Promise.allSettled(sessionIds.map(id => this.removeSession(id)));
 
-    logger.info("Session manager shut down");
+    logInfo("Session manager shut down");
   }
 }
 

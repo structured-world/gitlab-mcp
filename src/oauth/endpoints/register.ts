@@ -7,7 +7,7 @@
 
 import { Request, Response } from "express";
 import { randomUUID } from "crypto";
-import { logger } from "../../logger";
+import { logInfo, logError } from "../../logger";
 
 /** Client registration request body */
 interface ClientRegistrationRequest {
@@ -98,15 +98,12 @@ export async function registerHandler(req: Request, res: Response): Promise<void
 
     registeredClients.set(client_id, clientData);
 
-    logger.info(
-      {
-        client_id,
-        client_name,
-        redirect_uris,
-        token_endpoint_auth_method,
-      },
-      "New OAuth client registered via DCR"
-    );
+    logInfo("New OAuth client registered via DCR", {
+      client_id,
+      client_name,
+      redirect_uris,
+      token_endpoint_auth_method,
+    });
 
     // Return client credentials per RFC 7591
     const response: Record<string, unknown> = {
@@ -125,7 +122,7 @@ export async function registerHandler(req: Request, res: Response): Promise<void
 
     res.status(201).json(response);
   } catch (error: unknown) {
-    logger.error({ err: error as Error }, "Error in dynamic client registration");
+    logError("Error in dynamic client registration", { err: error as Error });
     res.status(500).json({
       error: "server_error",
       error_description: "Failed to register client",

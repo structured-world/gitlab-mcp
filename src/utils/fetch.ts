@@ -12,7 +12,7 @@
  */
 
 import * as fs from "fs";
-import { logger } from "../logger";
+import { logInfo, logWarn, logDebug } from "../logger";
 import {
   SKIP_TLS_VERIFY,
   GITLAB_AUTH_COOKIE_PATH,
@@ -62,7 +62,7 @@ function loadCookieHeader(): string | null {
 
     return cookies.length > 0 ? cookies.join("; ") : null;
   } catch (error: unknown) {
-    logger.warn({ err: error }, "Failed to load GitLab authentication cookies");
+    logWarn("Failed to load GitLab authentication cookies", { err: error });
     return null;
   }
 }
@@ -77,10 +77,10 @@ function loadCACertificate(): Buffer | undefined {
 
   try {
     const ca = fs.readFileSync(GITLAB_CA_CERT_PATH);
-    logger.info(`Custom CA certificate loaded from ${GITLAB_CA_CERT_PATH}`);
+    logInfo(`Custom CA certificate loaded from ${GITLAB_CA_CERT_PATH}`);
     return ca;
   } catch (error: unknown) {
-    logger.error({ err: error }, `Failed to load CA certificate from ${GITLAB_CA_CERT_PATH}`);
+    logWarn(`Failed to load CA certificate from ${GITLAB_CA_CERT_PATH}`, { err: error });
     return undefined;
   }
 }
@@ -109,10 +109,10 @@ function createDispatcher(): unknown {
   if (SKIP_TLS_VERIFY || NODE_TLS_REJECT_UNAUTHORIZED === "0") {
     tlsOptions.rejectUnauthorized = false;
     if (SKIP_TLS_VERIFY) {
-      logger.warn("TLS certificate verification disabled via SKIP_TLS_VERIFY");
+      logWarn("TLS certificate verification disabled via SKIP_TLS_VERIFY");
     }
     if (NODE_TLS_REJECT_UNAUTHORIZED === "0") {
-      logger.warn("TLS certificate verification disabled via NODE_TLS_REJECT_UNAUTHORIZED");
+      logWarn("TLS certificate verification disabled via NODE_TLS_REJECT_UNAUTHORIZED");
     }
   }
 
@@ -125,14 +125,14 @@ function createDispatcher(): unknown {
 
   // SOCKS proxy not supported with native fetch
   if (proxyUrl && isSocksProxy(proxyUrl)) {
-    logger.info(`Using SOCKS proxy: ${proxyUrl}`);
-    logger.warn("SOCKS proxy not supported with native fetch. Consider HTTP/HTTPS proxy.");
+    logInfo(`Using SOCKS proxy: ${proxyUrl}`);
+    logWarn("SOCKS proxy not supported with native fetch. Consider HTTP/HTTPS proxy.");
     return undefined;
   }
 
   // HTTP/HTTPS proxy
   if (proxyUrl) {
-    logger.info(`Using proxy: ${proxyUrl}`);
+    logInfo(`Using proxy: ${proxyUrl}`);
     return new undici.ProxyAgent({
       uri: proxyUrl,
       requestTls: hasTlsConfig ? tlsOptions : undefined,
@@ -172,11 +172,11 @@ function getGitLabToken(): string | undefined {
   if (isOAuthEnabled()) {
     const context = getTokenContext();
     if (!context) {
-      logger.warn("OAuth mode: no token context available - API call will fail with 401");
+      logWarn("OAuth mode: no token context available - API call will fail with 401");
     } else if (!context.gitlabToken) {
-      logger.warn("OAuth mode: token context exists but no gitlabToken set");
+      logWarn("OAuth mode: token context exists but no gitlabToken set");
     } else {
-      logger.debug({ userId: context.gitlabUserId }, "OAuth mode: using token from context");
+      logDebug("OAuth mode: using token from context", { userId: context.gitlabUserId });
     }
     return context?.gitlabToken;
   }
@@ -442,7 +442,7 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
 
   // Debug log at request start (redact sensitive URL parts)
   const safeUrl = redactUrlForLogging(url);
-  logger.debug({ url: safeUrl, method, timeout: API_TIMEOUT_MS }, "Starting GitLab API request");
+  logDebug("Starting GitLab API request", { url: safeUrl, method, timeout: API_TIMEOUT_MS });
 
   // Use a unique Symbol to identify internal timeout aborts vs caller aborts
   const TIMEOUT_REASON = Symbol("GitLab API timeout");
@@ -496,10 +496,12 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
     cleanup();
 
     const duration = Date.now() - startTime;
-    logger.debug(
-      { url: safeUrl, method, status: response.status, duration },
-      "GitLab API request completed"
-    );
+    logDebug("GitLab API request completed", {
+      url: safeUrl,
+      method,
+      status: response.status,
+      duration,
+    });
 
     // Capture GitLab response for access logging
     requestTracker.setGitLabResponseForCurrentRequest(response.status, duration);
@@ -517,10 +519,12 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
 
       if (isInternalTimeout) {
         // Internal timeout - log and throw timeout error
-        logger.warn(
-          { url: safeUrl, method, timeout: API_TIMEOUT_MS, duration },
-          "GitLab API request timed out"
-        );
+        logWarn("GitLab API request timed out", {
+          url: safeUrl,
+          method,
+          timeout: API_TIMEOUT_MS,
+          duration,
+        });
 
         // Capture timeout for access logging
         requestTracker.setGitLabResponseForCurrentRequest("timeout", duration);
@@ -528,24 +532,23 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
         throw new Error(`GitLab API timeout after ${API_TIMEOUT_MS}ms`);
       } else {
         // Caller abort - re-throw original error to preserve abort reason
-        logger.debug(
-          { url: safeUrl, method, duration, reason: callerSignal?.reason },
-          "GitLab API request aborted by caller"
-        );
+        logDebug("GitLab API request aborted by caller", {
+          url: safeUrl,
+          method,
+          duration,
+          reason: callerSignal?.reason,
+        });
         throw error;
       }
     }
 
     // Log other errors with full error object for stack trace
-    logger.warn(
-      {
-        url: safeUrl,
-        method,
-        err: error instanceof Error ? error : new Error(String(error)),
-        duration,
-      },
-      "GitLab API request failed"
-    );
+    logWarn("GitLab API request failed", {
+      url: safeUrl,
+      method,
+      err: error instanceof Error ? error : new Error(String(error)),
+      duration,
+    });
 
     // Capture error for access logging
     requestTracker.setGitLabResponseForCurrentRequest("error", duration);
@@ -616,17 +619,14 @@ export async function enhancedFetch(
           }
         }
 
-        logger.warn(
-          {
-            url: safeUrl,
-            method,
-            status: response.status,
-            attempt: attempt + 1,
-            maxRetries,
-            retryDelay,
-          },
-          "Retrying request after server error"
-        );
+        logWarn("Retrying request after server error", {
+          url: safeUrl,
+          method,
+          status: response.status,
+          attempt: attempt + 1,
+          maxRetries,
+          retryDelay,
+        });
 
         // Cancel response body to release connection before retry
         // Wrap in try-catch as cancel() can throw if body is already disturbed
@@ -648,17 +648,14 @@ export async function enhancedFetch(
       if (isRetryableError(error) && attempt < maxRetries) {
         const retryDelay = calculateBackoffDelay(attempt);
 
-        logger.warn(
-          {
-            url: safeUrl,
-            method,
-            error: lastError.message,
-            attempt: attempt + 1,
-            maxRetries,
-            retryDelay,
-          },
-          "Retrying request after error"
-        );
+        logWarn("Retrying request after error", {
+          url: safeUrl,
+          method,
+          error: lastError.message,
+          attempt: attempt + 1,
+          maxRetries,
+          retryDelay,
+        });
 
         await sleep(retryDelay, fetchOptions.signal ?? undefined);
         continue;

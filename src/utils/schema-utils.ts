@@ -21,7 +21,7 @@ import {
   getActionDescriptionOverrides,
   getParamDescriptionOverrides,
 } from "../config";
-import { logger } from "../logger";
+import { logInfo, logDebug, logWarn } from "../logger";
 
 // ============================================================================
 // Per-Session Schema Mode (for GITLAB_SCHEMA_MODE=auto)
@@ -46,10 +46,10 @@ export function setDetectedSchemaMode(clientName?: string): void {
   }
 
   detectedSchemaMode = detectSchemaMode(clientName);
-  logger.info(
-    { clientName, detectedMode: detectedSchemaMode },
-    "Auto-detected schema mode from client"
-  );
+  logInfo("Auto-detected schema mode from client", {
+    clientName,
+    detectedMode: detectedSchemaMode,
+  });
 }
 
 /**
@@ -117,7 +117,7 @@ export function filterDiscriminatedUnionActions(schema: JSONSchema, toolName: st
     if (actionProp.const) {
       const isAllowed = !deniedActions.has(actionProp.const.toLowerCase());
       if (!isAllowed) {
-        logger.debug(`Tool '${toolName}': filtered out action '${actionProp.const}' from schema`);
+        logDebug(`Tool '${toolName}': filtered out action '${actionProp.const}' from schema`);
       }
       return isAllowed;
     }
@@ -126,7 +126,7 @@ export function filterDiscriminatedUnionActions(schema: JSONSchema, toolName: st
     if (actionProp.enum?.[0]) {
       const isAllowed = !deniedActions.has(actionProp.enum[0].toLowerCase());
       if (!isAllowed) {
-        logger.debug(`Tool '${toolName}': filtered out action '${actionProp.enum[0]}' from schema`);
+        logDebug(`Tool '${toolName}': filtered out action '${actionProp.enum[0]}' from schema`);
       }
       return isAllowed;
     }
@@ -136,7 +136,7 @@ export function filterDiscriminatedUnionActions(schema: JSONSchema, toolName: st
 
   // If all branches filtered out, return empty schema
   if (result.oneOf.length === 0) {
-    logger.warn(`Tool '${toolName}': all actions filtered out!`);
+    logWarn(`Tool '${toolName}': all actions filtered out!`);
     return { type: "object", properties: {} };
   }
 
@@ -284,7 +284,7 @@ function applyOverridesToProperties(
     const override = paramOverrides.get(paramKey);
     if (override) {
       prop.description = override;
-      logger.debug(`Applied param override for '${toolName}.${propName}': "${override}"`);
+      logDebug(`Applied param override for '${toolName}.${propName}': "${override}"`);
     }
 
     // For action property, also check action-level overrides
@@ -293,7 +293,7 @@ function applyOverridesToProperties(
       const actionOverride = actionOverrides.get(actionKey);
       if (actionOverride) {
         prop.description = actionOverride;
-        logger.debug(`Applied action override for '${toolName}': "${actionOverride}"`);
+        logDebug(`Applied action override for '${toolName}': "${actionOverride}"`);
       }
     }
   }
@@ -418,11 +418,11 @@ function filterFlatSchemaActions(schema: JSONSchema, toolName: string): JSONSche
     );
 
     if (filteredActions.length === 0) {
-      logger.warn(`Tool '${toolName}': all actions filtered out from flat schema!`);
+      logWarn(`Tool '${toolName}': all actions filtered out from flat schema!`);
     } else if (filteredActions.length < originalActions.length) {
       result.properties.action.enum = filteredActions;
       result.properties.action.description = `Action to perform: ${filteredActions.join(", ")}`;
-      logger.debug(
+      logDebug(
         `Tool '${toolName}': filtered flat schema actions [${originalActions.join(", ")}] -> [${filteredActions.join(", ")}]`
       );
     }

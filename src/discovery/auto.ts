@@ -11,7 +11,7 @@
 import { parseGitRemote, GitRemoteInfo, listGitRemotes } from "./git-remote";
 import { findProfileByHost, ProfileMatchResult } from "./profile-matcher";
 import { findProjectConfig, ProjectConfig, loadAndApplyProfile } from "../profiles";
-import { logger } from "../logger";
+import { logInfo, logWarn, logError, logDebug } from "../logger";
 import { extractNamespaceFromPath } from "../utils/namespace";
 
 // ============================================================================
@@ -65,7 +65,7 @@ export async function autoDiscover(
 ): Promise<AutoDiscoveryResult | null> {
   const repoPath = options.repoPath ?? process.cwd();
 
-  logger.info({ path: repoPath }, "Starting auto-discovery");
+  logInfo("Starting auto-discovery", { path: repoPath });
 
   // 1. Parse git remote
   const remote = await parseGitRemote({
@@ -74,18 +74,15 @@ export async function autoDiscover(
   });
 
   if (!remote) {
-    logger.warn({ path: repoPath }, "Auto-discovery: No git remote found");
+    logWarn("Auto-discovery: No git remote found", { path: repoPath });
     return null;
   }
 
-  logger.info(
-    {
-      host: remote.host,
-      projectPath: remote.projectPath,
-      remote: remote.remoteName,
-    },
-    "Detected git remote"
-  );
+  logInfo("Detected git remote", {
+    host: remote.host,
+    projectPath: remote.projectPath,
+    remote: remote.remoteName,
+  });
 
   // Get all available remotes for info
   const availableRemotes = await listGitRemotes(repoPath);
@@ -94,15 +91,12 @@ export async function autoDiscover(
   const matchedProfile = await findProfileByHost(remote.host);
 
   if (matchedProfile) {
-    logger.info(
-      {
-        profile: matchedProfile.profileName,
-        matchType: matchedProfile.matchType,
-      },
-      "Matched host to user profile"
-    );
+    logInfo("Matched host to user profile", {
+      profile: matchedProfile.profileName,
+      matchType: matchedProfile.matchType,
+    });
   } else {
-    logger.debug({ host: remote.host }, "No matching user profile found");
+    logDebug("No matching user profile found", { host: remote.host });
   }
 
   // 3. Load project configs (unless disabled)
@@ -110,7 +104,7 @@ export async function autoDiscover(
   if (!options.noProjectConfig) {
     projectConfig = await findProjectConfig(repoPath);
     if (projectConfig) {
-      logger.info({ path: projectConfig.configPath }, "Found project configuration");
+      logInfo("Found project configuration", { path: projectConfig.configPath });
     }
   }
 
@@ -137,16 +131,16 @@ export async function autoDiscover(
       try {
         await loadAndApplyProfile(matchedProfile.profileName);
         result.profileApplied = true;
-        logger.info({ profile: matchedProfile.profileName }, "Applied matched profile");
+        logInfo("Applied matched profile", { profile: matchedProfile.profileName });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        logger.error({ error: message }, "Failed to apply matched profile");
+        logError("Failed to apply matched profile", { error: message });
       }
     } else {
       // Set API URL from discovered host if no profile matched
       if (!process.env.GITLAB_API_URL) {
         process.env.GITLAB_API_URL = apiUrl;
-        logger.info({ apiUrl }, "Set GITLAB_API_URL from discovered host");
+        logInfo("Set GITLAB_API_URL from discovered host", { apiUrl });
       }
     }
 
@@ -155,7 +149,7 @@ export async function autoDiscover(
       result.projectConfigApplied = true;
       // Project config application is logged but not enforced yet
       // See: https://github.com/structured-world/gitlab-mcp/issues/61
-      logger.debug({ config: projectConfig }, "Project config loaded (enforcement pending)");
+      logDebug("Project config loaded (enforcement pending)", { config: projectConfig });
     }
 
     // Set default context
@@ -172,7 +166,7 @@ function setDefaultContext(projectPath: string): void {
   // Set as environment variables for tools to use
   if (!process.env.GITLAB_DEFAULT_PROJECT) {
     process.env.GITLAB_DEFAULT_PROJECT = projectPath;
-    logger.debug({ project: projectPath }, "Set default project context");
+    logDebug("Set default project context", { project: projectPath });
   }
 
   if (!process.env.GITLAB_DEFAULT_NAMESPACE) {
@@ -180,7 +174,7 @@ function setDefaultContext(projectPath: string): void {
     const namespace = extractNamespaceFromPath(projectPath);
     if (namespace) {
       process.env.GITLAB_DEFAULT_NAMESPACE = namespace;
-      logger.debug({ namespace }, "Set default namespace context");
+      logDebug("Set default namespace context", { namespace });
     }
   }
 }

@@ -24,7 +24,7 @@ import {
   ProjectProfileSchema,
   ProfileValidationResult,
 } from "./types";
-import { logger } from "../logger";
+import { logInfo, logWarn, logError, logDebug } from "../logger";
 
 // ============================================================================
 // Constants
@@ -56,11 +56,11 @@ export async function loadProjectConfig(repoPath: string): Promise<ProjectConfig
   try {
     const stat = await fs.stat(configDir);
     if (!stat.isDirectory()) {
-      logger.warn({ path: configDir }, "Project config path exists but is not a directory");
+      logWarn("Project config path exists but is not a directory", { path: configDir });
       return null;
     }
   } catch {
-    logger.debug({ path: configDir }, "No project config directory found");
+    logDebug("No project config directory found", { path: configDir });
     return null;
   }
 
@@ -74,12 +74,12 @@ export async function loadProjectConfig(repoPath: string): Promise<ProjectConfig
     const content = await fs.readFile(presetPath, "utf8");
     const parsed = yaml.parse(content) as unknown;
     config.preset = ProjectPresetSchema.parse(parsed);
-    logger.debug({ path: presetPath }, "Loaded project preset");
+    logDebug("Loaded project preset", { path: presetPath });
   } catch (error) {
     // File doesn't exist - that's OK
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ error: message, path: presetPath }, "Failed to parse project preset");
+      logError("Failed to parse project preset", { error: message, path: presetPath });
       throw new Error(`Invalid project preset at ${presetPath}: ${message}`);
     }
   }
@@ -90,33 +90,27 @@ export async function loadProjectConfig(repoPath: string): Promise<ProjectConfig
     const content = await fs.readFile(profilePath, "utf8");
     const parsed = yaml.parse(content) as unknown;
     config.profile = ProjectProfileSchema.parse(parsed);
-    logger.debug({ path: profilePath }, "Loaded project profile");
+    logDebug("Loaded project profile", { path: profilePath });
   } catch (error) {
     // File doesn't exist - that's OK
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ error: message, path: profilePath }, "Failed to parse project profile");
+      logError("Failed to parse project profile", { error: message, path: profilePath });
       throw new Error(`Invalid project profile at ${profilePath}: ${message}`);
     }
   }
 
   // Return null if neither file exists
   if (!config.preset && !config.profile) {
-    logger.debug(
-      { path: configDir },
-      "Project config directory exists but contains no config files"
-    );
+    logDebug("Project config directory exists but contains no config files", { path: configDir });
     return null;
   }
 
-  logger.info(
-    {
-      path: configDir,
-      hasPreset: !!config.preset,
-      hasProfile: !!config.profile,
-    },
-    "Loaded project configuration"
-  );
+  logInfo("Loaded project configuration", {
+    path: configDir,
+    hasPreset: !!config.preset,
+    hasProfile: !!config.profile,
+  });
 
   return config;
 }
@@ -148,7 +142,7 @@ export async function findProjectConfig(startPath: string): Promise<ProjectConfi
     const gitDir = path.join(currentPath, ".git");
     try {
       await fs.access(gitDir);
-      logger.debug({ path: currentPath }, "Found .git without .gitlab-mcp, stopping search");
+      logDebug("Found .git without .gitlab-mcp, stopping search", { path: currentPath });
       return null;
     } catch {
       // .git doesn't exist, continue up the tree

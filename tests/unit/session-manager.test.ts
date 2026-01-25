@@ -35,13 +35,17 @@ jest.mock("../../src/logger", () => ({
     error: jest.fn(),
     warn: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 import { SessionManager, getSessionManager, resetSessionManager } from "../../src/session-manager";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { setupHandlers } from "../../src/handlers";
 import { setDetectedSchemaMode } from "../../src/utils/schema-utils";
-import { logger } from "../../src/logger";
+import { logWarn } from "../../src/logger";
 
 describe("SessionManager", () => {
   let manager: SessionManager;
@@ -139,9 +143,9 @@ describe("SessionManager", () => {
       // Manager should still have exactly 1 session with that ID
       expect(manager.activeSessionCount).toBe(1);
       // Warning should have been logged
-      expect(logger.warn).toHaveBeenCalledWith(
-        { sessionId: "session-dup" },
-        "Duplicate sessionId detected — closing existing session"
+      expect(logWarn).toHaveBeenCalledWith(
+        "Duplicate sessionId detected — closing existing session",
+        { sessionId: "session-dup" }
       );
       // New server is a distinct instance
       expect(server2).not.toBe(server1);

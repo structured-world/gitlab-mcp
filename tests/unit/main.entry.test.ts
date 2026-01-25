@@ -12,6 +12,10 @@ jest.mock("../../src/logger", () => ({
     warn: jest.fn(),
     debug: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 // Mock profiles module to prevent file system access during tests
@@ -36,7 +40,6 @@ jest.mock("../../src/cli-utils", () => ({
 }));
 
 const mockStartServer = jest.fn<() => Promise<void>>();
-const mockLogger = { error: jest.fn() };
 
 // Mock process.exit to prevent tests from actually exiting
 const mockExit = jest
@@ -50,10 +53,11 @@ describe("main entry point", () => {
 
     // Reset mocks
     const { startServer } = require("../../src/server");
-    const { logger } = require("../../src/logger");
+    const { logError: mockLogErrorFn } = require("../../src/logger");
 
     startServer.mockImplementation(mockStartServer);
-    logger.error.mockImplementation(mockLogger.error);
+    // Store the mocked logError for assertions
+    (global as Record<string, unknown>).__mockLogError = mockLogErrorFn;
   });
 
   afterEach(() => {
@@ -73,8 +77,11 @@ describe("main entry point", () => {
     // Give it a moment to execute
     await new Promise(resolve => setTimeout(resolve, 10));
 
+    const logErrorFn = (global as Record<string, unknown>).__mockLogError as jest.MockedFunction<
+      typeof import("../../src/logger").logError
+    >;
     expect(mockStartServer).toHaveBeenCalled();
-    expect(mockLogger.error).not.toHaveBeenCalled();
+    expect(logErrorFn).not.toHaveBeenCalled();
     expect(mockExit).not.toHaveBeenCalled();
   });
 
@@ -88,10 +95,13 @@ describe("main entry point", () => {
     // Give it a moment to execute the catch block
     await new Promise(resolve => setTimeout(resolve, 10));
 
+    const logErrorFn = (global as Record<string, unknown>).__mockLogError as jest.MockedFunction<
+      typeof import("../../src/logger").logError
+    >;
     expect(mockStartServer).toHaveBeenCalled();
-    expect(mockLogger.error).toHaveBeenCalledWith(
-      "Failed to start GitLab MCP Server: Error: Server startup failed"
-    );
+    expect(logErrorFn).toHaveBeenCalledWith("Failed to start GitLab MCP Server", {
+      error: "Error: Server startup failed",
+    });
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
@@ -119,6 +129,10 @@ describe("main entry point", () => {
     }));
     jest.doMock("../../src/logger", () => ({
       logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() },
+      logInfo: jest.fn(),
+      logWarn: jest.fn(),
+      logError: jest.fn(),
+      logDebug: jest.fn(),
     }));
     jest.doMock("../../src/profiles", () => ({
       tryApplyProfileFromEnv: jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined),
@@ -159,6 +173,10 @@ describe("main entry point", () => {
     }));
     jest.doMock("../../src/logger", () => ({
       logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() },
+      logInfo: jest.fn(),
+      logWarn: jest.fn(),
+      logError: jest.fn(),
+      logDebug: jest.fn(),
     }));
     jest.doMock("../../src/profiles", () => ({
       tryApplyProfileFromEnv: jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined),
@@ -197,6 +215,10 @@ describe("main entry point", () => {
     }));
     jest.doMock("../../src/logger", () => ({
       logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() },
+      logInfo: jest.fn(),
+      logWarn: jest.fn(),
+      logError: jest.fn(),
+      logDebug: jest.fn(),
     }));
     jest.doMock("../../src/profiles", () => ({
       tryApplyProfileFromEnv: jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined),
@@ -235,6 +257,10 @@ describe("main entry point", () => {
     }));
     jest.doMock("../../src/logger", () => ({
       logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() },
+      logInfo: jest.fn(),
+      logWarn: jest.fn(),
+      logError: jest.fn(),
+      logDebug: jest.fn(),
     }));
     jest.doMock("../../src/profiles", () => ({
       tryApplyProfileFromEnv: jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined),

@@ -1,6 +1,6 @@
 import { ConnectionManager } from "./ConnectionManager";
 import { GitLabTier } from "./GitLabVersionDetector";
-import { logger } from "../logger";
+import { logDebug, logWarn } from "../logger";
 import { parseVersion } from "../utils/version";
 
 interface ToolRequirement {
@@ -370,9 +370,12 @@ export class ToolAvailability {
     }
 
     if (restricted.length > 0) {
-      logger.debug(
-        `Tool '${toolName}': restricted parameters for tier=${instanceTier}, version=${rawVersion}: [${restricted.join(", ")}]`
-      );
+      logDebug("Tool restricted parameters", {
+        toolName,
+        tier: instanceTier,
+        version: rawVersion,
+        restricted: restricted.join(", "),
+      });
     }
 
     return restricted;
@@ -435,7 +438,7 @@ export class ToolAvailability {
 
     // Add null check as extra safety
     if (!connectionManager) {
-      logger.debug(`Tool availability check for '${toolName}': ConnectionManager instance is null`);
+      logDebug("Tool availability check: ConnectionManager instance is null", { toolName });
       return false;
     }
 
@@ -452,7 +455,7 @@ export class ToolAvailability {
       }
 
       // Tool not found in requirements - unknown tool
-      logger.debug(`Tool '${toolName}' not found in requirements database`);
+      logDebug("Tool not found in requirements database", { toolName });
       return parseVersion(instanceInfo.version) >= parseVersion("15.0");
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
@@ -460,13 +463,13 @@ export class ToolAvailability {
       // In OAuth mode, introspection is deferred until first authenticated request.
       // Allow all tools initially - they'll be properly filtered on actual use.
       if (errorMessage.includes("Connection not initialized")) {
-        logger.debug(
-          `Tool availability check for '${toolName}': instance info not available yet, allowing`
-        );
+        logDebug("Tool availability check: instance info not available yet, allowing", {
+          toolName,
+        });
         return true;
       }
 
-      logger.warn(`Failed to check tool availability for '${toolName}': ${errorMessage}`);
+      logWarn("Failed to check tool availability", { toolName, error: errorMessage });
       return false;
     }
   }

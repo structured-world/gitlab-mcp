@@ -62,7 +62,7 @@ import { ConnectionManager } from "./services/ConnectionManager";
 import { isToolAvailableForScopes } from "./services/TokenScopeDetector";
 import type { GitLabScope } from "./services/TokenScopeDetector";
 import type { GitLabTier } from "./services/GitLabVersionDetector";
-import { logger } from "./logger";
+import { logDebug } from "./logger";
 import {
   transformToolSchema,
   stripTierRestrictedParameters,
@@ -188,9 +188,9 @@ class RegistryManager {
     this.descriptionOverrides = getToolDescriptionOverrides();
 
     if (this.descriptionOverrides.size > 0) {
-      logger.debug(`Loaded ${this.descriptionOverrides.size} tool description overrides`);
+      logDebug("Loaded tool description overrides", { count: this.descriptionOverrides.size });
       for (const [toolName, description] of this.descriptionOverrides) {
-        logger.debug(`Tool description override: ${toolName} -> "${description}"`);
+        logDebug("Tool description override", { toolName, description });
       }
     }
   }
@@ -313,33 +313,33 @@ class RegistryManager {
       for (const [toolName, tool] of registry) {
         // Apply GITLAB_READ_ONLY_MODE filtering at registry level
         if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) {
-          logger.debug(`Tool '${toolName}' filtered out: read-only mode`);
+          logDebug("Tool filtered out: read-only mode", { toolName });
           continue;
         }
 
         // Apply GITLAB_DENIED_TOOLS_REGEX filtering at registry level
         if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) {
-          logger.debug(`Tool '${toolName}' filtered out: matches denied regex`);
+          logDebug("Tool filtered out: matches denied regex", { toolName });
           continue;
         }
 
         // Apply token scope filtering - skip tools the token can't access
         if (tokenScopes && !isToolAvailableForScopes(toolName, tokenScopes)) {
-          logger.debug(`Tool '${toolName}' filtered out: insufficient token scopes`);
+          logDebug("Tool filtered out: insufficient token scopes", { toolName });
           continue;
         }
 
         // Apply GitLab version/tier filtering at registry level
         if (!ToolAvailability.isToolAvailable(toolName)) {
           const reason = ToolAvailability.getUnavailableReason(toolName);
-          logger.debug(`Tool '${toolName}' filtered out: ${reason}`);
+          logDebug("Tool filtered out", { toolName, reason });
           continue;
         }
 
         // Check if all actions are denied for this CQRS tool
         const allActions = extractActionsFromSchema(tool.inputSchema);
         if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) {
-          logger.debug(`Tool '${toolName}' filtered out: all actions denied`);
+          logDebug("Tool filtered out: all actions denied", { toolName });
           continue;
         }
 
@@ -367,7 +367,7 @@ class RegistryManager {
         };
 
         if (customDescription) {
-          logger.debug(`Applied description override for '${toolName}': "${customDescription}"`);
+          logDebug("Applied description override", { toolName, customDescription });
         }
 
         // Add to cache
@@ -400,9 +400,9 @@ class RegistryManager {
       }
     }
 
-    logger.debug(
-      `Registry manager built cache with ${this.toolLookupCache.size} tools after filtering`
-    );
+    logDebug("Registry manager built cache after filtering", {
+      toolCount: this.toolLookupCache.size,
+    });
   }
 
   /**

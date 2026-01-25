@@ -81,8 +81,6 @@ export interface StorageConfig {
     path: string;
     /** Auto-save interval in milliseconds (default: 30000) */
     saveInterval?: number;
-    /** Pretty print JSON (default: false in production) */
-    prettyPrint?: boolean;
   };
 
   /** PostgreSQL storage options */

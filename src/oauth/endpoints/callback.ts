@@ -19,7 +19,7 @@ import { loadOAuthConfig } from "../config";
 import { sessionStore } from "../session-store";
 import { exchangeGitLabAuthCode, getGitLabUser } from "../gitlab-device-flow";
 import { generateSessionId, generateAuthorizationCode, calculateTokenExpiry } from "../token-utils";
-import { logger } from "../../logger";
+import { logInfo, logWarn, logError, logDebug } from "../../logger";
 
 /**
  * OAuth callback handler
@@ -48,7 +48,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
 
   // Handle GitLab error responses
   if (error) {
-    logger.warn({ error, error_description }, "GitLab authorization error");
+    logWarn("GitLab authorization error", { error, error_description });
     // Redirect to client with error if we can find the flow state
     if (state) {
       const flow = sessionStore.getAuthCodeFlow(state);
@@ -156,14 +156,11 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     // Clean up the auth code flow state
     sessionStore.deleteAuthCodeFlow(state);
 
-    logger.info(
-      {
-        sessionId: sessionId.substring(0, 8) + "...",
-        userId: userInfo.id,
-        username: userInfo.username,
-      },
-      "Authorization Code Flow completed successfully"
-    );
+    logInfo("Authorization Code Flow completed successfully", {
+      sessionId: sessionId.substring(0, 8) + "...",
+      userId: userInfo.id,
+      username: userInfo.username,
+    });
 
     // Redirect to client with MCP authorization code
     const redirectUrl = new URL(flow.clientRedirectUri);
@@ -172,14 +169,13 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       redirectUrl.searchParams.set("state", flow.clientState);
     }
 
-    logger.debug(
-      { redirectUri: flow.clientRedirectUri },
-      "Redirecting to client with authorization code"
-    );
+    logDebug("Redirecting to client with authorization code", {
+      redirectUri: flow.clientRedirectUri,
+    });
 
     res.redirect(redirectUrl.toString());
   } catch (error: unknown) {
-    logger.error({ err: error as Error }, "Failed to complete authorization code flow");
+    logError("Failed to complete authorization code flow", { err: error as Error });
 
     // Clean up the flow state on error
     sessionStore.deleteAuthCodeFlow(state);

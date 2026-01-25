@@ -25,6 +25,10 @@ jest.mock("../../../src/logger", () => ({
     warn: jest.fn(),
     error: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 const mockGitRemote = gitRemote as jest.Mocked<typeof gitRemote>;

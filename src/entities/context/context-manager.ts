@@ -13,7 +13,7 @@
  */
 
 import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from "../../config";
-import { logger } from "../../logger";
+import { logInfo, logError, logDebug } from "../../logger";
 import { ProfileLoader } from "../../profiles/loader";
 import { ScopeEnforcer } from "../../profiles/scope-enforcer";
 import { Preset, ProfileInfo, ScopeConfig } from "../../profiles/types";
@@ -100,7 +100,7 @@ export class ContextManager {
         : undefined,
     };
 
-    logger.debug({ initialContext: this.initialContext }, "Captured initial context");
+    logDebug("Captured initial context", { initialContext: this.initialContext });
   }
 
   /**
@@ -159,7 +159,7 @@ export class ContextManager {
     }
 
     // Invalid scope - should not happen with valid ScopeConfig (validated by Zod)
-    logger.error({ scope }, "Invalid scope configuration: no usable scope fields found");
+    logError("Invalid scope configuration: no usable scope fields found", { scope });
     throw new Error(
       "Invalid scope configuration: expected project, group, namespace, projects, or groups to be defined"
     );
@@ -256,7 +256,7 @@ export class ContextManager {
         this.currentScopeEnforcer = null;
       }
 
-      logger.info({ previous: previousPreset, current: presetName }, "Switched preset");
+      logInfo("Switched preset", { previous: previousPreset, current: presetName });
 
       // Notify clients that tool list may have changed
       // (e.g., read-only presets disable write tools)
@@ -270,7 +270,7 @@ export class ContextManager {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ error: message, preset: presetName }, "Failed to switch preset");
+      logError("Failed to switch preset", { error: message, preset: presetName });
       throw new Error(`Failed to switch to preset '${presetName}': ${message}`);
     }
   }
@@ -291,7 +291,7 @@ export class ContextManager {
 
       this.currentProfileName = profileName;
 
-      logger.info({ previous: previousProfile, current: profileName }, "Switched profile");
+      logInfo("Switched profile", { previous: previousProfile, current: profileName });
 
       return {
         success: true,
@@ -301,7 +301,7 @@ export class ContextManager {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ error: message, profile: profileName }, "Failed to switch profile");
+      logError("Failed to switch profile", { error: message, profile: profileName });
       throw new Error(`Failed to switch to profile '${profileName}': ${message}`);
     }
   }
@@ -339,10 +339,11 @@ export class ContextManager {
         detected: true,
       };
 
-      logger.info(
-        { namespace, type: namespaceType, includeSubgroups },
-        "Scope set with auto-detection"
-      );
+      logInfo("Scope set with auto-detection", {
+        namespace,
+        type: namespaceType,
+        includeSubgroups,
+      });
 
       return {
         success: true,
@@ -353,7 +354,7 @@ export class ContextManager {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logger.error({ error: message, namespace }, "Failed to set scope");
+      logError("Failed to set scope", { error: message, namespace });
       throw new Error(`Failed to set scope for '${namespace}': ${message}`);
     }
   }
@@ -376,7 +377,7 @@ export class ContextManager {
     // Recapture initial context
     this.captureInitialContext();
 
-    logger.info("Context reset to initial state");
+    logInfo("Context reset to initial state");
 
     return {
       success: true,

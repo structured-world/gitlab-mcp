@@ -31,6 +31,10 @@ jest.mock("../../../src/logger", () => ({
     warn: jest.fn(),
     error: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 // Note: No need to mock tools module anymore - registry manager handles read-only tools internally

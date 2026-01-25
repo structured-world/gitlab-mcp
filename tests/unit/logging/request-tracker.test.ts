@@ -394,6 +394,18 @@ describe("Context-aware methods", () => {
     expect(stack?.details.project).toBe("test/repo");
   });
 
+  it("addDetailsForCurrentRequest works within context", () => {
+    tracker.openStack("ctx-req", "127.0.0.1", "POST", "/mcp");
+
+    runWithRequestContext("ctx-req", () => {
+      tracker.addDetailsForCurrentRequest({ namespace: "test", count: 5 });
+    });
+
+    const stack = tracker.getStack("ctx-req");
+    expect(stack?.details.namespace).toBe("test");
+    expect(stack?.details.count).toBe(5);
+  });
+
   it("setErrorForCurrentRequest works within context", () => {
     tracker.openStack("ctx-req", "127.0.0.1", "POST", "/mcp");
 

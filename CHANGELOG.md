@@ -1,3 +1,9 @@
+## [6.43.0](https://github.com/structured-world/gitlab-mcp/compare/v6.42.1...v6.43.0) (2026-01-25)
+
+### Features
+
+* MCP Registry integration with dynamic tool counts and MCPB toggles ([#192](https://github.com/structured-world/gitlab-mcp/issues/192)) ([9ba94e2](https://github.com/structured-world/gitlab-mcp/commit/9ba94e2cd6893295109e8518350176a2f8942340)), closes [#191](https://github.com/structured-world/gitlab-mcp/issues/191)
+
 ## [6.42.1](https://github.com/structured-world/gitlab-mcp/compare/v6.42.0...v6.42.1) (2026-01-25)
 
 ### Bug Fixes

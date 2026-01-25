@@ -86,7 +86,8 @@ export function getMergeStatusHint(status: string): string {
     need_rebase: "Rebase the source branch before merging",
 
     // Status related
-    draft_status: "Remove draft status before merging (use update action with draft: false)",
+    draft_status:
+      "Remove draft status before merging by updating the title to remove any 'Draft:' or 'WIP:' prefix",
     discussions_not_resolved: "Resolve all blocking discussions before merging",
     blocked_status: "MR is blocked by another MR or issue",
 
@@ -105,11 +106,7 @@ export function getMergeStatusHint(status: string): string {
 /**
  * Build suggested action message based on merge status.
  */
-export function getSuggestedAction(
-  status: string,
-  isRetryable: boolean,
-  canAutoMerge: boolean
-): string {
+export function getSuggestedAction(isRetryable: boolean, canAutoMerge: boolean): string {
   if (canAutoMerge) {
     return "Consider using merge_when_pipeline_succeeds: true to auto-merge when pipeline passes";
   }
@@ -441,7 +438,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
               hint: getMergeStatusHint(detailedStatus),
               is_retryable: isRetryable,
               can_auto_merge: canAutoMerge,
-              suggested_action: getSuggestedAction(detailedStatus, isRetryable, canAutoMerge),
+              suggested_action: getSuggestedAction(isRetryable, canAutoMerge),
             };
 
             return blockedResponse;

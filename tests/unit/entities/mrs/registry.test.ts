@@ -351,18 +351,18 @@ describe("getMergeStatusHint", () => {
 
 describe("getSuggestedAction", () => {
   it("should suggest auto-merge when canAutoMerge is true", () => {
-    const action = getSuggestedAction("ci_still_running", true, true);
+    const action = getSuggestedAction(true, true);
     expect(action).toContain("merge_when_pipeline_succeeds");
   });
 
   it("should suggest wait when retryable but not auto-merge", () => {
-    const action = getSuggestedAction("checking", true, false);
+    const action = getSuggestedAction(true, false);
     expect(action).toContain("Wait");
     expect(action).toContain("retry");
   });
 
   it("should suggest resolving blocking condition when not retryable", () => {
-    const action = getSuggestedAction("conflict", false, false);
+    const action = getSuggestedAction(false, false);
     expect(action).toContain("Resolve");
     expect(action).toContain("blocking");
   });

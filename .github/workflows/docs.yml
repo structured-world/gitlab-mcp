@@ -47,27 +47,34 @@ jobs:
       - name: Build project
         run: yarn build
 
-      - name: Generate dynamic documentation
-        run: |
-          yarn list-tools --export --toc > docs/TOOLS.md
-          yarn inject-tool-refs
-
       - name: Download latest MCPB bundle
+        id: mcpb
         run: |
           mkdir -p docs/public/downloads
           LATEST_TAG=$(gh release view --json tagName --jq '.tagName' 2>/dev/null || echo "")
           if [ -n "$LATEST_TAG" ]; then
             VERSION="${LATEST_TAG#v}"
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
             gh release download "$LATEST_TAG" --pattern "*.mcpb" --dir docs/public/downloads/ || true
             MCPB_FILE="docs/public/downloads/gitlab-mcp-${VERSION}.mcpb"
             if [ -f "$MCPB_FILE" ]; then
-              cp "$MCPB_FILE" docs/public/downloads/gitlab-mcp-latest.mcpb
               echo "MCPB bundle included: ${VERSION}"
             fi
+          else
+            # Fallback to package.json version if no release exists
+            VERSION=$(jq -r '.version' package.json)
+            echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "MCPB bundle version from package.json: ${VERSION}"
           fi
-          # If no .mcpb release exists yet, ignoreDeadLinks in config.mts handles the link checker
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate dynamic documentation
+        run: |
+          yarn list-tools --export --toc > docs/TOOLS.md
+          yarn inject-tool-refs
+        env:
+          RELEASE_VERSION: ${{ steps.mcpb.outputs.version }}
 
       - name: Build documentation
         run: yarn docs:build

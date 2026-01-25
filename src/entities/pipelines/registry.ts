@@ -4,7 +4,7 @@ import { ManagePipelineSchema, ManagePipelineJobSchema } from "./schema";
 import { gitlab, toQuery } from "../../utils/gitlab-api";
 import { normalizeProjectId } from "../../utils/projectIdentifier";
 import { enhancedFetch } from "../../utils/fetch";
-import { logger } from "../../logger";
+import { logError } from "../../logger";
 import { ToolRegistry, EnhancedToolDefinition } from "../../types";
 import { isActionDenied } from "../../config";
 
@@ -239,15 +239,16 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                   errorMessage += ` - ${errorBody.errors.map(e => String(e)).join(", ")}`;
                 }
 
-                logger.error(
-                  { status: response.status, errorBody, url: apiUrl },
-                  "manage_pipeline create failed"
-                );
+                logError("manage_pipeline create failed", {
+                  status: response.status,
+                  errorBody,
+                  url: apiUrl,
+                });
               } catch {
-                logger.error(
-                  { status: response.status, url: apiUrl },
-                  "manage_pipeline create failed (could not parse error)"
-                );
+                logError("manage_pipeline create failed (could not parse error)", {
+                  status: response.status,
+                  url: apiUrl,
+                });
               }
               throw new Error(errorMessage);
             }

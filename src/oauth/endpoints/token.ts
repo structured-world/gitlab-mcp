@@ -21,7 +21,7 @@ import {
 } from "../token-utils";
 import { refreshGitLabToken } from "../gitlab-device-flow";
 import { getBaseUrl } from "./metadata";
-import { logger } from "../../logger";
+import { logInfo, logDebug, logWarn, logError } from "../../logger";
 import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from "../types";
 import { getIpAddress } from "../../utils/request-logger";
 
@@ -152,13 +152,10 @@ async function handleAuthorizationCode(
   // Delete authorization code (single use)
   sessionStore.deleteAuthCode(code);
 
-  logger.info(
-    {
-      sessionId: session.id.substring(0, 8) + "...",
-      userId: session.gitlabUserId,
-    },
-    "MCP tokens issued via authorization_code grant"
-  );
+  logInfo("MCP tokens issued via authorization_code grant", {
+    sessionId: session.id.substring(0, 8) + "...",
+    userId: session.gitlabUserId,
+  });
 
   // Return token response
   const response: MCPTokenResponse = {
@@ -214,9 +211,9 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
       }
       updatedSession = refreshedSession;
 
-      logger.debug({ sessionId: session.id.substring(0, 8) + "..." }, "GitLab token refreshed");
+      logDebug("GitLab token refreshed", { sessionId: session.id.substring(0, 8) + "..." });
     } catch (error: unknown) {
-      logger.error({ err: error as Error }, "Failed to refresh GitLab token");
+      logError("Failed to refresh GitLab token", { err: error as Error });
       sendError(req, res, 400, "invalid_grant", "Failed to refresh underlying GitLab token");
       return;
     }
@@ -247,13 +244,10 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
     mcpTokenExpiry: calculateTokenExpiry(config.tokenTtl),
   });
 
-  logger.info(
-    {
-      sessionId: updatedSession.id.substring(0, 8) + "...",
-      userId: updatedSession.gitlabUserId,
-    },
-    "MCP tokens refreshed via refresh_token grant"
-  );
+  logInfo("MCP tokens refreshed via refresh_token grant", {
+    sessionId: updatedSession.id.substring(0, 8) + "...",
+    userId: updatedSession.gitlabUserId,
+  });
 
   // Return token response
   const response: MCPTokenResponse = {
@@ -280,16 +274,13 @@ function sendError(
   description: string
 ): void {
   // Log OAuth error with structured context
-  logger.warn(
-    {
-      event: "oauth_error",
-      endpoint: "/token",
-      ip: getIpAddress(req),
-      error,
-      description,
-    },
-    "OAuth token request failed"
-  );
+  logWarn("OAuth token request failed", {
+    event: "oauth_error",
+    endpoint: "/token",
+    ip: getIpAddress(req),
+    error,
+    description,
+  });
 
   const response: OAuthErrorResponse = {
     error,

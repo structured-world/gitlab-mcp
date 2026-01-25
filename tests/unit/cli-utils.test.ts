@@ -14,6 +14,10 @@ jest.mock("../../src/logger", () => ({
     info: jest.fn(),
     debug: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 // Mock profiles module for getProjectConfigSummary
@@ -26,9 +30,10 @@ jest.mock("../../src/profiles", () => ({
   ProjectConfig: {},
 }));
 
-import { logger } from "../../src/logger";
+import { logWarn, logError } from "../../src/logger";
 
-const mockLogger = logger as jest.Mocked<typeof logger>;
+const mockLogWarn = logWarn as jest.MockedFunction<typeof logWarn>;
+const mockLogError = logError as jest.MockedFunction<typeof logError>;
 
 describe("cli-utils", () => {
   beforeEach(() => {
@@ -92,7 +97,7 @@ describe("cli-utils", () => {
       expect(() => parseCliArgs(["node", "main.js", "--profile"])).toThrow(
         "--profile requires a profile name"
       );
-      expect(mockLogger.error).toHaveBeenCalled();
+      expect(mockLogError).toHaveBeenCalled();
     });
 
     it("should throw error when --profile is followed by another flag", () => {
@@ -105,9 +110,9 @@ describe("cli-utils", () => {
       const result = parseCliArgs(["node", "main.js", "--profile", "first", "--profile", "second"]);
 
       expect(result.profileName).toBe("first");
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        { count: 2 },
-        "Multiple --profile flags detected, using first value"
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        "Multiple --profile flags detected, using first value",
+        { count: 2 }
       );
     });
 
@@ -149,7 +154,7 @@ describe("cli-utils", () => {
       expect(() => parseCliArgs(["node", "main.js", "--cwd"])).toThrow(
         "--cwd requires a directory path"
       );
-      expect(mockLogger.error).toHaveBeenCalled();
+      expect(mockLogError).toHaveBeenCalled();
     });
 
     it("should throw error when --cwd is followed by another flag", () => {
@@ -174,7 +179,7 @@ describe("cli-utils", () => {
       expect(() => parseCliArgs(["node", "main.js", "--remote"])).toThrow(
         "--remote requires a remote name"
       );
-      expect(mockLogger.error).toHaveBeenCalled();
+      expect(mockLogError).toHaveBeenCalled();
     });
 
     it("should throw error when --remote is followed by another flag", () => {

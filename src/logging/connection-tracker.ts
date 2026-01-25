@@ -15,7 +15,7 @@
 
 import type { ConnectionStats, ConnectionCloseReason } from "./types.js";
 import { formatConnectionClose, createConnectionCloseEntry } from "./access-log.js";
-import { logger, LOG_JSON } from "../logger.js";
+import { logInfo, logDebug, LOG_JSON } from "../logger.js";
 
 /**
  * Connection tracker manages statistics for persistent connections.
@@ -64,7 +64,7 @@ export class ConnectionTracker {
 
     this.connections.set(sessionId, stats);
 
-    logger.debug({ sessionId, clientIp }, "Connection opened for tracking");
+    logDebug("Connection opened for tracking", { sessionId, clientIp });
   }
 
   /**
@@ -117,7 +117,7 @@ export class ConnectionTracker {
     if (!stats) {
       // Only log debug when enabled to avoid noise in verbose mode
       if (this.enabled) {
-        logger.debug({ sessionId }, "Connection not found on close");
+        logDebug("Connection not found on close", { sessionId });
       }
       return undefined;
     }
@@ -138,9 +138,9 @@ export class ConnectionTracker {
     // JSON mode: include full connectionClose object for log aggregators
     // Plain mode: message only - prevents pino-pretty from outputting multiline JSON
     if (LOG_JSON) {
-      logger.info({ connectionClose: entry }, logLine);
+      logInfo(logLine, { connectionClose: entry });
     } else {
-      logger.info(logLine);
+      logInfo(logLine);
     }
 
     return logLine;

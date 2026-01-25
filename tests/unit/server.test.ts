@@ -48,6 +48,11 @@ const mockLogger = {
   debug: jest.fn(),
 };
 
+const mockLogInfo = jest.fn();
+const mockLogWarn = jest.fn();
+const mockLogError = jest.fn();
+const mockLogDebug = jest.fn();
+
 // Mock Express
 const mockExpress = jest.fn(() => mockApp);
 (mockExpress as any).json = jest.fn();
@@ -108,6 +113,10 @@ jest.mock("../../src/handlers", () => ({
 // Mock logger
 jest.mock("../../src/logger", () => ({
   logger: mockLogger,
+  logInfo: mockLogInfo,
+  logWarn: mockLogWarn,
+  logError: mockLogError,
+  logDebug: mockLogDebug,
 }));
 
 // Mock OAuth config module
@@ -183,7 +192,7 @@ describe("server", () => {
 
       await startServer();
 
-      expect(mockLogger.info).toHaveBeenCalledWith("Selected stdio mode (explicit argument)");
+      expect(mockLogInfo).toHaveBeenCalledWith("Selected stdio mode (explicit argument)");
     });
 
     it("should select dual transport mode when PORT environment variable is set", async () => {
@@ -203,7 +212,7 @@ describe("server", () => {
       const { startServer: newStartServer } = await import("../../src/server");
       await newStartServer();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogInfo).toHaveBeenCalledWith(
         "Selected dual transport mode (SSE + StreamableHTTP) - PORT environment variable detected"
       );
     });
@@ -214,7 +223,7 @@ describe("server", () => {
 
       await startServer();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogInfo).toHaveBeenCalledWith(
         "Selected stdio mode (no PORT environment variable)"
       );
     });
@@ -224,8 +233,9 @@ describe("server", () => {
 
       await startServer();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringMatching(/Transport mode detection: args=\[\], PORT=/)
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        "Transport mode detection",
+        expect.objectContaining({ args: [], PORT: "3000" })
       );
     });
   });
@@ -256,10 +266,10 @@ describe("server", () => {
       await startServer();
 
       expect(mockHttpServer.listen).toHaveBeenCalledWith(3000, "localhost", expect.any(Function));
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "GitLab MCP Server running on http://localhost:3000"
-      );
-      expect(mockLogger.info).toHaveBeenCalledWith("Dual Transport Mode Active:");
+      expect(mockLogInfo).toHaveBeenCalledWith("GitLab MCP Server running", {
+        url: "http://localhost:3000",
+      });
+      expect(mockLogInfo).toHaveBeenCalledWith("Dual Transport Mode Active");
     });
 
     it("should handle SSE endpoint requests", async () => {
@@ -285,7 +295,7 @@ describe("server", () => {
         "test-session-123",
         expect.anything()
       );
-      expect(mockLogger.debug).toHaveBeenCalledWith("SSE endpoint hit!");
+      expect(mockLogDebug).toHaveBeenCalledWith("SSE endpoint hit!");
     });
 
     it("should handle messages endpoint with valid session", async () => {
@@ -310,7 +320,7 @@ describe("server", () => {
       // Execute the messages handler
       await messagesHandler(mockReq, mockRes);
 
-      expect(mockLogger.debug).toHaveBeenCalledWith("SSE messages endpoint hit!");
+      expect(mockLogDebug).toHaveBeenCalledWith("SSE messages endpoint hit!");
     });
 
     it("should handle messages endpoint with missing session", async () => {
@@ -360,7 +370,7 @@ describe("server", () => {
       // Execute the messages handler (this should catch the error)
       await messagesHandler(mockReq, mockRes);
 
-      expect(mockLogger.debug).toHaveBeenCalledWith("SSE messages endpoint hit!");
+      expect(mockLogDebug).toHaveBeenCalledWith("SSE messages endpoint hit!");
     });
 
     it("should handle MCP endpoint requests", async () => {
@@ -405,9 +415,9 @@ describe("server", () => {
       // Execute the callback
       listenCallback();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        "GitLab MCP Server running on http://localhost:3000"
-      );
+      expect(mockLogInfo).toHaveBeenCalledWith("GitLab MCP Server running", {
+        url: "http://localhost:3000",
+      });
     });
 
     it("should handle SSE transport errors", async () => {
@@ -435,7 +445,7 @@ describe("server", () => {
       // Execute the messages handler (this would normally fail if transport throws error)
       await messagesHandler(mockReq, mockRes);
 
-      expect(mockLogger.debug).toHaveBeenCalledWith("SSE messages endpoint hit!");
+      expect(mockLogDebug).toHaveBeenCalledWith("SSE messages endpoint hit!");
     });
   });
 
@@ -446,7 +456,7 @@ describe("server", () => {
 
       await startServer();
 
-      expect(mockLogger.info).toHaveBeenCalledWith("Selected stdio mode (explicit argument)");
+      expect(mockLogInfo).toHaveBeenCalledWith("Selected stdio mode (explicit argument)");
       // In stdio mode, session manager creates a session for the single transport
       expect(mockSessionManager.createSession).toHaveBeenCalledWith("stdio", mockTransport);
     });
@@ -457,7 +467,7 @@ describe("server", () => {
 
       await startServer();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogInfo).toHaveBeenCalledWith(
         "Selected dual transport mode (SSE + StreamableHTTP) - PORT environment variable detected"
       );
       expect(mockHttpServer.listen).toHaveBeenCalledWith(3000, "localhost", expect.any(Function));
@@ -493,7 +503,7 @@ describe("server", () => {
       // Now test error handling in messages handler
       await messagesHandler(mockReq, mockRes);
 
-      expect(mockLogger.debug).toHaveBeenCalledWith("SSE messages endpoint hit!");
+      expect(mockLogDebug).toHaveBeenCalledWith("SSE messages endpoint hit!");
     });
 
     it("should handle StreamableHTTP mode error cases in dual mode", async () => {
@@ -525,10 +535,9 @@ describe("server", () => {
       // Test error handling in MCP handler
       await mcpHandler(mockReq, mockRes);
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        { err: expect.any(Error) },
-        "Error in StreamableHTTP transport"
-      );
+      expect(mockLogError).toHaveBeenCalledWith("Error in StreamableHTTP transport", {
+        err: expect.any(Error),
+      });
       expect(mockRes.status).toHaveBeenCalledWith(500);
       expect(mockRes.json).toHaveBeenCalledWith({ error: "Internal server error" });
     });
@@ -709,10 +718,10 @@ describe("server", () => {
       await sseHandler({}, mockRes);
 
       // Should log the error and return 500
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        { err: expect.any(Error), sessionId: "test-session-123" },
-        "Failed to create SSE session"
-      );
+      expect(mockLogError).toHaveBeenCalledWith("Failed to create SSE session", {
+        err: expect.any(Error),
+        sessionId: "test-session-123",
+      });
       expect(mockRes.status).toHaveBeenCalledWith(500);
       expect(mockRes.end).toHaveBeenCalled();
       // close handler should NOT be registered since session creation failed
@@ -794,9 +803,10 @@ describe("server", () => {
       const sessionId = lastStreamableOpts!.sessionIdGenerator!();
       lastStreamableOpts!.onsessioninitialized!(sessionId);
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        expect.stringContaining(`MCP session initialized: ${sessionId}`)
-      );
+      expect(mockLogInfo).toHaveBeenCalledWith("MCP session initialized", {
+        sessionId,
+        method: "POST",
+      });
     });
 
     it("should associate OAuth session in onsessioninitialized when authenticated", async () => {
@@ -882,7 +892,9 @@ describe("server", () => {
       lastStreamableOpts!.onsessionclosed!("closed-session-id");
 
       expect(mockSessionManager.removeSession).toHaveBeenCalledWith("closed-session-id");
-      expect(mockLogger.info).toHaveBeenCalledWith("MCP session closed: closed-session-id");
+      expect(mockLogInfo).toHaveBeenCalledWith("MCP session closed", {
+        sessionId: "closed-session-id",
+      });
     });
 
     it("should touch session and reuse transport for existing StreamableHTTP sessions", async () => {
@@ -940,10 +952,10 @@ describe("server", () => {
       await sseHandler({}, mockRes);
 
       // Heartbeat should be started — debug log confirms
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        { sessionId: "test-session-123", intervalMs: 30000 },
-        "SSE heartbeat started"
-      );
+      expect(mockLogDebug).toHaveBeenCalledWith("SSE heartbeat started", {
+        sessionId: "test-session-123",
+        intervalMs: 30000,
+      });
     });
 
     it("should send SSE ping comments at heartbeat interval", async () => {
@@ -989,10 +1001,9 @@ describe("server", () => {
       // Trigger close event — stops heartbeat
       closeHandler!();
 
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        { sessionId: "test-session-123" },
-        "SSE heartbeat stopped"
-      );
+      expect(mockLogDebug).toHaveBeenCalledWith("SSE heartbeat stopped", {
+        sessionId: "test-session-123",
+      });
 
       // After close, advancing timer should NOT send more pings
       mockRes.write.mockClear();
@@ -1049,9 +1060,9 @@ describe("server", () => {
       await mcpHandler(mockReq, mockRes);
 
       // Heartbeat should be started for GET requests
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.objectContaining({ intervalMs: 30000 }),
-        "SSE heartbeat started"
+      expect(mockLogDebug).toHaveBeenCalledWith(
+        "SSE heartbeat started",
+        expect.objectContaining({ intervalMs: 30000 })
       );
     });
 
@@ -1172,9 +1183,9 @@ describe("server", () => {
       process.env.PORT = "3000";
       await startServer();
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        { heartbeatMs: 30000, keepAliveTimeoutMs: 620000 },
-        "SSE keepalive configured for proxy chain compatibility"
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        "SSE keepalive configured for proxy chain compatibility",
+        { heartbeatMs: 30000, keepAliveTimeoutMs: 620000 }
       );
     });
   });
@@ -1298,7 +1309,7 @@ describe("server", () => {
         // Now call messages handler
         await messagesHandler(mockReq, mockRes);
 
-        expect(mockLogger.debug).toHaveBeenCalledWith("SSE messages endpoint hit!");
+        expect(mockLogDebug).toHaveBeenCalledWith("SSE messages endpoint hit!");
       });
 
       it("should return 404 for invalid session ID", async () => {
@@ -1357,10 +1368,9 @@ describe("server", () => {
       // Wait for async graceful shutdown to complete (flush microtask queue)
       await new Promise(resolve => setTimeout(resolve, 0));
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        { signal: "SIGINT" },
-        "Shutting down GitLab MCP Server..."
-      );
+      expect(mockLogInfo).toHaveBeenCalledWith("Shutting down GitLab MCP Server...", {
+        signal: "SIGINT",
+      });
       expect(mockExit).toHaveBeenCalledWith(0);
 
       mockExit.mockRestore();
@@ -1378,10 +1388,9 @@ describe("server", () => {
       // Wait for async graceful shutdown to complete (flush microtask queue)
       await new Promise(resolve => setTimeout(resolve, 0));
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
-        { signal: "SIGTERM" },
-        "Shutting down GitLab MCP Server..."
-      );
+      expect(mockLogInfo).toHaveBeenCalledWith("Shutting down GitLab MCP Server...", {
+        signal: "SIGTERM",
+      });
       expect(mockExit).toHaveBeenCalledWith(0);
 
       mockExit.mockRestore();
@@ -1414,10 +1423,9 @@ describe("server", () => {
       await new Promise(resolve => setTimeout(resolve, 0));
 
       // Should still exit despite shutdown error
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        { err: expect.any(Error) },
-        "Error shutting down session manager"
-      );
+      expect(mockLogError).toHaveBeenCalledWith("Error shutting down session manager", {
+        err: expect.any(Error),
+      });
       expect(mockExit).toHaveBeenCalledWith(0);
 
       mockExit.mockRestore();

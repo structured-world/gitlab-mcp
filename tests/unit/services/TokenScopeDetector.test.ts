@@ -30,7 +30,15 @@ jest.mock("../../../src/logger", () => ({
     warn: jest.fn(),
     error: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
+
+import { logInfo, logWarn } from "../../../src/logger";
+const mockLogInfo = logInfo as jest.MockedFunction<typeof logInfo>;
+const mockLogWarn = logWarn as jest.MockedFunction<typeof logWarn>;
 
 // Mock enhancedFetch used by detectTokenScopes
 const mockEnhancedFetch = jest.fn();
@@ -478,8 +486,6 @@ describe("TokenScopeDetector", () => {
   });
 
   describe("logTokenScopeInfo", () => {
-    const { logger } = require("../../../src/logger");
-
     it("should log brief message for full-access token", () => {
       const info: TokenScopeInfo = {
         name: "full-token",
@@ -495,14 +501,14 @@ describe("TokenScopeDetector", () => {
       logTokenScopeInfo(info, 45);
 
       // Should log token detection without "limited" message
-      expect(logger.info).toHaveBeenCalledWith(
-        expect.objectContaining({ tokenName: "full-token" }),
-        expect.stringContaining('Token "full-token" detected')
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        expect.stringContaining('Token "full-token" detected'),
+        expect.objectContaining({ tokenName: "full-token" })
       );
       // Should NOT log "limited scopes" message
-      expect(logger.info).not.toHaveBeenCalledWith(
-        expect.anything(),
-        expect.stringContaining("limited scopes")
+      expect(mockLogInfo).not.toHaveBeenCalledWith(
+        expect.stringContaining("limited scopes"),
+        expect.anything()
       );
     });
 
@@ -521,16 +527,16 @@ describe("TokenScopeDetector", () => {
       logTokenScopeInfo(info, 45);
 
       // Should log "limited scopes" message
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        expect.stringContaining("limited scopes"),
         expect.objectContaining({
           tokenName: "limited-token",
           availableTools: 2,
           totalTools: 45,
-        }),
-        expect.stringContaining("limited scopes")
+        })
       );
       // Should mention GraphQL being skipped
-      expect(logger.info).toHaveBeenCalledWith(
+      expect(mockLogInfo).toHaveBeenCalledWith(
         expect.stringContaining("GraphQL introspection skipped")
       );
     });
@@ -549,9 +555,9 @@ describe("TokenScopeDetector", () => {
 
       logTokenScopeInfo(info, 45);
 
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.objectContaining({ tokenName: "expiring-token", daysUntilExpiry: 3 }),
-        expect.stringContaining("expires in 3 day(s)")
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        expect.stringContaining("expires in 3 day(s)"),
+        expect.objectContaining({ tokenName: "expiring-token", daysUntilExpiry: 3 })
       );
     });
 
@@ -569,9 +575,9 @@ describe("TokenScopeDetector", () => {
 
       logTokenScopeInfo(info, 45);
 
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.objectContaining({ tokenName: "dead-token" }),
-        expect.stringContaining("has expired")
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        expect.stringContaining("has expired"),
+        expect.objectContaining({ tokenName: "dead-token" })
       );
     });
 
@@ -589,9 +595,9 @@ describe("TokenScopeDetector", () => {
 
       logTokenScopeInfo(info, 45);
 
-      expect(logger.warn).toHaveBeenCalledWith(
-        expect.objectContaining({ tokenName: "today-token" }),
-        expect.stringContaining("expires today")
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        expect.stringContaining("expires today"),
+        expect.objectContaining({ tokenName: "today-token" })
       );
     });
   });

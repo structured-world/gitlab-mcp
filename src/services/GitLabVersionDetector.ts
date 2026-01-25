@@ -1,7 +1,7 @@
 import { GraphQLClient } from "../graphql/client";
 import { gql } from "graphql-tag";
 import { enhancedFetch } from "../utils/fetch";
-import { logger } from "../logger";
+import { logWarn, logDebug } from "../logger";
 import { parseVersion } from "../utils/version";
 
 export type GitLabTier = "free" | "premium" | "ultimate";
@@ -146,9 +146,9 @@ export class GitLabVersionDetector {
       const response = await this.client.request<{ metadata: VersionMetadata }>(VERSION_QUERY);
       return response.metadata.version;
     } catch (error) {
-      logger.warn(
-        `Failed to detect GitLab version via GraphQL, trying alternative methods: ${error instanceof Error ? error.message : String(error)}`
-      );
+      logWarn("Failed to detect GitLab version via GraphQL, trying alternative methods", {
+        error: error instanceof Error ? error.message : String(error),
+      });
       return await this.detectVersionFallback();
     }
   }
@@ -162,9 +162,9 @@ export class GitLabVersionDetector {
         return data.version;
       }
     } catch (error) {
-      logger.warn(
-        `Failed to detect version via REST API: ${error instanceof Error ? error.message : String(error)}`
-      );
+      logWarn("Failed to detect version via REST API", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     return "unknown";
@@ -189,9 +189,9 @@ export class GitLabVersionDetector {
         }
       }
     } catch (error) {
-      logger.debug(
-        `License query not available, attempting feature detection: ${error instanceof Error ? error.message : String(error)}`
-      );
+      logDebug("License query not available, attempting feature detection", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     return await this.detectTierByFeatures();
@@ -231,9 +231,9 @@ export class GitLabVersionDetector {
         }
       }
     } catch (error) {
-      logger.debug(
-        `Feature detection failed, assuming free tier: ${error instanceof Error ? error.message : String(error)}`
-      );
+      logDebug("Feature detection failed, assuming free tier", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     return "free";

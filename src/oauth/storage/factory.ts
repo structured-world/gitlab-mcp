@@ -8,7 +8,7 @@ import { SessionStorageBackend, StorageConfig } from "./types";
 import { MemoryStorageBackend } from "./memory";
 import { FileStorageBackend } from "./file";
 import { PostgreSQLStorageBackend } from "./postgresql";
-import { logger } from "../../logger";
+import { logInfo } from "../../logger";
 
 /**
  * Create a storage backend based on configuration
@@ -47,7 +47,7 @@ function getEnvStorageType(): "memory" | "file" | "postgresql" {
 }
 
 function createMemoryBackend(): MemoryStorageBackend {
-  logger.info("Using in-memory session storage (sessions will be lost on restart)");
+  logInfo("Using in-memory session storage (sessions will be lost on restart)");
   return new MemoryStorageBackend();
 }
 
@@ -58,15 +58,11 @@ function createFileBackend(config?: StorageConfig): FileStorageBackend {
   const saveInterval =
     config?.file?.saveInterval ?? parseInt(process.env.OAUTH_STORAGE_SAVE_INTERVAL ?? "30000", 10);
 
-  const prettyPrint =
-    config?.file?.prettyPrint ?? process.env.OAUTH_STORAGE_PRETTY_PRINT === "true";
-
-  logger.info({ filePath, saveInterval }, "Using file-based session storage");
+  logInfo("Using file-based session storage", { filePath, saveInterval });
 
   return new FileStorageBackend({
     filePath,
     saveInterval,
-    prettyPrint,
   });
 }
 
@@ -81,7 +77,7 @@ function createPostgreSQLBackend(): PostgreSQLStorageBackend {
     );
   }
 
-  logger.info("Using PostgreSQL session storage (via Prisma)");
+  logInfo("Using PostgreSQL session storage (via Prisma)");
 
   return new PostgreSQLStorageBackend();
 }

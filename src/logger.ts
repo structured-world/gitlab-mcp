@@ -35,3 +35,79 @@ export const createLogger = (name?: string) => {
 };
 
 export const logger = createLogger("gitlab-mcp");
+
+/**
+ * Format data object as key=value pairs for plain text logging.
+ * Handles nested objects by JSON stringifying them.
+ */
+function formatDataPairs(data: Record<string, unknown>): string {
+  return Object.entries(data)
+    .map(([k, v]) => {
+      if (v instanceof Error) {
+        return `${k}=${v.stack ?? v.message}`;
+      }
+      if (v === null || v === undefined) {
+        return `${k}=${String(v)}`;
+      }
+      if (typeof v === "object") {
+        return `${k}=${JSON.stringify(v)}`;
+      }
+      return `${k}=${String(v)}`;
+    })
+    .join(" ");
+}
+
+/**
+ * Log at INFO level with optional structured data.
+ *
+ * JSON mode: Full structured object for log aggregators (Loki, ELK, Datadog)
+ * Plain mode: Single-line with key=value pairs appended to message
+ */
+export function logInfo(message: string, data?: Record<string, unknown>): void {
+  if (LOG_JSON) {
+    logger.info(data ?? {}, message);
+  } else if (data && Object.keys(data).length > 0) {
+    logger.info(`${message} ${formatDataPairs(data)}`);
+  } else {
+    logger.info(message);
+  }
+}
+
+/**
+ * Log at WARN level with optional structured data.
+ */
+export function logWarn(message: string, data?: Record<string, unknown>): void {
+  if (LOG_JSON) {
+    logger.warn(data ?? {}, message);
+  } else if (data && Object.keys(data).length > 0) {
+    logger.warn(`${message} ${formatDataPairs(data)}`);
+  } else {
+    logger.warn(message);
+  }
+}
+
+/**
+ * Log at ERROR level with optional structured data.
+ */
+export function logError(message: string, data?: Record<string, unknown>): void {
+  if (LOG_JSON) {
+    logger.error(data ?? {}, message);
+  } else if (data && Object.keys(data).length > 0) {
+    logger.error(`${message} ${formatDataPairs(data)}`);
+  } else {
+    logger.error(message);
+  }
+}
+
+/**
+ * Log at DEBUG level with optional structured data.
+ */
+export function logDebug(message: string, data?: Record<string, unknown>): void {
+  if (LOG_JSON) {
+    logger.debug(data ?? {}, message);
+  } else if (data && Object.keys(data).length > 0) {
+    logger.debug(`${message} ${formatDataPairs(data)}`);
+  } else {
+    logger.debug(message);
+  }
+}

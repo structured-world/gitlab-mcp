@@ -93,6 +93,10 @@ jest.mock("../../src/services/TokenScopeDetector", () => ({
 
 jest.mock("../../src/logger", () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 jest.mock("../../src/config", () => ({

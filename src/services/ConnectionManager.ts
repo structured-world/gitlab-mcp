@@ -10,7 +10,7 @@ import {
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from "../config";
 import { isOAuthEnabled } from "../oauth/index";
 import { enhancedFetch } from "../utils/fetch";
-import { logger } from "../logger";
+import { logInfo, logDebug, logError } from "../logger";
 
 interface CacheEntry {
   schemaInfo: SchemaInfo;
@@ -78,7 +78,7 @@ export class ConnectionManager {
       // In OAuth mode, try unauthenticated version detection first
       // Many GitLab instances expose /api/v4/version without auth
       if (oauthMode) {
-        logger.info("OAuth mode: attempting unauthenticated version detection");
+        logInfo("OAuth mode: attempting unauthenticated version detection");
         try {
           const versionResponse = await fetch(`${GITLAB_BASE_URL}/api/v4/version`);
           if (versionResponse.ok) {
@@ -86,10 +86,9 @@ export class ConnectionManager {
               version: string;
               enterprise?: boolean;
             };
-            logger.info(
-              { version: versionData.version },
-              "Detected GitLab version without authentication"
-            );
+            logInfo("Detected GitLab version without authentication", {
+              version: versionData.version,
+            });
 
             // Create basic instance info from unauthenticated response
             // Default to "premium" tier for enterprise instances - will be refined on first authenticated request
@@ -101,19 +100,23 @@ export class ConnectionManager {
             };
 
             // Schema introspection still deferred (requires auth for full introspection)
-            logger.info(
+            logInfo(
               "OAuth mode: version detected, full introspection deferred until first authenticated request"
             );
           } else {
-            logger.info(
-              { status: versionResponse.status },
-              "OAuth mode: unauthenticated version detection failed, deferring all introspection"
+            logInfo(
+              "OAuth mode: unauthenticated version detection failed, deferring all introspection",
+              {
+                status: versionResponse.status,
+              }
             );
           }
         } catch (error) {
-          logger.info(
-            { error: error instanceof Error ? error.message : String(error) },
-            "OAuth mode: unauthenticated version detection failed, deferring all introspection"
+          logInfo(
+            "OAuth mode: unauthenticated version detection failed, deferring all introspection",
+            {
+              error: error instanceof Error ? error.message : String(error),
+            }
           );
         }
         this.isInitialized = true;
@@ -143,11 +146,11 @@ export class ConnectionManager {
       const now = Date.now();
 
       if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
-        logger.info("Using cached GraphQL introspection data");
+        logInfo("Using cached GraphQL introspection data");
         this.instanceInfo = cached.instanceInfo;
         this.schemaInfo = cached.schemaInfo;
       } else {
-        logger.debug("Introspecting GitLab GraphQL schema...");
+        logDebug("Introspecting GitLab GraphQL schema...");
 
         // Detect instance info and introspect schema in parallel
         const [instanceInfo, schemaInfo] = await Promise.all([
@@ -165,27 +168,24 @@ export class ConnectionManager {
           timestamp: now,
         });
 
-        logger.info("GraphQL schema introspection completed");
+        logInfo("GraphQL schema introspection completed");
       }
 
       this.isInitialized = true;
 
-      logger.info(
-        {
-          version: this.instanceInfo?.version,
-          tier: this.instanceInfo?.tier,
-          features: this.instanceInfo
-            ? Object.entries(this.instanceInfo.features)
-                .filter(([, enabled]) => enabled)
-                .map(([feature]) => feature)
-            : [],
-          widgetTypes: this.schemaInfo?.workItemWidgetTypes.length || 0,
-          schemaTypes: this.schemaInfo?.typeDefinitions.size || 0,
-        },
-        "GitLab instance and schema detected"
-      );
+      logInfo("GitLab instance and schema detected", {
+        version: this.instanceInfo?.version,
+        tier: this.instanceInfo?.tier,
+        features: this.instanceInfo
+          ? Object.entries(this.instanceInfo.features)
+              .filter(([, enabled]) => enabled)
+              .map(([feature]) => feature)
+          : [],
+        widgetTypes: this.schemaInfo?.workItemWidgetTypes.length || 0,
+        schemaTypes: this.schemaInfo?.typeDefinitions.size || 0,
+      });
     } catch (error) {
-      logger.error({ err: error as Error }, "Failed to initialize connection");
+      logError("Failed to initialize connection", { err: error as Error });
       throw error;
     }
   }
@@ -211,13 +211,13 @@ export class ConnectionManager {
     const now = Date.now();
 
     if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
-      logger.info("Using cached GraphQL introspection data");
+      logInfo("Using cached GraphQL introspection data");
       this.instanceInfo = cached.instanceInfo;
       this.schemaInfo = cached.schemaInfo;
       return;
     }
 
-    logger.debug("Introspecting GitLab GraphQL schema (deferred OAuth mode)...");
+    logDebug("Introspecting GitLab GraphQL schema (deferred OAuth mode)...");
 
     // Detect instance info and introspect schema in parallel
     const [instanceInfo, schemaInfo] = await Promise.all([
@@ -235,14 +235,11 @@ export class ConnectionManager {
       timestamp: now,
     });
 
-    logger.info(
-      {
-        version: this.instanceInfo?.version,
-        tier: this.instanceInfo?.tier,
-        widgetTypes: this.schemaInfo?.workItemWidgetTypes.length || 0,
-      },
-      "GraphQL schema introspection completed (deferred)"
-    );
+    logInfo("GraphQL schema introspection completed (deferred)", {
+      version: this.instanceInfo?.version,
+      tier: this.instanceInfo?.tier,
+      widgetTypes: this.schemaInfo?.workItemWidgetTypes.length || 0,
+    });
   }
 
   public getClient(): GraphQLClient {
@@ -349,15 +346,12 @@ export class ConnectionManager {
 
     if (scopesChanged) {
       this.tokenScopeInfo = newScopeInfo;
-      logger.info(
-        {
-          previousScopes,
-          newScopes,
-          hasGraphQLAccess: newScopeInfo.hasGraphQLAccess,
-          hasWriteAccess: newScopeInfo.hasWriteAccess,
-        },
-        "Token scopes changed - tool registry will be refreshed"
-      );
+      logInfo("Token scopes changed - tool registry will be refreshed", {
+        previousScopes,
+        newScopes,
+        hasGraphQLAccess: newScopeInfo.hasGraphQLAccess,
+        hasWriteAccess: newScopeInfo.hasWriteAccess,
+      });
     }
 
     return scopesChanged;
@@ -385,10 +379,10 @@ export class ConnectionManager {
           enterprise?: boolean;
         };
 
-        logger.info(
-          { version: data.version, enterprise: data.enterprise },
-          "Detected GitLab version via REST (GraphQL unavailable)"
-        );
+        logInfo("Detected GitLab version via REST (GraphQL unavailable)", {
+          version: data.version,
+          enterprise: data.enterprise,
+        });
 
         return {
           version: data.version,
@@ -399,12 +393,11 @@ export class ConnectionManager {
       }
 
       // Version endpoint also failed - return minimal info
-      logger.info({ status: response.status }, "REST version detection failed, using defaults");
+      logInfo("REST version detection failed, using defaults", { status: response.status });
     } catch (error) {
-      logger.info(
-        { error: error instanceof Error ? error.message : String(error) },
-        "REST version detection failed, using defaults"
-      );
+      logInfo("REST version detection failed, using defaults", {
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
 
     // Fallback: return unknown version with default features

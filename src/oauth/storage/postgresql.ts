@@ -18,7 +18,7 @@ import {
   AuthorizationCode as AuthorizationCodeType,
 } from "../types";
 import { SessionStorageBackend, SessionStorageStats } from "./types";
-import { logger } from "../../logger";
+import { logInfo, logError, logDebug } from "../../logger";
 
 /**
  * Explicit interfaces for Prisma model results.
@@ -160,9 +160,9 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       // Start cleanup interval
       this.startCleanupInterval();
 
-      logger.info("PostgreSQL storage backend initialized via Prisma");
+      logInfo("PostgreSQL storage backend initialized via Prisma");
     } catch (error) {
-      logger.error({ err: error as Error }, "Failed to initialize PostgreSQL storage backend");
+      logError("Failed to initialize PostgreSQL storage backend", { err: error as Error });
       throw error;
     }
   }
@@ -194,7 +194,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         updatedAt: BigInt(session.updatedAt),
       },
     });
-    logger.debug({ sessionId: session.id }, "Session created in PostgreSQL");
+    logDebug("Session created in PostgreSQL", { sessionId: session.id });
   }
 
   async getSession(sessionId: string): Promise<OAuthSession | undefined> {
@@ -531,13 +531,15 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         expiredAuthCodeFlows > 0 ||
         expiredAuthCodes > 0
       ) {
-        logger.debug(
-          { expiredSessions, expiredDeviceFlows, expiredAuthCodeFlows, expiredAuthCodes },
-          "PostgreSQL cleanup completed"
-        );
+        logDebug("PostgreSQL cleanup completed", {
+          expiredSessions,
+          expiredDeviceFlows,
+          expiredAuthCodeFlows,
+          expiredAuthCodes,
+        });
       }
     } catch (error) {
-      logger.error({ err: error as Error }, "PostgreSQL cleanup failed");
+      logError("PostgreSQL cleanup failed", { err: error as Error });
     }
   }
 
@@ -547,7 +549,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       await this.prisma.$disconnect();
       this.prisma = null;
     }
-    logger.info("PostgreSQL storage backend closed");
+    logInfo("PostgreSQL storage backend closed");
   }
 
   async getStats(): Promise<SessionStorageStats> {
@@ -572,7 +574,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   private startCleanupInterval(): void {
     this.cleanupIntervalId = setInterval(
       () => {
-        this.cleanup().catch(err => logger.error({ err }, "PostgreSQL cleanup error"));
+        this.cleanup().catch(err => logError("PostgreSQL cleanup error", { err }));
       },
       5 * 60 * 1000
     );

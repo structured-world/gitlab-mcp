@@ -3,7 +3,7 @@
  * Extracted for testability
  */
 
-import { logger } from "./logger";
+import { logWarn, logError } from "./logger";
 import { getProjectConfigSummary, ProjectConfig } from "./profiles";
 
 /**
@@ -92,7 +92,7 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
       const value = args[i + 1];
       // Validate that value exists and is not another flag
       if (!value || value.startsWith("--")) {
-        logger.error("--profile requires a profile name (e.g., --profile work)");
+        logError("--profile requires a profile name (e.g., --profile work)");
         throw new Error("--profile requires a profile name");
       }
       profileCount++;
@@ -109,7 +109,7 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
     } else if (arg === "--cwd") {
       const value = args[i + 1];
       if (!value || value.startsWith("--")) {
-        logger.error("--cwd requires a directory path (e.g., --cwd /path/to/repo)");
+        logError("--cwd requires a directory path (e.g., --cwd /path/to/repo)");
         throw new Error("--cwd requires a directory path");
       }
       result.cwd = value;
@@ -119,7 +119,7 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
     } else if (arg === "--remote") {
       const value = args[i + 1];
       if (!value || value.startsWith("--")) {
-        logger.error("--remote requires a remote name (e.g., --remote upstream)");
+        logError("--remote requires a remote name (e.g., --remote upstream)");
         throw new Error("--remote requires a remote name");
       }
       result.remoteName = value;
@@ -128,7 +128,7 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
   }
 
   if (profileCount > 1) {
-    logger.warn({ count: profileCount }, "Multiple --profile flags detected, using first value");
+    logWarn("Multiple --profile flags detected, using first value", { count: profileCount });
   }
 
   return result;

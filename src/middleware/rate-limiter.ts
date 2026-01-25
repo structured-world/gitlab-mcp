@@ -19,7 +19,7 @@ import {
   RATE_LIMIT_SESSION_WINDOW_MS,
   RATE_LIMIT_SESSION_MAX_REQUESTS,
 } from "../config";
-import { logger } from "../logger";
+import { logDebug, logWarn } from "../logger";
 import { getMinimalRequestContext, buildRateLimitInfo, truncateId } from "../utils/request-logger";
 
 interface RateLimitEntry {
@@ -52,7 +52,7 @@ function startCleanup(): void {
     }
 
     if (cleaned > 0) {
-      logger.debug(`Rate limiter cleanup: removed ${cleaned} expired entries`);
+      logDebug("Rate limiter cleanup: removed expired entries", { cleaned });
     }
   }, CLEANUP_INTERVAL_MS);
 
@@ -208,14 +208,11 @@ export function rateLimiterMiddleware(): RequestHandler {
           info.total,
           info.resetAt
         );
-        logger.debug(
-          {
-            event: "rate_limit_warning",
-            ...getMinimalRequestContext(req),
-            rateLimit: rateLimitInfo,
-          },
-          "Approaching session rate limit threshold"
-        );
+        logDebug("Approaching session rate limit threshold", {
+          event: "rate_limit_warning",
+          ...getMinimalRequestContext(req),
+          rateLimit: rateLimitInfo,
+        });
       }
 
       if (!info.allowed) {
@@ -228,16 +225,13 @@ export function rateLimiterMiddleware(): RequestHandler {
           info.resetAt
         );
 
-        logger.warn(
-          {
-            event: "rate_limit_exceeded",
-            ...getMinimalRequestContext(req),
-            rateLimit: rateLimitInfo,
-            hasOAuthSession: !!res.locals.oauthSessionId,
-            hasMcpSessionHeader: !!req.headers["mcp-session-id"],
-          },
-          "Session rate limit exceeded"
-        );
+        logWarn("Session rate limit exceeded", {
+          event: "rate_limit_exceeded",
+          ...getMinimalRequestContext(req),
+          rateLimit: rateLimitInfo,
+          hasOAuthSession: !!res.locals.oauthSessionId,
+          hasMcpSessionHeader: !!req.headers["mcp-session-id"],
+        });
 
         res.set("Retry-After", retryAfter.toString());
         res.status(429).json({
@@ -271,16 +265,13 @@ export function rateLimiterMiddleware(): RequestHandler {
     const usagePercent = (info.used / info.total) * 100;
     if (info.allowed && usagePercent >= 80) {
       const rateLimitInfo = buildRateLimitInfo("ip", ip, info.used, info.total, info.resetAt);
-      logger.debug(
-        {
-          event: "rate_limit_warning",
-          ...getMinimalRequestContext(req),
-          rateLimit: rateLimitInfo,
-          authClassification: "anonymous",
-          authReason: "no OAuth session and no MCP-Session-Id header",
-        },
-        "Approaching IP rate limit threshold"
-      );
+      logDebug("Approaching IP rate limit threshold", {
+        event: "rate_limit_warning",
+        ...getMinimalRequestContext(req),
+        rateLimit: rateLimitInfo,
+        authClassification: "anonymous",
+        authReason: "no OAuth session and no MCP-Session-Id header",
+      });
     }
 
     if (!info.allowed) {
@@ -290,17 +281,14 @@ export function rateLimiterMiddleware(): RequestHandler {
       // Get MCP session header if present (helps debug why request was classified as anonymous)
       const mcpSessionHeader = req.headers["mcp-session-id"] as string | undefined;
 
-      logger.warn(
-        {
-          event: "rate_limit_exceeded",
-          ...getMinimalRequestContext(req),
-          rateLimit: rateLimitInfo,
-          authClassification: "anonymous",
-          authReason: "no OAuth session and no MCP-Session-Id header",
-          mcpSessionId: truncateId(mcpSessionHeader),
-        },
-        "IP rate limit exceeded"
-      );
+      logWarn("IP rate limit exceeded", {
+        event: "rate_limit_exceeded",
+        ...getMinimalRequestContext(req),
+        rateLimit: rateLimitInfo,
+        authClassification: "anonymous",
+        authReason: "no OAuth session and no MCP-Session-Id header",
+        mcpSessionId: truncateId(mcpSessionHeader),
+      });
 
       res.set("Retry-After", retryAfter.toString());
       res.status(429).json({

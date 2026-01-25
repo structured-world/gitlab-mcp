@@ -19,7 +19,7 @@
 import { AsyncLocalStorage } from "async_hooks";
 import type { RequestStack } from "./types.js";
 import { formatAccessLog, createAccessLogEntry } from "./access-log.js";
-import { logger, LOG_JSON } from "../logger.js";
+import { logger, LOG_JSON, logDebug } from "../logger.js";
 
 /**
  * Request context stored in AsyncLocalStorage
@@ -115,7 +115,7 @@ export class RequestTracker {
 
     this.stacks.set(requestId, stack);
 
-    logger.debug({ requestId, clientIp, method, path }, "Request stack opened");
+    logDebug("Request stack opened", { requestId, clientIp, method, path });
   }
 
   /**
@@ -137,7 +137,7 @@ export class RequestTracker {
       stack.action = action;
     }
 
-    logger.debug({ requestId, tool, action }, "Tool set on request stack");
+    logDebug("Tool set on request stack", { requestId, tool, action });
   }
 
   /**
@@ -156,10 +156,11 @@ export class RequestTracker {
       stack.gitlabDuration = durationMs;
     }
 
-    logger.debug(
-      { requestId, gitlabStatus: status, gitlabDuration: durationMs },
-      "GitLab response set on request stack"
-    );
+    logDebug("GitLab response set on request stack", {
+      requestId,
+      gitlabStatus: status,
+      gitlabDuration: durationMs,
+    });
   }
 
   /**
@@ -234,7 +235,7 @@ export class RequestTracker {
   closeStack(requestId: string, status: number): string | undefined {
     const stack = this.stacks.get(requestId);
     if (!stack) {
-      logger.debug({ requestId }, "Request stack not found on close");
+      logDebug("Request stack not found on close", { requestId });
       return undefined;
     }
 

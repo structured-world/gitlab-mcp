@@ -1,6 +1,6 @@
 import { ToolAvailability } from "../../../src/services/ToolAvailability";
 import { ConnectionManager } from "../../../src/services/ConnectionManager";
-import { logger } from "../../../src/logger";
+import { logDebug, logWarn } from "../../../src/logger";
 import { GitLabInstanceInfo } from "../../../src/services/GitLabVersionDetector";
 
 // Mock dependencies
@@ -12,9 +12,14 @@ jest.mock("../../../src/logger", () => ({
     error: jest.fn(),
     info: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
-const mockLogger = logger as jest.Mocked<typeof logger>;
+const mockLogDebug = logDebug as jest.MockedFunction<typeof logDebug>;
+const mockLogWarn = logWarn as jest.MockedFunction<typeof logWarn>;
 
 describe("ToolAvailability Enhanced Coverage Tests", () => {
   const mockInstanceInfo: GitLabInstanceInfo = {
@@ -72,10 +77,11 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
 
       // In OAuth mode, tools are allowed when connection not yet initialized
       expect(result).toBe(true);
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        "Tool availability check for 'browse_projects': instance info not available yet, allowing"
+      expect(mockLogDebug).toHaveBeenCalledWith(
+        "Tool availability check: instance info not available yet, allowing",
+        { toolName: "browse_projects" }
       );
-      expect(mockLogger.warn).not.toHaveBeenCalled();
+      expect(mockLogWarn).not.toHaveBeenCalled();
     });
 
     it("should handle other errors with warn logging", () => {
@@ -89,10 +95,11 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
       const result = ToolAvailability.isToolAvailable("browse_projects");
 
       expect(result).toBe(false);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        "Failed to check tool availability for 'browse_projects': Network timeout occurred"
-      );
-      expect(mockLogger.debug).not.toHaveBeenCalled();
+      expect(mockLogWarn).toHaveBeenCalledWith("Failed to check tool availability", {
+        toolName: "browse_projects",
+        error: "Network timeout occurred",
+      });
+      expect(mockLogDebug).not.toHaveBeenCalled();
     });
 
     it("should handle generic Error objects", () => {
@@ -106,9 +113,10 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
       const result = ToolAvailability.isToolAvailable("browse_commits");
 
       expect(result).toBe(false);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        "Failed to check tool availability for 'browse_commits': Invalid type conversion"
-      );
+      expect(mockLogWarn).toHaveBeenCalledWith("Failed to check tool availability", {
+        toolName: "browse_commits",
+        error: "Invalid type conversion",
+      });
     });
 
     it("should handle string errors", () => {
@@ -121,9 +129,10 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
       const result = ToolAvailability.isToolAvailable("manage_project");
 
       expect(result).toBe(false);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        "Failed to check tool availability for 'manage_project': String error message"
-      );
+      expect(mockLogWarn).toHaveBeenCalledWith("Failed to check tool availability", {
+        toolName: "manage_project",
+        error: "String error message",
+      });
     });
 
     it("should handle non-error objects thrown", () => {
@@ -136,9 +145,10 @@ describe("ToolAvailability Enhanced Coverage Tests", () => {
       const result = ToolAvailability.isToolAvailable("manage_namespace");
 
       expect(result).toBe(false);
-      expect(mockLogger.warn).toHaveBeenCalledWith(
-        "Failed to check tool availability for 'manage_namespace': [object Object]"
-      );
+      expect(mockLogWarn).toHaveBeenCalledWith("Failed to check tool availability", {
+        toolName: "manage_namespace",
+        error: "[object Object]",
+      });
     });
   });
 

@@ -11,6 +11,10 @@ jest.mock("../../../src/logger", () => ({
     error: jest.fn(),
     debug: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 describe("OAuth Configuration", () => {

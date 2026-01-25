@@ -7,7 +7,7 @@
 
 import { Profile, Preset, ProfileValidationResult } from "./types";
 import { ProfileLoader } from "./loader";
-import { logger } from "../logger";
+import { logInfo, logWarn, logError, logDebug } from "../logger";
 
 // ============================================================================
 // Environment Variable Mapping
@@ -79,12 +79,12 @@ export async function applyProfile(
 
   // Log warnings but continue
   for (const warning of validation.warnings) {
-    logger.warn({ profile: profileName }, warning);
+    logWarn(warning, { profile: profileName });
   }
 
   // Stop on errors
   if (!validation.valid) {
-    logger.error({ profile: profileName, errors: validation.errors }, "Profile validation failed");
+    logError("Profile validation failed", { profile: profileName, errors: validation.errors });
     return {
       success: false,
       profileName,
@@ -220,16 +220,13 @@ export async function applyProfile(
     appliedSettings.push(`GITLAB_DEFAULT_NAMESPACE=${profile.default_namespace}`);
   }
 
-  logger.info(
-    {
-      profile: profileName,
-      host: profile.host,
-      authType: profile.auth.type,
-      readOnly: profile.read_only ?? false,
-      settingsCount: appliedSettings.length,
-    },
-    "Profile applied successfully"
-  );
+  logInfo("Profile applied successfully", {
+    profile: profileName,
+    host: profile.host,
+    authType: profile.auth.type,
+    readOnly: profile.read_only ?? false,
+    settingsCount: appliedSettings.length,
+  });
 
   return {
     success: true,
@@ -262,12 +259,12 @@ export async function applyPreset(preset: Preset, presetName: string): Promise<A
 
   // Log warnings but continue
   for (const warning of validation.warnings) {
-    logger.warn({ preset: presetName }, warning);
+    logWarn(warning, { preset: presetName });
   }
 
   // Stop on errors
   if (!validation.valid) {
-    logger.error({ preset: presetName, errors: validation.errors }, "Preset validation failed");
+    logError("Preset validation failed", { preset: presetName, errors: validation.errors });
     return {
       success: false,
       presetName,
@@ -278,10 +275,9 @@ export async function applyPreset(preset: Preset, presetName: string): Promise<A
 
   // Verify that host/auth are already configured (presets require existing connection)
   if (!process.env.GITLAB_API_URL && !process.env.GITLAB_TOKEN) {
-    logger.warn(
-      { preset: presetName },
-      "Preset applied but GITLAB_API_URL/GITLAB_TOKEN not set - connection may fail"
-    );
+    logWarn("Preset applied but GITLAB_API_URL/GITLAB_TOKEN not set - connection may fail", {
+      preset: presetName,
+    });
   }
 
   // Apply access control
@@ -322,14 +318,11 @@ export async function applyPreset(preset: Preset, presetName: string): Promise<A
     appliedSettings.push(`GITLAB_API_TIMEOUT_MS=${preset.timeout_ms}`);
   }
 
-  logger.info(
-    {
-      preset: presetName,
-      readOnly: preset.read_only ?? false,
-      settingsCount: appliedSettings.length,
-    },
-    "Preset applied successfully"
-  );
+  logInfo("Preset applied successfully", {
+    preset: presetName,
+    readOnly: preset.read_only ?? false,
+    settingsCount: appliedSettings.length,
+  });
 
   return {
     success: true,
@@ -387,7 +380,7 @@ export async function tryApplyProfileFromEnv(
   const name = cliProfileName ?? process.env.GITLAB_PROFILE ?? (await getDefaultProfileName());
 
   if (!name) {
-    logger.debug("No profile specified, using environment variables directly");
+    logDebug("No profile specified, using environment variables directly");
     return undefined;
   }
 
@@ -402,7 +395,7 @@ export async function tryApplyProfileFromEnv(
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logger.error({ profile: name, error: message }, "Failed to apply profile/preset");
+    logError("Failed to apply profile/preset", { profile: name, error: message });
     throw error;
   }
 }

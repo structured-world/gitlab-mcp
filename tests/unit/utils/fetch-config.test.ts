@@ -48,6 +48,12 @@ describe("Fetch Configuration Edge Cases", () => {
     info: jest.fn(),
   };
 
+  // Mock helper functions
+  const mockLogInfo = jest.fn();
+  const mockLogWarn = jest.fn();
+  const mockLogError = jest.fn();
+  const mockLogDebug = jest.fn();
+
   describe("SOCKS Proxy Detection", () => {
     beforeEach(() => {
       jest.resetModules();
@@ -57,6 +63,10 @@ describe("Fetch Configuration Edge Cases", () => {
       // Re-register logger mock with persistent instance
       jest.doMock("../../../src/logger", () => ({
         logger: mockLogger,
+        logInfo: mockLogInfo,
+        logWarn: mockLogWarn,
+        logError: mockLogError,
+        logDebug: mockLogDebug,
       }));
     });
 
@@ -86,8 +96,8 @@ describe("Fetch Configuration Edge Cases", () => {
 
       await enhancedFetch("https://example.com");
 
-      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining("SOCKS proxy"));
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(mockLogInfo).toHaveBeenCalledWith(expect.stringContaining("SOCKS proxy"));
+      expect(mockLogWarn).toHaveBeenCalledWith(
         expect.stringContaining("SOCKS proxy not supported")
       );
     });
@@ -120,7 +130,7 @@ describe("Fetch Configuration Edge Cases", () => {
 
       await enhancedFetch("https://example.com");
 
-      expect(mockLogger.info).toHaveBeenCalledWith(expect.stringContaining("socks4://"));
+      expect(mockLogInfo).toHaveBeenCalledWith(expect.stringContaining("socks4://"));
     });
   });
 
@@ -132,6 +142,10 @@ describe("Fetch Configuration Edge Cases", () => {
 
       jest.doMock("../../../src/logger", () => ({
         logger: mockLogger,
+        logInfo: mockLogInfo,
+        logWarn: mockLogWarn,
+        logError: mockLogError,
+        logDebug: mockLogDebug,
       }));
     });
 
@@ -162,7 +176,7 @@ describe("Fetch Configuration Edge Cases", () => {
 
       await enhancedFetch("https://example.com");
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogInfo).toHaveBeenCalledWith(
         expect.stringContaining("http://proxy.example.com:8080")
       );
     });
@@ -209,6 +223,10 @@ describe("Fetch Configuration Edge Cases", () => {
 
       jest.doMock("../../../src/logger", () => ({
         logger: mockLogger,
+        logInfo: mockLogInfo,
+        logWarn: mockLogWarn,
+        logError: mockLogError,
+        logDebug: mockLogDebug,
       }));
     });
 
@@ -238,7 +256,7 @@ describe("Fetch Configuration Edge Cases", () => {
 
       await enhancedFetch("https://example.com");
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(expect.stringContaining("SKIP_TLS_VERIFY"));
+      expect(mockLogWarn).toHaveBeenCalledWith(expect.stringContaining("SKIP_TLS_VERIFY"));
     });
 
     it("should warn when NODE_TLS_REJECT_UNAUTHORIZED is 0", async () => {
@@ -267,7 +285,7 @@ describe("Fetch Configuration Edge Cases", () => {
 
       await enhancedFetch("https://example.com");
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(mockLogWarn).toHaveBeenCalledWith(
         expect.stringContaining("NODE_TLS_REJECT_UNAUTHORIZED")
       );
     });
@@ -281,6 +299,10 @@ describe("Fetch Configuration Edge Cases", () => {
 
       jest.doMock("../../../src/logger", () => ({
         logger: mockLogger,
+        logInfo: mockLogInfo,
+        logWarn: mockLogWarn,
+        logError: mockLogError,
+        logDebug: mockLogDebug,
       }));
     });
 
@@ -321,9 +343,9 @@ describe("Fetch Configuration Edge Cases", () => {
 
       await enhancedFetch("https://example.com");
 
-      expect(mockLogger.error).toHaveBeenCalledWith(
-        expect.objectContaining({ err: expect.any(Error) }),
-        expect.stringContaining("Failed to load CA certificate")
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        expect.stringContaining("Failed to load CA certificate"),
+        expect.objectContaining({ err: expect.any(Error) })
       );
     });
 
@@ -358,7 +380,7 @@ describe("Fetch Configuration Edge Cases", () => {
 
       await enhancedFetch("https://example.com");
 
-      expect(mockLogger.info).toHaveBeenCalledWith(
+      expect(mockLogInfo).toHaveBeenCalledWith(
         expect.stringContaining("Custom CA certificate loaded")
       );
     });
@@ -372,6 +394,10 @@ describe("Fetch Configuration Edge Cases", () => {
 
       jest.doMock("../../../src/logger", () => ({
         logger: mockLogger,
+        logInfo: mockLogInfo,
+        logWarn: mockLogWarn,
+        logError: mockLogError,
+        logDebug: mockLogDebug,
       }));
     });
 
@@ -401,7 +427,7 @@ describe("Fetch Configuration Edge Cases", () => {
 
       await enhancedFetch("https://example.com");
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(mockLogWarn).toHaveBeenCalledWith(
         expect.stringContaining("no token context available")
       );
     });
@@ -432,7 +458,7 @@ describe("Fetch Configuration Edge Cases", () => {
 
       await enhancedFetch("https://example.com");
 
-      expect(mockLogger.warn).toHaveBeenCalledWith(
+      expect(mockLogWarn).toHaveBeenCalledWith(
         expect.stringContaining("token context exists but no gitlabToken")
       );
     });
@@ -466,9 +492,9 @@ describe("Fetch Configuration Edge Cases", () => {
 
       await enhancedFetch("https://example.com");
 
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.objectContaining({ userId: 123 }),
-        expect.stringContaining("using token from context")
+      expect(mockLogDebug).toHaveBeenCalledWith(
+        expect.stringContaining("using token from context"),
+        expect.objectContaining({ userId: 123 })
       );
     });
   });
@@ -481,6 +507,10 @@ describe("Fetch Configuration Edge Cases", () => {
 
       jest.doMock("../../../src/logger", () => ({
         logger: mockLogger,
+        logInfo: mockLogInfo,
+        logWarn: mockLogWarn,
+        logError: mockLogError,
+        logDebug: mockLogDebug,
       }));
 
       jest.doMock("../../../src/config", () => ({
@@ -514,9 +544,9 @@ describe("Fetch Configuration Edge Cases", () => {
       await enhancedFetch("not-a-valid-url-at-all");
 
       // The debug log should contain the fallback for invalid URLs
-      expect(mockLogger.debug).toHaveBeenCalledWith(
-        expect.objectContaining({ url: "[INVALID_URL]" }),
-        expect.any(String)
+      expect(mockLogDebug).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ url: "[INVALID_URL]" })
       );
     });
 
@@ -529,11 +559,11 @@ describe("Fetch Configuration Edge Cases", () => {
       await enhancedFetch("https://example.com:invalid-port/path");
 
       // Should redact hostname (could contain userinfo) and show parse error
-      expect(mockLogger.debug).toHaveBeenCalledWith(
+      expect(mockLogDebug).toHaveBeenCalledWith(
+        expect.any(String),
         expect.objectContaining({
           url: expect.stringMatching(/REDACTED_HOST.*URL_PARSE_ERROR|INVALID_URL/),
-        }),
-        expect.any(String)
+        })
       );
     });
   });

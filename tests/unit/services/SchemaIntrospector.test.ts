@@ -10,6 +10,10 @@ jest.mock("../../../src/logger", () => ({
     error: jest.fn(),
     info: jest.fn(),
   },
+  logInfo: jest.fn(),
+  logWarn: jest.fn(),
+  logError: jest.fn(),
+  logDebug: jest.fn(),
 }));
 
 const mockGraphQLClient = {

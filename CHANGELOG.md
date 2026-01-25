@@ -1,3 +1,9 @@
+## [6.42.1](https://github.com/structured-world/gitlab-mcp/compare/v6.42.0...v6.42.1) (2026-01-25)
+
+### Bug Fixes
+
+* **mrs:** Pre-check mergeability before calling merge API to avoid 405 errors ([#198](https://github.com/structured-world/gitlab-mcp/issues/198)) ([aa9bb83](https://github.com/structured-world/gitlab-mcp/commit/aa9bb83d8a84d001b38d20796c49eacee973368f)), closes [#197](https://github.com/structured-world/gitlab-mcp/issues/197)
+
 ## [6.42.0](https://github.com/structured-world/gitlab-mcp/compare/v6.41.4...v6.42.0) (2026-01-25)
 
 ### Features

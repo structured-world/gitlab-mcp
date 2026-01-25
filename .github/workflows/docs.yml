@@ -64,6 +64,7 @@ jobs:
             # Fallback to package.json version if no release exists
             VERSION=$(jq -r '.version' package.json)
             echo "version=${VERSION}" >> $GITHUB_OUTPUT
+            echo "MCPB bundle version from package.json: ${VERSION}"
           fi
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

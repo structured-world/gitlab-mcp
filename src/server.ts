@@ -115,7 +115,7 @@ function registerOAuthEndpoints(app: Express): void {
   // Dynamic Client Registration endpoint (RFC 7591) - required by Claude.ai
   app.post("/register", express.json(), registerHandler);
 
-  // Health check endpoint (rate limited via global rateLimiterMiddleware at line 400)
+  // Health check endpoint (rate limited via global rateLimiterMiddleware in startServer())
   app.get("/health", healthHandler);
 
   logInfo("OAuth endpoints registered");

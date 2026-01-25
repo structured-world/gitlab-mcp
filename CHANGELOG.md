@@ -1,3 +1,9 @@
+## [6.46.1](https://github.com/structured-world/gitlab-mcp/compare/v6.46.0...v6.46.1) (2026-01-25)
+
+### Bug Fixes
+
+* **logging:** Apply LOG_JSON pattern to all logger calls ([#211](https://github.com/structured-world/gitlab-mcp/issues/211)) ([168783a](https://github.com/structured-world/gitlab-mcp/commit/168783a47286c323379602f476ac01cfff75c9ee)), closes [#209](https://github.com/structured-world/gitlab-mcp/issues/209) [#209](https://github.com/structured-world/gitlab-mcp/issues/209) [#209](https://github.com/structured-world/gitlab-mcp/issues/209) [#209](https://github.com/structured-world/gitlab-mcp/issues/209) [#209](https://github.com/structured-world/gitlab-mcp/issues/209)
+
 ## [6.46.0](https://github.com/structured-world/gitlab-mcp/compare/v6.45.1...v6.46.0) (2026-01-25)
 
 ### Features

@@ -43,6 +43,8 @@ jest.mock("../../../../src/logger", () => ({
   logWarn: jest.fn(),
   logError: jest.fn(),
   logDebug: jest.fn(),
+  // Real implementation - pure function with no side effects
+  truncateId: (id: string) => (id.length <= 10 ? id : id.substring(0, 4) + ".." + id.slice(-4)),
 }));
 
 import { loadOAuthConfig } from "../../../../src/oauth/config";

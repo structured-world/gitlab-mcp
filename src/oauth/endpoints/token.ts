@@ -21,7 +21,7 @@ import {
 } from "../token-utils";
 import { refreshGitLabToken } from "../gitlab-device-flow";
 import { getBaseUrl } from "./metadata";
-import { logInfo, logDebug, logWarn, logError } from "../../logger";
+import { logInfo, logDebug, logWarn, logError, truncateId } from "../../logger";
 import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from "../types";
 import { getIpAddress } from "../../utils/request-logger";
 
@@ -153,7 +153,7 @@ async function handleAuthorizationCode(
   sessionStore.deleteAuthCode(code);
 
   logInfo("MCP tokens issued via authorization_code grant", {
-    sessionId: session.id.substring(0, 8) + "...",
+    sessionId: truncateId(session.id),
     userId: session.gitlabUserId,
   });
 
@@ -211,7 +211,7 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
       }
       updatedSession = refreshedSession;
 
-      logDebug("GitLab token refreshed", { sessionId: session.id.substring(0, 8) + "..." });
+      logDebug("GitLab token refreshed", { sessionId: truncateId(session.id) });
     } catch (error: unknown) {
       logError("Failed to refresh GitLab token", { err: error as Error });
       sendError(req, res, 400, "invalid_grant", "Failed to refresh underlying GitLab token");
@@ -245,7 +245,7 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
   });
 
   logInfo("MCP tokens refreshed via refresh_token grant", {
-    sessionId: updatedSession.id.substring(0, 8) + "...",
+    sessionId: truncateId(updatedSession.id),
     userId: updatedSession.gitlabUserId,
   });
 

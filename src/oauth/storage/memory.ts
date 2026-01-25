@@ -7,7 +7,7 @@
 
 import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } from "../types";
 import { SessionStorageBackend, SessionStorageStats } from "./types";
-import { logInfo, logWarn, logError, logDebug } from "../../logger";
+import { logInfo, logWarn, logError, logDebug, truncateId } from "../../logger";
 
 export interface MemoryStorageOptions {
   /** Suppress initialization logging (used when wrapped by FileStorage) */
@@ -132,7 +132,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   // Auth code flow operations
   async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): Promise<void> {
     this.authCodeFlows.set(internalState, flow);
-    logDebug("Auth code flow stored", { internalState: internalState.substring(0, 8) + "..." });
+    logDebug("Auth code flow stored", { internalState: truncateId(internalState) });
   }
 
   async getAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
@@ -142,7 +142,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   async deleteAuthCodeFlow(internalState: string): Promise<boolean> {
     const deleted = this.authCodeFlows.delete(internalState);
     if (deleted) {
-      logDebug("Auth code flow deleted", { internalState: internalState.substring(0, 8) + "..." });
+      logDebug("Auth code flow deleted", { internalState: truncateId(internalState) });
     }
     return deleted;
   }
@@ -150,7 +150,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   // Authorization code operations
   async storeAuthCode(code: AuthorizationCode): Promise<void> {
     this.authCodes.set(code.code, code);
-    logDebug("Auth code stored", { code: code.code.substring(0, 8) + "..." });
+    logDebug("Auth code stored", { code: truncateId(code.code) });
   }
 
   async getAuthCode(code: string): Promise<AuthorizationCode | undefined> {
@@ -159,7 +159,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
   async deleteAuthCode(code: string): Promise<boolean> {
     const deleted = this.authCodes.delete(code);
-    if (deleted) logDebug("Auth code deleted", { code: code.substring(0, 8) + "..." });
+    if (deleted) logDebug("Auth code deleted", { code: truncateId(code) });
     return deleted;
   }
 
@@ -168,7 +168,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     this.mcpSessionToOAuthSession.set(mcpSessionId, oauthSessionId);
     logDebug("MCP session associated with OAuth session", {
       mcpSessionId,
-      oauthSessionId: oauthSessionId.substring(0, 8) + "...",
+      oauthSessionId: truncateId(oauthSessionId),
     });
   }
 

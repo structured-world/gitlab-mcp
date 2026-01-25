@@ -19,7 +19,7 @@ import { loadOAuthConfig } from "../config";
 import { sessionStore } from "../session-store";
 import { exchangeGitLabAuthCode, getGitLabUser } from "../gitlab-device-flow";
 import { generateSessionId, generateAuthorizationCode, calculateTokenExpiry } from "../token-utils";
-import { logInfo, logWarn, logError, logDebug } from "../../logger";
+import { logInfo, logWarn, logError, logDebug, truncateId } from "../../logger";
 
 /**
  * OAuth callback handler
@@ -157,7 +157,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     sessionStore.deleteAuthCodeFlow(state);
 
     logInfo("Authorization Code Flow completed successfully", {
-      sessionId: sessionId.substring(0, 8) + "...",
+      sessionId: truncateId(sessionId),
       userId: userInfo.id,
       username: userInfo.username,
     });

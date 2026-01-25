@@ -17,13 +17,15 @@ import type {
 } from "./types.js";
 
 /**
- * Truncate session ID to first 8 characters + ".."
+ * Truncate session ID to first 4 + ".." + last 4 characters
  * Returns "-" if no session ID provided
+ *
+ * Example: "9fd82b35-6789-abcd" → "9fd8..abcd"
  */
 export function truncateSessionId(sessionId?: string): string {
   if (!sessionId) return "-";
-  if (sessionId.length <= 8) return sessionId;
-  return sessionId.substring(0, 8) + "..";
+  if (sessionId.length <= 10) return sessionId;
+  return sessionId.substring(0, 4) + ".." + sessionId.slice(-4);
 }
 
 /**

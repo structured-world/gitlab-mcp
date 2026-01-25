@@ -107,7 +107,7 @@ export interface AccessLogEntry {
   /** Client IP address */
   clientIp: string;
 
-  /** Truncated session ID (8 chars + ..) or "-" */
+  /** Truncated session ID (first4..last4) or "-" */
   session: string;
 
   /** Selected context path or "-" */

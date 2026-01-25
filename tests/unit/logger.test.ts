@@ -381,4 +381,91 @@ describe("logger", () => {
       expect(LOG_JSON).toBe(true);
     });
   });
+
+  describe("LOG_FORMAT constant", () => {
+    it("should default to '%msg' (minimal format)", async () => {
+      delete process.env.LOG_FORMAT;
+
+      jest.doMock("pino", () => ({
+        pino: jest.fn(() => ({
+          info: mockInfo,
+          warn: mockWarn,
+          error: mockError,
+          debug: mockDebug,
+        })),
+      }));
+
+      const { LOG_FORMAT } = await import("../../src/logger");
+      expect(LOG_FORMAT).toBe("%msg");
+    });
+
+    it("should use custom format when LOG_FORMAT is set", async () => {
+      process.env.LOG_FORMAT = "[%time] %level (%name): %msg";
+
+      jest.doMock("pino", () => ({
+        pino: jest.fn(() => ({
+          info: mockInfo,
+          warn: mockWarn,
+          error: mockError,
+          debug: mockDebug,
+        })),
+      }));
+
+      const { LOG_FORMAT } = await import("../../src/logger");
+      expect(LOG_FORMAT).toBe("[%time] %level (%name): %msg");
+    });
+  });
+
+  describe("truncateId", () => {
+    it("should truncate long IDs to first4..last4 format", async () => {
+      jest.doMock("pino", () => ({
+        pino: jest.fn(() => ({
+          info: mockInfo,
+          warn: mockWarn,
+          error: mockError,
+          debug: mockDebug,
+        })),
+      }));
+
+      const { truncateId } = await import("../../src/logger");
+
+      // "abcdefghijklmnop" (16 chars) -> "abcd..mnop"
+      expect(truncateId("abcdefghijklmnop")).toBe("abcd..mnop");
+
+      // UUID-like: "550e8400-e29b-41d4-a716-446655440000" -> "550e..0000"
+      expect(truncateId("550e8400-e29b-41d4-a716-446655440000")).toBe("550e..0000");
+    });
+
+    it("should return short IDs unchanged (<=10 chars)", async () => {
+      jest.doMock("pino", () => ({
+        pino: jest.fn(() => ({
+          info: mockInfo,
+          warn: mockWarn,
+          error: mockError,
+          debug: mockDebug,
+        })),
+      }));
+
+      const { truncateId } = await import("../../src/logger");
+
+      expect(truncateId("short")).toBe("short");
+      expect(truncateId("1234567890")).toBe("1234567890");
+    });
+
+    it("should truncate 11+ character IDs", async () => {
+      jest.doMock("pino", () => ({
+        pino: jest.fn(() => ({
+          info: mockInfo,
+          warn: mockWarn,
+          error: mockError,
+          debug: mockDebug,
+        })),
+      }));
+
+      const { truncateId } = await import("../../src/logger");
+
+      // "12345678901" (11 chars) -> "1234..8901"
+      expect(truncateId("12345678901")).toBe("1234..8901");
+    });
+  });
 });

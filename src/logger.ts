@@ -1,5 +1,18 @@
 import { pino, type LoggerOptions } from "pino";
 
+/**
+ * Truncate an ID for safe logging.
+ *
+ * Shows first 4 characters + ".." + last 4 characters to avoid exposing full IDs
+ * while maintaining identifiability.
+ *
+ * @example truncateId("9fd82b35-6789-abcd") → "9fd8..abcd"
+ */
+export function truncateId(id: string): string {
+  if (id.length <= 10) return id;
+  return id.substring(0, 4) + ".." + id.slice(-4);
+}
+
 const isTestEnv = process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID !== undefined;
 
 /**
@@ -9,6 +22,63 @@ const isTestEnv = process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID 
  * When false (default): Human-readable single-line format via pino-pretty
  */
 export const LOG_JSON = process.env.LOG_JSON === "true";
+
+/**
+ * Log format pattern using nginx-style tokens.
+ *
+ * Available tokens:
+ * - %time  - Timestamp [HH:MM:SS.mmm]
+ * - %level - Log level (INFO, WARN, ERROR, DEBUG)
+ * - %name  - Logger name (gitlab-mcp)
+ * - %msg   - Log message with structured data
+ *
+ * Presets:
+ * - "%msg" (minimal/default) - Message only, for daemonized environments where
+ *   journald/systemd already provides timestamp, level, and process name
+ * - "[%time] %level (%name): %msg" (full) - Complete format for standalone use
+ *
+ * @example LOG_FORMAT="%msg"
+ * @example LOG_FORMAT="[%time] %level (%name): %msg"
+ */
+export const LOG_FORMAT = process.env.LOG_FORMAT ?? "%msg";
+
+/**
+ * Check if log format is minimal (message only)
+ */
+function isMinimalFormat(format: string): boolean {
+  return format.trim() === "%msg";
+}
+
+/**
+ * Build pino-pretty options based on LOG_FORMAT
+ */
+function buildPrettyOptions(format: string): Record<string, unknown> {
+  const baseOptions = {
+    destination: 2, // stderr - keeps stdout clean for CLI tools (list-tools --export)
+  };
+
+  if (isMinimalFormat(format)) {
+    // Minimal format: message only, no timestamp/level/name prefix
+    // Perfect for daemonized environments where journald adds metadata
+    return {
+      ...baseOptions,
+      colorize: false,
+      translateTime: false,
+      ignore: "pid,hostname,time,level,name",
+      messageFormat: "{msg}",
+      hideObject: true,
+    };
+  }
+
+  // Full format: include timestamp, level, name
+  // Format: [HH:MM:SS.mmm] LEVEL (name): message
+  return {
+    ...baseOptions,
+    colorize: true,
+    translateTime: "HH:MM:ss.l",
+    ignore: "pid,hostname",
+  };
+}
 
 export const createLogger = (name?: string) => {
   const options: LoggerOptions = {
@@ -22,12 +92,7 @@ export const createLogger = (name?: string) => {
   if (!isTestEnv && !LOG_JSON) {
     options.transport = {
       target: "pino-pretty",
-      options: {
-        colorize: true,
-        translateTime: true,
-        ignore: "pid,hostname",
-        destination: 2, // stderr - keeps stdout clean for CLI tools (list-tools --export)
-      },
+      options: buildPrettyOptions(LOG_FORMAT),
     };
   }
 

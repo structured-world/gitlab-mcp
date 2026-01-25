@@ -52,14 +52,16 @@ describe("request-logger utils", () => {
   });
 
   describe("truncateId", () => {
-    it("should truncate long IDs to 8 characters with ellipsis", () => {
-      expect(truncateId("abcdefghijklmnop")).toBe("abcdefgh...");
-      expect(truncateId("123456789012345")).toBe("12345678...");
+    it("should truncate long IDs to first4..last4 format", () => {
+      // "abcdefghijklmnop" -> "abcd..mnop"
+      expect(truncateId("abcdefghijklmnop")).toBe("abcd..mnop");
+      // "123456789012345" -> "1234..2345"
+      expect(truncateId("123456789012345")).toBe("1234..2345");
     });
 
-    it("should return short IDs unchanged", () => {
+    it("should return short IDs unchanged (<=10 chars)", () => {
       expect(truncateId("abcd")).toBe("abcd");
-      expect(truncateId("12345678")).toBe("12345678");
+      expect(truncateId("1234567890")).toBe("1234567890");
     });
 
     it("should return undefined for undefined input", () => {
@@ -70,12 +72,13 @@ describe("request-logger utils", () => {
       expect(truncateId("")).toBeUndefined();
     });
 
-    it("should handle exactly 8 character string", () => {
-      expect(truncateId("12345678")).toBe("12345678");
+    it("should handle exactly 10 character string", () => {
+      expect(truncateId("1234567890")).toBe("1234567890");
     });
 
-    it("should handle 9 character string", () => {
-      expect(truncateId("123456789")).toBe("12345678...");
+    it("should handle 11 character string", () => {
+      // "12345678901" -> "1234..8901"
+      expect(truncateId("12345678901")).toBe("1234..8901");
     });
   });
 
@@ -100,8 +103,10 @@ describe("request-logger utils", () => {
       expect(context.userAgent).toBe("Claude/1.0");
       expect(context.hasOAuthSession).toBe(true);
       expect(context.hasMcpSessionHeader).toBe(true);
-      expect(context.oauthSessionId).toBe("oauth-se...");
-      expect(context.mcpSessionId).toBe("mcp-sess...");
+      // oauth-session-abcdefghij -> first4="oaut" + ".." + last4="ghij"
+      expect(context.oauthSessionId).toBe("oaut..ghij");
+      // mcp-session-1234567890 -> first4="mcp-" + ".." + last4="7890"
+      expect(context.mcpSessionId).toBe("mcp-..7890");
     });
 
     it("should handle missing auth context", () => {
@@ -173,7 +178,8 @@ describe("request-logger utils", () => {
       const info = buildRateLimitInfo("session", "session-id-1234567890abcdef", 100, 100, resetAt);
 
       expect(info.type).toBe("session");
-      expect(info.key).toBe("session-...");
+      // session-id-1234567890abcdef -> first4="sess" + ".." + last4="cdef"
+      expect(info.key).toBe("sess..cdef");
       expect(info.used).toBe(100);
       expect(info.limit).toBe(100);
       expect(info.resetInSec).toBeGreaterThanOrEqual(59);

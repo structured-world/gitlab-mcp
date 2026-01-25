@@ -158,16 +158,24 @@ function toStructuredError(
 }
 
 export async function setupHandlers(server: Server): Promise<void> {
-  // Initialize connection and detect GitLab instance on startup
-  const connectionManager = ConnectionManager.getInstance();
-  try {
-    await connectionManager.initialize();
-    logInfo("Connection initialized during server setup");
-  } catch (error) {
-    logWarn(
-      `Initial connection failed during setup, will retry on first tool call: ${error instanceof Error ? error.message : String(error)}`
-    );
-    // Continue without initialization - tools will handle gracefully on first call
+  // Check if authentication is configured before trying to initialize connection
+  const { isAuthenticationConfigured } = await import("./oauth/index");
+
+  if (isAuthenticationConfigured()) {
+    // Initialize connection and detect GitLab instance on startup
+    const connectionManager = ConnectionManager.getInstance();
+    try {
+      await connectionManager.initialize();
+      logInfo("Connection initialized during server setup");
+    } catch (error) {
+      logWarn(
+        `Initial connection failed during setup, will retry on first tool call: ${error instanceof Error ? error.message : String(error)}`
+      );
+      // Continue without initialization - tools will handle gracefully on first call
+    }
+  } else {
+    // No authentication configured - server will respond to tools/list but tool calls will fail
+    logInfo("Skipping connection initialization - no authentication configured");
   }
   // List tools handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -282,9 +290,21 @@ export async function setupHandlers(server: Server): Promise<void> {
         logInfo(`Tool called: ${request.params.name}`);
       }
 
+      // Check if authentication is configured
+      const { isOAuthEnabled, isAuthenticationConfigured } = await import("./oauth/index");
+
+      if (!isAuthenticationConfigured()) {
+        // No token configured - return clear error with setup instructions
+        throw new Error(
+          "GITLAB_TOKEN environment variable is required to execute tools. " +
+            "Run 'npx @structured-world/gitlab-mcp setup' for interactive configuration, " +
+            "or set GITLAB_TOKEN manually. " +
+            "Documentation: https://gitlab-mcp.sw.foundation/guide/configuration"
+        );
+      }
+
       // Check if connection is initialized - try to initialize if needed
       const connectionManager = ConnectionManager.getInstance();
-      const { isOAuthEnabled } = await import("./oauth/index");
       const oauthMode = isOAuthEnabled();
 
       try {

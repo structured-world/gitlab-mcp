@@ -49,5 +49,18 @@ sed -e "s/__TOOL_COUNT__/${TOOL_COUNT}/g" \
     -e "s/__VERSION__/${VERSION}/g" \
     README.md.in > README.md
 
+# Update MCP manifest tools list in package.json
+# Uses the list-tools CLI to get full tool definitions and transforms them for manifest
+echo "Updating MCP manifest in package.json..."
+node -e '
+const r = require("./dist/src/registry-manager.js");
+const tools = r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered();
+console.log(JSON.stringify(tools.map(t => ({
+  name: t.name,
+  description: t.description,
+  tier: t.tier || "free"
+}))))
+' 2>/dev/null | node scripts/update-mcp-manifest.js
+
 # Write version file for CI
 echo "$VERSION" > .semantic-release-version

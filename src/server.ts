@@ -25,7 +25,6 @@ import { getSessionManager } from "./session-manager";
 // OAuth imports
 import {
   loadOAuthConfig,
-  validateStaticConfig,
   isOAuthEnabled,
   getAuthModeDescription,
   metadataHandler,
@@ -116,7 +115,7 @@ function registerOAuthEndpoints(app: Express): void {
   // Dynamic Client Registration endpoint (RFC 7591) - required by Claude.ai
   app.post("/register", express.json(), registerHandler);
 
-  // Health check endpoint
+  // Health check endpoint (rate limited via global rateLimiterMiddleware in startServer())
   app.get("/health", healthHandler);
 
   logInfo("OAuth endpoints registered");
@@ -283,15 +282,20 @@ function determineTransportMode(): TransportMode {
 }
 
 export async function startServer(): Promise<void> {
-  // Validate configuration based on auth mode
+  // Detect configuration based on auth mode
   const oauthConfig = loadOAuthConfig();
   if (oauthConfig) {
     logInfo("Starting in OAuth mode (per-user authentication)");
     logInfo("OAuth client ID configured", { clientId: oauthConfig.gitlabClientId });
-  } else {
-    // Validate static token configuration
-    validateStaticConfig();
+  } else if (process.env.GITLAB_TOKEN) {
+    // Static token mode with token configured
     logInfo("Starting in static token mode (shared GITLAB_TOKEN)");
+  } else {
+    // Graceful startup without token - server will accept tools/list requests
+    // but tool calls will return clear errors until token is configured
+    logInfo(
+      "Starting without authentication - tools/list will work, but tool calls require GITLAB_TOKEN"
+    );
   }
 
   logInfo("Authentication mode", { mode: getAuthModeDescription() });

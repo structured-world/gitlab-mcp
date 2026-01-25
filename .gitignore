@@ -30,6 +30,7 @@ scripts/
 !scripts/deploy.sh
 !scripts/build-mcpb.sh
 !scripts/prepare-release.sh
+!scripts/update-mcp-manifest.js
 
 # MCPB bundles (built artifacts)
 *.mcpb

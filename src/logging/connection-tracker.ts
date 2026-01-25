@@ -113,19 +113,22 @@ export class ConnectionTracker {
    * @returns The formatted log line (for testing) or undefined if disabled/not found
    */
   closeConnection(sessionId: string, reason: ConnectionCloseReason): string | undefined {
-    // Early return when disabled - avoid debug noise in verbose mode
+    const stats = this.connections.get(sessionId);
+    if (!stats) {
+      // Only log debug when enabled to avoid noise in verbose mode
+      if (this.enabled) {
+        logger.debug({ sessionId }, "Connection not found on close");
+      }
+      return undefined;
+    }
+
+    // Remove from map first to prevent leaking tracked connections
+    this.connections.delete(sessionId);
+
+    // When disabled, skip log emission but cleanup still occurred
     if (!this.enabled) {
       return undefined;
     }
-
-    const stats = this.connections.get(sessionId);
-    if (!stats) {
-      logger.debug({ sessionId }, "Connection not found on close");
-      return undefined;
-    }
-
-    // Remove from map first
-    this.connections.delete(sessionId);
 
     // Format and log the connection close entry
     const entry = createConnectionCloseEntry(stats, reason);

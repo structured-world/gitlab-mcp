@@ -480,8 +480,8 @@ export async function startServer(): Promise<void> {
         // Increment request count for connection tracking (SSE mode)
         connectionTracker.incrementRequests(sessionId);
 
-        // Get access log request ID from middleware
-        const accessLogRequestId = res.locals.accessLogRequestId as string | undefined;
+        // Get access log request ID from middleware (res.locals may be undefined in tests)
+        const accessLogRequestId = res.locals?.accessLogRequestId as string | undefined;
 
         // Update request stack with SSE session ID (middleware uses header, SSE uses query param)
         if (accessLogRequestId) {

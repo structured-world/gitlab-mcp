@@ -356,9 +356,11 @@ jobs:
           cat server.json
 
       - name: Authenticate to MCP Registry (OIDC)
+        # OIDC auth failure will exit non-zero; GitHub Actions fails the step automatically
         run: ./mcp-publisher login github-oidc
 
       - name: Publish to MCP Registry
+        # Publish failure exits non-zero; step fails and job stops — no extra handling needed
         run: ./mcp-publisher publish
 
   # Job 6: Summary

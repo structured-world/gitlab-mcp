@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# This script must be executable (chmod +x) for semantic-release to invoke it.
+# IMPORTANT: This script must be executable (chmod +x) for semantic-release to invoke it.
+# Git tracks executable bit, so no runtime check needed — just ensure correct mode on commit.
 set -euo pipefail
 
 # Called by semantic-release @semantic-release/exec prepareCmd

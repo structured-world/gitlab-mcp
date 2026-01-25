@@ -1,3 +1,9 @@
+## [6.43.1](https://github.com/structured-world/gitlab-mcp/compare/v6.43.0...v6.43.1) (2026-01-25)
+
+### Bug Fixes
+
+* **mcpb:** preserve yaml/dist/doc and install required peer deps ([#202](https://github.com/structured-world/gitlab-mcp/issues/202)) ([a96d258](https://github.com/structured-world/gitlab-mcp/commit/a96d25807d4a2617f5d7a98813dd9c090e7e6bd7)), closes [#201](https://github.com/structured-world/gitlab-mcp/issues/201)
+
 ## [6.43.0](https://github.com/structured-world/gitlab-mcp/compare/v6.42.1...v6.43.0) (2026-01-25)
 
 ### Features

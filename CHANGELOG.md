@@ -1,3 +1,9 @@
+## [6.45.1](https://github.com/structured-world/gitlab-mcp/compare/v6.45.0...v6.45.1) (2026-01-25)
+
+### Bug Fixes
+
+* **logging:** Access logs output single-line format with LOG_JSON mode ([#208](https://github.com/structured-world/gitlab-mcp/issues/208)) ([499854d](https://github.com/structured-world/gitlab-mcp/commit/499854dc30f4adcaf171dbc8e4da1c93ffe4eed0)), closes [#207](https://github.com/structured-world/gitlab-mcp/issues/207)
+
 ## [6.45.0](https://github.com/structured-world/gitlab-mcp/compare/v6.44.0...v6.45.0) (2026-01-25)
 
 ### Features

@@ -33,6 +33,16 @@ function initGoogleAnalytics() {
   window.gtag = function (...args: unknown[]) {
     window.dataLayer!.push(args);
   };
+
+  // Set default consent - required for GA4 to send data
+  // This grants analytics by default (no ads tracking)
+  window.gtag("consent", "default", {
+    analytics_storage: "granted",
+    ad_storage: "denied",
+    ad_user_data: "denied",
+    ad_personalization: "denied",
+  });
+
   window.gtag("js", new Date());
   // Disable automatic page_view - we send manually to track SPA navigation
   window.gtag("config", GA_ID, { send_page_view: false });

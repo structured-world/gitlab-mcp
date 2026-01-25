@@ -1,9 +1,52 @@
-import { h } from "vue";
+import { h, watch } from "vue";
 import DefaultTheme from "vitepress/theme";
 import type { Theme } from "vitepress";
-import googleAnalytics from "vitepress-plugin-google-analytics";
+import { inBrowser } from "vitepress";
 import "./style.css";
 import BugReportWidget from "./components/BugReportWidget.vue";
+
+// GA4 tracking ID
+const GA_ID = import.meta.env.VITE_GA_ID || "G-RY1XJ7LR5F";
+
+// Declare gtag types
+declare global {
+  interface Window {
+    dataLayer?: unknown[];
+    gtag?: (...args: unknown[]) => void;
+  }
+}
+
+function initGoogleAnalytics() {
+  if (!inBrowser || !GA_ID) return;
+
+  // Avoid duplicate initialization
+  if (window.dataLayer && window.gtag) return;
+
+  // Load gtag script
+  const script = document.createElement("script");
+  script.src = `https://www.googletagmanager.com/gtag/js?id=${GA_ID}`;
+  script.async = true;
+  document.head.appendChild(script);
+
+  // Initialize gtag
+  window.dataLayer = window.dataLayer || [];
+  window.gtag = function (...args: unknown[]) {
+    window.dataLayer!.push(args);
+  };
+  window.gtag("js", new Date());
+  // Disable automatic page_view - we send manually to track SPA navigation
+  window.gtag("config", GA_ID, { send_page_view: false });
+}
+
+function trackPageView(path: string) {
+  if (!inBrowser || !window.gtag) return;
+
+  window.gtag("event", "page_view", {
+    page_path: path,
+    page_location: window.location.href,
+    page_title: document.title,
+  });
+}
 
 export default {
   extends: DefaultTheme,
@@ -12,9 +55,21 @@ export default {
       "layout-bottom": () => h(BugReportWidget),
     });
   },
-  enhanceApp({ app }) {
-    googleAnalytics({
-      id: import.meta.env.VITE_GA_ID || "G-RY1XJ7LR5F",
-    });
+  enhanceApp({ router }) {
+    if (inBrowser) {
+      initGoogleAnalytics();
+
+      // Track initial page view
+      trackPageView(window.location.pathname);
+
+      // Track subsequent SPA navigations
+      watch(
+        () => router.route.path,
+        path => {
+          // Small delay to ensure document.title is updated
+          setTimeout(() => trackPageView(path), 100);
+        }
+      );
+    }
   },
 } satisfies Theme;

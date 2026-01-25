@@ -59,6 +59,11 @@ jest.mock("../../../../src/server", () => ({
   sendToolsListChangedNotification: () => mockSendToolsListChangedNotification(),
 }));
 
+// Mock isOAuthEnabled to check process.env at runtime
+jest.mock("../../../../src/oauth/index.js", () => ({
+  isOAuthEnabled: () => process.env.OAUTH_ENABLED === "true",
+}));
+
 describe("whoami handler", () => {
   const originalEnv = process.env;
 

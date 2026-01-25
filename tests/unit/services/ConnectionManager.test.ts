@@ -5,6 +5,21 @@
 
 import { ConnectionManager } from "../../../src/services/ConnectionManager";
 
+// Mock isOAuthEnabled to avoid OAuth config validation in tests
+const mockIsOAuthEnabled = jest.fn();
+jest.mock("../../../src/oauth/index.js", () => ({
+  isOAuthEnabled: () => mockIsOAuthEnabled(),
+}));
+
+// Mock detectTokenScopes for testing scope refresh
+const mockDetectTokenScopes = jest.fn();
+jest.mock("../../../src/services/TokenScopeDetector", () => ({
+  detectTokenScopes: () => mockDetectTokenScopes(),
+  getTokenCreationUrl: jest.fn(
+    () => "https://gitlab.example.com/-/user_settings/personal_access_tokens"
+  ),
+}));
+
 describe("ConnectionManager Unit", () => {
   beforeEach(() => {
     // Reset singleton instance for each test
@@ -59,6 +74,168 @@ describe("ConnectionManager Unit", () => {
 
     it("should throw error when getting schema info before initialization", () => {
       expect(() => manager.getSchemaInfo()).toThrow(errorMessage);
+    });
+  });
+
+  describe("refreshTokenScopes", () => {
+    let manager: ConnectionManager;
+
+    beforeEach(() => {
+      manager = ConnectionManager.getInstance();
+      mockIsOAuthEnabled.mockReturnValue(false);
+      mockDetectTokenScopes.mockReset();
+    });
+
+    it("should return false in OAuth mode", async () => {
+      // Mock OAuth mode enabled
+      mockIsOAuthEnabled.mockReturnValue(true);
+
+      const result = await manager.refreshTokenScopes();
+      expect(result).toBe(false);
+    });
+
+    it("should return false when token detection fails (returns null)", async () => {
+      // Detection returns null on failure
+      mockDetectTokenScopes.mockResolvedValue(null);
+
+      const result = await manager.refreshTokenScopes();
+      expect(result).toBe(false);
+    });
+
+    it("should return false when scopes have not changed", async () => {
+      // First, set up initial token info with some scopes
+      const initialScopes = {
+        active: true,
+        scopes: ["read_api", "read_user"],
+        hasGraphQLAccess: true,
+        hasWriteAccess: false,
+        tokenType: "personal_access_token",
+        name: "test-token",
+        expiresAt: null,
+        daysUntilExpiry: null,
+      };
+
+      // Set initial state
+      (manager as any).tokenScopeInfo = initialScopes;
+
+      // Return same scopes on refresh
+      mockDetectTokenScopes.mockResolvedValue(initialScopes);
+
+      const result = await manager.refreshTokenScopes();
+      expect(result).toBe(false);
+    });
+
+    it("should return true when scopes change (new scopes added)", async () => {
+      // Set up initial token info with limited scopes
+      const initialScopes = {
+        active: true,
+        scopes: ["read_api"],
+        hasGraphQLAccess: true,
+        hasWriteAccess: false,
+        tokenType: "personal_access_token",
+        name: "test-token",
+        expiresAt: null,
+        daysUntilExpiry: null,
+      };
+
+      // Set initial state
+      (manager as any).tokenScopeInfo = initialScopes;
+
+      // Return new scopes with api scope added
+      mockDetectTokenScopes.mockResolvedValue({
+        ...initialScopes,
+        scopes: ["api", "read_api"],
+        hasWriteAccess: true,
+      });
+
+      const result = await manager.refreshTokenScopes();
+      expect(result).toBe(true);
+    });
+
+    it("should return true when GraphQL access changes", async () => {
+      // Set up initial token info without GraphQL access
+      const initialScopes = {
+        active: true,
+        scopes: ["read_user"],
+        hasGraphQLAccess: false,
+        hasWriteAccess: false,
+        tokenType: "personal_access_token",
+        name: "test-token",
+        expiresAt: null,
+        daysUntilExpiry: null,
+      };
+
+      // Set initial state
+      (manager as any).tokenScopeInfo = initialScopes;
+
+      // Return scopes with GraphQL access now available
+      mockDetectTokenScopes.mockResolvedValue({
+        ...initialScopes,
+        scopes: ["api"],
+        hasGraphQLAccess: true,
+      });
+
+      const result = await manager.refreshTokenScopes();
+      expect(result).toBe(true);
+    });
+
+    it("should return true when write access changes", async () => {
+      // Set up initial token info without write access
+      const initialScopes = {
+        active: true,
+        scopes: ["read_api"],
+        hasGraphQLAccess: true,
+        hasWriteAccess: false,
+        tokenType: "personal_access_token",
+        name: "test-token",
+        expiresAt: null,
+        daysUntilExpiry: null,
+      };
+
+      // Set initial state
+      (manager as any).tokenScopeInfo = initialScopes;
+
+      // Return scopes with write access now available
+      mockDetectTokenScopes.mockResolvedValue({
+        ...initialScopes,
+        scopes: ["api"],
+        hasWriteAccess: true,
+      });
+
+      const result = await manager.refreshTokenScopes();
+      expect(result).toBe(true);
+    });
+
+    it("should update tokenScopeInfo when scopes change", async () => {
+      // Set up initial token info
+      const initialScopes = {
+        active: true,
+        scopes: ["read_api"],
+        hasGraphQLAccess: true,
+        hasWriteAccess: false,
+        tokenType: "personal_access_token",
+        name: "test-token",
+        expiresAt: null,
+        daysUntilExpiry: null,
+      };
+
+      // Set initial state
+      (manager as any).tokenScopeInfo = initialScopes;
+
+      // Return new scopes
+      const newScopes = {
+        ...initialScopes,
+        scopes: ["api"],
+        hasWriteAccess: true,
+      };
+      mockDetectTokenScopes.mockResolvedValue(newScopes);
+
+      await manager.refreshTokenScopes();
+
+      // Verify the tokenScopeInfo was updated
+      const updatedInfo = manager.getTokenScopeInfo();
+      expect(updatedInfo?.scopes).toEqual(["api"]);
+      expect(updatedInfo?.hasWriteAccess).toBe(true);
     });
   });
 });

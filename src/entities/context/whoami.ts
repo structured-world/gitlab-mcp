@@ -20,6 +20,7 @@
 
 import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from "../../config";
 import { logger } from "../../logger";
+import { isOAuthEnabled } from "../../oauth/index.js";
 import { ConnectionManager } from "../../services/ConnectionManager";
 import { getTokenCreationUrl } from "../../services/TokenScopeDetector";
 import { RegistryManager } from "../../registry-manager";
@@ -36,13 +37,6 @@ import {
   WhoamiRecommendation,
   RuntimeScope,
 } from "./types";
-
-/**
- * Check if OAuth mode is enabled
- */
-function isOAuthMode(): boolean {
-  return process.env.OAUTH_ENABLED === "true";
-}
 
 /**
  * Get GitLab host from API URL
@@ -109,7 +103,7 @@ function buildTokenInfo(): WhoamiTokenInfo | null {
 
     if (!tokenScopeInfo) {
       // In OAuth mode or when token detection failed
-      if (isOAuthMode()) {
+      if (isOAuthEnabled()) {
         return {
           type: "oauth",
           name: null,
@@ -166,7 +160,7 @@ function buildServerInfo(): WhoamiServerInfo {
     tier,
     edition,
     readOnlyMode: GITLAB_READ_ONLY_MODE,
-    oauthEnabled: isOAuthMode(),
+    oauthEnabled: isOAuthEnabled(),
   };
 }
 

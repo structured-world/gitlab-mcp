@@ -669,8 +669,17 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               progressCurrentValue,
               healthStatus,
               color,
+              linkType,
+              targetId,
             } = input;
             const workItemId = id;
+
+            // Validate linked items params: both must be provided together
+            if ((linkType !== undefined) !== (targetId !== undefined)) {
+              throw new Error(
+                "Both linkType and targetId must be provided together to create a linked item relationship"
+              );
+            }
 
             // Validate widget parameters against instance version/tier.
             const widgetParams: Record<string, unknown> = {
@@ -690,6 +699,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               progressCurrentValue,
               healthStatus,
               color,
+              linkType,
+              targetId,
             };
             const validationFailure = WidgetAvailability.validateWidgetParams(widgetParams);
             if (validationFailure) {
@@ -827,9 +838,93 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               throw new Error("Work item update failed - no work item returned");
             }
 
-            return cleanWorkItemResponse(
-              response.workItemUpdate.workItem as unknown as GitLabWorkItem
-            );
+            const updatedWorkItem = response.workItemUpdate.workItem;
+
+            // Step 2: Apply linked items via follow-up mutation if requested
+            // GitLab API does NOT support linkedItemsWidget on WorkItemUpdateInput
+            // so we must apply it via a separate workItemAddLinkedItems mutation
+            if (linkType !== undefined && targetId !== undefined) {
+              try {
+                const linkResponse = await client.request(WORK_ITEM_ADD_LINKED_ITEMS, {
+                  input: {
+                    id: workItemGid,
+                    workItemsIds: [toGid(targetId, "WorkItem")],
+                    linkType,
+                  },
+                });
+
+                if (
+                  linkResponse.workItemAddLinkedItems?.errors?.length &&
+                  linkResponse.workItemAddLinkedItems.errors.length > 0
+                ) {
+                  // Link failed - return update result with warning
+                  const cleanedResult = cleanWorkItemResponse(
+                    updatedWorkItem as unknown as GitLabWorkItem
+                  );
+                  return {
+                    ...cleanedResult,
+                    _warning: {
+                      message: "Work item updated successfully, but linked item could not be added",
+                      failedProperties: {
+                        linkedItem: {
+                          targetId,
+                          linkType,
+                          error: linkResponse.workItemAddLinkedItems.errors.join(", "),
+                        },
+                      },
+                    },
+                  };
+                }
+
+                if (linkResponse.workItemAddLinkedItems?.workItem) {
+                  // Return work item with linked items applied
+                  return cleanWorkItemResponse(
+                    linkResponse.workItemAddLinkedItems.workItem as unknown as GitLabWorkItem
+                  );
+                }
+
+                // Link returned no work item but also no errors - return update result with warning
+                const cleanedResult = cleanWorkItemResponse(
+                  updatedWorkItem as unknown as GitLabWorkItem
+                );
+                return {
+                  ...cleanedResult,
+                  _warning: {
+                    message: "Work item updated successfully, but linked item could not be added",
+                    failedProperties: {
+                      linkedItem: {
+                        targetId,
+                        linkType,
+                        error: "Add linked item returned no work item",
+                      },
+                    },
+                  },
+                };
+              } catch (linkError) {
+                // Link failed with exception - return update result with warning
+                const cleanedResult = cleanWorkItemResponse(
+                  updatedWorkItem as unknown as GitLabWorkItem
+                );
+                return {
+                  ...cleanedResult,
+                  _warning: {
+                    message: "Work item updated successfully, but linked item could not be added",
+                    failedProperties: {
+                      linkedItem: {
+                        targetId,
+                        linkType,
+                        error:
+                          linkError instanceof Error
+                            ? linkError.message
+                            : "Unknown error adding linked item",
+                      },
+                    },
+                  },
+                };
+              }
+            }
+
+            return cleanWorkItemResponse(updatedWorkItem as unknown as GitLabWorkItem);
           }
 
           case "delete": {

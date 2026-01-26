@@ -131,6 +131,13 @@ const UpdateWorkItemSchema = z.object({
   state: WorkItemStateEventSchema.optional().describe(
     "State event for the work item (CLOSE, REOPEN)"
   ),
+  // Linked items (applied via follow-up mutation after update)
+  linkType: LinkTypeSchema.optional().describe(
+    "Relationship type to create. Use with targetId to link work items during update. Applied via separate mutation after the main update."
+  ),
+  targetId: WorkItemIdSchema.optional().describe(
+    "Target work item ID to link to. Use with linkType to create a relationship during update."
+  ),
   // Free tier: dates
   startDate: DateSchema.nullable()
     .optional()

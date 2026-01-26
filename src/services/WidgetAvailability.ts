@@ -49,6 +49,9 @@ const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
   // Free tier: time tracking
   timeEstimate: WorkItemWidgetTypes.TIME_TRACKING,
   timeSpent: WorkItemWidgetTypes.TIME_TRACKING,
+  // Free tier: linked items
+  linkType: WorkItemWidgetTypes.LINKED_ITEMS,
+  targetId: WorkItemWidgetTypes.LINKED_ITEMS,
   // Premium tier
   weight: WorkItemWidgetTypes.WEIGHT,
   iterationId: WorkItemWidgetTypes.ITERATION,

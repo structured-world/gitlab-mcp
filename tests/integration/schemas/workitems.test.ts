@@ -493,17 +493,20 @@ describe("Work Items Schema - GitLab 18.3 Integration", () => {
           `  ✅ Verified linked item: ${linkedItem.linkType} -> ${linkedItem.workItem.title}`
         );
       } else {
-        // If no linked items found, check if _warning was present (expected behavior)
-        if (!updatedWorkItem._warning) {
-          console.log(`  ⚠️  No linked items found in widget, but no warning was returned`);
-        }
+        // If no linked items found, a warning MUST be present to indicate the issue
+        // This ensures the feature either works or properly reports failures
+        expect(updatedWorkItem._warning).toBeDefined();
+        expect(updatedWorkItem._warning.message).toContain("linked item");
+        console.log(
+          `  ⚠️  No linked items found, warning returned: ${updatedWorkItem._warning.message}`
+        );
       }
 
       console.log("✅ Update action with linkType/targetId test completed (Issue #232)");
     }, 30000);
 
     it("should validate that linkType and targetId must be provided together", async () => {
-      // Test with only linkType
+      // Test with only linkType - schema passes but handler should reject
       const onlyLinkTypeParams = {
         action: "update" as const,
         id: sourceWorkItemId!,
@@ -511,10 +514,15 @@ describe("Work Items Schema - GitLab 18.3 Integration", () => {
       };
 
       const result1 = ManageWorkItemSchema.safeParse(onlyLinkTypeParams);
-      // Schema should pass (both are optional), but handler should reject
       expect(result1.success).toBe(true);
 
-      // Test with only targetId
+      // Verify handler rejects when only linkType is provided
+      await expect(helper.executeTool("manage_work_item", onlyLinkTypeParams)).rejects.toThrow(
+        "Both linkType and targetId must be provided together"
+      );
+      console.log("  ✅ Handler correctly rejected update with only linkType");
+
+      // Test with only targetId - schema passes but handler should reject
       const onlyTargetIdParams = {
         action: "update" as const,
         id: sourceWorkItemId!,
@@ -524,8 +532,14 @@ describe("Work Items Schema - GitLab 18.3 Integration", () => {
       const result2 = ManageWorkItemSchema.safeParse(onlyTargetIdParams);
       expect(result2.success).toBe(true);
 
+      // Verify handler rejects when only targetId is provided
+      await expect(helper.executeTool("manage_work_item", onlyTargetIdParams)).rejects.toThrow(
+        "Both linkType and targetId must be provided together"
+      );
+      console.log("  ✅ Handler correctly rejected update with only targetId");
+
       console.log("✅ Schema validation for linkType/targetId params verified");
-    }, 15000);
+    }, 30000);
 
     it("should cleanup test work items", async () => {
       // Delete source work item

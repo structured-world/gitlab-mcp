@@ -422,7 +422,7 @@
     "watch": "tsc --watch",
     "test": "cross-env JEST_UNIT_ONLY=true yarn jest",
     "test:cov": "cross-env JEST_UNIT_ONLY=true yarn jest --coverage",
-    "test:integration": "yarn jest --testPathPattern=tests/integration --runInBand",
+    "test:integration": "yarn jest --testPathPatterns=tests/integration --runInBand",
     "test:all": "yarn jest --runInBand",
     "test:env-gating": "node tests/scripts/test-env-gating.js",
     "test:help": "printf '# Test Scripts\\n  yarn test              - Unit tests only (fast, safe default)\\n  yarn test <pattern>    - Unit tests matching pattern\\n  yarn test:cov          - Unit test coverage\\n  yarn test:integration  - Integration tests (needs .env.test)\\n  yarn test:all          - Full suite (unit + integration)\\n  yarn test:env-gating   - Test environment gating\\n'",

@@ -1250,15 +1250,40 @@ describe("🔄 Data Lifecycle - Complete Infrastructure Setup", () => {
       }
       console.log(`    ✅ Created test file: ${testFilePath}`);
 
-      // Step 2: Get updated MR with diff_refs
+      // Step 2: Get updated MR with diff_refs (retry if not ready yet)
       console.log("  🔍 Getting MR diff_refs...");
-      const mrDetails = (await helper.browseMergeRequests({
-        action: "get",
-        project_id: projectId,
-        merge_request_iid: mr.iid.toString(),
-      })) as any;
+      let mrDetails: any = null;
+      let retries = 0;
+      const maxRetries = 3;
+      const retryDelay = 3000; // 3 seconds
 
-      expect(mrDetails.diff_refs).toBeDefined();
+      while (retries < maxRetries) {
+        mrDetails = (await helper.browseMergeRequests({
+          action: "get",
+          project_id: projectId,
+          merge_request_iid: mr.iid.toString(),
+        })) as any;
+
+        if (mrDetails.diff_refs?.base_sha) {
+          console.log(`    ✅ diff_refs ready on attempt ${retries + 1}`);
+          break;
+        }
+
+        retries++;
+        if (retries < maxRetries) {
+          console.log(
+            `    ⏳ diff_refs not ready, retrying in ${retryDelay}ms (attempt ${retries}/${maxRetries})...`
+          );
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+        }
+      }
+
+      if (!mrDetails?.diff_refs?.base_sha) {
+        throw new Error(
+          `GitLab failed to generate diff_refs after ${maxRetries} retries (${maxRetries * retryDelay}ms total). This indicates a serious problem with GitLab's diff generation.`
+        );
+      }
+
       const { base_sha, head_sha, start_sha } = mrDetails.diff_refs;
       console.log(
         `    📋 diff_refs: base=${base_sha?.substring(0, 8)}, head=${head_sha?.substring(0, 8)}, start=${start_sha?.substring(0, 8)}`

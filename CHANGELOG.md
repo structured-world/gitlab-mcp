@@ -1,3 +1,9 @@
+## [6.49.0](https://github.com/structured-world/gitlab-mcp/compare/v6.48.2...v6.49.0) (2026-01-26)
+
+### Features
+
+* **workitems:** support linkType/targetId in update action ([#233](https://github.com/structured-world/gitlab-mcp/issues/233)) ([a336638](https://github.com/structured-world/gitlab-mcp/commit/a33663832ca02a02f0dc1b4961d4dbad871253e3)), closes [#232](https://github.com/structured-world/gitlab-mcp/issues/232) [#232](https://github.com/structured-world/gitlab-mcp/issues/232) [#232](https://github.com/structured-world/gitlab-mcp/issues/232)
+
 ## [6.48.2](https://github.com/structured-world/gitlab-mcp/compare/v6.48.1...v6.48.2) (2026-01-26)
 
 ### Bug Fixes

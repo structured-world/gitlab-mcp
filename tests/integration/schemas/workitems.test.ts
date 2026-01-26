@@ -758,10 +758,7 @@ describe("Work Items Schema - GitLab 18.3 Integration", () => {
       console.log("✅ removeLabelIds incremental remove test completed");
     }, 30000);
 
-    // TODO: Investigate label replace mode - may be GID type mismatch (ProjectLabel vs GroupLabel)
-    // See: https://docs.gitlab.com/api/labels/ - is_project_label field
-    // Labels replace mode works in unit tests but fails with real GitLab instance
-    it.skip("should add and remove labels simultaneously", async () => {
+    it("should add and remove labels simultaneously", async () => {
       if (!testWorkItemId || !label1Id || !label2Id || !label3Id) {
         console.log("  ⚠️  Skipping: prerequisites not met (need 3 labels)");
         return;
@@ -769,19 +766,18 @@ describe("Work Items Schema - GitLab 18.3 Integration", () => {
 
       console.log("🏷️  Testing simultaneous add and remove...");
 
-      // Set up initial state with label1 and label2
+      // Set up initial state with label1 and label2 using replace mode
+      console.log(`  🔧 Setting up initial state with labelIds: [${label1Id}, ${label2Id}]`);
       const setupResult = (await helper.executeTool("manage_work_item", {
         action: "update",
         id: testWorkItemId,
         labelIds: [label1Id, label2Id],
       })) as any;
 
-      // Verify initial state was set correctly - MUST have exactly 2 labels
+      // Verify initial state
       const initialLabels = setupResult.widgets?.find((w: any) => w.type === "LABELS");
       const initialLabelIds = initialLabels?.labels?.nodes?.map((l: any) => l.id) || [];
-      console.log(
-        `  ✅ Initial state set: ${initialLabelIds.length} labels (${initialLabelIds.join(", ")})`
-      );
+
       // Assert initial state is correct before proceeding
       expect(initialLabelIds.length).toBe(2);
 

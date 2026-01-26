@@ -760,9 +760,9 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // Labels widget: labelIds replaces all, addLabelIds/removeLabelIds are incremental
             // Note: labelIds and addLabelIds/removeLabelIds are mutually exclusive (validated above)
             // GitLab API does NOT support labelIds directly - only addLabelIds/removeLabelIds
-            // For replace mode, we simulate by: remove all current labels + add new ones
+            // For replace mode, we calculate diff to avoid conflicts
             if (labelIds !== undefined) {
-              // Replace mode: get current labels, remove all, add new ones
+              // Replace mode: calculate diff between current and desired state
               // First, fetch current labels from the work item
               const currentWorkItem = await client.request(GET_WORK_ITEM, { id: workItemGid });
               const currentLabels =
@@ -777,13 +777,18 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
               const newLabelGids = toGids(labelIds, "Label");
 
-              // Build labelsWidget: remove all current labels, add new ones
+              // Calculate diff: remove only labels NOT in new set, add only labels NOT in current set
+              // This ensures no label appears in both removeLabelIds and addLabelIds
+              const labelsToRemove = currentLabels.filter(id => !newLabelGids.includes(id));
+              const labelsToAdd = newLabelGids.filter(id => !currentLabels.includes(id));
+
+              // Build labelsWidget with calculated diff
               updateInput.labelsWidget = {};
-              if (currentLabels.length > 0) {
-                updateInput.labelsWidget.removeLabelIds = currentLabels;
+              if (labelsToRemove.length > 0) {
+                updateInput.labelsWidget.removeLabelIds = labelsToRemove;
               }
-              if (labelIds.length > 0) {
-                updateInput.labelsWidget.addLabelIds = newLabelGids;
+              if (labelsToAdd.length > 0) {
+                updateInput.labelsWidget.addLabelIds = labelsToAdd;
               }
             } else if (addLabelIds !== undefined || removeLabelIds !== undefined) {
               // Incremental mode: add and/or remove labels
@@ -793,6 +798,20 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               }
               if (removeLabelIds !== undefined && removeLabelIds.length > 0) {
                 updateInput.labelsWidget.removeLabelIds = toGids(removeLabelIds, "Label");
+              }
+            }
+
+            // VALIDATION: Ensure no label appears in both add and remove lists
+            // This catches both user errors (incremental mode) and logic bugs (replace mode)
+            if (updateInput.labelsWidget?.addLabelIds && updateInput.labelsWidget?.removeLabelIds) {
+              const addSet = new Set(updateInput.labelsWidget.addLabelIds);
+              const removeSet = new Set(updateInput.labelsWidget.removeLabelIds);
+              const intersection = [...addSet].filter(id => removeSet.has(id));
+
+              if (intersection.length > 0) {
+                throw new Error(
+                  `Invalid label operation: cannot add and remove the same labels simultaneously: ${intersection.join(", ")}`
+                );
               }
             }
 

@@ -24,13 +24,7 @@ package-lock.json
 CLAUDE.md
 
 # Scripts directory (local tools and utilities)
-scripts/
-!scripts/cleanup-test-groups.js
-!scripts/test_mcp.sh
-!scripts/deploy.sh
-!scripts/build-mcpb.sh
-!scripts/prepare-release.sh
-!scripts/update-mcp-manifest.js
+.localscripts/
 
 # MCPB bundles (built artifacts)
 *.mcpb

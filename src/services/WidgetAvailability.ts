@@ -37,6 +37,8 @@ const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
   // Basic widget parameters
   assigneeIds: WorkItemWidgetTypes.ASSIGNEES,
   labelIds: WorkItemWidgetTypes.LABELS,
+  addLabelIds: WorkItemWidgetTypes.LABELS,
+  removeLabelIds: WorkItemWidgetTypes.LABELS,
   milestoneId: WorkItemWidgetTypes.MILESTONE,
   description: WorkItemWidgetTypes.DESCRIPTION,
   // Free tier: dates

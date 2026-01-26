@@ -654,6 +654,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               state,
               assigneeIds,
               labelIds,
+              addLabelIds,
+              removeLabelIds,
               milestoneId,
               startDate,
               dueDate,
@@ -681,11 +683,25 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               );
             }
 
+            // Validate label params: labelIds cannot be used with addLabelIds/removeLabelIds
+            if (
+              labelIds !== undefined &&
+              (addLabelIds !== undefined || removeLabelIds !== undefined)
+            ) {
+              throw new Error(
+                "labelIds (replace all) cannot be used together with addLabelIds or removeLabelIds. " +
+                  "Use labelIds to set exact labels, or use addLabelIds/removeLabelIds for incremental changes."
+              );
+            }
+
             // Validate widget parameters against instance version/tier.
+            // For labels, any of labelIds/addLabelIds/removeLabelIds triggers LABELS widget validation
             const widgetParams: Record<string, unknown> = {
               description,
               assigneeIds,
               labelIds,
+              addLabelIds,
+              removeLabelIds,
               milestoneId,
               startDate,
               dueDate,
@@ -741,8 +757,20 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               updateInput.assigneesWidget = { assigneeIds: toGids(assigneeIds, "User") };
             }
 
+            // Labels widget: labelIds replaces all, addLabelIds/removeLabelIds are incremental
+            // Note: labelIds and addLabelIds/removeLabelIds are mutually exclusive (validated above)
             if (labelIds !== undefined) {
-              updateInput.labelsWidget = { addLabelIds: toGids(labelIds, "Label") };
+              // Replace mode: set exact list of labels
+              updateInput.labelsWidget = { labelIds: toGids(labelIds, "Label") };
+            } else if (addLabelIds !== undefined || removeLabelIds !== undefined) {
+              // Incremental mode: add and/or remove labels
+              updateInput.labelsWidget = {};
+              if (addLabelIds !== undefined && addLabelIds.length > 0) {
+                updateInput.labelsWidget.addLabelIds = toGids(addLabelIds, "Label");
+              }
+              if (removeLabelIds !== undefined && removeLabelIds.length > 0) {
+                updateInput.labelsWidget.removeLabelIds = toGids(removeLabelIds, "Label");
+              }
             }
 
             if (milestoneId !== undefined) {

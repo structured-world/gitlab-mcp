@@ -126,7 +126,24 @@ const UpdateWorkItemSchema = z.object({
   title: z.string().optional().describe("Title of the work item"),
   description: z.string().optional().describe("Description of the work item"),
   assigneeIds: z.array(z.string()).optional().describe("Array of assignee user IDs"),
-  labelIds: z.array(z.string()).optional().describe("Array of label IDs"),
+  labelIds: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Array of label IDs to SET (replaces all existing labels). Cannot be used with addLabelIds or removeLabelIds."
+    ),
+  addLabelIds: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Array of label IDs to ADD to existing labels. Can be used with removeLabelIds. Cannot be used with labelIds."
+    ),
+  removeLabelIds: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Array of label IDs to REMOVE from existing labels. Can be used with addLabelIds. Cannot be used with labelIds."
+    ),
   milestoneId: z.string().optional().describe("Milestone ID"),
   state: WorkItemStateEventSchema.optional().describe(
     "State event for the work item (CLOSE, REOPEN)"

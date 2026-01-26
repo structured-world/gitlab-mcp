@@ -31,7 +31,9 @@ export interface WorkItemUpdateInput {
     assigneeIds: string[];
   };
   labelsWidget?: {
-    addLabelIds: string[];
+    labelIds?: string[]; // Replace all labels with this list
+    addLabelIds?: string[]; // Add to existing labels
+    removeLabelIds?: string[]; // Remove from existing labels
   };
   milestoneWidget?: {
     milestoneId: string;

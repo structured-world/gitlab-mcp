@@ -31,7 +31,8 @@ export interface WorkItemUpdateInput {
     assigneeIds: string[];
   };
   labelsWidget?: {
-    labelIds?: string[]; // Replace all labels with this list
+    // GitLab API only supports addLabelIds and removeLabelIds
+    // labelIds (replace) is implemented by fetching current labels and using both add/remove
     addLabelIds?: string[]; // Add to existing labels
     removeLabelIds?: string[]; // Remove from existing labels
   };

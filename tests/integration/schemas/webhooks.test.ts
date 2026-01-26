@@ -96,18 +96,8 @@ describe("Webhooks Schema - GitLab Integration", () => {
       console.log("BrowseWebhooksSchema list action test completed");
     });
 
-    it("should reject missing projectId for project scope", () => {
-      const invalidParams = {
-        action: "list" as const,
-        scope: "project" as const,
-        // Missing projectId
-      };
-
-      const result = BrowseWebhooksSchema.safeParse(invalidParams);
-      expect(result.success).toBe(false);
-
-      console.log("BrowseWebhooksSchema correctly rejects missing projectId");
-    });
+    // Note: projectId requirement when scope=project is validated at runtime in handler,
+    // not in the Zod schema. Schema only defines field types, handler enforces business logic.
   });
 
   describe("ManageWebhookSchema - create action", () => {

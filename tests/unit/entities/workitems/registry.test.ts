@@ -1225,7 +1225,25 @@ describe("Workitems Registry - CQRS Tools", () => {
       });
 
       it("should handle update with labels (replace mode via labelIds)", async () => {
-        // labelIds replaces ALL labels on the work item
+        // labelIds replaces ALL labels - requires fetching current labels first
+        // Mock GET_WORK_ITEM to return current labels
+        mockClient.request.mockResolvedValueOnce({
+          workItem: {
+            id: "gid://gitlab/WorkItem/123",
+            widgets: [
+              {
+                type: "LABELS",
+                labels: {
+                  nodes: [
+                    { id: "gid://gitlab/ProjectLabel/existing1" },
+                    { id: "gid://gitlab/ProjectLabel/existing2" },
+                  ],
+                },
+              },
+            ],
+          },
+        });
+        // Mock workItemUpdate
         mockClient.request.mockResolvedValueOnce({
           workItemUpdate: {
             workItem: { id: "gid://gitlab/WorkItem/123" },
@@ -1240,12 +1258,19 @@ describe("Workitems Registry - CQRS Tools", () => {
           labelIds: ["10", "20"],
         });
 
-        expect(mockClient.request).toHaveBeenCalledWith(
+        // First call should be GET_WORK_ITEM
+        expect(mockClient.request).toHaveBeenCalledTimes(2);
+        // Second call should be workItemUpdate with addLabelIds and removeLabelIds
+        expect(mockClient.request).toHaveBeenLastCalledWith(
           expect.any(Object),
           expect.objectContaining({
             input: expect.objectContaining({
               labelsWidget: {
-                labelIds: ["gid://gitlab/ProjectLabel/10", "gid://gitlab/ProjectLabel/20"],
+                removeLabelIds: [
+                  "gid://gitlab/ProjectLabel/existing1",
+                  "gid://gitlab/ProjectLabel/existing2",
+                ],
+                addLabelIds: ["gid://gitlab/ProjectLabel/10", "gid://gitlab/ProjectLabel/20"],
               },
             }),
           })

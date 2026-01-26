@@ -753,12 +753,20 @@ describe("Work Items Schema - GitLab 18.3 Integration", () => {
       console.log("🏷️  Testing simultaneous add and remove...");
 
       // Set up initial state with label1 and label2
-      await helper.executeTool("manage_work_item", {
+      const setupResult = (await helper.executeTool("manage_work_item", {
         action: "update",
         id: testWorkItemId,
         labelIds: [label1Id, label2Id],
-      });
-      console.log(`  ✅ Initial state: labels ${label1Id}, ${label2Id}`);
+      })) as any;
+
+      // Verify initial state was set correctly - MUST have exactly 2 labels
+      const initialLabels = setupResult.widgets?.find((w: any) => w.type === "LABELS");
+      const initialLabelIds = initialLabels?.labels?.nodes?.map((l: any) => l.id) || [];
+      console.log(
+        `  ✅ Initial state set: ${initialLabelIds.length} labels (${initialLabelIds.join(", ")})`
+      );
+      // Assert initial state is correct before proceeding
+      expect(initialLabelIds.length).toBe(2);
 
       // Now add label3 and remove label1 in single operation
       const mixedUpdate = (await helper.executeTool("manage_work_item", {

@@ -759,9 +759,30 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             // Labels widget: labelIds replaces all, addLabelIds/removeLabelIds are incremental
             // Note: labelIds and addLabelIds/removeLabelIds are mutually exclusive (validated above)
+            // GitLab API does NOT support labelIds directly - only addLabelIds/removeLabelIds
+            // For replace mode, we simulate by: remove all current labels + add new ones
             if (labelIds !== undefined) {
-              // Replace mode: set exact list of labels
-              updateInput.labelsWidget = { labelIds: toGids(labelIds, "Label") };
+              // Replace mode: get current labels, remove all, add new ones
+              // First, fetch current labels from the work item
+              const currentWorkItem = await client.request(GET_WORK_ITEM, { id: workItemGid });
+              const currentLabels =
+                (
+                  (currentWorkItem.workItem?.widgets as Array<{
+                    type: string;
+                    labels?: { nodes?: Array<{ id: string }> };
+                  }>) || []
+                )
+                  .find(w => w.type === "LABELS")
+                  ?.labels?.nodes?.map(l => l.id) || [];
+
+              // Build labelsWidget: remove all current labels, add new ones
+              updateInput.labelsWidget = {};
+              if (currentLabels.length > 0) {
+                updateInput.labelsWidget.removeLabelIds = currentLabels;
+              }
+              if (labelIds.length > 0) {
+                updateInput.labelsWidget.addLabelIds = toGids(labelIds, "Label");
+              }
             } else if (addLabelIds !== undefined || removeLabelIds !== undefined) {
               // Incremental mode: add and/or remove labels
               updateInput.labelsWidget = {};

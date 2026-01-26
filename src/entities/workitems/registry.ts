@@ -654,6 +654,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               state,
               assigneeIds,
               labelIds,
+              addLabelIds,
+              removeLabelIds,
               milestoneId,
               startDate,
               dueDate,
@@ -669,14 +671,37 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               progressCurrentValue,
               healthStatus,
               color,
+              linkType,
+              targetId,
             } = input;
             const workItemId = id;
 
+            // Validate linked items params: both must be provided together
+            if ((linkType !== undefined) !== (targetId !== undefined)) {
+              throw new Error(
+                "Both linkType and targetId must be provided together to create a linked item relationship"
+              );
+            }
+
+            // Validate label params: labelIds cannot be used with addLabelIds/removeLabelIds
+            if (
+              labelIds !== undefined &&
+              (addLabelIds !== undefined || removeLabelIds !== undefined)
+            ) {
+              throw new Error(
+                "labelIds (replace all) cannot be used together with addLabelIds or removeLabelIds. " +
+                  "Use labelIds to set exact labels, or use addLabelIds/removeLabelIds for incremental changes."
+              );
+            }
+
             // Validate widget parameters against instance version/tier.
+            // For labels, any of labelIds/addLabelIds/removeLabelIds triggers LABELS widget validation
             const widgetParams: Record<string, unknown> = {
               description,
               assigneeIds,
               labelIds,
+              addLabelIds,
+              removeLabelIds,
               milestoneId,
               startDate,
               dueDate,
@@ -690,6 +715,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               progressCurrentValue,
               healthStatus,
               color,
+              linkType,
+              targetId,
             };
             const validationFailure = WidgetAvailability.validateWidgetParams(widgetParams);
             if (validationFailure) {
@@ -730,8 +757,64 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               updateInput.assigneesWidget = { assigneeIds: toGids(assigneeIds, "User") };
             }
 
+            // Labels widget: labelIds replaces all, addLabelIds/removeLabelIds are incremental
+            // Note: labelIds and addLabelIds/removeLabelIds are mutually exclusive (validated above)
+            // GitLab API does NOT support labelIds directly - only addLabelIds/removeLabelIds
+            // For replace mode, we calculate diff to avoid conflicts
             if (labelIds !== undefined) {
-              updateInput.labelsWidget = { addLabelIds: toGids(labelIds, "Label") };
+              // Replace mode: calculate diff between current and desired state
+              // First, fetch current labels from the work item
+              const currentWorkItem = await client.request(GET_WORK_ITEM, { id: workItemGid });
+              const currentLabels =
+                (
+                  (currentWorkItem.workItem?.widgets as Array<{
+                    type: string;
+                    labels?: { nodes?: Array<{ id: string }> };
+                  }>) || []
+                )
+                  .find(w => w.type === "LABELS")
+                  ?.labels?.nodes?.map(l => l.id) ?? [];
+
+              const newLabelGids = toGids(labelIds, "Label");
+
+              // Calculate diff: remove only labels NOT in new set, add only labels NOT in current set
+              // This ensures no label appears in both removeLabelIds and addLabelIds
+              const labelsToRemove = currentLabels.filter(id => !newLabelGids.includes(id));
+              const labelsToAdd = newLabelGids.filter(id => !currentLabels.includes(id));
+
+              // Build labelsWidget with calculated diff only if changes are needed
+              if (labelsToRemove.length > 0 || labelsToAdd.length > 0) {
+                updateInput.labelsWidget = {};
+                if (labelsToRemove.length > 0) {
+                  updateInput.labelsWidget.removeLabelIds = labelsToRemove;
+                }
+                if (labelsToAdd.length > 0) {
+                  updateInput.labelsWidget.addLabelIds = labelsToAdd;
+                }
+              }
+            } else if (addLabelIds !== undefined || removeLabelIds !== undefined) {
+              // Incremental mode: add and/or remove labels
+              updateInput.labelsWidget = {};
+              if (addLabelIds !== undefined && addLabelIds.length > 0) {
+                updateInput.labelsWidget.addLabelIds = toGids(addLabelIds, "Label");
+              }
+              if (removeLabelIds !== undefined && removeLabelIds.length > 0) {
+                updateInput.labelsWidget.removeLabelIds = toGids(removeLabelIds, "Label");
+              }
+            }
+
+            // VALIDATION: Ensure no label appears in both add and remove lists
+            // This catches both user errors (incremental mode) and logic bugs (replace mode)
+            if (updateInput.labelsWidget?.addLabelIds && updateInput.labelsWidget?.removeLabelIds) {
+              const addSet = new Set(updateInput.labelsWidget.addLabelIds);
+              const removeSet = new Set(updateInput.labelsWidget.removeLabelIds);
+              const intersection = [...addSet].filter(id => removeSet.has(id));
+
+              if (intersection.length > 0) {
+                throw new Error(
+                  `Invalid label operation: cannot add and remove the same labels simultaneously: ${intersection.join(", ")}`
+                );
+              }
             }
 
             if (milestoneId !== undefined) {
@@ -827,9 +910,93 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               throw new Error("Work item update failed - no work item returned");
             }
 
-            return cleanWorkItemResponse(
-              response.workItemUpdate.workItem as unknown as GitLabWorkItem
-            );
+            const updatedWorkItem = response.workItemUpdate.workItem;
+
+            // Step 2: Apply linked items via follow-up mutation if requested
+            // GitLab API does NOT support linkedItemsWidget on WorkItemUpdateInput
+            // so we must apply it via a separate workItemAddLinkedItems mutation
+            if (linkType !== undefined && targetId !== undefined) {
+              try {
+                const linkResponse = await client.request(WORK_ITEM_ADD_LINKED_ITEMS, {
+                  input: {
+                    id: workItemGid,
+                    workItemsIds: [toGid(targetId, "WorkItem")],
+                    linkType,
+                  },
+                });
+
+                if (
+                  linkResponse.workItemAddLinkedItems?.errors?.length &&
+                  linkResponse.workItemAddLinkedItems.errors.length > 0
+                ) {
+                  // Link failed - return update result with warning
+                  const cleanedResult = cleanWorkItemResponse(
+                    updatedWorkItem as unknown as GitLabWorkItem
+                  );
+                  return {
+                    ...cleanedResult,
+                    _warning: {
+                      message: "Work item updated successfully, but linked item could not be added",
+                      failedProperties: {
+                        linkedItem: {
+                          targetId,
+                          linkType,
+                          error: linkResponse.workItemAddLinkedItems.errors.join(", "),
+                        },
+                      },
+                    },
+                  };
+                }
+
+                if (linkResponse.workItemAddLinkedItems?.workItem) {
+                  // Return work item with linked items applied
+                  return cleanWorkItemResponse(
+                    linkResponse.workItemAddLinkedItems.workItem as unknown as GitLabWorkItem
+                  );
+                }
+
+                // Link returned no work item but also no errors - return update result with warning
+                const cleanedResult = cleanWorkItemResponse(
+                  updatedWorkItem as unknown as GitLabWorkItem
+                );
+                return {
+                  ...cleanedResult,
+                  _warning: {
+                    message: "Work item updated successfully, but linked item could not be added",
+                    failedProperties: {
+                      linkedItem: {
+                        targetId,
+                        linkType,
+                        error: "Add linked item returned no work item",
+                      },
+                    },
+                  },
+                };
+              } catch (linkError) {
+                // Link failed with exception - return update result with warning
+                const cleanedResult = cleanWorkItemResponse(
+                  updatedWorkItem as unknown as GitLabWorkItem
+                );
+                return {
+                  ...cleanedResult,
+                  _warning: {
+                    message: "Work item updated successfully, but linked item could not be added",
+                    failedProperties: {
+                      linkedItem: {
+                        targetId,
+                        linkType,
+                        error:
+                          linkError instanceof Error
+                            ? linkError.message
+                            : "Unknown error adding linked item",
+                      },
+                    },
+                  },
+                };
+              }
+            }
+
+            return cleanWorkItemResponse(updatedWorkItem as unknown as GitLabWorkItem);
           }
 
           case "delete": {
@@ -891,16 +1058,17 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           }
 
           case "remove_link": {
-            const { id, targetId, linkType } = input;
+            const { id, targetId } = input;
 
             const connectionManager = ConnectionManager.getInstance();
             const client = connectionManager.getClient();
 
+            // Note: GitLab API does NOT accept linkType for remove operation
+            // Links are identified by source+target IDs only
             const response = await client.request(WORK_ITEM_REMOVE_LINKED_ITEMS, {
               input: {
                 id: toGid(id, "WorkItem"),
                 workItemsIds: [toGid(targetId, "WorkItem")],
-                linkType,
               },
             });
 

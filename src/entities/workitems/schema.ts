@@ -126,10 +126,34 @@ const UpdateWorkItemSchema = z.object({
   title: z.string().optional().describe("Title of the work item"),
   description: z.string().optional().describe("Description of the work item"),
   assigneeIds: z.array(z.string()).optional().describe("Array of assignee user IDs"),
-  labelIds: z.array(z.string()).optional().describe("Array of label IDs"),
+  labelIds: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Array of label IDs to SET (replaces all existing labels). Cannot be used with addLabelIds or removeLabelIds."
+    ),
+  addLabelIds: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Array of label IDs to ADD to existing labels. Can be used with removeLabelIds. Cannot be used with labelIds."
+    ),
+  removeLabelIds: z
+    .array(z.string())
+    .optional()
+    .describe(
+      "Array of label IDs to REMOVE from existing labels. Can be used with addLabelIds. Cannot be used with labelIds."
+    ),
   milestoneId: z.string().optional().describe("Milestone ID"),
   state: WorkItemStateEventSchema.optional().describe(
     "State event for the work item (CLOSE, REOPEN)"
+  ),
+  // Linked items (applied via follow-up mutation after update)
+  linkType: LinkTypeSchema.optional().describe(
+    "Relationship type to create. Use with targetId to link work items during update. Applied via separate mutation after the main update."
+  ),
+  targetId: WorkItemIdSchema.optional().describe(
+    "Target work item ID to link to. Use with linkType to create a relationship during update."
   ),
   // Free tier: dates
   startDate: DateSchema.nullable()
@@ -223,7 +247,7 @@ const RemoveLinkSchema = z.object({
   action: z.literal("remove_link").describe("Remove a relationship link between two work items"),
   id: workItemIdField.describe("Source work item ID"),
   targetId: WorkItemIdSchema.describe("Target work item ID to unlink"),
-  linkType: LinkTypeSchema,
+  // Note: linkType is NOT used by GitLab API for remove - links identified by source+target only
 });
 
 // --- Discriminated union combining all actions ---

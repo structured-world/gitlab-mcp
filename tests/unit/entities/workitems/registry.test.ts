@@ -1224,7 +1224,26 @@ describe("Workitems Registry - CQRS Tools", () => {
         );
       });
 
-      it("should handle update with labels", async () => {
+      it("should handle update with labels (replace mode via labelIds)", async () => {
+        // labelIds replaces ALL labels - requires fetching current labels first
+        // Mock GET_WORK_ITEM to return current labels
+        mockClient.request.mockResolvedValueOnce({
+          workItem: {
+            id: "gid://gitlab/WorkItem/123",
+            widgets: [
+              {
+                type: "LABELS",
+                labels: {
+                  nodes: [
+                    { id: "gid://gitlab/ProjectLabel/existing1" },
+                    { id: "gid://gitlab/ProjectLabel/existing2" },
+                  ],
+                },
+              },
+            ],
+          },
+        });
+        // Mock workItemUpdate
         mockClient.request.mockResolvedValueOnce({
           workItemUpdate: {
             workItem: { id: "gid://gitlab/WorkItem/123" },
@@ -1239,6 +1258,41 @@ describe("Workitems Registry - CQRS Tools", () => {
           labelIds: ["10", "20"],
         });
 
+        // First call should be GET_WORK_ITEM
+        expect(mockClient.request).toHaveBeenCalledTimes(2);
+        // Second call should be workItemUpdate with addLabelIds and removeLabelIds
+        expect(mockClient.request).toHaveBeenLastCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              labelsWidget: {
+                removeLabelIds: [
+                  "gid://gitlab/ProjectLabel/existing1",
+                  "gid://gitlab/ProjectLabel/existing2",
+                ],
+                addLabelIds: ["gid://gitlab/ProjectLabel/10", "gid://gitlab/ProjectLabel/20"],
+              },
+            }),
+          })
+        );
+      });
+
+      it("should handle update with addLabelIds (incremental add)", async () => {
+        // addLabelIds adds labels incrementally without removing existing ones
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: {
+            workItem: { id: "gid://gitlab/WorkItem/123" },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "123",
+          addLabelIds: ["10", "20"],
+        });
+
         expect(mockClient.request).toHaveBeenCalledWith(
           expect.any(Object),
           expect.objectContaining({
@@ -1248,6 +1302,105 @@ describe("Workitems Registry - CQRS Tools", () => {
               },
             }),
           })
+        );
+      });
+
+      it("should handle update with removeLabelIds (incremental remove)", async () => {
+        // removeLabelIds removes specific labels without affecting others
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: {
+            workItem: { id: "gid://gitlab/WorkItem/123" },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "123",
+          removeLabelIds: ["30"],
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              labelsWidget: {
+                removeLabelIds: ["gid://gitlab/ProjectLabel/30"],
+              },
+            }),
+          })
+        );
+      });
+
+      it("should handle update with both addLabelIds and removeLabelIds", async () => {
+        // Can add and remove labels in the same operation
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: {
+            workItem: { id: "gid://gitlab/WorkItem/123" },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "123",
+          addLabelIds: ["10"],
+          removeLabelIds: ["20"],
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              labelsWidget: {
+                addLabelIds: ["gid://gitlab/ProjectLabel/10"],
+                removeLabelIds: ["gid://gitlab/ProjectLabel/20"],
+              },
+            }),
+          })
+        );
+      });
+
+      it("should reject labelIds with addLabelIds (mutually exclusive)", async () => {
+        // labelIds (replace) cannot be used with addLabelIds (incremental)
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await expect(
+          tool?.handler({
+            action: "update",
+            id: "123",
+            labelIds: ["10"],
+            addLabelIds: ["20"],
+          })
+        ).rejects.toThrow(/labelIds.*cannot be used together with addLabelIds or removeLabelIds/);
+      });
+
+      it("should reject labelIds with removeLabelIds (mutually exclusive)", async () => {
+        // labelIds (replace) cannot be used with removeLabelIds (incremental)
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await expect(
+          tool?.handler({
+            action: "update",
+            id: "123",
+            labelIds: ["10"],
+            removeLabelIds: ["20"],
+          })
+        ).rejects.toThrow(/labelIds.*cannot be used together with addLabelIds or removeLabelIds/);
+      });
+
+      it("should throw error when same label in both addLabelIds and removeLabelIds", async () => {
+        // Intersection validation: cannot add and remove the same label
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await expect(
+          tool?.handler({
+            action: "update",
+            id: "123",
+            addLabelIds: ["10", "20"],
+            removeLabelIds: ["20", "30"],
+          })
+        ).rejects.toThrow(
+          /Invalid label operation: cannot add and remove the same labels simultaneously/
         );
       });
 
@@ -1510,14 +1663,14 @@ describe("Workitems Registry - CQRS Tools", () => {
           action: "remove_link",
           id: "100",
           targetId: "200",
-          linkType: "BLOCKS",
+          // Note: linkType is NOT sent to GitLab API - links identified by source+target IDs only
         });
 
         expect(mockClient.request).toHaveBeenCalledWith(expect.anything(), {
           input: {
             id: "gid://gitlab/WorkItem/100",
             workItemsIds: ["gid://gitlab/WorkItem/200"],
-            linkType: "BLOCKS",
+            // No linkType - GitLab API doesn't accept it for remove
           },
         });
         expect(result).toHaveProperty("id");
@@ -1533,7 +1686,7 @@ describe("Workitems Registry - CQRS Tools", () => {
 
         const tool = workitemsToolRegistry.get("manage_work_item");
         await expect(
-          tool?.handler({ action: "remove_link", id: "100", targetId: "200", linkType: "BLOCKS" })
+          tool?.handler({ action: "remove_link", id: "100", targetId: "200" })
         ).rejects.toThrow("GitLab GraphQL errors: Link not found");
       });
 
@@ -1547,7 +1700,7 @@ describe("Workitems Registry - CQRS Tools", () => {
 
         const tool = workitemsToolRegistry.get("manage_work_item");
         await expect(
-          tool?.handler({ action: "remove_link", id: "100", targetId: "200", linkType: "BLOCKS" })
+          tool?.handler({ action: "remove_link", id: "100", targetId: "200" })
         ).rejects.toThrow("Remove linked item failed - no work item returned");
       });
     });

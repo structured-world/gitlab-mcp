@@ -31,7 +31,10 @@ export interface WorkItemUpdateInput {
     assigneeIds: string[];
   };
   labelsWidget?: {
-    addLabelIds: string[];
+    // GitLab API only supports addLabelIds and removeLabelIds
+    // labelIds (replace) is implemented by fetching current labels and using both add/remove
+    addLabelIds?: string[]; // Add to existing labels
+    removeLabelIds?: string[]; // Remove from existing labels
   };
   milestoneWidget?: {
     milestoneId: string;
@@ -1392,6 +1395,22 @@ export const GET_WORK_ITEM_BY_IID: TypedDocumentNode<
               webPath
             }
           }
+          ... on WorkItemWidgetLinkedItems {
+            linkedItems {
+              nodes {
+                linkType
+                workItem {
+                  id
+                  iid
+                  title
+                  state
+                  workItemType {
+                    name
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -1470,6 +1489,22 @@ export const GET_WORK_ITEM: TypedDocumentNode<{ workItem: WorkItem }, { id: stri
               description
               color
               textColor
+            }
+          }
+        }
+        ... on WorkItemWidgetLinkedItems {
+          linkedItems {
+            nodes {
+              linkType
+              workItem {
+                id
+                iid
+                title
+                state
+                workItemType {
+                  name
+                }
+              }
             }
           }
         }
@@ -1938,7 +1973,8 @@ export interface WorkItemAddLinkedItemsInput {
 export interface WorkItemRemoveLinkedItemsInput {
   id: string;
   workItemsIds: string[];
-  linkType: WorkItemLinkType;
+  // Note: GitLab API does NOT accept linkType for remove operation
+  // Links are identified by source+target IDs only
 }
 
 export const WORK_ITEM_ADD_LINKED_ITEMS: TypedDocumentNode<

@@ -1395,6 +1395,22 @@ export const GET_WORK_ITEM_BY_IID: TypedDocumentNode<
               webPath
             }
           }
+          ... on WorkItemWidgetLinkedItems {
+            linkedItems {
+              nodes {
+                linkType
+                workItem {
+                  id
+                  iid
+                  title
+                  state
+                  workItemType {
+                    name
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -1473,6 +1489,22 @@ export const GET_WORK_ITEM: TypedDocumentNode<{ workItem: WorkItem }, { id: stri
               description
               color
               textColor
+            }
+          }
+        }
+        ... on WorkItemWidgetLinkedItems {
+          linkedItems {
+            nodes {
+              linkType
+              workItem {
+                id
+                iid
+                title
+                state
+                workItemType {
+                  name
+                }
+              }
             }
           }
         }

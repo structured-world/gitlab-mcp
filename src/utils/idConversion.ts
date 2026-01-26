@@ -184,6 +184,25 @@ export function cleanGidsFromObject<T>(obj: T): T {
 }
 
 /**
+ * Normalize linkType values from GitLab's snake_case to our schema's SCREAMING_SNAKE_CASE
+ * GitLab API returns: is_blocked_by, blocks, related
+ * Our schema expects: BLOCKED_BY, BLOCKS, RELATED
+ */
+function normalizeLinkType(linkType: string | undefined): string | undefined {
+  if (!linkType) return linkType;
+  const mapping: Record<string, string> = {
+    is_blocked_by: "BLOCKED_BY",
+    blocks: "BLOCKS",
+    related: "RELATED",
+    // Also handle if already uppercase (in case GitLab changes behavior)
+    BLOCKED_BY: "BLOCKED_BY",
+    BLOCKS: "BLOCKS",
+    RELATED: "RELATED",
+  };
+  return mapping[linkType] ?? linkType;
+}
+
+/**
  * Clean work item response by converting GIDs to simple IDs
  * @param workItem - Work item response from GitLab API
  * @returns Work item with simple IDs
@@ -257,12 +276,14 @@ export function cleanWorkItemResponse(workItem: GitLabWorkItem): GitLabWorkItem 
         };
       }
 
-      // Clean linked item GIDs in LINKED_ITEMS widget
+      // Clean linked item GIDs in LINKED_ITEMS widget and normalize linkType
       if (widget.type === "LINKED_ITEMS" && widget.linkedItems?.nodes) {
         cleanedWidget.linkedItems = {
           ...widget.linkedItems,
           nodes: widget.linkedItems.nodes.map(node => ({
             ...node,
+            // Normalize linkType: GitLab returns snake_case but we use SCREAMING_SNAKE_CASE in schema
+            linkType: normalizeLinkType(node.linkType),
             workItem: node.workItem
               ? { ...node.workItem, id: extractSimpleId(node.workItem.id) }
               : node.workItem,

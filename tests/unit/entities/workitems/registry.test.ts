@@ -1648,14 +1648,14 @@ describe("Workitems Registry - CQRS Tools", () => {
           action: "remove_link",
           id: "100",
           targetId: "200",
-          linkType: "BLOCKS",
+          // Note: linkType is NOT sent to GitLab API - links identified by source+target IDs only
         });
 
         expect(mockClient.request).toHaveBeenCalledWith(expect.anything(), {
           input: {
             id: "gid://gitlab/WorkItem/100",
             workItemsIds: ["gid://gitlab/WorkItem/200"],
-            linkType: "BLOCKS",
+            // No linkType - GitLab API doesn't accept it for remove
           },
         });
         expect(result).toHaveProperty("id");
@@ -1671,7 +1671,7 @@ describe("Workitems Registry - CQRS Tools", () => {
 
         const tool = workitemsToolRegistry.get("manage_work_item");
         await expect(
-          tool?.handler({ action: "remove_link", id: "100", targetId: "200", linkType: "BLOCKS" })
+          tool?.handler({ action: "remove_link", id: "100", targetId: "200" })
         ).rejects.toThrow("GitLab GraphQL errors: Link not found");
       });
 
@@ -1685,7 +1685,7 @@ describe("Workitems Registry - CQRS Tools", () => {
 
         const tool = workitemsToolRegistry.get("manage_work_item");
         await expect(
-          tool?.handler({ action: "remove_link", id: "100", targetId: "200", linkType: "BLOCKS" })
+          tool?.handler({ action: "remove_link", id: "100", targetId: "200" })
         ).rejects.toThrow("Remove linked item failed - no work item returned");
       });
     });

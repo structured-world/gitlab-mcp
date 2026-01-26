@@ -247,7 +247,7 @@ const RemoveLinkSchema = z.object({
   action: z.literal("remove_link").describe("Remove a relationship link between two work items"),
   id: workItemIdField.describe("Source work item ID"),
   targetId: WorkItemIdSchema.describe("Target work item ID to unlink"),
-  linkType: LinkTypeSchema,
+  // Note: linkType is NOT used by GitLab API for remove - links identified by source+target only
 });
 
 // --- Discriminated union combining all actions ---

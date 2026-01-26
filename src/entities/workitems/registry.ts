@@ -773,7 +773,9 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                   }>) || []
                 )
                   .find(w => w.type === "LABELS")
-                  ?.labels?.nodes?.map(l => l.id) || [];
+                  ?.labels?.nodes?.map(l => l.id) ?? [];
+
+              const newLabelGids = toGids(labelIds, "Label");
 
               // Build labelsWidget: remove all current labels, add new ones
               updateInput.labelsWidget = {};
@@ -781,7 +783,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                 updateInput.labelsWidget.removeLabelIds = currentLabels;
               }
               if (labelIds.length > 0) {
-                updateInput.labelsWidget.addLabelIds = toGids(labelIds, "Label");
+                updateInput.labelsWidget.addLabelIds = newLabelGids;
               }
             } else if (addLabelIds !== undefined || removeLabelIds !== undefined) {
               // Incremental mode: add and/or remove labels
@@ -1035,16 +1037,17 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           }
 
           case "remove_link": {
-            const { id, targetId, linkType } = input;
+            const { id, targetId } = input;
 
             const connectionManager = ConnectionManager.getInstance();
             const client = connectionManager.getClient();
 
+            // Note: GitLab API does NOT accept linkType for remove operation
+            // Links are identified by source+target IDs only
             const response = await client.request(WORK_ITEM_REMOVE_LINKED_ITEMS, {
               input: {
                 id: toGid(id, "WorkItem"),
                 workItemsIds: [toGid(targetId, "WorkItem")],
-                linkType,
               },
             });
 

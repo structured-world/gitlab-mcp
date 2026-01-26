@@ -1941,7 +1941,8 @@ export interface WorkItemAddLinkedItemsInput {
 export interface WorkItemRemoveLinkedItemsInput {
   id: string;
   workItemsIds: string[];
-  linkType: WorkItemLinkType;
+  // Note: GitLab API does NOT accept linkType for remove operation
+  // Links are identified by source+target IDs only
 }
 
 export const WORK_ITEM_ADD_LINKED_ITEMS: TypedDocumentNode<

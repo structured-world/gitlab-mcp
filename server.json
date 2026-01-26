@@ -9,13 +9,13 @@
     "url": "https://github.com/structured-world/gitlab-mcp",
     "source": "github"
   },
-  "version": "6.48.1",
+  "version": "6.48.2",
   "_versionNote": "Updated dynamically by prepare-release.sh during semantic-release",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@structured-world/gitlab-mcp",
-      "version": "6.48.1",
+      "version": "6.48.2",
       "transport": {
         "type": "stdio"
       },

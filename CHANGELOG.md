@@ -1,3 +1,9 @@
+## [6.48.2](https://github.com/structured-world/gitlab-mcp/compare/v6.48.1...v6.48.2) (2026-01-26)
+
+### Bug Fixes
+
+* **docs:** add GA4 consent mode to enable analytics tracking ([#230](https://github.com/structured-world/gitlab-mcp/issues/230)) ([aac2fa5](https://github.com/structured-world/gitlab-mcp/commit/aac2fa58c7102f3422910224fef061cb48c6e59b)), closes [#229](https://github.com/structured-world/gitlab-mcp/issues/229)
+
 ## [6.48.1](https://github.com/structured-world/gitlab-mcp/compare/v6.48.0...v6.48.1) (2026-01-25)
 
 ### Bug Fixes

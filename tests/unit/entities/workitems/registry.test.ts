@@ -1389,6 +1389,21 @@ describe("Workitems Registry - CQRS Tools", () => {
         ).rejects.toThrow(/labelIds.*cannot be used together with addLabelIds or removeLabelIds/);
       });
 
+      it("should throw error when same label in both addLabelIds and removeLabelIds", async () => {
+        // Intersection validation: cannot add and remove the same label
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await expect(
+          tool?.handler({
+            action: "update",
+            id: "123",
+            addLabelIds: ["10", "20"],
+            removeLabelIds: ["20", "30"],
+          })
+        ).rejects.toThrow(
+          /Invalid label operation: cannot add and remove the same labels simultaneously/
+        );
+      });
+
       it("should handle update with milestone", async () => {
         mockClient.request.mockResolvedValueOnce({
           workItemUpdate: {

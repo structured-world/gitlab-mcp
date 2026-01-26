@@ -782,13 +782,15 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               const labelsToRemove = currentLabels.filter(id => !newLabelGids.includes(id));
               const labelsToAdd = newLabelGids.filter(id => !currentLabels.includes(id));
 
-              // Build labelsWidget with calculated diff
-              updateInput.labelsWidget = {};
-              if (labelsToRemove.length > 0) {
-                updateInput.labelsWidget.removeLabelIds = labelsToRemove;
-              }
-              if (labelsToAdd.length > 0) {
-                updateInput.labelsWidget.addLabelIds = labelsToAdd;
+              // Build labelsWidget with calculated diff only if changes are needed
+              if (labelsToRemove.length > 0 || labelsToAdd.length > 0) {
+                updateInput.labelsWidget = {};
+                if (labelsToRemove.length > 0) {
+                  updateInput.labelsWidget.removeLabelIds = labelsToRemove;
+                }
+                if (labelsToAdd.length > 0) {
+                  updateInput.labelsWidget.addLabelIds = labelsToAdd;
+                }
               }
             } else if (addLabelIds !== undefined || removeLabelIds !== undefined) {
               // Incremental mode: add and/or remove labels

@@ -201,10 +201,7 @@ const simplifyWorkItem = (
           }
           break;
         case "TIME_TRACKING":
-          if (
-            flexWidget.timeEstimate !== undefined ||
-            flexWidget.totalTimeSpent !== undefined
-          ) {
+          if (flexWidget.timeEstimate !== undefined || flexWidget.totalTimeSpent !== undefined) {
             essentialWidgets.push({
               type: "TIME_TRACKING",
               timeEstimate: flexWidget.timeEstimate,

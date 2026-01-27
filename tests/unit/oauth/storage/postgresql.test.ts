@@ -15,12 +15,9 @@ jest.mock("../../../../generated/prisma/client", () => ({
 const createMockPrisma = () => ({
   $connect: jest.fn().mockResolvedValue(undefined),
   $disconnect: jest.fn().mockResolvedValue(undefined),
-  $transaction: jest.fn().mockResolvedValue([
-    { count: 1 },
-    { count: 2 },
-    { count: 3 },
-    { count: 4 },
-  ]),
+  $transaction: jest
+    .fn()
+    .mockResolvedValue([{ count: 1 }, { count: 2 }, { count: 3 }, { count: 4 }]),
   oAuthSession: {
     create: jest.fn().mockResolvedValue({}),
     findUnique: jest.fn(),

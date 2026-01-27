@@ -113,7 +113,7 @@ jobs:
             }
 
       - name: Upload coverage artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: coverage-reports-${{ github.sha }}
           path: coverage/

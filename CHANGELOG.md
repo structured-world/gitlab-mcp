@@ -1,3 +1,9 @@
+## [6.50.0](https://github.com/structured-world/gitlab-mcp/compare/v6.49.0...v6.50.0) (2026-01-27)
+
+### Features
+
+* **workitems:** include time tracking in browse_work_items ([#241](https://github.com/structured-world/gitlab-mcp/issues/241)) ([1886a7f](https://github.com/structured-world/gitlab-mcp/commit/1886a7fae88f0ec85c2a0899962a5e63d2673294))
+
 ## [6.49.0](https://github.com/structured-world/gitlab-mcp/compare/v6.48.2...v6.49.0) (2026-01-26)
 
 ### Features

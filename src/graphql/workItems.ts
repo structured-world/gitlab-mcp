@@ -626,6 +626,10 @@ export const GET_NAMESPACE_WORK_ITEMS: TypedDocumentNode<
                 }
               }
             }
+            ... on WorkItemWidgetTimeTracking {
+              timeEstimate
+              totalTimeSpent
+            }
           }
         }
         pageInfo {
@@ -1411,6 +1415,22 @@ export const GET_WORK_ITEM_BY_IID: TypedDocumentNode<
               }
             }
           }
+          ... on WorkItemWidgetTimeTracking {
+            timeEstimate
+            totalTimeSpent
+            timelogs {
+              nodes {
+                id
+                timeSpent
+                spentAt
+                summary
+                user {
+                  id
+                  username
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -1504,6 +1524,22 @@ export const GET_WORK_ITEM: TypedDocumentNode<{ workItem: WorkItem }, { id: stri
                 workItemType {
                   name
                 }
+              }
+            }
+          }
+        }
+        ... on WorkItemWidgetTimeTracking {
+          timeEstimate
+          totalTimeSpent
+          timelogs {
+            nodes {
+              id
+              timeSpent
+              spentAt
+              summary
+              user {
+                id
+                username
               }
             }
           }

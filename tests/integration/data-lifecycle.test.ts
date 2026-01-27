@@ -523,6 +523,23 @@ describe("🔄 Data Lifecycle - Complete Infrastructure Setup", () => {
                 );
               }
             }
+
+            // Try to add time tracking if supported
+            try {
+              const timeTrackingUpdate = (await helper.updateWorkItem({
+                id: workItem.id,
+                timeEstimate: "2h",
+              })) as any;
+              if (timeTrackingUpdate) {
+                console.log("    ✅ Added time tracking estimate");
+                Object.assign(workItem, timeTrackingUpdate);
+              }
+            } catch (timeTrackingError) {
+              console.log(
+                `    Could not add time tracking to ${workItemData.workItemType}:`,
+                timeTrackingError
+              );
+            }
           }
 
           console.log(

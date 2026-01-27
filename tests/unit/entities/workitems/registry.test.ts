@@ -649,6 +649,116 @@ describe("Workitems Registry - CQRS Tools", () => {
         });
       });
 
+      it("should include TIME_TRACKING widget in simplified mode", async () => {
+        const mockWorkItem = createMockWorkItem({
+          workItemType: { name: "Issue" },
+          widgets: [
+            {
+              type: "TIME_TRACKING",
+              timeEstimate: 7200,
+              totalTimeSpent: 1800,
+            },
+          ],
+        });
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            __typename: "Project",
+            workItems: {
+              nodes: [mockWorkItem],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("browse_work_items");
+        const result = (await tool?.handler({
+          action: "list",
+          namespace: "test-project",
+          simple: true,
+        })) as {
+          items: Array<{ widgets?: Array<{ type: string; timeEstimate?: number }> }>;
+        };
+
+        expect(result.items[0].widgets).toBeDefined();
+        expect(result.items[0].widgets).toContainEqual({
+          type: "TIME_TRACKING",
+          timeEstimate: 7200,
+          totalTimeSpent: 1800,
+        });
+      });
+
+      it("should include TIME_TRACKING when only totalTimeSpent is set", async () => {
+        const mockWorkItem = createMockWorkItem({
+          workItemType: { name: "Issue" },
+          widgets: [
+            {
+              type: "TIME_TRACKING",
+              totalTimeSpent: 900,
+            },
+          ],
+        });
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            __typename: "Project",
+            workItems: {
+              nodes: [mockWorkItem],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("browse_work_items");
+        const result = (await tool?.handler({
+          action: "list",
+          namespace: "test-project",
+          simple: true,
+        })) as {
+          items: Array<{ widgets?: Array<{ type: string; totalTimeSpent?: number }> }>;
+        };
+
+        expect(result.items[0].widgets).toBeDefined();
+        expect(result.items[0].widgets).toContainEqual({
+          type: "TIME_TRACKING",
+          timeEstimate: undefined,
+          totalTimeSpent: 900,
+        });
+      });
+
+      it("should omit TIME_TRACKING when no values are set", async () => {
+        const mockWorkItem = createMockWorkItem({
+          workItemType: { name: "Issue" },
+          widgets: [
+            {
+              type: "TIME_TRACKING",
+            },
+          ],
+        });
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            __typename: "Project",
+            workItems: {
+              nodes: [mockWorkItem],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("browse_work_items");
+        const result = (await tool?.handler({
+          action: "list",
+          namespace: "test-project",
+          simple: true,
+        })) as {
+          items: Array<{ widgets?: Array<{ type: string }> }>;
+        };
+
+        const widgets = result.items[0].widgets || [];
+        expect(widgets.some(widget => widget.type === "TIME_TRACKING")).toBe(false);
+      });
+
       it("should filter by state parameter", async () => {
         const mockWorkItems = [
           createMockWorkItem({ id: "gid://gitlab/WorkItem/1", state: "OPEN" }),

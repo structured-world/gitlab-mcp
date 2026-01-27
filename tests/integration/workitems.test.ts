@@ -151,6 +151,35 @@ describe("Work Items Integration - Using Handler Functions", () => {
         });
       }
     }, 30000);
+
+    it("should return time tracking widget in browse_work_items list and get responses", async () => {
+      const testData = requireTestData();
+      const testProjectPath = testData.project.path_with_namespace;
+
+      const candidate = (testData.workItems || []).find((item: any) =>
+        (item.widgets || []).some((w: any) => w.type === "TIME_TRACKING")
+      );
+
+      if (!candidate) {
+        console.warn("No project work item with time tracking found - skipping test");
+        return;
+      }
+
+      const listResponse = (await helper.listWorkItems({
+        namespace: testProjectPath,
+        simple: true,
+        first: 100,
+      })) as any;
+
+      const listItem = (listResponse.items || []).find((item: any) => item.id === candidate.id);
+      expect(listItem).toBeDefined();
+      expect(listItem.widgets).toBeDefined();
+      expect(listItem.widgets.some((w: any) => w.type === "TIME_TRACKING")).toBe(true);
+
+      const getResponse = (await helper.getWorkItem({ id: candidate.id })) as any;
+      expect(getResponse.widgets).toBeDefined();
+      expect(getResponse.widgets.some((w: any) => w.type === "TIME_TRACKING")).toBe(true);
+    }, 30000);
   });
 
   describe("Work Items Widget Validation through Handlers", () => {

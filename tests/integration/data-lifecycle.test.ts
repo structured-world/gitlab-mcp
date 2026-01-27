@@ -531,7 +531,7 @@ describe("🔄 Data Lifecycle - Complete Infrastructure Setup", () => {
                 timeEstimate: "2h",
               })) as any;
               if (timeTrackingUpdate) {
-                console.log("    Added time tracking estimate");
+                console.log("    ✅ Added time tracking estimate");
                 Object.assign(workItem, timeTrackingUpdate);
               }
             } catch (timeTrackingError) {

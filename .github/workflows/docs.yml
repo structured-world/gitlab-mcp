@@ -89,7 +89,7 @@ jobs:
           mkdir -p docs/.vitepress/dist/coverage
           cp -r coverage/lcov-report/* docs/.vitepress/dist/coverage/
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: docs/.vitepress/dist
 

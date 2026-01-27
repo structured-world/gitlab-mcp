@@ -75,7 +75,9 @@ GitLab work items include Issues, Epics, Tasks, Incidents, and more.
 
 :::
 
+:::info
 Time tracking: when available, `browse_work_items` returns a `TIME_TRACKING` widget with fields like `timeEstimate` and `totalTimeSpent`. In `simple: true` mode, time tracking is included as a simplified widget.
+:::
 
 ### manage_work_item
 

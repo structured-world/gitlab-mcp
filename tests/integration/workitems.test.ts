@@ -152,7 +152,7 @@ describe("Work Items Integration - Using Handler Functions", () => {
       }
     }, 30000);
 
-    it("should return time tracking widget in list and get responses", async () => {
+    it("should return time tracking widget in browse_work_items list and get responses", async () => {
       const testData = requireTestData();
       const testProjectPath = testData.project.path_with_namespace;
 

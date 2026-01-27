@@ -190,6 +190,10 @@ export class IntegrationTestHelper {
     assigneeIds?: string[];
     labelIds?: string[];
     milestoneId?: string;
+    timeEstimate?: string;
+    timeSpent?: string;
+    timeSpentAt?: string;
+    timeSpentSummary?: string;
   }): Promise<unknown> {
     return this.executeTool("manage_work_item", { action: "update", ...args });
   }

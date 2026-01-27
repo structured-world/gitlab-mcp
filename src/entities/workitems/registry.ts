@@ -67,6 +67,8 @@ interface FlexibleWorkItemWidget {
     workItemType: string;
   };
   hasChildren?: boolean;
+  timeEstimate?: number;
+  totalTimeSpent?: number;
 }
 
 interface SimplifiedWorkItem {
@@ -103,6 +105,8 @@ interface SimplifiedWorkItem {
       workItemType: string;
     } | null;
     hasChildren?: boolean;
+    timeEstimate?: number;
+    totalTimeSpent?: number;
   }>;
 }
 
@@ -193,6 +197,18 @@ const simplifyWorkItem = (
                   }
                 : null,
               hasChildren: flexWidget.hasChildren,
+            });
+          }
+          break;
+        case "TIME_TRACKING":
+          if (
+            flexWidget.timeEstimate !== undefined ||
+            flexWidget.totalTimeSpent !== undefined
+          ) {
+            essentialWidgets.push({
+              type: "TIME_TRACKING",
+              timeEstimate: flexWidget.timeEstimate,
+              totalTimeSpent: flexWidget.totalTimeSpent,
             });
           }
           break;

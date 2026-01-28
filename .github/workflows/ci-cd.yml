@@ -114,6 +114,11 @@ jobs:
           REPO: ${{ github.repository }}
           EVENT_NAME: ${{ github.event_name }}
         run: |
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "gh CLI not available; allowing heavy jobs to proceed (fail-open)." >> "$GITHUB_STEP_SUMMARY"
+            echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ "$EVENT_NAME" != "pull_request" ]; then
             echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
             echo "Event is $EVENT_NAME, skipping review gate" >> "$GITHUB_STEP_SUMMARY"

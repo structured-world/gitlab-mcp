@@ -197,7 +197,7 @@ jobs:
     needs: [quality-checks, review-thread-gate]
     # For PRs, only run heavy jobs if the gate succeeded and explicitly allowed them.
     # Non-PR events are allowed by the gate itself (allow_heavy=true), so this stays consistent.
-    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true')
+    if: (github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)) || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true')
 
     permissions:
       contents: read
@@ -489,6 +489,8 @@ jobs:
             echo "✅ Docker build: Passed" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" == "success" && "${{ needs.review-thread-gate.outputs.allow_heavy }}" == "false" ]]; then
             echo "⏭️ Docker build: Skipped (unresolved review threads)" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ github.event_name }}" == "push" && "${{ github.ref }}" != format('refs/heads/{0}', github.event.repository.default_branch) ]]; then
+            echo "⏭️ Docker build: Skipped (non-default branch)" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" != "success" ]]; then
             echo "⏭️ Docker build: Skipped (review gate failed)" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.docker-build.result }}" == "skipped" ]]; then

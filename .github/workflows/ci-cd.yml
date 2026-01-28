@@ -97,6 +97,7 @@ jobs:
   review-thread-gate:
     name: Review Threads Gate
     runs-on: ubuntu-latest
+    # Only relevant for PRs; non-PR events skip the gate entirely.
     if: github.event_name == 'pull_request'
 
     permissions:
@@ -168,6 +169,7 @@ jobs:
             # If you want unresolved outdated threads to also block heavy jobs, remove
             # "and .isOutdated == false" from the jq filter below.
             PAGE_UNRESOLVED=$(echo "$RESP" | jq '[.data.repository.pullRequest.reviewThreads.nodes // [] | .[] | select(.isResolved == false and .isOutdated == false)] | length')
+            PAGE_NODE_COUNT=$(echo "$RESP" | jq '(.data.repository.pullRequest.reviewThreads.nodes // []) | length')
             if ! [[ "$PAGE_UNRESOLVED" =~ ^[0-9]+$ ]]; then
               PAGE_UNRESOLVED=0
             fi
@@ -179,6 +181,10 @@ jobs:
             AFTER=$(echo "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
             if [ "$AFTER" = "null" ]; then
               AFTER=""
+            fi
+            if [ "$PAGE_NODE_COUNT" -eq 0 ] && [ "$HAS_NEXT" = "true" ]; then
+              echo "Warning: empty page while hasNextPage=true; stopping pagination to avoid loops." >> "$GITHUB_STEP_SUMMARY"
+              break
             fi
             if [ "$HAS_NEXT" = "true" ] && [ -z "$AFTER" ]; then
               echo "Warning: missing endCursor while hasNextPage=true; stopping pagination to avoid infinite loop." >> "$GITHUB_STEP_SUMMARY"
@@ -202,8 +208,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [quality-checks, review-thread-gate]
     # For PRs, only run heavy jobs if the gate succeeded and explicitly allowed them.
-    # Non-PR events are allowed by the gate itself (allow_heavy=true), so this stays consistent.
-    if: github.event_name == 'push' || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true')
+    # Non-PR events (push/workflow_dispatch) run unconditionally.
+    if: github.event_name != 'pull_request' || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true')
 
     permissions:
       contents: read

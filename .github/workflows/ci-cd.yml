@@ -196,6 +196,7 @@ jobs:
     runs-on: ubuntu-latest
     needs: [quality-checks, review-thread-gate]
     # For PRs, only run heavy jobs if the gate succeeded and explicitly allowed them.
+    # Non-PR events are allowed by the gate itself (allow_heavy=true), so this stays consistent.
     if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true')
 
     permissions:

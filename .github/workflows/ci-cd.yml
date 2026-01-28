@@ -224,6 +224,9 @@ EOF
           done
           if [ "$PAGE_COUNT" -ge "$MAX_PAGES" ]; then
             echo "Warning: reached maximum page limit while scanning review threads." >> "$GITHUB_STEP_SUMMARY"
+            echo "Review thread scan incomplete; blocking heavy jobs for safety." >> "$GITHUB_STEP_SUMMARY"
+            echo "allow_heavy=false" >> "$GITHUB_OUTPUT"
+            exit 0
           fi
           if [ "$UNRESOLVED" -gt 0 ]; then
             echo "allow_heavy=false" >> "$GITHUB_OUTPUT"
@@ -240,7 +243,7 @@ EOF
     needs: [quality-checks, review-thread-gate]
     # For PRs, only run heavy jobs if the gate succeeded and explicitly allowed them.
     # Non-PR events (push/workflow_dispatch) run unconditionally.
-    if: github.event_name != 'pull_request' || needs.review-thread-gate.outputs.allow_heavy == 'true'
+    if: github.event_name != 'pull_request' || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true')
 
     permissions:
       contents: read
@@ -530,10 +533,10 @@ EOF
 
           if [[ "${{ needs.docker-build.result }}" == "success" ]]; then
             echo "✅ Docker build: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" == "success" && "${{ needs.review-thread-gate.outputs.allow_heavy }}" == "false" ]]; then
+          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.outputs.allow_heavy }}" == "false" ]]; then
             echo "⏭️ Docker build: Skipped (unresolved review threads)" >> $GITHUB_STEP_SUMMARY
-          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" == "skipped" ]]; then
-            echo "⏭️ Docker build: Skipped (review gate skipped)" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" != "success" ]]; then
+            echo "⏭️ Docker build: Skipped (review gate failed)" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.docker-build.result }}" == "skipped" ]]; then
             echo "⏭️ Docker build: Skipped" >> $GITHUB_STEP_SUMMARY
           else

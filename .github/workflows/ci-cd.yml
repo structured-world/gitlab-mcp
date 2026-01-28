@@ -94,11 +94,53 @@ jobs:
           path: dist/
           retention-days: 1
 
+  review-thread-gate:
+    name: Review Threads Gate
+    runs-on: ubuntu-latest
+
+    permissions:
+      pull-requests: read
+      contents: read
+
+    outputs:
+      allow_heavy: ${{ steps.gate.outputs.allow_heavy }}
+
+    steps:
+      - name: Check unresolved review threads
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" != "pull_request" ]; then
+            echo "allow_heavy=true" >> $GITHUB_OUTPUT
+            echo "Event is $EVENT_NAME, skipping review gate" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          OWNER="${REPO%/*}"
+          NAME="${REPO#*/}"
+          UNRESOLVED=$(gh api graphql \
+            -f query='query($owner:String!, $name:String!, $number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved,isOutdated}}}}}' \
+            -f owner="$OWNER" \
+            -f name="$NAME" \
+            -F number="$PR_NUMBER" \
+            --jq '.data.repository.pullRequest.reviewThreads.nodes | map(select(.isResolved == false and .isOutdated == false)) | length')
+          if [ "$UNRESOLVED" -gt 0 ]; then
+            echo "allow_heavy=false" >> $GITHUB_OUTPUT
+            echo "Unresolved review threads: $UNRESOLVED" >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+          echo "allow_heavy=true" >> $GITHUB_OUTPUT
+          echo "Unresolved review threads: 0" >> $GITHUB_STEP_SUMMARY
+
   # Job 2: Build and test Docker image
   docker-build:
     name: Build Docker Image
     runs-on: ubuntu-latest
-    needs: quality-checks
+    needs: [quality-checks, review-thread-gate]
+    if: github.event_name != 'pull_request' || needs.review-thread-gate.outputs.allow_heavy == 'true'
 
     permissions:
       contents: read

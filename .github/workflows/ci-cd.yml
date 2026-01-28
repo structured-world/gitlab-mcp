@@ -97,6 +97,7 @@ jobs:
   review-thread-gate:
     name: Review Threads Gate
     runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
 
     permissions:
       pull-requests: read
@@ -494,6 +495,8 @@ jobs:
             echo "✅ Docker build: Passed" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" == "success" && "${{ needs.review-thread-gate.outputs.allow_heavy }}" == "false" ]]; then
             echo "⏭️ Docker build: Skipped (unresolved review threads)" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" == "skipped" ]]; then
+            echo "⏭️ Docker build: Skipped (review gate skipped)" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" == "failure" ]]; then
             echo "⏭️ Docker build: Skipped (review gate failed)" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.docker-build.result }}" == "skipped" ]]; then

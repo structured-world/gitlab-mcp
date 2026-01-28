@@ -503,8 +503,6 @@ jobs:
             echo "⏭️ Docker build: Skipped (unresolved review threads)" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" == "skipped" ]]; then
             echo "⏭️ Docker build: Skipped (review gate skipped)" >> $GITHUB_STEP_SUMMARY
-          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" == "failure" ]]; then
-            echo "⏭️ Docker build: Skipped (review gate failed)" >> $GITHUB_STEP_SUMMARY
           elif [[ "${{ needs.docker-build.result }}" == "skipped" ]]; then
             echo "⏭️ Docker build: Skipped" >> $GITHUB_STEP_SUMMARY
           else

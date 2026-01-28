@@ -115,13 +115,13 @@ jobs:
           EVENT_NAME: ${{ github.event_name }}
         run: |
           if [ "$EVENT_NAME" != "pull_request" ]; then
-            echo "allow_heavy=true" >> $GITHUB_OUTPUT
-            echo "Event is $EVENT_NAME, skipping review gate" >> $GITHUB_STEP_SUMMARY
+            echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
+            echo "Event is $EVENT_NAME, skipping review gate" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           if [ -z "$PR_NUMBER" ]; then
-            echo "allow_heavy=true" >> $GITHUB_OUTPUT
-            echo "PR_NUMBER is empty; allowing heavy jobs to proceed (fail-open)." >> $GITHUB_STEP_SUMMARY
+            echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
+            echo "PR_NUMBER is empty; allowing heavy jobs to proceed (fail-open)." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
           OWNER="${REPO%/*}"
@@ -161,7 +161,7 @@ jobs:
             #
             # If you want unresolved outdated threads to also block heavy jobs, remove
             # "and .isOutdated == false" from the jq filter below.
-            PAGE_UNRESOLVED=$(echo "$RESP" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false and .isOutdated == false)] | length')
+            PAGE_UNRESOLVED=$(echo "$RESP" | jq '[.data.repository.pullRequest.reviewThreads.nodes // [] | .[] | select(.isResolved == false and .isOutdated == false)] | length')
             if ! [[ "$PAGE_UNRESOLVED" =~ ^[0-9]+$ ]]; then
               PAGE_UNRESOLVED=0
             fi
@@ -183,12 +183,12 @@ jobs:
             echo "Warning: reached maximum page limit while scanning review threads." >> "$GITHUB_STEP_SUMMARY"
           fi
           if [ "$UNRESOLVED" -gt 0 ]; then
-            echo "allow_heavy=false" >> $GITHUB_OUTPUT
-            echo "Unresolved review threads: $UNRESOLVED" >> $GITHUB_STEP_SUMMARY
+            echo "allow_heavy=false" >> "$GITHUB_OUTPUT"
+            echo "Unresolved review threads: $UNRESOLVED" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          echo "allow_heavy=true" >> $GITHUB_OUTPUT
-          echo "Unresolved review threads: 0" >> $GITHUB_STEP_SUMMARY
+          echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
+          echo "Unresolved review threads: 0" >> "$GITHUB_STEP_SUMMARY"
 
   # Job 2: Build and test Docker image
   docker-build:

@@ -154,6 +154,7 @@ EOF
                 -f owner="$OWNER" \
                 -f name="$NAME" \
                 -F number="$PR_NUMBER") || {
+                  # Fail-open on API errors to avoid blocking contributor workflows.
                   echo "GitHub GraphQL API query for review threads failed; allowing heavy jobs to proceed (fail-open)." >> "$GITHUB_STEP_SUMMARY"
                   echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
                   exit 0
@@ -178,6 +179,7 @@ EOF
                 -f name="$NAME" \
                 -F number="$PR_NUMBER" \
                 -f after="$AFTER") || {
+                  # Fail-open on API errors to avoid blocking contributor workflows.
                   echo "GitHub GraphQL API query for review threads failed; allowing heavy jobs to proceed (fail-open)." >> "$GITHUB_STEP_SUMMARY"
                   echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
                   exit 0
@@ -187,6 +189,8 @@ EOF
             # GitHub marks a thread as "outdated" when the underlying code has changed
             # (e.g., after new commits). For this gate, we deliberately ignore outdated
             # threads so that only current, actionable discussions block heavy jobs.
+            # This keeps the gate aligned to actionable feedback and avoids blocking
+            # heavy jobs on stale discussions that no longer apply to the diff.
             #
             # If you want unresolved outdated threads to also block heavy jobs, remove
             # "and .isOutdated == false" from the jq filter below.
@@ -199,6 +203,7 @@ EOF
               PAGE_NODE_COUNT=0
             fi
             UNRESOLVED=$((UNRESOLVED + PAGE_UNRESOLVED))
+            # Only fetch the fields we need to evaluate the gate, to reduce payload size.
             HAS_NEXT=$(echo "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
             if [ "$HAS_NEXT" != "true" ]; then
               break
@@ -207,6 +212,7 @@ EOF
             if [ "$AFTER" = "null" ]; then
               AFTER=""
             fi
+            # If endCursor is missing despite hasNextPage=true, stop to avoid looping.
             if [ "$PAGE_NODE_COUNT" -eq 0 ] && [ "$HAS_NEXT" = "true" ]; then
               echo "Warning: empty page while hasNextPage=true; stopping pagination to avoid loops." >> "$GITHUB_STEP_SUMMARY"
               break
@@ -217,6 +223,7 @@ EOF
             fi
           done
           if [ "$PAGE_COUNT" -ge "$MAX_PAGES" ]; then
+            # Fail-closed when pagination is incomplete: we cannot guarantee the thread count.
             echo "Warning: reached maximum page limit while scanning review threads." >> "$GITHUB_STEP_SUMMARY"
             echo "Review thread scan incomplete; blocking heavy jobs for safety." >> "$GITHUB_STEP_SUMMARY"
             echo "allow_heavy=false" >> "$GITHUB_OUTPUT"

@@ -119,11 +119,19 @@ jobs:
             echo "Event is $EVENT_NAME, skipping review gate" >> $GITHUB_STEP_SUMMARY
             exit 0
           fi
+          if [ -z "$PR_NUMBER" ]; then
+            echo "allow_heavy=true" >> $GITHUB_OUTPUT
+            echo "PR_NUMBER is empty; allowing heavy jobs to proceed (fail-open)." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
           OWNER="${REPO%/*}"
           NAME="${REPO#*/}"
           UNRESOLVED=0
           AFTER=""
-          while :; do
+          MAX_PAGES=100
+          PAGE_COUNT=0
+          while [ "$PAGE_COUNT" -lt "$MAX_PAGES" ]; do
+            PAGE_COUNT=$((PAGE_COUNT + 1))
             if [ -z "$AFTER" ]; then
               RESP=$(gh api graphql \
                 -f query='query($owner:String!, $name:String!, $number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved,isOutdated},pageInfo{hasNextPage,endCursor}}}}}' \
@@ -146,6 +154,13 @@ jobs:
                   exit 0
                 }
             fi
+            # Count only active, unresolved, non-outdated review threads.
+            # GitHub marks a thread as "outdated" when the underlying code has changed
+            # (e.g., after new commits). For this gate, we deliberately ignore outdated
+            # threads so that only current, actionable discussions block heavy jobs.
+            #
+            # If you want unresolved outdated threads to also block heavy jobs, remove
+            # "and .isOutdated == false" from the jq filter below.
             PAGE_UNRESOLVED=$(echo "$RESP" | jq '[.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false and .isOutdated == false)] | length')
             if ! [[ "$PAGE_UNRESOLVED" =~ ^[0-9]+$ ]]; then
               PAGE_UNRESOLVED=0
@@ -156,7 +171,13 @@ jobs:
               break
             fi
             AFTER=$(echo "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+            if [ "$AFTER" = "null" ]; then
+              AFTER=""
+            fi
           done
+          if [ "$PAGE_COUNT" -ge "$MAX_PAGES" ]; then
+            echo "Warning: reached maximum page limit while scanning review threads." >> "$GITHUB_STEP_SUMMARY"
+          fi
           if [ "$UNRESOLVED" -gt 0 ]; then
             echo "allow_heavy=false" >> $GITHUB_OUTPUT
             echo "Unresolved review threads: $UNRESOLVED" >> $GITHUB_STEP_SUMMARY
@@ -170,7 +191,7 @@ jobs:
     name: Build Docker Image
     runs-on: ubuntu-latest
     needs: [quality-checks, review-thread-gate]
-    if: needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true'
+    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true')
 
     permissions:
       contents: read
@@ -460,7 +481,7 @@ jobs:
 
           if [[ "${{ needs.docker-build.result }}" == "success" ]]; then
             echo "✅ Docker build: Passed" >> $GITHUB_STEP_SUMMARY
-          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.outputs.allow_heavy }}" != "true" ]]; then
+          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" == "success" && "${{ needs.review-thread-gate.outputs.allow_heavy }}" == "false" ]]; then
             echo "⏭️ Docker build: Skipped (unresolved review threads)" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Docker build: Failed" >> $GITHUB_STEP_SUMMARY

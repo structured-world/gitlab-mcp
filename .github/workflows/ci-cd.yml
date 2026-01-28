@@ -97,6 +97,7 @@ jobs:
   review-thread-gate:
     name: Review Threads Gate
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     # Only relevant for PRs; non-PR events skip the gate entirely.
     if: github.event_name == 'pull_request'
 
@@ -135,13 +136,27 @@ jobs:
           NAME="${REPO#*/}"
           UNRESOLVED=0
           AFTER=""
+          # Hard cap to avoid unbounded pagination; 100 pages * 100 threads = 10,000 threads max.
           MAX_PAGES=100
           PAGE_COUNT=0
           while [ "$PAGE_COUNT" -lt "$MAX_PAGES" ]; do
             PAGE_COUNT=$((PAGE_COUNT + 1))
             if [ -z "$AFTER" ]; then
+              QUERY=$(cat <<'EOF'
+query($owner:String!, $name:String!, $number:Int!) {
+  repository(owner:$owner, name:$name) {
+    pullRequest(number:$number) {
+      reviewThreads(first:100) {
+        nodes { isResolved, isOutdated }
+        pageInfo { hasNextPage, endCursor }
+      }
+    }
+  }
+}
+EOF
+)
               RESP=$(gh api graphql \
-                -f query='query($owner:String!, $name:String!, $number:Int!){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100){nodes{isResolved,isOutdated},pageInfo{hasNextPage,endCursor}}}}}' \
+                -f query="$QUERY" \
                 -f owner="$OWNER" \
                 -f name="$NAME" \
                 -F number="$PR_NUMBER") || {
@@ -150,8 +165,21 @@ jobs:
                   exit 0
                 }
             else
+              QUERY_AFTER=$(cat <<'EOF'
+query($owner:String!, $name:String!, $number:Int!, $after:String) {
+  repository(owner:$owner, name:$name) {
+    pullRequest(number:$number) {
+      reviewThreads(first:100, after:$after) {
+        nodes { isResolved, isOutdated }
+        pageInfo { hasNextPage, endCursor }
+      }
+    }
+  }
+}
+EOF
+)
               RESP=$(gh api graphql \
-                -f query='query($owner:String!, $name:String!, $number:Int!, $after:String){repository(owner:$owner,name:$name){pullRequest(number:$number){reviewThreads(first:100,after:$after){nodes{isResolved,isOutdated},pageInfo{hasNextPage,endCursor}}}}}' \
+                -f query="$QUERY_AFTER" \
                 -f owner="$OWNER" \
                 -f name="$NAME" \
                 -F number="$PR_NUMBER" \
@@ -172,6 +200,9 @@ jobs:
             PAGE_NODE_COUNT=$(echo "$RESP" | jq '(.data.repository.pullRequest.reviewThreads.nodes // []) | length')
             if ! [[ "$PAGE_UNRESOLVED" =~ ^[0-9]+$ ]]; then
               PAGE_UNRESOLVED=0
+            fi
+            if ! [[ "$PAGE_NODE_COUNT" =~ ^[0-9]+$ ]]; then
+              PAGE_NODE_COUNT=0
             fi
             UNRESOLVED=$((UNRESOLVED + PAGE_UNRESOLVED))
             HAS_NEXT=$(echo "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
@@ -209,7 +240,7 @@ jobs:
     needs: [quality-checks, review-thread-gate]
     # For PRs, only run heavy jobs if the gate succeeded and explicitly allowed them.
     # Non-PR events (push/workflow_dispatch) run unconditionally.
-    if: github.event_name != 'pull_request' || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true')
+    if: github.event_name != 'pull_request' || needs.review-thread-gate.outputs.allow_heavy == 'true'
 
     permissions:
       contents: read

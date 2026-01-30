@@ -94,11 +94,175 @@ jobs:
           path: dist/
           retention-days: 1
 
+  review-thread-gate:
+    name: Review Threads Gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Only relevant for PRs; non-PR events skip the gate entirely.
+    if: github.event_name == 'pull_request'
+
+    permissions:
+      pull-requests: read
+      contents: read
+
+    outputs:
+      allow_heavy: ${{ steps.gate.outputs.allow_heavy }}
+
+    steps:
+      - name: Check unresolved review threads
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ! command -v gh >/dev/null 2>&1; then
+            echo "gh CLI not available; allowing heavy jobs to proceed (fail-open)." >> "$GITHUB_STEP_SUMMARY"
+            echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ -z "$PR_NUMBER" ]; then
+            echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
+            echo "PR_NUMBER is empty; allowing heavy jobs to proceed (fail-open)." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          OWNER="${REPO%/*}"
+          NAME="${REPO#*/}"
+          UNRESOLVED=0
+          AFTER=""
+          # Hard cap to avoid unbounded pagination; 100 pages * 100 threads = 10,000 threads max.
+          MAX_PAGES=100
+          PAGE_COUNT=0
+          while [ "$PAGE_COUNT" -lt "$MAX_PAGES" ]; do
+            PAGE_COUNT=$((PAGE_COUNT + 1))
+            if [ -z "$AFTER" ]; then
+              QUERY=$(cat <<'EOF'
+query($owner:String!, $name:String!, $number:Int!) {
+  repository(owner:$owner, name:$name) {
+    pullRequest(number:$number) {
+      reviewThreads(first:100) {
+        nodes { isResolved, isOutdated }
+        pageInfo { hasNextPage, endCursor }
+      }
+    }
+  }
+}
+EOF
+)
+              RESP=$(gh api graphql \
+                -f query="$QUERY" \
+                -f owner="$OWNER" \
+                -f name="$NAME" \
+                -F number="$PR_NUMBER") || {
+                  # Fail-open on API errors to avoid blocking contributor workflows.
+                  echo "GitHub GraphQL API query for review threads failed; allowing heavy jobs to proceed (fail-open)." >> "$GITHUB_STEP_SUMMARY"
+                  echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
+                  exit 0
+                }
+            else
+              QUERY_AFTER=$(cat <<'EOF'
+query($owner:String!, $name:String!, $number:Int!, $after:String) {
+  repository(owner:$owner, name:$name) {
+    pullRequest(number:$number) {
+      reviewThreads(first:100, after:$after) {
+        nodes { isResolved, isOutdated }
+        pageInfo { hasNextPage, endCursor }
+      }
+    }
+  }
+}
+EOF
+)
+              RESP=$(gh api graphql \
+                -f query="$QUERY_AFTER" \
+                -f owner="$OWNER" \
+                -f name="$NAME" \
+                -F number="$PR_NUMBER" \
+                -f after="$AFTER") || {
+                  # Fail-open on API errors to avoid blocking contributor workflows.
+                  echo "GitHub GraphQL API query for review threads failed; allowing heavy jobs to proceed (fail-open)." >> "$GITHUB_STEP_SUMMARY"
+                  echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
+                  exit 0
+                }
+            fi
+            # Count only active, unresolved, non-outdated review threads.
+            # GitHub marks a thread as "outdated" when the underlying code has changed
+            # (e.g., after new commits). For this gate, we deliberately ignore outdated
+            # threads so that only current, actionable discussions block heavy jobs.
+            # This keeps the gate aligned to actionable feedback and avoids blocking
+            # heavy jobs on stale discussions that no longer apply to the diff.
+            #
+            # If you want unresolved outdated threads to also block heavy jobs, remove
+            # "and .isOutdated == false" from the jq filter below.
+            PAGE_UNRESOLVED=$(echo "$RESP" | jq '[.data.repository.pullRequest.reviewThreads.nodes // [] | .[] | select(.isResolved == false and .isOutdated == false)] | length')
+            PAGE_NODE_COUNT=$(echo "$RESP" | jq '(.data.repository.pullRequest.reviewThreads.nodes // []) | length')
+            if ! [[ "$PAGE_UNRESOLVED" =~ ^[0-9]+$ ]]; then
+              PAGE_UNRESOLVED=0
+            fi
+            if ! [[ "$PAGE_NODE_COUNT" =~ ^[0-9]+$ ]]; then
+              PAGE_NODE_COUNT=0
+            fi
+            UNRESOLVED=$((UNRESOLVED + PAGE_UNRESOLVED))
+            # Only fetch the fields we need to evaluate the gate, to reduce payload size.
+            HAS_NEXT=$(echo "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
+            if [ "$HAS_NEXT" != "true" ]; then
+              break
+            fi
+            AFTER=$(echo "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
+            if [ "$AFTER" = "null" ]; then
+              AFTER=""
+            fi
+            # If endCursor is missing despite hasNextPage=true, stop to avoid looping.
+            if [ "$PAGE_NODE_COUNT" -eq 0 ] && [ "$HAS_NEXT" = "true" ]; then
+              echo "Warning: empty page while hasNextPage=true; stopping pagination to avoid loops." >> "$GITHUB_STEP_SUMMARY"
+              break
+            fi
+            if [ "$HAS_NEXT" = "true" ] && [ -z "$AFTER" ]; then
+              echo "Warning: missing endCursor while hasNextPage=true; stopping pagination to avoid infinite loop." >> "$GITHUB_STEP_SUMMARY"
+              break
+            fi
+          done
+          if [ "$PAGE_COUNT" -ge "$MAX_PAGES" ]; then
+            # Fail-closed when pagination is incomplete: we cannot guarantee the thread count.
+            echo "Warning: reached maximum page limit while scanning review threads." >> "$GITHUB_STEP_SUMMARY"
+            echo "Review thread scan incomplete; blocking heavy jobs for safety." >> "$GITHUB_STEP_SUMMARY"
+            echo "allow_heavy=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          if [ "$UNRESOLVED" -gt 0 ]; then
+            echo "allow_heavy=false" >> "$GITHUB_OUTPUT"
+            echo "Unresolved review threads: $UNRESOLVED" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
+          echo "Unresolved review threads: 0" >> "$GITHUB_STEP_SUMMARY"
+
+  # Legacy required status check - reports quality-checks result for branch protection
+  # Added to support migration from old "Lint, Test & Build" ruleset requirement
+  expected-status:
+    name: Lint, Test & Build
+    runs-on: ubuntu-latest
+    needs: [quality-checks]
+    if: always()
+
+    steps:
+      - name: Report status
+        run: |
+          if [ "${{ needs.quality-checks.result }}" = "success" ]; then
+            echo "Lint/Test/Build passed."
+            exit 0
+          fi
+          echo "Lint/Test/Build failed."
+          exit 1
+
   # Job 2: Build and test Docker image
   docker-build:
     name: Build Docker Image
     runs-on: ubuntu-latest
-    needs: quality-checks
+    needs: [quality-checks, review-thread-gate]
+    # For PRs, only run heavy jobs if the gate succeeded and explicitly allowed them.
+    # Non-PR events (push/workflow_dispatch) run unconditionally.
+    if: github.event_name != 'pull_request' || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true')
 
     permissions:
       contents: read
@@ -371,7 +535,7 @@ jobs:
     name: Pipeline Summary
     runs-on: ubuntu-latest
     permissions: {}
-    needs: [quality-checks, docker-build, semantic-release, mcpb-bundle, docker-publish, mcp-registry-publish]
+    needs: [quality-checks, review-thread-gate, docker-build, semantic-release, mcpb-bundle, docker-publish, mcp-registry-publish]
     if: always()
 
     steps:
@@ -388,6 +552,14 @@ jobs:
 
           if [[ "${{ needs.docker-build.result }}" == "success" ]]; then
             echo "✅ Docker build: Passed" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" == "skipped" ]]; then
+            echo "⏭️ Docker build: Skipped (review gate not applicable)" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.result }}" == "failure" ]]; then
+            echo "⏭️ Docker build: Skipped (review gate failed)" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.docker-build.result }}" == "skipped" && "${{ needs.review-thread-gate.outputs.allow_heavy }}" == "false" ]]; then
+            echo "⏭️ Docker build: Skipped (unresolved review threads)" >> $GITHUB_STEP_SUMMARY
+          elif [[ "${{ needs.docker-build.result }}" == "skipped" ]]; then
+            echo "⏭️ Docker build: Skipped" >> $GITHUB_STEP_SUMMARY
           else
             echo "❌ Docker build: Failed" >> $GITHUB_STEP_SUMMARY
           fi

@@ -136,19 +136,16 @@ jobs:
           while [ "$PAGE_COUNT" -lt "$MAX_PAGES" ]; do
             PAGE_COUNT=$((PAGE_COUNT + 1))
             if [ -z "$AFTER" ]; then
-              QUERY=$(cat <<'EOF'
-query($owner:String!, $name:String!, $number:Int!) {
-  repository(owner:$owner, name:$name) {
-    pullRequest(number:$number) {
-      reviewThreads(first:100) {
-        nodes { isResolved, isOutdated }
-        pageInfo { hasNextPage, endCursor }
-      }
-    }
-  }
-}
-EOF
-)
+              QUERY='query($owner:String!, $name:String!, $number:Int!) {
+                repository(owner:$owner, name:$name) {
+                  pullRequest(number:$number) {
+                    reviewThreads(first:100) {
+                      nodes { isResolved, isOutdated }
+                      pageInfo { hasNextPage, endCursor }
+                    }
+                  }
+                }
+              }'
               RESP=$(gh api graphql \
                 -f query="$QUERY" \
                 -f owner="$OWNER" \
@@ -160,19 +157,16 @@ EOF
                   exit 0
                 }
             else
-              QUERY_AFTER=$(cat <<'EOF'
-query($owner:String!, $name:String!, $number:Int!, $after:String) {
-  repository(owner:$owner, name:$name) {
-    pullRequest(number:$number) {
-      reviewThreads(first:100, after:$after) {
-        nodes { isResolved, isOutdated }
-        pageInfo { hasNextPage, endCursor }
-      }
-    }
-  }
-}
-EOF
-)
+              QUERY_AFTER='query($owner:String!, $name:String!, $number:Int!, $after:String) {
+                repository(owner:$owner, name:$name) {
+                  pullRequest(number:$number) {
+                    reviewThreads(first:100, after:$after) {
+                      nodes { isResolved, isOutdated }
+                      pageInfo { hasNextPage, endCursor }
+                    }
+                  }
+                }
+              }'
               RESP=$(gh api graphql \
                 -f query="$QUERY_AFTER" \
                 -f owner="$OWNER" \

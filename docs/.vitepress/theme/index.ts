@@ -23,7 +23,7 @@ const consentTheme = enhanceWithConsent(DefaultTheme, {
 export default {
   ...consentTheme,
   Layout() {
-    return h(DefaultTheme.Layout, null, {
+    return h(consentTheme.Layout ?? DefaultTheme.Layout, null, {
       "layout-bottom": () => [h(ConsentBanner), h(BugReportWidget)],
     });
   },

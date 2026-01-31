@@ -1,6 +1,10 @@
 ---
 title: Sprint Planning
 description: "Prompts for sprint planning with GitLab — create milestones, assign issues, and plan iterations"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab sprint planning, milestones, iterations, burndown chart, sprint lifecycle, agile planning, issue assignment
 ---
 
 # Sprint Planning

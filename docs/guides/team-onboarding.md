@@ -1,6 +1,10 @@
 ---
 title: Team Onboarding
 description: "Onboard your team to GitLab MCP — shared configurations, presets, and best practices for teams"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab MCP onboarding, team setup, access tokens, team members, daily workflow, feature flags
 ---
 
 # Team Onboarding Guide

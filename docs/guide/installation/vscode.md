@@ -1,6 +1,10 @@
 ---
 title: VS Code Setup
 description: "Add GitLab MCP Server to VS Code or VS Code Insiders with one-click install or settings.json config"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp vs code, vscode mcp server, github copilot, one-click install, mcp.json, vs code insiders
 ---
 
 # VS Code Installation

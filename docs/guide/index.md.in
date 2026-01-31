@@ -1,6 +1,10 @@
 ---
 title: Introduction
 description: "Overview of GitLab MCP Server — features, architecture, CQRS pattern, and system requirements"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp introduction, mcp server features, cqrs architecture, gitlab api tools, model context protocol
 ---
 
 # Introduction

@@ -1,6 +1,10 @@
 ---
 title: Debug CI Failures
 description: "Prompts for debugging GitLab CI/CD failures — analyze logs, identify root causes, and fix pipelines"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab ci debug, pipeline failure, job logs, test failure, build error, retry pipeline, ci/cd troubleshooting
 ---
 
 # Debug Pipeline Failures

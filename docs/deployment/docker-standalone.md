@@ -1,6 +1,10 @@
 ---
 title: Docker Standalone
 description: "Deploy GitLab MCP Server as a standalone Docker container with SSE or StreamableHTTP transport"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp docker, standalone container, SSE transport, streamable http, docker run, mcp server container
 ---
 
 # Docker Standalone

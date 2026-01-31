@@ -1,6 +1,10 @@
 ---
 title: Prompt Library
 description: "Copy-paste prompts for GitLab MCP — quick start, code review, CI/CD, and project management workflows"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp prompts, ai code review, ci/cd automation, project management, merge request workflow, gitlab ai assistant
 ---
 
 # Prompt Library

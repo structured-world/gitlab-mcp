@@ -1,6 +1,10 @@
 ---
 title: Claude Code
 description: "Use GitLab MCP Server with Claude Code CLI — MCP configuration and tool access setup"
+head:
+  - - meta
+    - name: keywords
+      content: Claude Code, GitLab MCP, CLI configuration, MCP server setup, stdio transport, Anthropic Claude
 ---
 
 # Claude Code

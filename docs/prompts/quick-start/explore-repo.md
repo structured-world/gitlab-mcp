@@ -1,6 +1,10 @@
 ---
 title: Explore a Repo
 description: "Prompts for exploring GitLab repositories — browse files, view commits, and understand project structure"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab repository explorer, browse files, view commits, project structure, git history, code navigation
 ---
 
 # Explore a Repository

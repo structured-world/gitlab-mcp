@@ -1,6 +1,10 @@
 ---
 title: Docker Compose
 description: "Deploy GitLab MCP Server with Docker Compose — full stack with PostgreSQL and TLS termination"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp docker compose, postgresql, tls termination, production deployment, oauth, backup restore, self-hosted
 ---
 
 # Docker Compose

@@ -1,6 +1,10 @@
 ---
 title: OAuth Authentication
 description: "Set up OAuth 2.1 authentication for GitLab MCP Server — per-user tokens via Claude Custom Connector"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab OAuth, OAuth 2.1, authentication, Claude Custom Connector, device flow, MCP security
 ---
 
 # OAuth Authentication

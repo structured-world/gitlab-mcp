@@ -1,6 +1,10 @@
 ---
 title: Claude Desktop
 description: "Configure GitLab MCP Server with Claude Desktop — stdio transport setup and token configuration"
+head:
+  - - meta
+    - name: keywords
+      content: claude desktop, gitlab mcp, stdio transport, mcp client configuration, docker setup
 ---
 
 # Claude Desktop

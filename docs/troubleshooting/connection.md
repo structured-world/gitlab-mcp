@@ -1,6 +1,10 @@
 ---
 title: Connection Issues
 description: "Fix GitLab MCP Server connection problems — timeouts, SSL errors, proxy configuration, and CORS"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab MCP connection, token issues, SSL errors, timeout, proxy, self-signed certificates, troubleshooting
 ---
 
 # Connection Issues

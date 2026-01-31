@@ -1,6 +1,10 @@
 ---
 title: "CLI: install"
 description: "Install GitLab MCP Server into MCP client configurations — auto-detect and configure clients"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp install, mcp client installation, claude desktop config, cursor mcp config, vscode mcp, windsurf mcp, cline mcp, roo code mcp
 ---
 
 # gitlab-mcp install

@@ -1,6 +1,10 @@
 ---
 title: Suggest Changes
 description: "Prompts for suggesting code changes in GitLab MRs — inline comments and improvement recommendations"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab code suggestions, inline comments, merge request feedback, draft notes, batch review, code improvements
 ---
 
 # Suggest Changes

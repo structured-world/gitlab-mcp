@@ -1,6 +1,10 @@
 ---
 title: Apply Feedback
 description: "Prompts for applying review feedback — resolve discussions, update code, and respond to reviewers"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab review feedback, resolve discussions, apply suggestions, merge request update, respond to reviewers, code review workflow
 ---
 
 # Apply Feedback

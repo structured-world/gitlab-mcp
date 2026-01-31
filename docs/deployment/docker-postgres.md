@@ -1,6 +1,10 @@
 ---
 title: Docker + PostgreSQL
 description: "Deploy GitLab MCP Server with PostgreSQL for OAuth session persistence and multi-user support"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp postgresql, oauth session persistence, docker postgresql, multi-user, database migration, prisma, production deployment
 ---
 
 # Docker + PostgreSQL

@@ -1,6 +1,10 @@
 ---
 title: Support the Project
 description: "Support GitLab MCP development — sponsorship options and ways to contribute to the project"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab MCP sponsor, donate, USDT, open source support, contribution
 ---
 
 # Support the Project

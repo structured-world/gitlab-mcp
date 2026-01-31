@@ -1,6 +1,10 @@
 ---
 title: "CI/CD Tools"
 description: "GitLab CI/CD tools — manage pipelines, jobs, variables, and deployment operations via MCP"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab CI/CD, pipelines, jobs, variables, MCP, deployment, pipeline management, job logs
 ---
 
 # CI/CD Tools

@@ -1,6 +1,10 @@
 ---
 title: Docker Installation
 description: "Run GitLab MCP Server in Docker with SSE or StreamableHTTP transport for production deployments"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp docker, docker compose, container deployment, SSE, StreamableHTTP, gitlab mcp production, ghcr.io
 ---
 
 # Docker Installation

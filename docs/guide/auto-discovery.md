@@ -1,6 +1,10 @@
 ---
 title: Auto-Discovery
 description: "Automatic GitLab instance detection from git remotes — zero-config setup for local repositories"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp auto-discovery, git remote detection, zero-config setup, gitlab instance detection, auto flag, user profiles
 ---
 
 # Auto-Discovery

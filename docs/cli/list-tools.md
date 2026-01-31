@@ -1,6 +1,10 @@
 ---
 title: "CLI: list-tools"
 description: "List available GitLab MCP tools with filtering by entity, tier info, and export capabilities"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp tools, mcp tool list, gitlab api tools, gitlab tier badges, mcp tool documentation, gitlab mcp export
 ---
 
 # gitlab-mcp list-tools

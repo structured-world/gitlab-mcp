@@ -1,6 +1,10 @@
 ---
 title: VS Code
 description: "Configure GitLab MCP Server with VS Code — MCP extension setup for GitHub Copilot integration"
+head:
+  - - meta
+    - name: keywords
+      content: VS Code, GitLab MCP, GitHub Copilot, MCP extension, Visual Studio Code, GitLab integration
 ---
 
 # VS Code (GitHub Copilot)

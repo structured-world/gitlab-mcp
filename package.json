@@ -4,7 +4,7 @@
   "resolutions": {
     "lodash": "4.17.23",
     "lodash-es": "4.17.23",
-    "hono": "4.11.5",
+    "hono": "4.11.7",
     "diff": "4.0.4",
     "esbuild": ">=0.25.0"
   },

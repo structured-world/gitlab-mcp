@@ -1,6 +1,10 @@
 ---
 title: Repository Tools
 description: "GitLab repository tools — browse files, commits, refs, compare branches, and manage repository content"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab repository, files, commits, branches, tags, releases, branch protection, MCP
 ---
 
 # Repository Tools

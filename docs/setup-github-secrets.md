@@ -1,6 +1,10 @@
 ---
 title: Setup GitHub Secrets
 description: "Configure GitHub repository secrets for GitLab MCP CI/CD workflows and automated releases"
+head:
+  - - meta
+    - name: keywords
+      content: GitHub secrets, CI/CD configuration, integration tests, GitLab token, repository secrets, automated testing
 ---
 
 # GitHub Secrets Setup Guide

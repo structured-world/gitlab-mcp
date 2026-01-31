@@ -1,6 +1,10 @@
 ---
 title: Automate Releases
 description: "Automate GitLab release workflows with MCP — changelog generation, tagging, and release creation"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab releases, release automation, changelog, tagging, milestones, release assets, MCP
 ---
 
 # Automate Releases

@@ -1,6 +1,10 @@
 ---
 title: Project Management Tools
 description: "GitLab project management tools — work items, milestones, labels, and iteration tracking via MCP"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab project management, work items, issues, epics, milestones, labels, team members, MCP
 ---
 
 # Project Management Tools

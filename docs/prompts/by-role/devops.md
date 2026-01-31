@@ -1,6 +1,10 @@
 ---
 title: DevOps Prompts
 description: "GitLab MCP prompts for DevOps engineers — pipeline management, deployments, and infrastructure tasks"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab devops, pipeline management, ci/cd variables, webhooks, integrations, branch protection, deployment automation
 ---
 
 # DevOps Prompts

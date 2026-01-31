@@ -1,6 +1,10 @@
 ---
 title: Code Review Tools
 description: "GitLab code review tools — browse merge requests, manage discussions, and post review comments"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab code review, merge requests, MR discussions, draft notes, code suggestions, MCP
 ---
 
 # Code Review Tools

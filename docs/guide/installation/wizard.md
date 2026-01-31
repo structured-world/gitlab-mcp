@@ -1,6 +1,10 @@
 ---
 title: Setup Wizard
 description: "Interactive setup wizard for GitLab MCP Server — guided configuration for any MCP client"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp setup wizard, interactive setup, guided configuration, tool presets, docker init, mcp client setup
 ---
 
 # Setup Wizard

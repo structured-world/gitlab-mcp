@@ -1,6 +1,10 @@
 ---
 title: "CLI: docker"
 description: "Generate Docker run commands for GitLab MCP Server with proper environment and network settings"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp docker, mcp server docker, docker compose gitlab mcp, gitlab mcp container, multi-instance gitlab, gitlab mcp deployment
 ---
 
 # gitlab-mcp docker

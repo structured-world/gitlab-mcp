@@ -1,6 +1,10 @@
 ---
 title: Customization
 description: "Customize GitLab MCP Server — tool descriptions, profiles, presets, and feature flags"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab MCP customization, tool descriptions, action filtering, schema mode, feature flags, cross-references
 ---
 
 # Customization

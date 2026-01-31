@@ -1,6 +1,10 @@
 ---
 title: Team Lead Prompts
 description: "GitLab MCP prompts for team leads — sprint oversight, review delegation, and team productivity tracking"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab team lead, review delegation, sprint tracking, workload analysis, team management, weekly reporting
 ---
 
 # Team Lead Prompts

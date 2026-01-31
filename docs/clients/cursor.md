@@ -1,6 +1,10 @@
 ---
 title: Cursor
 description: "Configure GitLab MCP Server with Cursor IDE — MCP settings and AI-assisted GitLab workflows"
+head:
+  - - meta
+    - name: keywords
+      content: Cursor IDE, GitLab MCP, MCP configuration, AI-assisted coding, Cursor setup, GitLab workflows
 ---
 
 # Cursor

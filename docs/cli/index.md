@@ -1,6 +1,10 @@
 ---
 title: CLI Reference
 description: "Command-line interface for GitLab MCP Server — setup, init, install, docker, and list-tools commands"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp cli, gitlab mcp commands, mcp server setup, gitlab-mcp npx, mcp client configuration, gitlab mcp reference
 ---
 
 # CLI Reference

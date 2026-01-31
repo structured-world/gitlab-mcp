@@ -1,6 +1,10 @@
 ---
 title: Release Notes
 description: "Prompts for generating release notes from GitLab — summarize MRs, issues, and changelog entries"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab release notes, changelog generation, create release, release assets, milestone release, version tagging
 ---
 
 # Release Notes

@@ -1,6 +1,10 @@
 ---
 title: Deployment Overview
 description: "Deploy GitLab MCP Server — local stdio, Docker standalone, Docker with PostgreSQL, or Docker Compose"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp deployment, docker deployment, stdio transport, docker compose, postgresql, oauth, mcp server setup
 ---
 
 # Deployment Options

@@ -1,6 +1,10 @@
 ---
 title: Step-by-Step Guides
 description: "In-depth tutorials for GitLab MCP Server — code review, CI notifications, releases, and team setup"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab MCP guides, tutorials, code review, CI notifications, releases, team onboarding
 ---
 
 # Step-by-Step Guides

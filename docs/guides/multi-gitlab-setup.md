@@ -1,6 +1,10 @@
 ---
 title: Multi-GitLab Setup
 description: "Connect GitLab MCP Server to multiple GitLab instances — profiles for work and personal accounts"
+head:
+  - - meta
+    - name: keywords
+      content: multiple GitLab instances, context management, presets, OAuth profiles, self-hosted GitLab, MCP
 ---
 
 # Multi-GitLab Setup

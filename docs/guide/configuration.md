@@ -1,6 +1,10 @@
 ---
 title: Environment Variables
 description: "Configure GitLab MCP Server with environment variables for tokens, API URLs, transports, and tool filtering"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp configuration, environment variables, feature flags, api settings, oauth configuration, tls https, logging, schema mode
 ---
 
 # Environment Variables

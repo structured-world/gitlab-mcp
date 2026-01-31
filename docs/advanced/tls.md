@@ -1,6 +1,10 @@
 ---
 title: TLS / HTTPS
 description: "Configure TLS/HTTPS for GitLab MCP Server — certificate setup, reverse proxy, and secure connections"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab MCP TLS, HTTPS, SSL certificates, reverse proxy, Caddy, Nginx, Traefik, Docker
 ---
 
 # TLS / HTTPS Configuration

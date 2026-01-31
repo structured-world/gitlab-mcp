@@ -1,6 +1,11 @@
 ---
 layout: home
+titleTemplate: false
 description: "MCP server connecting AI agents to GitLab API with __TOOL_COUNT__ tools across __ENTITY_COUNT__ entity types"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp, model context protocol, gitlab api, ai agent, mcp server, gitlab automation, claude desktop
 
 hero:
   name: GitLab MCP

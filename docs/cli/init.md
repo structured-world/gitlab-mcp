@@ -1,6 +1,10 @@
 ---
 title: "CLI: init"
 description: "Initialize GitLab MCP Server configuration — create config files for your MCP client"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp init, mcp initialization, gitlab mcp local setup, stdio mode, mcp client config, gitlab mcp quickstart
 ---
 
 # gitlab-mcp init

@@ -1,6 +1,10 @@
 ---
 title: Developer Prompts
 description: "GitLab MCP prompts for developers — code review, branch management, and CI/CD debugging workflows"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab developer workflow, branch management, create merge request, code search, edit files, ci/cd debugging
 ---
 
 # Developer Prompts

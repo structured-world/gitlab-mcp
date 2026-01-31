@@ -1,6 +1,10 @@
 ---
 title: Issue Triage
 description: "Prompts for triaging GitLab issues — prioritize, label, assign, and organize work items efficiently"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab issue triage, prioritize issues, label management, assign issues, work items, bug reports, issue organization
 ---
 
 # Issue Triage

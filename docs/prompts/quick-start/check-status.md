@@ -1,6 +1,10 @@
 ---
 title: Check Project Status
 description: "Prompts to check GitLab project status — open MRs, pipeline health, and recent activity overview"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab project status, merge request status, pipeline health, issue tracking, team activity, project monitoring
 ---
 
 # Check Status

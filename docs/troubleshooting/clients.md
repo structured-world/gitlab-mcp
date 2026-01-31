@@ -1,6 +1,10 @@
 ---
 title: Client Issues
 description: "Troubleshoot MCP client integration — Claude Desktop, VS Code, Cursor, and other client problems"
+head:
+  - - meta
+    - name: keywords
+      content: MCP client issues, Claude Desktop, VS Code, Cursor, Windsurf, client configuration, troubleshooting
 ---
 
 # Client Issues

@@ -1,6 +1,10 @@
 ---
 title: MCP Clients
 description: "Supported MCP clients — Claude Desktop, Claude Code, VS Code, Cursor, Windsurf, Cline, and Roo Code"
+head:
+  - - meta
+    - name: keywords
+      content: MCP clients, GitLab MCP setup, Claude Desktop, Claude Code, VS Code, Cursor, Windsurf, Cline, Roo Code
 ---
 
 # Supported Clients

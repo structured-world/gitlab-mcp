@@ -1,6 +1,10 @@
 ---
 title: Manual Installation
 description: "Build GitLab MCP Server from source — clone, install dependencies, build, and configure manually"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp manual setup, mcp configuration, json config, yarn dlx, docker stdio, http sse, environment variables
 ---
 
 # Manual Configuration

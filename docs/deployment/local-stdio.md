@@ -1,6 +1,10 @@
 ---
 title: Local stdio
 description: "Run GitLab MCP Server locally with stdio transport — simplest deployment for single-user setups"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp stdio, local deployment, mcp client configuration, npx, personal access token, single user
 ---
 
 # Local stdio Deployment

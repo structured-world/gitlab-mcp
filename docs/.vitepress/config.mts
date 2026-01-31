@@ -5,7 +5,8 @@ const hostname = "https://gitlab-mcp.sw.foundation";
 
 export default defineConfig({
   title: "GitLab MCP",
-  titleTemplate: "%s | GitLab MCP",
+  titleTemplate: ":title | GitLab MCP",
+  cleanUrls: true,
   description: "Model Context Protocol server for GitLab API",
   base,
 
@@ -22,6 +23,7 @@ export default defineConfig({
     head.push(["meta", { name: "twitter:card", content: "summary_large_image" }]);
     head.push(["meta", { name: "twitter:title", content: title }]);
     head.push(["meta", { name: "twitter:description", content: description }]);
+    head.push(["link", { rel: "canonical", href: url }]);
 
     return head;
   },
@@ -29,10 +31,15 @@ export default defineConfig({
   // MCPB bundle is downloaded from GitHub releases during docs build.
   // Links use versioned filenames (e.g., gitlab-mcp-6.43.0.mcpb) injected at build time.
   // Until first .mcpb release exists, the link is a dead link — safe to ignore.
-  ignoreDeadLinks: [/\/downloads\/gitlab-mcp-[\d.]+\.mcpb$/],
+  ignoreDeadLinks: [/\/downloads\/gitlab-mcp-[\d.]+\.mcpb$/, /\/TOOLS$/],
 
   sitemap: {
     hostname,
+    transformItems: (items) =>
+      items.map((item) => ({
+        ...item,
+        lastmod: new Date().toISOString().split("T")[0],
+      })),
   },
 
   head: [

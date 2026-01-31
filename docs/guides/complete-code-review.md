@@ -1,6 +1,10 @@
 ---
 title: Complete Code Review
 description: "End-to-end guide for AI-powered code reviews with GitLab MCP — from MR creation to merge approval"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab code review, merge request review, AI code review, draft notes, code suggestions, MCP workflow
 ---
 
 # Complete Code Review Guide

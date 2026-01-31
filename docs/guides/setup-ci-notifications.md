@@ -1,6 +1,10 @@
 ---
 title: Setup CI Notifications
 description: "Configure CI/CD pipeline notifications using GitLab MCP — monitor builds and deployment status"
+head:
+  - - meta
+    - name: keywords
+      content: GitLab CI notifications, Slack integration, Discord webhook, pipeline alerts, MCP, Microsoft Teams
 ---
 
 # Setup CI Notifications

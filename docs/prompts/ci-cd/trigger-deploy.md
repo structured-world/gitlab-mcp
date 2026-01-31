@@ -1,6 +1,10 @@
 ---
 title: Trigger Deploy
 description: "Prompts for triggering GitLab deployments — run pipelines, play manual jobs, and manage environments"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab deployment, trigger pipeline, manual jobs, ci/cd variables, deploy staging, deploy production, pipeline automation
 ---
 
 # Trigger Deployments

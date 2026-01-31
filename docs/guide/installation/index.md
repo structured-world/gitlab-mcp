@@ -1,6 +1,10 @@
 ---
 title: Installation Overview
 description: "Choose your preferred installation method — npm, Docker, Claude Desktop, VS Code, or manual setup"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp installation, install gitlab mcp, npm, docker, claude desktop, vs code, setup wizard, mcp client
 ---
 
 # Installation

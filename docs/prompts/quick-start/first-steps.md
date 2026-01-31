@@ -1,6 +1,10 @@
 ---
 title: First Steps
 description: "Getting started prompts for GitLab MCP — connect to projects, list tools, and explore repositories"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp getting started, explore projects, list repositories, gitlab todos, project discovery, first steps
 ---
 
 # First Steps

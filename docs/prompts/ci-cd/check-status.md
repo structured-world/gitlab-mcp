@@ -1,6 +1,10 @@
 ---
 title: Check CI Status
 description: "Prompts for checking GitLab CI/CD status — pipeline progress, job results, and deployment state"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab pipeline status, ci/cd monitoring, job status, pipeline health check, scheduled pipelines, pipeline overview
 ---
 
 # Check Pipeline Status

@@ -16,6 +16,7 @@ const GA_ID = import.meta.env.VITE_GA_ID || "G-RY1XJ7LR5F";
 // - Tracks initial page view and watches router for SPA navigations
 const consentTheme = enhanceWithConsent(DefaultTheme, {
   gaId: GA_ID,
+  // KV storage via Cloudflare Worker (vue-privacy-worker) at gitlab-mcp.sw.foundation/api/consent*
   storage: createKVStorage("/api/consent"),
 });
 

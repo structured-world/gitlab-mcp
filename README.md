@@ -64,7 +64,7 @@ yarn list-tools --detail
 yarn list-tools --export --toc > docs/TOOLS.md
 ```
 
-See [Tools Reference](https://gitlab-mcp.sw.foundation/TOOLS.html) for the auto-generated reference.
+See [Tools Reference](https://gitlab-mcp.sw.foundation/TOOLS) for the auto-generated reference.
 
 ## Docker
 

@@ -2693,8 +2693,8 @@ __metadata:
   linkType: soft
 
 "@structured-world/vue-privacy@npm:^1.2.3":
-  version: 1.2.3
-  resolution: "@structured-world/vue-privacy@npm:1.2.3"
+  version: 1.3.0
+  resolution: "@structured-world/vue-privacy@npm:1.3.0"
   peerDependencies:
     vue: ^3.3.0
     vue-router: ^4.0.0
@@ -2703,7 +2703,7 @@ __metadata:
       optional: true
     vue-router:
       optional: true
-  checksum: 10c0/376c06f58ad11f87d1df9fccd33b01898a172d23424cc55cbb4648bf3d02d80dd46b387da61566e808ee2d8f5593539d1e4342534822765ed77a9eef24a590fb
+  checksum: 10c0/e90ddf57306dbd77aaf4e1287497e8543be41c5921a814439508bcde169ec2199c0485520591b1757dd679d2ef7b50e45420112b5657763e8d351b968b68320b
   languageName: node
   linkType: hard
 

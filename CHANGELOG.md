@@ -1,3 +1,19 @@
+## [6.51.0](https://github.com/structured-world/gitlab-mcp/compare/v6.50.0...v6.51.0) (2026-02-02)
+
+### Features
+
+* **docs:** consent banner + vue-privacy 1.2.2 with gtag fix ([#255](https://github.com/structured-world/gitlab-mcp/issues/255)) ([75eb54b](https://github.com/structured-world/gitlab-mcp/commit/75eb54b28118cbae404e4ed1e3f8c42db459c75f))
+
+### Bug Fixes
+
+* **ci:** prevent transitive skip propagation in release pipeline ([#266](https://github.com/structured-world/gitlab-mcp/issues/266)) ([f809a7a](https://github.com/structured-world/gitlab-mcp/commit/f809a7ae72965a0e46206e01a490bf22602ad002)), closes [#264](https://github.com/structured-world/gitlab-mcp/issues/264) [#265](https://github.com/structured-world/gitlab-mcp/issues/265) [#265](https://github.com/structured-world/gitlab-mcp/issues/265)
+* **ci:** replace heredoc with quoted strings in thread-gate job ([#246](https://github.com/structured-world/gitlab-mcp/issues/246)) ([9470b50](https://github.com/structured-world/gitlab-mcp/commit/9470b509358ed07f13c2758204722261f5bbdc7c)), closes [#243](https://github.com/structured-world/gitlab-mcp/issues/243) [#245](https://github.com/structured-world/gitlab-mcp/issues/245)
+* **ci:** unblock release pipeline on push to main ([#264](https://github.com/structured-world/gitlab-mcp/issues/264)) ([59b8cbe](https://github.com/structured-world/gitlab-mcp/commit/59b8cbec583ae948ace8e6bbbc0cbf62f6d67851)), closes [#263](https://github.com/structured-world/gitlab-mcp/issues/263)
+* **deps:** update hono from 4.11.5 to 4.11.7 ([#248](https://github.com/structured-world/gitlab-mcp/issues/248)) ([71cc831](https://github.com/structured-world/gitlab-mcp/commit/71cc831682f01e7f06bdc450e1cb498ac27d7bae)), closes [#247](https://github.com/structured-world/gitlab-mcp/issues/247)
+* **docs:** resolve SEO issues in VitePress documentation ([#249](https://github.com/structured-world/gitlab-mcp/issues/249)) ([#250](https://github.com/structured-world/gitlab-mcp/issues/250)) ([3e05717](https://github.com/structured-world/gitlab-mcp/commit/3e057177b8e200157c7bfbb7ff470ec8ac5b4c2f))
+* **docs:** use canonical URL for TOOLS reference in README ([#252](https://github.com/structured-world/gitlab-mcp/issues/252)) ([5ac56cc](https://github.com/structured-world/gitlab-mcp/commit/5ac56cc25099031168003a50e30013e8059e0a31)), closes [#251](https://github.com/structured-world/gitlab-mcp/issues/251)
+* **pipelines:** serialize array query params as key[] for GitLab Rails API ([#262](https://github.com/structured-world/gitlab-mcp/issues/262)) ([955a3c1](https://github.com/structured-world/gitlab-mcp/commit/955a3c1cc7e21e373ba25197e4738d2758416ba1)), closes [#261](https://github.com/structured-world/gitlab-mcp/issues/261)
+
 ## [6.50.0](https://github.com/structured-world/gitlab-mcp/compare/v6.49.0...v6.50.0) (2026-01-27)
 
 ### Features

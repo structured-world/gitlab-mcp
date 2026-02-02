@@ -15,9 +15,13 @@ import { cleanGidsFromObject } from "./idConversion";
 
 type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
 
+type QueryParamValue = string | number | boolean | undefined | null;
+type QueryParamArray = string[] | number[];
+type QueryParams = Record<string, QueryParamValue | QueryParamArray>;
+
 interface RequestOptions {
-  /** Query parameters - undefined values are filtered out */
-  query?: Record<string, string | number | boolean | undefined | null>;
+  /** Query parameters - undefined values are filtered out, arrays use key[] format */
+  query?: QueryParams;
   /** Request body for POST/PUT/PATCH */
   body?: Record<string, unknown> | URLSearchParams | FormData;
   /** Content type: 'json' or 'form' for x-www-form-urlencoded (default: 'form') */
@@ -27,16 +31,23 @@ interface RequestOptions {
 }
 
 /**
- * Build query string from params object, filtering out undefined/null values
+ * Build query string from params object, filtering out undefined/null values.
+ * Arrays are serialized using key[] format (Rails convention) for GitLab API compatibility.
+ * Example: { scope: ["failed", "success"] } -> "scope[]=failed&scope[]=success"
  */
-function buildQueryString(
-  params?: Record<string, string | number | boolean | undefined | null>
-): string {
+function buildQueryString(params?: QueryParams): string {
   if (!params) return "";
 
   const searchParams = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null) {
+    if (value === undefined || value === null) continue;
+
+    if (Array.isArray(value)) {
+      // GitLab Rails API expects array params as key[]=val1&key[]=val2
+      for (const item of value) {
+        searchParams.append(`${key}[]`, String(item));
+      }
+    } else {
       searchParams.set(key, String(value));
     }
   }
@@ -230,16 +241,17 @@ export const paths = {
 };
 
 /**
- * Helper to filter options for query params, excluding specified keys
+ * Helper to filter options for query params, excluding specified keys.
+ * Preserves arrays for buildQueryString() to serialize as key[] params.
  */
 export function toQuery<T extends Record<string, unknown>>(
   options: T,
   exclude: (keyof T)[] = []
-): Record<string, string | number | boolean | undefined> {
-  const result: Record<string, string | number | boolean | undefined> = {};
+): QueryParams {
+  const result: QueryParams = {};
   for (const [key, value] of Object.entries(options)) {
     if (!exclude.includes(key as keyof T) && value !== undefined) {
-      result[key] = value as string | number | boolean | undefined;
+      result[key] = value as QueryParamValue | QueryParamArray;
     }
   }
   return result;

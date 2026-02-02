@@ -256,7 +256,12 @@ jobs:
     needs: [quality-checks, review-thread-gate]
     # For PRs, only run heavy jobs if the gate succeeded and explicitly allowed them.
     # Non-PR events (push/workflow_dispatch) run unconditionally.
-    if: github.event_name != 'pull_request' || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true')
+    # Note: !cancelled() is required because review-thread-gate is skipped on non-PR events,
+    # and GitHub Actions skips dependent jobs by default when any needs job is skipped.
+    if: |
+      !cancelled() &&
+      needs.quality-checks.result == 'success' &&
+      (github.event_name != 'pull_request' || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true'))
 
     permissions:
       contents: read

@@ -122,9 +122,6 @@ jobs:
       contents: read
       pull-requests: read  # For review thread check on PRs
 
-    outputs:
-      image-built: ${{ steps.build.outputs.digest }}
-
     steps:
       - name: Check for unresolved review threads
         if: github.event_name == 'pull_request'
@@ -209,10 +206,11 @@ jobs:
               exit 1
             fi
           done
-          if [ "$PAGE_COUNT" -ge "$MAX_PAGES" ]; then
-            echo "::error::Thread scan incomplete (too many pages). Blocking build for safety."
+          if [ "$PAGE_COUNT" -ge "$MAX_PAGES" ] && [ "$HAS_NEXT" = "true" ]; then
+            echo "::error::Thread scan incomplete (exceeded $MAX_PAGES pages). Blocking build for safety."
             exit 1
           fi
+          # Intentionally fail (not skip) — PRs with unresolved threads should not show green CI
           if [ "$UNRESOLVED" -gt 0 ]; then
             echo "::error::$UNRESOLVED unresolved review thread(s). Resolve them before building."
             exit 1

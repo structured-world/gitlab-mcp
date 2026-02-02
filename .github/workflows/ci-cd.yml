@@ -482,6 +482,8 @@ jobs:
     name: Pipeline Summary
     runs-on: ubuntu-latest
     permissions: {}
+    # All jobs listed so summary can read their outputs/results.
+    # if: always() ensures this runs even when needs jobs are skipped/failed.
     needs: [quality-checks, docker-build, semantic-release, mcpb-bundle, docker-publish, mcp-registry-publish]
     if: always()
 

@@ -98,8 +98,8 @@ jobs:
     name: Review Threads Gate
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    # Only relevant for PRs; non-PR events skip the gate entirely.
-    if: github.event_name == 'pull_request'
+    # Always runs to avoid cascading skip in downstream needs chain.
+    # On non-PR events, immediately allows heavy jobs.
 
     permissions:
       pull-requests: read
@@ -116,6 +116,12 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPO: ${{ github.repository }}
         run: |
+          # Non-PR events: always allow heavy jobs (gate is only meaningful for PRs)
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "Non-PR event; allowing heavy jobs." >> "$GITHUB_STEP_SUMMARY"
+            echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if ! command -v gh >/dev/null 2>&1; then
             echo "gh CLI not available; allowing heavy jobs to proceed (fail-open)." >> "$GITHUB_STEP_SUMMARY"
             echo "allow_heavy=true" >> "$GITHUB_OUTPUT"
@@ -255,13 +261,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: [quality-checks, review-thread-gate]
     # For PRs, only run heavy jobs if the gate succeeded and explicitly allowed them.
-    # Non-PR events (push/workflow_dispatch) run unconditionally.
-    # Note: !cancelled() is required because review-thread-gate is skipped on non-PR events,
-    # and GitHub Actions skips dependent jobs by default when any needs job is skipped.
-    if: |
-      !cancelled() &&
-      needs.quality-checks.result == 'success' &&
-      (github.event_name != 'pull_request' || (needs.review-thread-gate.result == 'success' && needs.review-thread-gate.outputs.allow_heavy == 'true'))
+    # Non-PR events always pass through (gate outputs allow_heavy=true).
+    if: needs.review-thread-gate.outputs.allow_heavy == 'true'
 
     permissions:
       contents: read

@@ -422,7 +422,7 @@ describe("Pipelines Registry - CQRS Tools", () => {
         });
 
         const call = mockEnhancedFetch.mock.calls[0];
-        const url = call[0] as string;
+        const url = call[0];
         // GitLab Rails API expects array params as key[]=value format
         expect(url).toContain("scope%5B%5D=failed");
       });
@@ -443,7 +443,7 @@ describe("Pipelines Registry - CQRS Tools", () => {
         });
 
         const call = mockEnhancedFetch.mock.calls[0];
-        const url = call[0] as string;
+        const url = call[0];
 
         // Must NOT contain comma-separated values (the bug)
         expect(url).not.toContain("scope=created%2Cpending");
@@ -498,7 +498,7 @@ describe("Pipelines Registry - CQRS Tools", () => {
         });
 
         const call = mockEnhancedFetch.mock.calls[0];
-        const url = call[0] as string;
+        const url = call[0];
 
         // Must NOT contain comma-separated values
         expect(url).not.toContain("scope=failed%2Csuccess");

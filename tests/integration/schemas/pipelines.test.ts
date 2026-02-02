@@ -328,7 +328,7 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
   });
 
   describe("BrowsePipelinesSchema - jobs action", () => {
-    it("should validate jobs action parameters", async () => {
+    it("should validate jobs action parameters (schema only)", async () => {
       const validParams = {
         action: "jobs" as const,
         project_id: "123",
@@ -346,13 +346,144 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
         expect(result.data.job_scope).toEqual(["failed", "success"]);
         expect(result.data.include_retried).toBe(true);
       }
+    });
 
-      console.log("BrowsePipelinesSchema jobs action validates parameters correctly");
+    it("should list pipeline jobs via real API without scope filter", async () => {
+      // Get a project with pipelines for testing
+      const projects = (await helper.listProjects({ per_page: 1 })) as any[];
+      if (projects.length === 0) {
+        console.log("No projects available for jobs testing");
+        return;
+      }
+
+      const testProject = projects[0];
+      const pipelines = (await helper.executeTool("browse_pipelines", {
+        action: "list",
+        project_id: testProject.id.toString(),
+        per_page: 1,
+      })) as any[];
+
+      if (pipelines.length === 0) {
+        console.log("No pipelines found for jobs testing");
+        return;
+      }
+
+      const testPipeline = pipelines[0];
+
+      // Call jobs action WITHOUT scope filter - should return all jobs
+      const jobs = (await helper.executeTool("browse_pipelines", {
+        action: "jobs",
+        project_id: testProject.id.toString(),
+        pipeline_id: testPipeline.id.toString(),
+        per_page: 20,
+      })) as any[];
+
+      expect(Array.isArray(jobs)).toBe(true);
+      console.log(`Retrieved ${jobs.length} jobs from pipeline ${testPipeline.id}`);
+
+      if (jobs.length > 0) {
+        const job = jobs[0];
+        expect(job).toHaveProperty("id");
+        expect(job).toHaveProperty("status");
+        expect(job).toHaveProperty("name");
+        expect(job).toHaveProperty("stage");
+      }
+    });
+
+    it("should list pipeline jobs with job_scope array filter via real API", async () => {
+      // This test catches the bug where array params were serialized as
+      // "scope=val1,val2" instead of "scope[]=val1&scope[]=val2"
+      const projects = (await helper.listProjects({ per_page: 1 })) as any[];
+      if (projects.length === 0) {
+        console.log("No projects available for job_scope testing");
+        return;
+      }
+
+      const testProject = projects[0];
+      const pipelines = (await helper.executeTool("browse_pipelines", {
+        action: "list",
+        project_id: testProject.id.toString(),
+        per_page: 1,
+      })) as any[];
+
+      if (pipelines.length === 0) {
+        console.log("No pipelines found for job_scope testing");
+        return;
+      }
+
+      const testPipeline = pipelines[0];
+
+      // Call jobs action WITH job_scope array - this was the exact production failure:
+      // scope=created,pending,running,failed,success,canceled,skipped -> 400 Bad Request
+      const scopeValues = [
+        "created",
+        "pending",
+        "running",
+        "failed",
+        "success",
+        "canceled",
+        "skipped",
+      ] as const;
+
+      const jobs = (await helper.executeTool("browse_pipelines", {
+        action: "jobs",
+        project_id: testProject.id.toString(),
+        pipeline_id: testPipeline.id.toString(),
+        job_scope: [...scopeValues],
+        per_page: 20,
+      })) as any[];
+
+      // If we get here without 400 error, array params are serialized correctly
+      expect(Array.isArray(jobs)).toBe(true);
+      console.log(`Retrieved ${jobs.length} jobs with scope filter [${scopeValues.join(", ")}]`);
+
+      if (jobs.length > 0) {
+        const job = jobs[0];
+        expect(job).toHaveProperty("id");
+        expect(job).toHaveProperty("status");
+        // Verify returned jobs have status within requested scopes
+        expect(scopeValues).toContain(job.status);
+      }
+    });
+
+    it("should list pipeline jobs with single-element job_scope array", async () => {
+      // Edge case: single-element array should also use key[] format
+      const projects = (await helper.listProjects({ per_page: 1 })) as any[];
+      if (projects.length === 0) {
+        console.log("No projects available for single-scope testing");
+        return;
+      }
+
+      const testProject = projects[0];
+      const pipelines = (await helper.executeTool("browse_pipelines", {
+        action: "list",
+        project_id: testProject.id.toString(),
+        per_page: 1,
+      })) as any[];
+
+      if (pipelines.length === 0) {
+        console.log("No pipelines found for single-scope testing");
+        return;
+      }
+
+      const testPipeline = pipelines[0];
+
+      // Single-element array - common case when agent filters by one status
+      const jobs = (await helper.executeTool("browse_pipelines", {
+        action: "jobs",
+        project_id: testProject.id.toString(),
+        pipeline_id: testPipeline.id.toString(),
+        job_scope: ["success"],
+        per_page: 10,
+      })) as any[];
+
+      expect(Array.isArray(jobs)).toBe(true);
+      console.log(`Retrieved ${jobs.length} jobs with scope=["success"]`);
     });
   });
 
   describe("BrowsePipelinesSchema - triggers action", () => {
-    it("should validate triggers action parameters", async () => {
+    it("should validate triggers action parameters (schema only)", async () => {
       const validParams = {
         action: "triggers" as const,
         project_id: "123",
@@ -366,8 +497,75 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
         expect(result.data.project_id).toBe("123");
         expect(result.data.pipeline_id).toBe("456");
       }
+    });
 
-      console.log("BrowsePipelinesSchema triggers action validates parameters correctly");
+    it("should list pipeline triggers/bridges via real API", async () => {
+      const projects = (await helper.listProjects({ per_page: 1 })) as any[];
+      if (projects.length === 0) {
+        console.log("No projects available for triggers testing");
+        return;
+      }
+
+      const testProject = projects[0];
+      const pipelines = (await helper.executeTool("browse_pipelines", {
+        action: "list",
+        project_id: testProject.id.toString(),
+        per_page: 1,
+      })) as any[];
+
+      if (pipelines.length === 0) {
+        console.log("No pipelines found for triggers testing");
+        return;
+      }
+
+      const testPipeline = pipelines[0];
+
+      // Call triggers action without scope - should not error
+      const bridges = (await helper.executeTool("browse_pipelines", {
+        action: "triggers",
+        project_id: testProject.id.toString(),
+        pipeline_id: testPipeline.id.toString(),
+        per_page: 20,
+      })) as any[];
+
+      expect(Array.isArray(bridges)).toBe(true);
+      console.log(`Retrieved ${bridges.length} bridges from pipeline ${testPipeline.id}`);
+    });
+
+    it("should list pipeline triggers with trigger_scope array filter", async () => {
+      // Same array serialization bug as job_scope - trigger_scope is also an array
+      const projects = (await helper.listProjects({ per_page: 1 })) as any[];
+      if (projects.length === 0) {
+        console.log("No projects available for trigger_scope testing");
+        return;
+      }
+
+      const testProject = projects[0];
+      const pipelines = (await helper.executeTool("browse_pipelines", {
+        action: "list",
+        project_id: testProject.id.toString(),
+        per_page: 1,
+      })) as any[];
+
+      if (pipelines.length === 0) {
+        console.log("No pipelines found for trigger_scope testing");
+        return;
+      }
+
+      const testPipeline = pipelines[0];
+
+      // Call with trigger_scope array - validates array serialization for bridges endpoint
+      const bridges = (await helper.executeTool("browse_pipelines", {
+        action: "triggers",
+        project_id: testProject.id.toString(),
+        pipeline_id: testPipeline.id.toString(),
+        trigger_scope: ["created", "pending", "running", "failed", "success"],
+        per_page: 20,
+      })) as any[];
+
+      // If we get here without 400 error, array params are serialized correctly
+      expect(Array.isArray(bridges)).toBe(true);
+      console.log(`Retrieved ${bridges.length} bridges with trigger_scope array filter`);
     });
   });
 

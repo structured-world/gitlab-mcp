@@ -409,7 +409,7 @@ describe("Pipelines Registry - CQRS Tools", () => {
         expect(result).toEqual(mockJobs);
       });
 
-      it("should list jobs with scope filter", async () => {
+      it("should list jobs with single-element scope filter using key[] format", async () => {
         const mockJobs = [{ id: 1, name: "build", status: "failed" }];
         mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJobs) as never);
 
@@ -423,7 +423,43 @@ describe("Pipelines Registry - CQRS Tools", () => {
 
         const call = mockEnhancedFetch.mock.calls[0];
         const url = call[0];
-        expect(url).toContain("scope=failed");
+        // GitLab Rails API expects array params as key[]=value format
+        expect(url).toContain("scope%5B%5D=failed");
+      });
+
+      it("should serialize multi-element job_scope array as separate key[] params", async () => {
+        // This is the exact bug that caused 400 Bad Request in production:
+        // Array was serialized as "scope=created,pending,running,failed,success,canceled,skipped"
+        // instead of "scope[]=created&scope[]=pending&..." etc.
+        const mockJobs = [{ id: 1, name: "build", status: "success" }];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJobs) as never);
+
+        const tool = pipelinesToolRegistry.get("browse_pipelines")!;
+        await tool.handler({
+          action: "jobs",
+          project_id: "test/project",
+          pipeline_id: "1",
+          job_scope: ["created", "pending", "running", "failed", "success", "canceled", "skipped"],
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const url = call[0];
+
+        // Must NOT contain comma-separated values (the bug)
+        expect(url).not.toContain("scope=created%2Cpending");
+        expect(url).not.toContain("scope=created,pending");
+
+        // Must contain each scope as separate key[] param
+        const scopeParams = new URL(url).searchParams.getAll("scope[]");
+        expect(scopeParams).toEqual([
+          "created",
+          "pending",
+          "running",
+          "failed",
+          "success",
+          "canceled",
+          "skipped",
+        ]);
       });
     });
 
@@ -447,6 +483,30 @@ describe("Pipelines Registry - CQRS Tools", () => {
           )
         );
         expect(result).toEqual(mockBridges);
+      });
+
+      it("should serialize trigger_scope array as separate key[] params", async () => {
+        const mockBridges: unknown[] = [];
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockBridges) as never);
+
+        const tool = pipelinesToolRegistry.get("browse_pipelines")!;
+        await tool.handler({
+          action: "triggers",
+          project_id: "test/project",
+          pipeline_id: "1",
+          trigger_scope: ["failed", "success", "running"],
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const url = call[0];
+
+        // Must NOT contain comma-separated values
+        expect(url).not.toContain("scope=failed%2Csuccess");
+        expect(url).not.toContain("scope=failed,success");
+
+        // Must contain each scope as separate key[] param
+        const scopeParams = new URL(url).searchParams.getAll("scope[]");
+        expect(scopeParams).toEqual(["failed", "success", "running"]);
       });
     });
 

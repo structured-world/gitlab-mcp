@@ -31,7 +31,7 @@ env:
 jobs:
   # Job 1: Quality checks (lint, test, build)
   quality-checks:
-    name: Lint, Test & Build
+    name: Quality Checks
     runs-on: ubuntu-latest
 
     steps:
@@ -200,8 +200,14 @@ jobs:
             if [ "$HAS_NEXT" != "true" ]; then break; fi
             AFTER=$(echo "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
             if [ "$AFTER" = "null" ]; then AFTER=""; fi
-            if [ "$PAGE_NODE_COUNT" -eq 0 ] && [ "$HAS_NEXT" = "true" ]; then break; fi
-            if [ "$HAS_NEXT" = "true" ] && [ -z "$AFTER" ]; then break; fi
+            if [ "$PAGE_NODE_COUNT" -eq 0 ] && [ "$HAS_NEXT" = "true" ]; then
+              echo "::error::Thread scan incomplete: empty page with hasNextPage=true. Blocking build for safety."
+              exit 1
+            fi
+            if [ "$HAS_NEXT" = "true" ] && [ -z "$AFTER" ]; then
+              echo "::error::Thread scan incomplete: missing endCursor with hasNextPage=true. Blocking build for safety."
+              exit 1
+            fi
           done
           if [ "$PAGE_COUNT" -ge "$MAX_PAGES" ]; then
             echo "::error::Thread scan incomplete (too many pages). Blocking build for safety."

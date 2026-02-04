@@ -217,18 +217,21 @@ async function addInstance(): Promise<void> {
     insecureSkipVerify: false,
   };
 
-  // Show configuration (mask secrets)
-  const sanitizedConfig = {
-    ...config,
+  // Show configuration preview (avoid logging sensitive fields)
+  const logConfigPreview = {
+    url: config.url,
+    label: config.label,
+    insecureSkipVerify: config.insecureSkipVerify,
     oauth: config.oauth
       ? {
-          ...config.oauth,
-          clientSecret: config.oauth.clientSecret ? "***" : undefined,
+          clientId: config.oauth.clientId,
+          scopes: config.oauth.scopes,
+          hasSecret: !!config.oauth.clientSecret,
         }
       : undefined,
   };
   console.log("\nInstance Configuration:");
-  console.log(JSON.stringify(sanitizedConfig, null, 2));
+  console.log(JSON.stringify(logConfigPreview, null, 2));
 
   const confirmed = await p.confirm({
     message: "Add this configuration?",

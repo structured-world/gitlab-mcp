@@ -25,6 +25,8 @@ import {
   CachedIntrospection,
 } from "../config/instances-schema.js";
 import { loadInstancesConfig, LoadedInstancesConfig } from "../config/instances-loader.js";
+import { InstanceConnectionPool, PoolStats } from "./InstanceConnectionPool.js";
+import { GraphQLClient } from "../graphql/client.js";
 
 /**
  * Instance registry entry combining config, state, and rate limiter
@@ -354,6 +356,44 @@ export class InstanceRegistry {
   }
 
   /**
+   * Get a thread-safe GraphQL client for an instance
+   *
+   * This is the preferred way to get a GraphQL client for multi-instance setups.
+   * Each instance gets its own client with dedicated connection pool, avoiding
+   * the singleton endpoint mutation issue.
+   *
+   * @param baseUrl - Instance base URL
+   * @param authHeaders - Optional auth headers (for OAuth per-request tokens)
+   * @returns GraphQL client or undefined if instance not registered
+   */
+  public getGraphQLClient(
+    baseUrl: string,
+    authHeaders?: Record<string, string>
+  ): GraphQLClient | undefined {
+    const entry = this.get(baseUrl);
+    if (!entry) return undefined;
+
+    const connectionPool = InstanceConnectionPool.getInstance();
+    return connectionPool.getGraphQLClient(entry.config, authHeaders);
+  }
+
+  /**
+   * Get connection pool statistics for all instances
+   */
+  public getConnectionPoolStats(): PoolStats[] {
+    const connectionPool = InstanceConnectionPool.getInstance();
+    return connectionPool.getStats();
+  }
+
+  /**
+   * Get connection pool statistics for a specific instance
+   */
+  public getInstancePoolStats(baseUrl: string): PoolStats | undefined {
+    const connectionPool = InstanceConnectionPool.getInstance();
+    return connectionPool.getInstanceStats(baseUrl);
+  }
+
+  /**
    * Reset registry (for testing)
    */
   public reset(): void {
@@ -362,6 +402,15 @@ export class InstanceRegistry {
     this.configSourceDetails = "";
     this.initialized = false;
     logDebug("InstanceRegistry reset");
+  }
+
+  /**
+   * Reset registry and destroy connection pools (for testing)
+   */
+  public async resetWithPools(): Promise<void> {
+    this.reset();
+    await InstanceConnectionPool.resetInstance();
+    logDebug("InstanceRegistry and connection pools reset");
   }
 
   /**

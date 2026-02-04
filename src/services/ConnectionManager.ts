@@ -222,45 +222,9 @@ export class ConnectionManager {
     // In OAuth mode, use URL from context; in static mode, use current instance URL
     const instanceUrl = getGitLabApiUrlFromContext() ?? this.currentInstanceUrl ?? GITLAB_BASE_URL;
 
-    // Derive the GraphQL endpoint from the current instance URL when running in
-    // OAuth mode so that multi-instance setups talk to the correct GitLab host.
-    //
-    // NOTE: This mutates the singleton GraphQLClient endpoint. In OAuth mode with
-    // concurrent requests (SSE/HTTP), this could theoretically cause race conditions.
-    // However, this is currently safe because:
-    // 1. MCP protocol processes one tool call at a time per session
-    // 2. Each OAuth session has its own AsyncLocalStorage context
-    // 3. The endpoint is set before any GraphQL request in the same call stack
-    //
-    // TODO: For true multi-tenant safety, consider per-instance GraphQLClient pool
-    // in InstanceRegistry, or pass endpoint explicitly to request() method.
-    let endpoint = this.client.endpoint;
-    if (isOAuthEnabled() && instanceUrl && instanceUrl !== this.currentInstanceUrl) {
-      try {
-        const url = new URL(instanceUrl);
-        const normalizedPath = url.pathname.replace(/\/+$/, "");
-
-        // Find and replace API suffix while preserving subpath (e.g., /gitlab/api/v4 -> /gitlab/api/graphql)
-        const apiV4Index = normalizedPath.indexOf("/api/v4");
-        if (apiV4Index !== -1) {
-          // Replace /api/v4 with /api/graphql, keeping any leading subpath
-          const basePath = normalizedPath.slice(0, apiV4Index);
-          url.pathname = `${basePath}/api/graphql`;
-        } else {
-          // No /api/v4 suffix found - append /api/graphql to any existing subpath
-          const basePath = normalizedPath === "/" ? "" : normalizedPath;
-          url.pathname = `${basePath}/api/graphql`;
-        }
-        endpoint = url.toString();
-        this.client.setEndpoint(endpoint);
-      } catch (error) {
-        logError("Failed to derive GraphQL endpoint from instanceUrl; using default endpoint", {
-          instanceUrl,
-          error: (error as Error).message,
-        });
-      }
-    }
-
+    // Use per-instance GraphQL client for thread-safe multi-instance support
+    // This avoids the singleton endpoint mutation issue in concurrent OAuth scenarios
+    const endpoint = this.client.endpoint;
     const registry = InstanceRegistry.getInstance();
 
     // Check InstanceRegistry cache first (for multi-instance support)
@@ -328,6 +292,40 @@ export class ConnectionManager {
   }
 
   public getClient(): GraphQLClient {
+    if (!this.client) {
+      throw new Error("Connection not initialized. Call initialize() first.");
+    }
+    return this.client;
+  }
+
+  /**
+   * Get a thread-safe GraphQL client for the current or specified instance
+   *
+   * In OAuth mode with multi-instance support, this returns a per-instance
+   * client from the connection pool, avoiding singleton endpoint mutation.
+   * In static mode, returns the default singleton client.
+   *
+   * @param instanceUrl - Optional instance URL (defaults to current context)
+   * @param authHeaders - Optional auth headers for OAuth per-request tokens
+   */
+  public getInstanceClient(
+    instanceUrl?: string,
+    authHeaders?: Record<string, string>
+  ): GraphQLClient {
+    const registry = InstanceRegistry.getInstance();
+
+    // Determine which instance to use
+    const targetUrl = instanceUrl ?? getGitLabApiUrlFromContext() ?? this.currentInstanceUrl;
+
+    // If registry is initialized and instance is registered, use per-instance client
+    if (targetUrl && registry.isInitialized() && registry.has(targetUrl)) {
+      const client = registry.getGraphQLClient(targetUrl, authHeaders);
+      if (client) {
+        return client;
+      }
+    }
+
+    // Fallback to singleton client (static mode or unregistered instance)
     if (!this.client) {
       throw new Error("Connection not initialized. Call initialize() first.");
     }

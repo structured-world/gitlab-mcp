@@ -429,6 +429,11 @@ export class InstanceRegistry {
       normalized = normalized.slice(0, -7);
     }
 
+    // Remove /api/graphql suffix
+    if (normalized.endsWith("/api/graphql")) {
+      normalized = normalized.slice(0, -12);
+    }
+
     return normalized;
   }
 }

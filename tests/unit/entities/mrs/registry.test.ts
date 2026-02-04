@@ -453,7 +453,7 @@ describe("MRS Registry", () => {
       expect(tool!.description).toContain("diffs");
       expect(tool!.description).toContain("compare");
       expect(tool!.description).toContain("versions");
-      expect(tool!.description).toContain("version");
+      expect(tool!.description).toMatch(/\bversion\b/);
       expect(tool!.inputSchema).toBeDefined();
     });
 

@@ -4,7 +4,8 @@
  */
 
 import { Request, Response } from "express";
-import { dashboardHandler } from "../../../src/dashboard/handler";
+import { dashboardHandler, getMetrics } from "../../../src/dashboard/handler";
+import { collectMetrics } from "../../../src/dashboard/metrics";
 
 // Mock the metrics and html-template modules
 jest.mock("../../../src/dashboard/metrics", () => ({
@@ -177,6 +178,39 @@ describe("Dashboard Handler", () => {
       dashboardHandler(req as Request, res as unknown as Response);
 
       expect(res.sendCalled).toContain("Dashboard");
+    });
+  });
+
+  describe("Error handling", () => {
+    it("should return 500 error when collectMetrics throws", () => {
+      // Make collectMetrics throw an error
+      (collectMetrics as jest.Mock).mockImplementationOnce(() => {
+        throw new Error("Registry not initialized");
+      });
+
+      const req = createMockRequest("application/json");
+      const res = createMockResponse();
+      // Add status method for error handling
+      let statusCode: number | undefined;
+      (res as unknown as { status: jest.Mock }).status = jest.fn((code: number) => {
+        statusCode = code;
+        return res;
+      });
+
+      dashboardHandler(req as Request, res as unknown as Response);
+
+      expect(statusCode).toBe(500);
+      expect(res.jsonCalled).toEqual({ error: "Failed to generate dashboard" });
+    });
+  });
+
+  describe("getMetrics export", () => {
+    it("should return metrics from collectMetrics", () => {
+      const metrics = getMetrics();
+
+      expect(metrics).toBeDefined();
+      expect(metrics.server.version).toBe("6.52.0");
+      expect(metrics.server.uptime).toBe(3600);
     });
   });
 });

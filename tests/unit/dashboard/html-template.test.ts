@@ -314,5 +314,195 @@ describe("Dashboard HTML Template", () => {
       expect(html).toContain("Auto-refresh: 30s");
       expect(html).toContain("Last updated:");
     });
+
+    it("should handle unknown status gracefully", () => {
+      const metrics = createMockMetrics({
+        instances: [
+          {
+            url: "https://gitlab.com",
+            label: "Test",
+            status: "unknown" as "healthy", // Cast to bypass type check for testing
+            version: "17.0.0",
+            tier: "free",
+            introspected: false,
+            rateLimit: {
+              activeRequests: 0,
+              maxConcurrent: 100,
+              queuedRequests: 0,
+              queueSize: 500,
+              totalRequests: 0,
+              rejectedRequests: 0,
+            },
+            latency: { avgMs: 0 },
+            lastHealthCheck: null,
+          },
+        ],
+      });
+      const html = renderDashboard(metrics);
+
+      // Should show unknown status indicator (?)
+      expect(html).toContain("status-unknown");
+    });
+
+    it("should handle invalid URL in instance gracefully", () => {
+      const metrics = createMockMetrics({
+        instances: [
+          {
+            url: "not-a-valid-url",
+            label: null,
+            status: "healthy",
+            version: null,
+            tier: null,
+            introspected: false,
+            rateLimit: {
+              activeRequests: 0,
+              maxConcurrent: 100,
+              queuedRequests: 0,
+              queueSize: 500,
+              totalRequests: 0,
+              rejectedRequests: 0,
+            },
+            latency: { avgMs: 0 },
+            lastHealthCheck: null,
+          },
+        ],
+      });
+      const html = renderDashboard(metrics);
+
+      // Should fall back to raw URL when parsing fails
+      expect(html).toContain("not-a-valid-url");
+    });
+
+    it("should display queue filling warning when queue is over 50%", () => {
+      const metrics = createMockMetrics({
+        instances: [
+          {
+            url: "https://busy.gitlab.com",
+            label: "Busy",
+            status: "degraded",
+            version: "17.0.0",
+            tier: "premium",
+            introspected: true,
+            rateLimit: {
+              activeRequests: 50,
+              maxConcurrent: 100,
+              queuedRequests: 300, // 60% of queueSize
+              queueSize: 500,
+              totalRequests: 1000,
+              rejectedRequests: 0,
+            },
+            latency: { avgMs: 500 },
+            lastHealthCheck: new Date().toISOString(),
+          },
+        ],
+      });
+      const html = renderDashboard(metrics);
+
+      expect(html).toContain("Queue filling up");
+    });
+
+    it("should format lastHealthCheck as hours ago", () => {
+      const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
+      const metrics = createMockMetrics({
+        instances: [
+          {
+            url: "https://gitlab.com",
+            label: "Test",
+            status: "healthy",
+            version: "17.0.0",
+            tier: "free",
+            introspected: true,
+            rateLimit: {
+              activeRequests: 0,
+              maxConcurrent: 100,
+              queuedRequests: 0,
+              queueSize: 500,
+              totalRequests: 100,
+              rejectedRequests: 0,
+            },
+            latency: { avgMs: 50 },
+            lastHealthCheck: twoHoursAgo.toISOString(),
+          },
+        ],
+      });
+      const html = renderDashboard(metrics);
+
+      expect(html).toContain("2h ago");
+    });
+
+    it("should format lastHealthCheck as days ago", () => {
+      const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
+      const metrics = createMockMetrics({
+        instances: [
+          {
+            url: "https://gitlab.com",
+            label: "Test",
+            status: "offline",
+            version: "17.0.0",
+            tier: "free",
+            introspected: true,
+            rateLimit: {
+              activeRequests: 0,
+              maxConcurrent: 100,
+              queuedRequests: 0,
+              queueSize: 500,
+              totalRequests: 100,
+              rejectedRequests: 0,
+            },
+            latency: { avgMs: 50 },
+            lastHealthCheck: threeDaysAgo.toISOString(),
+          },
+        ],
+      });
+      const html = renderDashboard(metrics);
+
+      expect(html).toContain("3d ago");
+    });
+
+    it("should format lastHealthCheck as 1h ago", () => {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      const metrics = createMockMetrics({
+        instances: [
+          {
+            url: "https://gitlab.com",
+            label: "Test",
+            status: "healthy",
+            version: "17.0.0",
+            tier: "free",
+            introspected: true,
+            rateLimit: {
+              activeRequests: 0,
+              maxConcurrent: 100,
+              queuedRequests: 0,
+              queueSize: 500,
+              totalRequests: 100,
+              rejectedRequests: 0,
+            },
+            latency: { avgMs: 50 },
+            lastHealthCheck: oneHourAgo.toISOString(),
+          },
+        ],
+      });
+      const html = renderDashboard(metrics);
+
+      expect(html).toContain("1h ago");
+    });
+
+    it("should handle invalid URL in sessions byInstance gracefully", () => {
+      const metrics = createMockMetrics({
+        sessions: {
+          total: 5,
+          byInstance: {
+            "invalid-url": 3,
+            "https://gitlab.com": 2,
+          },
+        },
+      });
+      const html = renderDashboard(metrics);
+
+      // Should fall back to raw URL when parsing fails
+      expect(html).toContain("invalid-url");
+      expect(html).toContain("gitlab.com");
+    });
   });
 });

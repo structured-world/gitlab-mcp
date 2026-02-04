@@ -371,6 +371,84 @@ describe("Dashboard Metrics", () => {
       expect(metrics.server.mode).toBe("none");
     });
 
+    it("should return auth mode as token when GITLAB_TOKEN is set", () => {
+      // Re-mock config with token
+      jest.resetModules();
+      jest.doMock("../../../src/config", () => ({
+        packageVersion: "6.52.0",
+        GITLAB_READ_ONLY_MODE: false,
+        GITLAB_BASE_URL: "https://gitlab.com",
+        GITLAB_TOKEN: "glpat-xxxxxxxxxxxxxxxxxxxx",
+      }));
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: jest.fn(() => false),
+      }));
+      jest.doMock("../../../src/services/InstanceRegistry", () => ({
+        InstanceRegistry: {
+          getInstance: jest.fn(() => ({
+            list: jest.fn(() => []),
+            getConfigSource: jest.fn(() => ({ source: "none", details: "" })),
+          })),
+        },
+      }));
+      jest.doMock("../../../src/session-manager", () => ({
+        getSessionManager: jest.fn(() => ({
+          activeSessionCount: 0,
+        })),
+      }));
+      jest.doMock("../../../src/registry-manager", () => ({
+        RegistryManager: {
+          getInstance: jest.fn(() => ({
+            getAllToolDefinitions: jest.fn(() => []),
+          })),
+        },
+      }));
+
+      // Import fresh module with new mocks
+      const { collectMetrics: collectMetricsWithToken } = require("../../../src/dashboard/metrics");
+      const metrics = collectMetricsWithToken();
+      expect(metrics.server.mode).toBe("token");
+    });
+
+    it("should return auth mode as oauth when OAuth is enabled", () => {
+      // Re-mock with OAuth enabled
+      jest.resetModules();
+      jest.doMock("../../../src/config", () => ({
+        packageVersion: "6.52.0",
+        GITLAB_READ_ONLY_MODE: false,
+        GITLAB_BASE_URL: "https://gitlab.com",
+        GITLAB_TOKEN: undefined,
+      }));
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: jest.fn(() => true),
+      }));
+      jest.doMock("../../../src/services/InstanceRegistry", () => ({
+        InstanceRegistry: {
+          getInstance: jest.fn(() => ({
+            list: jest.fn(() => []),
+            getConfigSource: jest.fn(() => ({ source: "none", details: "" })),
+          })),
+        },
+      }));
+      jest.doMock("../../../src/session-manager", () => ({
+        getSessionManager: jest.fn(() => ({
+          activeSessionCount: 0,
+        })),
+      }));
+      jest.doMock("../../../src/registry-manager", () => ({
+        RegistryManager: {
+          getInstance: jest.fn(() => ({
+            getAllToolDefinitions: jest.fn(() => []),
+          })),
+        },
+      }));
+
+      // Import fresh module with new mocks
+      const { collectMetrics: collectMetricsWithOAuth } = require("../../../src/dashboard/metrics");
+      const metrics = collectMetricsWithOAuth();
+      expect(metrics.server.mode).toBe("oauth");
+    });
+
     it("should return zero tool counts when registry throws", () => {
       (RegistryManager.getInstance as jest.Mock).mockImplementationOnce(() => {
         throw new Error("Registry not initialized");

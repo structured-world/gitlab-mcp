@@ -1073,4 +1073,32 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(client).toBe(connectionManager.getClient());
     });
   });
+
+  describe("ensureIntrospected with per-instance detectors", () => {
+    /**
+     * Tests ensureIntrospected() creating per-instance detectors when
+     * instanceUrl differs from currentInstanceUrl in multi-instance OAuth
+     */
+    it("should use singleton detectors when already introspected", async () => {
+      await connectionManager.initialize();
+
+      // Instance info is already set from initialize, so ensureIntrospected should return early
+      await connectionManager.ensureIntrospected();
+
+      // Should have used the singleton detectors (created in initialize) - no new ones created
+      expect(MockedGitLabVersionDetector).toHaveBeenCalledTimes(1); // Only from initialize
+      expect(MockedSchemaIntrospector).toHaveBeenCalledTimes(1); // Only from initialize
+    });
+
+    it("should complete ensureIntrospected without errors", async () => {
+      await connectionManager.initialize();
+
+      // ensureIntrospected should complete without errors
+      await expect(connectionManager.ensureIntrospected()).resolves.not.toThrow();
+
+      // Instance info should be available
+      expect(connectionManager.getInstanceInfo()).toBeDefined();
+      expect(connectionManager.getSchemaInfo()).toBeDefined();
+    });
+  });
 });

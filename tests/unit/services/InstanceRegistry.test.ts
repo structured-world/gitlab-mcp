@@ -147,6 +147,16 @@ describe("InstanceRegistry", () => {
       expect(registry.has("https://gitlab.com/api/v4")).toBe(true);
     });
 
+    it("should normalize URL with /api/graphql suffix", () => {
+      registry.register({
+        url: "https://gitlab.com/api/graphql",
+        insecureSkipVerify: false,
+      });
+
+      expect(registry.has("https://gitlab.com")).toBe(true);
+      expect(registry.has("https://gitlab.com/api/graphql")).toBe(true);
+    });
+
     it("should treat normalized URLs as same instance", () => {
       registry.register({
         url: "https://gitlab.com",

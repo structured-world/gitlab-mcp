@@ -1,3 +1,9 @@
+## [6.56.0](https://github.com/structured-world/gitlab-mcp/compare/v6.55.1...v6.56.0) (2026-02-04)
+
+### Features
+
+* **dashboard:** add instance health dashboard on GET / endpoint ([#286](https://github.com/structured-world/gitlab-mcp/issues/286)) ([de47c40](https://github.com/structured-world/gitlab-mcp/commit/de47c404c56ea32257127f4ef57d4f2d7d5ac662)), closes [#275](https://github.com/structured-world/gitlab-mcp/issues/275) [#287](https://github.com/structured-world/gitlab-mcp/issues/287) [#285](https://github.com/structured-world/gitlab-mcp/issues/285)
+
 ## [6.55.1](https://github.com/structured-world/gitlab-mcp/compare/v6.55.0...v6.55.1) (2026-02-04)
 
 ### Bug Fixes

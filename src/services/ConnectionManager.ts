@@ -164,6 +164,8 @@ export class ConnectionManager {
         logInfo("Using cached GraphQL introspection data");
         this.instanceInfo = cached.instanceInfo;
         this.schemaInfo = cached.schemaInfo;
+        // Track which instance was introspected to avoid re-introspection in ensureIntrospected()
+        this.introspectedInstanceUrl = GITLAB_BASE_URL;
       } else {
         logDebug("Introspecting GitLab GraphQL schema...");
 
@@ -175,6 +177,8 @@ export class ConnectionManager {
 
         this.instanceInfo = instanceInfo;
         this.schemaInfo = schemaInfo;
+        // Track which instance was introspected to avoid re-introspection in ensureIntrospected()
+        this.introspectedInstanceUrl = GITLAB_BASE_URL;
 
         // Cache the results
         ConnectionManager.introspectionCache.set(endpoint, {
@@ -602,6 +606,7 @@ export class ConnectionManager {
     this.schemaInfo = null;
     this.tokenScopeInfo = null;
     this.currentInstanceUrl = null;
+    this.introspectedInstanceUrl = null;
     this.isInitialized = false;
   }
 }

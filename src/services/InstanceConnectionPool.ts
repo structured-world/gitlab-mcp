@@ -223,10 +223,6 @@ export class InstanceConnectionPool {
 
   /**
    * Get pool statistics for all instances
-   *
-   * Note: Pool stats are available even though enhancedFetch doesn't yet use
-   * the Undici dispatcher. The pool infrastructure is in place for future
-   * HTTP/2 integration with REST endpoints.
    */
   public getStats(): PoolStats[] {
     return Array.from(this.pools.values()).map(entry => ({

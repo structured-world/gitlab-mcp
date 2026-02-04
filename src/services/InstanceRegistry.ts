@@ -394,6 +394,18 @@ export class InstanceRegistry {
   }
 
   /**
+   * Get the Undici dispatcher (HTTP/2 connection pool) for an instance.
+   * Used by enhancedFetch for per-instance connection pooling.
+   *
+   * @param baseUrl - GitLab instance base URL
+   * @returns Undici Pool/Dispatcher or undefined if instance not initialized
+   */
+  public getDispatcher(baseUrl: string): unknown {
+    const connectionPool = InstanceConnectionPool.getInstance();
+    return connectionPool.getDispatcher(baseUrl);
+  }
+
+  /**
    * Reset registry (for testing)
    */
   public reset(): void {

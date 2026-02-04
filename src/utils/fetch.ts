@@ -441,9 +441,17 @@ function parseRetryAfter(retryAfter: string): number | null {
 /**
  * Perform a single fetch request with timeout
  * Internal function used by enhancedFetch
+ * @param url - The URL to fetch
+ * @param options - Standard fetch RequestInit options
+ * @param instanceDispatcher - Optional per-instance Undici dispatcher for HTTP/2 pooling
  */
-async function doFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const dispatcher = getDispatcher();
+async function doFetch(
+  url: string,
+  options: RequestInit = {},
+  instanceDispatcher?: unknown
+): Promise<Response> {
+  // Use per-instance dispatcher if provided, otherwise fall back to global
+  const dispatcher = instanceDispatcher ?? getDispatcher();
   const cookieHeader = loadCookieHeader();
 
   // For FormData, don't set Content-Type - let fetch set it with proper boundary
@@ -610,17 +618,23 @@ export function extractBaseUrl(url: string): string | undefined {
     // Strip known GitLab API suffixes while preserving any leading subpath.
     // Handles both suffix at end AND in middle of path (e.g., /gitlab/api/v4/projects)
     // Ensures match is a full path segment (followed by "/" or end-of-path).
+    // Scans for all occurrences to handle partial matches like /api/v4foo/gitlab/api/v4
     const apiSuffixes = ["/api/v4", "/api/graphql"];
-    for (const suffix of apiSuffixes) {
-      const suffixIndex = basePath.indexOf(suffix);
-      if (suffixIndex !== -1) {
+    outerLoop: for (const suffix of apiSuffixes) {
+      let searchPos = 0;
+      while (searchPos < basePath.length) {
+        const suffixIndex = basePath.indexOf(suffix, searchPos);
+        if (suffixIndex === -1) break;
+
         // Verify the match is a complete segment (not partial like /api/v4foo)
         const afterSuffix = basePath.charAt(suffixIndex + suffix.length);
         if (afterSuffix === "" || afterSuffix === "/") {
           // Found complete API suffix - extract everything before it as the base path
           basePath = suffixIndex === 0 ? "/" : basePath.slice(0, suffixIndex);
-          break;
+          break outerLoop;
         }
+        // Continue searching after this partial match
+        searchPos = suffixIndex + 1;
       }
     }
 
@@ -693,17 +707,23 @@ export async function enhancedFetch(
     ...fetchOptions
   } = options;
 
-  // Acquire rate limit slot if enabled
+  // Acquire rate limit slot and get per-instance dispatcher if enabled
   // NOTE: The slot is held for the entire request lifecycle including retries.
   // This is intentional - during retries the request is still "in progress" from
   // the server's perspective, and releasing/re-acquiring could allow queue jumping.
   let releaseSlot: (() => void) | undefined;
+  let instanceDispatcher: unknown;
 
-  if (shouldRateLimit) {
-    const registry = InstanceRegistry.getInstance();
-    if (registry.isInitialized()) {
-      // Determine base URL for rate limiting
-      const baseUrl = options.rateLimitBaseUrl ?? extractBaseUrl(url) ?? getGitLabBaseUrl();
+  const registry = InstanceRegistry.getInstance();
+  if (registry.isInitialized()) {
+    // Determine base URL for rate limiting and connection pooling
+    const baseUrl = options.rateLimitBaseUrl ?? extractBaseUrl(url) ?? getGitLabBaseUrl();
+
+    // Get per-instance HTTP/2 dispatcher for connection pooling
+    // Falls back to global dispatcher if instance not yet registered
+    instanceDispatcher = registry.getDispatcher(baseUrl);
+
+    if (shouldRateLimit) {
       // acquireSlot throws if rate limit exceeded - let it propagate
       //
       // NOTE: Slot is held for the entire retry loop including backoff sleeps.
@@ -718,14 +738,14 @@ export async function enhancedFetch(
   try {
     // If retry is disabled, just do a single fetch
     if (!shouldRetry || maxRetries <= 0) {
-      return await doFetch(url, fetchOptions);
+      return await doFetch(url, fetchOptions, instanceDispatcher);
     }
 
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const response = await doFetch(url, fetchOptions);
+        const response = await doFetch(url, fetchOptions, instanceDispatcher);
 
         // Check if response status is retryable (5xx, 429)
         if (isRetryableStatus(response.status) && attempt < maxRetries) {

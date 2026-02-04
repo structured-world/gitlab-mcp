@@ -700,6 +700,12 @@ export async function enhancedFetch(
       // Determine base URL for rate limiting
       const baseUrl = options.rateLimitBaseUrl ?? extractBaseUrl(url) ?? getGitLabBaseUrl();
       // acquireSlot throws if rate limit exceeded - let it propagate
+      //
+      // NOTE: Slot is held for the entire retry loop including backoff sleeps.
+      // This is intentional: during 429/retry scenarios, keeping the slot prevents
+      // new requests from being queued while we're already at the rate limit.
+      // Trade-off: slightly reduced throughput under retry conditions, but better
+      // protection against overwhelming the GitLab instance with concurrent retries.
       releaseSlot = await registry.acquireSlot(baseUrl);
     }
   }

@@ -224,8 +224,16 @@ export class ConnectionManager {
 
     // Derive the GraphQL endpoint from the current instance URL when running in
     // OAuth mode so that multi-instance setups talk to the correct GitLab host.
-    // NOTE: This mutates the singleton GraphQLClient endpoint for the current request context.
-    // This is safe because OAuth mode handles one request at a time per AsyncLocalStorage context.
+    //
+    // NOTE: This mutates the singleton GraphQLClient endpoint. In OAuth mode with
+    // concurrent requests (SSE/HTTP), this could theoretically cause race conditions.
+    // However, this is currently safe because:
+    // 1. MCP protocol processes one tool call at a time per session
+    // 2. Each OAuth session has its own AsyncLocalStorage context
+    // 3. The endpoint is set before any GraphQL request in the same call stack
+    //
+    // TODO: For true multi-tenant safety, consider per-instance GraphQLClient pool
+    // in InstanceRegistry, or pass endpoint explicitly to request() method.
     let endpoint = this.client.endpoint;
     if (isOAuthEnabled() && instanceUrl && instanceUrl !== this.currentInstanceUrl) {
       try {

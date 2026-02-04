@@ -4,15 +4,16 @@
  * Loads GitLab instance configuration from multiple sources:
  * 1. GITLAB_INSTANCES_FILE - Path to YAML/JSON config file
  * 2. GITLAB_INSTANCES - Environment variable (single URL, array, or JSON)
- * 3. GITLAB_BASE_URL + GITLAB_TOKEN - Legacy single-instance mode
+ * 3. GITLAB_API_URL + GITLAB_TOKEN - Legacy single-instance mode
  *
  * Configuration priority (first match wins):
  * 1. GITLAB_INSTANCES_FILE (if set, load from file)
  * 2. GITLAB_INSTANCES (env var - URL, array, or JSON)
- * 3. GITLAB_BASE_URL (legacy single-instance)
+ * 3. GITLAB_API_URL (legacy single-instance)
  */
 
 import * as fs from "fs";
+import * as os from "os";
 import * as path from "path";
 import { logInfo, logWarn, logError, logDebug } from "../logger.js";
 import {
@@ -75,9 +76,9 @@ function loadJsonFile(filePath: string): unknown {
  * Load configuration from file (YAML or JSON)
  */
 async function loadConfigFile(filePath: string): Promise<InstancesConfigFile> {
-  // Resolve home directory expansion
+  // Resolve home directory expansion using os.homedir() for cross-platform support
   const resolvedPath = filePath.startsWith("~")
-    ? path.join(process.env.HOME ?? "", filePath.slice(1))
+    ? path.join(os.homedir(), filePath.slice(1))
     : filePath;
 
   if (!fs.existsSync(resolvedPath)) {

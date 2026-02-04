@@ -179,7 +179,7 @@ Instance Information: https://gitlab.com
 Configuration:
   URL: https://gitlab.com
   Label: GitLab.com
-  OAuth: Enabled (client: app_12345)
+  OAuth: Enabled (client configured)
   TLS Verify: Enabled
 
 Rate Limit Config:

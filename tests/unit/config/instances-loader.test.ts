@@ -4,6 +4,7 @@
  */
 
 import * as fs from "fs";
+import * as os from "os";
 import {
   loadInstancesConfig,
   getInstanceByUrl,
@@ -14,6 +15,10 @@ import {
 // Mock fs module
 jest.mock("fs");
 const mockFs = fs as jest.Mocked<typeof fs>;
+
+// Mock os module for homedir()
+jest.mock("os");
+const mockOs = os as jest.Mocked<typeof os>;
 
 // Store original env
 const originalEnv = process.env;
@@ -30,6 +35,9 @@ describe("Instance Configuration Loader", () => {
 
     // Reset mocks
     jest.clearAllMocks();
+
+    // Default os.homedir() mock - will be overridden in specific tests
+    mockOs.homedir.mockReturnValue("/home/user");
   });
 
   afterAll(() => {

@@ -441,6 +441,12 @@ export class ContextManager {
     const { ConnectionManager } = await import("../../services/ConnectionManager.js");
 
     const registry = InstanceRegistry.getInstance();
+
+    // Ensure registry is initialized from config before accessing instances
+    if (!registry.isInitialized()) {
+      await registry.initialize();
+    }
+
     const instance = registry.get(instanceUrl);
 
     if (!instance) {

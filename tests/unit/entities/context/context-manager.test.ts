@@ -27,6 +27,24 @@ jest.mock("../../../../src/server", () => ({
   sendToolsListChangedNotification: jest.fn().mockResolvedValue(undefined),
 }));
 
+// Mock NamespaceTierDetector for switchInstance tests
+const mockClearNamespaceTierCache = jest.fn();
+jest.mock("../../../../src/services/NamespaceTierDetector", () => ({
+  clearNamespaceTierCache: () => mockClearNamespaceTierCache(),
+  detectNamespaceTier: jest.fn(),
+}));
+
+// Mock ConnectionManager for switchInstance tests
+const mockReinitialize = jest.fn();
+const mockConnectionManagerGetInstance = jest.fn(() => ({
+  reinitialize: mockReinitialize,
+}));
+jest.mock("../../../../src/services/ConnectionManager", () => ({
+  ConnectionManager: {
+    getInstance: () => mockConnectionManagerGetInstance(),
+  },
+}));
+
 // Mock preset responses for different test scenarios
 const mockPresets: Record<string, unknown> = {
   readonly: {
@@ -141,6 +159,10 @@ describe("ContextManager", () => {
     // Reset mock values
     mockGitLabBaseUrl = "https://gitlab.example.com";
     mockGitLabReadOnlyMode = false;
+
+    // Reset switchInstance mocks
+    mockClearNamespaceTierCache.mockReset();
+    mockReinitialize.mockReset();
 
     // Set up test environment
     process.env = {
@@ -721,6 +743,56 @@ describe("ContextManager", () => {
       // Since we can't fully mock ConnectionManager.reinitialize easily,
       // we verify the notification mock is set up
       expect(mockSendToolsListChangedNotification).toBeDefined();
+    });
+
+    it("should successfully complete switch when all dependencies succeed", async () => {
+      /**
+       * Tests the SUCCESS path of switchInstance (lines 465-477):
+       * - Clears currentScope and currentScopeEnforcer
+       * - Logs "Switched GitLab instance"
+       * - Calls sendToolsListChangedNotification
+       * - Returns success result with previous/current URLs
+       */
+      process.env.OAUTH_ENABLED = "false";
+      mockClearNamespaceTierCache.mockClear();
+      mockReinitialize.mockClear();
+      mockReinitialize.mockResolvedValue(undefined); // Make reinitialize succeed
+      mockSendToolsListChangedNotification.mockClear();
+      ContextManager.resetInstance();
+
+      // Set up a configured instance via InstanceRegistry
+      const { InstanceRegistry } = await import("../../../../src/services/InstanceRegistry");
+      const registry = InstanceRegistry.getInstance();
+      registry.register({
+        url: "https://success-gitlab.example.com",
+        label: "Success GitLab",
+        insecureSkipVerify: false,
+      });
+
+      const manager = ContextManager.getInstance();
+
+      // Set a scope that should be cleared on instance switch
+      mockDetectNamespaceType.mockResolvedValue("group");
+      await manager.setScope("my-group");
+      expect(manager.hasScope()).toBe(true);
+
+      // Now switch instance - should succeed with our mocks
+      const result = await manager.switchInstance("https://success-gitlab.example.com");
+
+      // Verify success result
+      expect(result.success).toBe(true);
+      expect(result.previous).toBe("https://gitlab.example.com");
+      expect(result.current).toBe("https://success-gitlab.example.com");
+      expect(result.message).toContain("Success GitLab");
+
+      // Verify dependencies were called
+      expect(mockClearNamespaceTierCache).toHaveBeenCalled();
+      expect(mockReinitialize).toHaveBeenCalledWith("https://success-gitlab.example.com");
+      expect(mockSendToolsListChangedNotification).toHaveBeenCalled();
+
+      // Verify scope was cleared (lines 465-466)
+      expect(manager.hasScope()).toBe(false);
+      expect(manager.getScopeEnforcer()).toBeNull();
     });
   });
 

@@ -882,6 +882,24 @@ describe("ConnectionManager Enhanced Tests", () => {
     });
   });
 
+  describe("getCurrentInstanceUrl", () => {
+    it("should return null before initialization", () => {
+      expect(connectionManager.getCurrentInstanceUrl()).toBeNull();
+    });
+
+    it("should return instance URL after initialization", async () => {
+      await connectionManager.initialize();
+      // After init with default config, currentInstanceUrl is set to GITLAB_BASE_URL
+      expect(connectionManager.getCurrentInstanceUrl()).toBe("https://test-gitlab.com");
+    });
+
+    it("should return null after reset", async () => {
+      await connectionManager.initialize();
+      connectionManager.reset();
+      expect(connectionManager.getCurrentInstanceUrl()).toBeNull();
+    });
+  });
+
   describe("Reinitialize Method", () => {
     /**
      * Tests reinitialize() method (lines 502-521)

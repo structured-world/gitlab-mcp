@@ -43,6 +43,57 @@ describe("Instance Configuration Schemas", () => {
       expect(result.url).toBe("https://gitlab.com");
     });
 
+    it("should normalize URL by removing /api/graphql suffix", () => {
+      // Tests the /api/graphql suffix stripping branch (line 35-37)
+      const config = {
+        url: "https://gitlab.com/api/graphql",
+      };
+
+      const result = GitLabInstanceConfigSchema.parse(config);
+      expect(result.url).toBe("https://gitlab.com");
+    });
+
+    it("should normalize subpath URL by removing trailing slash", () => {
+      // Tests trailing slash removal for non-root paths (line 30-31)
+      const config = {
+        url: "https://example.com/gitlab/",
+      };
+
+      const result = GitLabInstanceConfigSchema.parse(config);
+      expect(result.url).toBe("https://example.com/gitlab");
+    });
+
+    it("should preserve subpath when removing /api/v4 suffix", () => {
+      // Tests that subpath-deployed GitLab keeps subpath after stripping API suffix
+      const config = {
+        url: "https://example.com/gitlab/api/v4",
+      };
+
+      const result = GitLabInstanceConfigSchema.parse(config);
+      expect(result.url).toBe("https://example.com/gitlab");
+    });
+
+    it("should preserve subpath when removing /api/graphql suffix", () => {
+      // Tests that subpath-deployed GitLab keeps subpath after stripping GraphQL suffix
+      const config = {
+        url: "https://example.com/gitlab/api/graphql",
+      };
+
+      const result = GitLabInstanceConfigSchema.parse(config);
+      expect(result.url).toBe("https://example.com/gitlab");
+    });
+
+    it("should normalize URL with double slash before /api/v4 to origin only", () => {
+      // Tests line 40 - edge case where stripping /api/v4 leaves "/"
+      // URL pathname "//api/v4" stripped becomes "/" which normalizes to ""
+      const config = {
+        url: "https://example.com//api/v4",
+      };
+
+      const result = GitLabInstanceConfigSchema.parse(config);
+      expect(result.url).toBe("https://example.com");
+    });
+
     it("should validate full config with all fields", () => {
       const config = {
         url: "https://git.corp.io",
@@ -172,6 +223,12 @@ describe("Instance Configuration Schemas", () => {
 
     it("should throw on invalid URL format", () => {
       expect(() => parseInstanceUrlString("not-a-url")).toThrow();
+    });
+
+    it("should throw on URL with protocol but invalid structure", () => {
+      // Tests line 265 - URL has :// but fails all parsing attempts
+      // This triggers the final throw after all parsing strategies exhausted
+      expect(() => parseInstanceUrlString("http://")).toThrow(/Invalid GitLab instance URL format/);
     });
 
     it("should treat number > 65535 as OAuth client ID, not port", () => {

@@ -102,6 +102,9 @@ onUnmounted(() => {
   if (searchDebounceTimer) {
     clearTimeout(searchDebounceTimer);
   }
+
+  // Reset state on unmount to allow re-tracking same search on remount
+  lastTrackedSearch = "";
 });
 </script>
 

@@ -215,6 +215,11 @@ export class ConnectionManager {
 
     // Determine the instance URL for caching
     // In OAuth mode, use URL from context; otherwise use global GITLAB_BASE_URL
+    //
+    // NOTE: Current limitation - GraphQL client endpoint is fixed at init time to GITLAB_BASE_URL.
+    // In OAuth multi-instance mode, the actual GraphQL requests still go to the init-time endpoint.
+    // True multi-instance support requires per-request GraphQL client selection based on context.
+    // This works correctly in static token mode and single-instance OAuth deployments.
     const instanceUrl = getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL;
     const endpoint = this.client.endpoint;
     const registry = InstanceRegistry.getInstance();

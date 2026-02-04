@@ -593,6 +593,10 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
 
 /**
  * Extract base URL from a full URL for rate limit slot acquisition
+ *
+ * NOTE: Returns origin only (protocol + host), without pathname.
+ * For GitLab deployments with subpath (e.g., https://example.com/gitlab),
+ * callers should pass rateLimitBaseUrl explicitly to match InstanceRegistry keys.
  */
 function extractBaseUrl(url: string): string | undefined {
   try {

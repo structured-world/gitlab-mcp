@@ -45,7 +45,18 @@ async function loadYamlFile(filePath: string): Promise<unknown> {
     const content = fs.readFileSync(filePath, "utf-8");
     return yaml.parse(content);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "MODULE_NOT_FOUND") {
+    const err = error as NodeJS.ErrnoException & { code?: string; message?: string };
+    const code = err.code;
+    const message = err.message;
+
+    // Check for missing yaml module - Node ESM uses ERR_MODULE_NOT_FOUND
+    const isModuleNotFoundCode = code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND";
+    const isYamlNotFoundMessage =
+      typeof message === "string" &&
+      (message.includes("Cannot find package 'yaml'") ||
+        message.includes("Cannot find module 'yaml'"));
+
+    if (isModuleNotFoundCode || isYamlNotFoundMessage) {
       throw new Error(`YAML configuration requires 'yaml' package. Install with: yarn add yaml`);
     }
     throw error;

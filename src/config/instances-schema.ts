@@ -9,28 +9,42 @@ import { z } from "zod";
 
 /**
  * URL validation and normalization
- * Accepts http/https URLs, removes trailing slashes and /api/v4 suffix
+ * Accepts http/https URLs, preserves subpath for relative URL root deployments,
+ * removes trailing slashes and /api/v4 suffix.
+ * Supports both https://gitlab.com and https://example.com/gitlab
  */
 const GitLabUrlSchema = z
   .string()
   .url()
   .transform(url => {
-    // Parse URL to extract only origin (protocol + host + port)
-    // This strips any paths, query strings, and fragments
     const parsed = new URL(url);
-    let normalized = parsed.origin;
 
-    // Ensure trailing slash is removed
-    normalized = normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+    // Start with origin (protocol + host + port)
+    let path = parsed.pathname;
 
-    // Also check if the input had /api/v4 in the path (warn but still work)
-    if (parsed.pathname.startsWith("/api/v4")) {
-      // Log would be nice but we're in schema - just strip it
+    // Normalize root path to empty
+    if (path === "/") {
+      path = "";
+    } else {
+      // Remove single trailing slash for non-root paths
+      if (path.endsWith("/")) {
+        path = path.slice(0, -1);
+      }
+
+      // Strip /api/v4 suffix if present
+      const apiSuffix = "/api/v4";
+      if (path.endsWith(apiSuffix)) {
+        path = path.slice(0, -apiSuffix.length);
+        // Normalize any resulting "/" back to empty
+        if (path === "/") {
+          path = "";
+        }
+      }
     }
 
-    return normalized;
+    return `${parsed.origin}${path}`;
   })
-  .describe("GitLab instance URL (e.g., https://gitlab.com)");
+  .describe("GitLab instance URL (e.g., https://gitlab.com or https://example.com/gitlab)");
 
 /**
  * OAuth configuration for an instance
@@ -162,76 +176,112 @@ export interface CachedIntrospection {
  * Parse and validate a single instance URL string
  * Supports formats:
  * - "https://gitlab.com" (URL only)
+ * - "https://gitlab.com/subpath" (URL with subpath)
  * - "https://gitlab.com:client_id" (URL with OAuth client ID)
  * - "https://gitlab.com:client_id:client_secret" (URL with OAuth credentials)
+ * - "https://gitlab.com:8080:client_id:secret" (URL with port and OAuth)
+ *
+ * Uses right-to-left parsing to extract OAuth credentials, preserving subpaths.
  */
 export function parseInstanceUrlString(urlString: string): GitLabInstanceConfig {
-  const parts = urlString.split(":");
-
-  // Handle URLs with protocol (https://...)
-  if (parts.length >= 2 && (parts[0] === "https" || parts[0] === "http")) {
-    // Reconstruct URL: protocol + ":" + rest
-    const protocolEnd = urlString.indexOf("://") + 3;
-    const afterProtocol = urlString.slice(protocolEnd);
-    const colonParts = afterProtocol.split(":");
-
-    // Extract host (first part before any colon)
-    const hostEndIndex = colonParts[0].indexOf("/");
-    const host = hostEndIndex === -1 ? colonParts[0] : colonParts[0].slice(0, hostEndIndex);
-
-    // Check if there's a port number
-    // A valid port is 1-65535 and purely numeric. OAuth application IDs are typically
-    // much larger or alphanumeric (e.g., "app_123" or UUIDs), so we use port range
-    // to distinguish between port numbers and OAuth client IDs.
-    let url: string;
-    let oauthParts: string[] = [];
-
-    if (colonParts.length > 1 && /^\d+$/.test(colonParts[1])) {
-      const possiblePort = parseInt(colonParts[1], 10);
-      // Valid port range is 1-65535
-      if (possiblePort >= 1 && possiblePort <= 65535) {
-        // Has port number - include it in URL
-        url = `${parts[0]}://${host}:${colonParts[1]}`;
-        // OAuth parts come after port
-        oauthParts = colonParts.slice(2);
-      } else {
-        // Number is too large to be a port - treat as OAuth client ID
-        url = `${parts[0]}://${host}`;
-        oauthParts = colonParts.slice(1);
-      }
-    } else {
-      // No port - URL is just protocol + host
-      url = `${parts[0]}://${host}`;
-      // OAuth parts start from index 1
-      oauthParts = colonParts.slice(1);
-    }
-
-    // Normalize URL
-    const normalized = GitLabUrlSchema.parse(url);
-
-    // Build config
-    const config: GitLabInstanceConfig = {
-      url: normalized,
-      insecureSkipVerify: false,
-    };
-
-    // Add OAuth config if client ID provided
-    if (oauthParts.length > 0 && oauthParts[0]) {
-      config.oauth = {
-        clientId: oauthParts[0],
-        scopes: "api read_user",
-      };
-
-      if (oauthParts.length > 1 && oauthParts[1]) {
-        config.oauth.clientSecret = oauthParts[1];
-      }
-    }
-
-    return config;
+  const protocolSeparatorIndex = urlString.indexOf("://");
+  if (protocolSeparatorIndex === -1) {
+    throw new Error(`Invalid GitLab instance URL format: ${urlString}`);
   }
 
-  // Should not reach here with valid URL
-  throw new Error(`Invalid GitLab instance URL format: ${urlString}`);
+  const protocolEnd = protocolSeparatorIndex + 3;
+
+  // Helper to check if a string is a valid port number (1-65535)
+  const isPortNumber = (str: string): boolean => {
+    if (!/^\d+$/.test(str)) return false;
+    const num = parseInt(str, 10);
+    return num >= 1 && num <= 65535;
+  };
+
+  let baseUrlString: string | undefined;
+  let clientId: string | undefined;
+  let clientSecret: string | undefined;
+
+  // First, try to parse the entire string as a valid URL (no OAuth)
+  try {
+    baseUrlString = GitLabUrlSchema.parse(urlString);
+    // Success - entire string is a valid URL, no OAuth credentials
+    clientId = undefined;
+    clientSecret = undefined;
+  } catch {
+    // Parsing failed - likely has OAuth credentials appended
+    baseUrlString = undefined;
+  }
+
+  // If full URL parsing failed, try extracting OAuth credentials from the end
+  if (!baseUrlString) {
+    // Try to interpret the string as: <url>:<clientId>:<secret>
+    const lastColonIndex = urlString.lastIndexOf(":");
+    if (lastColonIndex > protocolEnd) {
+      const lastSegment = urlString.slice(lastColonIndex + 1);
+      // OAuth segments don't contain slashes and aren't port numbers
+      if (!lastSegment.includes("/") && !isPortNumber(lastSegment)) {
+        const secondLastColonIndex = urlString.lastIndexOf(":", lastColonIndex - 1);
+        if (secondLastColonIndex > protocolEnd) {
+          const potentialClientId = urlString.slice(secondLastColonIndex + 1, lastColonIndex);
+          if (!potentialClientId.includes("/") && !isPortNumber(potentialClientId)) {
+            const potentialBaseUrl = urlString.slice(0, secondLastColonIndex);
+            try {
+              baseUrlString = GitLabUrlSchema.parse(potentialBaseUrl);
+              clientId = potentialClientId;
+              clientSecret = lastSegment;
+            } catch {
+              // Fall through to try other patterns
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // If two-part OAuth parsing failed, try: <url>:<clientId>
+  if (!baseUrlString) {
+    const singleLastColonIndex = urlString.lastIndexOf(":");
+    if (singleLastColonIndex > protocolEnd) {
+      const potentialClientId = urlString.slice(singleLastColonIndex + 1);
+      // OAuth clientId doesn't contain slashes and isn't a port number
+      if (!potentialClientId.includes("/") && !isPortNumber(potentialClientId)) {
+        const potentialBaseUrl = urlString.slice(0, singleLastColonIndex);
+        try {
+          baseUrlString = GitLabUrlSchema.parse(potentialBaseUrl);
+          clientId = potentialClientId;
+          clientSecret = undefined;
+        } catch {
+          // Fall through to error
+        }
+      }
+    }
+  }
+
+  // If we still don't have a base URL, the input is invalid
+  if (!baseUrlString) {
+    throw new Error(`Invalid GitLab instance URL format: ${urlString}`);
+  }
+
+  // Build config
+  const config: GitLabInstanceConfig = {
+    url: baseUrlString,
+    insecureSkipVerify: false,
+  };
+
+  // Add OAuth config if client ID provided
+  if (clientId) {
+    config.oauth = {
+      clientId,
+      scopes: "api read_user",
+    };
+
+    if (clientSecret) {
+      config.oauth.clientSecret = clientSecret;
+    }
+  }
+
+  return config;
 }
 
 /**

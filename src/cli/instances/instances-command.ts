@@ -217,16 +217,21 @@ async function addInstance(): Promise<void> {
     insecureSkipVerify: false,
   };
 
-  // Show configuration preview (avoid logging sensitive fields like OAuth config)
-  const logConfigPreview = {
+  // Create a safe-to-log preview object with ONLY non-sensitive fields.
+  // This is a defense-in-depth pattern: even if config structure changes,
+  // we explicitly allowlist which fields to log rather than excluding secrets.
+  const logConfigPreview: {
+    url: string;
+    label?: string;
+    insecureSkipVerify: boolean;
+    oauthConfigured: boolean;
+  } = {
     url: config.url,
     label: config.label,
     insecureSkipVerify: config.insecureSkipVerify,
     oauthConfigured: !!config.oauth,
   };
   console.log("\nInstance Configuration:");
-  // Safe to log: logConfigPreview contains only non-sensitive fields (url, label, boolean flags)
-  // OAuth credentials are explicitly excluded - only oauthConfigured:boolean is included
   console.log(JSON.stringify(logConfigPreview, null, 2));
 
   const confirmed = await p.confirm({
@@ -381,38 +386,46 @@ async function showInstanceInfo(url?: string): Promise<void> {
 }
 
 /**
- * Show sample configuration file
+ * Show sample configuration file.
+ * Always masks clientSecret fields to prevent setting a dangerous precedent
+ * of logging secrets, even though these are placeholder values.
  */
 function showSampleConfig(format?: "yaml" | "json"): void {
   const fmt = format ?? "yaml";
   let config = generateSampleConfig(fmt);
 
-  // Avoid logging sensitive fields (such as OAuth client secrets) in clear text
+  // Mask clientSecret in output to prevent dangerous patterns.
+  // Even though these are placeholder values, we always mask secrets
+  // to avoid copy-paste mistakes and set a consistent security pattern.
   if (fmt === "json") {
     try {
+      // Work on a parsed copy - JSON.parse creates a new object
       const parsed = JSON.parse(config) as {
-        instances?: Array<{
-          oauth?: { clientSecret?: string };
-        }>;
+        instances?: Array<{ oauth?: { clientSecret?: string } }>;
+        defaults?: { oauth?: { clientSecret?: string } };
       };
 
-      if (parsed && Array.isArray(parsed.instances)) {
+      if (parsed?.instances) {
         for (const instance of parsed.instances) {
           if (instance?.oauth?.clientSecret) {
             instance.oauth.clientSecret = "***masked***";
           }
         }
       }
+      if (parsed?.defaults?.oauth?.clientSecret) {
+        parsed.defaults.oauth.clientSecret = "***masked***";
+      }
 
       config = JSON.stringify(parsed, null, 2);
     } catch {
-      // If parsing fails, fall back to the original string to avoid breaking functionality
+      // If parsing fails, fall back to the original string
     }
+  } else {
+    // Mask secrets in YAML format using regex
+    config = config.replace(/clientSecret:\s*["']?[^"'\n]+["']?/g, 'clientSecret: "***masked***"');
   }
 
   console.log(`\nSample ${fmt.toUpperCase()} Configuration:`);
   console.log(`─`.repeat(60));
-  // Safe to log: this is a generated sample/template config with placeholder values,
-  // not actual credentials or user data
   console.log(config);
 }

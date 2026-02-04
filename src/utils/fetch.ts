@@ -619,6 +619,10 @@ export function extractBaseUrl(url: string): string | undefined {
     // Handles both suffix at end AND in middle of path (e.g., /gitlab/api/v4/projects)
     // Ensures match is a full path segment (followed by "/" or end-of-path).
     // Scans for all occurrences to handle partial matches like /api/v4foo/gitlab/api/v4
+    //
+    // Performance note: O(n*m) where n=path length, m=suffix count.
+    // Acceptable because: only 2 suffixes, paths are short (~100 chars max),
+    // and this runs once per request (not in a hot loop). Readability > micro-optimization.
     const apiSuffixes = ["/api/v4", "/api/graphql"];
     outerLoop: for (const suffix of apiSuffixes) {
       let searchPos = 0;

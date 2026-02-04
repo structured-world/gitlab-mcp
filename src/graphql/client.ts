@@ -22,7 +22,12 @@ export class GraphQLClient {
   }
 
   /**
-   * Update the GraphQL endpoint (used for multi-instance OAuth switching)
+   * Update the GraphQL endpoint.
+   *
+   * @deprecated Since multi-instance support (v1.x), prefer using per-instance
+   * clients via InstanceConnectionPool.getGraphQLClient() instead of mutating
+   * a shared client. This avoids race conditions in concurrent async scenarios.
+   * Kept for backward compatibility with legacy single-instance usage.
    */
   public setEndpoint(endpoint: string): void {
     this._endpoint = endpoint;

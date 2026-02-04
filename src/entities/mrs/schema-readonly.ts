@@ -3,7 +3,7 @@ import { flexibleBoolean, requiredId, paginationFields } from "../utils";
 
 // ============================================================================
 // browse_merge_requests - CQRS Query Tool (discriminated union schema)
-// Actions: list, get, diffs, compare
+// Actions: list, get, diffs, compare, versions, version
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -202,6 +202,32 @@ const CompareMergeRequestSchema = z
   })
   .passthrough();
 
+// --- Action: versions ---
+// Lists all diff versions of an MR. Each push creates a new version.
+// Note: .passthrough() preserves unknown fields for superRefine validation
+const ListMergeRequestVersionsSchema = z
+  .object({
+    action: z
+      .literal("versions")
+      .describe("List all diff versions of an MR (each push creates a version)"),
+    project_id: projectIdField,
+    merge_request_iid: mergeRequestIidField,
+    ...paginationFields(),
+  })
+  .passthrough();
+
+// --- Action: version ---
+// Gets specific MR diff version with file changes
+// Note: .passthrough() preserves unknown fields for superRefine validation
+const GetMergeRequestVersionSchema = z
+  .object({
+    action: z.literal("version").describe("Get specific MR diff version with file changes"),
+    project_id: projectIdField,
+    merge_request_iid: mergeRequestIidField,
+    version_id: requiredId.describe("Diff version ID from versions list"),
+  })
+  .passthrough();
+
 // --- Discriminated union combining all actions ---
 // Note: GetMergeRequestSchema uses .refine() which doesn't work with discriminatedUnion directly,
 // so we use a two-step approach: discriminatedUnion for base validation, then refinement
@@ -210,6 +236,8 @@ const BrowseMergeRequestsBaseSchema = z.discriminatedUnion("action", [
   GetMergeRequestByIidSchema,
   DiffsMergeRequestSchema,
   CompareMergeRequestSchema,
+  ListMergeRequestVersionsSchema,
+  GetMergeRequestVersionSchema,
 ]);
 
 // Action-specific field sets for strict validation
@@ -250,7 +278,16 @@ const listOnlyFields = [
 ];
 const compareOnlyFields = ["from", "to", "straight"];
 const getOnlyFields = ["merge_request_iid", "branch_name"];
+const versionOnlyFields = ["version_id"];
 const diffsOnlyFields = ["exclude_patterns", "exclude_lockfiles", "exclude_generated"];
+// Fields from get/diffs actions that are invalid for versions/version actions
+// - branch_name: get-only
+// - include_diverged_commits_count, include_rebase_in_progress: get and diffs
+const fieldsInvalidForVersionActions = [
+  "branch_name",
+  "include_diverged_commits_count",
+  "include_rebase_in_progress",
+];
 
 // Apply refinement for 'get' action validation and action-specific field validation
 export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
@@ -306,6 +343,19 @@ export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
     }
   }
 
+  // Check for version-only fields used in non-version actions
+  if (data.action !== "version") {
+    for (const field of versionOnlyFields) {
+      if (field in input && input[field] !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `'${field}' is only valid for 'version' action`,
+          path: [field],
+        });
+      }
+    }
+  }
+
   // Check for diffs-only fields used in non-diffs actions
   if (data.action !== "diffs") {
     for (const field of diffsOnlyFields) {
@@ -313,6 +363,19 @@ export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `'${field}' is only valid for 'diffs' action`,
+          path: [field],
+        });
+      }
+    }
+  }
+
+  // Check for get/diffs shared fields used in versions/version actions
+  if (data.action === "versions" || data.action === "version") {
+    for (const field of fieldsInvalidForVersionActions) {
+      if (field in input && input[field] !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `'${field}' is not valid for '${data.action}' action`,
           path: [field],
         });
       }

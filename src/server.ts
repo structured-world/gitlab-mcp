@@ -18,6 +18,7 @@ import {
   HTTP_KEEPALIVE_TIMEOUT_MS,
   LOG_FORMAT,
   GITLAB_BASE_URL,
+  DASHBOARD_ENABLED,
 } from "./config";
 import { TransportMode } from "./types";
 import { logInfo, logError, logDebug } from "./logger";
@@ -41,6 +42,9 @@ import {
 } from "./oauth/index";
 // Middleware imports
 import { oauthAuthMiddleware, rateLimiterMiddleware } from "./middleware/index";
+
+// Dashboard imports
+import { dashboardHandler } from "./dashboard/index";
 
 // Request logging utilities
 import { getRequestContext, getIpAddress } from "./utils/request-logger";
@@ -400,6 +404,14 @@ export async function startServer(): Promise<void> {
       // Register OAuth endpoints if OAuth mode is enabled
       if (isOAuthEnabled()) {
         registerOAuthEndpoints(app);
+      }
+
+      // Dashboard endpoint (serves HTML or JSON based on Accept header)
+      // Only handles GET requests; POST requests fall through to MCP transport
+      // Can be disabled via DASHBOARD_ENABLED=false
+      if (DASHBOARD_ENABLED) {
+        app.get("/", dashboardHandler);
+        logInfo("Dashboard enabled at GET /");
       }
 
       // Middleware to ensure Accept header includes text/event-stream for MCP endpoints

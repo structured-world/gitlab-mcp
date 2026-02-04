@@ -1,3 +1,9 @@
+## [6.53.1](https://github.com/structured-world/gitlab-mcp/compare/v6.53.0...v6.53.1) (2026-02-04)
+
+### Bug Fixes
+
+* **ci:** exclude dismissed CodeQL alerts from thread blocking ([#279](https://github.com/structured-world/gitlab-mcp/issues/279)) ([19a97ce](https://github.com/structured-world/gitlab-mcp/commit/19a97ce4018b2517ecf4c7b381bbe09dce53169f)), closes [#278](https://github.com/structured-world/gitlab-mcp/issues/278)
+
 ## [6.53.0](https://github.com/structured-world/gitlab-mcp/compare/v6.52.0...v6.53.0) (2026-02-04)
 
 ### Features

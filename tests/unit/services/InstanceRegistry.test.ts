@@ -596,6 +596,18 @@ describe("InstanceRegistry", () => {
       const dispatcher = registry.getDispatcher("https://gitlab.com");
       expect(dispatcher).toBeDefined();
     });
+
+    it("should lazily create pool for registered instance without existing pool", () => {
+      // Register instance but don't call getGraphQLClient
+      registry.register({
+        url: "https://lazy.gitlab.com",
+        insecureSkipVerify: false,
+      });
+
+      // getDispatcher should lazily create the pool
+      const dispatcher = registry.getDispatcher("https://lazy.gitlab.com");
+      expect(dispatcher).toBeDefined();
+    });
   });
 
   describe("resetWithPools", () => {

@@ -719,8 +719,11 @@ export async function enhancedFetch(
     // Determine base URL for rate limiting and connection pooling
     const baseUrl = options.rateLimitBaseUrl ?? extractBaseUrl(url) ?? getGitLabBaseUrl();
 
-    // Get per-instance HTTP/2 dispatcher for connection pooling
-    // Falls back to global dispatcher if instance not yet registered
+    // Get per-instance HTTP/2 dispatcher for connection pooling.
+    // InstanceRegistry.getDispatcher() lazily creates the pool for registered instances,
+    // ensuring per-instance TLS settings (e.g., insecureSkipVerify) are applied even
+    // for REST-only calls that happen before any GraphQL calls.
+    // Falls back to global dispatcher only if instance is not registered at all.
     instanceDispatcher = registry.getDispatcher(baseUrl);
 
     if (shouldRateLimit) {

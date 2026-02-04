@@ -397,12 +397,29 @@ export class InstanceRegistry {
    * Get the Undici dispatcher (HTTP/2 connection pool) for an instance.
    * Used by enhancedFetch for per-instance connection pooling.
    *
+   * Lazily creates the connection pool if the instance is registered but
+   * pool doesn't exist yet (e.g., REST-only calls before any GraphQL calls).
+   *
    * @param baseUrl - GitLab instance base URL
-   * @returns Undici Pool/Dispatcher or undefined if instance not initialized
+   * @returns Undici Pool/Dispatcher or undefined if instance not registered
    */
   public getDispatcher(baseUrl: string): unknown {
     const connectionPool = InstanceConnectionPool.getInstance();
-    return connectionPool.getDispatcher(baseUrl);
+    let dispatcher = connectionPool.getDispatcher(baseUrl);
+
+    // Lazily create pool if instance is registered but pool doesn't exist yet
+    // This ensures per-instance TLS settings are applied for REST calls
+    if (!dispatcher) {
+      const normalizedUrl = this.normalizeUrl(baseUrl);
+      const entry = this.instances.get(normalizedUrl);
+      if (entry) {
+        // Creating the GraphQL client also initializes the connection pool
+        connectionPool.getGraphQLClient(entry.config);
+        dispatcher = connectionPool.getDispatcher(baseUrl);
+      }
+    }
+
+    return dispatcher;
   }
 
   /**

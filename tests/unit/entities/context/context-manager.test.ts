@@ -738,6 +738,7 @@ describe("ContextManager", () => {
 
       // Scope should be cleared even if switch fails later
       // (scope is cleared before reinitialize in the try block)
+      expect(manager.hasScope()).toBe(false);
     });
 
     it("should send tools/list_changed notification on successful switch", async () => {

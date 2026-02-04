@@ -716,5 +716,47 @@ describe("Merge Requests Schema - GitLab Integration", () => {
 
       console.log("✅ BrowseMergeRequestsSchema correctly rejects version without version_id");
     });
+
+    it("should reject versions action with version_id field", async () => {
+      // version_id is only valid for 'version' action, not 'versions'
+      const invalidParams = {
+        action: "versions" as const,
+        project_id: "123",
+        merge_request_iid: "1",
+        version_id: "456", // Invalid: version_id is version-only field
+      };
+
+      const result = BrowseMergeRequestsSchema.safeParse(invalidParams);
+      expect(result.success).toBe(false);
+
+      if (!result.success) {
+        const versionIdError = result.error.issues.find(issue => issue.path.includes("version_id"));
+        expect(versionIdError).toBeDefined();
+        expect(versionIdError?.message).toContain("version");
+      }
+
+      console.log("✅ BrowseMergeRequestsSchema correctly rejects versions with version_id");
+    });
+
+    it("should reject versions action with list-only fields", async () => {
+      // list-only fields like 'state' should not be valid for 'versions' action
+      const invalidParams = {
+        action: "versions" as const,
+        project_id: "123",
+        merge_request_iid: "1",
+        state: "opened", // Invalid: state is list-only field
+      };
+
+      const result = BrowseMergeRequestsSchema.safeParse(invalidParams);
+      expect(result.success).toBe(false);
+
+      if (!result.success) {
+        const stateError = result.error.issues.find(issue => issue.path.includes("state"));
+        expect(stateError).toBeDefined();
+        expect(stateError?.message).toContain("list");
+      }
+
+      console.log("✅ BrowseMergeRequestsSchema correctly rejects versions with list-only fields");
+    });
   });
 });

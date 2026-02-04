@@ -139,23 +139,29 @@ const CompareMergeRequestSchema = z
 
 // --- Action: versions ---
 // Lists all diff versions of an MR. Each push creates a new version.
-const ListMergeRequestVersionsSchema = z.object({
-  action: z
-    .literal("versions")
-    .describe("List all diff versions of an MR (each push creates a version)"),
-  project_id: projectIdField,
-  merge_request_iid: mergeRequestIidField,
-  ...paginationFields(),
-});
+// Note: .passthrough() preserves unknown fields for superRefine validation
+const ListMergeRequestVersionsSchema = z
+  .object({
+    action: z
+      .literal("versions")
+      .describe("List all diff versions of an MR (each push creates a version)"),
+    project_id: projectIdField,
+    merge_request_iid: mergeRequestIidField,
+    ...paginationFields(),
+  })
+  .passthrough();
 
 // --- Action: version ---
 // Gets specific MR diff version with file changes
-const GetMergeRequestVersionSchema = z.object({
-  action: z.literal("version").describe("Get specific MR diff version with file changes"),
-  project_id: projectIdField,
-  merge_request_iid: mergeRequestIidField,
-  version_id: requiredId.describe("Diff version ID from versions list"),
-});
+// Note: .passthrough() preserves unknown fields for superRefine validation
+const GetMergeRequestVersionSchema = z
+  .object({
+    action: z.literal("version").describe("Get specific MR diff version with file changes"),
+    project_id: projectIdField,
+    merge_request_iid: mergeRequestIidField,
+    version_id: requiredId.describe("Diff version ID from versions list"),
+  })
+  .passthrough();
 
 // --- Discriminated union combining all actions ---
 // Note: GetMergeRequestSchema uses .refine() which doesn't work with discriminatedUnion directly,

@@ -144,12 +144,12 @@ GitLab MCP exposes rate limiting metrics per instance:
 
 ```typescript
 interface RateLimitMetrics {
-  instanceUrl: string;
   activeRequests: number;      // Currently executing
   maxConcurrent: number;       // Configured max
   queuedRequests: number;      // Currently queued
   queueSize: number;           // Configured max queue
   requestsTotal: number;       // Total requests processed
+  requestsQueued: number;      // Total requests that were queued
   requestsRejected: number;    // Rejected due to limits
   avgQueueWaitMs: number;      // Average queue wait time
 }

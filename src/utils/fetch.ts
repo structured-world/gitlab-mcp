@@ -609,13 +609,18 @@ export function extractBaseUrl(url: string): string | undefined {
 
     // Strip known GitLab API suffixes while preserving any leading subpath.
     // Handles both suffix at end AND in middle of path (e.g., /gitlab/api/v4/projects)
+    // Ensures match is a full path segment (followed by "/" or end-of-path).
     const apiSuffixes = ["/api/v4", "/api/graphql"];
     for (const suffix of apiSuffixes) {
       const suffixIndex = basePath.indexOf(suffix);
       if (suffixIndex !== -1) {
-        // Found API suffix - extract everything before it as the base path
-        basePath = suffixIndex === 0 ? "/" : basePath.slice(0, suffixIndex);
-        break;
+        // Verify the match is a complete segment (not partial like /api/v4foo)
+        const afterSuffix = basePath.charAt(suffixIndex + suffix.length);
+        if (afterSuffix === "" || afterSuffix === "/") {
+          // Found complete API suffix - extract everything before it as the base path
+          basePath = suffixIndex === 0 ? "/" : basePath.slice(0, suffixIndex);
+          break;
+        }
       }
     }
 

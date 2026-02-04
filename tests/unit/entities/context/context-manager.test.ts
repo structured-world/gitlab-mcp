@@ -696,17 +696,9 @@ describe("ContextManager", () => {
 
       const manager = ContextManager.getInstance();
 
-      // This will fail at ConnectionManager.reinitialize since we don't have full mock setup
-      // But we can at least verify it gets past the validation checks
-      try {
-        await manager.switchInstance("https://new-gitlab.example.com");
-      } catch (error) {
-        // Expected to fail at reinitialize step due to missing GITLAB_BASE_URL config
-        // But the important thing is it doesn't fail on "Instance not configured" or "OAuth mode"
-        expect((error as Error).message).toContain("Failed to switch to instance");
-        expect((error as Error).message).not.toContain("Instance not configured");
-        expect((error as Error).message).not.toContain("Cannot switch instances in OAuth mode");
-      }
+      // With mocked ConnectionManager.reinitialize, this should succeed
+      // Verifies: validation passes (not "Instance not configured" or "OAuth mode" error)
+      await expect(manager.switchInstance("https://new-gitlab.example.com")).resolves.not.toThrow();
     });
 
     it("should clear scope when switching instances", async () => {

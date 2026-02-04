@@ -247,9 +247,15 @@ export class ConnectionManager {
       }
     }
 
-    // Check legacy cache (use instanceUrl for multi-instance consistency)
-    const cacheKey = instanceUrl || endpoint;
-    const cached = ConnectionManager.introspectionCache.get(cacheKey);
+    // Check legacy cache: prefer instanceUrl for multi-instance consistency,
+    // but fall back to endpoint-keyed entries for backward compatibility
+    // (initialize() populates cache with endpoint as key).
+    const primaryCacheKey = instanceUrl ?? endpoint;
+    const legacyCacheKey = endpoint;
+    let cached = ConnectionManager.introspectionCache.get(primaryCacheKey);
+    if (!cached && primaryCacheKey !== legacyCacheKey) {
+      cached = ConnectionManager.introspectionCache.get(legacyCacheKey);
+    }
     const now = Date.now();
 
     if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
@@ -287,8 +293,8 @@ export class ConnectionManager {
     this.schemaInfo = schemaInfo;
     this.introspectedInstanceUrl = instanceUrl;
 
-    // Cache the results in legacy cache
-    ConnectionManager.introspectionCache.set(cacheKey, {
+    // Cache the results in legacy cache (use primaryCacheKey for consistency)
+    ConnectionManager.introspectionCache.set(primaryCacheKey, {
       instanceInfo,
       schemaInfo,
       timestamp: now,

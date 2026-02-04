@@ -249,6 +249,8 @@ jobs:
           # Validate THREAD_COUNT is numeric (jq always returns number for length, but be defensive)
           if ! [[ "$THREAD_COUNT" =~ ^[0-9]+$ ]]; then THREAD_COUNT=0; fi
 
+          # Skip loop if no threads (seq behavior varies: GNU outputs nothing, BSD may output values)
+          if [ "$THREAD_COUNT" -gt 0 ]; then
           for i in $(seq 0 $((THREAD_COUNT - 1))); do
             THREAD=$(echo "$ALL_THREADS" | jq ".[$i]")
             # Review threads always have at least one comment by definition; fallback handles edge cases
@@ -281,6 +283,7 @@ jobs:
               OTHER_COUNT=$((OTHER_COUNT + 1))
             fi
           done
+          fi
 
           # Calculate effective blocking threads (CodeQL dismissed don't block)
           BLOCKING=$((COPILOT_COUNT + CODEQL_ACTIVE + OTHER_COUNT))
@@ -288,13 +291,17 @@ jobs:
           # Write summary
           echo "## Review Thread Check" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
-          echo "| Category | Count |" >> "$GITHUB_STEP_SUMMARY"
-          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
-          [ "$COPILOT_COUNT" -gt 0 ] && echo "| Copilot | $COPILOT_COUNT |" >> "$GITHUB_STEP_SUMMARY"
-          [ "$CODEQL_ACTIVE" -gt 0 ] && echo "| CodeQL (active) | $CODEQL_ACTIVE |" >> "$GITHUB_STEP_SUMMARY"
-          [ "$CODEQL_DISMISSED" -gt 0 ] && echo "| CodeQL (dismissed) | $CODEQL_DISMISSED |" >> "$GITHUB_STEP_SUMMARY"
-          [ "$OTHER_COUNT" -gt 0 ] && echo "| Other | $OTHER_COUNT |" >> "$GITHUB_STEP_SUMMARY"
-          echo "| **Blocking** | **$BLOCKING** |" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$THREAD_COUNT" -eq 0 ]; then
+            echo "No unresolved threads found." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "| Category | Count |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+            [ "$COPILOT_COUNT" -gt 0 ] && echo "| Copilot | $COPILOT_COUNT |" >> "$GITHUB_STEP_SUMMARY"
+            [ "$CODEQL_ACTIVE" -gt 0 ] && echo "| CodeQL (active) | $CODEQL_ACTIVE |" >> "$GITHUB_STEP_SUMMARY"
+            [ "$CODEQL_DISMISSED" -gt 0 ] && echo "| CodeQL (dismissed) | $CODEQL_DISMISSED |" >> "$GITHUB_STEP_SUMMARY"
+            [ "$OTHER_COUNT" -gt 0 ] && echo "| Other | $OTHER_COUNT |" >> "$GITHUB_STEP_SUMMARY"
+            echo "| **Blocking** | **$BLOCKING** |" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
           # Intentionally fail (not skip) — PRs with blocking threads should not show green CI
           if [ "$BLOCKING" -gt 0 ]; then

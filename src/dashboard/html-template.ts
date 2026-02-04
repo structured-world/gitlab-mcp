@@ -36,7 +36,14 @@ function formatNumber(num: number): string {
 function renderInstanceCard(instance: InstanceStatus): string {
   const { symbol, colorClass } = getStatusIndicator(instance.status);
   const statusLabel = instance.status.charAt(0).toUpperCase() + instance.status.slice(1);
-  const displayName = instance.label ?? new URL(instance.url).hostname;
+  // Extract hostname from URL, falling back to raw URL if parsing fails
+  let hostname: string;
+  try {
+    hostname = new URL(instance.url).hostname;
+  } catch {
+    hostname = instance.url;
+  }
+  const displayName = instance.label ?? hostname;
 
   const warnings: string[] = [];
   if (instance.latency.avgMs > 2000) {

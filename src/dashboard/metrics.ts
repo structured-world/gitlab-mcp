@@ -10,7 +10,7 @@
 import { z } from "zod";
 import { InstanceRegistry, InstanceSummary } from "../services/InstanceRegistry.js";
 import { getSessionManager } from "../session-manager.js";
-import { packageVersion, GITLAB_READ_ONLY_MODE, GITLAB_BASE_URL } from "../config.js";
+import { packageVersion, GITLAB_READ_ONLY_MODE, GITLAB_BASE_URL, GITLAB_TOKEN } from "../config.js";
 import { isOAuthEnabled } from "../oauth/index.js";
 import { RegistryManager } from "../registry-manager.js";
 import { ConnectionStatus } from "../config/instances-schema.js";
@@ -169,8 +169,8 @@ function getAuthMode(): "oauth" | "token" | "none" {
     return "oauth";
   }
 
-  // Check for static token
-  if (process.env.GITLAB_TOKEN || process.env.GITLAB_PERSONAL_ACCESS_TOKEN) {
+  // Check for static token using config constant
+  if (GITLAB_TOKEN) {
     return "token";
   }
 

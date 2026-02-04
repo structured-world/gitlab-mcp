@@ -9,7 +9,7 @@
 import { Request, Response } from "express";
 import { collectMetrics, DashboardMetrics } from "./metrics.js";
 import { renderDashboard } from "./html-template.js";
-import { logDebug } from "../logger.js";
+import { logDebug, logError } from "../logger.js";
 
 // Determine if request prefers HTML response
 //
@@ -42,17 +42,22 @@ function prefersHtml(req: Request): boolean {
  * @param res - Express response
  */
 export function dashboardHandler(req: Request, res: Response): void {
-  const metrics = collectMetrics();
+  try {
+    const metrics = collectMetrics();
 
-  logDebug("Dashboard request", {
-    accept: req.headers.accept,
-    prefersHtml: prefersHtml(req),
-  });
+    logDebug("Dashboard request", {
+      accept: req.headers.accept,
+      prefersHtml: prefersHtml(req),
+    });
 
-  if (prefersHtml(req)) {
-    res.type("text/html").send(renderDashboard(metrics));
-  } else {
-    res.json(metrics);
+    if (prefersHtml(req)) {
+      res.type("text/html").send(renderDashboard(metrics));
+    } else {
+      res.json(metrics);
+    }
+  } catch (error) {
+    logError("Dashboard error", { err: error });
+    res.status(500).json({ error: "Failed to generate dashboard" });
   }
 }
 

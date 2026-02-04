@@ -28,6 +28,10 @@ model OAuthSession {
   gitlabUserId         Int      @map("gitlab_user_id")
   gitlabUsername       String   @map("gitlab_username")
 
+  // Multi-instance support
+  gitlabApiUrl         String?  @map("gitlab_api_url")
+  instanceLabel        String?  @map("instance_label")
+
   // Session metadata
   clientId             String   @map("client_id")
   scopes               String[] @default([])

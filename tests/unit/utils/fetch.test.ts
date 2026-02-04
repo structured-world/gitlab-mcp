@@ -49,7 +49,8 @@ jest.mock("../../../src/oauth/index", () => ({
 
 // Import the actual implementation (not mocked)
 const fetchModule = jest.requireActual("../../../src/utils/fetch");
-const { enhancedFetch, createFetchOptions, DEFAULT_HEADERS, getAuthHeaders } = fetchModule;
+const { enhancedFetch, createFetchOptions, DEFAULT_HEADERS, getAuthHeaders, extractBaseUrl } =
+  fetchModule;
 
 // Import mocked OAuth module to control behavior per test
 const { isOAuthEnabled, getTokenContext } = require("../../../src/oauth/index");
@@ -1039,6 +1040,88 @@ describe("Enhanced Fetch Utilities", () => {
 
       const headers = getAuthHeaders();
       expect(headers).toEqual({});
+    });
+  });
+
+  describe("extractBaseUrl", () => {
+    /**
+     * Tests extractBaseUrl function for rate limit slot acquisition
+     * This function extracts the base URL while preserving subpaths
+     * and stripping known API suffixes (/api/v4, /api/graphql)
+     */
+    it("should extract base URL from simple GitLab URL", () => {
+      const result = extractBaseUrl("https://gitlab.com/api/v4/projects");
+      expect(result).toBe("https://gitlab.com");
+    });
+
+    it("should preserve subpath when stripping /api/v4", () => {
+      // GitLab deployed at subpath: https://example.com/gitlab/api/v4/projects
+      const result = extractBaseUrl("https://example.com/gitlab/api/v4/projects");
+      expect(result).toBe("https://example.com/gitlab");
+    });
+
+    it("should preserve subpath when stripping /api/graphql", () => {
+      const result = extractBaseUrl("https://example.com/gitlab/api/graphql");
+      expect(result).toBe("https://example.com/gitlab");
+    });
+
+    it("should handle URL with only /api/v4 in path", () => {
+      // API suffix at root: https://gitlab.com/api/v4
+      const result = extractBaseUrl("https://gitlab.com/api/v4");
+      expect(result).toBe("https://gitlab.com");
+    });
+
+    it("should handle URL with only /api/graphql in path", () => {
+      const result = extractBaseUrl("https://gitlab.com/api/graphql");
+      expect(result).toBe("https://gitlab.com");
+    });
+
+    it("should handle URL without API suffix", () => {
+      // URL without /api/v4 or /api/graphql
+      const result = extractBaseUrl("https://example.com/custom-path/something");
+      expect(result).toBe("https://example.com/custom-path/something");
+    });
+
+    it("should normalize path with trailing slash", () => {
+      const result = extractBaseUrl("https://gitlab.com/api/v4/");
+      expect(result).toBe("https://gitlab.com");
+    });
+
+    it("should handle root path URL", () => {
+      const result = extractBaseUrl("https://gitlab.com/");
+      expect(result).toBe("https://gitlab.com");
+    });
+
+    it("should handle URL without path", () => {
+      const result = extractBaseUrl("https://gitlab.com");
+      expect(result).toBe("https://gitlab.com");
+    });
+
+    it("should preserve port in base URL", () => {
+      const result = extractBaseUrl("https://gitlab.example.com:8443/api/v4/projects");
+      expect(result).toBe("https://gitlab.example.com:8443");
+    });
+
+    it("should handle deep subpath with API suffix", () => {
+      // Deep subpath: /company/gitlab/api/v4/projects
+      const result = extractBaseUrl("https://internal.example.com/company/gitlab/api/v4/projects");
+      expect(result).toBe("https://internal.example.com/company/gitlab");
+    });
+
+    it("should return undefined for invalid URL", () => {
+      const result = extractBaseUrl("not-a-valid-url");
+      expect(result).toBeUndefined();
+    });
+
+    it("should return undefined for empty string", () => {
+      const result = extractBaseUrl("");
+      expect(result).toBeUndefined();
+    });
+
+    it("should handle API suffix in middle of longer path", () => {
+      // URL like /api/v4/projects/123/issues - should extract up to before /api/v4
+      const result = extractBaseUrl("https://gitlab.com/api/v4/projects/123/issues");
+      expect(result).toBe("https://gitlab.com");
     });
   });
 });

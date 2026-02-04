@@ -8,9 +8,11 @@ import {
   TokenScopeInfo,
 } from "./TokenScopeDetector";
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from "../config";
-import { isOAuthEnabled } from "../oauth/index";
+import { isOAuthEnabled, getGitLabApiUrlFromContext } from "../oauth/index";
 import { enhancedFetch } from "../utils/fetch";
 import { logInfo, logDebug, logError } from "../logger";
+import { InstanceRegistry } from "./InstanceRegistry.js";
+import { CachedIntrospection } from "../config/instances-schema.js";
 
 interface CacheEntry {
   schemaInfo: SchemaInfo;
@@ -27,6 +29,9 @@ export class ConnectionManager {
   private schemaInfo: SchemaInfo | null = null;
   private tokenScopeInfo: TokenScopeInfo | null = null;
   private isInitialized: boolean = false;
+  private currentInstanceUrl: string | null = null;
+  /** Tracks which instance URL the cached instanceInfo/schemaInfo belongs to */
+  private introspectedInstanceUrl: string | null = null;
   private static introspectionCache = new Map<string, CacheEntry>();
   private static readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
 
@@ -37,7 +42,7 @@ export class ConnectionManager {
     return ConnectionManager.instance;
   }
 
-  public async initialize(): Promise<void> {
+  public async initialize(instanceUrl?: string): Promise<void> {
     if (this.isInitialized) {
       return;
     }
@@ -45,9 +50,19 @@ export class ConnectionManager {
     try {
       const oauthMode = isOAuthEnabled();
 
+      // Initialize InstanceRegistry for multi-instance support
+      const registry = InstanceRegistry.getInstance();
+      if (!registry.isInitialized()) {
+        await registry.initialize();
+      }
+
+      // Use provided instanceUrl or fall back to global GITLAB_BASE_URL
+      const baseUrl = instanceUrl ?? GITLAB_BASE_URL;
+      this.currentInstanceUrl = baseUrl;
+
       // In OAuth mode, token comes from request context via enhancedFetch
       // In static mode, require both base URL and token
-      if (!GITLAB_BASE_URL) {
+      if (!baseUrl) {
         throw new Error("GitLab base URL is required");
       }
 
@@ -61,7 +76,7 @@ export class ConnectionManager {
       }
 
       // Construct GraphQL endpoint from base URL
-      const endpoint = `${GITLAB_BASE_URL}/api/graphql`;
+      const endpoint = `${baseUrl}/api/graphql`;
 
       // In OAuth mode, don't set static auth header
       // enhancedFetch will add the token from request context
@@ -80,7 +95,7 @@ export class ConnectionManager {
       if (oauthMode) {
         logInfo("OAuth mode: attempting unauthenticated version detection");
         try {
-          const versionResponse = await fetch(`${GITLAB_BASE_URL}/api/v4/version`);
+          const versionResponse = await fetch(`${baseUrl}/api/v4/version`);
           if (versionResponse.ok) {
             const versionData = (await versionResponse.json()) as {
               version: string;
@@ -149,6 +164,8 @@ export class ConnectionManager {
         logInfo("Using cached GraphQL introspection data");
         this.instanceInfo = cached.instanceInfo;
         this.schemaInfo = cached.schemaInfo;
+        // Track which instance was introspected to avoid re-introspection in ensureIntrospected()
+        this.introspectedInstanceUrl = baseUrl;
       } else {
         logDebug("Introspecting GitLab GraphQL schema...");
 
@@ -160,6 +177,8 @@ export class ConnectionManager {
 
         this.instanceInfo = instanceInfo;
         this.schemaInfo = schemaInfo;
+        // Track which instance was introspected to avoid re-introspection in ensureIntrospected()
+        this.introspectedInstanceUrl = baseUrl;
 
         // Cache the results
         ConnectionManager.introspectionCache.set(endpoint, {
@@ -193,47 +212,109 @@ export class ConnectionManager {
   /**
    * Ensure schema introspection has been performed.
    * In OAuth mode, this should be called within a token context.
+   * Supports per-instance introspection caching via InstanceRegistry.
    */
   public async ensureIntrospected(): Promise<void> {
-    // Already introspected
-    if (this.instanceInfo && this.schemaInfo) {
-      return;
-    }
-
     if (!this.client || !this.versionDetector || !this.schemaIntrospector) {
       throw new Error("Connection not initialized. Call initialize() first.");
     }
 
-    const endpoint = this.client.endpoint;
+    // Determine the instance URL for caching
+    // In OAuth mode, use URL from context; in static mode, use current instance URL
+    const instanceUrl = getGitLabApiUrlFromContext() ?? this.currentInstanceUrl ?? GITLAB_BASE_URL;
 
-    // Check cache first
-    const cached = ConnectionManager.introspectionCache.get(endpoint);
+    // Already introspected for THIS instance - reuse cached data
+    // In multi-instance mode, different instances need separate introspection
+    if (this.instanceInfo && this.schemaInfo && this.introspectedInstanceUrl === instanceUrl) {
+      return;
+    }
+
+    // Use per-instance GraphQL client for thread-safe multi-instance support
+    // This avoids the singleton endpoint mutation issue in concurrent OAuth scenarios
+    const endpoint = this.client.endpoint;
+    const registry = InstanceRegistry.getInstance();
+
+    // Check InstanceRegistry cache first (for multi-instance support)
+    if (registry.isInitialized()) {
+      const cachedIntrospection = registry.getIntrospection(instanceUrl);
+      if (cachedIntrospection) {
+        logInfo("Using cached introspection from InstanceRegistry", { url: instanceUrl });
+        this.instanceInfo = {
+          version: cachedIntrospection.version,
+          tier: cachedIntrospection.tier as "free" | "premium" | "ultimate",
+          features: cachedIntrospection.features as unknown as GitLabInstanceInfo["features"],
+          detectedAt: cachedIntrospection.cachedAt,
+        };
+        this.schemaInfo = cachedIntrospection.schemaInfo as SchemaInfo;
+        this.introspectedInstanceUrl = instanceUrl;
+        return;
+      }
+    }
+
+    // Check legacy cache: prefer instanceUrl for multi-instance consistency,
+    // but fall back to endpoint-keyed entries for backward compatibility
+    // (initialize() populates cache with endpoint as key).
+    const primaryCacheKey = instanceUrl ?? endpoint;
+    const legacyCacheKey = endpoint;
+    let cached = ConnectionManager.introspectionCache.get(primaryCacheKey);
+    if (!cached && primaryCacheKey !== legacyCacheKey) {
+      cached = ConnectionManager.introspectionCache.get(legacyCacheKey);
+    }
     const now = Date.now();
 
     if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
       logInfo("Using cached GraphQL introspection data");
       this.instanceInfo = cached.instanceInfo;
       this.schemaInfo = cached.schemaInfo;
+      this.introspectedInstanceUrl = instanceUrl;
       return;
     }
 
     logDebug("Introspecting GitLab GraphQL schema (deferred OAuth mode)...");
 
+    // For multi-instance OAuth: use per-instance client if instanceUrl differs from current
+    // This ensures introspection runs against the correct instance
+    let versionDetector = this.versionDetector;
+    let schemaIntrospector = this.schemaIntrospector;
+
+    if (registry.isInitialized() && instanceUrl !== this.currentInstanceUrl) {
+      const instanceClient = this.getInstanceClient(instanceUrl);
+      if (instanceClient !== this.client) {
+        // Create temporary detectors with per-instance client
+        versionDetector = new GitLabVersionDetector(instanceClient);
+        schemaIntrospector = new SchemaIntrospector(instanceClient);
+        logDebug("Using per-instance detectors for introspection", { instanceUrl });
+      }
+    }
+
     // Detect instance info and introspect schema in parallel
     const [instanceInfo, schemaInfo] = await Promise.all([
-      this.versionDetector.detectInstance(),
-      this.schemaIntrospector.introspectSchema(),
+      versionDetector.detectInstance(),
+      schemaIntrospector.introspectSchema(),
     ]);
 
     this.instanceInfo = instanceInfo;
     this.schemaInfo = schemaInfo;
+    this.introspectedInstanceUrl = instanceUrl;
 
-    // Cache the results
-    ConnectionManager.introspectionCache.set(endpoint, {
+    // Cache the results in legacy cache (use primaryCacheKey for consistency)
+    ConnectionManager.introspectionCache.set(primaryCacheKey, {
       instanceInfo,
       schemaInfo,
       timestamp: now,
     });
+
+    // Also cache in InstanceRegistry for multi-instance support
+    if (registry.isInitialized()) {
+      const cachedIntrospection: CachedIntrospection = {
+        version: instanceInfo.version,
+        tier: instanceInfo.tier,
+        features: instanceInfo.features as unknown as Record<string, boolean>,
+        schemaInfo,
+        cachedAt: new Date(),
+      };
+      registry.setIntrospection(instanceUrl, cachedIntrospection);
+    }
 
     logInfo("GraphQL schema introspection completed (deferred)", {
       version: this.instanceInfo?.version,
@@ -243,6 +324,40 @@ export class ConnectionManager {
   }
 
   public getClient(): GraphQLClient {
+    if (!this.client) {
+      throw new Error("Connection not initialized. Call initialize() first.");
+    }
+    return this.client;
+  }
+
+  /**
+   * Get a thread-safe GraphQL client for the current or specified instance
+   *
+   * In OAuth mode with multi-instance support, this returns a per-instance
+   * client from the connection pool, avoiding singleton endpoint mutation.
+   * In static mode, returns the default singleton client.
+   *
+   * @param instanceUrl - Optional instance URL (defaults to current context)
+   * @param authHeaders - Optional auth headers for OAuth per-request tokens
+   */
+  public getInstanceClient(
+    instanceUrl?: string,
+    authHeaders?: Record<string, string>
+  ): GraphQLClient {
+    const registry = InstanceRegistry.getInstance();
+
+    // Determine which instance to use
+    const targetUrl = instanceUrl ?? getGitLabApiUrlFromContext() ?? this.currentInstanceUrl;
+
+    // If registry is initialized and instance is registered, use per-instance client
+    if (targetUrl && registry.isInitialized() && registry.has(targetUrl)) {
+      const client = registry.getGraphQLClient(targetUrl, authHeaders);
+      if (client) {
+        return client;
+      }
+    }
+
+    // Fallback to singleton client (static mode or unregistered instance)
     if (!this.client) {
       throw new Error("Connection not initialized. Call initialize() first.");
     }
@@ -275,6 +390,13 @@ export class ConnectionManager {
       throw new Error("Connection not initialized. Call initialize() first.");
     }
     return this.schemaInfo;
+  }
+
+  /**
+   * Get the current instance URL (for tracking instance switches)
+   */
+  public getCurrentInstanceUrl(): string | null {
+    return this.currentInstanceUrl;
   }
 
   public isFeatureAvailable(feature: keyof GitLabInstanceInfo["features"]): boolean {
@@ -364,7 +486,8 @@ export class ConnectionManager {
    */
   private async detectVersionViaREST(): Promise<GitLabInstanceInfo> {
     try {
-      const response = await enhancedFetch(`${GITLAB_BASE_URL}/api/v4/version`, {
+      const baseUrl = this.currentInstanceUrl ?? GITLAB_BASE_URL;
+      const response = await enhancedFetch(`${baseUrl}/api/v4/version`, {
         headers: {
           "PRIVATE-TOKEN": GITLAB_TOKEN ?? "",
           Accept: "application/json",
@@ -446,6 +569,35 @@ export class ConnectionManager {
     };
   }
 
+  /**
+   * Re-initialize connection with a different GitLab instance.
+   * Used when switching instances in static token mode.
+   *
+   * @param newInstanceUrl - The new GitLab instance URL to connect to
+   */
+  public async reinitialize(newInstanceUrl: string): Promise<void> {
+    logInfo("Re-initializing ConnectionManager for new instance", {
+      newInstanceUrl,
+    });
+
+    // Reset current state
+    this.reset();
+
+    // Clear instance-level cache for the new URL
+    const registry = InstanceRegistry.getInstance();
+    registry.clearIntrospectionCache(newInstanceUrl);
+
+    // Re-initialize the connection with the new instance URL
+    // This builds a new GraphQL client pointing to the new instance
+    await this.initialize(newInstanceUrl);
+
+    logInfo("ConnectionManager re-initialized", {
+      version: this.instanceInfo?.version,
+      tier: this.instanceInfo?.tier,
+      instanceUrl: this.currentInstanceUrl,
+    });
+  }
+
   public reset(): void {
     this.client = null;
     this.versionDetector = null;
@@ -453,6 +605,8 @@ export class ConnectionManager {
     this.instanceInfo = null;
     this.schemaInfo = null;
     this.tokenScopeInfo = null;
+    this.currentInstanceUrl = null;
+    this.introspectedInstanceUrl = null;
     this.isInitialized = false;
   }
 }

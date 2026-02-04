@@ -6,6 +6,20 @@
  */
 
 /**
+ * Namespace tier information for feature availability checks
+ * Tier is per-NAMESPACE, not per-instance! On gitlab.com, one user can access
+ * Free group and Ultimate group simultaneously.
+ */
+export interface NamespaceTierInfo {
+  /** Tier level (free, premium, ultimate) */
+  tier: "free" | "premium" | "ultimate";
+  /** Available features for this tier */
+  features: Record<string, boolean>;
+  /** Cache timestamp */
+  cachedAt: Date;
+}
+
+/**
  * OAuth session representing an authenticated user
  * Stores both MCP tokens (issued by gitlab-mcp) and GitLab tokens (from GitLab OAuth)
  */
@@ -34,6 +48,12 @@ export interface OAuthSession {
   gitlabUserId: number;
   /** GitLab username */
   gitlabUsername: string;
+
+  // Multi-instance support
+  /** GitLab instance base URL (e.g., https://gitlab.com). Optional for backward compatibility. */
+  gitlabApiUrl?: string;
+  /** Human-readable instance label for UI display */
+  instanceLabel?: string;
 
   // Session metadata
   /** OAuth client ID that created this session */
@@ -67,6 +87,10 @@ export interface AuthCodeFlowState {
   callbackUri: string;
   /** Expiry timestamp (milliseconds since epoch) */
   expiresAt: number;
+  /** Selected GitLab instance URL for multi-instance support */
+  selectedInstance?: string;
+  /** Selected instance label */
+  selectedInstanceLabel?: string;
 }
 
 /**
@@ -95,6 +119,10 @@ export interface DeviceFlowState {
   state: string;
   /** Redirect URI for completion */
   redirectUri?: string;
+  /** Selected GitLab instance URL for multi-instance support */
+  selectedInstance?: string;
+  /** Selected instance label */
+  selectedInstanceLabel?: string;
 }
 
 /**
@@ -154,6 +182,10 @@ export interface TokenContext {
   gitlabUsername: string;
   /** Session ID for tracking */
   sessionId: string;
+  /** GitLab instance base URL (e.g., https://gitlab.com) */
+  apiUrl: string;
+  /** Human-readable instance label for UI display */
+  instanceLabel?: string;
 }
 
 /**

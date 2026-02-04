@@ -21,14 +21,16 @@ import {
   HTTPS_PROXY,
   NODE_TLS_REJECT_UNAUTHORIZED,
   GITLAB_TOKEN,
+  GITLAB_BASE_URL,
   API_TIMEOUT_MS,
   API_RETRY_ENABLED,
   API_RETRY_MAX_ATTEMPTS,
   API_RETRY_BASE_DELAY_MS,
   API_RETRY_MAX_DELAY_MS,
 } from "../config";
-import { isOAuthEnabled, getTokenContext } from "../oauth/index";
+import { isOAuthEnabled, getTokenContext, getGitLabApiUrlFromContext } from "../oauth/index";
 import { getRequestTracker } from "../logging/index";
+import { InstanceRegistry } from "../services/InstanceRegistry.js";
 
 // Dynamic require to avoid TypeScript analyzing complex undici types at compile time
 const undici = require("undici") as {
@@ -94,6 +96,20 @@ function isSocksProxy(url: string): boolean {
 
 /**
  * Create Undici dispatcher for fetch requests
+ *
+ * LIMITATION: This global dispatcher uses environment variables for TLS config.
+ * Per-instance `insecureSkipVerify` settings are handled by InstanceConnectionPool
+ * which creates per-instance dispatchers with correct TLS settings.
+ *
+ * This global dispatcher is used ONLY as fallback for:
+ * - Requests to unregistered instances (not in config)
+ * - Initialization before InstanceRegistry is ready
+ *
+ * For registered instances, enhancedFetch() uses registry.getDispatcher() which
+ * returns the per-instance pool with proper TLS configuration.
+ *
+ * Security note: Global SKIP_TLS_VERIFY affects only fallback requests.
+ * Production should configure instances in config file for per-instance TLS.
  */
 function createDispatcher(): unknown {
   const proxyUrl = HTTPS_PROXY ?? HTTP_PROXY;
@@ -184,6 +200,24 @@ function getGitLabToken(): string | undefined {
 }
 
 /**
+ * Get GitLab base URL from context or fallback to global config.
+ * In OAuth mode, uses apiUrl from token context.
+ * In static mode, uses GITLAB_BASE_URL from config.
+ *
+ * @returns The GitLab base URL (e.g., "https://gitlab.com")
+ */
+export function getGitLabBaseUrl(): string {
+  if (isOAuthEnabled()) {
+    const apiUrl = getGitLabApiUrlFromContext();
+    if (apiUrl) {
+      return apiUrl;
+    }
+    logWarn("OAuth mode: no API URL in context, falling back to global config");
+  }
+  return GITLAB_BASE_URL ?? "https://gitlab.com";
+}
+
+/**
  * Get authentication headers based on the current auth mode.
  * - Static mode (PAT): returns { "PRIVATE-TOKEN": token }
  * - OAuth mode: returns { "Authorization": "Bearer <token>" }
@@ -218,6 +252,10 @@ export interface FetchWithRetryOptions extends RequestInit {
   retry?: boolean;
   /** Maximum number of retry attempts (default: from config) */
   maxRetries?: number;
+  /** Enable per-instance rate limiting (default: true in multi-instance mode) */
+  rateLimit?: boolean;
+  /** Override the base URL for rate limit slot acquisition (derived from request URL if not specified) */
+  rateLimitBaseUrl?: string;
 }
 
 /**
@@ -407,9 +445,17 @@ function parseRetryAfter(retryAfter: string): number | null {
 /**
  * Perform a single fetch request with timeout
  * Internal function used by enhancedFetch
+ * @param url - The URL to fetch
+ * @param options - Standard fetch RequestInit options
+ * @param instanceDispatcher - Optional per-instance Undici dispatcher for HTTP/2 pooling
  */
-async function doFetch(url: string, options: RequestInit = {}): Promise<Response> {
-  const dispatcher = getDispatcher();
+async function doFetch(
+  url: string,
+  options: RequestInit = {},
+  instanceDispatcher?: unknown
+): Promise<Response> {
+  // Use per-instance dispatcher if provided, otherwise fall back to global
+  const dispatcher = instanceDispatcher ?? getDispatcher();
   const cookieHeader = loadCookieHeader();
 
   // For FormData, don't set Content-Type - let fetch set it with proper boundary
@@ -558,6 +604,66 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
 }
 
 /**
+ * Extract base URL from a full URL for rate limit slot acquisition
+ *
+ * For GitLab deployments this preserves any leading subpath (e.g.,
+ * https://example.com/gitlab) and strips known API suffixes such as
+ * /api/v4 and /api/graphql so that the result matches InstanceRegistry
+ * normalization rules.
+ *
+ * @internal Exported for testing purposes
+ */
+export function extractBaseUrl(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+
+    let basePath = parsed.pathname || "/";
+
+    // Strip known GitLab API suffixes while preserving any leading subpath.
+    // Handles suffix in MIDDLE of path (e.g., /gitlab/api/v4/projects → /gitlab).
+    // endsWith() won't work here — suffix may not be at end of URL.
+    //
+    // Nested loop skips partial matches (e.g., /api/v4foo/real/api/v4).
+    // indexOf finds candidates, inner while verifies complete segment match.
+    //
+    // Performance: O(n*m) where n=path length, m=2 suffixes. Acceptable for
+    // short paths (~100 chars), runs once per request. Correctness > speed.
+    const apiSuffixes = ["/api/v4", "/api/graphql"];
+    outerLoop: for (const suffix of apiSuffixes) {
+      let searchPos = 0;
+      while (searchPos < basePath.length) {
+        const suffixIndex = basePath.indexOf(suffix, searchPos);
+        if (suffixIndex === -1) break;
+
+        // Verify the match is a complete segment (not partial like /api/v4foo)
+        const afterSuffix = basePath.charAt(suffixIndex + suffix.length);
+        if (afterSuffix === "" || afterSuffix === "/") {
+          // Found complete API suffix — immediately exit both loops via labeled break.
+          // Inner while only continues for PARTIAL matches (e.g., /api/v4foo).
+          basePath = suffixIndex === 0 ? "/" : basePath.slice(0, suffixIndex);
+          break outerLoop;
+        }
+        // Continue searching after this partial match
+        searchPos = suffixIndex + 1;
+      }
+    }
+
+    // Normalize path: ensure leading slash and remove trailing slash (except root).
+    if (!basePath.startsWith("/")) {
+      basePath = `/${basePath}`;
+    }
+    if (basePath.length > 1 && basePath.endsWith("/")) {
+      basePath = basePath.slice(0, -1);
+    }
+
+    const origin = `${parsed.protocol}//${parsed.host}`;
+    return basePath === "/" ? origin : `${origin}${basePath}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Enhanced fetch with GitLab support, retry logic, and Node.js v24 compatibility
  *
  * @param url - URL to fetch
@@ -573,6 +679,13 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
  *   For 429, the Retry-After header is honored when present (delta-seconds or HTTP-date).
  * - Caller-provided AbortSignal aborts are NOT retried - they propagate immediately.
  * - Uses exponential backoff (configurable via API_RETRY_* settings).
+ *
+ * Rate limiting:
+ * - When rateLimit option is true (default: true), acquires a rate limit slot
+ *   from InstanceRegistry before making the request.
+ * - The rate limit slot is automatically released after the request completes.
+ * - Rate limiting is per-instance, allowing different GitLab servers to have
+ *   independent rate limits.
  *
  * Timing considerations:
  * - With retries enabled (default for GET), worst-case time is:
@@ -592,82 +705,130 @@ export async function enhancedFetch(
   const shouldRetry = options.retry ?? (API_RETRY_ENABLED && isIdempotent);
   const maxRetries = options.maxRetries ?? API_RETRY_MAX_ATTEMPTS;
 
-  // Extract retry options from fetch options to pass clean options to doFetch
-  const { retry: _retry, maxRetries: _maxRetries, ...fetchOptions } = options;
+  // Determine if rate limiting is enabled (default: true)
+  const shouldRateLimit = options.rateLimit !== false;
 
-  // If retry is disabled, just do a single fetch
-  if (!shouldRetry || maxRetries <= 0) {
-    return doFetch(url, fetchOptions);
-  }
+  // Extract options to pass clean options to doFetch
+  const {
+    retry: _retry,
+    maxRetries: _maxRetries,
+    rateLimit: _rateLimit,
+    rateLimitBaseUrl: _rateLimitBaseUrl,
+    ...fetchOptions
+  } = options;
 
-  let lastError: Error | null = null;
+  // Acquire rate limit slot and get per-instance dispatcher if enabled
+  // NOTE: The slot is held for the entire request lifecycle including retries.
+  // This is intentional - during retries the request is still "in progress" from
+  // the server's perspective, and releasing/re-acquiring could allow queue jumping.
+  let releaseSlot: (() => void) | undefined;
+  let instanceDispatcher: unknown;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await doFetch(url, fetchOptions);
+  const registry = InstanceRegistry.getInstance();
+  if (registry.isInitialized()) {
+    // Determine base URL for rate limiting and connection pooling
+    const baseUrl = options.rateLimitBaseUrl ?? extractBaseUrl(url) ?? getGitLabBaseUrl();
 
-      // Check if response status is retryable (5xx, 429)
-      if (isRetryableStatus(response.status) && attempt < maxRetries) {
-        // For 429, check Retry-After header (supports delta-seconds and HTTP-date)
-        let retryDelay = calculateBackoffDelay(attempt);
-        const retryAfter = response.headers.get("Retry-After");
-        if (retryAfter && response.status === 429) {
-          const parsedDelay = parseRetryAfter(retryAfter);
-          if (parsedDelay !== null) {
-            // Cap Retry-After to max delay to prevent excessive waits
-            retryDelay = Math.min(parsedDelay, API_RETRY_MAX_DELAY_MS);
-          }
-        }
+    // Get per-instance HTTP/2 dispatcher for connection pooling.
+    // InstanceRegistry.getDispatcher() lazily creates the pool for registered instances,
+    // ensuring per-instance TLS settings (e.g., insecureSkipVerify) are applied even
+    // for REST-only calls that happen before any GraphQL calls.
+    // Falls back to global dispatcher only if instance is not registered at all.
+    instanceDispatcher = registry.getDispatcher(baseUrl);
 
-        logWarn("Retrying request after server error", {
-          url: safeUrl,
-          method,
-          status: response.status,
-          attempt: attempt + 1,
-          maxRetries,
-          retryDelay,
-        });
-
-        // Cancel response body to release connection before retry
-        // Wrap in try-catch as cancel() can throw if body is already disturbed
-        try {
-          await response.body?.cancel();
-        } catch {
-          // Body already consumed or errored - safe to ignore
-        }
-
-        await sleep(retryDelay, fetchOptions.signal ?? undefined);
-        continue;
-      }
-
-      return response;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-
-      // Check if error is retryable and we have attempts left
-      if (isRetryableError(error) && attempt < maxRetries) {
-        const retryDelay = calculateBackoffDelay(attempt);
-
-        logWarn("Retrying request after error", {
-          url: safeUrl,
-          method,
-          error: lastError.message,
-          attempt: attempt + 1,
-          maxRetries,
-          retryDelay,
-        });
-
-        await sleep(retryDelay, fetchOptions.signal ?? undefined);
-        continue;
-      }
-
-      // Not retryable or no attempts left
-      throw lastError;
+    if (shouldRateLimit) {
+      // acquireSlot throws if rate limit exceeded - let it propagate
+      //
+      // NOTE: Slot is held for the entire retry loop including backoff sleeps.
+      // This is intentional: during 429/retry scenarios, keeping the slot prevents
+      // new requests from being queued while we're already at the rate limit.
+      // Trade-off: slightly reduced throughput under retry conditions, but better
+      // protection against overwhelming the GitLab instance with concurrent retries.
+      // Alternative (release during backoff) risks thundering herd when retries complete.
+      releaseSlot = await registry.acquireSlot(baseUrl);
     }
   }
 
-  /* istanbul ignore next -- unreachable: loop always exits via return or throw */
-  throw lastError ?? new Error("Unexpected: retry loop exited without result");
+  try {
+    // If retry is disabled, just do a single fetch
+    if (!shouldRetry || maxRetries <= 0) {
+      return await doFetch(url, fetchOptions, instanceDispatcher);
+    }
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await doFetch(url, fetchOptions, instanceDispatcher);
+
+        // Check if response status is retryable (5xx, 429)
+        if (isRetryableStatus(response.status) && attempt < maxRetries) {
+          // For 429, check Retry-After header (supports delta-seconds and HTTP-date)
+          let retryDelay = calculateBackoffDelay(attempt);
+          const retryAfter = response.headers.get("Retry-After");
+          if (retryAfter && response.status === 429) {
+            const parsedDelay = parseRetryAfter(retryAfter);
+            if (parsedDelay !== null) {
+              // Cap Retry-After to max delay to prevent excessive waits
+              retryDelay = Math.min(parsedDelay, API_RETRY_MAX_DELAY_MS);
+            }
+          }
+
+          logWarn("Retrying request after server error", {
+            url: safeUrl,
+            method,
+            status: response.status,
+            attempt: attempt + 1,
+            maxRetries,
+            retryDelay,
+          });
+
+          // Cancel response body to release connection before retry
+          // Wrap in try-catch as cancel() can throw if body is already disturbed
+          try {
+            await response.body?.cancel();
+          } catch {
+            // Body already consumed or errored - safe to ignore
+          }
+
+          await sleep(retryDelay, fetchOptions.signal ?? undefined);
+          continue;
+        }
+
+        return response;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Check if error is retryable and we have attempts left
+        if (isRetryableError(error) && attempt < maxRetries) {
+          const retryDelay = calculateBackoffDelay(attempt);
+
+          logWarn("Retrying request after error", {
+            url: safeUrl,
+            method,
+            error: lastError.message,
+            attempt: attempt + 1,
+            maxRetries,
+            retryDelay,
+          });
+
+          await sleep(retryDelay, fetchOptions.signal ?? undefined);
+          continue;
+        }
+
+        // Not retryable or no attempts left
+        throw lastError;
+      }
+    }
+
+    /* istanbul ignore next -- unreachable: loop always exits via return or throw */
+    throw lastError ?? new Error("Unexpected: retry loop exited without result");
+  } finally {
+    // Always release rate limit slot
+    if (releaseSlot) {
+      releaseSlot();
+    }
+  }
 }
 
 export function resetDispatcherCache(): void {

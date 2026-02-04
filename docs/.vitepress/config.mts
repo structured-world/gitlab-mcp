@@ -103,8 +103,18 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: "Environment Variables", link: "/guide/configuration" },
+            { text: "Multi-Instance", link: "/guide/multi-instance" },
             { text: "Auto-Discovery", link: "/guide/auto-discovery" },
             { text: "Transport Modes", link: "/guide/transport" },
+          ],
+        },
+      ],
+      "/configuration/": [
+        {
+          text: "Configuration Reference",
+          items: [
+            { text: "Instance Configuration", link: "/configuration/instances" },
+            { text: "Rate Limiting", link: "/configuration/rate-limiting" },
           ],
         },
       ],
@@ -116,6 +126,7 @@ export default defineConfig({
             { text: "setup", link: "/cli/setup" },
             { text: "init", link: "/cli/init" },
             { text: "install", link: "/cli/install" },
+            { text: "instances", link: "/cli/instances" },
             { text: "docker", link: "/cli/docker" },
             { text: "list-tools", link: "/cli/list-tools" },
           ],
@@ -258,6 +269,9 @@ export default defineConfig({
           items: [
             { text: "TLS / HTTPS", link: "/advanced/tls" },
             { text: "Customization", link: "/advanced/customization" },
+            { text: "Federation Architecture", link: "/advanced/federation" },
+            { text: "Tier Detection", link: "/advanced/tier-detection" },
+            { text: "Context Switching", link: "/advanced/context-switching" },
           ],
         },
       ],

@@ -5,10 +5,12 @@
 
 import { ConnectionManager } from "../../../src/services/ConnectionManager";
 
-// Mock isOAuthEnabled to avoid OAuth config validation in tests
+// Mock isOAuthEnabled and getGitLabApiUrlFromContext
 const mockIsOAuthEnabled = jest.fn();
+const mockGetGitLabApiUrlFromContext = jest.fn();
 jest.mock("../../../src/oauth/index.js", () => ({
   isOAuthEnabled: () => mockIsOAuthEnabled(),
+  getGitLabApiUrlFromContext: () => mockGetGitLabApiUrlFromContext(),
 }));
 
 // Mock detectTokenScopes for testing scope refresh
@@ -253,15 +255,19 @@ describe("ConnectionManager Unit", () => {
       );
     });
 
-    it("should return early if already introspected", async () => {
-      // Simulate introspected state
+    it("should return early if already introspected for same instance", async () => {
+      // Mock context to return specific instance URL
+      mockGetGitLabApiUrlFromContext.mockReturnValue("https://gitlab.example.com");
+
+      // Simulate introspected state for the same instance
       (manager as any).instanceInfo = { version: "16.0.0", tier: "premium" };
       (manager as any).schemaInfo = { workItemWidgetTypes: [] };
+      (manager as any).introspectedInstanceUrl = "https://gitlab.example.com";
       (manager as any).client = {};
       (manager as any).versionDetector = {};
       (manager as any).schemaIntrospector = {};
 
-      // Should not throw and return quickly
+      // Should not throw and return quickly (same instance)
       await expect(manager.ensureIntrospected()).resolves.toBeUndefined();
     });
   });

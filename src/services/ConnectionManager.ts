@@ -30,6 +30,8 @@ export class ConnectionManager {
   private tokenScopeInfo: TokenScopeInfo | null = null;
   private isInitialized: boolean = false;
   private currentInstanceUrl: string | null = null;
+  /** Tracks which instance URL the cached instanceInfo/schemaInfo belongs to */
+  private introspectedInstanceUrl: string | null = null;
   private static introspectionCache = new Map<string, CacheEntry>();
   private static readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
 
@@ -209,11 +211,6 @@ export class ConnectionManager {
    * Supports per-instance introspection caching via InstanceRegistry.
    */
   public async ensureIntrospected(): Promise<void> {
-    // Already introspected
-    if (this.instanceInfo && this.schemaInfo) {
-      return;
-    }
-
     if (!this.client || !this.versionDetector || !this.schemaIntrospector) {
       throw new Error("Connection not initialized. Call initialize() first.");
     }
@@ -221,6 +218,12 @@ export class ConnectionManager {
     // Determine the instance URL for caching
     // In OAuth mode, use URL from context; in static mode, use current instance URL
     const instanceUrl = getGitLabApiUrlFromContext() ?? this.currentInstanceUrl ?? GITLAB_BASE_URL;
+
+    // Already introspected for THIS instance - reuse cached data
+    // In multi-instance mode, different instances need separate introspection
+    if (this.instanceInfo && this.schemaInfo && this.introspectedInstanceUrl === instanceUrl) {
+      return;
+    }
 
     // Use per-instance GraphQL client for thread-safe multi-instance support
     // This avoids the singleton endpoint mutation issue in concurrent OAuth scenarios
@@ -239,6 +242,7 @@ export class ConnectionManager {
           detectedAt: cachedIntrospection.cachedAt,
         };
         this.schemaInfo = cachedIntrospection.schemaInfo as SchemaInfo;
+        this.introspectedInstanceUrl = instanceUrl;
         return;
       }
     }
@@ -252,6 +256,7 @@ export class ConnectionManager {
       logInfo("Using cached GraphQL introspection data");
       this.instanceInfo = cached.instanceInfo;
       this.schemaInfo = cached.schemaInfo;
+      this.introspectedInstanceUrl = instanceUrl;
       return;
     }
 
@@ -280,6 +285,7 @@ export class ConnectionManager {
 
     this.instanceInfo = instanceInfo;
     this.schemaInfo = schemaInfo;
+    this.introspectedInstanceUrl = instanceUrl;
 
     // Cache the results in legacy cache
     ConnectionManager.introspectionCache.set(cacheKey, {

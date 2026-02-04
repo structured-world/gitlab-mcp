@@ -9,7 +9,13 @@ import {
   RETRYABLE_MERGE_STATUSES,
   AUTO_MERGE_ELIGIBLE_STATUSES,
 } from "../../../../src/entities/mrs/registry";
-import { mrsTools, mrsReadOnlyTools } from "../../../../src/entities/mrs/index";
+import {
+  mrsTools,
+  mrsReadOnlyTools,
+  LOCKFILE_PATTERNS,
+  GENERATED_PATTERNS,
+  DIFF_EXCLUSION_PRESETS,
+} from "../../../../src/entities/mrs/index";
 import { gitlab } from "../../../../src/utils/gitlab-api";
 
 // Mock the gitlab API helper
@@ -73,6 +79,33 @@ describe("MRS Index exports", () => {
     expect(Array.isArray(mrsReadOnlyTools)).toBe(true);
     expect(mrsReadOnlyTools).toContain("browse_merge_requests");
     expect(mrsReadOnlyTools).toContain("browse_mr_discussions");
+  });
+});
+
+describe("Diff Exclusion Pattern Constants", () => {
+  it("should export LOCKFILE_PATTERNS array with common lock files", () => {
+    expect(Array.isArray(LOCKFILE_PATTERNS)).toBe(true);
+    expect(LOCKFILE_PATTERNS).toContain("yarn.lock");
+    expect(LOCKFILE_PATTERNS).toContain("package-lock.json");
+    expect(LOCKFILE_PATTERNS).toContain("pnpm-lock.yaml");
+    expect(LOCKFILE_PATTERNS).toContain("Cargo.lock");
+    expect(LOCKFILE_PATTERNS).toContain("Gemfile.lock");
+    expect(LOCKFILE_PATTERNS).toContain("go.sum");
+  });
+
+  it("should export GENERATED_PATTERNS array with build output patterns", () => {
+    expect(Array.isArray(GENERATED_PATTERNS)).toBe(true);
+    expect(GENERATED_PATTERNS).toContain("dist/**");
+    expect(GENERATED_PATTERNS).toContain("build/**");
+    expect(GENERATED_PATTERNS).toContain("**/*.min.js");
+    expect(GENERATED_PATTERNS).toContain("**/*.map");
+    expect(GENERATED_PATTERNS).toContain("coverage/**");
+  });
+
+  it("should export DIFF_EXCLUSION_PRESETS object with lockfiles and generated presets", () => {
+    expect(DIFF_EXCLUSION_PRESETS).toBeDefined();
+    expect(DIFF_EXCLUSION_PRESETS.lockfiles).toBe(LOCKFILE_PATTERNS);
+    expect(DIFF_EXCLUSION_PRESETS.generated).toBe(GENERATED_PATTERNS);
   });
 });
 
@@ -795,6 +828,190 @@ describe("MRS Registry", () => {
             }
           );
           expect(result).toEqual(mockDiffs);
+        });
+
+        // --- File Exclusion Tests ---
+        describe("file exclusion patterns", () => {
+          // Mock diff data representing various file types
+          const mockDiffsWithMixedFiles = {
+            changes: [
+              { new_path: "src/index.ts", old_path: "src/index.ts", diff: "..." },
+              { new_path: "yarn.lock", old_path: "yarn.lock", diff: "..." },
+              { new_path: "package-lock.json", old_path: "package-lock.json", diff: "..." },
+              { new_path: "dist/bundle.js", old_path: "dist/bundle.js", diff: "..." },
+              { new_path: "src/utils.min.js", old_path: "src/utils.min.js", diff: "..." },
+              { new_path: "src/styles.css.map", old_path: "src/styles.css.map", diff: "..." },
+              {
+                new_path: "src/components/Button.tsx",
+                old_path: "src/components/Button.tsx",
+                diff: "...",
+              },
+            ],
+          };
+
+          it("should not filter when no exclusions specified", async () => {
+            mockGitlab.get.mockResolvedValueOnce({ ...mockDiffsWithMixedFiles });
+
+            const tool = mrsToolRegistry.get("browse_merge_requests")!;
+            const result = (await tool.handler({
+              action: "diffs",
+              project_id: "test/project",
+              merge_request_iid: 1,
+            })) as { changes: unknown[]; _filtered?: unknown };
+
+            // All 7 files returned, no _filtered metadata
+            expect(result.changes.length).toBe(7);
+            expect(result._filtered).toBeUndefined();
+          });
+
+          it("should exclude lockfiles when exclude_lockfiles=true", async () => {
+            mockGitlab.get.mockResolvedValueOnce({ ...mockDiffsWithMixedFiles });
+
+            const tool = mrsToolRegistry.get("browse_merge_requests")!;
+            const result = (await tool.handler({
+              action: "diffs",
+              project_id: "test/project",
+              merge_request_iid: 1,
+              exclude_lockfiles: true,
+            })) as { changes: Array<{ new_path: string }>; _filtered: { excluded_count: number } };
+
+            // yarn.lock and package-lock.json should be excluded
+            const paths = result.changes.map(d => d.new_path);
+            expect(paths).not.toContain("yarn.lock");
+            expect(paths).not.toContain("package-lock.json");
+            expect(result.changes.length).toBe(5);
+            expect(result._filtered.excluded_count).toBe(2);
+          });
+
+          it("should exclude generated files when exclude_generated=true", async () => {
+            mockGitlab.get.mockResolvedValueOnce({ ...mockDiffsWithMixedFiles });
+
+            const tool = mrsToolRegistry.get("browse_merge_requests")!;
+            const result = (await tool.handler({
+              action: "diffs",
+              project_id: "test/project",
+              merge_request_iid: 1,
+              exclude_generated: true,
+            })) as { changes: Array<{ new_path: string }>; _filtered: { excluded_count: number } };
+
+            // dist/bundle.js, *.min.js, *.css.map should be excluded
+            const paths = result.changes.map(d => d.new_path);
+            expect(paths).not.toContain("dist/bundle.js");
+            expect(paths).not.toContain("src/utils.min.js");
+            expect(paths).not.toContain("src/styles.css.map");
+            expect(result.changes.length).toBe(4);
+            expect(result._filtered.excluded_count).toBe(3);
+          });
+
+          it("should combine preset and custom patterns", async () => {
+            mockGitlab.get.mockResolvedValueOnce({ ...mockDiffsWithMixedFiles });
+
+            const tool = mrsToolRegistry.get("browse_merge_requests")!;
+            const result = (await tool.handler({
+              action: "diffs",
+              project_id: "test/project",
+              merge_request_iid: 1,
+              exclude_lockfiles: true,
+              exclude_patterns: ["src/components/**"],
+            })) as { changes: Array<{ new_path: string }>; _filtered: { excluded_count: number } };
+
+            // lockfiles + src/components/** should be excluded
+            const paths = result.changes.map(d => d.new_path);
+            expect(paths).not.toContain("yarn.lock");
+            expect(paths).not.toContain("package-lock.json");
+            expect(paths).not.toContain("src/components/Button.tsx");
+            expect(result.changes.length).toBe(4);
+            expect(result._filtered.excluded_count).toBe(3);
+          });
+
+          it("should add _filtered metadata with correct counts", async () => {
+            mockGitlab.get.mockResolvedValueOnce({ ...mockDiffsWithMixedFiles });
+
+            const tool = mrsToolRegistry.get("browse_merge_requests")!;
+            const result = (await tool.handler({
+              action: "diffs",
+              project_id: "test/project",
+              merge_request_iid: 1,
+              exclude_lockfiles: true,
+              exclude_generated: true,
+            })) as {
+              changes: Array<{ new_path: string }>;
+              _filtered: {
+                original_count: number;
+                filtered_count: number;
+                excluded_count: number;
+                patterns_applied: string[];
+              };
+            };
+
+            // Check metadata structure
+            expect(result._filtered).toBeDefined();
+            expect(result._filtered.original_count).toBe(7);
+            expect(result._filtered.filtered_count).toBe(2); // only src/index.ts and Button.tsx
+            expect(result._filtered.excluded_count).toBe(5);
+            expect(Array.isArray(result._filtered.patterns_applied)).toBe(true);
+            expect(result._filtered.patterns_applied.length).toBeGreaterThan(0);
+          });
+
+          it("should handle empty changes array", async () => {
+            mockGitlab.get.mockResolvedValueOnce({ changes: [] });
+
+            const tool = mrsToolRegistry.get("browse_merge_requests")!;
+            const result = (await tool.handler({
+              action: "diffs",
+              project_id: "test/project",
+              merge_request_iid: 1,
+              exclude_lockfiles: true,
+            })) as {
+              changes: unknown[];
+              _filtered: { original_count: number; excluded_count: number };
+            };
+
+            // Empty array should still have _filtered metadata
+            expect(result.changes.length).toBe(0);
+            expect(result._filtered.original_count).toBe(0);
+            expect(result._filtered.excluded_count).toBe(0);
+          });
+
+          it("should not add _filtered when response has no changes array", async () => {
+            // Some API responses may not have changes field
+            mockGitlab.get.mockResolvedValueOnce({ some_other_field: "value" });
+
+            const tool = mrsToolRegistry.get("browse_merge_requests")!;
+            const result = (await tool.handler({
+              action: "diffs",
+              project_id: "test/project",
+              merge_request_iid: 1,
+              exclude_lockfiles: true,
+            })) as { changes?: unknown[]; _filtered?: unknown };
+
+            // No changes array, no filtering attempted
+            expect(result._filtered).toBeUndefined();
+          });
+
+          it("should filter by old_path as well as new_path", async () => {
+            // Test case where file was renamed from a lockfile
+            const mockDiffsWithRename = {
+              changes: [
+                { new_path: "src/index.ts", old_path: "src/index.ts", diff: "..." },
+                { new_path: "renamed.txt", old_path: "yarn.lock", diff: "..." },
+              ],
+            };
+            mockGitlab.get.mockResolvedValueOnce(mockDiffsWithRename);
+
+            const tool = mrsToolRegistry.get("browse_merge_requests")!;
+            const result = (await tool.handler({
+              action: "diffs",
+              project_id: "test/project",
+              merge_request_iid: 1,
+              exclude_lockfiles: true,
+            })) as { changes: Array<{ new_path: string }>; _filtered: { excluded_count: number } };
+
+            // File with old_path=yarn.lock should be excluded even if new_path is different
+            expect(result.changes.length).toBe(1);
+            expect(result.changes[0].new_path).toBe("src/index.ts");
+            expect(result._filtered.excluded_count).toBe(1);
+          });
         });
       });
 
@@ -2013,6 +2230,48 @@ describe("MRS Registry", () => {
             action: "list",
             project_id: "test/project",
             merge_request_iid: 1, // get-only field
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should reject diffs-only fields in list action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using 'exclude_lockfiles' (diffs-only field) with 'list' action should fail
+        await expect(
+          tool.handler({
+            action: "list",
+            project_id: "test/project",
+            exclude_lockfiles: true, // diffs-only field
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should reject diffs-only fields in get action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using 'exclude_patterns' (diffs-only field) with 'get' action should fail
+        await expect(
+          tool.handler({
+            action: "get",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            exclude_patterns: ["*.lock"], // diffs-only field
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should reject diffs-only fields in compare action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using 'exclude_generated' (diffs-only field) with 'compare' action should fail
+        await expect(
+          tool.handler({
+            action: "compare",
+            project_id: "test/project",
+            from: "main",
+            to: "feature",
+            exclude_generated: true, // diffs-only field
           })
         ).rejects.toThrow();
       });

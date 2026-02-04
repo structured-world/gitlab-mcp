@@ -8,6 +8,56 @@ import { flexibleBoolean, requiredId, paginationFields } from "../utils";
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
 
+// ============================================================================
+// Diff Exclusion Pattern Presets
+// Used by diffs action to filter out noise from MR diffs
+// ============================================================================
+
+/**
+ * Common lock file patterns that are auto-generated and don't require manual review.
+ * These files typically contain thousands of lines of dependency versioning info.
+ */
+export const LOCKFILE_PATTERNS = [
+  "yarn.lock",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "Gemfile.lock",
+  "Cargo.lock",
+  "poetry.lock",
+  "composer.lock",
+  "go.sum",
+  "Pipfile.lock",
+  "bun.lockb",
+  "shrinkwrap.yaml",
+] as const;
+
+/**
+ * Common generated/build output patterns that are compiled or minified.
+ * These files are machine-generated and shouldn't need code review.
+ * Directory patterns match at repo root; extension patterns match anywhere.
+ */
+export const GENERATED_PATTERNS = [
+  "dist/**",
+  "build/**",
+  ".next/**",
+  ".nuxt/**",
+  ".output/**",
+  "coverage/**",
+  "**/*.min.js",
+  "**/*.min.css",
+  "**/*.map",
+  "**/*.js.map",
+  "**/*.css.map",
+] as const;
+
+/**
+ * Export presets for documentation and external use.
+ */
+export const DIFF_EXCLUSION_PRESETS = {
+  lockfiles: LOCKFILE_PATTERNS,
+  generated: GENERATED_PATTERNS,
+} as const;
+
 // --- Shared fields ---
 const projectIdField = requiredId.describe("Project ID or URL-encoded path");
 const mergeRequestIidField = requiredId.describe("Internal MR ID unique to project");
@@ -119,6 +169,21 @@ const DiffsMergeRequestSchema = z
     merge_request_iid: mergeRequestIidField,
     include_diverged_commits_count: includeDivergedCommitsCountField,
     include_rebase_in_progress: includeRebaseInProgressField,
+    // File exclusion options to reduce noise in diffs
+    exclude_patterns: z
+      .array(z.string())
+      .optional()
+      .describe("Custom glob patterns to exclude (e.g., ['vendor/**', '*.generated.ts'])"),
+    exclude_lockfiles: flexibleBoolean
+      .optional()
+      .describe(
+        "Exclude common lock files: yarn.lock, package-lock.json, Cargo.lock, etc. (default: false)"
+      ),
+    exclude_generated: flexibleBoolean
+      .optional()
+      .describe(
+        "Exclude build output and minified files: dist/**, **/*.min.js, **/*.map, etc. (default: false)"
+      ),
     ...paginationFields(),
   })
   .passthrough();
@@ -214,6 +279,7 @@ const listOnlyFields = [
 const compareOnlyFields = ["from", "to", "straight"];
 const getOnlyFields = ["merge_request_iid", "branch_name"];
 const versionOnlyFields = ["version_id"];
+const diffsOnlyFields = ["exclude_patterns", "exclude_lockfiles", "exclude_generated"];
 
 // Apply refinement for 'get' action validation and action-specific field validation
 export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
@@ -276,6 +342,19 @@ export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `'${field}' is only valid for 'version' action`,
+          path: [field],
+        });
+      }
+    }
+  }
+
+  // Check for diffs-only fields used in non-diffs actions
+  if (data.action !== "diffs") {
+    for (const field of diffsOnlyFields) {
+      if (field in input && input[field] !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `'${field}' is only valid for 'diffs' action`,
           path: [field],
         });
       }

@@ -256,10 +256,25 @@ export class ConnectionManager {
 
     logDebug("Introspecting GitLab GraphQL schema (deferred OAuth mode)...");
 
+    // For multi-instance OAuth: use per-instance client if instanceUrl differs from current
+    // This ensures introspection runs against the correct instance
+    let versionDetector = this.versionDetector;
+    let schemaIntrospector = this.schemaIntrospector;
+
+    if (registry.isInitialized() && instanceUrl !== this.currentInstanceUrl) {
+      const instanceClient = this.getInstanceClient(instanceUrl);
+      if (instanceClient !== this.client) {
+        // Create temporary detectors with per-instance client
+        versionDetector = new GitLabVersionDetector(instanceClient);
+        schemaIntrospector = new SchemaIntrospector(instanceClient);
+        logDebug("Using per-instance detectors for introspection", { instanceUrl });
+      }
+    }
+
     // Detect instance info and introspect schema in parallel
     const [instanceInfo, schemaInfo] = await Promise.all([
-      this.versionDetector.detectInstance(),
-      this.schemaIntrospector.introspectSchema(),
+      versionDetector.detectInstance(),
+      schemaIntrospector.introspectSchema(),
     ]);
 
     this.instanceInfo = instanceInfo;

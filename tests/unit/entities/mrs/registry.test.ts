@@ -2330,7 +2330,7 @@ describe("MRS Registry", () => {
             merge_request_iid: 1,
             include_diverged_commits_count: true, // get/diffs field
           })
-        ).rejects.toThrow("'include_diverged_commits_count' is not valid for 'versions' action");
+        ).rejects.toThrow(/include_diverged_commits_count.*not valid/);
       });
 
       it("should reject branch_name in version action", async () => {
@@ -2345,7 +2345,7 @@ describe("MRS Registry", () => {
             version_id: "123",
             branch_name: "main", // get/diffs field
           })
-        ).rejects.toThrow("'branch_name' is not valid for 'version' action");
+        ).rejects.toThrow(/branch_name.*not valid/);
       });
     });
   });

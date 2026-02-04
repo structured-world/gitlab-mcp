@@ -6,10 +6,48 @@
 import {
   determineInstanceStatus,
   formatUptime,
+  collectMetrics,
   DashboardMetricsSchema,
   InstanceStatusSchema,
 } from "../../../src/dashboard/metrics";
-import { InstanceSummary } from "../../../src/services/InstanceRegistry";
+import { InstanceSummary, InstanceRegistry } from "../../../src/services/InstanceRegistry";
+import { getSessionManager } from "../../../src/session-manager";
+import { RegistryManager } from "../../../src/registry-manager";
+
+// Mock dependencies
+jest.mock("../../../src/services/InstanceRegistry", () => ({
+  InstanceRegistry: {
+    getInstance: jest.fn(() => ({
+      list: jest.fn(() => []),
+      getConfigSource: jest.fn(() => ({ source: "none", details: "" })),
+    })),
+  },
+}));
+
+jest.mock("../../../src/session-manager", () => ({
+  getSessionManager: jest.fn(() => ({
+    activeSessionCount: 0,
+  })),
+}));
+
+jest.mock("../../../src/registry-manager", () => ({
+  RegistryManager: {
+    getInstance: jest.fn(() => ({
+      getAllToolDefinitions: jest.fn(() => []),
+    })),
+  },
+}));
+
+jest.mock("../../../src/oauth/index", () => ({
+  isOAuthEnabled: jest.fn(() => false),
+}));
+
+jest.mock("../../../src/config", () => ({
+  packageVersion: "6.52.0",
+  GITLAB_READ_ONLY_MODE: false,
+  GITLAB_BASE_URL: "https://gitlab.com",
+  GITLAB_TOKEN: undefined,
+}));
 
 describe("Dashboard Metrics", () => {
   describe("determineInstanceStatus", () => {
@@ -296,6 +334,187 @@ describe("Dashboard Metrics", () => {
 
       const result = InstanceStatusSchema.safeParse(instance);
       expect(result.success).toBe(false);
+    });
+  });
+
+  describe("collectMetrics", () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+    });
+
+    it("should return valid dashboard metrics structure", () => {
+      const metrics = collectMetrics();
+
+      // Verify structure
+      expect(metrics).toHaveProperty("server");
+      expect(metrics).toHaveProperty("instances");
+      expect(metrics).toHaveProperty("sessions");
+      expect(metrics).toHaveProperty("config");
+
+      // Verify server info
+      expect(metrics.server.version).toBe("6.52.0");
+      expect(typeof metrics.server.uptime).toBe("number");
+      expect(metrics.server.uptime).toBeGreaterThanOrEqual(0);
+    });
+
+    it("should create default instance when no instances registered", () => {
+      const metrics = collectMetrics();
+
+      // Should have default gitlab.com instance
+      expect(metrics.instances.length).toBe(1);
+      expect(metrics.instances[0].url).toBe("https://gitlab.com");
+      expect(metrics.instances[0].status).toBe("healthy");
+    });
+
+    it("should return auth mode as none when no auth configured", () => {
+      const metrics = collectMetrics();
+      expect(metrics.server.mode).toBe("none");
+    });
+
+    it("should return zero tool counts when registry throws", () => {
+      (RegistryManager.getInstance as jest.Mock).mockImplementationOnce(() => {
+        throw new Error("Registry not initialized");
+      });
+
+      const metrics = collectMetrics();
+      expect(metrics.server.toolsEnabled).toBe(0);
+      expect(metrics.server.toolsTotal).toBe(0);
+    });
+
+    it("should include config source from InstanceRegistry", () => {
+      (InstanceRegistry.getInstance as jest.Mock).mockReturnValueOnce({
+        list: jest.fn(() => []),
+        getConfigSource: jest.fn(() => ({
+          source: "file",
+          details: "/etc/gitlab-mcp/config.yaml",
+        })),
+      });
+
+      const metrics = collectMetrics();
+      expect(metrics.config.source).toBe("file");
+      expect(metrics.config.sourceDetails).toBe("/etc/gitlab-mcp/config.yaml");
+    });
+
+    it("should include active session count", () => {
+      (getSessionManager as jest.Mock).mockReturnValueOnce({
+        activeSessionCount: 5,
+      });
+
+      const metrics = collectMetrics();
+      expect(metrics.sessions.total).toBe(5);
+    });
+
+    it("should convert InstanceSummary to InstanceStatus correctly", () => {
+      const mockSummary: InstanceSummary = {
+        url: "https://gitlab.example.com",
+        label: "Example GitLab",
+        connectionStatus: "healthy",
+        lastHealthCheck: new Date(),
+        hasOAuth: true,
+        rateLimit: {
+          activeRequests: 10,
+          maxConcurrent: 100,
+          queuedRequests: 2,
+          queueSize: 500,
+          requestsTotal: 1000,
+          requestsQueued: 50,
+          requestsRejected: 5,
+          avgQueueWaitMs: 100,
+        },
+        introspection: {
+          version: "17.2.0",
+          tier: "ultimate",
+          cachedAt: new Date(),
+          isExpired: false,
+        },
+      };
+
+      (InstanceRegistry.getInstance as jest.Mock).mockReturnValueOnce({
+        list: jest.fn(() => [mockSummary]),
+        getConfigSource: jest.fn(() => ({ source: "env", details: "" })),
+      });
+
+      const metrics = collectMetrics();
+
+      expect(metrics.instances.length).toBe(1);
+      const instance = metrics.instances[0];
+      expect(instance.url).toBe("https://gitlab.example.com");
+      expect(instance.label).toBe("Example GitLab");
+      expect(instance.version).toBe("17.2.0");
+      expect(instance.tier).toBe("ultimate");
+      expect(instance.introspected).toBe(true);
+      expect(instance.rateLimit.activeRequests).toBe(10);
+      expect(instance.rateLimit.totalRequests).toBe(1000);
+      expect(instance.latency.avgMs).toBe(100);
+    });
+
+    it("should mark introspected as false when version is null", () => {
+      const mockSummary: InstanceSummary = {
+        url: "https://gitlab.example.com",
+        label: undefined,
+        connectionStatus: "healthy",
+        lastHealthCheck: new Date(),
+        hasOAuth: false,
+        rateLimit: {
+          activeRequests: 0,
+          maxConcurrent: 100,
+          queuedRequests: 0,
+          queueSize: 500,
+          requestsTotal: 0,
+          requestsQueued: 0,
+          requestsRejected: 0,
+          avgQueueWaitMs: 0,
+        },
+        introspection: {
+          version: null,
+          tier: null,
+          cachedAt: null,
+          isExpired: false,
+        },
+      };
+
+      (InstanceRegistry.getInstance as jest.Mock).mockReturnValueOnce({
+        list: jest.fn(() => [mockSummary]),
+        getConfigSource: jest.fn(() => ({ source: "env", details: "" })),
+      });
+
+      const metrics = collectMetrics();
+      expect(metrics.instances[0].introspected).toBe(false);
+      expect(metrics.instances[0].label).toBeNull();
+    });
+
+    it("should mark introspected as false when cache is expired", () => {
+      const mockSummary: InstanceSummary = {
+        url: "https://gitlab.example.com",
+        label: undefined,
+        connectionStatus: "healthy",
+        lastHealthCheck: new Date(),
+        hasOAuth: false,
+        rateLimit: {
+          activeRequests: 0,
+          maxConcurrent: 100,
+          queuedRequests: 0,
+          queueSize: 500,
+          requestsTotal: 0,
+          requestsQueued: 0,
+          requestsRejected: 0,
+          avgQueueWaitMs: 0,
+        },
+        introspection: {
+          version: "17.0.0",
+          tier: "free",
+          cachedAt: new Date(Date.now() - 20 * 60 * 1000), // 20 minutes ago
+          isExpired: true,
+        },
+      };
+
+      (InstanceRegistry.getInstance as jest.Mock).mockReturnValueOnce({
+        list: jest.fn(() => [mockSummary]),
+        getConfigSource: jest.fn(() => ({ source: "env", details: "" })),
+      });
+
+      const metrics = collectMetrics();
+      expect(metrics.instances[0].introspected).toBe(false);
     });
   });
 });

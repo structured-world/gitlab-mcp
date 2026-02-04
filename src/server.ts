@@ -44,7 +44,7 @@ import {
 import { oauthAuthMiddleware, rateLimiterMiddleware } from "./middleware/index";
 
 // Dashboard imports
-import { dashboardHandler } from "./dashboard/index";
+import { dashboardHandler } from "./dashboard/index.js";
 
 // Request logging utilities
 import { getRequestContext, getIpAddress } from "./utils/request-logger";

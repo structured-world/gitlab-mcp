@@ -452,13 +452,19 @@ export function renderDashboard(metrics: DashboardMetrics): string {
             <span>Total: ${metrics.sessions.total} session${metrics.sessions.total === 1 ? "" : "s"}</span>
           </div>
           ${Object.entries(metrics.sessions.byInstance)
-            .map(
-              ([url, count]) => `
+            .map(([url, count]) => {
+              let hostname: string;
+              try {
+                hostname = new URL(url).hostname;
+              } catch {
+                hostname = url;
+              }
+              return `
           <div class="session-item">
-            <span>${escapeHtml(new URL(url).hostname)}: ${count} session${count === 1 ? "" : "s"}</span>
+            <span>${escapeHtml(hostname)}: ${count} session${count === 1 ? "" : "s"}</span>
           </div>
-          `
-            )
+          `;
+            })
             .join("")}
           `
               : `

@@ -90,10 +90,7 @@ export type DashboardMetrics = z.infer<typeof DashboardMetricsSchema>;
  * - degraded: High latency (>2000ms), queue >50% capacity, or high error rate
  * - healthy: Normal operation
  */
-export function determineInstanceStatus(
-  instance: InstanceSummary,
-  lastSuccessfulRequestMs?: number
-): ConnectionStatus {
+export function determineInstanceStatus(instance: InstanceSummary): ConnectionStatus {
   const now = Date.now();
   const fiveMinutesAgo = now - 5 * 60 * 1000;
 
@@ -104,10 +101,6 @@ export function determineInstanceStatus(
   }
 
   const lastCheckMs = instance.lastHealthCheck.getTime();
-  if (lastSuccessfulRequestMs !== undefined && lastSuccessfulRequestMs < fiveMinutesAgo) {
-    return "offline";
-  }
-
   if (lastCheckMs < fiveMinutesAgo) {
     return "offline";
   }

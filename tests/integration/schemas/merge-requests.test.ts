@@ -493,4 +493,228 @@ describe("Merge Requests Schema - GitLab Integration", () => {
       console.log("✅ BrowseMergeRequestsSchema correctly rejects invalid parameters");
     });
   });
+
+  describe("BrowseMergeRequestsSchema - versions action", () => {
+    it("should list all diff versions for an MR", async () => {
+      // Get actual project and its MRs for testing
+      const projects = (await helper.listProjects({ per_page: 1 })) as any[];
+      if (projects.length === 0) {
+        console.log("⚠️  No projects available for versions testing");
+        return;
+      }
+
+      const testProject = projects[0];
+      const mergeRequests = (await helper.executeTool("browse_merge_requests", {
+        action: "list",
+        project_id: testProject.id.toString(),
+        per_page: 5,
+      })) as any[];
+
+      if (mergeRequests.length === 0) {
+        console.log("⚠️  No merge requests found for versions testing");
+        return;
+      }
+
+      const testMR = mergeRequests[0];
+      console.log(`🔍 Testing versions for MR !${testMR.iid} in ${testProject.name}`);
+
+      const params = {
+        action: "versions" as const,
+        project_id: testProject.id.toString(),
+        merge_request_iid: testMR.iid.toString(),
+      };
+
+      // Validate schema
+      const schemaResult = BrowseMergeRequestsSchema.safeParse(params);
+      expect(schemaResult.success).toBe(true);
+
+      if (schemaResult.success) {
+        // Test handler function
+        const versions = (await helper.executeTool(
+          "browse_merge_requests",
+          schemaResult.data
+        )) as any[];
+
+        expect(Array.isArray(versions)).toBe(true);
+        console.log(`📋 Retrieved ${versions.length} diff versions`);
+
+        if (versions.length > 0) {
+          const version = versions[0];
+
+          // Validate version structure per GitLab API docs
+          expect(version).toHaveProperty("id");
+          expect(version).toHaveProperty("head_commit_sha");
+          expect(version).toHaveProperty("base_commit_sha");
+          expect(version).toHaveProperty("start_commit_sha");
+          expect(version).toHaveProperty("created_at");
+          expect(version).toHaveProperty("merge_request_id");
+          expect(version).toHaveProperty("state");
+
+          // Validate data types
+          expect(typeof version.id).toBe("number");
+          expect(typeof version.head_commit_sha).toBe("string");
+          expect(typeof version.base_commit_sha).toBe("string");
+
+          console.log(
+            `✅ Version ${version.id}: head=${version.head_commit_sha.substring(0, 8)}, state=${version.state}`
+          );
+        }
+      }
+
+      console.log("✅ BrowseMergeRequestsSchema versions action completed");
+    });
+
+    it("should support pagination for versions", async () => {
+      const projects = (await helper.listProjects({ per_page: 1 })) as any[];
+      if (projects.length === 0) {
+        console.log("⚠️  No projects available for pagination test");
+        return;
+      }
+
+      const testProject = projects[0];
+      const mergeRequests = (await helper.executeTool("browse_merge_requests", {
+        action: "list",
+        project_id: testProject.id.toString(),
+        per_page: 1,
+      })) as any[];
+
+      if (mergeRequests.length === 0) {
+        console.log("⚠️  No merge requests found for pagination test");
+        return;
+      }
+
+      const testMR = mergeRequests[0];
+
+      const params = {
+        action: "versions" as const,
+        project_id: testProject.id.toString(),
+        merge_request_iid: testMR.iid.toString(),
+        per_page: 1,
+      };
+
+      const schemaResult = BrowseMergeRequestsSchema.safeParse(params);
+      expect(schemaResult.success).toBe(true);
+
+      if (schemaResult.success) {
+        const versions = (await helper.executeTool(
+          "browse_merge_requests",
+          schemaResult.data
+        )) as any[];
+
+        expect(Array.isArray(versions)).toBe(true);
+        expect(versions.length).toBeLessThanOrEqual(1);
+        console.log(`✅ Pagination test: got ${versions.length} version(s) with per_page=1`);
+      }
+    });
+  });
+
+  describe("BrowseMergeRequestsSchema - version action", () => {
+    it("should get specific version details with diffs", async () => {
+      const projects = (await helper.listProjects({ per_page: 1 })) as any[];
+      if (projects.length === 0) {
+        console.log("⚠️  No projects available for version testing");
+        return;
+      }
+
+      const testProject = projects[0];
+      const mergeRequests = (await helper.executeTool("browse_merge_requests", {
+        action: "list",
+        project_id: testProject.id.toString(),
+        per_page: 5,
+      })) as any[];
+
+      if (mergeRequests.length === 0) {
+        console.log("⚠️  No merge requests found for version testing");
+        return;
+      }
+
+      const testMR = mergeRequests[0];
+
+      // First get versions list
+      const versions = (await helper.executeTool("browse_merge_requests", {
+        action: "versions",
+        project_id: testProject.id.toString(),
+        merge_request_iid: testMR.iid.toString(),
+      })) as any[];
+
+      if (versions.length === 0) {
+        console.log("⚠️  No diff versions found for version testing");
+        return;
+      }
+
+      const versionId = versions[0].id;
+      console.log(`🔍 Testing version ${versionId} for MR !${testMR.iid}`);
+
+      const params = {
+        action: "version" as const,
+        project_id: testProject.id.toString(),
+        merge_request_iid: testMR.iid.toString(),
+        version_id: String(versionId),
+      };
+
+      // Validate schema
+      const schemaResult = BrowseMergeRequestsSchema.safeParse(params);
+      expect(schemaResult.success).toBe(true);
+
+      if (schemaResult.success) {
+        // Test handler function
+        const versionDetail = (await helper.executeTool(
+          "browse_merge_requests",
+          schemaResult.data
+        )) as any;
+
+        // Validate version detail structure
+        expect(versionDetail).toHaveProperty("id", versionId);
+        expect(versionDetail).toHaveProperty("head_commit_sha");
+        expect(versionDetail).toHaveProperty("base_commit_sha");
+        expect(versionDetail).toHaveProperty("start_commit_sha");
+        expect(versionDetail).toHaveProperty("created_at");
+        expect(versionDetail).toHaveProperty("diffs");
+
+        // Validate diffs array
+        expect(Array.isArray(versionDetail.diffs)).toBe(true);
+        console.log(`📋 Version ${versionId} has ${versionDetail.diffs.length} diffs`);
+
+        if (versionDetail.diffs.length > 0) {
+          const diff = versionDetail.diffs[0];
+
+          // Validate diff structure
+          expect(diff).toHaveProperty("old_path");
+          expect(diff).toHaveProperty("new_path");
+          expect(diff).toHaveProperty("new_file");
+          expect(diff).toHaveProperty("renamed_file");
+          expect(diff).toHaveProperty("deleted_file");
+          expect(diff).toHaveProperty("diff");
+
+          console.log(
+            `  📄 First diff: ${diff.new_path} (new=${diff.new_file}, deleted=${diff.deleted_file})`
+          );
+        }
+
+        console.log(
+          `✅ Version ${versionId}: head=${versionDetail.head_commit_sha.substring(0, 8)}, diffs=${versionDetail.diffs.length}`
+        );
+      }
+
+      console.log("✅ BrowseMergeRequestsSchema version action completed");
+    });
+
+    it("should reject version action without version_id", async () => {
+      const invalidParams = {
+        action: "version" as const,
+        project_id: "123",
+        merge_request_iid: "1",
+        // Missing version_id
+      };
+
+      const result = BrowseMergeRequestsSchema.safeParse(invalidParams);
+      expect(result.success).toBe(false);
+
+      if (!result.success) {
+        expect(result.error.issues.length).toBeGreaterThan(0);
+      }
+
+      console.log("✅ BrowseMergeRequestsSchema correctly rejects version without version_id");
+    });
+  });
 });

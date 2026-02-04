@@ -3,7 +3,7 @@ import { flexibleBoolean, requiredId, paginationFields } from "../utils";
 
 // ============================================================================
 // browse_merge_requests - CQRS Query Tool (discriminated union schema)
-// Actions: list, get, diffs, compare
+// Actions: list, get, diffs, compare, versions, version
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -137,6 +137,26 @@ const CompareMergeRequestSchema = z
   })
   .passthrough();
 
+// --- Action: versions ---
+// Lists all diff versions of an MR. Each push creates a new version.
+const ListMergeRequestVersionsSchema = z.object({
+  action: z
+    .literal("versions")
+    .describe("List all diff versions of an MR (each push creates a version)"),
+  project_id: projectIdField,
+  merge_request_iid: mergeRequestIidField,
+  ...paginationFields(),
+});
+
+// --- Action: version ---
+// Gets specific MR diff version with file changes
+const GetMergeRequestVersionSchema = z.object({
+  action: z.literal("version").describe("Get specific MR diff version with file changes"),
+  project_id: projectIdField,
+  merge_request_iid: mergeRequestIidField,
+  version_id: requiredId.describe("Diff version ID from versions list"),
+});
+
 // --- Discriminated union combining all actions ---
 // Note: GetMergeRequestSchema uses .refine() which doesn't work with discriminatedUnion directly,
 // so we use a two-step approach: discriminatedUnion for base validation, then refinement
@@ -145,6 +165,8 @@ const BrowseMergeRequestsBaseSchema = z.discriminatedUnion("action", [
   GetMergeRequestByIidSchema,
   DiffsMergeRequestSchema,
   CompareMergeRequestSchema,
+  ListMergeRequestVersionsSchema,
+  GetMergeRequestVersionSchema,
 ]);
 
 // Action-specific field sets for strict validation
@@ -185,6 +207,7 @@ const listOnlyFields = [
 ];
 const compareOnlyFields = ["from", "to", "straight"];
 const getOnlyFields = ["merge_request_iid", "branch_name"];
+const versionOnlyFields = ["version_id"];
 
 // Apply refinement for 'get' action validation and action-specific field validation
 export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
@@ -234,6 +257,19 @@ export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `'${field}' is only valid for 'get' action`,
+          path: [field],
+        });
+      }
+    }
+  }
+
+  // Check for version-only fields used in non-version actions
+  if (data.action !== "version") {
+    for (const field of versionOnlyFields) {
+      if (field in input && input[field] !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `'${field}' is only valid for 'version' action`,
           path: [field],
         });
       }

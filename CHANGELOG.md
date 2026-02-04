@@ -1,3 +1,9 @@
+## [6.55.1](https://github.com/structured-world/gitlab-mcp/compare/v6.55.0...v6.55.1) (2026-02-04)
+
+### Bug Fixes
+
+* **docs:** rename gtag.d.ts to gtag.ts for Vite compatibility ([#287](https://github.com/structured-world/gitlab-mcp/issues/287)) ([b3e980e](https://github.com/structured-world/gitlab-mcp/commit/b3e980e182ee586f5d8465ac7784104a88a406ff)), closes [#285](https://github.com/structured-world/gitlab-mcp/issues/285)
+
 ## [6.55.0](https://github.com/structured-world/gitlab-mcp/compare/v6.54.0...v6.55.0) (2026-02-04)
 
 ### Features

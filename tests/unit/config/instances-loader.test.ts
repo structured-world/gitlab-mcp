@@ -390,6 +390,11 @@ instances:
       expect(result?.label).toBe("GitLab.com");
     });
 
+    it("should find instance with /api/graphql suffix in search URL", () => {
+      const result = getInstanceByUrl(instances, "https://gitlab.com/api/graphql");
+      expect(result?.label).toBe("GitLab.com");
+    });
+
     it("should return undefined for unknown URL", () => {
       const result = getInstanceByUrl(instances, "https://unknown.gitlab.com");
       expect(result).toBeUndefined();

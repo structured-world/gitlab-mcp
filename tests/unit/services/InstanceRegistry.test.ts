@@ -521,4 +521,77 @@ describe("InstanceRegistry", () => {
       expect(registry.isInitialized()).toBe(false);
     });
   });
+
+  describe("getGraphQLClient", () => {
+    it("should return undefined for non-existent instance", () => {
+      const client = registry.getGraphQLClient("https://nonexistent.gitlab.com");
+      expect(client).toBeUndefined();
+    });
+
+    it("should return GraphQL client for registered instance", () => {
+      registry.register({
+        url: "https://gitlab.com",
+        insecureSkipVerify: false,
+      });
+
+      const client = registry.getGraphQLClient("https://gitlab.com");
+      expect(client).toBeDefined();
+    });
+
+    it("should pass auth headers to connection pool", () => {
+      registry.register({
+        url: "https://gitlab.com",
+        insecureSkipVerify: false,
+      });
+
+      const authHeaders = { Authorization: "Bearer test-token" };
+      const client = registry.getGraphQLClient("https://gitlab.com", authHeaders);
+      expect(client).toBeDefined();
+    });
+  });
+
+  describe("getConnectionPoolStats", () => {
+    it("should return pool stats array", () => {
+      const stats = registry.getConnectionPoolStats();
+      expect(Array.isArray(stats)).toBe(true);
+    });
+  });
+
+  describe("getInstancePoolStats", () => {
+    it("should return undefined for non-existent instance", () => {
+      const stats = registry.getInstancePoolStats("https://nonexistent.gitlab.com");
+      expect(stats).toBeUndefined();
+    });
+
+    it("should return stats for instance with active pool", () => {
+      registry.register({
+        url: "https://gitlab.com",
+        insecureSkipVerify: false,
+      });
+
+      // Create pool by getting GraphQL client
+      registry.getGraphQLClient("https://gitlab.com");
+
+      const stats = registry.getInstancePoolStats("https://gitlab.com");
+      expect(stats).toBeDefined();
+      expect(stats?.baseUrl).toBe("https://gitlab.com");
+    });
+  });
+
+  describe("resetWithPools", () => {
+    it("should reset registry and destroy connection pools", async () => {
+      registry.register({
+        url: "https://gitlab.com",
+        insecureSkipVerify: false,
+      });
+
+      // Create pool
+      registry.getGraphQLClient("https://gitlab.com");
+
+      await registry.resetWithPools();
+
+      expect(registry.isInitialized()).toBe(false);
+      expect(registry.getUrls()).toHaveLength(0);
+    });
+  });
 });

@@ -618,11 +618,14 @@ export function extractBaseUrl(url: string): string | undefined {
     // Strip known GitLab API suffixes while preserving any leading subpath.
     // Handles both suffix at end AND in middle of path (e.g., /gitlab/api/v4/projects)
     // Ensures match is a full path segment (followed by "/" or end-of-path).
-    // Scans for all occurrences to handle partial matches like /api/v4foo/gitlab/api/v4
     //
-    // Performance note: O(n*m) where n=path length, m=suffix count.
-    // Acceptable because: only 2 suffixes, paths are short (~100 chars max),
-    // and this runs once per request (not in a hot loop). Readability > micro-optimization.
+    // Nested loop is necessary to skip partial matches (e.g., /api/v4foo/real/api/v4).
+    // A simple indexOf would match the first /api/v4 which is part of "v4foo".
+    // The inner while loop continues searching until it finds a complete segment match.
+    //
+    // Performance note: O(n*m) where n=path length, m=suffix count (2).
+    // Acceptable because: paths are short (~100 chars max), and this runs once per request.
+    // Correctness over micro-optimization — the nested loop handles edge cases properly.
     const apiSuffixes = ["/api/v4", "/api/graphql"];
     outerLoop: for (const suffix of apiSuffixes) {
       let searchPos = 0;

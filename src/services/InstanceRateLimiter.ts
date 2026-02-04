@@ -163,7 +163,9 @@ export class InstanceRateLimiter {
    * Called automatically by the release function returned from acquire().
    */
   private release(): void {
-    this.activeRequests--;
+    // Bounds check: prevent negative activeRequests in edge cases
+    // (e.g., release called after rate limiter reset/destroy)
+    this.activeRequests = Math.max(0, this.activeRequests - 1);
 
     // Process queue
     if (this.queue.length > 0 && this.activeRequests < this.config.maxConcurrent) {

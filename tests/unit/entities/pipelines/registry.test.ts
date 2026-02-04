@@ -804,6 +804,110 @@ describe("Pipelines Registry - CQRS Tools", () => {
         ]);
       });
 
+      // Tests for typed pipeline inputs (GitLab 15.5+)
+      it("should create pipeline with string input", async () => {
+        const mockPipeline = { id: 5, status: "pending", ref: "main" };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipeline) as never);
+
+        const tool = pipelinesToolRegistry.get("manage_pipeline")!;
+        await tool.handler({
+          action: "create",
+          project_id: "test/project",
+          ref: "main",
+          inputs: {
+            environment: "staging",
+          },
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const body = JSON.parse(call[1]?.body as string);
+        expect(body.inputs).toEqual({ environment: "staging" });
+        expect(body.variables).toBeUndefined();
+      });
+
+      it("should create pipeline with multiple typed inputs (string, boolean, number)", async () => {
+        const mockPipeline = { id: 6, status: "pending", ref: "main" };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipeline) as never);
+
+        const tool = pipelinesToolRegistry.get("manage_pipeline")!;
+        await tool.handler({
+          action: "create",
+          project_id: "test/project",
+          ref: "main",
+          inputs: {
+            environment: "production",
+            debug: true,
+            replicas: 3,
+          },
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const body = JSON.parse(call[1]?.body as string);
+        expect(body.inputs).toEqual({
+          environment: "production",
+          debug: true,
+          replicas: 3,
+        });
+      });
+
+      it("should create pipeline with array input", async () => {
+        const mockPipeline = { id: 7, status: "pending", ref: "main" };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipeline) as never);
+
+        const tool = pipelinesToolRegistry.get("manage_pipeline")!;
+        await tool.handler({
+          action: "create",
+          project_id: "test/project",
+          ref: "main",
+          inputs: {
+            regions: ["us-east-1", "eu-west-1"],
+          },
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const body = JSON.parse(call[1]?.body as string);
+        expect(body.inputs).toEqual({ regions: ["us-east-1", "eu-west-1"] });
+      });
+
+      it("should create pipeline with both variables and inputs", async () => {
+        const mockPipeline = { id: 8, status: "pending", ref: "main" };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipeline) as never);
+
+        const tool = pipelinesToolRegistry.get("manage_pipeline")!;
+        await tool.handler({
+          action: "create",
+          project_id: "test/project",
+          ref: "main",
+          variables: [{ key: "EXTRA_VAR", value: "extra-value" }],
+          inputs: {
+            environment: "test",
+            dry_run: false,
+          },
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const body = JSON.parse(call[1]?.body as string);
+        expect(body.variables).toEqual([{ key: "EXTRA_VAR", value: "extra-value" }]);
+        expect(body.inputs).toEqual({ environment: "test", dry_run: false });
+      });
+
+      it("should not include inputs in body when inputs is empty object", async () => {
+        const mockPipeline = { id: 9, status: "pending", ref: "main" };
+        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockPipeline) as never);
+
+        const tool = pipelinesToolRegistry.get("manage_pipeline")!;
+        await tool.handler({
+          action: "create",
+          project_id: "test/project",
+          ref: "main",
+          inputs: {},
+        });
+
+        const call = mockEnhancedFetch.mock.calls[0];
+        const body = JSON.parse(call[1]?.body as string);
+        expect(body.inputs).toBeUndefined();
+      });
+
       it("should handle detailed API errors", async () => {
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: false,

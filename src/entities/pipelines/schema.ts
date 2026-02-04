@@ -2,14 +2,22 @@ import { z } from "zod";
 import { requiredId } from "../utils";
 
 // ============================================================================
-// Shared schemas for pipeline variables
+// Shared schemas for pipeline variables and inputs
 // ============================================================================
 
 const PipelineVariableSchema = z.object({
-  key: z.string(),
-  value: z.string(),
-  variable_type: z.enum(["env_var", "file"]).optional(),
+  key: z.string().describe("Variable name"),
+  value: z.string().describe("Variable value"),
+  variable_type: z
+    .enum(["env_var", "file"])
+    .optional()
+    .describe("Variable type: env_var (default) or file"),
 });
+
+// Pipeline input value types (GitLab 15.5+ supports string, number, boolean, array)
+const PipelineInputValueSchema = z
+  .union([z.string(), z.number(), z.boolean(), z.array(z.string())])
+  .describe("Input value: string, number, boolean, or array of strings");
 
 // ============================================================================
 // manage_pipeline - CQRS Command Tool (discriminated union schema)
@@ -30,7 +38,13 @@ const CreatePipelineSchema = z.object({
   variables: z
     .array(PipelineVariableSchema)
     .optional()
-    .describe("Variables to pass to the pipeline"),
+    .describe("Legacy variables to pass to the pipeline (key-value pairs with optional type)"),
+  inputs: z
+    .record(z.string(), PipelineInputValueSchema)
+    .optional()
+    .describe(
+      "Typed pipeline inputs defined in .gitlab-ci.yml spec (GitLab 15.5+). Keys must match input names in pipeline spec."
+    ),
 });
 
 // --- Action: retry ---

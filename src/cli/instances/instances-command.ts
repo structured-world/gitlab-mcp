@@ -248,6 +248,8 @@ async function addInstance(): Promise<void> {
   }
 
   // Note: In a real implementation, this would persist the config
+  // Using config.url and oauth.clientId directly here is safe — these are
+  // NOT secrets. Only clientSecret is sensitive (not shown in output).
   p.outro(`
 Instance configured! To use it, add to your configuration:
 

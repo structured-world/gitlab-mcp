@@ -97,15 +97,19 @@ function isSocksProxy(url: string): boolean {
 /**
  * Create Undici dispatcher for fetch requests
  *
- * LIMITATION: The dispatcher is created globally and uses environment variables
- * (SKIP_TLS_VERIFY, NODE_TLS_REJECT_UNAUTHORIZED) for TLS configuration.
- * Per-instance `insecureSkipVerify` settings from config files are NOT currently
- * consulted here. To support per-instance TLS settings, we would need to either:
- * 1. Create separate dispatchers per instance, or
- * 2. Use a different HTTP client that supports per-request TLS configuration
+ * LIMITATION: This global dispatcher uses environment variables for TLS config.
+ * Per-instance `insecureSkipVerify` settings are handled by InstanceConnectionPool
+ * which creates per-instance dispatchers with correct TLS settings.
  *
- * For now, use environment variables for global TLS skip, or ensure all instances
- * use valid certificates.
+ * This global dispatcher is used ONLY as fallback for:
+ * - Requests to unregistered instances (not in config)
+ * - Initialization before InstanceRegistry is ready
+ *
+ * For registered instances, enhancedFetch() uses registry.getDispatcher() which
+ * returns the per-instance pool with proper TLS configuration.
+ *
+ * Security note: Global SKIP_TLS_VERIFY affects only fallback requests.
+ * Production should configure instances in config file for per-instance TLS.
  */
 function createDispatcher(): unknown {
   const proxyUrl = HTTPS_PROXY ?? HTTP_PROXY;

@@ -2658,7 +2658,7 @@ __metadata:
     "@types/express": "npm:^5.0.6"
     "@types/jest": "npm:^30.0.0"
     "@types/node": "npm:^24.10.9"
-    "@types/picomatch": "npm:^4.0.0"
+    "@types/picomatch": "npm:^4.0.2"
     "@typescript-eslint/eslint-plugin": "npm:^8.54.0"
     "@typescript-eslint/parser": "npm:^8.54.0"
     auto-changelog: "npm:^2.5.0"
@@ -2967,7 +2967,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/picomatch@npm:^4.0.0":
+"@types/picomatch@npm:^4.0.2":
   version: 4.0.2
   resolution: "@types/picomatch@npm:4.0.2"
   checksum: 10c0/0f46198c2d1beb5061816745355888e94a80a449a49af1ef69723f50e850c678b50cff299bd461f71e8009d46705e7cdeda8c8ffa23815b2e942c83877f855b9

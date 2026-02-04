@@ -224,17 +224,24 @@ export class ConnectionManager {
 
     // Derive the GraphQL endpoint from the current instance URL when running in
     // OAuth mode so that multi-instance setups talk to the correct GitLab host.
-    // Fall back to the init-time endpoint if URL parsing fails or OAuth is disabled.
+    // NOTE: This mutates the singleton GraphQLClient endpoint for the current request context.
+    // This is safe because OAuth mode handles one request at a time per AsyncLocalStorage context.
     let endpoint = this.client.endpoint;
     if (isOAuthEnabled() && instanceUrl && instanceUrl !== this.currentInstanceUrl) {
       try {
         const url = new URL(instanceUrl);
         const normalizedPath = url.pathname.replace(/\/+$/, "");
-        if (normalizedPath.endsWith("/api/v4")) {
-          url.pathname = normalizedPath.replace(/\/api\/v4$/, "/api/graphql");
+
+        // Find and replace API suffix while preserving subpath (e.g., /gitlab/api/v4 -> /gitlab/api/graphql)
+        const apiV4Index = normalizedPath.indexOf("/api/v4");
+        if (apiV4Index !== -1) {
+          // Replace /api/v4 with /api/graphql, keeping any leading subpath
+          const basePath = normalizedPath.slice(0, apiV4Index);
+          url.pathname = `${basePath}/api/graphql`;
         } else {
-          // Best-effort default: assume GraphQL is served at /api/graphql on this origin
-          url.pathname = "/api/graphql";
+          // No /api/v4 suffix found - append /api/graphql to any existing subpath
+          const basePath = normalizedPath === "/" ? "" : normalizedPath;
+          url.pathname = `${basePath}/api/graphql`;
         }
         endpoint = url.toString();
         this.client.setEndpoint(endpoint);
@@ -345,6 +352,13 @@ export class ConnectionManager {
       throw new Error("Connection not initialized. Call initialize() first.");
     }
     return this.schemaInfo;
+  }
+
+  /**
+   * Get the current instance URL (for tracking instance switches)
+   */
+  public getCurrentInstanceUrl(): string | null {
+    return this.currentInstanceUrl;
   }
 
   public isFeatureAvailable(feature: keyof GitLabInstanceInfo["features"]): boolean {

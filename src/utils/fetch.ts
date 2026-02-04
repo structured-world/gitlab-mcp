@@ -606,19 +606,13 @@ function extractBaseUrl(url: string): string | undefined {
     let basePath = parsed.pathname || "/";
 
     // Strip known GitLab API suffixes while preserving any leading subpath.
+    // Handles both suffix at end AND in middle of path (e.g., /gitlab/api/v4/projects)
     const apiSuffixes = ["/api/v4", "/api/graphql"];
     for (const suffix of apiSuffixes) {
-      if (basePath === suffix || basePath === `${suffix}/`) {
-        // Instance is hosted at the origin (no subpath).
-        basePath = "/";
-        break;
-      }
-      if (basePath.endsWith(`${suffix}/`)) {
-        basePath = basePath.slice(0, -`${suffix}/`.length) || "/";
-        break;
-      }
-      if (basePath.endsWith(suffix)) {
-        basePath = basePath.slice(0, -suffix.length) || "/";
+      const suffixIndex = basePath.indexOf(suffix);
+      if (suffixIndex !== -1) {
+        // Found API suffix - extract everything before it as the base path
+        basePath = suffixIndex === 0 ? "/" : basePath.slice(0, suffixIndex);
         break;
       }
     }

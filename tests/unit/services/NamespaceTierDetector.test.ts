@@ -726,11 +726,11 @@ describe("NamespaceTierDetector", () => {
       await getNamespaceTier("test-namespace");
 
       const metrics = getNamespaceTierCacheMetrics();
-      // Session ID extraction uses first colon as delimiter
+      // Session ID extraction uses lastIndexOf to find the delimiter
       // Key format: `${sessionId}:${namespacePath}`
       // With sessionId "complex-session-id-with-colons:and:special:chars" and namespace "test-namespace"
       // The key is "complex-session-id-with-colons:and:special:chars:test-namespace"
-      // split(":")[0] gives "complex-session-id-with-colons"
+      // lastIndexOf(":") correctly extracts "complex-session-id-with-colons:and:special:chars"
       expect(metrics.totalEntries).toBe(1);
     });
   });

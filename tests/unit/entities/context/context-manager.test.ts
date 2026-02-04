@@ -36,8 +36,10 @@ jest.mock("../../../../src/services/NamespaceTierDetector", () => ({
 
 // Mock ConnectionManager for switchInstance tests
 const mockReinitialize = jest.fn();
+const mockGetCurrentInstanceUrl = jest.fn().mockReturnValue("https://gitlab.example.com");
 const mockConnectionManagerGetInstance = jest.fn(() => ({
   reinitialize: mockReinitialize,
+  getCurrentInstanceUrl: mockGetCurrentInstanceUrl,
 }));
 jest.mock("../../../../src/services/ConnectionManager", () => ({
   ConnectionManager: {

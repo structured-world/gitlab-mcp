@@ -450,7 +450,9 @@ export class ContextManager {
       );
     }
 
-    const previousUrl = GITLAB_BASE_URL;
+    // Get previous URL from ConnectionManager (tracks actual current instance)
+    const connectionManager = ConnectionManager.getInstance();
+    const previousUrl = connectionManager.getCurrentInstanceUrl() ?? GITLAB_BASE_URL;
 
     try {
       // Clear namespace tier cache (invalid for new instance)
@@ -458,7 +460,6 @@ export class ContextManager {
 
       // Re-initialize ConnectionManager for new instance
       // This will trigger re-introspection
-      const connectionManager = ConnectionManager.getInstance();
       await connectionManager.reinitialize(instanceUrl);
 
       // Clear current scope (invalid for new instance)

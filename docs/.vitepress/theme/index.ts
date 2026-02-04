@@ -5,6 +5,7 @@ import { enhanceWithConsent, ConsentBanner } from "@structured-world/vue-privacy
 import { createKVStorage } from "@structured-world/vue-privacy";
 import "./style.css";
 import BugReportWidget from "./components/BugReportWidget.vue";
+import GA4EventTracker from "./components/GA4EventTracker.vue";
 
 // GA4 tracking ID - fallback is gitlab-mcp.sw.foundation production property
 const GA_ID = import.meta.env.VITE_GA_ID || "G-RY1XJ7LR5F";
@@ -24,7 +25,10 @@ export default {
   ...consentTheme,
   Layout() {
     return h(consentTheme.Layout ?? DefaultTheme.Layout, null, {
-      "layout-bottom": () => [h(ConsentBanner), h(BugReportWidget)],
+      // GA4EventTracker: invisible component for tracking search, downloads, and outbound links
+      // ConsentBanner: GDPR consent banner from vue-privacy
+      // BugReportWidget: bug report floating button
+      "layout-bottom": () => [h(GA4EventTracker), h(ConsentBanner), h(BugReportWidget)],
     });
   },
 } satisfies Theme;

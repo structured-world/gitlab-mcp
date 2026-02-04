@@ -280,8 +280,10 @@ const compareOnlyFields = ["from", "to", "straight"];
 const getOnlyFields = ["merge_request_iid", "branch_name"];
 const versionOnlyFields = ["version_id"];
 const diffsOnlyFields = ["exclude_patterns", "exclude_lockfiles", "exclude_generated"];
-// Fields shared by get/diffs but invalid for versions/version actions
-const getAndDiffsSharedFields = [
+// Fields from get/diffs actions that are invalid for versions/version actions
+// - branch_name: get-only
+// - include_diverged_commits_count, include_rebase_in_progress: get and diffs
+const fieldsInvalidForVersionActions = [
   "branch_name",
   "include_diverged_commits_count",
   "include_rebase_in_progress",
@@ -369,7 +371,7 @@ export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
 
   // Check for get/diffs shared fields used in versions/version actions
   if (data.action === "versions" || data.action === "version") {
-    for (const field of getAndDiffsSharedFields) {
+    for (const field of fieldsInvalidForVersionActions) {
       if (field in input && input[field] !== undefined) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

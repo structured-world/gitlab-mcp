@@ -135,6 +135,60 @@ Trigger and control pipeline execution.
 }
 ```
 
+```json [With typed inputs]
+{
+  "action": "create",
+  "project_id": "my-org/api",
+  "ref": "main",
+  "inputs": {
+    "environment": "production",
+    "dry_run": true,
+    "replicas": 3
+  }
+}
+```
+
+:::
+
+### Pipeline Inputs (GitLab 15.5+)
+
+For pipelines with typed inputs defined in `.gitlab-ci.yml`:
+
+```yaml
+# .gitlab-ci.yml
+spec:
+  inputs:
+    environment:
+      type: string
+      options: [staging, production]
+    dry_run:
+      type: boolean
+      default: false
+    replicas:
+      type: number
+      default: 1
+```
+
+Trigger with inputs:
+
+```json
+{
+  "action": "create",
+  "project_id": "my-org/api",
+  "ref": "main",
+  "inputs": {
+    "environment": "production",
+    "dry_run": true,
+    "replicas": 3
+  }
+}
+```
+
+::: tip Variables vs Inputs
+- **`variables`**: Legacy key-value pairs, no type validation
+- **`inputs`**: Typed parameters with schema validation (requires GitLab 15.5+)
+
+You can use both in the same request if needed.
 :::
 
 ## manage_pipeline_job

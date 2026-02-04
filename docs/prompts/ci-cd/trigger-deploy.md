@@ -39,6 +39,42 @@ Run pipelines, trigger manual jobs, and manage deployments with GitLab MCP.
 }
 ```
 
+```json [With typed inputs]
+{
+  "action": "create",
+  "project_id": "my-org/api",
+  "ref": "main",
+  "inputs": {
+    "environment": "production",
+    "dry_run": false,
+    "replicas": 3
+  }
+}
+```
+
+:::
+
+## Trigger with Typed Inputs
+
+For pipelines using GitLab's typed inputs feature:
+
+> "Run a deploy pipeline with environment set to production and dry_run disabled"
+
+```json
+{
+  "action": "create",
+  "project_id": "my-org/api",
+  "ref": "main",
+  "inputs": {
+    "environment": "production",
+    "dry_run": false,
+    "replicas": 3
+  }
+}
+```
+
+::: info GitLab 15.5+ Required
+Pipeline inputs require GitLab 15.5 or later. Check your `.gitlab-ci.yml` for `spec.inputs` to see available inputs.
 :::
 
 ## Trigger Manual Deploy Jobs

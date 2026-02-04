@@ -1,3 +1,10 @@
+## [6.53.0](https://github.com/structured-world/gitlab-mcp/compare/v6.52.0...v6.53.0) (2026-02-04)
+
+### Features
+
+* **mrs:** add MR versions support (list and get diff versions) ([#271](https://github.com/structured-world/gitlab-mcp/issues/271)) ([12424fe](https://github.com/structured-world/gitlab-mcp/commit/12424fe308d941ee8763572dc16af37264699a9e)), closes [#268](https://github.com/structured-world/gitlab-mcp/issues/268)
+* **pipelines:** add inputs parameter for typed pipeline inputs (GitLab 15.5+) ([#273](https://github.com/structured-world/gitlab-mcp/issues/273)) ([2c2d31c](https://github.com/structured-world/gitlab-mcp/commit/2c2d31cf10cbed415fd35ee3f80ad79ef8d2bf91)), closes [#272](https://github.com/structured-world/gitlab-mcp/issues/272)
+
 ## [6.52.0](https://github.com/structured-world/gitlab-mcp/compare/v6.51.0...v6.52.0) (2026-02-04)
 
 ### Features

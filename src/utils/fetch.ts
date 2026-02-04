@@ -598,8 +598,10 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
  * https://example.com/gitlab) and strips known API suffixes such as
  * /api/v4 and /api/graphql so that the result matches InstanceRegistry
  * normalization rules.
+ *
+ * @internal Exported for testing purposes
  */
-function extractBaseUrl(url: string): string | undefined {
+export function extractBaseUrl(url: string): string | undefined {
   try {
     const parsed = new URL(url);
 

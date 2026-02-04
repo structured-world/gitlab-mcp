@@ -87,6 +87,8 @@ describe("ConnectionManager Enhanced Tests", () => {
     // Setup mocks
     mockClient = {
       request: jest.fn(),
+      endpoint: "https://test-gitlab.com/api/graphql",
+      setEndpoint: jest.fn(),
     } as any;
     MockedGraphQLClient.mockImplementation(() => mockClient);
 
@@ -854,7 +856,7 @@ describe("ConnectionManager Enhanced Tests", () => {
       (connectionManager as any).instanceInfo = null;
       (connectionManager as any).schemaInfo = null;
 
-      // ensureIntrospected should use legacy cache (lines 247-251)
+      // ensureIntrospected should use legacy cache (lines 278-282)
       await connectionManager.ensureIntrospected();
 
       // Should have restored data from legacy cache
@@ -876,9 +878,113 @@ describe("ConnectionManager Enhanced Tests", () => {
       // ensureIntrospected should perform full introspection
       await connectionManager.ensureIntrospected();
 
-      // Should have performed fresh introspection (lines 254-282)
+      // Should have performed fresh introspection (lines 285-299)
       expect(mockVersionDetector.detectInstance).toHaveBeenCalled();
       expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalled();
+    });
+
+    it("should use InstanceRegistry cache when available (lines 262-270)", async () => {
+      // This test covers the InstanceRegistry cache path
+      // Requires mocking InstanceRegistry with cached introspection data
+      jest.resetModules();
+
+      // Mock InstanceRegistry to return cached introspection
+      const mockCachedIntrospection = {
+        version: "17.0.0",
+        tier: "ultimate",
+        features: {
+          workItems: true,
+          epics: true,
+          issues: true,
+          advancedSearch: true,
+          codeReview: true,
+        },
+        cachedAt: new Date("2024-02-01T10:00:00Z"),
+        schemaInfo: {
+          workItemWidgetTypes: ["ASSIGNEES", "LABELS", "MILESTONE"],
+          typeDefinitions: new Map(),
+          availableFeatures: new Set(["workItems", "epics"]),
+        },
+      };
+
+      jest.doMock("../../../src/services/InstanceRegistry", () => ({
+        InstanceRegistry: {
+          getInstance: () => ({
+            isInitialized: () => true,
+            getIntrospection: jest.fn().mockReturnValue(mockCachedIntrospection),
+          }),
+        },
+      }));
+      jest.doMock("../../../src/config", () => ({
+        GITLAB_BASE_URL: "https://cached-gitlab.example.com",
+        GITLAB_TOKEN: "test-token",
+      }));
+      jest.doMock("../../../src/logger", () => ({
+        logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
+        logInfo: jest.fn(),
+        logWarn: jest.fn(),
+        logError: jest.fn(),
+        logDebug: jest.fn(),
+      }));
+      jest.doMock("../../../src/graphql/client", () => ({
+        GraphQLClient: jest.fn().mockImplementation(() => ({
+          request: jest.fn(),
+          endpoint: "https://cached-gitlab.example.com/api/graphql",
+          setEndpoint: jest.fn(),
+        })),
+      }));
+      jest.doMock("../../../src/services/GitLabVersionDetector", () => ({
+        GitLabVersionDetector: jest.fn().mockImplementation(() => ({
+          detectInstance: jest.fn().mockResolvedValue({
+            version: "17.0.0",
+            tier: "ultimate",
+            features: {
+              workItems: true,
+              epics: true,
+              issues: true,
+              advancedSearch: true,
+              codeReview: true,
+            },
+            detectedAt: new Date(),
+          }),
+        })),
+      }));
+      jest.doMock("../../../src/services/SchemaIntrospector", () => ({
+        SchemaIntrospector: jest.fn().mockImplementation(() => ({
+          introspectSchema: jest.fn().mockResolvedValue({
+            workItemWidgetTypes: ["ASSIGNEES"],
+            typeDefinitions: new Map(),
+            availableFeatures: new Set(),
+          }),
+        })),
+      }));
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: "17.0.0", enterprise: true }),
+      }) as unknown as typeof fetch;
+
+      const {
+        ConnectionManager: CachedConnectionManager,
+      } = require("../../../src/services/ConnectionManager");
+
+      const manager = CachedConnectionManager.getInstance();
+      await manager.initialize();
+
+      // Clear local state to trigger ensureIntrospected
+      manager.instanceInfo = null;
+      manager.schemaInfo = null;
+      CachedConnectionManager.introspectionCache.clear();
+
+      // ensureIntrospected should use InstanceRegistry cache (lines 262-270)
+      await manager.ensureIntrospected();
+
+      // Should have restored data from InstanceRegistry cache
+      expect(manager.getVersion()).toBe("17.0.0");
+      expect(manager.getTier()).toBe("ultimate");
+
+      manager.reset();
+      jest.resetModules();
     });
   });
 
@@ -941,6 +1047,413 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(connectionManager.getClient()).toBeDefined();
       expect(connectionManager.getVersionDetector()).toBeDefined();
       expect(connectionManager.getSchemaIntrospector()).toBeDefined();
+    });
+  });
+
+  describe("OAuth endpoint derivation in ensureIntrospected", () => {
+    /**
+     * Tests OAuth endpoint derivation logic (lines 231-249)
+     * When OAuth mode is enabled and instanceUrl differs from currentInstanceUrl,
+     * the GraphQL endpoint should be derived from the new instanceUrl
+     */
+    it("should derive GraphQL endpoint from instanceUrl with /api/v4 suffix", async () => {
+      jest.resetModules();
+      const mockSetEndpoint = jest.fn();
+      jest.doMock("../../../src/config", () => ({
+        GITLAB_BASE_URL: "https://instance-a.gitlab.com",
+        GITLAB_TOKEN: null,
+      }));
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: () => true,
+        getGitLabApiUrlFromContext: () => "https://instance-b.gitlab.com/api/v4",
+      }));
+      jest.doMock("../../../src/logger", () => ({
+        logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
+        logInfo: jest.fn(),
+        logWarn: jest.fn(),
+        logError: jest.fn(),
+        logDebug: jest.fn(),
+      }));
+      jest.doMock("../../../src/graphql/client", () => ({
+        GraphQLClient: jest.fn().mockImplementation(() => ({
+          request: jest.fn(),
+          endpoint: "https://instance-a.gitlab.com/api/graphql",
+          setEndpoint: mockSetEndpoint,
+        })),
+      }));
+      jest.doMock("../../../src/services/GitLabVersionDetector", () => ({
+        GitLabVersionDetector: jest.fn().mockImplementation(() => ({
+          detectInstance: jest.fn().mockResolvedValue({
+            version: "16.5.0",
+            tier: "premium",
+            features: {
+              workItems: true,
+              epics: true,
+              issues: true,
+              advancedSearch: false,
+              codeReview: true,
+            },
+            detectedAt: new Date(),
+          }),
+        })),
+      }));
+      jest.doMock("../../../src/services/SchemaIntrospector", () => ({
+        SchemaIntrospector: jest.fn().mockImplementation(() => ({
+          introspectSchema: jest.fn().mockResolvedValue({
+            workItemWidgetTypes: ["ASSIGNEES"],
+            typeDefinitions: new Map(),
+            availableFeatures: new Set(),
+          }),
+        })),
+      }));
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: "16.5.0", enterprise: true }),
+      }) as unknown as typeof fetch;
+
+      const {
+        ConnectionManager: OAuthConnectionManager,
+      } = require("../../../src/services/ConnectionManager");
+
+      const manager = OAuthConnectionManager.getInstance();
+      await manager.initialize();
+
+      // Clear local state to trigger ensureIntrospected logic
+      manager.instanceInfo = null;
+      manager.schemaInfo = null;
+      OAuthConnectionManager.introspectionCache.clear();
+
+      await manager.ensureIntrospected();
+
+      // Should have derived the GraphQL endpoint from /api/v4 -> /api/graphql
+      expect(mockSetEndpoint).toHaveBeenCalledWith("https://instance-b.gitlab.com/api/graphql");
+
+      manager.reset();
+      jest.resetModules();
+    });
+
+    it("should derive GraphQL endpoint preserving subpath", async () => {
+      jest.resetModules();
+      const mockSetEndpoint = jest.fn();
+      jest.doMock("../../../src/config", () => ({
+        GITLAB_BASE_URL: "https://example.com/gitlab",
+        GITLAB_TOKEN: null,
+      }));
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: () => true,
+        getGitLabApiUrlFromContext: () => "https://other.example.com/gitlab/api/v4",
+      }));
+      jest.doMock("../../../src/logger", () => ({
+        logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
+        logInfo: jest.fn(),
+        logWarn: jest.fn(),
+        logError: jest.fn(),
+        logDebug: jest.fn(),
+      }));
+      jest.doMock("../../../src/graphql/client", () => ({
+        GraphQLClient: jest.fn().mockImplementation(() => ({
+          request: jest.fn(),
+          endpoint: "https://example.com/gitlab/api/graphql",
+          setEndpoint: mockSetEndpoint,
+        })),
+      }));
+      jest.doMock("../../../src/services/GitLabVersionDetector", () => ({
+        GitLabVersionDetector: jest.fn().mockImplementation(() => ({
+          detectInstance: jest.fn().mockResolvedValue({
+            version: "16.5.0",
+            tier: "premium",
+            features: {
+              workItems: true,
+              epics: true,
+              issues: true,
+              advancedSearch: false,
+              codeReview: true,
+            },
+            detectedAt: new Date(),
+          }),
+        })),
+      }));
+      jest.doMock("../../../src/services/SchemaIntrospector", () => ({
+        SchemaIntrospector: jest.fn().mockImplementation(() => ({
+          introspectSchema: jest.fn().mockResolvedValue({
+            workItemWidgetTypes: ["ASSIGNEES"],
+            typeDefinitions: new Map(),
+            availableFeatures: new Set(),
+          }),
+        })),
+      }));
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: "16.5.0", enterprise: true }),
+      }) as unknown as typeof fetch;
+
+      const {
+        ConnectionManager: OAuthConnectionManager,
+      } = require("../../../src/services/ConnectionManager");
+
+      const manager = OAuthConnectionManager.getInstance();
+      await manager.initialize();
+
+      // Clear local state
+      manager.instanceInfo = null;
+      manager.schemaInfo = null;
+      OAuthConnectionManager.introspectionCache.clear();
+
+      await manager.ensureIntrospected();
+
+      // Should preserve /gitlab subpath: /gitlab/api/v4 -> /gitlab/api/graphql
+      expect(mockSetEndpoint).toHaveBeenCalledWith("https://other.example.com/gitlab/api/graphql");
+
+      manager.reset();
+      jest.resetModules();
+    });
+
+    it("should append /api/graphql when URL has no /api/v4 suffix", async () => {
+      jest.resetModules();
+      const mockSetEndpoint = jest.fn();
+      jest.doMock("../../../src/config", () => ({
+        GITLAB_BASE_URL: "https://instance-a.gitlab.com",
+        GITLAB_TOKEN: null,
+      }));
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: () => true,
+        // URL without /api/v4 suffix
+        getGitLabApiUrlFromContext: () => "https://instance-b.gitlab.com/custom-path",
+      }));
+      jest.doMock("../../../src/logger", () => ({
+        logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
+        logInfo: jest.fn(),
+        logWarn: jest.fn(),
+        logError: jest.fn(),
+        logDebug: jest.fn(),
+      }));
+      jest.doMock("../../../src/graphql/client", () => ({
+        GraphQLClient: jest.fn().mockImplementation(() => ({
+          request: jest.fn(),
+          endpoint: "https://instance-a.gitlab.com/api/graphql",
+          setEndpoint: mockSetEndpoint,
+        })),
+      }));
+      jest.doMock("../../../src/services/GitLabVersionDetector", () => ({
+        GitLabVersionDetector: jest.fn().mockImplementation(() => ({
+          detectInstance: jest.fn().mockResolvedValue({
+            version: "16.5.0",
+            tier: "premium",
+            features: {
+              workItems: true,
+              epics: true,
+              issues: true,
+              advancedSearch: false,
+              codeReview: true,
+            },
+            detectedAt: new Date(),
+          }),
+        })),
+      }));
+      jest.doMock("../../../src/services/SchemaIntrospector", () => ({
+        SchemaIntrospector: jest.fn().mockImplementation(() => ({
+          introspectSchema: jest.fn().mockResolvedValue({
+            workItemWidgetTypes: ["ASSIGNEES"],
+            typeDefinitions: new Map(),
+            availableFeatures: new Set(),
+          }),
+        })),
+      }));
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: "16.5.0", enterprise: true }),
+      }) as unknown as typeof fetch;
+
+      const {
+        ConnectionManager: OAuthConnectionManager,
+      } = require("../../../src/services/ConnectionManager");
+
+      const manager = OAuthConnectionManager.getInstance();
+      await manager.initialize();
+
+      // Clear local state
+      manager.instanceInfo = null;
+      manager.schemaInfo = null;
+      OAuthConnectionManager.introspectionCache.clear();
+
+      await manager.ensureIntrospected();
+
+      // Should append /api/graphql to existing path
+      expect(mockSetEndpoint).toHaveBeenCalledWith(
+        "https://instance-b.gitlab.com/custom-path/api/graphql"
+      );
+
+      manager.reset();
+      jest.resetModules();
+    });
+
+    it("should handle invalid instanceUrl gracefully and use default endpoint", async () => {
+      jest.resetModules();
+      const mockSetEndpoint = jest.fn();
+      const mockLogError = jest.fn();
+      jest.doMock("../../../src/config", () => ({
+        GITLAB_BASE_URL: "https://instance-a.gitlab.com",
+        GITLAB_TOKEN: null,
+      }));
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: () => true,
+        // Invalid URL that will cause URL parsing to throw
+        getGitLabApiUrlFromContext: () => "not-a-valid-url",
+      }));
+      jest.doMock("../../../src/logger", () => ({
+        logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
+        logInfo: jest.fn(),
+        logWarn: jest.fn(),
+        logError: mockLogError,
+        logDebug: jest.fn(),
+      }));
+      jest.doMock("../../../src/graphql/client", () => ({
+        GraphQLClient: jest.fn().mockImplementation(() => ({
+          request: jest.fn(),
+          endpoint: "https://instance-a.gitlab.com/api/graphql",
+          setEndpoint: mockSetEndpoint,
+        })),
+      }));
+      jest.doMock("../../../src/services/GitLabVersionDetector", () => ({
+        GitLabVersionDetector: jest.fn().mockImplementation(() => ({
+          detectInstance: jest.fn().mockResolvedValue({
+            version: "16.5.0",
+            tier: "premium",
+            features: {
+              workItems: true,
+              epics: true,
+              issues: true,
+              advancedSearch: false,
+              codeReview: true,
+            },
+            detectedAt: new Date(),
+          }),
+        })),
+      }));
+      jest.doMock("../../../src/services/SchemaIntrospector", () => ({
+        SchemaIntrospector: jest.fn().mockImplementation(() => ({
+          introspectSchema: jest.fn().mockResolvedValue({
+            workItemWidgetTypes: ["ASSIGNEES"],
+            typeDefinitions: new Map(),
+            availableFeatures: new Set(),
+          }),
+        })),
+      }));
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: "16.5.0", enterprise: true }),
+      }) as unknown as typeof fetch;
+
+      const {
+        ConnectionManager: OAuthConnectionManager,
+      } = require("../../../src/services/ConnectionManager");
+
+      const manager = OAuthConnectionManager.getInstance();
+      await manager.initialize();
+
+      // Clear local state
+      manager.instanceInfo = null;
+      manager.schemaInfo = null;
+      OAuthConnectionManager.introspectionCache.clear();
+
+      // Should not throw - gracefully handles invalid URL
+      await expect(manager.ensureIntrospected()).resolves.not.toThrow();
+
+      // Should have logged the error
+      expect(mockLogError).toHaveBeenCalledWith(
+        "Failed to derive GraphQL endpoint from instanceUrl; using default endpoint",
+        expect.objectContaining({
+          instanceUrl: "not-a-valid-url",
+        })
+      );
+
+      // setEndpoint should not have been called due to error
+      expect(mockSetEndpoint).not.toHaveBeenCalled();
+
+      manager.reset();
+      jest.resetModules();
+    });
+
+    it("should handle root path URL correctly", async () => {
+      jest.resetModules();
+      const mockSetEndpoint = jest.fn();
+      jest.doMock("../../../src/config", () => ({
+        GITLAB_BASE_URL: "https://instance-a.gitlab.com",
+        GITLAB_TOKEN: null,
+      }));
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: () => true,
+        // URL with just root path
+        getGitLabApiUrlFromContext: () => "https://instance-b.gitlab.com/",
+      }));
+      jest.doMock("../../../src/logger", () => ({
+        logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
+        logInfo: jest.fn(),
+        logWarn: jest.fn(),
+        logError: jest.fn(),
+        logDebug: jest.fn(),
+      }));
+      jest.doMock("../../../src/graphql/client", () => ({
+        GraphQLClient: jest.fn().mockImplementation(() => ({
+          request: jest.fn(),
+          endpoint: "https://instance-a.gitlab.com/api/graphql",
+          setEndpoint: mockSetEndpoint,
+        })),
+      }));
+      jest.doMock("../../../src/services/GitLabVersionDetector", () => ({
+        GitLabVersionDetector: jest.fn().mockImplementation(() => ({
+          detectInstance: jest.fn().mockResolvedValue({
+            version: "16.5.0",
+            tier: "premium",
+            features: {
+              workItems: true,
+              epics: true,
+              issues: true,
+              advancedSearch: false,
+              codeReview: true,
+            },
+            detectedAt: new Date(),
+          }),
+        })),
+      }));
+      jest.doMock("../../../src/services/SchemaIntrospector", () => ({
+        SchemaIntrospector: jest.fn().mockImplementation(() => ({
+          introspectSchema: jest.fn().mockResolvedValue({
+            workItemWidgetTypes: ["ASSIGNEES"],
+            typeDefinitions: new Map(),
+            availableFeatures: new Set(),
+          }),
+        })),
+      }));
+
+      global.fetch = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ version: "16.5.0", enterprise: true }),
+      }) as unknown as typeof fetch;
+
+      const {
+        ConnectionManager: OAuthConnectionManager,
+      } = require("../../../src/services/ConnectionManager");
+
+      const manager = OAuthConnectionManager.getInstance();
+      await manager.initialize();
+
+      // Clear local state
+      manager.instanceInfo = null;
+      manager.schemaInfo = null;
+      OAuthConnectionManager.introspectionCache.clear();
+
+      await manager.ensureIntrospected();
+
+      // Root path "/" should become "/api/graphql"
+      expect(mockSetEndpoint).toHaveBeenCalledWith("https://instance-b.gitlab.com/api/graphql");
+
+      manager.reset();
+      jest.resetModules();
     });
   });
 });

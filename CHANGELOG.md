@@ -1,3 +1,9 @@
+## [6.55.0](https://github.com/structured-world/gitlab-mcp/compare/v6.54.0...v6.55.0) (2026-02-04)
+
+### Features
+
+* **multi-instance:** Multi-Instance OAuth Federation with per-session introspection ([#277](https://github.com/structured-world/gitlab-mcp/issues/277)) ([1fc0a8f](https://github.com/structured-world/gitlab-mcp/commit/1fc0a8ffe12c1e72a403de7dd905e3228b26414d)), closes [#274](https://github.com/structured-world/gitlab-mcp/issues/274) [#274](https://github.com/structured-world/gitlab-mcp/issues/274) [#274](https://github.com/structured-world/gitlab-mcp/issues/274) [#274](https://github.com/structured-world/gitlab-mcp/issues/274) [#274](https://github.com/structured-world/gitlab-mcp/issues/274) [#274](https://github.com/structured-world/gitlab-mcp/issues/274)
+
 ## [6.54.0](https://github.com/structured-world/gitlab-mcp/compare/v6.53.1...v6.54.0) (2026-02-04)
 
 ### Features

@@ -152,6 +152,7 @@ jobs:
           while [ "$PAGE_COUNT" -lt "$MAX_PAGES" ]; do
             PAGE_COUNT=$((PAGE_COUNT + 1))
             if [ -z "$AFTER" ]; then
+              # First comment identifies thread origin (CodeQL, Copilot, human) for categorization
               QUERY='query($owner:String!, $name:String!, $number:Int!) {
                 repository(owner:$owner, name:$name) {
                   pullRequest(number:$number) {
@@ -180,6 +181,7 @@ jobs:
                   exit 0
                 }
             else
+              # First comment identifies thread origin (CodeQL, Copilot, human) for categorization
               QUERY_AFTER='query($owner:String!, $name:String!, $number:Int!, $after:String) {
                 repository(owner:$owner, name:$name) {
                   pullRequest(number:$number) {

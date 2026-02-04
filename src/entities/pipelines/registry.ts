@@ -173,7 +173,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "manage_pipeline",
       description:
-        "Trigger, retry, or cancel CI/CD pipelines. Actions: create (run pipeline on ref with variables), retry (re-run failed jobs), cancel (stop running pipeline). Related: browse_pipelines for monitoring.",
+        "Trigger, retry, or cancel CI/CD pipelines. Actions: create (run pipeline on ref with variables or typed inputs), retry (re-run failed jobs), cancel (stop running pipeline). Related: browse_pipelines for monitoring.",
       inputSchema: z.toJSONSchema(ManagePipelineSchema),
       gate: { envVar: "USE_PIPELINE", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -186,16 +186,23 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
         switch (input.action) {
           case "create": {
-            // TypeScript knows: input has ref (required), variables (optional)
-            const { project_id, ref, variables } = input;
+            // TypeScript knows: input has ref (required), variables (optional), inputs (optional)
+            const { project_id, ref, variables, inputs } = input;
 
-            // Custom handling - ref in query, variables in body with detailed error handling
+            // Custom handling - ref in query, variables/inputs in body with detailed error handling
             const queryParams = new URLSearchParams();
             queryParams.set("ref", ref);
 
             const body: Record<string, unknown> = {};
+
+            // Legacy variables (array of {key, value, variable_type})
             if (variables && variables.length > 0) {
               body.variables = variables;
+            }
+
+            // Modern inputs (object with input_name: value) - GitLab 15.5+
+            if (inputs && Object.keys(inputs).length > 0) {
+              body.inputs = inputs;
             }
 
             const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/pipeline?${queryParams}`;

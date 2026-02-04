@@ -1,5 +1,11 @@
 import * as z from "zod";
-import { BrowseMergeRequestsSchema, BrowseMrDiscussionsSchema } from "./schema-readonly";
+import picomatch from "picomatch";
+import {
+  BrowseMergeRequestsSchema,
+  BrowseMrDiscussionsSchema,
+  LOCKFILE_PATTERNS,
+  GENERATED_PATTERNS,
+} from "./schema-readonly";
 import {
   ManageMergeRequestSchema,
   ManageMrDiscussionSchema,
@@ -230,7 +236,13 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
           case "diffs": {
             // TypeScript knows: input has project_id (required), merge_request_iid (required)
-            const { project_id, merge_request_iid } = input;
+            const {
+              project_id,
+              merge_request_iid,
+              exclude_patterns,
+              exclude_lockfiles,
+              exclude_generated,
+            } = input;
 
             const query: Record<string, number | boolean | undefined> = {};
             if (input.page !== undefined) query.page = input.page;
@@ -240,10 +252,46 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             if (input.include_rebase_in_progress !== undefined)
               query.include_rebase_in_progress = input.include_rebase_in_progress;
 
-            return gitlab.get(
+            const response = await gitlab.get<{
+              changes?: Array<{ new_path: string; old_path: string }>;
+              [key: string]: unknown;
+            }>(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/changes`,
               { query }
             );
+
+            // Build exclusion patterns list
+            const patterns: string[] = [];
+            if (exclude_patterns?.length) {
+              patterns.push(...exclude_patterns);
+            }
+            if (exclude_lockfiles) {
+              patterns.push(...LOCKFILE_PATTERNS);
+            }
+            if (exclude_generated) {
+              patterns.push(...GENERATED_PATTERNS);
+            }
+
+            // Apply filtering if patterns specified and changes array exists
+            if (patterns.length > 0 && Array.isArray(response.changes)) {
+              const originalCount = response.changes.length;
+              const matcher = picomatch(patterns);
+
+              response.changes = response.changes.filter(
+                (diff: { new_path: string; old_path: string }) =>
+                  !matcher(diff.new_path) && !matcher(diff.old_path)
+              );
+
+              // Add metadata about filtering
+              (response as Record<string, unknown>)._filtered = {
+                original_count: originalCount,
+                filtered_count: response.changes.length,
+                excluded_count: originalCount - response.changes.length,
+                patterns_applied: patterns,
+              };
+            }
+
+            return response;
           }
 
           case "compare": {

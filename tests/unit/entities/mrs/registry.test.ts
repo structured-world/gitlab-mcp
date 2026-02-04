@@ -2318,6 +2318,35 @@ describe("MRS Registry", () => {
 
         expect(result).toBeDefined();
       });
+
+      it("should reject get/diffs fields in versions action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using get/diffs shared fields with 'versions' action should fail
+        await expect(
+          tool.handler({
+            action: "versions",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            include_diverged_commits_count: true, // get/diffs field
+          })
+        ).rejects.toThrow("'include_diverged_commits_count' is not valid for 'versions' action");
+      });
+
+      it("should reject branch_name in version action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using branch_name with 'version' action should fail
+        await expect(
+          tool.handler({
+            action: "version",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            version_id: "123",
+            branch_name: "main", // get/diffs field
+          })
+        ).rejects.toThrow("'branch_name' is not valid for 'version' action");
+      });
     });
   });
 });

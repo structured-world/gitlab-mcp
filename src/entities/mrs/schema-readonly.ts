@@ -280,6 +280,12 @@ const compareOnlyFields = ["from", "to", "straight"];
 const getOnlyFields = ["merge_request_iid", "branch_name"];
 const versionOnlyFields = ["version_id"];
 const diffsOnlyFields = ["exclude_patterns", "exclude_lockfiles", "exclude_generated"];
+// Fields shared by get/diffs but invalid for versions/version actions
+const getAndDiffsSharedFields = [
+  "branch_name",
+  "include_diverged_commits_count",
+  "include_rebase_in_progress",
+];
 
 // Apply refinement for 'get' action validation and action-specific field validation
 export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
@@ -355,6 +361,19 @@ export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           message: `'${field}' is only valid for 'diffs' action`,
+          path: [field],
+        });
+      }
+    }
+  }
+
+  // Check for get/diffs shared fields used in versions/version actions
+  if (data.action === "versions" || data.action === "version") {
+    for (const field of getAndDiffsSharedFields) {
+      if (field in input && input[field] !== undefined) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `'${field}' is not valid for '${data.action}' action`,
           path: [field],
         });
       }

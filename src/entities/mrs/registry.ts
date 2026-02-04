@@ -179,7 +179,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: "browse_merge_requests",
       description:
-        "Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), diffs (file-level changes with inline suggestions), compare (diff between any two refs). Related: manage_merge_request to create/update/merge.",
+        "Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), diffs (file-level changes with inline suggestions), compare (diff between any two refs), versions (list diff versions from pushes), version (get specific version with diffs). Related: manage_merge_request to create/update/merge.",
       inputSchema: z.toJSONSchema(BrowseMergeRequestsSchema),
       gate: { envVar: "USE_MRS", defaultValue: true },
       handler: async (args: unknown) => {
@@ -307,6 +307,26 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             return gitlab.get(`projects/${normalizeProjectId(project_id)}/repository/compare`, {
               query,
             });
+          }
+
+          case "versions": {
+            // TypeScript knows: input has project_id (required), merge_request_iid (required)
+            const { action: _action, project_id, merge_request_iid, ...rest } = input;
+            const query = toQuery(rest, []);
+
+            return gitlab.get(
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/versions`,
+              { query }
+            );
+          }
+
+          case "version": {
+            // TypeScript knows: input has project_id (required), merge_request_iid (required), version_id (required)
+            const { project_id, merge_request_iid, version_id } = input;
+
+            return gitlab.get(
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/versions/${version_id}`
+            );
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

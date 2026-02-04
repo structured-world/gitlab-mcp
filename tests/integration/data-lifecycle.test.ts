@@ -165,6 +165,14 @@ describe("🔄 Data Lifecycle - Complete Infrastructure Setup", () => {
         { path: "src/main.js", content: "Y29uc29sZS5sb2coImhlbGxvIik=", message: "Add main.js" },
         { path: "docs/guide.md", content: "IyBHdWlkZQ==", message: "Add documentation" },
         { path: ".gitignore", content: "bm9kZV9tb2R1bGVzLw==", message: "Add gitignore" },
+        // CI config with spec.inputs for pipeline inputs testing (GitLab 15.5+)
+        // rules: when: manual - prevents auto-triggering pipelines on every commit
+        {
+          path: ".gitlab-ci.yml",
+          content:
+            "c3BlYzoKICBpbnB1dHM6CiAgICBlbnZpcm9ubWVudDoKICAgICAgdHlwZTogc3RyaW5nCiAgICAgIGRlZmF1bHQ6IHRlc3QKICAgIGRlYnVnOgogICAgICB0eXBlOiBib29sZWFuCiAgICAgIGRlZmF1bHQ6IGZhbHNlCiAgICBjb3VudDoKICAgICAgdHlwZTogbnVtYmVyCiAgICAgIGRlZmF1bHQ6IDEKCnRlc3Qtam9iOgogIHNjcmlwdDoKICAgIC0gZWNobyAiRW52aXJvbm1lbnQ6ICRbWyBpbnB1dHMuZW52aXJvbm1lbnQgXV0iCiAgICAtIGVjaG8gIkRlYnVnOiAkW1sgaW5wdXRzLmRlYnVnIF1dIgogICAgLSBlY2hvICJDb3VudDogJFtbIGlucHV0cy5jb3VudCBdXSIKICBydWxlczoKICAgIC0gd2hlbjogbWFudWFsCg==",
+          message: "Add CI config with inputs spec",
+        },
       ];
 
       for (const file of initialFiles) {

@@ -452,6 +452,8 @@ describe("MRS Registry", () => {
       expect(tool!.description).toContain("get");
       expect(tool!.description).toContain("diffs");
       expect(tool!.description).toContain("compare");
+      expect(tool!.description).toContain("versions");
+      expect(tool!.description).toMatch(/\bversion\b/);
       expect(tool!.inputSchema).toBeDefined();
     });
 
@@ -1047,6 +1049,94 @@ describe("MRS Registry", () => {
               to: "nonexistent",
             })
           ).rejects.toThrow("GitLab API error: 404 Error");
+        });
+      });
+
+      describe("action: versions", () => {
+        it("should list MR diff versions", async () => {
+          const mockVersions = [
+            { id: 1, head_commit_sha: "abc123", base_commit_sha: "def456" },
+            { id: 2, head_commit_sha: "ghi789", base_commit_sha: "def456" },
+          ];
+          mockGitlab.get.mockResolvedValueOnce(mockVersions);
+
+          const tool = mrsToolRegistry.get("browse_merge_requests")!;
+          const result = await tool.handler({
+            action: "versions",
+            project_id: "test/project",
+            merge_request_iid: 1,
+          });
+
+          expect(mockGitlab.get).toHaveBeenCalledWith(
+            "projects/test%2Fproject/merge_requests/1/versions",
+            expect.objectContaining({ query: expect.any(Object) })
+          );
+          expect(result).toEqual(mockVersions);
+        });
+
+        it("should list MR diff versions with pagination", async () => {
+          const mockVersions = [{ id: 1, head_commit_sha: "abc123" }];
+          mockGitlab.get.mockResolvedValueOnce(mockVersions);
+
+          const tool = mrsToolRegistry.get("browse_merge_requests")!;
+          const result = await tool.handler({
+            action: "versions",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            per_page: 10,
+            page: 2,
+          });
+
+          expect(mockGitlab.get).toHaveBeenCalledWith(
+            "projects/test%2Fproject/merge_requests/1/versions",
+            expect.objectContaining({
+              query: expect.objectContaining({ per_page: 10, page: 2 }),
+            })
+          );
+          expect(result).toEqual(mockVersions);
+        });
+      });
+
+      describe("action: version", () => {
+        it("should get specific MR diff version", async () => {
+          const mockVersion = {
+            id: 123,
+            head_commit_sha: "abc123",
+            base_commit_sha: "def456",
+            diffs: [{ old_path: "file.ts", new_path: "file.ts", diff: "@@ -1,5 +1,5 @@" }],
+          };
+          mockGitlab.get.mockResolvedValueOnce(mockVersion);
+
+          const tool = mrsToolRegistry.get("browse_merge_requests")!;
+          const result = await tool.handler({
+            action: "version",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            version_id: "123",
+          });
+
+          expect(mockGitlab.get).toHaveBeenCalledWith(
+            "projects/test%2Fproject/merge_requests/1/versions/123"
+          );
+          expect(result).toEqual(mockVersion);
+        });
+
+        it("should handle numeric version_id", async () => {
+          const mockVersion = { id: 456, head_commit_sha: "xyz789", diffs: [] };
+          mockGitlab.get.mockResolvedValueOnce(mockVersion);
+
+          const tool = mrsToolRegistry.get("browse_merge_requests")!;
+          const result = await tool.handler({
+            action: "version",
+            project_id: "test/project",
+            merge_request_iid: 42,
+            version_id: 456,
+          });
+
+          expect(mockGitlab.get).toHaveBeenCalledWith(
+            "projects/test%2Fproject/merge_requests/42/versions/456"
+          );
+          expect(result).toEqual(mockVersion);
         });
       });
     });
@@ -2199,6 +2289,63 @@ describe("MRS Registry", () => {
         });
 
         expect(result).toBeDefined();
+      });
+
+      it("should reject version_id in non-version actions", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using 'version_id' (version-only field) with 'list' action should fail
+        await expect(
+          tool.handler({
+            action: "list",
+            project_id: "test/project",
+            version_id: "123", // version-only field
+          })
+        ).rejects.toThrow();
+      });
+
+      it("should accept version_id in version action", async () => {
+        mockGitlab.get.mockResolvedValueOnce({ id: 123, diffs: [] });
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // version action with version_id should work
+        const result = await tool.handler({
+          action: "version",
+          project_id: "test/project",
+          merge_request_iid: 1,
+          version_id: "123",
+        });
+
+        expect(result).toBeDefined();
+      });
+
+      it("should reject get/diffs fields in versions action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using get/diffs shared fields with 'versions' action should fail
+        await expect(
+          tool.handler({
+            action: "versions",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            include_diverged_commits_count: true, // get/diffs field
+          })
+        ).rejects.toThrow(/include_diverged_commits_count.*not valid/);
+      });
+
+      it("should reject branch_name in version action", async () => {
+        const tool = mrsToolRegistry.get("browse_merge_requests")!;
+
+        // Using branch_name with 'version' action should fail
+        await expect(
+          tool.handler({
+            action: "version",
+            project_id: "test/project",
+            merge_request_iid: 1,
+            version_id: "123",
+            branch_name: "main", // get/diffs field
+          })
+        ).rejects.toThrow(/branch_name.*not valid/);
       });
     });
   });

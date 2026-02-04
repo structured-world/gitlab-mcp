@@ -8,7 +8,7 @@
     "diff": "4.0.4",
     "esbuild": ">=0.25.0"
   },
-  "version": "6.52.0",
+  "version": "6.53.0",
   "description": "MCP server for using the GitLab API",
   "mcp": {
     "name": "GitLab MCP Server",
@@ -473,7 +473,7 @@
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
     "@types/node": "^24.10.9",
-    "@types/picomatch": "^4.0.0",
+    "@types/picomatch": "^4.0.2",
     "@typescript-eslint/eslint-plugin": "^8.54.0",
     "@typescript-eslint/parser": "^8.54.0",
     "auto-changelog": "^2.5.0",

@@ -77,6 +77,23 @@ Find and inspect merge requests.
 }
 ```
 
+```json [List MR versions]
+{
+  "action": "versions",
+  "project_id": "my-org/api",
+  "merge_request_iid": "42"
+}
+```
+
+```json [Get specific version]
+{
+  "action": "version",
+  "project_id": "my-org/api",
+  "merge_request_iid": "42",
+  "version_id": "123"
+}
+```
+
 :::
 
 ### Key Filters for `list`

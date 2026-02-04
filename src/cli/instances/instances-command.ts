@@ -345,9 +345,7 @@ async function showInstanceInfo(url?: string): Promise<void> {
   console.log("\nConfiguration:");
   console.log(`  URL: ${config.url}`);
   console.log(`  Label: ${config.label ?? "(none)"}`);
-  console.log(
-    `  OAuth: ${config.oauth ? `Enabled (client: ${config.oauth.clientId})` : "Disabled"}`
-  );
+  console.log(`  OAuth: ${config.oauth ? "Enabled (client configured)" : "Disabled"}`);
   console.log(`  TLS Verify: ${config.insecureSkipVerify ? "Disabled" : "Enabled"}`);
 
   if (config.rateLimit) {
@@ -385,7 +383,30 @@ async function showInstanceInfo(url?: string): Promise<void> {
  */
 function showSampleConfig(format?: "yaml" | "json"): void {
   const fmt = format ?? "yaml";
-  const config = generateSampleConfig(fmt);
+  let config = generateSampleConfig(fmt);
+
+  // Avoid logging sensitive fields (such as OAuth client secrets) in clear text
+  if (fmt === "json") {
+    try {
+      const parsed = JSON.parse(config) as {
+        instances?: Array<{
+          oauth?: { clientSecret?: string };
+        }>;
+      };
+
+      if (parsed && Array.isArray(parsed.instances)) {
+        for (const instance of parsed.instances) {
+          if (instance?.oauth?.clientSecret) {
+            instance.oauth.clientSecret = "***masked***";
+          }
+        }
+      }
+
+      config = JSON.stringify(parsed, null, 2);
+    } catch {
+      // If parsing fails, fall back to the original string to avoid breaking functionality
+    }
+  }
 
   console.log(`\nSample ${fmt.toUpperCase()} Configuration:`);
   console.log(`─`.repeat(60));

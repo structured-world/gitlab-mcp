@@ -469,6 +469,8 @@ export class ContextManager {
       await connectionManager.reinitialize(instanceUrl);
 
       // Clear current scope (invalid for new instance)
+      // Order is intentional: reinit completes first ensuring new instance is ready,
+      // then we clear old scope references that are no longer valid
       this.currentScope = null;
       this.currentScopeEnforcer = null;
 

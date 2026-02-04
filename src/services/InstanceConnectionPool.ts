@@ -153,6 +153,8 @@ export class InstanceConnectionPool {
     entry.lastUsedAt = new Date();
 
     // Update auth headers if provided (for OAuth per-request tokens)
+    // Note: setHeaders is safe here because each OAuth session uses unique tokens
+    // and GraphQL requests are serialized per-session via MCP protocol
     if (authHeaders) {
       entry.graphqlClient.setHeaders(authHeaders);
     }
@@ -179,6 +181,10 @@ export class InstanceConnectionPool {
 
   /**
    * Get pool statistics for all instances
+   *
+   * Note: Pool stats are available even though enhancedFetch doesn't yet use
+   * the Undici dispatcher. The pool infrastructure is in place for future
+   * HTTP/2 integration with REST endpoints.
    */
   public getStats(): PoolStats[] {
     return Array.from(this.pools.values()).map(entry => ({

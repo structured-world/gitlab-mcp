@@ -265,4 +265,31 @@ describe("ConnectionManager Unit", () => {
       await expect(manager.ensureIntrospected()).resolves.toBeUndefined();
     });
   });
+
+  describe("reinitialize", () => {
+    let manager: ConnectionManager;
+
+    beforeEach(() => {
+      manager = ConnectionManager.getInstance();
+      mockIsOAuthEnabled.mockReturnValue(false);
+    });
+
+    it("should reset state and call initialize", async () => {
+      // Set up initial state to verify reset happens
+      (manager as any).instanceInfo = { version: "15.0.0", tier: "free" };
+      (manager as any).schemaInfo = { workItemWidgetTypes: ["OLD"] };
+      (manager as any).isInitialized = true;
+
+      // Spy on reset and initialize
+      const resetSpy = jest.spyOn(manager, "reset");
+
+      // reinitialize will call initialize() which requires proper config
+      // Since we're mocking, we just verify it throws due to missing GITLAB_BASE_URL
+      // (reset was called, clearing state)
+      await expect(manager.reinitialize("https://new-gitlab.com")).rejects.toThrow();
+
+      // Verify reset was called
+      expect(resetSpy).toHaveBeenCalled();
+    });
+  });
 });

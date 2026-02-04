@@ -413,6 +413,88 @@ export class ContextManager {
   getCurrentPresetName(): string | null {
     return this.currentPresetName;
   }
+
+  /**
+   * Switch to a different GitLab instance
+   *
+   * IMPORTANT: In OAuth mode, instance switching is BLOCKED because
+   * the session is tied to a specific instance. Users must re-authenticate
+   * to use a different instance.
+   *
+   * In static token mode, switching is allowed and triggers:
+   * 1. Re-introspection for the new instance
+   * 2. Clearing namespace tier cache
+   * 3. Tool re-validation against new schema
+   */
+  async switchInstance(instanceUrl: string): Promise<SwitchResult> {
+    // Block instance switching in OAuth mode
+    if (isOAuthMode()) {
+      throw new Error(
+        "Cannot switch instances in OAuth mode. " +
+          "Please re-authenticate with the desired GitLab instance."
+      );
+    }
+
+    // Import dynamically to avoid circular dependencies
+    const { InstanceRegistry } = await import("../../services/InstanceRegistry.js");
+    const { clearNamespaceTierCache } = await import("../../services/NamespaceTierDetector.js");
+    const { ConnectionManager } = await import("../../services/ConnectionManager.js");
+
+    const registry = InstanceRegistry.getInstance();
+
+    // Ensure registry is initialized from config before accessing instances
+    if (!registry.isInitialized()) {
+      await registry.initialize();
+    }
+
+    const instance = registry.get(instanceUrl);
+
+    if (!instance) {
+      throw new Error(
+        `Instance not configured: ${instanceUrl}. ` +
+          "Use 'instances list' to see configured instances."
+      );
+    }
+
+    // Get previous URL from ConnectionManager (tracks actual current instance)
+    const connectionManager = ConnectionManager.getInstance();
+    const previousUrl = connectionManager.getCurrentInstanceUrl() ?? GITLAB_BASE_URL;
+
+    try {
+      // Clear namespace tier cache (invalid for new instance)
+      clearNamespaceTierCache();
+
+      // Re-initialize ConnectionManager for new instance
+      // This will trigger re-introspection
+      await connectionManager.reinitialize(instanceUrl);
+
+      // Clear current scope (invalid for new instance)
+      // Order is intentional: reinit completes first ensuring new instance is ready,
+      // then we clear old scope references that are no longer valid
+      this.currentScope = null;
+      this.currentScopeEnforcer = null;
+
+      logInfo("Switched GitLab instance", {
+        previous: previousUrl,
+        current: instanceUrl,
+        label: instance.config.label,
+      });
+
+      // Notify clients that tool list may have changed
+      await sendToolsListChangedNotification();
+
+      return {
+        success: true,
+        previous: previousUrl,
+        current: instanceUrl,
+        message: `Switched to instance '${instance.config.label ?? instanceUrl}'`,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      logError("Failed to switch instance", { error: message, instanceUrl });
+      throw new Error(`Failed to switch to instance '${instanceUrl}': ${message}`);
+    }
+  }
 }
 
 // Export convenience function

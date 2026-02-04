@@ -34,6 +34,8 @@ interface PrismaOAuthSessionRow {
   gitlabTokenExpiry: bigint;
   gitlabUserId: number;
   gitlabUsername: string;
+  gitlabApiUrl: string | null;
+  instanceLabel: string | null;
   clientId: string;
   scopes: string[];
   createdAt: bigint;
@@ -188,6 +190,8 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         gitlabTokenExpiry: BigInt(session.gitlabTokenExpiry),
         gitlabUserId: session.gitlabUserId,
         gitlabUsername: session.gitlabUsername,
+        gitlabApiUrl: session.gitlabApiUrl,
+        instanceLabel: session.instanceLabel,
         clientId: session.clientId,
         scopes: session.scopes,
         createdAt: BigInt(session.createdAt),
@@ -287,6 +291,8 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       gitlabTokenExpiry: Number(row.gitlabTokenExpiry),
       gitlabUserId: row.gitlabUserId,
       gitlabUsername: row.gitlabUsername,
+      gitlabApiUrl: row.gitlabApiUrl ?? undefined,
+      instanceLabel: row.instanceLabel ?? undefined,
       clientId: row.clientId,
       scopes: row.scopes,
       createdAt: Number(row.createdAt),

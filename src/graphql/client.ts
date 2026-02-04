@@ -9,12 +9,28 @@ export interface GraphQLClientOptions {
 }
 
 export class GraphQLClient {
-  public readonly endpoint: string;
+  private _endpoint: string;
   private defaultHeaders: Record<string, string>;
 
   constructor(endpoint: string, options?: { headers?: Record<string, string> }) {
-    this.endpoint = endpoint;
+    this._endpoint = endpoint;
     this.defaultHeaders = options?.headers ?? {};
+  }
+
+  public get endpoint(): string {
+    return this._endpoint;
+  }
+
+  /**
+   * Update the GraphQL endpoint.
+   *
+   * @deprecated Since multi-instance support (v1.x), prefer using per-instance
+   * clients via InstanceConnectionPool.getGraphQLClient() instead of mutating
+   * a shared client. This avoids race conditions in concurrent async scenarios.
+   * Kept for backward compatibility with legacy single-instance usage.
+   */
+  public setEndpoint(endpoint: string): void {
+    this._endpoint = endpoint;
   }
 
   async request<TResult = unknown, TVariables = Record<string, unknown>>(

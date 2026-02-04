@@ -5,10 +5,12 @@
 
 import { ConnectionManager } from "../../../src/services/ConnectionManager";
 
-// Mock isOAuthEnabled to avoid OAuth config validation in tests
+// Mock isOAuthEnabled and getGitLabApiUrlFromContext
 const mockIsOAuthEnabled = jest.fn();
+const mockGetGitLabApiUrlFromContext = jest.fn();
 jest.mock("../../../src/oauth/index.js", () => ({
   isOAuthEnabled: () => mockIsOAuthEnabled(),
+  getGitLabApiUrlFromContext: () => mockGetGitLabApiUrlFromContext(),
 }));
 
 // Mock detectTokenScopes for testing scope refresh
@@ -253,16 +255,47 @@ describe("ConnectionManager Unit", () => {
       );
     });
 
-    it("should return early if already introspected", async () => {
-      // Simulate introspected state
+    it("should return early if already introspected for same instance", async () => {
+      // Mock context to return specific instance URL
+      mockGetGitLabApiUrlFromContext.mockReturnValue("https://gitlab.example.com");
+
+      // Simulate introspected state for the same instance
       (manager as any).instanceInfo = { version: "16.0.0", tier: "premium" };
       (manager as any).schemaInfo = { workItemWidgetTypes: [] };
+      (manager as any).introspectedInstanceUrl = "https://gitlab.example.com";
       (manager as any).client = {};
       (manager as any).versionDetector = {};
       (manager as any).schemaIntrospector = {};
 
-      // Should not throw and return quickly
+      // Should not throw and return quickly (same instance)
       await expect(manager.ensureIntrospected()).resolves.toBeUndefined();
+    });
+  });
+
+  describe("reinitialize", () => {
+    let manager: ConnectionManager;
+
+    beforeEach(() => {
+      manager = ConnectionManager.getInstance();
+      mockIsOAuthEnabled.mockReturnValue(false);
+    });
+
+    it("should reset state and call initialize", async () => {
+      // Set up initial state to verify reset happens
+      (manager as any).instanceInfo = { version: "15.0.0", tier: "free" };
+      (manager as any).schemaInfo = { workItemWidgetTypes: ["OLD"] };
+      (manager as any).isInitialized = true;
+
+      // Spy on reset and initialize
+      const resetSpy = jest.spyOn(manager, "reset");
+
+      // reinitialize will call initialize() which requires proper config
+      // Since we're mocking, we just verify it throws due to missing GITLAB_BASE_URL
+      // (reset was called, clearing state)
+      await expect(manager.reinitialize("https://new-gitlab.com")).rejects.toThrow();
+
+      // Verify reset was called
+      expect(resetSpy).toHaveBeenCalled();
     });
   });
 });

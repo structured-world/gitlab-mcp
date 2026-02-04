@@ -63,6 +63,8 @@ export {
   getGitLabUserIdFromContext,
   getGitLabUsernameFromContext,
   getSessionIdFromContext,
+  getGitLabApiUrlFromContext,
+  getInstanceLabelFromContext,
   isInOAuthContext,
 } from "./token-context";
 

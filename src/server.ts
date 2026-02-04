@@ -17,6 +17,7 @@ import {
   SSE_HEARTBEAT_MS,
   HTTP_KEEPALIVE_TIMEOUT_MS,
   LOG_FORMAT,
+  GITLAB_BASE_URL,
 } from "./config";
 import { TransportMode } from "./types";
 import { logInfo, logError, logDebug } from "./logger";
@@ -531,6 +532,8 @@ export async function startServer(): Promise<void> {
         const gitlabToken = res.locals.gitlabToken as string | undefined;
         const gitlabUserId = res.locals.gitlabUserId as number | undefined;
         const gitlabUsername = res.locals.gitlabUsername as string | undefined;
+        const gitlabApiUrl = res.locals.gitlabApiUrl as string | undefined;
+        const instanceLabel = res.locals.instanceLabel as string | undefined;
 
         // Get full request context for logging (verbose mode)
         if (!useCondensedLogging) {
@@ -556,6 +559,8 @@ export async function startServer(): Promise<void> {
                   gitlabUserId,
                   gitlabUsername,
                   sessionId: oauthSessionId,
+                  apiUrl: gitlabApiUrl ?? GITLAB_BASE_URL,
+                  instanceLabel,
                 },
                 async () => {
                   await transport.handleRequest(req, res, req.body);

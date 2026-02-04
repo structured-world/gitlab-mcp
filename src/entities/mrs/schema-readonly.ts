@@ -34,7 +34,7 @@ export const LOCKFILE_PATTERNS = [
 /**
  * Common generated/build output patterns that are compiled or minified.
  * These files are machine-generated and shouldn't need code review.
- * Note: patterns use double-star prefix to match files anywhere in the tree.
+ * Directory patterns match at repo root; extension patterns match anywhere.
  */
 export const GENERATED_PATTERNS = [
   "dist/**",

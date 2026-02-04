@@ -282,8 +282,8 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
                   !matcher(diff.new_path) && !matcher(diff.old_path)
               );
 
-              // Add metadata about filtering
-              (response as Record<string, unknown>)._filtered = {
+              // Add metadata about filtering (response type already has index signature)
+              response._filtered = {
                 original_count: originalCount,
                 filtered_count: response.changes.length,
                 excluded_count: originalCount - response.changes.length,

@@ -23,6 +23,7 @@ import {
   DEFAULT_HEADERS,
   resetDispatcherCache,
 } from "../../../src/utils/fetch";
+import { InstanceRegistry } from "../../../src/services/InstanceRegistry";
 
 // Mock global fetch
 const mockFetch = jest.fn();
@@ -492,6 +493,134 @@ describe("Fetch Utils Coverage Tests", () => {
       // Second call should reinitialize (not use cached)
       const options = createFetchOptions();
       expect(typeof options).toBe("object");
+    });
+  });
+
+  describe("per-instance dispatcher integration", () => {
+    beforeEach(async () => {
+      // Reset InstanceRegistry to ensure clean state for each test
+      await InstanceRegistry.getInstance().resetWithPools();
+    });
+
+    it("should get dispatcher from registry when initialized", async () => {
+      // Initialize registry (this sets isInitialized to true)
+      const registry = InstanceRegistry.getInstance();
+      await registry.initialize(); // This makes isInitialized() return true
+
+      // Register additional test instance
+      registry.register({
+        url: "https://gitlab.example.com",
+        insecureSkipVerify: false,
+      });
+
+      // Create pool by getting GraphQL client (initializes connection pool)
+      registry.getGraphQLClient("https://gitlab.example.com");
+
+      // Verify dispatcher is available
+      const dispatcher = registry.getDispatcher("https://gitlab.example.com");
+      expect(dispatcher).toBeDefined();
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({}),
+        headers: new Headers(),
+      });
+
+      // Make request to the registered instance
+      // This should hit the registry.isInitialized() === true path (lines 718-724)
+      await enhancedFetch("https://gitlab.example.com/api/v4/projects", {
+        retry: false,
+        rateLimit: false,
+      });
+
+      // Verify fetch was called
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    it("should proceed without dispatcher for unregistered instance", async () => {
+      const registry = InstanceRegistry.getInstance();
+      await registry.initialize(); // Make isInitialized() return true
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({}),
+        headers: new Headers(),
+      });
+
+      // Make request to instance without pool - dispatcher will be undefined
+      // but isInitialized() is true so the code path is covered
+      await enhancedFetch("https://other.gitlab.com/api/v4/projects", {
+        retry: false,
+        rateLimit: false,
+      });
+
+      // Fetch should still be called (uses global dispatcher as fallback)
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    it("should acquire rate limit slot when registry initialized and rate limiting enabled", async () => {
+      const registry = InstanceRegistry.getInstance();
+      await registry.initialize(); // Make isInitialized() return true
+
+      // Register instance with rate limiting
+      registry.register({
+        url: "https://custom.gitlab.com",
+        rateLimit: {
+          maxConcurrent: 10,
+          queueSize: 5,
+          queueTimeout: 1000,
+        },
+        insecureSkipVerify: false,
+      });
+
+      // Initialize pool
+      registry.getGraphQLClient("https://custom.gitlab.com");
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({}),
+        headers: new Headers(),
+      });
+
+      // Make request with rate limiting enabled - covers the acquireSlot path (lines 726-734)
+      await enhancedFetch("https://custom.gitlab.com/api/v4/projects", {
+        retry: false,
+        rateLimit: true,
+      });
+
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    it("should use rateLimitBaseUrl option when provided", async () => {
+      const { InstanceRegistry } = await import("../../../src/services/InstanceRegistry");
+      const registry = InstanceRegistry.getInstance();
+      await registry.initialize();
+
+      registry.register({
+        url: "https://custom.gitlab.com",
+        insecureSkipVerify: false,
+      });
+
+      registry.getGraphQLClient("https://custom.gitlab.com");
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({}),
+        headers: new Headers(),
+      });
+
+      // Use rateLimitBaseUrl option to override URL extraction
+      await enhancedFetch("https://someproxy.com/api/v4/projects", {
+        retry: false,
+        rateLimit: false,
+        rateLimitBaseUrl: "https://custom.gitlab.com",
+      });
+
+      expect(mockFetch).toHaveBeenCalled();
     });
   });
 });

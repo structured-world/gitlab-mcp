@@ -578,6 +578,26 @@ describe("InstanceRegistry", () => {
     });
   });
 
+  describe("getDispatcher", () => {
+    it("should return undefined for unregistered instance", () => {
+      const dispatcher = registry.getDispatcher("https://unknown.gitlab.com");
+      expect(dispatcher).toBeUndefined();
+    });
+
+    it("should return dispatcher for registered instance with pool", () => {
+      registry.register({
+        url: "https://gitlab.com",
+        insecureSkipVerify: false,
+      });
+
+      // Create pool by getting GraphQL client
+      registry.getGraphQLClient("https://gitlab.com");
+
+      const dispatcher = registry.getDispatcher("https://gitlab.com");
+      expect(dispatcher).toBeDefined();
+    });
+  });
+
   describe("resetWithPools", () => {
     it("should reset registry and destroy connection pools", async () => {
       registry.register({

@@ -113,6 +113,36 @@ Responsibilities:
 - Rate limiter management per instance
 - Connection health tracking
 
+### InstanceConnectionPool
+
+Per-instance HTTP/2 connection pooling:
+
+```typescript
+class InstanceConnectionPool {
+  // Get or create GraphQL client for an instance
+  getGraphQLClient(
+    instanceConfig: GitLabInstanceConfig,
+    authHeaders?: Record<string, string>
+  ): GraphQLClient;
+
+  // Get Undici pool dispatcher for enhancedFetch
+  getDispatcher(baseUrl: string): UndiciPool | undefined;
+}
+```
+
+Features:
+- Undici Pool with HTTP/2 multiplexing and keepalive
+- Per-instance TLS configuration (insecureSkipVerify)
+- Connection reuse across requests (30s keepalive, 5min max)
+- Pool statistics for monitoring (connected, free, pending, running)
+
+Integration with `enhancedFetch`:
+```typescript
+// In enhancedFetch(), per-instance dispatcher is obtained and passed to doFetch
+const instanceDispatcher = registry.getDispatcher(baseUrl);
+await doFetch(url, options, instanceDispatcher);
+```
+
 ### InstanceRateLimiter
 
 Per-instance concurrent request limiting:
@@ -193,6 +223,13 @@ The `apiUrl` is used by `enhancedFetch` to route requests to the correct instanc
                                                  │
                                                  ▼
                                           ┌──────────────┐
+                                          │  Connection  │
+                                          │     Pool     │
+                                          │   (HTTP/2)   │
+                                          └──────────────┘
+                                                 │
+                                                 ▼
+                                          ┌──────────────┐
                                           │   GitLab     │
                                           │     API      │
                                           └──────────────┘
@@ -200,9 +237,10 @@ The `apiUrl` is used by `enhancedFetch` to route requests to the correct instanc
 
 1. Tool calls `enhancedFetch()`
 2. `TokenContext` provides `apiUrl` for the current session
-3. `InstanceRegistry` provides rate limiter for that instance
-4. Request is queued/executed according to rate limits
-5. Response flows back through the chain
+3. `InstanceRegistry` provides rate limiter and HTTP/2 dispatcher for that instance
+4. `InstanceConnectionPool` provides per-instance Undici Pool with keepalive
+5. Request is executed with connection reuse and multiplexing
+6. Response flows back through the chain
 
 ## Session Isolation
 

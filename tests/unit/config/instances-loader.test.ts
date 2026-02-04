@@ -122,6 +122,66 @@ describe("Instance Configuration Loader", () => {
 
         expect(result.instances[0].url).toBe("https://gitlab.com");
       });
+
+      it("should load YAML configuration file (.yaml extension)", async () => {
+        // Tests YAML file loading via dynamic import
+        process.env.GITLAB_INSTANCES_FILE = "/config/instances.yaml";
+
+        const yamlContent = `
+instances:
+  - url: https://gitlab.com
+    label: GitLab.com
+  - url: https://git.corp.io
+    label: Corporate
+`;
+
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.readFileSync.mockReturnValue(yamlContent);
+
+        const result = await loadInstancesConfig();
+
+        expect(result.source).toBe("file");
+        expect(result.instances).toHaveLength(2);
+        expect(result.instances[0].url).toBe("https://gitlab.com");
+        expect(result.instances[0].label).toBe("GitLab.com");
+        expect(result.instances[1].url).toBe("https://git.corp.io");
+      });
+
+      it("should load YAML configuration file (.yml extension)", async () => {
+        // Tests YAML file loading with .yml extension
+        process.env.GITLAB_INSTANCES_FILE = "/config/instances.yml";
+
+        const yamlContent = `
+instances:
+  - url: https://gitlab.com
+`;
+
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.readFileSync.mockReturnValue(yamlContent);
+
+        const result = await loadInstancesConfig();
+
+        expect(result.instances[0].url).toBe("https://gitlab.com");
+      });
+
+      it("should detect YAML format from content when extension missing", async () => {
+        // Tests YAML detection for files without extension (content doesn't start with {)
+        process.env.GITLAB_INSTANCES_FILE = "/config/instances";
+
+        const yamlContent = `
+instances:
+  - url: https://gitlab.com
+    label: From YAML
+`;
+
+        mockFs.existsSync.mockReturnValue(true);
+        mockFs.readFileSync.mockReturnValue(yamlContent);
+
+        const result = await loadInstancesConfig();
+
+        expect(result.instances[0].url).toBe("https://gitlab.com");
+        expect(result.instances[0].label).toBe("From YAML");
+      });
     });
 
     describe("Priority 2: Environment variable (GITLAB_INSTANCES)", () => {
@@ -191,6 +251,32 @@ describe("Instance Configuration Loader", () => {
         process.env.GITLAB_INSTANCES = "{invalid json}";
 
         await expect(loadInstancesConfig()).rejects.toThrow();
+      });
+
+      it("should parse space-separated URLs", async () => {
+        // Tests parsing of multiple URLs separated by whitespace (not bash array syntax)
+        process.env.GITLAB_INSTANCES =
+          "https://gitlab.com https://git.corp.io   https://gl.dev.net";
+
+        const result = await loadInstancesConfig();
+
+        expect(result.instances).toHaveLength(3);
+        expect(result.instances[0].url).toBe("https://gitlab.com");
+        expect(result.instances[1].url).toBe("https://git.corp.io");
+        expect(result.instances[2].url).toBe("https://gl.dev.net");
+      });
+
+      it("should parse space-separated URLs with OAuth credentials", async () => {
+        // Tests space-separated format with inline OAuth config
+        process.env.GITLAB_INSTANCES =
+          "https://gitlab.com:app_123 https://git.corp.io:app_456:secret";
+
+        const result = await loadInstancesConfig();
+
+        expect(result.instances).toHaveLength(2);
+        expect(result.instances[0].oauth?.clientId).toBe("app_123");
+        expect(result.instances[1].oauth?.clientId).toBe("app_456");
+        expect(result.instances[1].oauth?.clientSecret).toBe("secret");
       });
     });
 

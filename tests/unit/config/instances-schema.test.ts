@@ -173,6 +173,20 @@ describe("Instance Configuration Schemas", () => {
     it("should throw on invalid URL format", () => {
       expect(() => parseInstanceUrlString("not-a-url")).toThrow();
     });
+
+    it("should treat number > 65535 as OAuth client ID, not port", () => {
+      // Numbers larger than valid port range (1-65535) should be treated as OAuth client IDs
+      const result = parseInstanceUrlString("https://gitlab.com:123456789");
+      expect(result.url).toBe("https://gitlab.com");
+      expect(result.oauth?.clientId).toBe("123456789");
+    });
+
+    it("should parse URL with large numeric client ID and secret", () => {
+      const result = parseInstanceUrlString("https://gitlab.com:999999999:mysecret");
+      expect(result.url).toBe("https://gitlab.com");
+      expect(result.oauth?.clientId).toBe("999999999");
+      expect(result.oauth?.clientSecret).toBe("mysecret");
+    });
   });
 
   describe("validateInstancesConfig", () => {
@@ -245,6 +259,50 @@ describe("Instance Configuration Schemas", () => {
 
       const result = applyInstanceDefaults(instance, defaults);
       expect(result.rateLimit?.maxConcurrent).toBe(50);
+    });
+
+    it("should apply OAuth scope defaults when instance has oauth but no scopes", () => {
+      // Instance has oauth config but scopes will have default from schema
+      // This tests the edge case where oauth.scopes might be empty string
+      const instance: GitLabInstanceConfig = {
+        url: "https://gitlab.com",
+        oauth: {
+          clientId: "app_123",
+          scopes: "", // Empty scopes
+        },
+        insecureSkipVerify: false,
+      };
+
+      const defaults: InstanceDefaults = {
+        oauth: {
+          scopes: "api read_user",
+        },
+      };
+
+      const result = applyInstanceDefaults(instance, defaults);
+      // Empty string is falsy, so defaults should apply
+      expect(result.oauth?.scopes).toBe("api read_user");
+    });
+
+    it("should not override existing OAuth scopes with defaults", () => {
+      const instance: GitLabInstanceConfig = {
+        url: "https://gitlab.com",
+        oauth: {
+          clientId: "app_123",
+          scopes: "api",
+        },
+        insecureSkipVerify: false,
+      };
+
+      const defaults: InstanceDefaults = {
+        oauth: {
+          scopes: "api read_user write_repository",
+        },
+      };
+
+      const result = applyInstanceDefaults(instance, defaults);
+      // Existing scopes should be preserved
+      expect(result.oauth?.scopes).toBe("api");
     });
   });
 });

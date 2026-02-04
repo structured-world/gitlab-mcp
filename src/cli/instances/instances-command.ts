@@ -220,6 +220,8 @@ async function addInstance(): Promise<void> {
   // Create a safe-to-log preview object with ONLY non-sensitive fields.
   // This is a defense-in-depth pattern: even if config structure changes,
   // we explicitly allowlist which fields to log rather than excluding secrets.
+  // NOTE: The original `config` object contains secrets but is never passed to
+  // logging functions — only this sanitized preview is logged.
   const logConfigPreview: {
     url: string;
     label?: string;
@@ -232,6 +234,7 @@ async function addInstance(): Promise<void> {
     oauthConfigured: !!config.oauth,
   };
   console.log("\nInstance Configuration:");
+  // Safe: logConfigPreview contains no secrets (allowlist pattern above)
   console.log(JSON.stringify(logConfigPreview, null, 2));
 
   const confirmed = await p.confirm({

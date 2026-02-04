@@ -260,7 +260,9 @@ export function parseInstanceUrlString(urlString: string): GitLabInstanceConfig 
     }
   }
 
-  // If we still don't have a base URL, the input is invalid
+  // If we still don't have a base URL, the input is invalid.
+  // The multi-strategy parsing above handles: plain URLs, URL:clientId, URL:clientId:secret.
+  // This complexity is intentional to support flexible env var formats.
   if (!baseUrlString) {
     throw new Error(`Invalid GitLab instance URL format: ${urlString}`);
   }

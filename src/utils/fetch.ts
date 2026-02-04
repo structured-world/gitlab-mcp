@@ -741,6 +741,7 @@ export async function enhancedFetch(
       // new requests from being queued while we're already at the rate limit.
       // Trade-off: slightly reduced throughput under retry conditions, but better
       // protection against overwhelming the GitLab instance with concurrent retries.
+      // Alternative (release during backoff) risks thundering herd when retries complete.
       releaseSlot = await registry.acquireSlot(baseUrl);
     }
   }

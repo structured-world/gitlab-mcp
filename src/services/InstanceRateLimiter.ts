@@ -106,7 +106,7 @@ export class InstanceRateLimiter {
         active: this.activeRequests,
         max: this.config.maxConcurrent,
       });
-      return () => this.release();
+      return this.createIdempotentRelease();
     }
 
     // Check queue capacity
@@ -183,8 +183,24 @@ export class InstanceRateLimiter {
       });
 
       this.activeRequests++;
-      next.resolve(() => this.release());
+      next.resolve(this.createIdempotentRelease());
     }
+  }
+
+  /**
+   * Create an idempotent release function that can only be called once.
+   * Prevents double-release from corrupting activeRequests counter.
+   */
+  private createIdempotentRelease(): () => void {
+    let released = false;
+    return () => {
+      if (released) {
+        logWarn("Rate limiter: release() called multiple times, ignoring");
+        return;
+      }
+      released = true;
+      this.release();
+    };
   }
 
   /**

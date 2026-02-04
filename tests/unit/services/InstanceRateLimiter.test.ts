@@ -258,4 +258,47 @@ describe("InstanceRateLimiter", () => {
       expect(metrics.avgQueueWaitMs).toBe(0);
     });
   });
+
+  describe("idempotent release", () => {
+    it("should ignore multiple release() calls", async () => {
+      const limiter = new InstanceRateLimiter({ maxConcurrent: 2 });
+
+      const release = await limiter.acquire();
+      expect(limiter.getMetrics().activeRequests).toBe(1);
+
+      // First release - should work
+      release();
+      expect(limiter.getMetrics().activeRequests).toBe(0);
+
+      // Second release - should be ignored, not go negative
+      release();
+      expect(limiter.getMetrics().activeRequests).toBe(0);
+
+      // Third release - still ignored
+      release();
+      expect(limiter.getMetrics().activeRequests).toBe(0);
+    });
+
+    it("should handle double release on queued requests", async () => {
+      const limiter = new InstanceRateLimiter({ maxConcurrent: 1 });
+
+      // Fill the slot
+      const release1 = await limiter.acquire();
+      expect(limiter.getMetrics().activeRequests).toBe(1);
+
+      // Queue a request
+      const pendingAcquire = limiter.acquire();
+
+      // Release first slot - queued request should get it
+      release1();
+
+      const release2 = await pendingAcquire;
+      expect(limiter.getMetrics().activeRequests).toBe(1);
+
+      // Double release on second slot - should only decrement once
+      release2();
+      release2();
+      expect(limiter.getMetrics().activeRequests).toBe(0);
+    });
+  });
 });

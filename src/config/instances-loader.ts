@@ -225,6 +225,9 @@ export async function loadInstancesConfig(): Promise<LoadedInstancesConfig> {
     if (normalizedUrl.endsWith("/api/v4")) {
       normalizedUrl = normalizedUrl.slice(0, -7);
     }
+    if (normalizedUrl.endsWith("/api/graphql")) {
+      normalizedUrl = normalizedUrl.slice(0, -12);
+    }
 
     const instance: GitLabInstanceConfig = {
       url: normalizedUrl,

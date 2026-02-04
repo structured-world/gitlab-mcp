@@ -505,10 +505,12 @@ export class ConnectionManager {
     const registry = InstanceRegistry.getInstance();
     registry.clearIntrospectionCache(newInstanceUrl);
 
-    // Re-initialize with the new instance
-    // Note: In static token mode, this will use GITLAB_BASE_URL
-    // For instance switching, the caller should have already updated the env var
-    // or we need to pass the URL through context
+    // Re-initialize the connection
+    // LIMITATION: In static token mode, actual instance URL routing happens at request time
+    // via TokenContext.apiUrl set by middleware. This reinitialize call prepares the
+    // ConnectionManager for re-introspection when the next request uses the new instance.
+    // The newInstanceUrl parameter is used above for cache clearing; actual GraphQL
+    // endpoint selection happens in ensureIntrospected() based on token context.
     await this.initialize();
 
     logInfo("ConnectionManager re-initialized", {

@@ -46,7 +46,7 @@ async function loadYamlFile(filePath: string): Promise<unknown> {
     return yaml.parse(content);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "MODULE_NOT_FOUND") {
-      throw new Error(`YAML configuration requires 'yaml' package. Install with: npm install yaml`);
+      throw new Error(`YAML configuration requires 'yaml' package. Install with: yarn add yaml`);
     }
     throw error;
   }
@@ -128,6 +128,12 @@ function parseInstancesEnvVar(value: string): GitLabInstanceConfig[] {
       const cleanUrl = url.startsWith('"') && url.endsWith('"') ? url.slice(1, -1) : url;
       return parseInstanceUrlString(cleanUrl);
     });
+  }
+
+  // Check for space-separated URLs (multiple URLs without bash array syntax)
+  if (trimmed.includes(" ")) {
+    const urls = trimmed.split(/\s+/).filter(url => url.length > 0);
+    return urls.map((url: string) => parseInstanceUrlString(url));
   }
 
   // Single URL format

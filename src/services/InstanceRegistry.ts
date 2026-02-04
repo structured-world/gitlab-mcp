@@ -49,6 +49,8 @@ export interface InstanceSummary {
     version: string | null;
     tier: string | null;
     cachedAt: Date | null;
+    /** Whether the cached introspection data has expired (TTL: 10 min) */
+    isExpired: boolean;
   };
 }
 
@@ -172,19 +174,26 @@ export class InstanceRegistry {
    * List all registered instances
    */
   public list(): InstanceSummary[] {
-    return Array.from(this.instances.values()).map(entry => ({
-      url: entry.config.url,
-      label: entry.config.label,
-      connectionStatus: entry.state.connectionStatus,
-      lastHealthCheck: entry.state.lastHealthCheck,
-      hasOAuth: !!entry.config.oauth,
-      rateLimit: entry.rateLimiter.getMetrics(),
-      introspection: {
-        version: entry.state.introspectionCache?.version ?? null,
-        tier: entry.state.introspectionCache?.tier ?? null,
-        cachedAt: entry.state.introspectionCache?.cachedAt ?? null,
-      },
-    }));
+    return Array.from(this.instances.values()).map(entry => {
+      const cache = entry.state.introspectionCache;
+      const isExpired =
+        cache !== null && Date.now() - cache.cachedAt.getTime() > INTROSPECTION_CACHE_TTL_MS;
+
+      return {
+        url: entry.config.url,
+        label: entry.config.label,
+        connectionStatus: entry.state.connectionStatus,
+        lastHealthCheck: entry.state.lastHealthCheck,
+        hasOAuth: !!entry.config.oauth,
+        rateLimit: entry.rateLimiter.getMetrics(),
+        introspection: {
+          version: cache?.version ?? null,
+          tier: cache?.tier ?? null,
+          cachedAt: cache?.cachedAt ?? null,
+          isExpired,
+        },
+      };
+    });
   }
 
   /**

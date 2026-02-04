@@ -96,6 +96,16 @@ function isSocksProxy(url: string): boolean {
 
 /**
  * Create Undici dispatcher for fetch requests
+ *
+ * LIMITATION: The dispatcher is created globally and uses environment variables
+ * (SKIP_TLS_VERIFY, NODE_TLS_REJECT_UNAUTHORIZED) for TLS configuration.
+ * Per-instance `insecureSkipVerify` settings from config files are NOT currently
+ * consulted here. To support per-instance TLS settings, we would need to either:
+ * 1. Create separate dispatchers per instance, or
+ * 2. Use a different HTTP client that supports per-request TLS configuration
+ *
+ * For now, use environment variables for global TLS skip, or ensure all instances
+ * use valid certificates.
  */
 function createDispatcher(): unknown {
   const proxyUrl = HTTPS_PROXY ?? HTTP_PROXY;
@@ -648,6 +658,9 @@ export async function enhancedFetch(
   } = options;
 
   // Acquire rate limit slot if enabled
+  // NOTE: The slot is held for the entire request lifecycle including retries.
+  // This is intentional - during retries the request is still "in progress" from
+  // the server's perspective, and releasing/re-acquiring could allow queue jumping.
   let releaseSlot: (() => void) | undefined;
 
   if (shouldRateLimit) {

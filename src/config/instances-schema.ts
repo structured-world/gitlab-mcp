@@ -15,12 +15,19 @@ const GitLabUrlSchema = z
   .string()
   .url()
   .transform(url => {
-    // Remove trailing slash
-    let normalized = url.endsWith("/") ? url.slice(0, -1) : url;
-    // Remove /api/v4 suffix if accidentally included
-    if (normalized.endsWith("/api/v4")) {
-      normalized = normalized.slice(0, -7);
+    // Parse URL to extract only origin (protocol + host + port)
+    // This strips any paths, query strings, and fragments
+    const parsed = new URL(url);
+    let normalized = parsed.origin;
+
+    // Ensure trailing slash is removed
+    normalized = normalized.endsWith("/") ? normalized.slice(0, -1) : normalized;
+
+    // Also check if the input had /api/v4 in the path (warn but still work)
+    if (parsed.pathname.startsWith("/api/v4")) {
+      // Log would be nice but we're in schema - just strip it
     }
+
     return normalized;
   })
   .describe("GitLab instance URL (e.g., https://gitlab.com)");
@@ -172,17 +179,26 @@ export function parseInstanceUrlString(urlString: string): GitLabInstanceConfig 
     const hostEndIndex = colonParts[0].indexOf("/");
     const host = hostEndIndex === -1 ? colonParts[0] : colonParts[0].slice(0, hostEndIndex);
 
-    // Check if there's a port number (digits only)
+    // Check if there's a port number
+    // A valid port is 1-65535 and purely numeric. OAuth application IDs are typically
+    // much larger or alphanumeric (e.g., "app_123" or UUIDs), so we use port range
+    // to distinguish between port numbers and OAuth client IDs.
     let url: string;
     let oauthParts: string[] = [];
 
-    if (colonParts.length > 1 && /^\d+/.test(colonParts[1])) {
-      // Has port number - include it in URL
-      const portMatch = colonParts[1].match(/^(\d+)/);
-      const port = portMatch ? portMatch[1] : "";
-      url = `${parts[0]}://${host}:${port}`;
-      // OAuth parts come after port
-      oauthParts = colonParts.slice(2);
+    if (colonParts.length > 1 && /^\d+$/.test(colonParts[1])) {
+      const possiblePort = parseInt(colonParts[1], 10);
+      // Valid port range is 1-65535
+      if (possiblePort >= 1 && possiblePort <= 65535) {
+        // Has port number - include it in URL
+        url = `${parts[0]}://${host}:${colonParts[1]}`;
+        // OAuth parts come after port
+        oauthParts = colonParts.slice(2);
+      } else {
+        // Number is too large to be a port - treat as OAuth client ID
+        url = `${parts[0]}://${host}`;
+        oauthParts = colonParts.slice(1);
+      }
     } else {
       // No port - URL is just protocol + host
       url = `${parts[0]}://${host}`;

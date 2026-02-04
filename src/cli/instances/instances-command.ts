@@ -194,7 +194,7 @@ async function addInstance(): Promise<void> {
       return;
     }
 
-    const clientSecret = await p.text({
+    const clientSecret = await p.password({
       message: "OAuth Secret (optional, for confidential apps):",
     });
 
@@ -217,9 +217,18 @@ async function addInstance(): Promise<void> {
     insecureSkipVerify: false,
   };
 
-  // Show configuration
+  // Show configuration (mask secrets)
+  const sanitizedConfig = {
+    ...config,
+    oauth: config.oauth
+      ? {
+          ...config.oauth,
+          clientSecret: config.oauth.clientSecret ? "***" : undefined,
+        }
+      : undefined,
+  };
   console.log("\nInstance Configuration:");
-  console.log(JSON.stringify(config, null, 2));
+  console.log(JSON.stringify(sanitizedConfig, null, 2));
 
   const confirmed = await p.confirm({
     message: "Add this configuration?",

@@ -152,6 +152,47 @@ describe("instances-command", () => {
         expect(mockGenerateSampleConfig).toHaveBeenCalledWith("json");
         expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Sample JSON"));
       });
+
+      it("should mask clientSecret in JSON sample config", async () => {
+        // Mock a JSON config with OAuth clientSecret
+        mockGenerateSampleConfig.mockReturnValue(
+          JSON.stringify({
+            instances: [
+              {
+                url: "https://gitlab.example.com",
+                oauth: {
+                  clientId: "app_123",
+                  clientSecret: "super_secret_value",
+                },
+              },
+            ],
+          })
+        );
+
+        await runInstanceCommand(["sample-config", "json"]);
+
+        // Verify masked output was logged
+        const loggedConfig = consoleSpy.mock.calls.find(
+          (call: unknown[]) => typeof call[0] === "string" && call[0].includes("***masked***")
+        );
+        expect(loggedConfig).toBeDefined();
+
+        // Verify original secret is not in output
+        const hasUnmaskedSecret = consoleSpy.mock.calls.some(
+          (call: unknown[]) => typeof call[0] === "string" && call[0].includes("super_secret_value")
+        );
+        expect(hasUnmaskedSecret).toBe(false);
+      });
+
+      it("should handle invalid JSON gracefully in sample config", async () => {
+        // Mock invalid JSON
+        mockGenerateSampleConfig.mockReturnValue("not valid json {");
+
+        await runInstanceCommand(["sample-config", "json"]);
+
+        // Should still output the original string (fallback behavior)
+        expect(consoleSpy).toHaveBeenCalledWith("not valid json {");
+      });
     });
 
     describe("remove subcommand", () => {
@@ -332,7 +373,15 @@ describe("instances-command", () => {
 
         expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("URL: https://gitlab.com"));
         expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Label: GitLab.com"));
-        expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("OAuth: Enabled"));
+        // OAuth shows "client configured" without exposing clientId
+        expect(consoleSpy).toHaveBeenCalledWith(
+          expect.stringContaining("OAuth: Enabled (client configured)")
+        );
+        // Verify clientId is NOT logged
+        const hasClientId = consoleSpy.mock.calls.some(
+          (call: unknown[]) => typeof call[0] === "string" && call[0].includes("app_123")
+        );
+        expect(hasClientId).toBe(false);
         expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Max Concurrent: 100"));
         expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Connection: healthy"));
         expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining("Active Requests: 5/100"));

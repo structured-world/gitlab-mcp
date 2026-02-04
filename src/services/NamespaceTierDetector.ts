@@ -226,6 +226,8 @@ async function queryNamespaceTier(
         query: NAMESPACE_TIER_QUERY,
         variables: { fullPath: namespacePath },
       }),
+      // Pass baseUrl for rate limiting to match InstanceRegistry key (supports subpath deployments)
+      rateLimitBaseUrl: baseUrl,
     });
 
     if (!response.ok) {
@@ -355,7 +357,10 @@ export function getNamespaceTierCacheMetrics(): {
   const entriesBySession = new Map<string, number>();
 
   for (const key of namespaceTierCache.keys()) {
-    const sessionId = key.split(":")[0];
+    // Use lastIndexOf since sessionId might contain colons (defensive parsing)
+    // Cache key format: ${sessionId}:${namespacePath}
+    const separatorIndex = key.lastIndexOf(":");
+    const sessionId = separatorIndex === -1 ? key : key.slice(0, separatorIndex);
     entriesBySession.set(sessionId, (entriesBySession.get(sessionId) ?? 0) + 1);
   }
 

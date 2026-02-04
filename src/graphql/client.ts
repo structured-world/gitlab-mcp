@@ -9,12 +9,23 @@ export interface GraphQLClientOptions {
 }
 
 export class GraphQLClient {
-  public readonly endpoint: string;
+  private _endpoint: string;
   private defaultHeaders: Record<string, string>;
 
   constructor(endpoint: string, options?: { headers?: Record<string, string> }) {
-    this.endpoint = endpoint;
+    this._endpoint = endpoint;
     this.defaultHeaders = options?.headers ?? {};
+  }
+
+  public get endpoint(): string {
+    return this._endpoint;
+  }
+
+  /**
+   * Update the GraphQL endpoint (used for multi-instance OAuth switching)
+   */
+  public setEndpoint(endpoint: string): void {
+    this._endpoint = endpoint;
   }
 
   async request<TResult = unknown, TVariables = Record<string, unknown>>(

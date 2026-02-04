@@ -29,6 +29,7 @@ export class ConnectionManager {
   private schemaInfo: SchemaInfo | null = null;
   private tokenScopeInfo: TokenScopeInfo | null = null;
   private isInitialized: boolean = false;
+  private currentInstanceUrl: string | null = null;
   private static introspectionCache = new Map<string, CacheEntry>();
   private static readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
 
@@ -39,7 +40,7 @@ export class ConnectionManager {
     return ConnectionManager.instance;
   }
 
-  public async initialize(): Promise<void> {
+  public async initialize(instanceUrl?: string): Promise<void> {
     if (this.isInitialized) {
       return;
     }
@@ -53,9 +54,13 @@ export class ConnectionManager {
         await registry.initialize();
       }
 
+      // Use provided instanceUrl or fall back to global GITLAB_BASE_URL
+      const baseUrl = instanceUrl ?? GITLAB_BASE_URL;
+      this.currentInstanceUrl = baseUrl;
+
       // In OAuth mode, token comes from request context via enhancedFetch
       // In static mode, require both base URL and token
-      if (!GITLAB_BASE_URL) {
+      if (!baseUrl) {
         throw new Error("GitLab base URL is required");
       }
 
@@ -69,7 +74,7 @@ export class ConnectionManager {
       }
 
       // Construct GraphQL endpoint from base URL
-      const endpoint = `${GITLAB_BASE_URL}/api/graphql`;
+      const endpoint = `${baseUrl}/api/graphql`;
 
       // In OAuth mode, don't set static auth header
       // enhancedFetch will add the token from request context
@@ -88,7 +93,7 @@ export class ConnectionManager {
       if (oauthMode) {
         logInfo("OAuth mode: attempting unauthenticated version detection");
         try {
-          const versionResponse = await fetch(`${GITLAB_BASE_URL}/api/v4/version`);
+          const versionResponse = await fetch(`${baseUrl}/api/v4/version`);
           if (versionResponse.ok) {
             const versionData = (await versionResponse.json()) as {
               version: string;
@@ -214,14 +219,33 @@ export class ConnectionManager {
     }
 
     // Determine the instance URL for caching
-    // In OAuth mode, use URL from context; otherwise use global GITLAB_BASE_URL
-    //
-    // NOTE: Current limitation - GraphQL client endpoint is fixed at init time to GITLAB_BASE_URL.
-    // In OAuth multi-instance mode, the actual GraphQL requests still go to the init-time endpoint.
-    // True multi-instance support requires per-request GraphQL client selection based on context.
-    // This works correctly in static token mode and single-instance OAuth deployments.
-    const instanceUrl = getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL;
-    const endpoint = this.client.endpoint;
+    // In OAuth mode, use URL from context; in static mode, use current instance URL
+    const instanceUrl = getGitLabApiUrlFromContext() ?? this.currentInstanceUrl ?? GITLAB_BASE_URL;
+
+    // Derive the GraphQL endpoint from the current instance URL when running in
+    // OAuth mode so that multi-instance setups talk to the correct GitLab host.
+    // Fall back to the init-time endpoint if URL parsing fails or OAuth is disabled.
+    let endpoint = this.client.endpoint;
+    if (isOAuthEnabled() && instanceUrl && instanceUrl !== this.currentInstanceUrl) {
+      try {
+        const url = new URL(instanceUrl);
+        const normalizedPath = url.pathname.replace(/\/+$/, "");
+        if (normalizedPath.endsWith("/api/v4")) {
+          url.pathname = normalizedPath.replace(/\/api\/v4$/, "/api/graphql");
+        } else {
+          // Best-effort default: assume GraphQL is served at /api/graphql on this origin
+          url.pathname = "/api/graphql";
+        }
+        endpoint = url.toString();
+        this.client.setEndpoint(endpoint);
+      } catch (error) {
+        logError("Failed to derive GraphQL endpoint from instanceUrl; using default endpoint", {
+          instanceUrl,
+          error: (error as Error).message,
+        });
+      }
+    }
+
     const registry = InstanceRegistry.getInstance();
 
     // Check InstanceRegistry cache first (for multi-instance support)
@@ -410,7 +434,8 @@ export class ConnectionManager {
    */
   private async detectVersionViaREST(): Promise<GitLabInstanceInfo> {
     try {
-      const response = await enhancedFetch(`${GITLAB_BASE_URL}/api/v4/version`, {
+      const baseUrl = this.currentInstanceUrl ?? GITLAB_BASE_URL;
+      const response = await enhancedFetch(`${baseUrl}/api/v4/version`, {
         headers: {
           "PRIVATE-TOKEN": GITLAB_TOKEN ?? "",
           Accept: "application/json",
@@ -510,17 +535,14 @@ export class ConnectionManager {
     const registry = InstanceRegistry.getInstance();
     registry.clearIntrospectionCache(newInstanceUrl);
 
-    // Re-initialize the connection
-    // LIMITATION: In static token mode, actual instance URL routing happens at request time
-    // via TokenContext.apiUrl set by middleware. This reinitialize call prepares the
-    // ConnectionManager for re-introspection when the next request uses the new instance.
-    // The newInstanceUrl parameter is used above for cache clearing; actual GraphQL
-    // endpoint selection happens in ensureIntrospected() based on token context.
-    await this.initialize();
+    // Re-initialize the connection with the new instance URL
+    // This builds a new GraphQL client pointing to the new instance
+    await this.initialize(newInstanceUrl);
 
     logInfo("ConnectionManager re-initialized", {
       version: this.instanceInfo?.version,
       tier: this.instanceInfo?.tier,
+      instanceUrl: this.currentInstanceUrl,
     });
   }
 
@@ -531,6 +553,7 @@ export class ConnectionManager {
     this.instanceInfo = null;
     this.schemaInfo = null;
     this.tokenScopeInfo = null;
+    this.currentInstanceUrl = null;
     this.isInitialized = false;
   }
 }

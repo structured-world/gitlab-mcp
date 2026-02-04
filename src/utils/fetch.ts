@@ -594,14 +594,45 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
 /**
  * Extract base URL from a full URL for rate limit slot acquisition
  *
- * NOTE: Returns origin only (protocol + host), without pathname.
- * For GitLab deployments with subpath (e.g., https://example.com/gitlab),
- * callers should pass rateLimitBaseUrl explicitly to match InstanceRegistry keys.
+ * For GitLab deployments this preserves any leading subpath (e.g.,
+ * https://example.com/gitlab) and strips known API suffixes such as
+ * /api/v4 and /api/graphql so that the result matches InstanceRegistry
+ * normalization rules.
  */
 function extractBaseUrl(url: string): string | undefined {
   try {
     const parsed = new URL(url);
-    return `${parsed.protocol}//${parsed.host}`;
+
+    let basePath = parsed.pathname || "/";
+
+    // Strip known GitLab API suffixes while preserving any leading subpath.
+    const apiSuffixes = ["/api/v4", "/api/graphql"];
+    for (const suffix of apiSuffixes) {
+      if (basePath === suffix || basePath === `${suffix}/`) {
+        // Instance is hosted at the origin (no subpath).
+        basePath = "/";
+        break;
+      }
+      if (basePath.endsWith(`${suffix}/`)) {
+        basePath = basePath.slice(0, -`${suffix}/`.length) || "/";
+        break;
+      }
+      if (basePath.endsWith(suffix)) {
+        basePath = basePath.slice(0, -suffix.length) || "/";
+        break;
+      }
+    }
+
+    // Normalize path: ensure leading slash and remove trailing slash (except root).
+    if (!basePath.startsWith("/")) {
+      basePath = `/${basePath}`;
+    }
+    if (basePath.length > 1 && basePath.endsWith("/")) {
+      basePath = basePath.slice(0, -1);
+    }
+
+    const origin = `${parsed.protocol}//${parsed.host}`;
+    return basePath === "/" ? origin : `${origin}${basePath}`;
   } catch {
     return undefined;
   }

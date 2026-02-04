@@ -243,9 +243,10 @@ export class InstanceRegistry {
   public async acquireSlot(baseUrl: string): Promise<() => void> {
     const entry = this.get(baseUrl);
     if (!entry) {
-      // If instance not registered, allow request without rate limiting
-      // This supports dynamic instances not in config
-      logWarn("Rate limit slot requested for unregistered instance, allowing", {
+      // If instance not registered, allow request without rate limiting.
+      // This supports dynamic instances not in config (e.g., non-GitLab URLs via enhancedFetch).
+      // Use debug level to avoid noisy logs in normal operation.
+      logDebug("Rate limit slot requested for unregistered instance, allowing", {
         url: baseUrl,
       });
       return () => {};

@@ -325,8 +325,11 @@ export class InstanceConnectionPool {
       logWarn("TLS verification disabled for instance", { url: normalizedUrl });
     }
 
-    // Create Undici Pool for this instance
-    const pool = new undici.Pool(normalizedUrl, {
+    // Create Undici Pool for this instance.
+    // Undici Pool expects an origin (scheme + host + port), not a full URL with path.
+    // For subpath-deployed GitLab (e.g., https://example.com/gitlab), we extract just the origin.
+    const poolOrigin = new URL(normalizedUrl).origin;
+    const pool = new undici.Pool(poolOrigin, {
       connections: this.config.maxConnections,
       keepAliveTimeout: this.config.keepAliveTimeout,
       keepAliveMaxTimeout: this.config.keepAliveMaxTimeout,

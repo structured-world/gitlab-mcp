@@ -162,18 +162,19 @@ export class InstanceConnectionPool {
     // that injects these headers into each request while delegating all other behavior
     // to the underlying pooled client.
     const baseClient = entry.graphqlClient;
+    type RequestFn = (...fnArgs: unknown[]) => unknown;
     const clientWithAuth = new Proxy(baseClient, {
-      get(target, prop: string | symbol, receiver) {
+      get(target, prop: string | symbol, receiver): unknown {
         if (prop === "request" || prop === "rawRequest") {
           const original = (target as unknown as Record<string, unknown>)[prop];
           if (typeof original !== "function") {
-            return Reflect.get(target, prop, receiver);
+            return Reflect.get(target, prop, receiver) as unknown;
           }
-          return (...args: unknown[]) => {
+          return (...args: unknown[]): unknown => {
             // graphql-request style: request(document, variables?, requestHeaders?)
             const extraHeaders = authHeaders ?? {};
             if (Object.keys(extraHeaders).length === 0) {
-              return (original as (...fnArgs: unknown[]) => unknown).apply(target, args);
+              return (original as RequestFn).apply(target, args);
             }
             const adjustedArgs = [...args];
             const lastIndex = adjustedArgs.length - 1;
@@ -188,10 +189,10 @@ export class InstanceConnectionPool {
               // Append headers as the last argument
               adjustedArgs.push(extraHeaders);
             }
-            return (original as (...fnArgs: unknown[]) => unknown).apply(target, adjustedArgs);
+            return (original as RequestFn).apply(target, adjustedArgs);
           };
         }
-        return Reflect.get(target, prop, receiver);
+        return Reflect.get(target, prop, receiver) as unknown;
       },
     }) as unknown as GraphQLClient;
 

@@ -4,7 +4,7 @@
 
 A [Model Context Protocol](https://modelcontextprotocol.io) server that connects AI agents to the GitLab API — 44 tools across 18 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes.
 
-[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-6.54.0.mcpb)
+[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-6.55.0.mcpb)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 
@@ -37,27 +37,6 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server that connects
 - **Auto-discovery** — Detects GitLab config from git remotes
 - **Fine-grained control** — Enable/disable tool groups, filter actions, customize descriptions
 - **Docker support** — `ghcr.io/structured-world/gitlab-mcp:latest`
-- **Multi-instance** — Connect to multiple GitLab instances with per-instance OAuth and rate limiting
-
-## Multi-Instance Support
-
-Connect to multiple GitLab instances simultaneously:
-
-```bash
-# Via environment variable
-GITLAB_INSTANCES="https://gitlab.com https://git.company.io"
-
-# Via configuration file
-GITLAB_INSTANCES_FILE=~/.config/gitlab-mcp/instances.yaml
-```
-
-Features:
-- Per-instance OAuth applications
-- Per-instance rate limiting
-- Per-namespace tier detection (Free/Premium/Ultimate)
-- Automatic schema introspection per instance
-
-See [Multi-Instance Setup](https://gitlab-mcp.sw.foundation/guide/multi-instance) for details.
 
 ## Documentation
 
@@ -67,7 +46,6 @@ Full documentation is available at **[gitlab-mcp.sw.foundation](https://gitlab-m
 |---------|-------------|
 | [Installation](https://gitlab-mcp.sw.foundation/guide/installation/npm) | npm, Docker, VS Code, Codex |
 | [Configuration](https://gitlab-mcp.sw.foundation/guide/configuration) | Environment variables, feature flags |
-| [Multi-Instance](https://gitlab-mcp.sw.foundation/guide/multi-instance) | Multiple GitLab instances, federation |
 | [Tool Reference](https://gitlab-mcp.sw.foundation/tools/) | All 44 tools with parameters |
 | [OAuth Setup](https://gitlab-mcp.sw.foundation/security/oauth) | Team authentication with Claude |
 | [TLS/HTTPS](https://gitlab-mcp.sw.foundation/advanced/tls) | Production deployment with SSL |

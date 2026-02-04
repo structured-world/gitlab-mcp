@@ -640,7 +640,8 @@ export function extractBaseUrl(url: string): string | undefined {
         // Verify the match is a complete segment (not partial like /api/v4foo)
         const afterSuffix = basePath.charAt(suffixIndex + suffix.length);
         if (afterSuffix === "" || afterSuffix === "/") {
-          // Found complete API suffix - extract everything before it as the base path
+          // Found complete API suffix — immediately exit both loops via labeled break.
+          // Inner while only continues for PARTIAL matches (e.g., /api/v4foo).
           basePath = suffixIndex === 0 ? "/" : basePath.slice(0, suffixIndex);
           break outerLoop;
         }

@@ -325,6 +325,14 @@ instances:
 
         expect(result.instances[0].insecureSkipVerify).toBe(true);
       });
+
+      it("should strip /api/graphql suffix from GITLAB_API_URL", async () => {
+        process.env.GITLAB_API_URL = "https://gitlab.com/api/graphql";
+
+        const result = await loadInstancesConfig();
+
+        expect(result.instances[0].url).toBe("https://gitlab.com");
+      });
     });
 
     describe("Priority 4: Default (no configuration)", () => {

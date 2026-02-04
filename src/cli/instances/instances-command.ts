@@ -428,7 +428,8 @@ function showSampleConfig(format?: "yaml" | "json"): void {
   } else {
     // Mask secrets in YAML format using regex.
     // Pattern handles: clientSecret: value, clientSecret: "value", clientSecret: 'value'
-    // Full YAML parser is overkill for sample config with known structure.
+    // Sample config has predictable structure — full YAML parser is overkill.
+    // Pattern won't re-match already-masked values (***masked*** contains *).
     config = config.replace(/clientSecret:\s*["']?[^"'\n]+["']?/g, 'clientSecret: "***masked***"');
   }
 

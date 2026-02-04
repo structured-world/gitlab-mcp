@@ -357,8 +357,9 @@ export function getNamespaceTierCacheMetrics(): {
   const entriesBySession = new Map<string, number>();
 
   for (const key of namespaceTierCache.keys()) {
-    // Use lastIndexOf since sessionId might contain colons (defensive parsing)
     // Cache key format: ${sessionId}:${namespacePath}
+    // sessionId is UUID (no colons), but namespace paths can contain colons.
+    // Using lastIndexOf safely handles any future format changes.
     const separatorIndex = key.lastIndexOf(":");
     const sessionId = separatorIndex === -1 ? key : key.slice(0, separatorIndex);
     entriesBySession.set(sessionId, (entriesBySession.get(sessionId) ?? 0) + 1);

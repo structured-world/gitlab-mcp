@@ -251,16 +251,22 @@ jobs:
 
             if [ "$AUTHOR" = "github-advanced-security" ]; then
               # CodeQL thread - extract alert number and check state
+              # Note: Each CodeQL thread body contains exactly one alert URL, so head -1 is correct.
+              # The URL format is /security/code-scanning/NNN where NNN is the alert number.
               ALERT_NUM=$(echo "$BODY" | grep -oE '/security/code-scanning/[0-9]+' | grep -oE '[0-9]+$' | head -1)
               if [ -n "$ALERT_NUM" ]; then
+                # API calls are made sequentially per thread. Typical PRs have 0-5 CodeQL threads,
+                # so batching/parallelization is unnecessary. Rate limits are 5000 req/hour for GitHub Actions.
+                # If API fails, "unknown" state is treated as active (fail-safe: block if state is uncertain).
                 ALERT_STATE=$(gh api "repos/$REPO/code-scanning/alerts/$ALERT_NUM" --jq '.state' 2>/dev/null || echo "unknown")
                 if [ "$ALERT_STATE" = "dismissed" ] || [ "$ALERT_STATE" = "fixed" ]; then
                   CODEQL_DISMISSED=$((CODEQL_DISMISSED + 1))
                 else
+                  # Includes "open", "unknown" (API failure), and any unexpected values
                   CODEQL_ACTIVE=$((CODEQL_ACTIVE + 1))
                 fi
               else
-                # No alert number found, count as active
+                # No alert number found in body, count as active (fail-safe)
                 CODEQL_ACTIVE=$((CODEQL_ACTIVE + 1))
               fi
             elif [ "$AUTHOR" = "copilot-pull-request-reviewer" ]; then

@@ -225,6 +225,8 @@ async function addInstance(): Promise<void> {
     oauthConfigured: !!config.oauth,
   };
   console.log("\nInstance Configuration:");
+  // Safe to log: logConfigPreview contains only non-sensitive fields (url, label, boolean flags)
+  // OAuth credentials are explicitly excluded - only oauthConfigured:boolean is included
   console.log(JSON.stringify(logConfigPreview, null, 2));
 
   const confirmed = await p.confirm({
@@ -410,5 +412,7 @@ function showSampleConfig(format?: "yaml" | "json"): void {
 
   console.log(`\nSample ${fmt.toUpperCase()} Configuration:`);
   console.log(`─`.repeat(60));
+  // Safe to log: this is a generated sample/template config with placeholder values,
+  // not actual credentials or user data
   console.log(config);
 }

@@ -217,18 +217,12 @@ async function addInstance(): Promise<void> {
     insecureSkipVerify: false,
   };
 
-  // Show configuration preview (avoid logging sensitive fields)
+  // Show configuration preview (avoid logging sensitive fields like OAuth config)
   const logConfigPreview = {
     url: config.url,
     label: config.label,
     insecureSkipVerify: config.insecureSkipVerify,
-    oauth: config.oauth
-      ? {
-          clientId: config.oauth.clientId,
-          scopes: config.oauth.scopes,
-          hasSecret: !!config.oauth.clientSecret,
-        }
-      : undefined,
+    oauthConfigured: !!config.oauth,
   };
   console.log("\nInstance Configuration:");
   console.log(JSON.stringify(logConfigPreview, null, 2));

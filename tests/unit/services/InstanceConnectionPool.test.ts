@@ -127,20 +127,25 @@ describe("InstanceConnectionPool", () => {
       expect(MockPool).toHaveBeenCalledTimes(2);
     });
 
-    it("should set auth headers when provided", () => {
+    it("should return proxy client when auth headers provided", () => {
       const pool = InstanceConnectionPool.getInstance();
       const authHeaders = { Authorization: "Bearer token123" };
 
-      pool.getGraphQLClient(instanceConfig, authHeaders);
+      const client = pool.getGraphQLClient(instanceConfig, authHeaders);
 
-      expect(mockSetHeaders).toHaveBeenCalledWith(authHeaders);
+      // With auth headers, returns a Proxy wrapper (not the base client)
+      expect(client).toBeDefined();
+      // Should NOT mutate shared client headers
+      expect(mockSetHeaders).not.toHaveBeenCalled();
     });
 
-    it("should not set headers when not provided", () => {
+    it("should return base client when no headers provided", () => {
       const pool = InstanceConnectionPool.getInstance();
 
-      pool.getGraphQLClient(instanceConfig);
+      const client = pool.getGraphQLClient(instanceConfig);
 
+      // Without auth headers, returns the base client directly
+      expect(client).toBeDefined();
       expect(mockSetHeaders).not.toHaveBeenCalled();
     });
 

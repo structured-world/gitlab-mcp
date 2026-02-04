@@ -152,14 +152,50 @@ export class InstanceConnectionPool {
     const entry = this.getOrCreateEntry(instanceConfig);
     entry.lastUsedAt = new Date();
 
-    // Update auth headers if provided (for OAuth per-request tokens)
-    // Note: setHeaders is safe here because each OAuth session uses unique tokens
-    // and GraphQL requests are serialized per-session via MCP protocol
-    if (authHeaders) {
-      entry.graphqlClient.setHeaders(authHeaders);
+    // If no auth headers are provided, return the shared per-instance client directly.
+    if (!authHeaders) {
+      return entry.graphqlClient;
     }
 
-    return entry.graphqlClient;
+    // When auth headers are provided, avoid mutating the shared client's default headers,
+    // which could cause cross-session header leakage. Instead, return a lightweight proxy
+    // that injects these headers into each request while delegating all other behavior
+    // to the underlying pooled client.
+    const baseClient = entry.graphqlClient;
+    const clientWithAuth = new Proxy(baseClient, {
+      get(target, prop: string | symbol, receiver) {
+        if (prop === "request" || prop === "rawRequest") {
+          const original = (target as unknown as Record<string, unknown>)[prop];
+          if (typeof original !== "function") {
+            return Reflect.get(target, prop, receiver);
+          }
+          return (...args: unknown[]) => {
+            // graphql-request style: request(document, variables?, requestHeaders?)
+            const extraHeaders = authHeaders ?? {};
+            if (Object.keys(extraHeaders).length === 0) {
+              return (original as (...fnArgs: unknown[]) => unknown).apply(target, args);
+            }
+            const adjustedArgs = [...args];
+            const lastIndex = adjustedArgs.length - 1;
+            const lastArg = lastIndex >= 0 ? adjustedArgs[lastIndex] : undefined;
+            if (lastArg && typeof lastArg === "object" && !Array.isArray(lastArg)) {
+              // Merge into existing request headers
+              adjustedArgs[lastIndex] = {
+                ...(lastArg as Record<string, string>),
+                ...extraHeaders,
+              };
+            } else {
+              // Append headers as the last argument
+              adjustedArgs.push(extraHeaders);
+            }
+            return (original as (...fnArgs: unknown[]) => unknown).apply(target, adjustedArgs);
+          };
+        }
+        return Reflect.get(target, prop, receiver);
+      },
+    }) as unknown as GraphQLClient;
+
+    return clientWithAuth;
   }
 
   /**

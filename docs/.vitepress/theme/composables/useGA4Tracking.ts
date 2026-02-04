@@ -7,8 +7,13 @@
  * - Outbound link clicks
  *
  * All events are silently dropped if analytics consent is denied.
+ *
+ * Privacy note: This module tracks search terms, download URLs, and outbound link URLs.
+ * Query parameters are included in URL tracking. Consent must be granted before any
+ * data is sent to Google Analytics.
  */
 import { useConsent } from "@structured-world/vue-privacy/vitepress";
+import "../types/gtag"; // Import gtag type declaration
 
 /**
  * GA4 recommended event parameters
@@ -31,7 +36,11 @@ interface OutboundClickEventParams {
 }
 
 /**
- * Check if analytics consent is granted
+ * Check if analytics consent is granted.
+ *
+ * Note: useConsent() from vue-privacy's /vitepress export is designed to be called
+ * outside of Vue component setup context. It uses a module-level singleton pattern
+ * internally, making it safe to call from plain functions.
  */
 function hasAnalyticsConsent(): boolean {
   const { getConsent } = useConsent();
@@ -56,7 +65,8 @@ function sendEvent(
 }
 
 /**
- * Track search event (GA4 recommended event)
+ * Track search event (GA4 recommended event).
+ * Search terms are sent as-is to GA4 for analytics purposes.
  * @see https://developers.google.com/analytics/devguides/collection/ga4/reference/events#search
  */
 export function trackSearch(searchTerm: string): void {
@@ -78,11 +88,24 @@ export function trackFileDownload(linkUrl: string): void {
     return;
   }
 
-  // Extract filename from URL
-  const url = new URL(linkUrl, window.location.origin);
-  const pathname = url.pathname;
-  const fileName = pathname.split("/").pop() || pathname;
-  const fileExtension = fileName.includes(".") ? fileName.split(".").pop() || "" : "";
+  // Extract filename from URL, handling relative paths and invalid URLs gracefully
+  let fileName: string;
+  let fileExtension: string;
+
+  try {
+    // Use window.location.href as base for relative URL resolution
+    const baseHref =
+      typeof window !== "undefined" && window.location ? window.location.href : undefined;
+    const url = baseHref ? new URL(linkUrl, baseHref) : new URL(linkUrl);
+    const pathname = url.pathname;
+    fileName = pathname.split("/").pop() || pathname;
+    fileExtension = fileName.includes(".") ? fileName.split(".").pop() || "" : "";
+  } catch {
+    // Fallback: derive filename directly from the raw link URL
+    const sanitized = linkUrl.split("#")[0].split("?")[0];
+    fileName = sanitized.split("/").pop() || sanitized;
+    fileExtension = fileName.includes(".") ? fileName.split(".").pop() || "" : "";
+  }
 
   sendEvent("file_download", {
     file_name: fileName,
@@ -92,7 +115,8 @@ export function trackFileDownload(linkUrl: string): void {
 }
 
 /**
- * Track outbound link click (GA4 recommended event)
+ * Track outbound link click (GA4 recommended event).
+ * Full URLs including query parameters are tracked for analytics purposes.
  * @see https://developers.google.com/analytics/devguides/collection/ga4/reference/events#click
  */
 export function trackOutboundClick(linkUrl: string): void {

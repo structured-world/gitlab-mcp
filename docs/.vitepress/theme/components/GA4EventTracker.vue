@@ -34,13 +34,18 @@ function handleSearchInput(event: Event): void {
     clearTimeout(searchDebounceTimer);
   }
 
-  // Don't track empty searches or duplicate searches
-  if (!searchTerm || searchTerm === lastTrackedSearch) {
+  // Don't track empty searches
+  if (!searchTerm) {
     return;
   }
 
   // Debounce to avoid tracking every keystroke
+  // Duplicate check inside setTimeout to allow re-searching same term after debounce
   searchDebounceTimer = setTimeout(() => {
+    // Skip if same search term was just tracked (prevents duplicate events)
+    if (searchTerm === lastTrackedSearch) {
+      return;
+    }
     lastTrackedSearch = searchTerm;
     trackSearch(searchTerm);
   }, SEARCH_DEBOUNCE_MS);
@@ -59,10 +64,15 @@ function handleClick(event: MouseEvent): void {
 
   const href = link.href;
 
-  // Track .mcpb file downloads
-  if (href.includes(".mcpb")) {
-    trackFileDownload(href);
-    return;
+  // Track .mcpb file downloads (only when pathname ends with .mcpb)
+  try {
+    const downloadUrl = new URL(href);
+    if (downloadUrl.pathname.endsWith(".mcpb")) {
+      trackFileDownload(href);
+      return;
+    }
+  } catch {
+    // Invalid URL, continue to outbound link check
   }
 
   // Track outbound links (external domains)
@@ -78,15 +88,16 @@ function handleClick(event: MouseEvent): void {
 
 onMounted(() => {
   // Listen for search input (VitePress search modal uses input[type="search"])
+  // Use capture phase to ensure we see events before any component stops propagation
   document.addEventListener("input", handleSearchInput, { capture: true });
 
-  // Listen for clicks on links
-  document.addEventListener("click", handleClick, { capture: true });
+  // Listen for clicks on links (use bubbling phase - sufficient for link tracking)
+  document.addEventListener("click", handleClick);
 });
 
 onUnmounted(() => {
   document.removeEventListener("input", handleSearchInput, { capture: true });
-  document.removeEventListener("click", handleClick, { capture: true });
+  document.removeEventListener("click", handleClick);
 
   if (searchDebounceTimer) {
     clearTimeout(searchDebounceTimer);

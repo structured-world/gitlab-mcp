@@ -1,3 +1,9 @@
+## [6.52.0](https://github.com/structured-world/gitlab-mcp/compare/v6.51.0...v6.52.0) (2026-02-04)
+
+### Features
+
+* **mrs:** add file exclusion patterns for MR diffs ([#270](https://github.com/structured-world/gitlab-mcp/issues/270)) ([39d6dd0](https://github.com/structured-world/gitlab-mcp/commit/39d6dd04a0ffe49c04e6eb1613b8269ed1268e85)), closes [#269](https://github.com/structured-world/gitlab-mcp/issues/269)
+
 ## [6.51.0](https://github.com/structured-world/gitlab-mcp/compare/v6.50.0...v6.51.0) (2026-02-02)
 
 ### Features

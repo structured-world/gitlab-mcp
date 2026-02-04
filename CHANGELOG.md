@@ -1,3 +1,9 @@
+## [6.54.0](https://github.com/structured-world/gitlab-mcp/compare/v6.53.1...v6.54.0) (2026-02-04)
+
+### Features
+
+* **docs:** upgrade vue-privacy with GA4 tracking + dependency updates ([#284](https://github.com/structured-world/gitlab-mcp/issues/284)) ([9d43ae6](https://github.com/structured-world/gitlab-mcp/commit/9d43ae67208ab21e60fe520b2429eb18786810aa)), closes [#282](https://github.com/structured-world/gitlab-mcp/issues/282)
+
 ## [6.53.1](https://github.com/structured-world/gitlab-mcp/compare/v6.53.0...v6.53.1) (2026-02-04)
 
 ### Bug Fixes

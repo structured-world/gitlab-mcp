@@ -246,8 +246,12 @@ jobs:
           OTHER_COUNT=0
 
           THREAD_COUNT=$(echo "$ALL_THREADS" | jq 'length')
+          # Validate THREAD_COUNT is numeric (jq always returns number for length, but be defensive)
+          if ! [[ "$THREAD_COUNT" =~ ^[0-9]+$ ]]; then THREAD_COUNT=0; fi
+
           for i in $(seq 0 $((THREAD_COUNT - 1))); do
             THREAD=$(echo "$ALL_THREADS" | jq ".[$i]")
+            # Review threads always have at least one comment by definition; fallback handles edge cases
             AUTHOR=$(echo "$THREAD" | jq -r '.comments.nodes[0].author.login // ""')
             BODY=$(echo "$THREAD" | jq -r '.comments.nodes[0].body // ""')
 

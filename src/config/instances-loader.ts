@@ -142,8 +142,8 @@ function parseInstancesEnvVar(value: string): GitLabInstanceConfig[] {
     });
   }
 
-  // Check for space-separated URLs (multiple URLs without bash array syntax)
-  if (trimmed.includes(" ")) {
+  // Check for whitespace-separated URLs (space, tab, newline)
+  if (/\s/.test(trimmed)) {
     const urls = trimmed.split(/\s+/).filter(url => url.length > 0);
     return urls.map((url: string) => parseInstanceUrlString(url));
   }
@@ -273,6 +273,9 @@ export function getInstanceByUrl(
   }
   if (normalizedSearch.endsWith("/api/v4")) {
     normalizedSearch = normalizedSearch.slice(0, -7);
+  }
+  if (normalizedSearch.endsWith("/api/graphql")) {
+    normalizedSearch = normalizedSearch.slice(0, -12);
   }
 
   return instances.find(inst => inst.url === normalizedSearch);

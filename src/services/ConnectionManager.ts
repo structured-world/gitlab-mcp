@@ -243,8 +243,9 @@ export class ConnectionManager {
       }
     }
 
-    // Check legacy cache (for backward compatibility)
-    const cached = ConnectionManager.introspectionCache.get(endpoint);
+    // Check legacy cache (use instanceUrl for multi-instance consistency)
+    const cacheKey = instanceUrl || endpoint;
+    const cached = ConnectionManager.introspectionCache.get(cacheKey);
     const now = Date.now();
 
     if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
@@ -281,7 +282,7 @@ export class ConnectionManager {
     this.schemaInfo = schemaInfo;
 
     // Cache the results in legacy cache
-    ConnectionManager.introspectionCache.set(endpoint, {
+    ConnectionManager.introspectionCache.set(cacheKey, {
       instanceInfo,
       schemaInfo,
       timestamp: now,

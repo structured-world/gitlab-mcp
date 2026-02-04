@@ -31,13 +31,15 @@ const GitLabUrlSchema = z
         path = path.slice(0, -1);
       }
 
-      // Strip /api/v4 suffix if present
-      const apiSuffix = "/api/v4";
-      if (path.endsWith(apiSuffix)) {
-        path = path.slice(0, -apiSuffix.length);
-        // Normalize any resulting "/" back to empty
-        if (path === "/") {
-          path = "";
+      // Strip /api/v4 or /api/graphql suffix if present
+      for (const apiSuffix of ["/api/v4", "/api/graphql"]) {
+        if (path.endsWith(apiSuffix)) {
+          path = path.slice(0, -apiSuffix.length);
+          // Normalize any resulting "/" back to empty
+          if (path === "/") {
+            path = "";
+          }
+          break;
         }
       }
     }

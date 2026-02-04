@@ -21,14 +21,16 @@ import {
   HTTPS_PROXY,
   NODE_TLS_REJECT_UNAUTHORIZED,
   GITLAB_TOKEN,
+  GITLAB_BASE_URL,
   API_TIMEOUT_MS,
   API_RETRY_ENABLED,
   API_RETRY_MAX_ATTEMPTS,
   API_RETRY_BASE_DELAY_MS,
   API_RETRY_MAX_DELAY_MS,
 } from "../config";
-import { isOAuthEnabled, getTokenContext } from "../oauth/index";
+import { isOAuthEnabled, getTokenContext, getGitLabApiUrlFromContext } from "../oauth/index";
 import { getRequestTracker } from "../logging/index";
+import { InstanceRegistry } from "../services/InstanceRegistry.js";
 
 // Dynamic require to avoid TypeScript analyzing complex undici types at compile time
 const undici = require("undici") as {
@@ -184,6 +186,24 @@ function getGitLabToken(): string | undefined {
 }
 
 /**
+ * Get GitLab base URL from context or fallback to global config.
+ * In OAuth mode, uses apiUrl from token context.
+ * In static mode, uses GITLAB_BASE_URL from config.
+ *
+ * @returns The GitLab base URL (e.g., "https://gitlab.com")
+ */
+export function getGitLabBaseUrl(): string {
+  if (isOAuthEnabled()) {
+    const apiUrl = getGitLabApiUrlFromContext();
+    if (apiUrl) {
+      return apiUrl;
+    }
+    logWarn("OAuth mode: no API URL in context, falling back to global config");
+  }
+  return GITLAB_BASE_URL ?? "https://gitlab.com";
+}
+
+/**
  * Get authentication headers based on the current auth mode.
  * - Static mode (PAT): returns { "PRIVATE-TOKEN": token }
  * - OAuth mode: returns { "Authorization": "Bearer <token>" }
@@ -218,6 +238,10 @@ export interface FetchWithRetryOptions extends RequestInit {
   retry?: boolean;
   /** Maximum number of retry attempts (default: from config) */
   maxRetries?: number;
+  /** Enable per-instance rate limiting (default: true in multi-instance mode) */
+  rateLimit?: boolean;
+  /** Override the base URL for rate limit slot acquisition (derived from request URL if not specified) */
+  rateLimitBaseUrl?: string;
 }
 
 /**
@@ -558,6 +582,18 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
 }
 
 /**
+ * Extract base URL from a full URL for rate limit slot acquisition
+ */
+function extractBaseUrl(url: string): string | undefined {
+  try {
+    const parsed = new URL(url);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * Enhanced fetch with GitLab support, retry logic, and Node.js v24 compatibility
  *
  * @param url - URL to fetch
@@ -573,6 +609,13 @@ async function doFetch(url: string, options: RequestInit = {}): Promise<Response
  *   For 429, the Retry-After header is honored when present (delta-seconds or HTTP-date).
  * - Caller-provided AbortSignal aborts are NOT retried - they propagate immediately.
  * - Uses exponential backoff (configurable via API_RETRY_* settings).
+ *
+ * Rate limiting:
+ * - When rateLimit option is true (default: true), acquires a rate limit slot
+ *   from InstanceRegistry before making the request.
+ * - The rate limit slot is automatically released after the request completes.
+ * - Rate limiting is per-instance, allowing different GitLab servers to have
+ *   independent rate limits.
  *
  * Timing considerations:
  * - With retries enabled (default for GET), worst-case time is:
@@ -592,82 +635,111 @@ export async function enhancedFetch(
   const shouldRetry = options.retry ?? (API_RETRY_ENABLED && isIdempotent);
   const maxRetries = options.maxRetries ?? API_RETRY_MAX_ATTEMPTS;
 
-  // Extract retry options from fetch options to pass clean options to doFetch
-  const { retry: _retry, maxRetries: _maxRetries, ...fetchOptions } = options;
+  // Determine if rate limiting is enabled (default: true)
+  const shouldRateLimit = options.rateLimit !== false;
 
-  // If retry is disabled, just do a single fetch
-  if (!shouldRetry || maxRetries <= 0) {
-    return doFetch(url, fetchOptions);
-  }
+  // Extract options to pass clean options to doFetch
+  const {
+    retry: _retry,
+    maxRetries: _maxRetries,
+    rateLimit: _rateLimit,
+    rateLimitBaseUrl: _rateLimitBaseUrl,
+    ...fetchOptions
+  } = options;
 
-  let lastError: Error | null = null;
+  // Acquire rate limit slot if enabled
+  let releaseSlot: (() => void) | undefined;
 
-  for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    try {
-      const response = await doFetch(url, fetchOptions);
-
-      // Check if response status is retryable (5xx, 429)
-      if (isRetryableStatus(response.status) && attempt < maxRetries) {
-        // For 429, check Retry-After header (supports delta-seconds and HTTP-date)
-        let retryDelay = calculateBackoffDelay(attempt);
-        const retryAfter = response.headers.get("Retry-After");
-        if (retryAfter && response.status === 429) {
-          const parsedDelay = parseRetryAfter(retryAfter);
-          if (parsedDelay !== null) {
-            // Cap Retry-After to max delay to prevent excessive waits
-            retryDelay = Math.min(parsedDelay, API_RETRY_MAX_DELAY_MS);
-          }
-        }
-
-        logWarn("Retrying request after server error", {
-          url: safeUrl,
-          method,
-          status: response.status,
-          attempt: attempt + 1,
-          maxRetries,
-          retryDelay,
-        });
-
-        // Cancel response body to release connection before retry
-        // Wrap in try-catch as cancel() can throw if body is already disturbed
-        try {
-          await response.body?.cancel();
-        } catch {
-          // Body already consumed or errored - safe to ignore
-        }
-
-        await sleep(retryDelay, fetchOptions.signal ?? undefined);
-        continue;
-      }
-
-      return response;
-    } catch (error) {
-      lastError = error instanceof Error ? error : new Error(String(error));
-
-      // Check if error is retryable and we have attempts left
-      if (isRetryableError(error) && attempt < maxRetries) {
-        const retryDelay = calculateBackoffDelay(attempt);
-
-        logWarn("Retrying request after error", {
-          url: safeUrl,
-          method,
-          error: lastError.message,
-          attempt: attempt + 1,
-          maxRetries,
-          retryDelay,
-        });
-
-        await sleep(retryDelay, fetchOptions.signal ?? undefined);
-        continue;
-      }
-
-      // Not retryable or no attempts left
-      throw lastError;
+  if (shouldRateLimit) {
+    const registry = InstanceRegistry.getInstance();
+    if (registry.isInitialized()) {
+      // Determine base URL for rate limiting
+      const baseUrl = options.rateLimitBaseUrl ?? extractBaseUrl(url) ?? getGitLabBaseUrl();
+      // acquireSlot throws if rate limit exceeded - let it propagate
+      releaseSlot = await registry.acquireSlot(baseUrl);
     }
   }
 
-  /* istanbul ignore next -- unreachable: loop always exits via return or throw */
-  throw lastError ?? new Error("Unexpected: retry loop exited without result");
+  try {
+    // If retry is disabled, just do a single fetch
+    if (!shouldRetry || maxRetries <= 0) {
+      return await doFetch(url, fetchOptions);
+    }
+
+    let lastError: Error | null = null;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        const response = await doFetch(url, fetchOptions);
+
+        // Check if response status is retryable (5xx, 429)
+        if (isRetryableStatus(response.status) && attempt < maxRetries) {
+          // For 429, check Retry-After header (supports delta-seconds and HTTP-date)
+          let retryDelay = calculateBackoffDelay(attempt);
+          const retryAfter = response.headers.get("Retry-After");
+          if (retryAfter && response.status === 429) {
+            const parsedDelay = parseRetryAfter(retryAfter);
+            if (parsedDelay !== null) {
+              // Cap Retry-After to max delay to prevent excessive waits
+              retryDelay = Math.min(parsedDelay, API_RETRY_MAX_DELAY_MS);
+            }
+          }
+
+          logWarn("Retrying request after server error", {
+            url: safeUrl,
+            method,
+            status: response.status,
+            attempt: attempt + 1,
+            maxRetries,
+            retryDelay,
+          });
+
+          // Cancel response body to release connection before retry
+          // Wrap in try-catch as cancel() can throw if body is already disturbed
+          try {
+            await response.body?.cancel();
+          } catch {
+            // Body already consumed or errored - safe to ignore
+          }
+
+          await sleep(retryDelay, fetchOptions.signal ?? undefined);
+          continue;
+        }
+
+        return response;
+      } catch (error) {
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        // Check if error is retryable and we have attempts left
+        if (isRetryableError(error) && attempt < maxRetries) {
+          const retryDelay = calculateBackoffDelay(attempt);
+
+          logWarn("Retrying request after error", {
+            url: safeUrl,
+            method,
+            error: lastError.message,
+            attempt: attempt + 1,
+            maxRetries,
+            retryDelay,
+          });
+
+          await sleep(retryDelay, fetchOptions.signal ?? undefined);
+          continue;
+        }
+
+        // Not retryable or no attempts left
+        throw lastError;
+      }
+    }
+
+    /* istanbul ignore next -- unreachable: loop always exits via return or throw */
+    throw lastError ?? new Error("Unexpected: retry loop exited without result");
+  } finally {
+    // Always release rate limit slot
+    if (releaseSlot) {
+      releaseSlot();
+    }
+  }
 }
 
 export function resetDispatcherCache(): void {

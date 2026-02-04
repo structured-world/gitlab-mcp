@@ -8,9 +8,11 @@ import {
   TokenScopeInfo,
 } from "./TokenScopeDetector";
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from "../config";
-import { isOAuthEnabled } from "../oauth/index";
+import { isOAuthEnabled, getGitLabApiUrlFromContext } from "../oauth/index";
 import { enhancedFetch } from "../utils/fetch";
 import { logInfo, logDebug, logError } from "../logger";
+import { InstanceRegistry } from "./InstanceRegistry.js";
+import { CachedIntrospection } from "../config/instances-schema.js";
 
 interface CacheEntry {
   schemaInfo: SchemaInfo;
@@ -44,6 +46,12 @@ export class ConnectionManager {
 
     try {
       const oauthMode = isOAuthEnabled();
+
+      // Initialize InstanceRegistry for multi-instance support
+      const registry = InstanceRegistry.getInstance();
+      if (!registry.isInitialized()) {
+        await registry.initialize();
+      }
 
       // In OAuth mode, token comes from request context via enhancedFetch
       // In static mode, require both base URL and token
@@ -193,6 +201,7 @@ export class ConnectionManager {
   /**
    * Ensure schema introspection has been performed.
    * In OAuth mode, this should be called within a token context.
+   * Supports per-instance introspection caching via InstanceRegistry.
    */
   public async ensureIntrospected(): Promise<void> {
     // Already introspected
@@ -204,9 +213,29 @@ export class ConnectionManager {
       throw new Error("Connection not initialized. Call initialize() first.");
     }
 
+    // Determine the instance URL for caching
+    // In OAuth mode, use URL from context; otherwise use global GITLAB_BASE_URL
+    const instanceUrl = getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL;
     const endpoint = this.client.endpoint;
+    const registry = InstanceRegistry.getInstance();
 
-    // Check cache first
+    // Check InstanceRegistry cache first (for multi-instance support)
+    if (registry.isInitialized()) {
+      const cachedIntrospection = registry.getIntrospection(instanceUrl);
+      if (cachedIntrospection) {
+        logInfo("Using cached introspection from InstanceRegistry", { url: instanceUrl });
+        this.instanceInfo = {
+          version: cachedIntrospection.version,
+          tier: cachedIntrospection.tier as "free" | "premium" | "ultimate",
+          features: cachedIntrospection.features as unknown as GitLabInstanceInfo["features"],
+          detectedAt: cachedIntrospection.cachedAt,
+        };
+        this.schemaInfo = cachedIntrospection.schemaInfo as SchemaInfo;
+        return;
+      }
+    }
+
+    // Check legacy cache (for backward compatibility)
     const cached = ConnectionManager.introspectionCache.get(endpoint);
     const now = Date.now();
 
@@ -228,12 +257,24 @@ export class ConnectionManager {
     this.instanceInfo = instanceInfo;
     this.schemaInfo = schemaInfo;
 
-    // Cache the results
+    // Cache the results in legacy cache
     ConnectionManager.introspectionCache.set(endpoint, {
       instanceInfo,
       schemaInfo,
       timestamp: now,
     });
+
+    // Also cache in InstanceRegistry for multi-instance support
+    if (registry.isInitialized()) {
+      const cachedIntrospection: CachedIntrospection = {
+        version: instanceInfo.version,
+        tier: instanceInfo.tier,
+        features: instanceInfo.features as unknown as Record<string, boolean>,
+        schemaInfo,
+        cachedAt: new Date(),
+      };
+      registry.setIntrospection(instanceUrl, cachedIntrospection);
+    }
 
     logInfo("GraphQL schema introspection completed (deferred)", {
       version: this.instanceInfo?.version,

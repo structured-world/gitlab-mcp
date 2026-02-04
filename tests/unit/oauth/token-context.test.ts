@@ -10,6 +10,8 @@ import {
   getGitLabUserIdFromContext,
   getGitLabUsernameFromContext,
   getSessionIdFromContext,
+  getGitLabApiUrlFromContext,
+  getInstanceLabelFromContext,
   isInOAuthContext,
 } from "../../../src/oauth/token-context";
 import { TokenContext } from "../../../src/oauth/types";
@@ -21,6 +23,7 @@ describe("OAuth Token Context", () => {
     gitlabUserId: 12345,
     gitlabUsername: "testuser",
     sessionId: "session-abc-123",
+    apiUrl: "https://gitlab.com",
     ...overrides,
   });
 
@@ -176,6 +179,47 @@ describe("OAuth Token Context", () => {
       runWithTokenContext(testContext, () => {
         const sessionId = getSessionIdFromContext();
         expect(sessionId).toBe("my-session-id");
+      });
+    });
+  });
+
+  describe("getGitLabApiUrlFromContext", () => {
+    it("should return undefined outside of context", () => {
+      const apiUrl = getGitLabApiUrlFromContext();
+      expect(apiUrl).toBeUndefined();
+    });
+
+    it("should return API URL inside context", () => {
+      const testContext = createTestContext({ apiUrl: "https://git.corp.io" });
+
+      runWithTokenContext(testContext, () => {
+        const apiUrl = getGitLabApiUrlFromContext();
+        expect(apiUrl).toBe("https://git.corp.io");
+      });
+    });
+  });
+
+  describe("getInstanceLabelFromContext", () => {
+    it("should return undefined outside of context", () => {
+      const label = getInstanceLabelFromContext();
+      expect(label).toBeUndefined();
+    });
+
+    it("should return undefined when instanceLabel not set", () => {
+      const testContext = createTestContext();
+
+      runWithTokenContext(testContext, () => {
+        const label = getInstanceLabelFromContext();
+        expect(label).toBeUndefined();
+      });
+    });
+
+    it("should return instance label when set", () => {
+      const testContext = createTestContext({ instanceLabel: "Corporate GitLab" });
+
+      runWithTokenContext(testContext, () => {
+        const label = getInstanceLabelFromContext();
+        expect(label).toBe("Corporate GitLab");
       });
     });
   });

@@ -28,6 +28,7 @@ import {
   calculateTokenExpiry,
 } from "../token-utils";
 import { getBaseUrl } from "./metadata";
+import { GITLAB_BASE_URL } from "../../config";
 import { logInfo, logWarn, logError, truncateId } from "../../logger";
 import { DeviceFlowPollResponse, OAuthErrorResponse } from "../types";
 import { getIpAddress } from "../../utils/request-logger";
@@ -303,6 +304,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
         gitlabTokenExpiry: calculateTokenExpiry(tokenResponse.expires_in),
         gitlabUserId: userInfo.id,
         gitlabUsername: userInfo.username,
+        gitlabApiUrl: GITLAB_BASE_URL,
         clientId: flow.clientId,
         scopes: ["mcp:tools", "mcp:resources"],
         createdAt: now,

@@ -35,6 +35,12 @@ export interface OAuthSession {
   /** GitLab username */
   gitlabUsername: string;
 
+  // Multi-instance support
+  /** GitLab instance base URL (e.g., https://gitlab.com). Optional for backward compatibility. */
+  gitlabApiUrl?: string;
+  /** Human-readable instance label for UI display */
+  instanceLabel?: string;
+
   // Session metadata
   /** OAuth client ID that created this session */
   clientId: string;
@@ -154,6 +160,10 @@ export interface TokenContext {
   gitlabUsername: string;
   /** Session ID for tracking */
   sessionId: string;
+  /** GitLab instance base URL (e.g., https://gitlab.com) */
+  apiUrl: string;
+  /** Human-readable instance label for UI display */
+  instanceLabel?: string;
 }
 
 /**

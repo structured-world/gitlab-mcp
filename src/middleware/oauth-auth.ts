@@ -21,6 +21,7 @@ import { getBaseUrl } from "../oauth/endpoints/metadata";
 import { logWarn, logError, logDebug, truncateId } from "../logger";
 import { OAuthErrorResponse } from "../oauth/types";
 import { getMinimalRequestContext } from "../utils/request-logger";
+import { GITLAB_BASE_URL } from "../config";
 
 /**
  * OAuth authentication middleware for Express
@@ -136,6 +137,9 @@ export async function oauthAuthMiddleware(
   res.locals.gitlabToken = updatedSession.gitlabAccessToken;
   res.locals.gitlabUserId = updatedSession.gitlabUserId;
   res.locals.gitlabUsername = updatedSession.gitlabUsername;
+  // Multi-instance support: use session's API URL or fallback to global config
+  res.locals.gitlabApiUrl = updatedSession.gitlabApiUrl ?? GITLAB_BASE_URL;
+  res.locals.instanceLabel = updatedSession.instanceLabel;
 
   logDebug("OAuth session validated, passing to route handler", {
     sessionId: truncateId(updatedSession.id),
@@ -210,6 +214,9 @@ export async function optionalOAuthMiddleware(
   res.locals.gitlabToken = session.gitlabAccessToken;
   res.locals.gitlabUserId = session.gitlabUserId;
   res.locals.gitlabUsername = session.gitlabUsername;
+  // Multi-instance support: use session's API URL or fallback to global config
+  res.locals.gitlabApiUrl = session.gitlabApiUrl ?? GITLAB_BASE_URL;
+  res.locals.instanceLabel = session.instanceLabel;
 
   next();
 }

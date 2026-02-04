@@ -109,6 +109,26 @@ export function getSessionIdFromContext(): string | undefined {
 }
 
 /**
+ * Get the GitLab API URL from the current context
+ *
+ * @returns The GitLab API URL, or undefined if not in OAuth context
+ */
+export function getGitLabApiUrlFromContext(): string | undefined {
+  const context = asyncLocalStorage.getStore();
+  return context?.apiUrl;
+}
+
+/**
+ * Get the GitLab instance label from the current context
+ *
+ * @returns The instance label, or undefined if not in OAuth context or not set
+ */
+export function getInstanceLabelFromContext(): string | undefined {
+  const context = asyncLocalStorage.getStore();
+  return context?.instanceLabel;
+}
+
+/**
  * Check if we're currently in an OAuth context
  *
  * @returns true if a token context is available

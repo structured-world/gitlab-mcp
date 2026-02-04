@@ -121,7 +121,8 @@ jobs:
 
     permissions:
       contents: read
-      pull-requests: read  # For review thread check on PRs
+      pull-requests: read   # For review thread check on PRs
+      security-events: read # For checking CodeQL alert states
 
     steps:
       - name: Check for unresolved review threads
@@ -141,10 +142,13 @@ jobs:
           fi
           OWNER="${REPO%/*}"
           NAME="${REPO#*/}"
-          UNRESOLVED=0
+
+          # Collect all unresolved, non-outdated threads with author info
+          ALL_THREADS="[]"
           AFTER=""
           MAX_PAGES=100
           PAGE_COUNT=0
+
           while [ "$PAGE_COUNT" -lt "$MAX_PAGES" ]; do
             PAGE_COUNT=$((PAGE_COUNT + 1))
             if [ -z "$AFTER" ]; then
@@ -152,7 +156,16 @@ jobs:
                 repository(owner:$owner, name:$name) {
                   pullRequest(number:$number) {
                     reviewThreads(first:100) {
-                      nodes { isResolved, isOutdated }
+                      nodes {
+                        isResolved
+                        isOutdated
+                        comments(first:1) {
+                          nodes {
+                            author { login }
+                            body
+                          }
+                        }
+                      }
                       pageInfo { hasNextPage, endCursor }
                     }
                   }
@@ -171,7 +184,16 @@ jobs:
                 repository(owner:$owner, name:$name) {
                   pullRequest(number:$number) {
                     reviewThreads(first:100, after:$after) {
-                      nodes { isResolved, isOutdated }
+                      nodes {
+                        isResolved
+                        isOutdated
+                        comments(first:1) {
+                          nodes {
+                            author { login }
+                            body
+                          }
+                        }
+                      }
                       pageInfo { hasNextPage, endCursor }
                     }
                   }
@@ -187,13 +209,15 @@ jobs:
                   exit 0
                 }
             fi
-            # Count only active, unresolved, non-outdated threads.
-            # Outdated threads (code changed since comment) are excluded.
-            PAGE_UNRESOLVED=$(echo "$RESP" | jq '[.data.repository.pullRequest.reviewThreads.nodes // [] | .[] | select(.isResolved == false and .isOutdated == false)] | length')
+
+            # Extract unresolved, non-outdated threads from this page
+            PAGE_THREADS=$(echo "$RESP" | jq '[.data.repository.pullRequest.reviewThreads.nodes // [] | .[] | select(.isResolved == false and .isOutdated == false)]')
             PAGE_NODE_COUNT=$(echo "$RESP" | jq '(.data.repository.pullRequest.reviewThreads.nodes // []) | length')
-            if ! [[ "$PAGE_UNRESOLVED" =~ ^[0-9]+$ ]]; then PAGE_UNRESOLVED=0; fi
             if ! [[ "$PAGE_NODE_COUNT" =~ ^[0-9]+$ ]]; then PAGE_NODE_COUNT=0; fi
-            UNRESOLVED=$((UNRESOLVED + PAGE_UNRESOLVED))
+
+            # Merge into ALL_THREADS
+            ALL_THREADS=$(echo "$ALL_THREADS" "$PAGE_THREADS" | jq -s '.[0] + .[1]')
+
             HAS_NEXT=$(echo "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.hasNextPage')
             if [ "$HAS_NEXT" != "true" ]; then break; fi
             AFTER=$(echo "$RESP" | jq -r '.data.repository.pullRequest.reviewThreads.pageInfo.endCursor')
@@ -207,16 +231,66 @@ jobs:
               exit 1
             fi
           done
+
           if [ "$PAGE_COUNT" -ge "$MAX_PAGES" ] && [ "$HAS_NEXT" = "true" ]; then
             echo "::error::Thread scan incomplete (exceeded $MAX_PAGES pages). Blocking build for safety."
             exit 1
           fi
-          # Intentionally fail (not skip) — PRs with unresolved threads should not show green CI
-          if [ "$UNRESOLVED" -gt 0 ]; then
-            echo "::error::$UNRESOLVED unresolved review thread(s). Resolve them before building."
+
+          # Categorize threads and check CodeQL alert states
+          COPILOT_COUNT=0
+          CODEQL_ACTIVE=0
+          CODEQL_DISMISSED=0
+          OTHER_COUNT=0
+
+          THREAD_COUNT=$(echo "$ALL_THREADS" | jq 'length')
+          for i in $(seq 0 $((THREAD_COUNT - 1))); do
+            THREAD=$(echo "$ALL_THREADS" | jq ".[$i]")
+            AUTHOR=$(echo "$THREAD" | jq -r '.comments.nodes[0].author.login // ""')
+            BODY=$(echo "$THREAD" | jq -r '.comments.nodes[0].body // ""')
+
+            if [ "$AUTHOR" = "github-advanced-security" ]; then
+              # CodeQL thread - extract alert number and check state
+              ALERT_NUM=$(echo "$BODY" | grep -oE '/security/code-scanning/[0-9]+' | grep -oE '[0-9]+$' | head -1)
+              if [ -n "$ALERT_NUM" ]; then
+                ALERT_STATE=$(gh api "repos/$REPO/code-scanning/alerts/$ALERT_NUM" --jq '.state' 2>/dev/null || echo "unknown")
+                if [ "$ALERT_STATE" = "dismissed" ] || [ "$ALERT_STATE" = "fixed" ]; then
+                  CODEQL_DISMISSED=$((CODEQL_DISMISSED + 1))
+                else
+                  CODEQL_ACTIVE=$((CODEQL_ACTIVE + 1))
+                fi
+              else
+                # No alert number found, count as active
+                CODEQL_ACTIVE=$((CODEQL_ACTIVE + 1))
+              fi
+            elif [ "$AUTHOR" = "copilot-pull-request-reviewer" ]; then
+              COPILOT_COUNT=$((COPILOT_COUNT + 1))
+            else
+              OTHER_COUNT=$((OTHER_COUNT + 1))
+            fi
+          done
+
+          # Calculate effective blocking threads (CodeQL dismissed don't block)
+          BLOCKING=$((COPILOT_COUNT + CODEQL_ACTIVE + OTHER_COUNT))
+
+          # Write summary
+          echo "## Review Thread Check" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Category | Count |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|----------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          [ "$COPILOT_COUNT" -gt 0 ] && echo "| Copilot | $COPILOT_COUNT |" >> "$GITHUB_STEP_SUMMARY"
+          [ "$CODEQL_ACTIVE" -gt 0 ] && echo "| CodeQL (active) | $CODEQL_ACTIVE |" >> "$GITHUB_STEP_SUMMARY"
+          [ "$CODEQL_DISMISSED" -gt 0 ] && echo "| CodeQL (dismissed) | $CODEQL_DISMISSED |" >> "$GITHUB_STEP_SUMMARY"
+          [ "$OTHER_COUNT" -gt 0 ] && echo "| Other | $OTHER_COUNT |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| **Blocking** | **$BLOCKING** |" >> "$GITHUB_STEP_SUMMARY"
+
+          # Intentionally fail (not skip) — PRs with blocking threads should not show green CI
+          if [ "$BLOCKING" -gt 0 ]; then
+            echo "::error::$BLOCKING unresolved review thread(s). Resolve them before building. (CodeQL dismissed: $CODEQL_DISMISSED, Copilot: $COPILOT_COUNT, CodeQL active: $CODEQL_ACTIVE, Other: $OTHER_COUNT)"
             exit 1
           fi
-          echo "Unresolved review threads: 0" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "✅ No blocking review threads." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Checkout code
         uses: actions/checkout@v6

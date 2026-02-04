@@ -172,23 +172,28 @@ export class InstanceConnectionPool {
           }
           return (...args: unknown[]): unknown => {
             // graphql-request style: request(document, variables?, requestHeaders?)
+            // Args: [doc] | [doc, vars] | [doc, vars, headers]
             const extraHeaders = authHeaders ?? {};
             if (Object.keys(extraHeaders).length === 0) {
               return (original as RequestFn).apply(target, args);
             }
             const adjustedArgs = [...args];
-            const lastIndex = adjustedArgs.length - 1;
-            const lastArg = lastIndex >= 0 ? adjustedArgs[lastIndex] : undefined;
-            if (lastArg && typeof lastArg === "object" && !Array.isArray(lastArg)) {
-              // Merge into existing request headers
-              adjustedArgs[lastIndex] = {
-                ...(lastArg as Record<string, string>),
-                ...extraHeaders,
-              };
-            } else {
-              // Append headers as the last argument
-              adjustedArgs.push(extraHeaders);
+
+            // Only merge if 3+ args (last arg is requestHeaders)
+            // For 1-2 args, append headers as new argument
+            if (args.length >= 3) {
+              const lastArg = adjustedArgs[adjustedArgs.length - 1];
+              if (lastArg && typeof lastArg === "object" && !Array.isArray(lastArg)) {
+                // Merge into existing request headers
+                adjustedArgs[adjustedArgs.length - 1] = {
+                  ...(lastArg as Record<string, string>),
+                  ...extraHeaders,
+                };
+                return (original as RequestFn).apply(target, adjustedArgs);
+              }
             }
+            // Append headers as new argument
+            adjustedArgs.push(extraHeaders);
             return (original as RequestFn).apply(target, adjustedArgs);
           };
         }

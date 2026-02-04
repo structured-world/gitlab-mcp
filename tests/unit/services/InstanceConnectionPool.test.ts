@@ -26,10 +26,14 @@ jest.mock("undici", () => ({
 
 // Mock GraphQLClient
 const mockSetHeaders = jest.fn();
+const mockRequest = jest.fn().mockResolvedValue({ data: "test" });
+const mockRawRequest = jest.fn().mockResolvedValue({ data: "raw" });
 jest.mock("../../../src/graphql/client", () => ({
   GraphQLClient: jest.fn().mockImplementation((endpoint: string) => ({
     endpoint,
     setHeaders: mockSetHeaders,
+    request: mockRequest,
+    rawRequest: mockRawRequest,
   })),
 }));
 
@@ -147,6 +151,87 @@ describe("InstanceConnectionPool", () => {
       // Without auth headers, returns the base client directly
       expect(client).toBeDefined();
       expect(mockSetHeaders).not.toHaveBeenCalled();
+    });
+
+    it("should inject auth headers into request calls via proxy", async () => {
+      const pool = InstanceConnectionPool.getInstance();
+      const authHeaders = { Authorization: "Bearer token123" };
+
+      const client = pool.getGraphQLClient(instanceConfig, authHeaders);
+      mockRequest.mockClear();
+
+      // Call request through the proxy (cast to any for test - mock doesn't have proper types)
+
+      await (client as any).request("query { test }", { var: "value" });
+
+      // Proxy should append auth headers as the last argument
+      expect(mockRequest).toHaveBeenCalledWith(
+        "query { test }",
+        { var: "value" },
+        { Authorization: "Bearer token123" }
+      );
+    });
+
+    it("should merge auth headers with existing request headers", async () => {
+      const pool = InstanceConnectionPool.getInstance();
+      const authHeaders = { Authorization: "Bearer token123" };
+
+      const client = pool.getGraphQLClient(instanceConfig, authHeaders);
+      mockRequest.mockClear();
+
+      // Call request with existing headers (3rd argument)
+
+      await (client as any).request("query { test }", { var: "value" }, { "X-Custom": "header" });
+
+      // Proxy should merge auth headers into existing headers
+      expect(mockRequest).toHaveBeenCalledWith(
+        "query { test }",
+        { var: "value" },
+        { "X-Custom": "header", Authorization: "Bearer token123" }
+      );
+    });
+
+    it("should inject auth headers into rawRequest calls via proxy", async () => {
+      const pool = InstanceConnectionPool.getInstance();
+      const authHeaders = { Authorization: "Bearer token456" };
+
+      const client = pool.getGraphQLClient(instanceConfig, authHeaders);
+      mockRawRequest.mockClear();
+
+      // Call rawRequest through the proxy
+
+      await (client as any).rawRequest("query { raw }");
+
+      // Proxy should append auth headers
+      expect(mockRawRequest).toHaveBeenCalledWith("query { raw }", {
+        Authorization: "Bearer token456",
+      });
+    });
+
+    it("should not modify request when auth headers are empty", async () => {
+      const pool = InstanceConnectionPool.getInstance();
+      const authHeaders = {};
+
+      const client = pool.getGraphQLClient(instanceConfig, authHeaders);
+      mockRequest.mockClear();
+
+      // Call request with empty auth headers
+
+      await (client as any).request("query { test }", { var: "value" });
+
+      // Should call original without modification (no extra headers appended)
+      expect(mockRequest).toHaveBeenCalledWith("query { test }", { var: "value" });
+    });
+
+    it("should pass through non-request properties unchanged", () => {
+      const pool = InstanceConnectionPool.getInstance();
+      const authHeaders = { Authorization: "Bearer token" };
+
+      const client = pool.getGraphQLClient(instanceConfig, authHeaders);
+
+      // Access non-proxied property (endpoint exists on mock)
+
+      expect((client as any).endpoint).toBe("https://gitlab.com/api/graphql");
     });
 
     it("should update lastUsedAt timestamp on access", async () => {

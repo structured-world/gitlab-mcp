@@ -487,6 +487,36 @@ export class ConnectionManager {
     };
   }
 
+  /**
+   * Re-initialize connection with a different GitLab instance.
+   * Used when switching instances in static token mode.
+   *
+   * @param newInstanceUrl - The new GitLab instance URL to connect to
+   */
+  public async reinitialize(newInstanceUrl: string): Promise<void> {
+    logInfo("Re-initializing ConnectionManager for new instance", {
+      newInstanceUrl,
+    });
+
+    // Reset current state
+    this.reset();
+
+    // Clear instance-level cache for the new URL
+    const registry = InstanceRegistry.getInstance();
+    registry.clearIntrospectionCache(newInstanceUrl);
+
+    // Re-initialize with the new instance
+    // Note: In static token mode, this will use GITLAB_BASE_URL
+    // For instance switching, the caller should have already updated the env var
+    // or we need to pass the URL through context
+    await this.initialize();
+
+    logInfo("ConnectionManager re-initialized", {
+      version: this.instanceInfo?.version,
+      tier: this.instanceInfo?.tier,
+    });
+  }
+
   public reset(): void {
     this.client = null;
     this.versionDetector = null;

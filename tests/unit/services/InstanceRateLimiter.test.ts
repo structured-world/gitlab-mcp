@@ -141,6 +141,27 @@ describe("InstanceRateLimiter", () => {
       const release2 = await queuedPromise;
       release2();
     });
+
+    it("should timeout queued request after queueTimeout", async () => {
+      // Tests that requests waiting in queue are rejected after timeout expires
+      const limiter = new InstanceRateLimiter({
+        maxConcurrent: 1,
+        queueSize: 10,
+        queueTimeout: 50, // Very short timeout for testing
+      });
+
+      // Acquire the only slot - this will block other requests
+      const release = await limiter.acquire();
+
+      // Queue a request - it will wait and eventually timeout
+      const queuedPromise = limiter.acquire();
+
+      // Wait for timeout to expire
+      await expect(queuedPromise).rejects.toThrow(/timing out/);
+
+      // Cleanup
+      release();
+    });
   });
 
   describe("getMetrics", () => {

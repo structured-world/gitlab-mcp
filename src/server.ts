@@ -122,6 +122,7 @@ function registerOAuthEndpoints(app: Express): void {
   // NOTE: /health endpoint is registered globally in startServer() BEFORE OAuth endpoints
   // to avoid access log spam from load balancer health checks. The simple handler there
   // returns {"status": "ok"} which is sufficient for health checks.
+  // MCP metadata (version, tools, auth mode, instances) is available via GET / (dashboard).
 
   logInfo("OAuth endpoints registered");
 }

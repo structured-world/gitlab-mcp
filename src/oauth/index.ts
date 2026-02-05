@@ -100,7 +100,6 @@ export {
 // OAuth Endpoints
 export {
   metadataHandler,
-  healthHandler,
   protectedResourceHandler,
   getBaseUrl,
   authorizeHandler,

@@ -306,6 +306,73 @@ describe("server", () => {
       expect(mockLogInfo).toHaveBeenCalledWith("Dual Transport Mode Active");
     });
 
+    it("should log access log filter rules count when LOG_FILTER has rules", async () => {
+      // Reset modules to allow re-mock with non-empty LOG_FILTER
+      jest.resetModules();
+      jest.doMock("../../src/config", () => ({
+        SSE: false,
+        STREAMABLE_HTTP: false,
+        HOST: "localhost",
+        PORT: "3000",
+        SSE_HEARTBEAT_MS: 30000,
+        HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        packageName: "test-package",
+        packageVersion: "1.0.0",
+        LOG_FILTER: [{ method: "get", path: "/", userAgent: "test" }],
+        shouldSkipAccessLogRequest: jest.fn(() => false),
+      }));
+
+      const { startServer: newStartServer } = await import("../../src/server");
+      await newStartServer();
+
+      expect(mockLogInfo).toHaveBeenCalledWith("Access log filter rules active", { count: 1 });
+    });
+
+    it("should skip access logging for requests matching LOG_FILTER", async () => {
+      // Reset modules to set up shouldSkipAccessLogRequest to return true
+      jest.resetModules();
+      const mockSkipFn = jest.fn(() => true);
+      jest.doMock("../../src/config", () => ({
+        SSE: false,
+        STREAMABLE_HTTP: false,
+        HOST: "localhost",
+        PORT: "3000",
+        SSE_HEARTBEAT_MS: 30000,
+        HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        packageName: "test-package",
+        packageVersion: "1.0.0",
+        LOG_FORMAT: "condensed",
+        LOG_FILTER: [{ method: "get", path: "/" }],
+        shouldSkipAccessLogRequest: mockSkipFn,
+      }));
+
+      const { startServer: newStartServer } = await import("../../src/server");
+      await newStartServer();
+
+      // Get the access logging middleware (first app.use call after json middleware)
+      const middlewareCalls = mockApp.use.mock.calls;
+      // Find the middleware that's a function (not express.json)
+      const accessLogMiddleware = middlewareCalls.find(
+        (call: [unknown]) =>
+          typeof call[0] === "function" && call[0] !== (mockExpress as any).json()
+      )?.[0] as ((req: any, res: any, next: () => void) => void) | undefined;
+
+      expect(accessLogMiddleware).toBeDefined();
+
+      // Mock req, res, next
+      const mockReq = { method: "GET", path: "/", headers: {} };
+      const mockRes = { locals: {}, on: jest.fn() };
+      const mockNext = jest.fn();
+
+      // Call middleware - should skip logging because shouldSkipAccessLogRequest returns true
+      accessLogMiddleware!(mockReq, mockRes, mockNext);
+
+      // Verify next() was called (request proceeds)
+      expect(mockNext).toHaveBeenCalled();
+      // Verify shouldSkipAccessLogRequest was called
+      expect(mockSkipFn).toHaveBeenCalledWith(mockReq);
+    });
+
     it("should handle SSE endpoint requests", async () => {
       await startServer();
 

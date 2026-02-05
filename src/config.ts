@@ -1,5 +1,8 @@
 import * as path from "path";
 import * as fs from "fs";
+import { z } from "zod";
+import type { Request } from "express";
+
 // Get package.json path
 const packageJsonPath = path.resolve(process.cwd(), "package.json");
 
@@ -83,6 +86,172 @@ export const LOG_FORMAT: LogFormat = parseLogFormat(process.env.LOG_FORMAT);
 
 // Re-export LogFormat type for consumers of config module
 export type { LogFormat };
+
+/**
+ * Schema for a single log filter rule.
+ * A request is skipped from access logging if ALL specified conditions match.
+ */
+const LogFilterRuleSchema = z
+  .object({
+    method: z
+      .string()
+      .optional()
+      .describe("HTTP method to match (exact, case-insensitive). If omitted, matches any method."),
+    path: z
+      .string()
+      .optional()
+      .describe(
+        "Request path to match. Exact match, or prefix match if ends with '*'. If omitted, matches any path."
+      ),
+    userAgent: z
+      .string()
+      .optional()
+      .describe(
+        "Substring to match in User-Agent header (case-insensitive). If omitted, matches any User-Agent."
+      ),
+  })
+  .describe("Filter rule for skipping access log entries. All specified conditions must match.");
+
+/**
+ * Schema for LOG_FILTER environment variable.
+ * JSON array of filter rules.
+ */
+const LogFilterSchema = z.array(LogFilterRuleSchema).describe("Array of log filter rules");
+
+/**
+ * Parsed log filter rule
+ */
+export interface LogFilterRule {
+  /** HTTP method (lowercase for comparison) */
+  method?: string;
+  /** Request path (exact match, or prefix if ends with *) */
+  path?: string;
+  /** Whether path uses prefix matching (ends with *) */
+  pathIsPrefix?: boolean;
+  /** User-Agent substring (lowercase for comparison) */
+  userAgent?: string;
+}
+
+/**
+ * Parse LOG_FILTER from environment variable
+ * @returns Array of parsed filter rules, empty array if not set or invalid
+ */
+function parseLogFilter(envValue?: string): LogFilterRule[] {
+  if (!envValue || envValue.trim() === "") {
+    return [];
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(envValue);
+    const validated = LogFilterSchema.parse(parsed);
+
+    return validated.map(rule => {
+      const result: LogFilterRule = {};
+
+      if (rule.method) {
+        result.method = rule.method.toLowerCase();
+      }
+
+      if (rule.path) {
+        if (rule.path.endsWith("*")) {
+          result.path = rule.path.slice(0, -1); // Remove trailing *
+          result.pathIsPrefix = true;
+        } else {
+          result.path = rule.path;
+          result.pathIsPrefix = false;
+        }
+      }
+
+      if (rule.userAgent) {
+        result.userAgent = rule.userAgent.toLowerCase();
+      }
+
+      return result;
+    });
+  } catch (error) {
+    // Log warning at startup for invalid JSON/schema
+    console.warn(
+      `[gitlab-mcp] Invalid LOG_FILTER format, logging all requests. Error: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return [];
+  }
+}
+
+/**
+ * Default log filter rules - skip Claude Code polling requests.
+ * Claude Code polls GET / every second to check MCP server availability.
+ */
+const DEFAULT_LOG_FILTER: LogFilterRule[] = [
+  { method: "get", path: "/", pathIsPrefix: false, userAgent: "claude-code" },
+];
+
+/**
+ * Parsed log filter rules from LOG_FILTER environment variable.
+ * Defaults to filtering Claude Code polling (GET / with claude-code user agent).
+ * Set to empty array '[]' to log all requests.
+ */
+export const LOG_FILTER: LogFilterRule[] =
+  process.env.LOG_FILTER !== undefined
+    ? parseLogFilter(process.env.LOG_FILTER)
+    : DEFAULT_LOG_FILTER;
+
+/**
+ * Check if a request should be skipped from access logging.
+ * A request is skipped if it matches ANY of the filter rules.
+ * Within a rule, ALL specified conditions must match.
+ *
+ * @param method - HTTP method (e.g., "GET", "POST")
+ * @param path - Request path (e.g., "/", "/health")
+ * @param userAgent - User-Agent header value (may be undefined)
+ * @returns true if request should be skipped from logging
+ */
+export function shouldSkipAccessLog(method: string, path: string, userAgent?: string): boolean {
+  if (LOG_FILTER.length === 0) {
+    return false;
+  }
+
+  const methodLower = method.toLowerCase();
+  const userAgentLower = userAgent?.toLowerCase() ?? "";
+
+  return LOG_FILTER.some(rule => {
+    // Check method (if specified)
+    if (rule.method && rule.method !== methodLower) {
+      return false;
+    }
+
+    // Check path (if specified)
+    if (rule.path !== undefined) {
+      if (rule.pathIsPrefix) {
+        if (!path.startsWith(rule.path)) {
+          return false;
+        }
+      } else {
+        if (path !== rule.path) {
+          return false;
+        }
+      }
+    }
+
+    // Check User-Agent (if specified) - substring match
+    if (rule.userAgent && !userAgentLower.includes(rule.userAgent)) {
+      return false;
+    }
+
+    // All specified conditions matched
+    return true;
+  });
+}
+
+/**
+ * Check if a request should be skipped from access logging (Express request overload).
+ * Convenience function that extracts method, path, and User-Agent from Express request.
+ *
+ * @param req - Express request object
+ * @returns true if request should be skipped from logging
+ */
+export function shouldSkipAccessLogRequest(req: Request): boolean {
+  return shouldSkipAccessLog(req.method, req.path, req.headers["user-agent"]);
+}
 
 // Schema mode configuration
 // - 'flat' (default): Flatten discriminated unions for AI clients that don't support oneOf well

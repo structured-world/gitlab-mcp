@@ -100,6 +100,8 @@ jest.mock("../../src/config", () => ({
   HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
   packageName: "test-package",
   packageVersion: "1.0.0",
+  LOG_FILTER: [],
+  shouldSkipAccessLogRequest: jest.fn(() => false),
 }));
 
 // Mock types

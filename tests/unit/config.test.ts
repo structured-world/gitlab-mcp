@@ -890,4 +890,248 @@ describe("config.ts", () => {
       expect(config.detectSchemaMode("precursor")).toBe("flat"); // Safe default
     });
   });
+
+  describe("LOG_FILTER parsing", () => {
+    it("should return default Claude Code filter when not set", () => {
+      delete process.env.LOG_FILTER;
+
+      const config = require("../../src/config");
+
+      // Default filters Claude Code polling: GET / with claude-code user agent
+      expect(config.LOG_FILTER).toEqual([
+        { method: "get", path: "/", pathIsPrefix: false, userAgent: "claude-code" },
+      ]);
+    });
+
+    it("should return empty array for empty string (explicit disable)", () => {
+      process.env.LOG_FILTER = "[]";
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FILTER).toEqual([]);
+    });
+
+    it("should return empty array for whitespace-only string", () => {
+      process.env.LOG_FILTER = "   ";
+
+      const config = require("../../src/config");
+
+      // Whitespace-only is treated as empty, returns empty array
+      expect(config.LOG_FILTER).toEqual([]);
+    });
+
+    it("should parse single filter rule", () => {
+      process.env.LOG_FILTER = '[{"method":"GET","path":"/","userAgent":"claude-code"}]';
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FILTER).toEqual([
+        { method: "get", path: "/", pathIsPrefix: false, userAgent: "claude-code" },
+      ]);
+    });
+
+    it("should parse multiple filter rules", () => {
+      process.env.LOG_FILTER = '[{"method":"GET","path":"/health"},{"method":"HEAD","path":"/*"}]';
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FILTER).toHaveLength(2);
+      expect(config.LOG_FILTER[0]).toEqual({
+        method: "get",
+        path: "/health",
+        pathIsPrefix: false,
+      });
+      expect(config.LOG_FILTER[1]).toEqual({
+        method: "head",
+        path: "/",
+        pathIsPrefix: true,
+      });
+    });
+
+    it("should handle prefix path matching (ending with *)", () => {
+      process.env.LOG_FILTER = '[{"path":"/api/*"}]';
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FILTER).toEqual([{ path: "/api/", pathIsPrefix: true }]);
+    });
+
+    it("should handle exact path matching (no *)", () => {
+      process.env.LOG_FILTER = '[{"path":"/health"}]';
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FILTER).toEqual([{ path: "/health", pathIsPrefix: false }]);
+    });
+
+    it("should convert method to lowercase", () => {
+      process.env.LOG_FILTER = '[{"method":"GET"}]';
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FILTER[0].method).toBe("get");
+    });
+
+    it("should convert userAgent to lowercase", () => {
+      process.env.LOG_FILTER = '[{"userAgent":"Claude-Code"}]';
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FILTER[0].userAgent).toBe("claude-code");
+    });
+
+    it("should handle filter with only userAgent", () => {
+      process.env.LOG_FILTER = '[{"userAgent":"datadog"}]';
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FILTER).toEqual([{ userAgent: "datadog" }]);
+    });
+
+    it("should return empty array for invalid JSON", () => {
+      process.env.LOG_FILTER = "not valid json";
+
+      // Suppress console.warn for this test
+      const originalWarn = console.warn;
+      console.warn = jest.fn();
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FILTER).toEqual([]);
+      expect(console.warn).toHaveBeenCalled();
+
+      console.warn = originalWarn;
+    });
+
+    it("should return empty array for invalid schema (not an array)", () => {
+      process.env.LOG_FILTER = '{"method":"GET"}';
+
+      const originalWarn = console.warn;
+      console.warn = jest.fn();
+
+      const config = require("../../src/config");
+
+      expect(config.LOG_FILTER).toEqual([]);
+
+      console.warn = originalWarn;
+    });
+  });
+
+  describe("shouldSkipAccessLog", () => {
+    beforeEach(() => {
+      // Set up a test configuration
+      process.env.LOG_FILTER =
+        '[{"method":"GET","path":"/","userAgent":"claude-code"},{"method":"GET","path":"/health"},{"path":"/api/*"},{"userAgent":"prometheus"}]';
+    });
+
+    it("should skip request matching all conditions in a rule", () => {
+      const config = require("../../src/config");
+
+      // Matches first rule: GET / with claude-code user agent
+      expect(config.shouldSkipAccessLog("GET", "/", "claude-code/1.0")).toBe(true);
+    });
+
+    it("should skip request matching method and path (no userAgent specified)", () => {
+      const config = require("../../src/config");
+
+      // Matches second rule: GET /health (any user agent)
+      expect(config.shouldSkipAccessLog("GET", "/health", "any-agent")).toBe(true);
+    });
+
+    it("should skip request matching prefix path", () => {
+      const config = require("../../src/config");
+
+      // Matches third rule: /api/* prefix
+      expect(config.shouldSkipAccessLog("POST", "/api/v1/users", "browser")).toBe(true);
+      expect(config.shouldSkipAccessLog("GET", "/api/health", undefined)).toBe(true);
+    });
+
+    it("should skip request matching only userAgent", () => {
+      const config = require("../../src/config");
+
+      // Matches fourth rule: prometheus in user agent
+      expect(config.shouldSkipAccessLog("GET", "/metrics", "Prometheus/2.0")).toBe(true);
+      expect(config.shouldSkipAccessLog("HEAD", "/something", "prometheus-agent")).toBe(true);
+    });
+
+    it("should NOT skip when method does not match", () => {
+      const config = require("../../src/config");
+
+      // First rule requires GET, this is POST
+      expect(config.shouldSkipAccessLog("POST", "/", "claude-code/1.0")).toBe(false);
+    });
+
+    it("should NOT skip when path does not match", () => {
+      const config = require("../../src/config");
+
+      // Second rule requires /health, this is /healthz
+      expect(config.shouldSkipAccessLog("GET", "/healthz", "any")).toBe(false);
+    });
+
+    it("should NOT skip when userAgent does not match", () => {
+      const config = require("../../src/config");
+
+      // First rule requires claude-code in user agent
+      expect(config.shouldSkipAccessLog("GET", "/", "browser")).toBe(false);
+    });
+
+    it("should be case-insensitive for method", () => {
+      const config = require("../../src/config");
+
+      expect(config.shouldSkipAccessLog("get", "/health", "any")).toBe(true);
+      expect(config.shouldSkipAccessLog("GET", "/health", "any")).toBe(true);
+      expect(config.shouldSkipAccessLog("Get", "/health", "any")).toBe(true);
+    });
+
+    it("should be case-insensitive for userAgent", () => {
+      const config = require("../../src/config");
+
+      expect(config.shouldSkipAccessLog("GET", "/something", "PROMETHEUS")).toBe(true);
+      expect(config.shouldSkipAccessLog("GET", "/something", "Prometheus")).toBe(true);
+    });
+
+    it("should handle undefined userAgent", () => {
+      const config = require("../../src/config");
+
+      // Rules requiring userAgent should not match when undefined
+      expect(config.shouldSkipAccessLog("GET", "/", undefined)).toBe(false);
+
+      // Rules not requiring userAgent should still match
+      expect(config.shouldSkipAccessLog("GET", "/health", undefined)).toBe(true);
+    });
+
+    it("should return false when rules explicitly disabled with empty array", () => {
+      process.env.LOG_FILTER = "[]";
+      jest.resetModules();
+
+      const config = require("../../src/config");
+
+      expect(config.shouldSkipAccessLog("GET", "/", "any")).toBe(false);
+    });
+
+    it("should use default Claude Code filter when LOG_FILTER not set", () => {
+      delete process.env.LOG_FILTER;
+      jest.resetModules();
+
+      const config = require("../../src/config");
+
+      // Default filter skips Claude Code polling
+      expect(config.shouldSkipAccessLog("GET", "/", "claude-code/1.0")).toBe(true);
+      // But not other user agents
+      expect(config.shouldSkipAccessLog("GET", "/", "browser")).toBe(false);
+    });
+
+    it("should match prefix paths correctly", () => {
+      const config = require("../../src/config");
+
+      // /api/* should match /api/ and /api/anything but not /api or /apix
+      expect(config.shouldSkipAccessLog("GET", "/api/", "any")).toBe(true);
+      expect(config.shouldSkipAccessLog("GET", "/api/users", "any")).toBe(true);
+      expect(config.shouldSkipAccessLog("GET", "/api/v1/users/123", "any")).toBe(true);
+
+      // These should NOT match (prefix is "/api/", not "/api")
+      expect(config.shouldSkipAccessLog("GET", "/api", "any")).toBe(false);
+      expect(config.shouldSkipAccessLog("GET", "/apiv1", "any")).toBe(false);
+    });
+  });
 });

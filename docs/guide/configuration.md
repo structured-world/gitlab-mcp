@@ -140,6 +140,7 @@ See [Customization](/advanced/customization) for schema mode details.
 |----------|---------|-------------|
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `LOG_JSON` | `false` | Output logs as JSON (NDJSON) for log aggregators |
+| `LOG_FILTER` | Claude Code filter | JSON array of filter rules to skip access logging |
 
 ### Plain Text Mode (default)
 
@@ -183,3 +184,61 @@ Environment="LOG_JSON=true"
 Environment="GITLAB_TOKEN=xxx"
 ExecStart=/usr/bin/node /opt/gitlab-mcp/dist/server.js
 ```
+
+### Access Log Filtering
+
+Use `LOG_FILTER` to exclude specific requests from access logs. This is useful for reducing noise from health checks, polling, and monitoring tools.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LOG_FILTER` | — | JSON array of filter rules |
+
+**Filter rule properties** (all optional):
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `method` | string | HTTP method (exact match, case-insensitive) |
+| `path` | string | Request path (exact match, or prefix match if ends with `*`) |
+| `userAgent` | string | Substring match in User-Agent header (case-insensitive) |
+
+A request is skipped if **ALL** conditions in a rule match. If a property is omitted, it matches any value.
+
+**Examples:**
+
+```bash
+# Skip Claude Code polling (GET / with claude-code user agent)
+LOG_FILTER='[{"method":"GET","path":"/","userAgent":"claude-code"}]'
+
+# Skip health check endpoints
+LOG_FILTER='[{"method":"GET","path":"/health"}]'
+
+# Skip all HEAD requests
+LOG_FILTER='[{"method":"HEAD","path":"/*"}]'
+
+# Skip requests from monitoring tools
+LOG_FILTER='[{"userAgent":"prometheus"},{"userAgent":"datadog"}]'
+
+# Multiple rules combined
+LOG_FILTER='[
+  {"method":"GET","path":"/","userAgent":"claude-code"},
+  {"method":"GET","path":"/health"},
+  {"userAgent":"prometheus"}
+]'
+```
+
+**Default behavior:**
+
+By default, `LOG_FILTER` is set to filter Claude Code polling requests:
+```bash
+# Default (implicit)
+LOG_FILTER='[{"method":"GET","path":"/","userAgent":"claude-code"}]'
+```
+
+To log all requests (disable filtering):
+```bash
+LOG_FILTER='[]'
+```
+
+::: info
+Filtered requests are still processed normally — only access logging is disabled. Invalid JSON or schema errors log a warning at startup and fall back to logging all requests.
+:::

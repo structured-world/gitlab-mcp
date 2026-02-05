@@ -1,13 +1,13 @@
 ---
 title: Customization
-description: "Customize GitLab MCP Server — tool descriptions, profiles, presets, and feature flags"
+description: "Customize GitLab MCP Server for your team. Override tool descriptions, filter actions, configure schema modes, manage cross-references, and optimize AI agent context windows."
 head:
   - - meta
     - name: keywords
       content: GitLab MCP customization, tool descriptions, action filtering, schema mode, feature flags, cross-references
 ---
 
-# Customization
+# GitLab MCP Customization Options
 
 Customize tool descriptions, filter actions, and configure schema output for optimal AI agent performance.
 

@@ -1,13 +1,13 @@
 ---
-title: Apply Feedback
-description: "Prompts for applying review feedback — resolve discussions, update code, and respond to reviewers"
+title: Apply Review Feedback in GitLab
+description: "Handle merge request review feedback with GitLab MCP. Reply to threads, resolve discussions, apply code suggestions, and update MR descriptions with ready-to-use prompts for faster iteration."
 head:
   - - meta
     - name: keywords
       content: gitlab review feedback, resolve discussions, apply suggestions, merge request update, respond to reviewers, code review workflow
 ---
 
-# Apply Feedback
+# Apply Review Feedback in GitLab
 
 Handle review feedback on your merge requests — resolve discussions, apply suggestions, and respond to reviewers.
 

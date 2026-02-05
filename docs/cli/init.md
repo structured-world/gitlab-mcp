@@ -1,13 +1,13 @@
 ---
-title: "CLI: init"
-description: "Initialize GitLab MCP Server configuration — create config files for your MCP client"
+title: Initialize GitLab MCP Configuration
+description: "Use gitlab-mcp init to quickly set up local stdio configuration. Interactive wizard guides through GitLab authentication, tool selection, and MCP client installation."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp init, mcp initialization, gitlab mcp local setup, stdio mode, mcp client config, gitlab mcp quickstart
 ---
 
-# gitlab-mcp init
+# Initialize GitLab MCP Configuration
 
 Alias for `gitlab-mcp setup --mode=local`. Runs the setup wizard in local (stdio) mode, skipping mode selection.
 

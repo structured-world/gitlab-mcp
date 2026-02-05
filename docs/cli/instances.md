@@ -1,13 +1,13 @@
 ---
-title: Instance Management CLI
-description: "CLI commands for managing GitLab instances in GitLab MCP Server"
+title: GitLab Instance Management CLI
+description: "Manage multiple GitLab instances with the instances CLI. List, add, remove, and test connections. Generate sample configuration files in YAML or JSON format for multi-instance setups."
 head:
   - - meta
     - name: keywords
       content: CLI, instances, management, add, remove, test, info, MCP
 ---
 
-# Instance Management CLI
+# GitLab Instance Management CLI
 
 Commands for managing GitLab instances from the command line.
 

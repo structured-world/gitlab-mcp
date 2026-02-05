@@ -1,13 +1,13 @@
 ---
 title: Code Review Tools
-description: "GitLab code review tools — browse merge requests, manage discussions, and post review comments"
+description: "GitLab MCP code review tools for merge request workflows. Browse MRs, view diffs, manage discussions, post draft notes, add code suggestions, and handle approvals with AI assistance."
 head:
   - - meta
     - name: keywords
       content: GitLab code review, merge requests, MR discussions, draft notes, code suggestions, MCP
 ---
 
-# Code Review Tools
+# GitLab Code Review and MR Tools
 
 Tools for the complete merge request review workflow — browsing MRs, viewing diffs, adding comments, and managing approvals.
 

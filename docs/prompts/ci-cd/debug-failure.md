@@ -1,13 +1,13 @@
 ---
-title: Debug CI Failures
-description: "Prompts for debugging GitLab CI/CD failures — analyze logs, identify root causes, and fix pipelines"
+title: Debug GitLab Pipeline Failures
+description: "Diagnose and fix GitLab CI/CD failures with AI. Find failed pipelines, identify failing jobs, read error logs, understand common failure patterns, and retry or cancel pipelines with GitLab MCP."
 head:
   - - meta
     - name: keywords
       content: gitlab ci debug, pipeline failure, job logs, test failure, build error, retry pipeline, ci/cd troubleshooting
 ---
 
-# Debug Pipeline Failures
+# Debug GitLab Pipeline Failures
 
 Quickly diagnose and fix CI/CD failures using GitLab MCP.
 

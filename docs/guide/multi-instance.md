@@ -1,13 +1,13 @@
 ---
-title: Multi-Instance Setup
-description: "Configure GitLab MCP Server to work with multiple GitLab instances simultaneously"
+title: Multi-Instance GitLab Setup
+description: "Configure GitLab MCP Server to work with multiple GitLab instances simultaneously. Per-instance OAuth, rate limiting, and namespace tier detection for GitLab.com and self-hosted instances."
 head:
   - - meta
     - name: keywords
       content: multiple GitLab instances, multi-instance, federation, OAuth, self-hosted GitLab, MCP
 ---
 
-# Multi-Instance Setup
+# Multi-Instance GitLab Setup
 
 Configure GitLab MCP to work with multiple GitLab instances simultaneously with per-instance OAuth, rate limiting, and proper namespace tier detection.
 

@@ -1,13 +1,13 @@
 ---
-title: Installation Overview
-description: "Choose your preferred installation method — npm, Docker, Claude Desktop, VS Code, or manual setup"
+title: GitLab MCP Installation Overview
+description: "Choose the best installation method for GitLab MCP Server. Compare setup wizard, npm/npx, Docker, Claude Desktop MCPB extension, VS Code, Codex, and manual configuration options."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp installation, install gitlab mcp, npm, docker, claude desktop, vs code, setup wizard, mcp client
 ---
 
-# Installation
+# GitLab MCP Installation
 
 Choose the installation method that best fits your workflow.
 

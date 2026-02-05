@@ -1,13 +1,13 @@
 ---
-title: Authentication
-description: "Choose and configure authentication for GitLab MCP Server — Personal Access Token (PAT) for local use or OAuth for team deployments"
+title: GitLab MCP Authentication Guide
+description: "Complete authentication guide for GitLab MCP Server. Configure Personal Access Tokens (PAT) for local development or OAuth 2.1 for team deployments. Includes scope requirements and troubleshooting."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp authentication, personal access token, PAT, oauth, token scopes, gitlab api token
 ---
 
-# Authentication
+# GitLab MCP Authentication Guide
 
 GitLab MCP Server supports two authentication modes. Choose based on your use case.
 

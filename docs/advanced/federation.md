@@ -1,6 +1,6 @@
 ---
 title: Federation Architecture
-description: "Deep dive into GitLab MCP multi-instance federation architecture"
+description: "Technical deep dive into GitLab MCP federation architecture. Learn about multi-instance management, caching strategies, rate limiting, HTTP/2 connection pooling, and session isolation."
 head:
   - - meta
     - name: keywords

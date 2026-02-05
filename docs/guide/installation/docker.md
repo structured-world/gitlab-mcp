@@ -1,13 +1,13 @@
 ---
-title: Docker Installation
-description: "Run GitLab MCP Server in Docker with SSE or StreamableHTTP transport for production deployments"
+title: Docker Installation Guide
+description: "Run GitLab MCP Server in Docker containers with stdio, SSE, or StreamableHTTP transport. Includes Docker Compose configuration for production deployments with feature flags and TLS."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp docker, docker compose, container deployment, SSE, StreamableHTTP, gitlab mcp production, ghcr.io
 ---
 
-# Docker Installation
+# Docker Installation Guide
 
 Run GitLab MCP Server as a Docker container.
 

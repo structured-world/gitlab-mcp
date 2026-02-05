@@ -1,13 +1,13 @@
 ---
 title: Support the Project
-description: "Support GitLab MCP development — sponsorship options and ways to contribute to the project"
+description: "Support GitLab MCP open source development through USDT donations. Your contribution helps maintain the project, add new features, and keep the documentation up to date."
 head:
   - - meta
     - name: keywords
       content: GitLab MCP sponsor, donate, USDT, open source support, contribution
 ---
 
-# Support the Project
+# Support GitLab MCP Development
 
 Thank you for considering a donation! Your support helps maintain and improve GitLab MCP.
 

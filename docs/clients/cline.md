@@ -1,13 +1,13 @@
 ---
-title: Cline
-description: "Configure GitLab MCP Server with Cline — autonomous AI coding agent with GitLab access"
+title: Cline Integration Guide
+description: "Step-by-step guide to configure GitLab MCP Server with Cline, the autonomous AI coding agent. Connect your GitLab projects for intelligent code assistance and automated workflows."
 head:
   - - meta
     - name: keywords
       content: Cline, GitLab MCP, VS Code extension, AI coding agent, MCP configuration, autonomous coding
 ---
 
-# Cline
+# Cline Integration Guide
 
 Configure GitLab MCP for [Cline](https://github.com/cline/cline) (VS Code extension).
 

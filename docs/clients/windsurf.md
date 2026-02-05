@@ -1,13 +1,13 @@
 ---
-title: Windsurf
-description: "Configure GitLab MCP Server with Windsurf IDE — Cascade AI integration for GitLab workflows"
+title: Windsurf IDE Integration
+description: "Step-by-step guide to configure GitLab MCP Server with Windsurf IDE. Enable Cascade AI integration for GitLab workflows including merge requests, issues, and CI/CD management."
 head:
   - - meta
     - name: keywords
       content: Windsurf, GitLab MCP, Cascade AI, Codeium, MCP configuration, AI IDE, GitLab workflows
 ---
 
-# Windsurf
+# Windsurf IDE Integration
 
 Configure GitLab MCP for [Windsurf](https://codeium.com/windsurf).
 

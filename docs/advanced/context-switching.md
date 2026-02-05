@@ -1,13 +1,13 @@
 ---
 title: Context Switching
-description: "How GitLab MCP handles switching between GitLab instances"
+description: "Understand GitLab MCP context switching between instances. Learn how OAuth and static token modes handle instance changes, tool re-validation, namespace caching, and preset configuration."
 head:
   - - meta
     - name: keywords
       content: context switching, instance switching, OAuth, static token, manage_context, MCP
 ---
 
-# Context Switching
+# GitLab Instance Context Switching
 
 How GitLab MCP handles switching between GitLab instances depending on authentication mode.
 

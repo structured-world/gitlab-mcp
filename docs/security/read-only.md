@@ -1,13 +1,13 @@
 ---
 title: Read-Only Mode
-description: "Enable read-only mode for GitLab MCP Server — safe operation restricting all write operations"
+description: "Enable read-only mode for GitLab MCP Server to restrict write operations. Safe for production monitoring, staying within client tool limits, and giving agents secure read-only access."
 head:
   - - meta
     - name: keywords
       content: GitLab MCP read-only, safe mode, write protection, production monitoring, tool availability
 ---
 
-# Read-Only Mode
+# GitLab MCP Read-Only Mode Configuration
 
 Restrict the server to only expose read-only operations.
 

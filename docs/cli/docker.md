@@ -1,13 +1,13 @@
 ---
-title: "CLI: docker"
-description: "Generate Docker run commands for GitLab MCP Server with proper environment and network settings"
+title: Docker Container Management CLI
+description: "Manage GitLab MCP Docker containers with the docker subcommand. Start, stop, restart, upgrade containers, and manage multiple GitLab instances with add-instance and remove-instance."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp docker, mcp server docker, docker compose gitlab mcp, gitlab mcp container, multi-instance gitlab, gitlab mcp deployment
 ---
 
-# gitlab-mcp docker
+# Docker Container Management CLI
 
 Manage the GitLab MCP Docker container and GitLab instances.
 

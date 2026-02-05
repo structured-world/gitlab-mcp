@@ -1,13 +1,13 @@
 ---
 title: Deployment Overview
-description: "Deploy GitLab MCP Server — local stdio, Docker standalone, Docker with PostgreSQL, or Docker Compose"
+description: "Choose the right GitLab MCP Server deployment for your needs. Compare local stdio, Docker standalone, Docker with PostgreSQL, and Docker Compose options for single-user to team setups."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp deployment, docker deployment, stdio transport, docker compose, postgresql, oauth, mcp server setup
 ---
 
-# Deployment Options
+# GitLab MCP Deployment Options
 
 Choose a deployment model based on your team size, infrastructure, and requirements.
 

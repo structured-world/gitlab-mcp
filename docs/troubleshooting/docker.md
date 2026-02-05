@@ -1,13 +1,13 @@
 ---
 title: Docker Issues
-description: "Troubleshoot GitLab MCP Docker deployments — container networking, volumes, and health checks"
+description: "Troubleshoot GitLab MCP Docker deployments. Fix container startup failures, port conflicts, networking issues, PostgreSQL connections, Docker Compose problems, and health check failures."
 head:
   - - meta
     - name: keywords
       content: GitLab MCP Docker, container issues, networking, PostgreSQL, Docker Compose, health checks, troubleshooting
 ---
 
-# Docker Issues
+# Troubleshooting Docker Deployments
 
 Problems with Docker container startup, networking, and configuration.
 

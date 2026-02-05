@@ -1,13 +1,13 @@
 ---
-title: VS Code
-description: "Configure GitLab MCP Server with VS Code — MCP extension setup for GitHub Copilot integration"
+title: VS Code Integration Guide
+description: "Step-by-step guide to configure GitLab MCP Server with VS Code. Enable GitHub Copilot integration for AI-assisted GitLab workflows including merge requests and CI/CD management."
 head:
   - - meta
     - name: keywords
       content: VS Code, GitLab MCP, GitHub Copilot, MCP extension, Visual Studio Code, GitLab integration
 ---
 
-# VS Code (GitHub Copilot)
+# VS Code Integration Guide
 
 Configure GitLab MCP for [VS Code](https://code.visualstudio.com/) with GitHub Copilot's MCP support.
 

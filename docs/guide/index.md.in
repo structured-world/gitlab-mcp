@@ -1,13 +1,13 @@
 ---
-title: Introduction
-description: "Overview of GitLab MCP Server — features, architecture, CQRS pattern, and system requirements"
+title: GitLab MCP Server Introduction
+description: "Complete introduction to GitLab MCP Server — advanced MCP server providing AI agents with comprehensive GitLab API access. Features CQRS architecture, multi-instance support, OAuth, and tier detection."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp introduction, mcp server features, cqrs architecture, gitlab api tools, model context protocol
 ---
 
-# Introduction
+# GitLab MCP Server Introduction
 
 Advanced GitLab MCP server providing AI agents with comprehensive access to the GitLab API.
 

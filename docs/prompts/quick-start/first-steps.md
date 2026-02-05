@@ -1,13 +1,13 @@
 ---
-title: First Steps
-description: "Getting started prompts for GitLab MCP — connect to projects, list tools, and explore repositories"
+title: First Steps with GitLab MCP
+description: "Getting started prompts for GitLab MCP Server. Learn to discover projects, check todos, explore repositories, and find team members with ready-to-use example prompts and API parameters."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp getting started, explore projects, list repositories, gitlab todos, project discovery, first steps
 ---
 
-# First Steps
+# First Steps with GitLab MCP
 
 Your first interactions with GitLab MCP. These prompts help you explore what's available and understand the basics.
 

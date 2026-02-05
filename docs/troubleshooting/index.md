@@ -1,13 +1,13 @@
 ---
 title: Common Issues
-description: "Troubleshoot GitLab MCP Server — common problems with tokens, connections, and tool availability"
+description: "Troubleshoot GitLab MCP Server issues with our quick diagnosis guide. Solve common problems with tokens, connections, client detection, Docker containers, and missing tools."
 head:
   - - meta
     - name: keywords
       content: GitLab MCP troubleshooting, common issues, debugging, error diagnosis, configuration problems
 ---
 
-# Troubleshooting
+# GitLab MCP Troubleshooting Guide
 
 Solutions for common issues with GitLab MCP.
 

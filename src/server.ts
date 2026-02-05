@@ -35,7 +35,6 @@ import {
   pollHandler,
   callbackHandler,
   tokenHandler,
-  healthHandler,
   registerHandler,
   sessionStore,
   runWithTokenContext,
@@ -120,8 +119,9 @@ function registerOAuthEndpoints(app: Express): void {
   // Dynamic Client Registration endpoint (RFC 7591) - required by Claude.ai
   app.post("/register", express.json(), registerHandler);
 
-  // Health check endpoint (rate limited via global rateLimiterMiddleware in startServer())
-  app.get("/health", healthHandler);
+  // NOTE: /health endpoint is registered globally in startServer() BEFORE OAuth endpoints
+  // to avoid access log spam from load balancer health checks. The simple handler there
+  // returns {"status": "ok"} which is sufficient for health checks.
 
   logInfo("OAuth endpoints registered");
 }

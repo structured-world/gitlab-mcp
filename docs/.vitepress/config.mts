@@ -1,7 +1,17 @@
 import { defineConfig, type HeadConfig } from "vitepress";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const pkg = require("../../package.json") as { version: string };
 
 const base = (process.env.DOCS_BASE as `/${string}/` | undefined) ?? "/gitlab-mcp/";
 const hostname = "https://gitlab-mcp.sw.foundation";
+
+// Dynamic values from build context
+const softwareVersion = pkg.version;
+const toolCount = process.env.TOOL_COUNT || "44"; // Set by build script, fallback to known value
+const entityCount = process.env.ENTITY_COUNT || "18";
+const siteDescription = `MCP server connecting AI agents to GitLab API with ${toolCount} tools across ${entityCount} entity types`;
 
 // Types for structured data frontmatter
 interface FAQItem {
@@ -41,7 +51,7 @@ function generateStructuredData(pageData: PageDataWithFrontmatter): object[] {
     "@type": "WebSite",
     name: "GitLab MCP",
     url: siteUrl,
-    description: "MCP server connecting AI agents to GitLab API with 44 tools across 18 entity types",
+    description: siteDescription,
     publisher: {
       "@type": "Organization",
       name: "Structured World",
@@ -90,7 +100,7 @@ function generateStructuredData(pageData: PageDataWithFrontmatter): object[] {
       operatingSystem: "Windows, macOS, Linux",
       url: siteUrl,
       downloadUrl: "https://www.npmjs.com/package/@structured-world/gitlab-mcp",
-      softwareVersion: "6.58.1",
+      softwareVersion,
       offers: {
         "@type": "Offer",
         price: "0",
@@ -146,14 +156,13 @@ export default defineConfig({
   titleTemplate: ":title | GitLab MCP",
   lang: "en-US",
   cleanUrls: true,
-  description: "MCP server connecting AI agents to GitLab API with 44 tools across 18 entity types",
+  description: siteDescription,
   base,
 
   transformHead({ pageData }) {
     const head: HeadConfig[] = [];
     const title = pageData.title || "GitLab MCP";
-    const description =
-      pageData.description || "MCP server connecting AI agents to GitLab API with 44 tools across 18 entity types";
+    const description = pageData.description || siteDescription;
     const cleanPath = pageData.relativePath.replace(/(?:index)?\.md$/, "");
     const url = new URL(cleanPath, `${hostname}${base}`).href;
 

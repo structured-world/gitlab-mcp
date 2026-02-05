@@ -76,6 +76,7 @@ Enable or disable tool groups:
 | `USE_REFS` | `true` | Branch and tag management |
 | `USE_MEMBERS` | `true` | Team member management |
 | `USE_SEARCH` | `true` | Cross-project search |
+| `USE_ITERATIONS` | `true` | Iteration planning (sprints) |
 
 ## Next Steps
 

@@ -31,6 +31,7 @@ A [Model Context Protocol](https://modelcontextprotocol.io) server that connects
 
 - **__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types — projects, merge requests, pipelines, work items, wiki, and more
 - **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
+- **Multi-instance support** — Connect to multiple GitLab instances with per-instance OAuth and rate limiting
 - **Multiple transports** — stdio, SSE, StreamableHTTP
 - **OAuth 2.1** — Per-user authentication via Claude Custom Connector
 - **Read-only mode** — Safe operation for production environments
@@ -46,6 +47,7 @@ Full documentation is available at **[gitlab-mcp.sw.foundation](https://gitlab-m
 |---------|-------------|
 | [Installation](https://gitlab-mcp.sw.foundation/guide/installation/npm) | npm, Docker, VS Code, Codex |
 | [Configuration](https://gitlab-mcp.sw.foundation/guide/configuration) | Environment variables, feature flags |
+| [Multi-Instance](https://gitlab-mcp.sw.foundation/guide/multi-instance) | Connect to multiple GitLab instances |
 | [Tool Reference](https://gitlab-mcp.sw.foundation/tools/) | All __TOOL_COUNT__ tools with parameters |
 | [OAuth Setup](https://gitlab-mcp.sw.foundation/security/oauth) | Team authentication with Claude |
 | [TLS/HTTPS](https://gitlab-mcp.sw.foundation/advanced/tls) | Production deployment with SSL |

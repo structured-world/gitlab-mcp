@@ -29,6 +29,9 @@ features:
   - icon: "\U0001F527"
     title: __TOOL_COUNT__ Tools, __ENTITY_COUNT__ Entities
     details: Complete GitLab API coverage — projects, merge requests, pipelines, work items, wikis, and more.
+  - icon: "\U0001F517"
+    title: Multi-Instance Support
+    details: Connect to multiple GitLab instances with per-instance OAuth, rate limiting, and tier detection.
   - icon: "\U0001F512"
     title: OAuth 2.1 & Read-Only Mode
     details: Per-user authentication via Claude Custom Connector or static tokens with granular access control.

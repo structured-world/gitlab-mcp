@@ -15,12 +15,13 @@ GitLab MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/
 
 - **__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types covering the full GitLab API
 - **CQRS pattern** — `browse_*` for read operations, `manage_*` for writes
+- **Multi-instance** — Connect to multiple GitLab instances with per-instance OAuth and rate limiting
 - **Multiple transports** — stdio, SSE, and StreamableHTTP
 - **OAuth 2.1** — Per-user authentication for teams via Claude Custom Connector
 - **Read-only mode** — Safe operation for production environments
 - **Auto-discovery** — Detects GitLab config from git remotes
 - **Fine-grained control** — Enable/disable tool groups, filter actions, customize descriptions
-- **Tier detection** — Automatically enables features based on your GitLab tier
+- **Tier detection** — Automatically enables features based on your GitLab tier (per-namespace on gitlab.com)
 
 ## Requirements
 
@@ -43,4 +44,5 @@ Each tool accepts an `action` parameter that selects the specific operation. Thi
 - [Quick Start](/guide/quick-start) — Get running in under a minute
 - [Installation](/guide/installation/npm) — Detailed setup for your platform
 - [Configuration](/guide/configuration) — Environment variables and options
+- [Multi-Instance](/guide/multi-instance) — Connect to multiple GitLab instances
 - [Tool Reference](/tools/) — Complete list of available tools

@@ -11,12 +11,26 @@ head:
 
 Complete reference for all environment variables.
 
+## Multi-Instance Configuration
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `GITLAB_INSTANCES_FILE` | Path to YAML/JSON config file | — |
+| `GITLAB_INSTANCES` | Instance list (URL, array, or JSON) | — |
+
+See [Multi-Instance Setup](/guide/multi-instance) for detailed configuration.
+
+**Configuration priority (first match wins):**
+1. `GITLAB_INSTANCES_FILE` - Configuration file
+2. `GITLAB_INSTANCES` - Environment variable
+3. `GITLAB_API_URL` + `GITLAB_TOKEN` - Legacy single-instance
+
 ## Authentication
 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `GITLAB_TOKEN` | [GitLab personal access token](/guide/authentication#pat) | — |
-| `GITLAB_API_URL` | GitLab instance URL | `https://gitlab.com` |
+| `GITLAB_API_URL` | GitLab instance URL (legacy single-instance) | `https://gitlab.com` |
 | `GITLAB_AUTH_COOKIE_PATH` | Path to auth cookie file (cookie-based auth) | — |
 
 ## Project Scope
@@ -75,6 +89,7 @@ Enable or disable tool groups:
 | `USE_REFS` | Branch and tag tools | `true` |
 | `USE_MEMBERS` | Team member tools | `true` |
 | `USE_SEARCH` | Cross-project search | `true` |
+| `USE_ITERATIONS` | Iteration planning (sprints) | `true` |
 
 ## Server Configuration
 

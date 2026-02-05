@@ -1,3 +1,9 @@
+## [6.59.1](https://github.com/structured-world/gitlab-mcp/compare/v6.59.0...v6.59.1) (2026-02-05)
+
+### Bug Fixes
+
+* **docs:** replace Structured World with sw.foundation ([#308](https://github.com/structured-world/gitlab-mcp/issues/308)) ([eef1e8d](https://github.com/structured-world/gitlab-mcp/commit/eef1e8d95c92d98bf2301690c1a42c0a3975129d)), closes [#307](https://github.com/structured-world/gitlab-mcp/issues/307)
+
 ## [6.59.0](https://github.com/structured-world/gitlab-mcp/compare/v6.58.1...v6.59.0) (2026-02-05)
 
 ### Features

@@ -1,13 +1,13 @@
 ---
-title: Claude Desktop
-description: "Configure GitLab MCP Server with Claude Desktop — stdio transport setup and token configuration"
+title: Claude Desktop Integration
+description: "Step-by-step guide to configure GitLab MCP Server with Claude Desktop. Install via MCPB bundle or manual setup with stdio transport for GitLab project management and CI/CD workflows."
 head:
   - - meta
     - name: keywords
       content: claude desktop, gitlab mcp, stdio transport, mcp client configuration, docker setup
 ---
 
-# Claude Desktop
+# Claude Desktop Integration
 
 Configure GitLab MCP for [Claude Desktop](https://claude.ai/download).
 

@@ -1,13 +1,13 @@
 ---
-title: OpenAI Codex Setup
-description: "Configure GitLab MCP Server with OpenAI Codex CLI for AI-assisted GitLab development workflows"
+title: OpenAI Codex Installation Guide
+description: "Configure GitLab MCP Server with OpenAI Codex CLI. Add to config.toml with environment variables and feature flags for AI-assisted GitLab development workflows."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp codex, openai codex, codex cli, config.toml, ai-assisted development, gitlab mcp integration
 ---
 
-# Codex Installation
+# OpenAI Codex Installation Guide
 
 Configure GitLab MCP Server for use with OpenAI Codex.
 

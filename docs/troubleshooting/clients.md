@@ -1,13 +1,13 @@
 ---
 title: Client Issues
-description: "Troubleshoot MCP client integration — Claude Desktop, VS Code, Cursor, and other client problems"
+description: "Troubleshoot MCP client integration with GitLab MCP Server. Fix issues with Claude Desktop, VS Code, Cursor, Windsurf, and Cline including config loading, detection, and permissions."
 head:
   - - meta
     - name: keywords
       content: MCP client issues, Claude Desktop, VS Code, Cursor, Windsurf, client configuration, troubleshooting
 ---
 
-# Client Issues
+# Troubleshooting MCP Client Issues
 
 Problems with MCP client detection, configuration, and connectivity.
 

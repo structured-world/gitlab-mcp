@@ -1,13 +1,13 @@
 ---
-title: Suggest Changes
-description: "Prompts for suggesting code changes in GitLab MRs — inline comments and improvement recommendations"
+title: Suggest Code Changes in GitLab
+description: "Create code suggestions in GitLab merge requests with AI. Add inline comments, multi-line suggestions, draft notes for batch reviews, and apply suggestions directly with GitLab MCP prompts."
 head:
   - - meta
     - name: keywords
       content: gitlab code suggestions, inline comments, merge request feedback, draft notes, batch review, code improvements
 ---
 
-# Suggest Changes
+# Suggest Code Changes in GitLab
 
 Use code suggestions to provide concrete fixes during code review. Suggestions can be applied directly from the MR interface.
 

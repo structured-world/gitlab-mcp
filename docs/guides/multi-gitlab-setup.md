@@ -7,7 +7,7 @@ head:
       content: multiple GitLab instances, context management, presets, OAuth profiles, self-hosted GitLab, MCP
 ---
 
-# Multi-GitLab Setup
+# Multi-GitLab Instance Setup Guide
 
 Configure GitLab MCP to work with multiple GitLab instances using context management and profiles.
 

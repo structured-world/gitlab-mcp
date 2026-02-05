@@ -1,13 +1,13 @@
 ---
-title: Release Notes
-description: "Prompts for generating release notes from GitLab — summarize MRs, issues, and changelog entries"
+title: Generate GitLab Release Notes
+description: "Generate changelogs and create releases with GitLab MCP. Review changes since last tag, view existing releases, create new releases with assets, and link milestones using AI-assisted prompts."
 head:
   - - meta
     - name: keywords
       content: gitlab release notes, changelog generation, create release, release assets, milestone release, version tagging
 ---
 
-# Release Notes
+# Generate GitLab Release Notes
 
 Generate changelogs, create releases, and manage release assets.
 

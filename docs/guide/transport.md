@@ -1,13 +1,13 @@
 ---
-title: Transport Modes
-description: "Choose between stdio, SSE, and StreamableHTTP transport modes for GitLab MCP Server"
+title: MCP Transport Modes Guide
+description: "Choose the right transport mode for GitLab MCP Server. Compare stdio for CLI tools and desktop apps, SSE for legacy web clients, and StreamableHTTP for modern HTTP-based MCP communication."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp transport, stdio, SSE, StreamableHTTP, http mode, mcp server transport, server-sent events
 ---
 
-# Transport Modes
+# MCP Transport Modes Guide
 
 The server automatically selects the appropriate transport mode based on configuration.
 

@@ -1,13 +1,13 @@
 ---
-title: Review an MR
-description: "Prompts for AI-powered merge request reviews — code quality, security, and best practices analysis"
+title: Review GitLab Merge Requests
+description: "Complete workflow for AI-powered merge request reviews with GitLab MCP. Find MRs to review, view diffs, read discussions, leave feedback, and approve changes with step-by-step prompts."
 head:
   - - meta
     - name: keywords
       content: gitlab code review, merge request review, ai code review, mr diff, approve merge request, review workflow
 ---
 
-# Review a Merge Request
+# Review GitLab Merge Requests
 
 Complete workflow for performing a thorough code review using GitLab MCP.
 

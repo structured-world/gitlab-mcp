@@ -1,13 +1,13 @@
 ---
-title: Product Manager Prompts
-description: "GitLab MCP prompts for product managers — roadmap tracking, milestone progress, and release planning"
+title: GitLab Product Manager Prompts
+description: "Product manager prompts for GitLab MCP. Track epics and work items, manage milestones, monitor releases, organize with labels, and generate sprint and velocity reports with AI assistance."
 head:
   - - meta
     - name: keywords
       content: gitlab product manager, roadmap planning, epics, milestone tracking, release coordination, team velocity, sprint report
 ---
 
-# Product Manager Prompts
+# GitLab Product Manager Prompts
 
 Work items, roadmap planning, milestone tracking, and release coordination.
 

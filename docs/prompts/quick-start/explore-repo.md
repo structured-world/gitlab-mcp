@@ -1,13 +1,13 @@
 ---
-title: Explore a Repo
-description: "Prompts for exploring GitLab repositories — browse files, view commits, and understand project structure"
+title: Explore GitLab Repositories
+description: "Prompts for exploring GitLab repositories with AI. Browse directory structure, read files, view recent commits, inspect changes, and check project activity using GitLab MCP Server."
 head:
   - - meta
     - name: keywords
       content: gitlab repository explorer, browse files, view commits, project structure, git history, code navigation
 ---
 
-# Explore a Repository
+# Explore GitLab Repositories
 
 Prompts to understand a project's structure, recent changes, and current state.
 

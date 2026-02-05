@@ -1,13 +1,13 @@
 ---
 title: Docker Standalone
-description: "Deploy GitLab MCP Server as a standalone Docker container with SSE or StreamableHTTP transport"
+description: "Deploy GitLab MCP Server as a standalone Docker container with HTTP transport. Quick setup for development, testing, and team deployments without database persistence requirements."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp docker, standalone container, SSE transport, streamable http, docker run, mcp server container
 ---
 
-# Docker Standalone
+# Docker Standalone Deployment Guide
 
 Run GitLab MCP as a standalone Docker container with HTTP transport. No external database, no persistent state.
 

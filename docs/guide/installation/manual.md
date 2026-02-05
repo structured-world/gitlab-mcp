@@ -1,13 +1,13 @@
 ---
-title: Manual Installation
-description: "Build GitLab MCP Server from source — clone, install dependencies, build, and configure manually"
+title: Manual Configuration Guide
+description: "Configure GitLab MCP Server manually by editing your MCP client's JSON configuration. Includes examples for npx, yarn dlx, Docker stdio, and HTTP/SSE remote server connections."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp manual setup, mcp configuration, json config, yarn dlx, docker stdio, http sse, environment variables
 ---
 
-# Manual Configuration
+# Manual Configuration Guide
 
 For users who prefer full control over their setup, you can configure GitLab MCP manually by editing your MCP client's configuration file directly.
 

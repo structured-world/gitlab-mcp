@@ -1,13 +1,13 @@
 ---
-title: Claude Code
-description: "Use GitLab MCP Server with Claude Code CLI — MCP configuration and tool access setup"
+title: Claude Code CLI Integration
+description: "Step-by-step guide to configure GitLab MCP Server with Claude Code CLI. Enable GitLab tool access for AI-assisted development including merge requests, issues, and CI/CD workflows."
 head:
   - - meta
     - name: keywords
       content: Claude Code, GitLab MCP, CLI configuration, MCP server setup, stdio transport, Anthropic Claude
 ---
 
-# Claude Code
+# Claude Code CLI Integration
 
 Configure GitLab MCP for [Claude Code](https://docs.anthropic.com/en/docs/claude-code) (CLI).
 

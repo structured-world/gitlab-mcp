@@ -1,13 +1,13 @@
 ---
-title: Issue Triage
-description: "Prompts for triaging GitLab issues — prioritize, label, assign, and organize work items efficiently"
+title: GitLab Issue Triage Prompts
+description: "Triage GitLab issues efficiently with AI. View open issues, create bug reports and tasks, organize with labels, assign to team members, and close resolved issues using GitLab MCP prompts."
 head:
   - - meta
     - name: keywords
       content: gitlab issue triage, prioritize issues, label management, assign issues, work items, bug reports, issue organization
 ---
 
-# Issue Triage
+# GitLab Issue Triage Prompts
 
 Organize, prioritize, and assign incoming issues efficiently.
 

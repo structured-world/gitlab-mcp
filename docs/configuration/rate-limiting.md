@@ -1,13 +1,13 @@
 ---
 title: Rate Limiting
-description: "Configure per-instance rate limiting for GitLab MCP Server"
+description: "Configure per-instance rate limiting for GitLab MCP Server. Set concurrent request limits, queue sizes, and timeouts to prevent API throttling and protect your GitLab instances."
 head:
   - - meta
     - name: keywords
       content: rate limiting, concurrent requests, queue, throttling, MCP
 ---
 
-# Rate Limiting
+# GitLab API Rate Limiting Configuration
 
 Configure per-instance rate limiting to prevent overwhelming GitLab instances with too many concurrent requests.
 

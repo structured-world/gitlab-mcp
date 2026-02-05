@@ -1,13 +1,13 @@
 ---
 title: Docker Compose
-description: "Deploy GitLab MCP Server with Docker Compose — full stack with PostgreSQL and TLS termination"
+description: "Deploy GitLab MCP Server with Docker Compose for production. All-in-one setup with PostgreSQL, OAuth support, TLS termination, backup/restore procedures, and easy management via CLI."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp docker compose, postgresql, tls termination, production deployment, oauth, backup restore, self-hosted
 ---
 
-# Docker Compose
+# Docker Compose Deployment Guide
 
 All-in-one production deployment with GitLab MCP, PostgreSQL, and optional HTTPS — managed via a single `docker-compose.yml`.
 

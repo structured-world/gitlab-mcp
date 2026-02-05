@@ -1,6 +1,6 @@
 ---
 title: Tool Reference
-description: "Complete reference for __TOOL_COUNT__ GitLab MCP tools across __ENTITY_COUNT__ entity types — browse and manage operations"
+description: "Complete reference for __TOOL_COUNT__ GitLab MCP tools across __ENTITY_COUNT__ entity types. Explore browse_* query and manage_* command operations organized by category with feature flags."
 head:
   - - meta
     - name: keywords

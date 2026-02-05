@@ -1,13 +1,13 @@
 ---
-title: Check Project Status
-description: "Prompts to check GitLab project status — open MRs, pipeline health, and recent activity overview"
+title: Check GitLab Project Status
+description: "Prompts to monitor GitLab project status with AI. Check merge request queues, pipeline health, issue tracking, and team activity using GitLab MCP Server for real-time project insights."
 head:
   - - meta
     - name: keywords
       content: gitlab project status, merge request status, pipeline health, issue tracking, team activity, project monitoring
 ---
 
-# Check Status
+# Check GitLab Project Status
 
 Prompts for monitoring merge requests, pipelines, and overall project health.
 

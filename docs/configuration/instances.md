@@ -1,6 +1,6 @@
 ---
 title: Instance Configuration
-description: "Configure multiple GitLab instances with OAuth, rate limiting, and custom settings"
+description: "Complete reference for configuring multiple GitLab instances in GitLab MCP. Learn YAML/JSON configuration, OAuth setup, rate limiting, TLS settings, and environment variable formats."
 head:
   - - meta
     - name: keywords

@@ -1,13 +1,13 @@
 ---
-title: Check CI Status
-description: "Prompts for checking GitLab CI/CD status — pipeline progress, job results, and deployment state"
+title: Check GitLab Pipeline Status
+description: "Monitor GitLab CI/CD status with AI. View pipeline progress, check job results, filter by source (MR, scheduled, API), and get health summaries with ready-to-use GitLab MCP prompts."
 head:
   - - meta
     - name: keywords
       content: gitlab pipeline status, ci/cd monitoring, job status, pipeline health check, scheduled pipelines, pipeline overview
 ---
 
-# Check Pipeline Status
+# Check GitLab Pipeline Status
 
 Monitor pipeline health and job progress across your projects.
 

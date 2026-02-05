@@ -7,7 +7,7 @@ head:
       content: GitLab repository, files, commits, branches, tags, releases, branch protection, MCP
 ---
 
-# Repository Tools
+# GitLab Repository Management Tools
 
 File browsing, commits, branches, tags, and repository management.
 

@@ -1,13 +1,13 @@
 ---
 title: Automate Releases
-description: "Automate GitLab release workflows with MCP — changelog generation, tagging, and release creation"
+description: "Automate GitLab release workflows with MCP Server. Step-by-step guide for changelog generation, tag creation, release publishing with assets, milestone association, and version management."
 head:
   - - meta
     - name: keywords
       content: GitLab releases, release automation, changelog, tagging, milestones, release assets, MCP
 ---
 
-# Automate Releases
+# Automate GitLab Releases with MCP
 
 End-to-end release workflow — from reviewing changes to creating releases with changelogs and assets.
 

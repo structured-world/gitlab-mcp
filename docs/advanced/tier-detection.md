@@ -1,13 +1,13 @@
 ---
 title: Tier Detection
-description: "How GitLab MCP detects namespace tier for feature availability checks"
+description: "Understand how GitLab MCP detects namespace tier (Free/Premium/Ultimate) for feature availability. Learn about per-namespace caching, GraphQL queries, and tier-based tool restrictions."
 head:
   - - meta
     - name: keywords
       content: tier detection, namespace tier, free, premium, ultimate, feature availability, MCP
 ---
 
-# Tier Detection
+# GitLab Tier Detection for Premium Features
 
 How GitLab MCP detects the tier (Free/Premium/Ultimate) of each namespace to determine feature availability.
 

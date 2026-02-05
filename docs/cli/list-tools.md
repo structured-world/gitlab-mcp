@@ -1,13 +1,13 @@
 ---
-title: "CLI: list-tools"
-description: "List available GitLab MCP tools with filtering by entity, tier info, and export capabilities"
+title: List Available GitLab MCP Tools
+description: "Browse and export all GitLab MCP tools with the list-tools command. Filter by entity, view tier requirements, get detailed parameters, and generate markdown documentation for your project."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp tools, mcp tool list, gitlab api tools, gitlab tier badges, mcp tool documentation, gitlab mcp export
 ---
 
-# gitlab-mcp list-tools
+# List Available GitLab MCP Tools
 
 Browse and export available GitLab MCP tools, their descriptions, parameters, and tier requirements.
 

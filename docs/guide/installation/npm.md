@@ -1,13 +1,13 @@
 ---
-title: npm / npx Installation
-description: "Install GitLab MCP Server via npm or run directly with npx — the fastest way to get started"
+title: Install GitLab MCP via npm/npx
+description: "Install GitLab MCP Server via npm or run directly with npx without installation. Includes configuration examples, environment variables, feature flags, and yarn dlx alternative."
 head:
   - - meta
     - name: keywords
       content: gitlab mcp npm, npx gitlab mcp, yarn dlx, gitlab mcp install, mcp server npm package, feature flags
 ---
 
-# npm / npx Installation
+# Install GitLab MCP via npm/npx
 
 The simplest way to run GitLab MCP Server.
 

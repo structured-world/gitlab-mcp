@@ -117,61 +117,6 @@ export function protectedResourceHandler(req: Request, res: Response): void {
   res.json(metadata);
 }
 
-/**
- * Health check endpoint handler
- *
- * Returns server health status for monitoring and MCP discovery.
- * Includes MCP-specific metadata for ecosystem compatibility:
- * - Protocol version for client compatibility checks
- * - Transport modes supported
- * - Tool count for capacity planning
- * - Authentication status for connection diagnostics
- *
- * @param req - Express request
- * @param res - Express response
- */
-export async function healthHandler(req: Request, res: Response): Promise<void> {
-  const { isOAuthEnabled, isAuthenticationConfigured } = await import("../config");
-
-  // Determine authentication mode
-  let authMode: "oauth" | "token" | "none";
-  if (isOAuthEnabled()) {
-    authMode = "oauth";
-  } else if (isAuthenticationConfigured()) {
-    authMode = "token";
-  } else {
-    authMode = "none";
-  }
-
-  // Get tool count from registry (lazy import to avoid circular deps)
-  let toolCount = 0;
-  try {
-    const { RegistryManager } = await import("../../registry-manager");
-    toolCount = RegistryManager.getInstance().getAllToolDefinitions().length;
-  } catch {
-    // Registry not initialized - read from package.json manifest
-    try {
-      const fs = await import("fs");
-      const path = await import("path");
-      const pkgPath = path.join(__dirname, "../../../package.json");
-      const pkgContent = fs.readFileSync(pkgPath, "utf-8");
-      const pkg = JSON.parse(pkgContent) as { mcp?: { tools?: unknown[] } };
-      toolCount = pkg.mcp?.tools?.length ?? 0;
-    } catch {
-      // Fallback if package.json read fails (e.g., bundled environment)
-      toolCount = 0;
-    }
-  }
-
-  res.json({
-    status: "ok",
-    timestamp: new Date().toISOString(),
-    mcp: {
-      protocol: MCP_PROTOCOL_VERSION,
-      transports: ["stdio", "sse", "streamable-http"],
-      toolCount,
-      authenticated: authMode !== "none",
-      authMode,
-    },
-  });
-}
+// NOTE: healthHandler was removed in favor of a simple /health endpoint in server.ts.
+// MCP metadata (version, tools, auth mode, instances) is available via GET / (dashboard)
+// with Accept: application/json header.

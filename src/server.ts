@@ -19,6 +19,8 @@ import {
   LOG_FORMAT,
   GITLAB_BASE_URL,
   DASHBOARD_ENABLED,
+  LOG_FILTER,
+  shouldSkipAccessLogRequest,
 } from "./config";
 import { TransportMode } from "./types";
 import { logInfo, logError, logDebug } from "./logger";
@@ -323,6 +325,9 @@ export async function startServer(): Promise<void> {
   requestTracker.setEnabled(useCondensedLogging);
   connectionTracker.setEnabled(useCondensedLogging);
   logInfo("Access log format", { logFormat: LOG_FORMAT });
+  if (LOG_FILTER.length > 0) {
+    logInfo("Access log filter rules active", { count: LOG_FILTER.length });
+  }
 
   const transportMode = determineTransportMode();
 
@@ -354,6 +359,12 @@ export async function startServer(): Promise<void> {
       // IMPORTANT: Must be registered BEFORE rate limiter to log 429 responses
       app.use((req, res, next) => {
         if (!useCondensedLogging) {
+          next();
+          return;
+        }
+
+        // Check if request matches any skip filter - process normally but don't log
+        if (shouldSkipAccessLogRequest(req)) {
           next();
           return;
         }

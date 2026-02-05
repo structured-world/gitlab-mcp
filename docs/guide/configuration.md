@@ -191,7 +191,7 @@ Use `LOG_FILTER` to exclude specific requests from access logs. This is useful f
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `LOG_FILTER` | — | JSON array of filter rules |
+| `LOG_FILTER` | Claude Code filter | JSON array of filter rules |
 
 **Filter rule properties** (all optional):
 

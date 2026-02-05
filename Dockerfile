@@ -163,7 +163,7 @@ CMD ["sse"]
 # LABELS AND METADATA
 # ============================================================================
 LABEL org.opencontainers.image.title="GitLab MCP Server"
-LABEL org.opencontainers.image.description="Model Context Protocol server for GitLab API integration"
+LABEL org.opencontainers.image.description="Advanced GitLab MCP server"
 LABEL org.opencontainers.image.vendor="Structured World"
 LABEL org.opencontainers.image.authors="Dmitry Prudnikov <mail@polaz.com>"
 LABEL org.opencontainers.image.url="https://github.com/structured-world/gitlab-mcp"

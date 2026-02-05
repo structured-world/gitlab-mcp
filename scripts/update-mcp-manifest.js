@@ -153,7 +153,9 @@ async function main() {
   try {
     const input = await readStdin();
     if (!input.trim()) {
-      console.error("Error: No input received. Usage: yarn list-tools --json | node scripts/update-mcp-manifest.js");
+      console.error(
+        "Error: No input received. Usage: yarn list-tools --json | node scripts/update-mcp-manifest.js"
+      );
       process.exit(1);
     }
     toolsJson = JSON.parse(input);
@@ -198,7 +200,7 @@ async function main() {
   const entityCount = Object.keys(categoryCounts).length;
 
   // Update description with current counts
-  pkg.mcp.description = `Model Context Protocol server for GitLab API - ${transformedTools.length} tools across ${entityCount} entity types with CQRS architecture, OAuth 2.1, and multiple transport modes`;
+  pkg.mcp.description = `Advanced GitLab MCP server - ${transformedTools.length} tools across ${entityCount} entity types with CQRS architecture, OAuth 2.1, and multiple transport modes`;
 
   // Write updated package.json
   try {
@@ -208,8 +210,15 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(`MCP manifest updated: ${transformedTools.length} tools (${readOnlyCount} read-only), ${entityCount} categories`);
-  console.log("Categories:", Object.entries(categoryCounts).map(([k, v]) => `${k}(${v})`).join(", "));
+  console.log(
+    `MCP manifest updated: ${transformedTools.length} tools (${readOnlyCount} read-only), ${entityCount} categories`
+  );
+  console.log(
+    "Categories:",
+    Object.entries(categoryCounts)
+      .map(([k, v]) => `${k}(${v})`)
+      .join(", ")
+  );
 }
 
 main().catch((error) => {

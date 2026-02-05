@@ -384,6 +384,16 @@ jobs:
       - name: Build project
         run: yarn build
 
+      - name: Configure git credentials for tag push
+        env:
+          APP_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          # semantic-release uses 'git push --tags <URL>' which may not pick up
+          # the credential helper configured by actions/checkout for GitHub App tokens.
+          # Explicitly configure the extraheader for the repository URL.
+          BASIC_AUTH=$(printf 'x-access-token:%s' "$APP_TOKEN" | base64 -w0)
+          git config --global http.https://github.com/.extraheader "Authorization: Basic $BASIC_AUTH"
+
       - name: Run semantic-release
         id: semantic
         env:

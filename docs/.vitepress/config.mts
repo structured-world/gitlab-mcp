@@ -31,7 +31,7 @@ export default defineConfig({
   // MCPB bundle is downloaded from GitHub releases during docs build.
   // Links use versioned filenames (e.g., gitlab-mcp-6.43.0.mcpb) injected at build time.
   // Until first .mcpb release exists, the link is a dead link — safe to ignore.
-  ignoreDeadLinks: [/\/downloads\/gitlab-mcp-[\d.]+\.mcpb$/, /\/TOOLS$/],
+  ignoreDeadLinks: [/\/downloads\/gitlab-mcp-[\d.]+\.mcpb$/],
 
   sitemap: {
     hostname,
@@ -175,7 +175,7 @@ export default defineConfig({
           text: "Tool Reference",
           items: [
             { text: "Overview", link: "/tools/" },
-            { text: "Full API Reference", link: "/TOOLS" },
+            { text: "Full API Reference", link: "/tools/api-reference" },
           ],
         },
         {
@@ -303,7 +303,16 @@ export default defineConfig({
           "clients/claude-desktop.md",
         ];
 
+        // Files fully generated at build time - no source to edit
+        const generatedFiles = ["tools/api-reference.md"];
+
         const relativePath = filePath.replace(/^docs\//, "");
+
+        // Hide edit link for fully generated files
+        if (generatedFiles.includes(relativePath)) {
+          return "";
+        }
+
         const isTemplated = templatedFiles.includes(relativePath);
         const targetPath = isTemplated ? `${filePath}.in` : filePath;
 

@@ -169,7 +169,7 @@ Usage: yarn list-tools [options]
 Tool Options:
   --json              Output in JSON format
   --simple            Simple list of tool names
-  --export            Generate complete TOOLS.md documentation
+  --export            Generate complete API reference documentation
   --env-gates         Show USE_* environment variable gates
   --entity <name>     Filter by entity (e.g., workitems, labels, mrs)
   --tool <name>       Show details for specific tool
@@ -193,8 +193,8 @@ General:
 Examples:
   yarn list-tools                                # List all tools in markdown
   yarn list-tools --json                         # JSON output
-  yarn list-tools --export                       # Generate TOOLS.md to stdout
-  yarn list-tools --export > docs/TOOLS.md       # Generate TOOLS.md to file
+  yarn list-tools --export                       # Generate API reference to stdout
+  yarn list-tools --export > docs/tools/api-reference.md  # Generate to file
   yarn list-tools --export --toc                 # With table of contents
   yarn list-tools --export --no-examples         # Skip example JSON blocks
   yarn list-tools --env-gates                    # Show USE_* variable gates
@@ -793,7 +793,7 @@ function getPackageVersion(): string {
 }
 
 /**
- * Generate complete TOOLS.md content
+ * Generate complete API reference markdown content
  */
 function generateExportMarkdown(
   tools: any[],

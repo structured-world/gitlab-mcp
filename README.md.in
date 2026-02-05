@@ -63,10 +63,10 @@ For the complete tool reference with parameters:
 yarn list-tools --detail
 
 # Generate documentation
-yarn list-tools --export --toc > docs/TOOLS.md
+yarn list-tools --export --toc > docs/tools/api-reference.md
 ```
 
-See [docs/TOOLS.md](docs/TOOLS.md) for the auto-generated reference.
+See the [Full API Reference](https://gitlab-mcp.sw.foundation/tools/api-reference) for the auto-generated tool documentation.
 
 ## Docker
 

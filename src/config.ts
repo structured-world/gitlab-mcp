@@ -189,11 +189,11 @@ const DEFAULT_LOG_FILTER: LogFilterRule[] = [
  * Parsed log filter rules from LOG_FILTER environment variable.
  * Defaults to filtering Claude Code polling (GET / with claude-code user agent).
  * Set to empty array '[]' to log all requests.
+ * Whitespace-only or unset LOG_FILTER uses the default filter.
  */
-export const LOG_FILTER: LogFilterRule[] =
-  process.env.LOG_FILTER !== undefined
-    ? parseLogFilter(process.env.LOG_FILTER)
-    : DEFAULT_LOG_FILTER;
+export const LOG_FILTER: LogFilterRule[] = process.env.LOG_FILTER?.trim()
+  ? parseLogFilter(process.env.LOG_FILTER)
+  : DEFAULT_LOG_FILTER;
 
 /**
  * Check if a request should be skipped from access logging.

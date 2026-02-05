@@ -911,13 +911,15 @@ describe("config.ts", () => {
       expect(config.LOG_FILTER).toEqual([]);
     });
 
-    it("should return empty array for whitespace-only string", () => {
+    it("should return default filter for whitespace-only string", () => {
       process.env.LOG_FILTER = "   ";
 
       const config = require("../../src/config");
 
-      // Whitespace-only is treated as empty, returns empty array
-      expect(config.LOG_FILTER).toEqual([]);
+      // Whitespace-only falls back to default filter (Claude Code polling)
+      expect(config.LOG_FILTER).toEqual([
+        { method: "get", path: "/", pathIsPrefix: false, userAgent: "claude-code" },
+      ]);
     });
 
     it("should parse single filter rule", () => {
@@ -1133,6 +1135,34 @@ describe("config.ts", () => {
       // These should NOT match (prefix is "/api/", not "/api")
       expect(config.shouldSkipAccessLog("GET", "/api", "any")).toBe(false);
       expect(config.shouldSkipAccessLog("GET", "/apiv1", "any")).toBe(false);
+    });
+
+    it("should work with Express Request object via shouldSkipAccessLogRequest", () => {
+      const config = require("../../src/config");
+
+      // Mock Express Request with matching rule (GET /health)
+      const matchingReq = {
+        method: "GET",
+        path: "/health",
+        headers: { "user-agent": "test-agent" },
+      };
+      expect(config.shouldSkipAccessLogRequest(matchingReq)).toBe(true);
+
+      // Mock Express Request not matching any rule
+      const nonMatchingReq = {
+        method: "POST",
+        path: "/users",
+        headers: { "user-agent": "browser" },
+      };
+      expect(config.shouldSkipAccessLogRequest(nonMatchingReq)).toBe(false);
+
+      // Mock Express Request with undefined user-agent header
+      const noAgentReq = {
+        method: "GET",
+        path: "/health",
+        headers: {},
+      };
+      expect(config.shouldSkipAccessLogRequest(noAgentReq)).toBe(true);
     });
   });
 });

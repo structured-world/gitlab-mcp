@@ -1,4 +1,4 @@
-> GitLab MCP - Model Context Protocol server for GitLab API
+> GitLab MCP - Advanced GitLab MCP server
 > Provides __TOOL_COUNT__ tools across __ENTITY_COUNT__ entity types using CQRS pattern (browse_* for reads, manage_* for writes)
 
 # Quick Start

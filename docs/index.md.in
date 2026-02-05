@@ -1,7 +1,7 @@
 ---
 layout: home
 titleTemplate: false
-description: "MCP server connecting AI agents to GitLab API with __TOOL_COUNT__ tools across __ENTITY_COUNT__ entity types"
+description: "Advanced GitLab MCP server with __TOOL_COUNT__ tools across __ENTITY_COUNT__ entity types"
 head:
   - - meta
     - name: keywords
@@ -9,7 +9,7 @@ head:
 
 hero:
   name: GitLab MCP
-  text: Model Context Protocol Server
+  text: Advanced GitLab MCP Server
   tagline: Connect AI agents to GitLab with __TOOL_COUNT__ tools across __ENTITY_COUNT__ entity types
   image:
     src: /logo-hero.png

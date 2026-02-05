@@ -1,4 +1,4 @@
-# GitLab MCP Server
+# Advanced GitLab MCP server
 
 [![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage](https://codecov.io/gh/structured-world/gitlab-mcp/graph/badge.svg)](https://codecov.io/gh/structured-world/gitlab-mcp) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://gitlab-mcp.sw.foundation/coverage/)
 

@@ -211,6 +211,8 @@ describe("server", () => {
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         packageName: "test-package",
         packageVersion: "1.0.0",
+        LOG_FILTER: [],
+        shouldSkipAccessLogRequest: jest.fn(() => false),
       }));
 
       const { startServer: newStartServer } = await import("../../src/server");
@@ -1238,6 +1240,8 @@ describe("server", () => {
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         packageName: "test-package",
         packageVersion: "1.0.0",
+        LOG_FILTER: [],
+        shouldSkipAccessLogRequest: jest.fn(() => false),
       }));
     });
 
@@ -1274,6 +1278,8 @@ describe("server", () => {
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         packageName: "test-package",
         packageVersion: "1.0.0",
+        LOG_FILTER: [],
+        shouldSkipAccessLogRequest: jest.fn(() => false),
       }));
 
       mockSessionManager.createSession.mockRejectedValueOnce(new Error("Connection failed"));
@@ -1298,6 +1304,8 @@ describe("server", () => {
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         packageName: "test-package",
         packageVersion: "1.0.0",
+        LOG_FILTER: [],
+        shouldSkipAccessLogRequest: jest.fn(() => false),
       }));
 
       mockSessionManager.createSession.mockRejectedValueOnce(new Error("Connection failed"));

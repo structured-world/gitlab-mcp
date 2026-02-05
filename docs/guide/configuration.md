@@ -209,10 +209,7 @@ A request is skipped if **ALL** conditions in a rule match. If a property is omi
 # Skip Claude Code polling (GET / with claude-code user agent)
 LOG_FILTER='[{"method":"GET","path":"/","userAgent":"claude-code"}]'
 
-# Skip health check endpoints
-LOG_FILTER='[{"method":"GET","path":"/health"}]'
-
-# Skip all HEAD requests
+# Skip all HEAD requests (e.g., uptime monitoring)
 LOG_FILTER='[{"method":"HEAD","path":"/*"}]'
 
 # Skip requests from monitoring tools
@@ -221,10 +218,11 @@ LOG_FILTER='[{"userAgent":"prometheus"},{"userAgent":"datadog"}]'
 # Multiple rules combined
 LOG_FILTER='[
   {"method":"GET","path":"/","userAgent":"claude-code"},
-  {"method":"GET","path":"/health"},
   {"userAgent":"prometheus"}
 ]'
 ```
+
+> **Note:** The `/health` endpoint is registered before access logging middleware and is never logged, so filtering it is unnecessary.
 
 **Default behavior:**
 

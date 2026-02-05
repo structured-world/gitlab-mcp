@@ -1,3 +1,9 @@
+## [6.58.0](https://github.com/structured-world/gitlab-mcp/compare/v6.57.0...v6.58.0) (2026-02-05)
+
+### Features
+
+* **logging:** add LOG_FILTER for access log noise reduction ([#295](https://github.com/structured-world/gitlab-mcp/issues/295)) ([d0c3d0d](https://github.com/structured-world/gitlab-mcp/commit/d0c3d0dafb2c8775cbb8e2ffcf55f6dd3ccdbc1d)), closes [#290](https://github.com/structured-world/gitlab-mcp/issues/290)
+
 ## [6.57.0](https://github.com/structured-world/gitlab-mcp/compare/v6.56.0...v6.57.0) (2026-02-05)
 
 ### Features

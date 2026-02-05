@@ -2,9 +2,9 @@
 
 [![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage](https://codecov.io/gh/structured-world/gitlab-mcp/graph/badge.svg)](https://codecov.io/gh/structured-world/gitlab-mcp) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://gitlab-mcp.sw.foundation/coverage/)
 
-A [Model Context Protocol](https://modelcontextprotocol.io) server that connects AI agents to the GitLab API — 44 tools across 18 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes.
+Advanced GitLab MCP server — 44 tools across 18 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes.
 
-[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-6.57.0.mcpb)
+[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-6.58.0.mcpb)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 

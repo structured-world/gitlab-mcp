@@ -1,3 +1,9 @@
+## [6.57.0](https://github.com/structured-world/gitlab-mcp/compare/v6.56.0...v6.57.0) (2026-02-05)
+
+### Features
+
+* **server:** add /health endpoint for load balancer health checks ([#289](https://github.com/structured-world/gitlab-mcp/issues/289)) ([5f4f00c](https://github.com/structured-world/gitlab-mcp/commit/5f4f00c5bbc277cf2935b81611cd8e08d6dba571)), closes [#288](https://github.com/structured-world/gitlab-mcp/issues/288)
+
 ## [6.56.0](https://github.com/structured-world/gitlab-mcp/compare/v6.55.1...v6.56.0) (2026-02-04)
 
 ### Features

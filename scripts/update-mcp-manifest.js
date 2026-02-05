@@ -194,7 +194,7 @@ async function main() {
   }
 
   // Count read-only tools
-  const readOnlyCount = transformedTools.filter(t => t.readOnly).length;
+  const readOnlyCount = transformedTools.filter((t) => t.readOnly).length;
 
   // Count unique entity types (categories)
   const entityCount = Object.keys(categoryCounts).length;
@@ -221,7 +221,7 @@ async function main() {
   );
 }
 
-main().catch(error => {
+main().catch((error) => {
   console.error("Fatal error:", error);
   process.exit(1);
 });

@@ -5,6 +5,15 @@ head:
   - - meta
     - name: keywords
       content: GitLab MCP troubleshooting, common issues, debugging, error diagnosis, configuration problems
+faq:
+  - question: "What should I do if GitLab MCP shows 'Connection refused'?"
+    answer: "This error means the server is not running or you're connecting to the wrong port. Check that the GitLab MCP server is started and verify the port configuration in your MCP client settings."
+  - question: "How do I check my GitLab MCP configuration?"
+    answer: "Run 'npx @structured-world/gitlab-mcp install --show --claude-desktop' to preview your current configuration. This shows the JSON configuration that would be generated for your MCP client."
+  - question: "How do I test if my GitLab token is working?"
+    answer: "Test your token by running: curl -H 'PRIVATE-TOKEN: glpat-xxxx' https://gitlab.com/api/v4/user. Replace the token and URL with your values. A successful response shows your GitLab user profile."
+  - question: "Where can I find GitLab MCP logs?"
+    answer: "For Docker: run 'gitlab-mcp docker logs -f'. For stdio mode, check your MCP client logs: Claude Desktop logs are in ~/Library/Logs/Claude/mcp*.log (macOS), Cursor uses Developer Tools Console, VS Code uses the Output panel MCP channel."
 ---
 
 # GitLab MCP Troubleshooting Guide

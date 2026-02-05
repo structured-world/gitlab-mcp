@@ -1,29 +1,189 @@
 import { defineConfig, type HeadConfig } from "vitepress";
+import { createRequire } from "module";
+
+const require = createRequire(import.meta.url);
+const pkg = require("../../package.json") as { version: string };
 
 const base = (process.env.DOCS_BASE as `/${string}/` | undefined) ?? "/gitlab-mcp/";
 const hostname = "https://gitlab-mcp.sw.foundation";
 
+// Dynamic values from build context
+const softwareVersion = pkg.version;
+const toolCount = process.env.TOOL_COUNT || "44"; // Set by build script, fallback to known value
+const entityCount = process.env.ENTITY_COUNT || "18";
+const siteDescription = `MCP server connecting AI agents to GitLab API with ${toolCount} tools across ${entityCount} entity types`;
+
+// Types for structured data frontmatter
+interface FAQItem {
+  question: string;
+  answer: string;
+}
+
+interface HowToStep {
+  name?: string;
+  text: string;
+}
+
+interface PageDataWithFrontmatter {
+  relativePath: string;
+  title?: string;
+  description?: string;
+  frontmatter?: {
+    faq?: FAQItem[];
+    howto?: {
+      name?: string;
+      description?: string;
+      steps?: HowToStep[];
+    };
+  };
+}
+
+// JSON-LD Structured Data for SEO
+function generateStructuredData(pageData: PageDataWithFrontmatter): object[] {
+  const cleanPath = pageData.relativePath.replace(/(?:index)?\.md$/, "");
+  const pageUrl = new URL(cleanPath, `${hostname}${base}`).href;
+  const schemas: object[] = [];
+
+  // WebSite schema (global, on every page)
+  const siteUrl = `${hostname}${base}`.replace(/\/$/, ""); // Remove trailing slash for canonical URL
+  schemas.push({
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "GitLab MCP",
+    url: siteUrl,
+    description: siteDescription,
+    publisher: {
+      "@type": "Organization",
+      name: "sw.foundation",
+      url: "https://sw.foundation",
+    },
+  });
+
+  // BreadcrumbList schema (dynamic based on URL path)
+  const pathSegments = cleanPath.split("/").filter(Boolean);
+  if (pathSegments.length > 0) {
+    const breadcrumbItems = [
+      { "@type": "ListItem", position: 1, name: "Home", item: siteUrl },
+    ];
+
+    let currentPath = "";
+    pathSegments.forEach((segment, index) => {
+      currentPath += `/${segment}`;
+      const name = segment
+        .split("-")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ");
+      breadcrumbItems.push({
+        "@type": "ListItem",
+        position: index + 2,
+        name: index === pathSegments.length - 1 ? (pageData.title || name) : name,
+        item: index === pathSegments.length - 1 ? pageUrl : `${siteUrl}${currentPath}/`,
+      });
+    });
+
+    schemas.push({
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: breadcrumbItems,
+    });
+  }
+
+  // SoftwareApplication schema (home and installation pages only)
+  const isHomePage = cleanPath === "" || cleanPath === "/";
+  const isInstallationPage = cleanPath.includes("installation") || cleanPath.includes("quick-start");
+  if (isHomePage || isInstallationPage) {
+    schemas.push({
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      name: "GitLab MCP Server",
+      applicationCategory: "DeveloperApplication",
+      operatingSystem: "Windows, macOS, Linux",
+      url: siteUrl,
+      downloadUrl: "https://www.npmjs.com/package/@structured-world/gitlab-mcp",
+      softwareVersion,
+      offers: {
+        "@type": "Offer",
+        price: "0",
+        priceCurrency: "USD",
+      },
+      author: {
+        "@type": "Organization",
+        name: "Structured World",
+        url: "https://structured.world",
+      },
+    });
+  }
+
+  // FAQPage schema (when faq array is in frontmatter)
+  const faq = pageData.frontmatter?.faq;
+  if (faq && Array.isArray(faq) && faq.length > 0) {
+    schemas.push({
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      mainEntity: faq.map((item) => ({
+        "@type": "Question",
+        name: item.question,
+        acceptedAnswer: {
+          "@type": "Answer",
+          text: item.answer,
+        },
+      })),
+    });
+  }
+
+  // HowTo schema (when howto object is in frontmatter)
+  const howto = pageData.frontmatter?.howto;
+  if (howto && howto.steps && Array.isArray(howto.steps) && howto.steps.length > 0) {
+    schemas.push({
+      "@context": "https://schema.org",
+      "@type": "HowTo",
+      name: howto.name || pageData.title || "How To Guide",
+      description: howto.description || pageData.description,
+      step: howto.steps.map((step, index) => ({
+        "@type": "HowToStep",
+        position: index + 1,
+        name: step.name || `Step ${index + 1}`,
+        text: step.text,
+      })),
+    });
+  }
+
+  return schemas;
+}
+
 export default defineConfig({
   title: "GitLab MCP",
   titleTemplate: ":title | GitLab MCP",
+  lang: "en-US",
   cleanUrls: true,
-  description: "Advanced GitLab MCP server",
+  description: siteDescription,
   base,
 
   transformHead({ pageData }) {
     const head: HeadConfig[] = [];
     const title = pageData.title || "GitLab MCP";
-    const description = pageData.description || "Advanced GitLab MCP server";
+    const description = pageData.description || siteDescription;
     const cleanPath = pageData.relativePath.replace(/(?:index)?\.md$/, "");
     const url = new URL(cleanPath, `${hostname}${base}`).href;
 
+    // Open Graph meta tags
     head.push(["meta", { property: "og:title", content: title }]);
     head.push(["meta", { property: "og:description", content: description }]);
     head.push(["meta", { property: "og:url", content: url }]);
+
+    // Twitter Card meta tags
     head.push(["meta", { name: "twitter:card", content: "summary_large_image" }]);
     head.push(["meta", { name: "twitter:title", content: title }]);
     head.push(["meta", { name: "twitter:description", content: description }]);
+
+    // Canonical URL
     head.push(["link", { rel: "canonical", href: url }]);
+
+    // JSON-LD Structured Data
+    const structuredData = generateStructuredData(pageData);
+    for (const schema of structuredData) {
+      head.push(["script", { type: "application/ld+json" }, JSON.stringify(schema)]);
+    }
 
     return head;
   },
@@ -55,6 +215,11 @@ export default defineConfig({
 
   themeConfig: {
     logo: "/logo.png",
+
+    outline: {
+      level: [2, 3],
+      label: "On this page",
+    },
 
     nav: [
       { text: "Guide", link: "/guide/" },

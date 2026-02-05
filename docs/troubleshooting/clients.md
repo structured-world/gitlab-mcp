@@ -5,6 +5,13 @@ head:
   - - meta
     - name: keywords
       content: MCP client issues, Claude Desktop, VS Code, Cursor, Windsurf, client configuration, troubleshooting
+faq:
+  - question: "Why does GitLab MCP show 'No MCP clients detected on this system'?"
+    answer: "The setup wizard couldn't find any supported MCP clients. Install a supported client (Claude Desktop, VS Code, Cursor, etc.), open it at least once to create config directories, then re-run 'npx @structured-world/gitlab-mcp setup'."
+  - question: "Why doesn't GitLab MCP server appear in my MCP client?"
+    answer: "Check that you're editing the correct config file path for your client and OS. Validate your JSON syntax using 'jq . config-file.json' or 'python3 -m json.tool < config-file.json'. Common issues include trailing commas and unquoted strings."
+  - question: "How do I validate my MCP client configuration JSON?"
+    answer: "Use 'jq . ~/.cursor/mcp.json' or 'python3 -m json.tool < ~/.cursor/mcp.json' to validate JSON syntax. The command will show parsing errors if the JSON is malformed."
 ---
 
 # Troubleshooting MCP Client Issues

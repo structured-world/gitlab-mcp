@@ -4,6 +4,17 @@
 
 * **logging:** add LOG_FILTER for access log noise reduction ([#295](https://github.com/structured-world/gitlab-mcp/issues/295)) ([d0c3d0d](https://github.com/structured-world/gitlab-mcp/commit/d0c3d0dafb2c8775cbb8e2ffcf55f6dd3ccdbc1d)), closes [#290](https://github.com/structured-world/gitlab-mcp/issues/290)
 
+### Bug Fixes
+
+* **ci:** configure git credentials for semantic-release tag upload ([#298](https://github.com/structured-world/gitlab-mcp/issues/298)) ([6563291](https://github.com/structured-world/gitlab-mcp/commit/6563291a7e22967573c12b6a60e945a8c791dc9a)), closes [#297](https://github.com/structured-world/gitlab-mcp/issues/297)
+* **ci:** remove duplicate Authorization header, add token scope ([#300](https://github.com/structured-world/gitlab-mcp/issues/300)) ([4032584](https://github.com/structured-world/gitlab-mcp/commit/4032584a3de4f72db68c1a04522af84019870c6f)), closes [#299](https://github.com/structured-world/gitlab-mcp/issues/299)
+
+## [6.58.0](https://github.com/structured-world/gitlab-mcp/compare/v6.57.0...v6.58.0) (2026-02-05)
+
+### Features
+
+* **logging:** add LOG_FILTER for access log noise reduction ([#295](https://github.com/structured-world/gitlab-mcp/issues/295)) ([d0c3d0d](https://github.com/structured-world/gitlab-mcp/commit/d0c3d0dafb2c8775cbb8e2ffcf55f6dd3ccdbc1d)), closes [#290](https://github.com/structured-world/gitlab-mcp/issues/290)
+
 ## [6.57.0](https://github.com/structured-world/gitlab-mcp/compare/v6.56.0...v6.57.0) (2026-02-05)
 
 ### Features

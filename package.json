@@ -9,10 +9,10 @@
     "esbuild": ">=0.25.0"
   },
   "version": "6.57.0",
-  "description": "MCP server for using the GitLab API",
+  "description": "Advanced GitLab MCP server",
   "mcp": {
     "name": "GitLab MCP Server",
-    "description": "Model Context Protocol server for GitLab API - 44 tools across 13 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes",
+    "description": "Advanced GitLab MCP server - 44 tools across 13 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes",
     "repository": "https://github.com/structured-world/gitlab-mcp",
     "homepage": "https://gitlab-mcp.sw.foundation",
     "author": "Dmitry Prudnikov",

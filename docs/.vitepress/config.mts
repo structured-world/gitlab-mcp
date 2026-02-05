@@ -54,8 +54,8 @@ function generateStructuredData(pageData: PageDataWithFrontmatter): object[] {
     description: siteDescription,
     publisher: {
       "@type": "Organization",
-      name: "Structured World",
-      url: "https://structured.world",
+      name: "sw.foundation",
+      url: "https://sw.foundation",
     },
   });
 

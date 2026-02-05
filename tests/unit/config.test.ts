@@ -1012,6 +1012,7 @@ describe("config.ts", () => {
       const config = require("../../src/config");
 
       expect(config.LOG_FILTER).toEqual([]);
+      expect(console.warn).toHaveBeenCalled();
 
       console.warn = originalWarn;
     });

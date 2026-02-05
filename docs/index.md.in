@@ -9,7 +9,7 @@ head:
 
 hero:
   name: GitLab MCP
-  text: Advanced GitLab MCP Server
+  text: Advanced GitLab MCP server
   tagline: Connect AI agents to GitLab with __TOOL_COUNT__ tools across __ENTITY_COUNT__ entity types
   image:
     src: /logo-hero.png

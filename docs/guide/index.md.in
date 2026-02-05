@@ -9,7 +9,7 @@ head:
 
 # Introduction
 
-Advanced GitLab MCP server.
+Advanced GitLab MCP server providing AI agents with comprehensive access to the GitLab API.
 
 ## Features
 

@@ -8,8 +8,7 @@ head:
       content: gitlab mcp, model context protocol, gitlab api, ai agent, mcp server, gitlab automation, claude desktop
 
 hero:
-  name: GitLab MCP
-  text: Advanced GitLab MCP server
+  name: Advanced GitLab MCP server
   tagline: Connect AI agents to GitLab with __TOOL_COUNT__ tools across __ENTITY_COUNT__ entity types
   image:
     src: /logo-hero.png

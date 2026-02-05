@@ -1,3 +1,9 @@
+## [6.59.0](https://github.com/structured-world/gitlab-mcp/compare/v6.58.1...v6.59.0) (2026-02-05)
+
+### Features
+
+* **docs:** add JSON-LD structured data for SEO ([#306](https://github.com/structured-world/gitlab-mcp/issues/306)) ([07e6261](https://github.com/structured-world/gitlab-mcp/commit/07e62612a67ff2ebab8c11c5ec99721842595366)), closes [#305](https://github.com/structured-world/gitlab-mcp/issues/305)
+
 ## [6.58.1](https://github.com/structured-world/gitlab-mcp/compare/v6.58.0...v6.58.1) (2026-02-05)
 
 ### Bug Fixes

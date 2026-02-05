@@ -7,13 +7,13 @@ export default defineConfig({
   title: "GitLab MCP",
   titleTemplate: ":title | GitLab MCP",
   cleanUrls: true,
-  description: "Model Context Protocol server for GitLab API",
+  description: "Advanced GitLab MCP server",
   base,
 
   transformHead({ pageData }) {
     const head: HeadConfig[] = [];
     const title = pageData.title || "GitLab MCP";
-    const description = pageData.description || "Model Context Protocol server for GitLab API";
+    const description = pageData.description || "Advanced GitLab MCP server";
     const cleanPath = pageData.relativePath.replace(/(?:index)?\.md$/, "");
     const url = new URL(cleanPath, `${hostname}${base}`).href;
 

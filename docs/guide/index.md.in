@@ -9,7 +9,7 @@ head:
 
 # Introduction
 
-GitLab MCP Server is a [Model Context Protocol](https://modelcontextprotocol.io/) server that provides AI agents with access to the GitLab API.
+Advanced GitLab MCP server providing AI agents with comprehensive access to the GitLab API.
 
 ## Features
 

@@ -264,6 +264,34 @@ describe("server", () => {
       expect(mockApp.all).toHaveBeenCalledWith(["/", "/mcp"], expect.any(Function));
     });
 
+    it("should register /health endpoint for load balancer health checks", async () => {
+      await startServer();
+
+      expect(mockApp.get).toHaveBeenCalledWith("/health", expect.any(Function));
+    });
+
+    it("should return JSON status from /health endpoint", async () => {
+      await startServer();
+
+      // Get the /health handler
+      const healthHandler = mockApp.get.mock.calls.find(
+        (call: [string, (...args: unknown[]) => unknown]) => call[0] === "/health"
+      )?.[1];
+      expect(healthHandler).toBeDefined();
+
+      // Mock response object
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+      };
+
+      // Execute the health handler
+      healthHandler({}, mockRes);
+
+      expect(mockRes.status).toHaveBeenCalledWith(200);
+      expect(mockRes.json).toHaveBeenCalledWith({ status: "ok" });
+    });
+
     it("should start HTTP server with dual transport endpoints", async () => {
       await startServer();
 

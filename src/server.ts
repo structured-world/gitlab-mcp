@@ -35,7 +35,6 @@ import {
   pollHandler,
   callbackHandler,
   tokenHandler,
-  healthHandler,
   registerHandler,
   sessionStore,
   runWithTokenContext,
@@ -120,8 +119,11 @@ function registerOAuthEndpoints(app: Express): void {
   // Dynamic Client Registration endpoint (RFC 7591) - required by Claude.ai
   app.post("/register", express.json(), registerHandler);
 
-  // Health check endpoint (rate limited via global rateLimiterMiddleware in startServer())
-  app.get("/health", healthHandler);
+  // NOTE: /health endpoint is registered globally in startServer() BEFORE OAuth endpoints
+  // to avoid access log spam from load balancer health checks. The simple handler there
+  // returns {"status": "ok"} which is sufficient for basic liveness/readiness checks.
+  // For structured MCP metadata (version, tools, auth mode, instances), use GET /
+  // with Accept: application/json header (dashboard endpoint).
 
   logInfo("OAuth endpoints registered");
 }
@@ -339,6 +341,13 @@ export async function startServer(): Promise<void> {
 
       // Configure trust proxy for reverse proxy deployments
       configureTrustProxy(app);
+
+      // Health check endpoint for load balancers (Envoy, nginx, etc.)
+      // Registered BEFORE access logging middleware to avoid log spam
+      // Does not require authentication or rate limiting
+      app.get("/health", (_req, res) => {
+        res.status(200).json({ status: "ok" });
+      });
 
       // Access logging middleware - tracks request lifecycle for condensed logs
       // Opens request stack on request start, closes on response finish

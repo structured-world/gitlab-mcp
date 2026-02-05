@@ -71,7 +71,7 @@ jobs:
 
       - name: Generate dynamic documentation
         run: |
-          yarn list-tools --export --toc > docs/TOOLS.md
+          yarn list-tools --export --toc > docs/tools/api-reference.md
           yarn inject-tool-refs
         env:
           RELEASE_VERSION: ${{ steps.mcpb.outputs.version }}

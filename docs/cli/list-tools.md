@@ -41,13 +41,13 @@ yarn list-tools --env
 
 ```bash
 # Generate complete markdown documentation
-yarn list-tools --export > docs/TOOLS.md
+yarn list-tools --export > docs/tools/api-reference.md
 
 # Include table of contents
-yarn list-tools --export --toc > docs/TOOLS.md
+yarn list-tools --export --toc > docs/tools/api-reference.md
 
 # Compact format (no example JSON)
-yarn list-tools --export --no-examples > docs/TOOLS.md
+yarn list-tools --export --no-examples > docs/tools/api-reference.md
 ```
 
 The `--export` mode generates:

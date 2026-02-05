@@ -340,6 +340,13 @@ export async function startServer(): Promise<void> {
       // Configure trust proxy for reverse proxy deployments
       configureTrustProxy(app);
 
+      // Health check endpoint for load balancers (Envoy, nginx, etc.)
+      // Registered BEFORE access logging middleware to avoid log spam
+      // Does not require authentication or rate limiting
+      app.get("/health", (_req, res) => {
+        res.status(200).json({ status: "ok" });
+      });
+
       // Access logging middleware - tracks request lifecycle for condensed logs
       // Opens request stack on request start, closes on response finish
       // IMPORTANT: Must be registered BEFORE rate limiter to log 429 responses

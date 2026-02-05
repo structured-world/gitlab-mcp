@@ -108,8 +108,8 @@ function generateStructuredData(pageData: PageDataWithFrontmatter): object[] {
       },
       author: {
         "@type": "Organization",
-        name: "Structured World",
-        url: "https://structured.world",
+        name: "sw.foundation",
+        url: "https://sw.foundation",
       },
     });
   }

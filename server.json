@@ -3,19 +3,19 @@
   "$comment": "Schema version 2025-12-11 is the current MCP Registry standard. Only essential env vars are exposed here; USE_* feature flags are documented at websiteUrl and available via MCPB toggles.",
   "name": "io.github.structured-world/gitlab-mcp",
   "title": "Advanced GitLab MCP server",
-  "description": "Advanced GitLab MCP server with 44 tools for projects, MRs, pipelines, and more",
+  "description": "GitLab MCP server with 44 tools for projects, MRs, pipelines, and more",
   "websiteUrl": "https://gitlab-mcp.sw.foundation",
   "repository": {
     "url": "https://github.com/structured-world/gitlab-mcp",
     "source": "github"
   },
-  "version": "6.58.0",
+  "version": "6.58.1",
   "_versionNote": "Updated dynamically by prepare-release.sh during semantic-release",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "@structured-world/gitlab-mcp",
-      "version": "6.58.0",
+      "version": "6.58.1",
       "transport": {
         "type": "stdio"
       },

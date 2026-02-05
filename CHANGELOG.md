@@ -1,3 +1,9 @@
+## [6.58.1](https://github.com/structured-world/gitlab-mcp/compare/v6.58.0...v6.58.1) (2026-02-05)
+
+### Bug Fixes
+
+* **docs:** move generated API reference to /tools/ directory ([#304](https://github.com/structured-world/gitlab-mcp/issues/304)) ([2b262b3](https://github.com/structured-world/gitlab-mcp/commit/2b262b349c52903ae22bdc12a0a388cd92f69947)), closes [#303](https://github.com/structured-world/gitlab-mcp/issues/303)
+
 ## [6.58.0](https://github.com/structured-world/gitlab-mcp/compare/v6.57.0...v6.58.0) (2026-02-05)
 
 ### Features

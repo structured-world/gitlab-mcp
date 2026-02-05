@@ -5,6 +5,17 @@ head:
   - - meta
     - name: keywords
       content: GitLab MCP connection, token issues, SSL errors, timeout, proxy, self-signed certificates, troubleshooting
+faq:
+  - question: "How do I fix '401 Unauthorized' error in GitLab MCP?"
+    answer: "The 401 error means your token is invalid, expired, or revoked. Verify your token in GitLab Settings > Access Tokens, check the expiration date, and create a new token if needed. Update your MCP client configuration with the new token."
+  - question: "How do I fix '403 Forbidden' error on specific operations?"
+    answer: "The 403 error indicates your token is missing required scopes. For full access, your token needs 'api' and 'read_user' scopes. For read-only mode, use 'read_api' and 'read_user' scopes."
+  - question: "How do I connect GitLab MCP to a self-hosted GitLab with self-signed certificates?"
+    answer: "Add your CA certificate using NODE_EXTRA_CA_CERTS environment variable in your MCP client config. Set it to the path of your CA certificate PEM file. This trusts only your specific CA while keeping TLS validation active."
+  - question: "Why are some GitLab MCP tools not available?"
+    answer: "Tools may be missing due to: 1) Feature flags disabled (check with list-tools --env), 2) Read-only mode enabled (only browse_* tools available), 3) GITLAB_DENIED_TOOLS_REGEX filtering tools, or 4) GitLab tier restrictions (some tools require Premium/Ultimate)."
+  - question: "How do I fix timeout errors in GitLab MCP?"
+    answer: "Increase the API timeout by setting GITLAB_API_TIMEOUT_MS environment variable to a higher value (default is 10000ms). You can also enable automatic retries with GITLAB_API_RETRY_ENABLED=true."
 ---
 
 # Troubleshooting Connection Issues

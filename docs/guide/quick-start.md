@@ -5,6 +5,16 @@ head:
   - - meta
     - name: keywords
       content: gitlab mcp quick start, gitlab mcp setup, npx gitlab mcp, mcp server configuration, feature flags, gitlab ai agent
+howto:
+  name: "How to Set Up GitLab MCP Server"
+  description: "Get GitLab MCP Server running with your AI agent in under a minute"
+  steps:
+    - name: "Get a GitLab Token"
+      text: "Create a Personal Access Token in GitLab with 'api' and 'read_user' scopes. Go to GitLab Settings > Access Tokens, create a new token with the required scopes, and copy it."
+    - name: "Configure Your MCP Client"
+      text: "Add the gitlab-mcp server configuration to your MCP client (Claude Desktop, VS Code, Cursor, etc.). Set GITLAB_TOKEN to your token and GITLAB_API_URL to your GitLab instance URL."
+    - name: "Start Using GitLab MCP"
+      text: "The server starts automatically when your MCP client connects. All default tools are enabled. You can now ask your AI agent to interact with GitLab."
 ---
 
 # GitLab MCP Quick Start Guide

@@ -5,6 +5,13 @@ head:
   - - meta
     - name: keywords
       content: GitLab MCP Docker, container issues, networking, PostgreSQL, Docker Compose, health checks, troubleshooting
+faq:
+  - question: "How do I fix 'port is already allocated' error in GitLab MCP Docker?"
+    answer: "Another service is using the same port. Find what's using the port with 'lsof -i :3333', then either stop that service or change the GitLab MCP port using 'docker run -e PORT=3002 -p 3334:3002' or update the ports mapping in docker-compose.yml."
+  - question: "How do I fix 'no such image' error when starting GitLab MCP Docker?"
+    answer: "The Docker image hasn't been pulled or the tag is incorrect. Run 'docker pull ghcr.io/structured-world/gitlab-mcp:latest' to pull the latest image, or check your image tag spelling."
+  - question: "How do I view GitLab MCP Docker container logs?"
+    answer: "Run 'gitlab-mcp docker logs -f' or 'docker logs -f gitlab-mcp' to view real-time container logs. Add '--tail 100' to see only the last 100 lines."
 ---
 
 # Troubleshooting Docker Deployments

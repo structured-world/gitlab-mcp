@@ -9,7 +9,7 @@ head:
 
 # Introduction
 
-GitLab MCP Server is an advanced [Model Context Protocol](https://modelcontextprotocol.io/) server for GitLab API.
+Advanced GitLab MCP server.
 
 ## Features
 

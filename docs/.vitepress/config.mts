@@ -35,11 +35,12 @@ function generateStructuredData(pageData: PageDataWithFrontmatter): object[] {
   const schemas: object[] = [];
 
   // WebSite schema (global, on every page)
+  const siteUrl = `${hostname}${base}`.replace(/\/$/, ""); // Remove trailing slash for canonical URL
   schemas.push({
     "@context": "https://schema.org",
     "@type": "WebSite",
     name: "GitLab MCP",
-    url: hostname,
+    url: siteUrl,
     description: "MCP server connecting AI agents to GitLab API with 44 tools across 18 entity types",
     publisher: {
       "@type": "Organization",
@@ -52,7 +53,7 @@ function generateStructuredData(pageData: PageDataWithFrontmatter): object[] {
   const pathSegments = cleanPath.split("/").filter(Boolean);
   if (pathSegments.length > 0) {
     const breadcrumbItems = [
-      { "@type": "ListItem", position: 1, name: "Home", item: hostname },
+      { "@type": "ListItem", position: 1, name: "Home", item: siteUrl },
     ];
 
     let currentPath = "";
@@ -66,7 +67,7 @@ function generateStructuredData(pageData: PageDataWithFrontmatter): object[] {
         "@type": "ListItem",
         position: index + 2,
         name: index === pathSegments.length - 1 ? (pageData.title || name) : name,
-        item: index === pathSegments.length - 1 ? pageUrl : `${hostname}${currentPath}/`,
+        item: index === pathSegments.length - 1 ? pageUrl : `${siteUrl}${currentPath}/`,
       });
     });
 
@@ -87,7 +88,7 @@ function generateStructuredData(pageData: PageDataWithFrontmatter): object[] {
       name: "GitLab MCP Server",
       applicationCategory: "DeveloperApplication",
       operatingSystem: "Windows, macOS, Linux",
-      url: hostname,
+      url: siteUrl,
       downloadUrl: "https://www.npmjs.com/package/@structured-world/gitlab-mcp",
       softwareVersion: "6.58.1",
       offers: {

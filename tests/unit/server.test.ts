@@ -1800,6 +1800,33 @@ describe("server", () => {
       expect(mockRes.write).not.toHaveBeenCalled();
     });
 
+    it("should stop heartbeat when response writableEnded is true", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find((call: unknown[]) => call[0] === "/sse")[1];
+
+      const mockRes = {
+        on: jest.fn(),
+        once: jest.fn(),
+        removeListener: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
+        writableEnded: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
+        locals: {},
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Mark as writableEnded before heartbeat fires
+      mockRes.writableEnded = true;
+      jest.advanceTimersByTime(30000);
+
+      // write should NOT be called since response is writableEnded
+      expect(mockRes.write).not.toHaveBeenCalled();
+    });
+
     it("should not call res.destroy in drain timeout if already destroyed", async () => {
       process.env.PORT = "3000";
       await startServer();
@@ -2102,6 +2129,83 @@ describe("server", () => {
         "StreamableHTTP GET stream disconnected",
         expect.objectContaining({ reason: "normal_close" })
       );
+    });
+
+    it("should use err.message fallback when err.code is undefined in StreamableHTTP socket error", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call: unknown[]) => Array.isArray(call[0]) && (call[0] as string[]).includes("/mcp")
+      )[1];
+
+      let closeHandler: (() => void) | null = null;
+      let socketErrorHandler: ((err: { message: string; code?: string }) => void) | null = null;
+      const mockSocket = {
+        on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+          if (event === "error") socketErrorHandler = handler as typeof socketErrorHandler;
+        }),
+      };
+      const mockReq = { headers: {}, method: "GET", path: "/mcp", body: {} };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        destroyed: false,
+        write: jest.fn().mockReturnValue(true),
+        on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+          if (event === "close") closeHandler = handler as typeof closeHandler;
+        }),
+        removeListener: jest.fn(),
+        locals: {},
+        socket: mockSocket,
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      // Socket error without code property
+      socketErrorHandler!({ message: "connection reset" });
+      closeHandler!();
+
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        "StreamableHTTP GET stream disconnected",
+        expect.objectContaining({ reason: "peer_reset:connection reset" })
+      );
+    });
+
+    it("should initialize res.locals when undefined during drain timeout", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find((call: unknown[]) => call[0] === "/sse")[1];
+
+      const mockDestroy = jest.fn();
+      const mockRes = {
+        on: jest.fn(),
+        once: jest.fn(),
+        removeListener: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
+        writableEnded: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
+        destroy: mockDestroy,
+        locals: undefined as Record<string, unknown> | undefined,
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Trigger backpressure
+      mockRes.write.mockReturnValue(false);
+      jest.advanceTimersByTime(30000);
+
+      // Advance past drain timeout
+      jest.advanceTimersByTime(10000);
+
+      // Should have initialized locals and set heartbeatFailed
+      expect(mockRes.locals).toBeDefined();
+      expect(mockRes.locals!.heartbeatFailed).toBe(true);
+      expect(mockDestroy).toHaveBeenCalled();
     });
   });
 

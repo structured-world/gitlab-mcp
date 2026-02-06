@@ -1,3 +1,9 @@
+## [6.60.0](https://github.com/structured-world/gitlab-mcp/compare/v6.59.2...v6.60.0) (2026-02-06)
+
+### Features
+
+* **workitems:** add timelog deletion support via delete_timelog action ([#312](https://github.com/structured-world/gitlab-mcp/issues/312)) ([52172ea](https://github.com/structured-world/gitlab-mcp/commit/52172ea39645e18f2d7430f6ed330fa7a746c930)), closes [#311](https://github.com/structured-world/gitlab-mcp/issues/311)
+
 ## [6.59.2](https://github.com/structured-world/gitlab-mcp/compare/v6.59.1...v6.59.2) (2026-02-06)
 
 ### Bug Fixes

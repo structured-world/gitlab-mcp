@@ -224,7 +224,7 @@ In multi-user environments (OAuth mode):
 ### Queue Timeout vs Operation Timeout
 
 - `queueTimeout`: How long to wait for a slot
-- `GITLAB_API_TIMEOUT_MS`: How long to wait for API response
+- `GITLAB_API_HEADERS_TIMEOUT_MS` / `GITLAB_API_BODY_TIMEOUT_MS`: How long to wait for API response
 
 Both can cause timeouts, but for different reasons.
 

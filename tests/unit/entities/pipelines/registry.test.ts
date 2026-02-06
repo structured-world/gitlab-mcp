@@ -556,7 +556,15 @@ describe("Pipelines Registry - CQRS Tools", () => {
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
           "https://gitlab.example.com/api/v4/projects/test%2Fproject/jobs/1/trace"
         );
-        expect(result).toEqual({ trace: mockTrace, totalLines: 3, shownLines: 3 });
+        // All 3 lines fit within default 200, no truncation
+        expect(result).toEqual({
+          trace: mockTrace,
+          totalLines: 3,
+          shownLines: 3,
+          startLine: 0,
+          hasMore: false,
+          nextStart: null,
+        });
       });
 
       it("should default to 200 lines when no limit specified", async () => {
@@ -575,24 +583,36 @@ describe("Pipelines Registry - CQRS Tools", () => {
           action: "logs",
           project_id: "test/project",
           job_id: "1",
-        })) as { trace: string; totalLines: number; shownLines: number };
+        })) as {
+          trace: string;
+          totalLines: number;
+          shownLines: number;
+          startLine: number;
+          hasMore: boolean;
+          nextStart: number | null;
+        };
 
         expect(result).toHaveProperty("trace");
         expect(result).toHaveProperty("totalLines", 300);
         expect(result).toHaveProperty("shownLines", 200);
+        // Default behavior (no start): shows last 200 lines, startLine=100
+        expect(result).toHaveProperty("startLine", 100);
+        expect(result).toHaveProperty("hasMore", false);
+        expect(result).toHaveProperty("nextStart", null);
 
         const trace = result.trace;
         const traceLines = trace.split("\n");
 
         expect(traceLines).toHaveLength(201);
-        expect(trace).toContain("100 lines hidden");
+        // Default/negative start shows "last N" message
         expect(trace).toContain("Showing last 200 of 300 lines");
+        expect(trace).toContain("lines 100-299");
         expect(trace).toContain("Line 101: Some output here");
         expect(trace).toContain("Line 300: Some output here");
         expect(trace).not.toContain("Line 100: Some output here");
       });
 
-      it("should truncate long job trace when limit is provided", async () => {
+      it("should truncate long job trace when per_page is provided", async () => {
         const longTrace = Array(1000).fill("Very long line with lots of content here").join("\n");
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: true,
@@ -606,17 +626,29 @@ describe("Pipelines Registry - CQRS Tools", () => {
           action: "logs",
           project_id: "test/project",
           job_id: "1",
-          limit: 50,
-        })) as { trace: string; totalLines: number; shownLines: number };
+          per_page: 50,
+        })) as {
+          trace: string;
+          totalLines: number;
+          shownLines: number;
+          startLine: number;
+          hasMore: boolean;
+          nextStart: number | null;
+        };
 
         expect(result).toHaveProperty("trace");
-        expect(result.trace).toContain("lines hidden");
+        // Default behavior (no start) shows last 50 lines
+        expect(result.trace).toContain("Showing last 50 of 1000 lines");
         expect(result.trace.length).toBeLessThan(longTrace.length);
         expect(result.totalLines).toBe(1000);
         expect(result.shownLines).toBe(50);
+        expect(result.startLine).toBe(950);
+        expect(result.hasMore).toBe(false);
+        expect(result.nextStart).toBeNull();
       });
 
-      it("should handle start + limit combination correctly", async () => {
+      it("should handle start + per_page combination correctly", async () => {
+        // Positive start=50 with per_page=10: shows lines 50-59 from middle of log
         const lines = Array.from({ length: 100 }, (_, i) => `Line ${i + 1} content`);
         const fullTrace = lines.join("\n");
 
@@ -633,21 +665,35 @@ describe("Pipelines Registry - CQRS Tools", () => {
           project_id: "test/project",
           job_id: "1",
           start: 50,
-          limit: 10,
-        })) as { trace: string; totalLines: number; shownLines: number };
+          per_page: 10,
+        })) as {
+          trace: string;
+          totalLines: number;
+          shownLines: number;
+          startLine: number;
+          hasMore: boolean;
+          nextStart: number | null;
+        };
 
         const trace = result.trace;
         const traceLines = trace.split("\n");
 
+        // 10 data lines + 1 truncation header
         expect(traceLines).toHaveLength(11);
+        // Positive start: position-aware message "Showing lines X-Y of Z"
+        expect(trace).toContain("Showing lines 50-59 of 100");
         expect(trace).toContain("Line 51 content");
         expect(trace).toContain("Line 60 content");
         expect(trace).not.toContain("Line 61 content");
         expect(result.totalLines).toBe(100);
         expect(result.shownLines).toBe(10);
+        expect(result.startLine).toBe(50);
+        expect(result.hasMore).toBe(true);
+        expect(result.nextStart).toBe(60);
       });
 
       it("should handle negative start correctly", async () => {
+        // Negative start=-50 with per_page=30: takes last 50, then limits to last 30
         const lines = Array.from({ length: 200 }, (_, i) => `Line ${i + 1} content`);
         const fullTrace = lines.join("\n");
 
@@ -664,16 +710,28 @@ describe("Pipelines Registry - CQRS Tools", () => {
           project_id: "test/project",
           job_id: "1",
           start: -50,
-          max_lines: 30,
-        })) as { trace: string; totalLines: number; shownLines: number };
+          per_page: 30,
+        })) as {
+          trace: string;
+          totalLines: number;
+          shownLines: number;
+          startLine: number;
+          hasMore: boolean;
+          nextStart: number | null;
+        };
 
         const trace = result.trace;
 
+        // Negative start: "Showing last N" message
+        expect(trace).toContain("Showing last 30 of 200 lines");
         expect(trace).toContain("Line 171 content");
         expect(trace).toContain("Line 200 content");
         expect(trace).not.toContain("Line 170 content");
         expect(result.totalLines).toBe(200);
         expect(result.shownLines).toBe(30);
+        expect(result.startLine).toBe(170);
+        expect(result.hasMore).toBe(false);
+        expect(result.nextStart).toBeNull();
       });
 
       it("should handle out of bounds start position", async () => {
@@ -693,12 +751,22 @@ describe("Pipelines Registry - CQRS Tools", () => {
           project_id: "test/project",
           job_id: "1",
           start: 100,
-          limit: 10,
-        })) as { trace: string; totalLines: number; shownLines: number };
+          per_page: 10,
+        })) as {
+          trace: string;
+          totalLines: number;
+          shownLines: number;
+          startLine: number;
+          hasMore: boolean;
+          nextStart: number | null;
+        };
 
         expect(result.trace).toContain("OUT OF BOUNDS");
         expect(result.totalLines).toBe(50);
         expect(result.shownLines).toBe(0);
+        expect(result.startLine).toBe(100);
+        expect(result.hasMore).toBe(false);
+        expect(result.nextStart).toBeNull();
       });
 
       // Test for line 89: error handling when fetch returns non-ok response
@@ -720,7 +788,7 @@ describe("Pipelines Registry - CQRS Tools", () => {
         ).rejects.toThrow("GitLab API error: 404 Not Found");
       });
 
-      // Test for lines 120-121: partial request message when start + max_lines exceeds total
+      // Test for partial request: start + per_page exceeds total lines
       it("should show partial request message when requested range exceeds available lines", async () => {
         const lines = Array.from({ length: 50 }, (_, i) => `Line ${i + 1} content`);
         const fullTrace = lines.join("\n");
@@ -738,15 +806,63 @@ describe("Pipelines Registry - CQRS Tools", () => {
           project_id: "test/project",
           job_id: "1",
           start: 40,
-          max_lines: 20,
-        })) as { trace: string; totalLines: number; shownLines: number };
+          per_page: 20,
+        })) as {
+          trace: string;
+          totalLines: number;
+          shownLines: number;
+          startLine: number;
+          hasMore: boolean;
+          nextStart: number | null;
+        };
 
-        // start=40, max_lines=20 means requesting lines 40-59, but only 40-49 exist
+        // start=40, per_page=20 means requesting lines 40-59, but only 40-49 exist
         expect(result.trace).toContain("PARTIAL REQUEST");
         expect(result.trace).toContain("Requested 20 lines from position 40");
         expect(result.trace).toContain("only 10 lines available");
         expect(result.totalLines).toBe(50);
         expect(result.shownLines).toBe(10);
+        expect(result.startLine).toBe(40);
+        expect(result.hasMore).toBe(false);
+        expect(result.nextStart).toBeNull();
+      });
+
+      // Test: start=0 shows position-aware message, NOT "last N"
+      it("should show position-aware message when start=0", async () => {
+        const lines = Array.from({ length: 100 }, (_, i) => `Line ${i + 1} content`);
+        const fullTrace = lines.join("\n");
+
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          statusText: "OK",
+          text: jest.fn().mockResolvedValue(fullTrace),
+        } as never);
+
+        const tool = pipelinesToolRegistry.get("browse_pipelines")!;
+        const result = (await tool.handler({
+          action: "logs",
+          project_id: "test/project",
+          job_id: "1",
+          start: 0,
+          per_page: 15,
+        })) as {
+          trace: string;
+          totalLines: number;
+          shownLines: number;
+          startLine: number;
+          hasMore: boolean;
+          nextStart: number | null;
+        };
+
+        // start=0: should say "Showing lines 0-14 of 100", NOT "Showing last 15"
+        expect(result.trace).toContain("Showing lines 0-14 of 100");
+        expect(result.trace).not.toContain("last");
+        expect(result.totalLines).toBe(100);
+        expect(result.shownLines).toBe(15);
+        expect(result.startLine).toBe(0);
+        expect(result.hasMore).toBe(true);
+        expect(result.nextStart).toBe(15);
       });
     });
 

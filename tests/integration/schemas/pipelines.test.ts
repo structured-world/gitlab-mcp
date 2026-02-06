@@ -595,7 +595,7 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
         action: "logs" as const,
         project_id: "123",
         job_id: "789",
-        limit: 100,
+        per_page: 100,
         start: 50,
       };
 
@@ -605,7 +605,7 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
       if (result.success && result.data.action === "logs") {
         expect(result.data.project_id).toBe("123");
         expect(result.data.job_id).toBe("789");
-        expect(result.data.limit).toBe(100);
+        expect(result.data.per_page).toBe(100);
         expect(result.data.start).toBe(50);
       }
 

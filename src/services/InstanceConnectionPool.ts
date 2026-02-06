@@ -338,13 +338,18 @@ export class InstanceConnectionPool {
     instanceConfig: GitLabInstanceConfig,
     normalizedUrl: string
   ): ConnectionEntry {
-    // Build connect options — always includes timeout, optionally TLS overrides
+    // Build connect options — always includes timeout, optionally TLS overrides.
+    // TCP keepalive detects dead upstream connections (GitLab restart, network drop).
     const connectOptions: {
       rejectUnauthorized?: boolean;
       ca?: Buffer | string;
       timeout?: number;
+      keepAlive?: boolean;
+      keepAliveInitialDelay?: number;
     } = {
       timeout: this.config.connectTimeout,
+      keepAlive: true,
+      keepAliveInitialDelay: 30000, // TCP probe 30s after last data
     };
 
     if (instanceConfig.insecureSkipVerify) {

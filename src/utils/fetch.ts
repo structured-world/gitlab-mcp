@@ -162,9 +162,12 @@ function createDispatcher(): unknown {
 
   // Always create an Agent with native Undici timeouts.
   // Even without TLS/proxy, the Agent is needed for connect/headers/body timeouts.
+  // TCP keepalive detects dead upstream connections (server restart, network drop).
   const connectOptions: Record<string, unknown> = {
     ...tlsOptions,
     timeout: CONNECT_TIMEOUT_MS,
+    keepAlive: true,
+    keepAliveInitialDelay: 30000, // TCP probe 30s after last data
   };
 
   return new undici.Agent({

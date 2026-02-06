@@ -512,7 +512,7 @@ describe("InstanceConnectionPool", () => {
       expect(MockPool).toHaveBeenCalledWith(
         "https://gitlab.com",
         expect.objectContaining({
-          connect: { timeout: 2000 },
+          connect: expect.objectContaining({ timeout: 2000, keepAlive: true }),
         })
       );
     });

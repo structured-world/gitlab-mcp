@@ -21,6 +21,7 @@ const mockSessionManager = {
 
 const mockHttpServer = {
   listen: jest.fn(),
+  on: jest.fn(),
   keepAliveTimeout: 0,
   headersTimeout: 0,
   timeout: 0,
@@ -996,8 +997,9 @@ describe("server", () => {
       lastStreamableOpts!.onsessionclosed!("closed-session-id");
 
       expect(mockSessionManager.removeSession).toHaveBeenCalledWith("closed-session-id");
-      expect(mockLogInfo).toHaveBeenCalledWith("MCP session closed", {
+      expect(mockLogInfo).toHaveBeenCalledWith("StreamableHTTP session closed", {
         sessionId: "closed-session-id",
+        reason: "session_closed",
       });
     });
 
@@ -1049,8 +1051,10 @@ describe("server", () => {
 
       const mockRes = {
         on: jest.fn(),
-        write: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
         writableEnded: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
       };
 
       await sseHandler({}, mockRes);
@@ -1070,8 +1074,10 @@ describe("server", () => {
 
       const mockRes = {
         on: jest.fn(),
-        write: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
         writableEnded: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
       };
 
       await sseHandler({}, mockRes);
@@ -1096,8 +1102,10 @@ describe("server", () => {
         on: jest.fn((event: string, handler: () => void) => {
           if (event === "close") closeHandler = handler;
         }),
-        write: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
         writableEnded: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
       };
 
       await sseHandler({}, mockRes);
@@ -1123,8 +1131,10 @@ describe("server", () => {
 
       const mockRes = {
         on: jest.fn(),
-        write: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
         writableEnded: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
       };
 
       await sseHandler({}, mockRes);
@@ -1156,9 +1166,11 @@ describe("server", () => {
         json: jest.fn(),
         headersSent: false,
         writableEnded: false,
-        write: jest.fn(),
+        destroyed: false,
+        write: jest.fn().mockReturnValue(true),
         on: jest.fn(),
         locals: {},
+        socket: { on: jest.fn() },
       };
 
       await mcpHandler(mockReq, mockRes);
@@ -1189,9 +1201,11 @@ describe("server", () => {
         json: jest.fn(),
         headersSent: false,
         writableEnded: false,
-        write: jest.fn(),
+        destroyed: false,
+        write: jest.fn().mockReturnValue(true),
         on: jest.fn(),
         locals: {},
+        socket: { on: jest.fn() },
       };
 
       await mcpHandler(mockReq, mockRes);
@@ -1224,11 +1238,13 @@ describe("server", () => {
         json: jest.fn(),
         headersSent: false,
         writableEnded: false,
-        write: jest.fn(),
+        destroyed: false,
+        write: jest.fn().mockReturnValue(true),
         on: jest.fn((event: string, handler: () => void) => {
           if (event === "close") closeHandler = handler;
         }),
         locals: {},
+        socket: { on: jest.fn() },
       };
 
       await mcpHandler(mockReq, mockRes);

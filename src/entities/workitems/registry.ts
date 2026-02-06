@@ -254,15 +254,6 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const { namespace, types, state, first, after, simple } = input;
             const namespacePath = namespace;
 
-            console.log("browse_work_items list called with:", {
-              namespace: namespacePath,
-              types,
-              state,
-              first,
-              after,
-              simple,
-            });
-
             // Get GraphQL client from ConnectionManager
             const connectionManager = ConnectionManager.getInstance();
             const client = connectionManager.getClient();
@@ -287,24 +278,16 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             };
             const namespaceType = workItemsResponse.namespace?.__typename ?? "Unknown";
 
-            console.log(`Found ${allItems.length} work items from ${namespaceType} query`);
-
             // Apply state filtering (client-side since GitLab API doesn't support it reliably)
             const filteredItems = allItems.filter((item: GraphQLWorkItem) => {
               return state.includes(item.state as "OPEN" | "CLOSED");
             });
-
-            console.log(
-              `State filtering: ${allItems.length} -> ${filteredItems.length} items (keeping: ${state.join(", ")})`
-            );
 
             // Apply simplification if requested and clean GIDs
             const finalResults = filteredItems.map((item: GraphQLWorkItem) => {
               const cleanedItem = cleanWorkItemResponse(item as unknown as GitLabWorkItem);
               return simplifyWorkItem(cleanedItem as GraphQLWorkItem, simple);
             });
-
-            console.log("Final result - total work items found:", finalResults.length);
 
             // Return object with items and server-side pagination info
             return {
@@ -325,11 +308,6 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // Route to appropriate query based on input
             if (namespace !== undefined && iid !== undefined) {
               // Lookup by namespace + IID (preferred for URL-based requests)
-              console.log("browse_work_items get by IID called with:", {
-                namespace,
-                iid,
-              });
-
               const response = await client.request(GET_WORK_ITEM_BY_IID, {
                 namespacePath: namespace,
                 iid: iid,
@@ -346,8 +324,6 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               );
             } else if (id !== undefined) {
               // Lookup by global ID (backward compatible)
-              console.log("browse_work_items get by ID called with:", { id });
-
               // Convert simple ID to GID for API call
               const workItemGid = toGid(id, "WorkItem");
 

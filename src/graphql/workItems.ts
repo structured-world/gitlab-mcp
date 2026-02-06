@@ -1772,6 +1772,33 @@ export const DELETE_WORK_ITEM: TypedDocumentNode<
   }
 `;
 
+export const TIMELOG_DELETE: TypedDocumentNode<
+  {
+    timelogDelete: {
+      timelog: {
+        id: string;
+        timeSpent: number;
+        spentAt: string;
+        summary: string | null;
+      } | null;
+      errors: string[];
+    };
+  },
+  { id: string }
+> = gql`
+  mutation TimelogDelete($id: TimelogID!) {
+    timelogDelete(input: { id: $id }) {
+      timelog {
+        id
+        timeSpent
+        spentAt
+        summary
+      }
+      errors
+    }
+  }
+`;
+
 export const GET_WORK_ITEM_TYPES: TypedDocumentNode<
   { namespace: { workItemTypes: { nodes: { id: string; name: string }[] } } },
   { namespacePath: string }

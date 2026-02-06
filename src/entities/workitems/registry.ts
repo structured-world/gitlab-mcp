@@ -32,6 +32,7 @@ import {
   GET_WORK_ITEM_BY_IID,
   UPDATE_WORK_ITEM,
   DELETE_WORK_ITEM,
+  TIMELOG_DELETE,
   WORK_ITEM_ADD_LINKED_ITEMS,
   WORK_ITEM_REMOVE_LINKED_ITEMS,
   WorkItemUpdateInput,
@@ -224,7 +225,7 @@ const simplifyWorkItem = (
  * Work items tools registry - 2 CQRS tools replacing 5 individual tools
  *
  * browse_work_items (Query): list, get
- * manage_work_item (Command): create, update, delete
+ * manage_work_item (Command): create, update, delete, delete_timelog, add_link, remove_link
  */
 export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
   // ============================================================================
@@ -383,7 +384,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: "manage_work_item",
       description:
-        "Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), add_link/remove_link (BLOCKS/BLOCKED_BY/RELATED). Related: browse_work_items for discovery.",
+        "Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), delete_timelog (remove a time tracking entry by its global ID), add_link/remove_link (BLOCKS/BLOCKED_BY/RELATED). Related: browse_work_items for discovery.",
       inputSchema: z.toJSONSchema(ManageWorkItemSchema),
       gate: { envVar: "USE_WORKITEMS", defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
@@ -1036,6 +1037,30 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             // Return success indicator for deletion
             return { deleted: true };
+          }
+
+          case "delete_timelog": {
+            const { timelogId } = input;
+
+            const connectionManager = ConnectionManager.getInstance();
+            const client = connectionManager.getClient();
+
+            // Ensure the timelog ID is a valid GID
+            const timelogGid = toGid(timelogId, "Timelog");
+
+            const response = await client.request(TIMELOG_DELETE, { id: timelogGid });
+
+            if (
+              response.timelogDelete?.errors?.length &&
+              response.timelogDelete.errors.length > 0
+            ) {
+              throw new Error(`GitLab GraphQL errors: ${response.timelogDelete.errors.join(", ")}`);
+            }
+
+            return {
+              deleted: true,
+              timelog: response.timelogDelete?.timelog ?? null,
+            };
           }
 
           case "add_link": {

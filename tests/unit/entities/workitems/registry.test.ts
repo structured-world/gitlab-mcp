@@ -1657,6 +1657,145 @@ describe("Workitems Registry - CQRS Tools", () => {
       });
     });
 
+    describe("manage_work_item handler - delete_timelog action", () => {
+      it("should delete a timelog entry by GID", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          timelogDelete: {
+            timelog: {
+              id: "gid://gitlab/Timelog/7",
+              timeSpent: 3600,
+              spentAt: "2025-01-15T00:00:00Z",
+              summary: "Bug investigation",
+            },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        const result = await tool?.handler({
+          action: "delete_timelog",
+          timelogId: "gid://gitlab/Timelog/7",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(expect.any(Object), {
+          id: "gid://gitlab/Timelog/7",
+        });
+        expect(result).toEqual({
+          deleted: true,
+          timelog: {
+            id: "gid://gitlab/Timelog/7",
+            timeSpent: 3600,
+            spentAt: "2025-01-15T00:00:00Z",
+            summary: "Bug investigation",
+          },
+        });
+      });
+
+      it("should handle simple numeric timelog ID", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          timelogDelete: {
+            timelog: {
+              id: "gid://gitlab/Timelog/42",
+              timeSpent: 1800,
+              spentAt: "2025-02-01T00:00:00Z",
+              summary: null,
+            },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        const result = await tool?.handler({
+          action: "delete_timelog",
+          timelogId: "42",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(expect.any(Object), {
+          id: "gid://gitlab/Timelog/42",
+        });
+        expect(result).toEqual({
+          deleted: true,
+          timelog: {
+            id: "gid://gitlab/Timelog/42",
+            timeSpent: 1800,
+            spentAt: "2025-02-01T00:00:00Z",
+            summary: null,
+          },
+        });
+      });
+
+      it("should handle GraphQL errors in delete_timelog", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          timelogDelete: {
+            timelog: null,
+            errors: ["Timelog not found"],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+
+        await expect(
+          tool?.handler({
+            action: "delete_timelog",
+            timelogId: "gid://gitlab/Timelog/999",
+          })
+        ).rejects.toThrow("GitLab GraphQL errors: Timelog not found");
+      });
+
+      it("should handle permission denied error", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          timelogDelete: {
+            timelog: null,
+            errors: [
+              "The resource that you are attempting to access does not exist or you don't have permission to perform this action",
+            ],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+
+        await expect(
+          tool?.handler({
+            action: "delete_timelog",
+            timelogId: "gid://gitlab/Timelog/7",
+          })
+        ).rejects.toThrow("The resource that you are attempting to access does not exist");
+      });
+
+      it("should handle network/request errors", async () => {
+        mockClient.request.mockRejectedValueOnce(new Error("Network error"));
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+
+        await expect(
+          tool?.handler({
+            action: "delete_timelog",
+            timelogId: "gid://gitlab/Timelog/7",
+          })
+        ).rejects.toThrow("Network error");
+      });
+
+      it("should return null timelog when response has no timelog data", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          timelogDelete: {
+            timelog: null,
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        const result = await tool?.handler({
+          action: "delete_timelog",
+          timelogId: "gid://gitlab/Timelog/7",
+        });
+
+        expect(result).toEqual({
+          deleted: true,
+          timelog: null,
+        });
+      });
+    });
+
     describe("manage_work_item handler - add_link action", () => {
       it("should add a BLOCKS link between work items", async () => {
         mockClient.request.mockResolvedValueOnce({

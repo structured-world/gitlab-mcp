@@ -207,7 +207,7 @@ function configureServerTimeouts(server: http.Server | https.Server): void {
   // (proxy/client silently disconnected). Without this, half-open sockets
   // remain alive indefinitely since server.timeout is disabled for SSE.
   server.on("connection", (socket: import("net").Socket) => {
-    socket.setKeepAlive(true, 30000); // TCP probe every 30s
+    socket.setKeepAlive(true, 30000); // First TCP probe 30s after last data; OS controls subsequent interval
     socket.setNoDelay(true); // Disable Nagle for SSE chunk flushing
   });
 
@@ -262,6 +262,16 @@ const HEARTBEAT_DRAIN_TIMEOUT_MS = 10000;
  */
 function startSseHeartbeat(res: express.Response, sessionId: string): () => void {
   let waitingForDrain = false;
+  let pendingDrainTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  const drainListener = () => {
+    if (pendingDrainTimeout) {
+      clearTimeout(pendingDrainTimeout);
+      pendingDrainTimeout = undefined;
+    }
+    waitingForDrain = false;
+    logDebug("SSE heartbeat drain recovered", { sessionId });
+  };
 
   const interval = setInterval(() => {
     // Skip if already waiting for a previous drain
@@ -279,25 +289,26 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
         // This often indicates the peer is gone but TCP hasn't detected it yet.
         waitingForDrain = true;
 
-        const drainTimeout = setTimeout(() => {
+        pendingDrainTimeout = setTimeout(() => {
+          pendingDrainTimeout = undefined;
           waitingForDrain = false;
+          res.removeListener("drain", drainListener);
           logWarn("SSE heartbeat drain timeout — destroying dead connection", {
             sessionId,
             drainTimeoutMs: HEARTBEAT_DRAIN_TIMEOUT_MS,
             reason: "heartbeat_drain_timeout",
           });
           clearInterval(interval);
+          // Mark response so close handler can use "heartbeat_failed" reason
+          res.locals = res.locals ?? {};
+          res.locals.heartbeatFailed = true;
           // Destroy the underlying socket to trigger 'close' event and cleanup
           if (!res.destroyed) {
             res.destroy();
           }
         }, HEARTBEAT_DRAIN_TIMEOUT_MS);
 
-        res.once("drain", () => {
-          clearTimeout(drainTimeout);
-          waitingForDrain = false;
-          logDebug("SSE heartbeat drain recovered", { sessionId });
-        });
+        res.once("drain", drainListener);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -314,6 +325,11 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
 
   return () => {
     clearInterval(interval);
+    if (pendingDrainTimeout) {
+      clearTimeout(pendingDrainTimeout);
+      pendingDrainTimeout = undefined;
+    }
+    res.removeListener("drain", drainListener);
     logDebug("SSE heartbeat stopped", { sessionId });
   };
 }
@@ -548,7 +564,8 @@ export async function startServer(): Promise<void> {
         // Start SSE heartbeat to keep connection alive through proxies
         const stopHeartbeat = startSseHeartbeat(res, sessionId);
 
-        // Track socket errors for disconnect reason logging
+        // Track socket errors for disconnect reason logging.
+        // Listener is not explicitly removed — socket destruction on close GCs all listeners.
         let socketError: string | undefined;
         const socket = res.socket;
         if (socket) {
@@ -573,9 +590,11 @@ export async function startServer(): Promise<void> {
             ? `peer_reset:${socketError}` // ECONNRESET, EPIPE, etc.
             : res.writableFinished
               ? "normal_close"
-              : res.destroyed
-                ? "destroyed" // Our heartbeat or other code destroyed the socket
-                : "client_disconnect"; // Client closed connection cleanly
+              : res.locals?.heartbeatFailed
+                ? "heartbeat_failed" // Heartbeat drain timeout destroyed the socket
+                : res.destroyed
+                  ? "destroyed" // Other code destroyed the socket
+                  : "client_disconnect"; // Client closed connection cleanly
 
           logInfo("SSE session disconnected", { sessionId, reason });
           connectionTracker.closeConnection(sessionId, reason);
@@ -757,6 +776,8 @@ export async function startServer(): Promise<void> {
             const stopHeartbeat = startSseHeartbeat(res, effectiveSessionId);
 
             // Track socket errors for disconnect reason
+            // Track socket errors for disconnect reason logging.
+            // Listener is not explicitly removed — socket destruction on close GCs all listeners.
             let socketError: string | undefined;
             const socket = res.socket;
             if (socket) {
@@ -776,9 +797,11 @@ export async function startServer(): Promise<void> {
 
               const reason = socketError
                 ? `peer_reset:${socketError}`
-                : res.destroyed
-                  ? "destroyed"
-                  : "client_disconnect";
+                : res.locals?.heartbeatFailed
+                  ? "heartbeat_failed"
+                  : res.destroyed
+                    ? "destroyed"
+                    : "client_disconnect";
 
               logInfo("StreamableHTTP GET stream disconnected", {
                 sessionId: effectiveSessionId,

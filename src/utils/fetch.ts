@@ -167,7 +167,7 @@ function createDispatcher(): unknown {
     ...tlsOptions,
     timeout: CONNECT_TIMEOUT_MS,
     keepAlive: true,
-    keepAliveInitialDelay: 30000, // TCP probe 30s after last data
+    keepAliveInitialDelay: 30000, // First TCP probe 30s after last data; OS controls subsequent interval
   };
 
   return new undici.Agent({

@@ -1,3 +1,9 @@
+## [6.60.2](https://github.com/structured-world/gitlab-mcp/compare/v6.60.1...v6.60.2) (2026-02-06)
+
+### Bug Fixes
+
+* **server:** TCP keepalive and stale connection detection ([#316](https://github.com/structured-world/gitlab-mcp/issues/316)) ([2b2b183](https://github.com/structured-world/gitlab-mcp/commit/2b2b1837d048d9f2154d76f0b127fe18549a6180)), closes [#315](https://github.com/structured-world/gitlab-mcp/issues/315)
+
 ## [6.60.1](https://github.com/structured-world/gitlab-mcp/compare/v6.60.0...v6.60.1) (2026-02-06)
 
 ### Bug Fixes

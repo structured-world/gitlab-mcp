@@ -495,12 +495,12 @@ describe("InstanceConnectionPool", () => {
       expect(MockPool).toHaveBeenCalledWith(
         "https://self-signed.gitlab.local",
         expect.objectContaining({
-          connect: { rejectUnauthorized: false },
+          connect: expect.objectContaining({ rejectUnauthorized: false, timeout: 2000 }),
         })
       );
     });
 
-    it("should not pass connect options when TLS verification is enabled", () => {
+    it("should always pass connect options with timeout even when TLS verification is enabled", () => {
       const pool = InstanceConnectionPool.getInstance();
 
       pool.getGraphQLClient({
@@ -508,17 +508,18 @@ describe("InstanceConnectionPool", () => {
         insecureSkipVerify: false,
       });
 
+      // connect is always present now (carries timeout), but without rejectUnauthorized
       expect(MockPool).toHaveBeenCalledWith(
         "https://gitlab.com",
         expect.objectContaining({
-          connect: undefined,
+          connect: { timeout: 2000 },
         })
       );
     });
   });
 
   describe("pool configuration", () => {
-    it("should use default configuration values", () => {
+    it("should use default configuration values with Undici timeouts", () => {
       const pool = InstanceConnectionPool.getInstance();
 
       pool.getGraphQLClient({ url: "https://gitlab.com", insecureSkipVerify: false });
@@ -526,10 +527,13 @@ describe("InstanceConnectionPool", () => {
       expect(MockPool).toHaveBeenCalledWith(
         "https://gitlab.com",
         expect.objectContaining({
-          connections: 10,
+          connections: 25,
           keepAliveTimeout: 30000,
           keepAliveMaxTimeout: 300000,
           pipelining: 1,
+          headersTimeout: 10000,
+          bodyTimeout: 30000,
+          connect: expect.objectContaining({ timeout: 2000 }),
         })
       );
     });

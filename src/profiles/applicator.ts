@@ -184,8 +184,8 @@ export async function applyProfile(
 
   // Apply timeout
   if (profile.timeout_ms) {
-    process.env.GITLAB_API_TIMEOUT_MS = String(profile.timeout_ms);
-    appliedSettings.push(`GITLAB_API_TIMEOUT_MS=${profile.timeout_ms}`);
+    process.env.GITLAB_API_HEADERS_TIMEOUT_MS = String(profile.timeout_ms);
+    appliedSettings.push(`GITLAB_API_HEADERS_TIMEOUT_MS=${profile.timeout_ms}`);
   }
 
   // Apply TLS settings
@@ -314,8 +314,8 @@ export async function applyPreset(preset: Preset, presetName: string): Promise<A
 
   // Apply timeout
   if (preset.timeout_ms) {
-    process.env.GITLAB_API_TIMEOUT_MS = String(preset.timeout_ms);
-    appliedSettings.push(`GITLAB_API_TIMEOUT_MS=${preset.timeout_ms}`);
+    process.env.GITLAB_API_HEADERS_TIMEOUT_MS = String(preset.timeout_ms);
+    appliedSettings.push(`GITLAB_API_HEADERS_TIMEOUT_MS=${preset.timeout_ms}`);
   }
 
   logInfo("Preset applied successfully", {

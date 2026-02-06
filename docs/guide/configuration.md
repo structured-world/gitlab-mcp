@@ -57,7 +57,10 @@ When `GITLAB_ALLOWED_PROJECT_IDS` is set:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `GITLAB_API_TIMEOUT_MS` | Request timeout in milliseconds | `10000` |
+| `GITLAB_API_CONNECT_TIMEOUT_MS` | TCP connect timeout in ms | `2000` |
+| `GITLAB_API_HEADERS_TIMEOUT_MS` | Response headers timeout in ms | `10000` |
+| `GITLAB_API_BODY_TIMEOUT_MS` | Response body timeout in ms | `30000` |
+| `GITLAB_TOOL_TIMEOUT_MS` | Total tool execution timeout in ms | `120000` |
 | `GITLAB_API_RETRY_ENABLED` | Enable retry for idempotent ops (GET/HEAD/OPTIONS) | `true` |
 | `GITLAB_API_RETRY_MAX_ATTEMPTS` | Max retry attempts | `3` |
 | `GITLAB_API_RETRY_BASE_DELAY_MS` | Base delay for exponential backoff | `1000` |

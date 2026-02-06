@@ -63,7 +63,9 @@ That's it. The server starts with all default tools enabled.
 |----------|---------|---------|
 | `GITLAB_PROJECT_ID` | Default project context | — |
 | `GITLAB_READ_ONLY_MODE` | Restrict to read-only tools | `false` |
-| `GITLAB_API_TIMEOUT_MS` | API timeout in milliseconds | `10000` |
+| `GITLAB_API_HEADERS_TIMEOUT_MS` | Response headers timeout in ms | `10000` |
+| `GITLAB_API_BODY_TIMEOUT_MS` | Response body timeout in ms | `30000` |
+| `GITLAB_API_CONNECT_TIMEOUT_MS` | TCP connect timeout in ms | `2000` |
 
 ## Feature Flags
 

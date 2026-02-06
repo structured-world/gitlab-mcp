@@ -50,6 +50,12 @@ jest.mock("../../src/registry-manager", () => ({
   },
 }));
 
+// Mock config — use short HANDLER_TIMEOUT_MS for timeout tests
+jest.mock("../../src/config", () => ({
+  LOG_FORMAT: "condensed",
+  HANDLER_TIMEOUT_MS: 100,
+}));
+
 // Mock OAuth module for authentication checks
 jest.mock("../../src/oauth/index", () => ({
   isOAuthEnabled: jest.fn().mockReturnValue(false),
@@ -863,6 +869,73 @@ describe("handlers", () => {
 
       // Restore mock
       (isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
+    });
+  });
+
+  describe("handler-level timeout (Promise.race)", () => {
+    // Tests the Promise.race timeout path: when tool execution exceeds HANDLER_TIMEOUT_MS (100ms),
+    // the handler returns a structured TIMEOUT error immediately without waiting for the tool.
+
+    beforeEach(async () => {
+      await setupHandlers(mockServer);
+      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1];
+    });
+
+    it("should return structured timeout error when tool execution exceeds HANDLER_TIMEOUT_MS", async () => {
+      // Make executeTool hang longer than HANDLER_TIMEOUT_MS (100ms)
+      mockRegistryManager.executeTool.mockImplementation(
+        () => new Promise(resolve => setTimeout(resolve, 500))
+      );
+
+      const result = await callToolHandler({
+        params: {
+          name: "browse_projects",
+          arguments: { action: "list" },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error_code).toBe("TIMEOUT");
+      expect(parsed.tool).toBe("browse_projects");
+      expect(parsed.action).toBe("list");
+      expect(parsed.retryable).toBe(true); // browse_* is idempotent
+      expect(parsed.timeout_ms).toBe(100);
+    }, 5000);
+
+    it("should use 'unknown' action when arguments lack action field on timeout", async () => {
+      mockRegistryManager.executeTool.mockImplementation(
+        () => new Promise(resolve => setTimeout(resolve, 500))
+      );
+
+      const result = await callToolHandler({
+        params: {
+          name: "manage_merge_request",
+          arguments: { project_id: "123" },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.action).toBe("unknown");
+      expect(parsed.retryable).toBe(false); // manage_* is NOT idempotent
+    }, 5000);
+
+    it("should not trigger timeout when tool completes within HANDLER_TIMEOUT_MS", async () => {
+      // Tool resolves immediately (well within 100ms timeout)
+      mockRegistryManager.executeTool.mockResolvedValue({ result: "fast" });
+
+      const result = await callToolHandler({
+        params: {
+          name: "browse_projects",
+          arguments: { action: "list" },
+        },
+      });
+
+      // Should get normal result, not timeout
+      expect(result.isError).toBeUndefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.result).toBe("fast");
     });
   });
 

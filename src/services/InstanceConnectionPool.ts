@@ -15,6 +15,12 @@
 import { GraphQLClient } from "../graphql/client.js";
 import { logInfo, logDebug, logWarn } from "../logger.js";
 import { GitLabInstanceConfig } from "../config/instances-schema.js";
+import {
+  CONNECT_TIMEOUT_MS,
+  HEADERS_TIMEOUT_MS,
+  BODY_TIMEOUT_MS,
+  POOL_MAX_CONNECTIONS,
+} from "../config.js";
 
 // Dynamic require to avoid TypeScript analyzing complex undici types at compile time
 const undici = require("undici") as {
@@ -34,10 +40,16 @@ interface UndiciAgentOptions {
   keepAliveMaxTimeout?: number;
   /** Pipeline connections (HTTP/1.1 only) */
   pipelining?: number;
-  /** TLS options */
+  /** Max time waiting for response headers (ms) */
+  headersTimeout?: number;
+  /** Max time waiting for response body (ms) */
+  bodyTimeout?: number;
+  /** TLS and connect options */
   connect?: {
     rejectUnauthorized?: boolean;
     ca?: Buffer | string;
+    /** TCP connect timeout in milliseconds */
+    timeout?: number;
   };
 }
 
@@ -65,7 +77,7 @@ interface UndiciPool extends UndiciAgent {
  * Connection pool configuration
  */
 export interface ConnectionPoolConfig {
-  /** Maximum connections per instance (default: 10) */
+  /** Maximum connections per instance */
   maxConnections: number;
   /** Keep-alive timeout in ms (default: 30000) */
   keepAliveTimeout: number;
@@ -73,13 +85,22 @@ export interface ConnectionPoolConfig {
   keepAliveMaxTimeout: number;
   /** HTTP/1.1 pipelining depth (default: 1 = disabled) */
   pipelining: number;
+  /** TCP connect timeout in ms */
+  connectTimeout: number;
+  /** Response headers timeout in ms */
+  headersTimeout: number;
+  /** Response body timeout in ms */
+  bodyTimeout: number;
 }
 
 const DEFAULT_POOL_CONFIG: ConnectionPoolConfig = {
-  maxConnections: 10,
+  maxConnections: POOL_MAX_CONNECTIONS,
   keepAliveTimeout: 30000, // 30 seconds
   keepAliveMaxTimeout: 300000, // 5 minutes
   pipelining: 1, // Disabled by default (safer)
+  connectTimeout: CONNECT_TIMEOUT_MS,
+  headersTimeout: HEADERS_TIMEOUT_MS,
+  bodyTimeout: BODY_TIMEOUT_MS,
 };
 
 /**
@@ -317,8 +338,14 @@ export class InstanceConnectionPool {
     instanceConfig: GitLabInstanceConfig,
     normalizedUrl: string
   ): ConnectionEntry {
-    // Build TLS options based on instance config
-    const connectOptions: { rejectUnauthorized?: boolean; ca?: Buffer | string } = {};
+    // Build connect options — always includes timeout, optionally TLS overrides
+    const connectOptions: {
+      rejectUnauthorized?: boolean;
+      ca?: Buffer | string;
+      timeout?: number;
+    } = {
+      timeout: this.config.connectTimeout,
+    };
 
     if (instanceConfig.insecureSkipVerify) {
       connectOptions.rejectUnauthorized = false;
@@ -334,7 +361,9 @@ export class InstanceConnectionPool {
       keepAliveTimeout: this.config.keepAliveTimeout,
       keepAliveMaxTimeout: this.config.keepAliveMaxTimeout,
       pipelining: this.config.pipelining,
-      connect: Object.keys(connectOptions).length > 0 ? connectOptions : undefined,
+      headersTimeout: this.config.headersTimeout,
+      bodyTimeout: this.config.bodyTimeout,
+      connect: connectOptions,
     });
 
     // Derive GraphQL endpoint

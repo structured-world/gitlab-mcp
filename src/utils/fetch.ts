@@ -22,7 +22,9 @@ import {
   NODE_TLS_REJECT_UNAUTHORIZED,
   GITLAB_TOKEN,
   GITLAB_BASE_URL,
-  API_TIMEOUT_MS,
+  CONNECT_TIMEOUT_MS,
+  HEADERS_TIMEOUT_MS,
+  BODY_TIMEOUT_MS,
   API_RETRY_ENABLED,
   API_RETRY_MAX_ATTEMPTS,
   API_RETRY_BASE_DELAY_MS,
@@ -146,21 +148,30 @@ function createDispatcher(): unknown {
     return undefined;
   }
 
-  // HTTP/HTTPS proxy
+  // HTTP/HTTPS proxy — apply same Undici timeouts as direct Agent
   if (proxyUrl) {
     logInfo(`Using proxy: ${proxyUrl}`);
     return new undici.ProxyAgent({
       uri: proxyUrl,
       requestTls: hasTlsConfig ? tlsOptions : undefined,
+      headersTimeout: HEADERS_TIMEOUT_MS,
+      bodyTimeout: BODY_TIMEOUT_MS,
+      connect: { timeout: CONNECT_TIMEOUT_MS },
     });
   }
 
-  // Custom TLS config without proxy
-  if (hasTlsConfig) {
-    return new undici.Agent({ connect: tlsOptions });
-  }
+  // Always create an Agent with native Undici timeouts.
+  // Even without TLS/proxy, the Agent is needed for connect/headers/body timeouts.
+  const connectOptions: Record<string, unknown> = {
+    ...tlsOptions,
+    timeout: CONNECT_TIMEOUT_MS,
+  };
 
-  return undefined;
+  return new undici.Agent({
+    connect: connectOptions,
+    headersTimeout: HEADERS_TIMEOUT_MS,
+    bodyTimeout: BODY_TIMEOUT_MS,
+  });
 }
 
 /** Cached dispatcher */
@@ -488,46 +499,14 @@ async function doFetch(
 
   // Debug log at request start (redact sensitive URL parts)
   const safeUrl = redactUrlForLogging(url);
-  logDebug("Starting GitLab API request", { url: safeUrl, method, timeout: API_TIMEOUT_MS });
+  logDebug("Starting GitLab API request", { url: safeUrl, method });
 
-  // Use a unique Symbol to identify internal timeout aborts vs caller aborts
-  const TIMEOUT_REASON = Symbol("GitLab API timeout");
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(TIMEOUT_REASON), API_TIMEOUT_MS);
-
-  // Merge caller signal with internal timeout signal
-  // Use AbortSignal.any() if available (Node.js 20+), otherwise use listener pattern
-  let mergedSignal: AbortSignal = controller.signal;
-  const callerSignal = options.signal as AbortSignal | undefined;
-  let callerAbortHandler: (() => void) | undefined;
-
-  if (callerSignal) {
-    if (typeof AbortSignal.any === "function") {
-      // Node.js 20+ - use AbortSignal.any for clean signal merging
-      mergedSignal = AbortSignal.any([controller.signal, callerSignal]);
-    } else {
-      // Fallback for older Node.js - forward caller abort to our controller
-      if (callerSignal.aborted) {
-        controller.abort(callerSignal.reason);
-      } else {
-        callerAbortHandler = () => controller.abort(callerSignal.reason);
-        callerSignal.addEventListener("abort", callerAbortHandler, { once: true });
-      }
-    }
-  }
-
-  // Helper to clean up listeners
-  const cleanup = () => {
-    clearTimeout(timeoutId);
-    if (callerAbortHandler && callerSignal) {
-      callerSignal.removeEventListener("abort", callerAbortHandler);
-    }
-  };
-
+  // No manual AbortController timeout — Undici handles connect/headers/body timeouts natively.
+  // Only pass through caller-provided signal for external abort support.
   const fetchOptions: Record<string, unknown> = {
     ...options,
     headers,
-    signal: mergedSignal,
+    signal: options.signal,
   };
 
   if (dispatcher) {
@@ -539,7 +518,6 @@ async function doFetch(
 
   try {
     const response = await fetch(url, fetchOptions as RequestInit);
-    cleanup();
 
     const duration = Date.now() - startTime;
     logDebug("GitLab API request completed", {
@@ -554,37 +532,54 @@ async function doFetch(
 
     return response;
   } catch (error) {
-    cleanup();
     const duration = Date.now() - startTime;
 
+    // Caller-initiated AbortError — re-throw as-is
     if (error instanceof Error && error.name === "AbortError") {
-      // Distinguish between internal timeout and caller abort
-      // Check if our internal controller was aborted with timeout reason
-      const isInternalTimeout =
-        controller.signal.aborted && controller.signal.reason === TIMEOUT_REASON;
+      logDebug("GitLab API request aborted by caller", {
+        url: safeUrl,
+        method,
+        duration,
+      });
+      throw error;
+    }
 
-      if (isInternalTimeout) {
-        // Internal timeout - log and throw timeout error
-        logWarn("GitLab API request timed out", {
+    // Map Undici native timeout errors to structured timeout messages.
+    // Undici throws HeadersTimeoutError, BodyTimeoutError, ConnectTimeoutError
+    // with corresponding class names and messages.
+    if (error instanceof Error) {
+      const errName = error.constructor?.name ?? "";
+      const msg = error.message.toLowerCase();
+
+      if (errName === "HeadersTimeoutError" || msg.includes("headers timeout")) {
+        logWarn("GitLab API headers timeout", {
           url: safeUrl,
           method,
-          timeout: API_TIMEOUT_MS,
+          timeout: HEADERS_TIMEOUT_MS,
           duration,
         });
-
-        // Capture timeout for access logging
         requestTracker.setGitLabResponseForCurrentRequest("timeout", duration);
-
-        throw new Error(`GitLab API timeout after ${API_TIMEOUT_MS}ms`);
-      } else {
-        // Caller abort - re-throw original error to preserve abort reason
-        logDebug("GitLab API request aborted by caller", {
+        throw new Error(`GitLab API timeout after ${HEADERS_TIMEOUT_MS}ms (headers phase)`);
+      }
+      if (errName === "BodyTimeoutError" || msg.includes("body timeout")) {
+        logWarn("GitLab API body timeout", {
           url: safeUrl,
           method,
+          timeout: BODY_TIMEOUT_MS,
           duration,
-          reason: callerSignal?.reason,
         });
-        throw error;
+        requestTracker.setGitLabResponseForCurrentRequest("timeout", duration);
+        throw new Error(`GitLab API timeout after ${BODY_TIMEOUT_MS}ms (body phase)`);
+      }
+      if (errName === "ConnectTimeoutError" || msg.includes("connect timeout")) {
+        logWarn("GitLab API connect timeout", {
+          url: safeUrl,
+          method,
+          timeout: CONNECT_TIMEOUT_MS,
+          duration,
+        });
+        requestTracker.setGitLabResponseForCurrentRequest("timeout", duration);
+        throw new Error(`GitLab API timeout after ${CONNECT_TIMEOUT_MS}ms (connect phase)`);
       }
     }
 
@@ -735,6 +730,25 @@ export async function enhancedFetch(
     // for REST-only calls that happen before any GraphQL calls.
     // Falls back to global dispatcher only if instance is not registered at all.
     instanceDispatcher = registry.getDispatcher(baseUrl);
+
+    // Log pool pressure when requests are queuing inside Undici
+    if (
+      instanceDispatcher &&
+      typeof instanceDispatcher === "object" &&
+      "stats" in instanceDispatcher
+    ) {
+      const stats = (
+        instanceDispatcher as { stats: { queued: number; running: number; size: number } }
+      ).stats;
+      if (stats.queued > 0) {
+        logWarn("Connection pool pressure: requests queuing", {
+          queued: stats.queued,
+          running: stats.running,
+          size: stats.size,
+          url: safeUrl,
+        });
+      }
+    }
 
     if (shouldRateLimit) {
       // acquireSlot throws if rate limit exceeded - let it propagate

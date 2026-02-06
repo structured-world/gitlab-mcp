@@ -718,6 +718,72 @@ describe("config.ts", () => {
     });
   });
 
+  describe("granular timeout configuration", () => {
+    it("should use defaults when env vars are not set", () => {
+      delete process.env.GITLAB_API_CONNECT_TIMEOUT_MS;
+      delete process.env.GITLAB_API_HEADERS_TIMEOUT_MS;
+      delete process.env.GITLAB_API_BODY_TIMEOUT_MS;
+      delete process.env.GITLAB_TOOL_TIMEOUT_MS;
+      delete process.env.GITLAB_POOL_MAX_CONNECTIONS;
+
+      const config = require("../../src/config");
+
+      expect(config.CONNECT_TIMEOUT_MS).toBe(2000);
+      expect(config.HEADERS_TIMEOUT_MS).toBe(10000);
+      expect(config.BODY_TIMEOUT_MS).toBe(30000);
+      expect(config.HANDLER_TIMEOUT_MS).toBe(120000);
+      expect(config.POOL_MAX_CONNECTIONS).toBe(25);
+    });
+
+    it("should parse valid custom timeout values", () => {
+      process.env.GITLAB_API_CONNECT_TIMEOUT_MS = "5000";
+      process.env.GITLAB_API_HEADERS_TIMEOUT_MS = "20000";
+      process.env.GITLAB_API_BODY_TIMEOUT_MS = "60000";
+      process.env.GITLAB_TOOL_TIMEOUT_MS = "300000";
+      process.env.GITLAB_POOL_MAX_CONNECTIONS = "50";
+
+      const config = require("../../src/config");
+
+      expect(config.CONNECT_TIMEOUT_MS).toBe(5000);
+      expect(config.HEADERS_TIMEOUT_MS).toBe(20000);
+      expect(config.BODY_TIMEOUT_MS).toBe(60000);
+      expect(config.HANDLER_TIMEOUT_MS).toBe(300000);
+      expect(config.POOL_MAX_CONNECTIONS).toBe(50);
+    });
+
+    it("should fall back to defaults for non-numeric env values", () => {
+      process.env.GITLAB_API_CONNECT_TIMEOUT_MS = "abc";
+      process.env.GITLAB_API_HEADERS_TIMEOUT_MS = "not-a-number";
+      process.env.GITLAB_API_BODY_TIMEOUT_MS = "";
+      process.env.GITLAB_TOOL_TIMEOUT_MS = "undefined";
+      process.env.GITLAB_POOL_MAX_CONNECTIONS = "xyz";
+
+      const config = require("../../src/config");
+
+      expect(config.CONNECT_TIMEOUT_MS).toBe(2000);
+      expect(config.HEADERS_TIMEOUT_MS).toBe(10000);
+      expect(config.BODY_TIMEOUT_MS).toBe(30000);
+      expect(config.HANDLER_TIMEOUT_MS).toBe(120000);
+      expect(config.POOL_MAX_CONNECTIONS).toBe(25);
+    });
+
+    it("should fall back to defaults for negative values", () => {
+      process.env.GITLAB_API_CONNECT_TIMEOUT_MS = "-1";
+      process.env.GITLAB_API_HEADERS_TIMEOUT_MS = "-100";
+      process.env.GITLAB_API_BODY_TIMEOUT_MS = "0";
+      process.env.GITLAB_TOOL_TIMEOUT_MS = "-500";
+      process.env.GITLAB_POOL_MAX_CONNECTIONS = "-10";
+
+      const config = require("../../src/config");
+
+      expect(config.CONNECT_TIMEOUT_MS).toBe(2000);
+      expect(config.HEADERS_TIMEOUT_MS).toBe(10000);
+      expect(config.BODY_TIMEOUT_MS).toBe(30000);
+      expect(config.HANDLER_TIMEOUT_MS).toBe(120000);
+      expect(config.POOL_MAX_CONNECTIONS).toBe(25);
+    });
+  });
+
   describe("edge cases and error handling", () => {
     it("should handle completely empty environment", () => {
       // Clear all environment variables

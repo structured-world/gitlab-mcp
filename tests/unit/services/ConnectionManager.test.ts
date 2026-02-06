@@ -270,6 +270,89 @@ describe("ConnectionManager Unit", () => {
       // Should not throw and return quickly (same instance)
       await expect(manager.ensureIntrospected()).resolves.toBeUndefined();
     });
+
+    it("should deduplicate concurrent introspection calls for the same instance", async () => {
+      // Set up manager with minimal initialized state so ensureIntrospected() proceeds
+      mockGetGitLabApiUrlFromContext.mockReturnValue("https://gitlab.dedup.com");
+
+      // Mock internal dependencies as present but no cached introspection
+      (manager as any).client = { endpoint: "https://gitlab.dedup.com/api/graphql" };
+      (manager as any).versionDetector = {};
+      (manager as any).schemaIntrospector = {};
+      (manager as any).instanceInfo = null;
+      (manager as any).schemaInfo = null;
+      (manager as any).introspectedInstanceUrl = null;
+
+      // Track how many times doIntrospection actually executes
+      let introspectionCallCount = 0;
+
+      // Mock doIntrospection to simulate async work with observable side effects
+      jest.spyOn(manager as any, "doIntrospection").mockImplementation(async (url: string) => {
+        introspectionCallCount++;
+        // Simulate async introspection delay
+        await new Promise(resolve => setTimeout(resolve, 50));
+        // Set the results that ensureIntrospected expects
+        (manager as any).instanceInfo = { version: "17.0.0", tier: "free" };
+        (manager as any).schemaInfo = { workItemWidgetTypes: [] };
+        (manager as any).introspectedInstanceUrl = url;
+      });
+
+      // Fire 5 concurrent calls — should all share the same promise
+      await Promise.all([
+        manager.ensureIntrospected(),
+        manager.ensureIntrospected(),
+        manager.ensureIntrospected(),
+        manager.ensureIntrospected(),
+        manager.ensureIntrospected(),
+      ]);
+
+      // doIntrospection should have been called exactly once due to deduplication
+      expect(introspectionCallCount).toBe(1);
+    });
+
+    it("should clear introspection promise after completion", async () => {
+      mockGetGitLabApiUrlFromContext.mockReturnValue("https://gitlab.clear.com");
+
+      (manager as any).client = { endpoint: "https://gitlab.clear.com/api/graphql" };
+      (manager as any).versionDetector = {};
+      (manager as any).schemaIntrospector = {};
+      (manager as any).instanceInfo = null;
+      (manager as any).schemaInfo = null;
+      (manager as any).introspectedInstanceUrl = null;
+
+      jest.spyOn(manager as any, "doIntrospection").mockImplementation(async (url: string) => {
+        (manager as any).instanceInfo = { version: "17.0.0", tier: "free" };
+        (manager as any).schemaInfo = { workItemWidgetTypes: [] };
+        (manager as any).introspectedInstanceUrl = url;
+      });
+
+      await manager.ensureIntrospected();
+
+      // Promise should be cleaned up from the map
+      const promisesMap = (manager as any).introspectionPromises as Map<string, Promise<void>>;
+      expect(promisesMap.has("https://gitlab.clear.com")).toBe(false);
+    });
+
+    it("should clear introspection promise even when doIntrospection fails", async () => {
+      mockGetGitLabApiUrlFromContext.mockReturnValue("https://gitlab.fail.com");
+
+      (manager as any).client = { endpoint: "https://gitlab.fail.com/api/graphql" };
+      (manager as any).versionDetector = {};
+      (manager as any).schemaIntrospector = {};
+      (manager as any).instanceInfo = null;
+      (manager as any).schemaInfo = null;
+      (manager as any).introspectedInstanceUrl = null;
+
+      jest
+        .spyOn(manager as any, "doIntrospection")
+        .mockRejectedValue(new Error("Introspection network error"));
+
+      await expect(manager.ensureIntrospected()).rejects.toThrow("Introspection network error");
+
+      // Promise should still be cleaned up (finally block)
+      const promisesMap = (manager as any).introspectionPromises as Map<string, Promise<void>>;
+      expect(promisesMap.has("https://gitlab.fail.com")).toBe(false);
+    });
   });
 
   describe("reinitialize", () => {

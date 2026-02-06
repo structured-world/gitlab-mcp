@@ -15,7 +15,7 @@ faq:
   - question: "Why are some GitLab MCP tools not available?"
     answer: "Tools may be missing due to: 1) Feature flags disabled (check with list-tools --env), 2) Read-only mode enabled (only browse_* tools available), 3) GITLAB_DENIED_TOOLS_REGEX filtering tools, or 4) GitLab tier restrictions (some tools require Premium/Ultimate)."
   - question: "How do I fix timeout errors in GitLab MCP?"
-    answer: "Increase the API timeout by setting GITLAB_API_TIMEOUT_MS environment variable to a higher value (default is 10000ms). You can also enable automatic retries with GITLAB_API_RETRY_ENABLED=true."
+    answer: "Increase the API timeout by setting GITLAB_API_HEADERS_TIMEOUT_MS (default 10000ms) or GITLAB_API_BODY_TIMEOUT_MS (default 30000ms) to a higher value. You can also enable automatic retries with GITLAB_API_RETRY_ENABLED=true."
 ---
 
 # Troubleshooting Connection Issues
@@ -165,12 +165,13 @@ npx @structured-world/gitlab-mcp list-tools --detail
 ```json
 {
   "env": {
-    "GITLAB_API_TIMEOUT_MS": "30000"
+    "GITLAB_API_HEADERS_TIMEOUT_MS": "30000",
+    "GITLAB_API_BODY_TIMEOUT_MS": "60000"
   }
 }
 ```
 
-Default is `10000` (10 seconds).
+Defaults: connect `2000ms`, headers `10000ms`, body `30000ms`.
 
 ### Retry Configuration
 

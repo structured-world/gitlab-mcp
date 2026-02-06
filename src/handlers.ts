@@ -10,7 +10,7 @@ import {
   parseTimeoutError,
 } from "./utils/error-handler";
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from "./logging/index";
-import { LOG_FORMAT } from "./config";
+import { LOG_FORMAT, HANDLER_TIMEOUT_MS } from "./config";
 
 interface JsonSchemaProperty {
   type?: string;
@@ -277,9 +277,21 @@ export async function setupHandlers(server: Server): Promise<void> {
     };
   });
 
-  // Call tool handler
+  // Call tool handler — wrapped with handler-level timeout to prevent infinite hangs.
+  // Uses Promise.race() so that hung operations are actually cut off, not just flagged.
   server.setRequestHandler(CallToolRequestSchema, async request => {
-    try {
+    // Create a timeout promise that rejects after HANDLER_TIMEOUT_MS
+    const HANDLER_TIMEOUT_SYMBOL = Symbol("handler_timeout");
+    let handlerTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<typeof HANDLER_TIMEOUT_SYMBOL>(resolve => {
+      handlerTimeoutId = setTimeout(() => resolve(HANDLER_TIMEOUT_SYMBOL), HANDLER_TIMEOUT_MS);
+    });
+
+    // The actual handler logic as a separate async function
+    const handlerWork = async (): Promise<{
+      content: Array<{ type: string; text: string }>;
+      isError?: boolean;
+    }> => {
       if (!request.params.arguments) {
         throw new Error("Arguments are required");
       }
@@ -421,6 +433,36 @@ export async function setupHandlers(server: Server): Promise<void> {
         // Preserve original error as cause to allow action extraction and structured error detection
         throw new Error(`Failed to execute tool '${toolName}': ${errorMessage}`, { cause: error });
       }
+    };
+
+    try {
+      // Race the handler against the timeout — if handler hangs, timeout wins
+      const result = await Promise.race([handlerWork(), timeoutPromise]);
+
+      if (result === HANDLER_TIMEOUT_SYMBOL) {
+        // Timeout won the race — handler is still running but we respond immediately
+        const toolName = request.params.name;
+        const action =
+          request.params.arguments && typeof request.params.arguments.action === "string"
+            ? request.params.arguments.action
+            : "unknown";
+        const retryable = isIdempotentOperation(toolName);
+        const timeoutError = createTimeoutError(toolName, action, HANDLER_TIMEOUT_MS, retryable);
+
+        logError(`Handler timeout: tool '${toolName}' timed out after ${HANDLER_TIMEOUT_MS}ms`);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(timeoutError, null, 2),
+            },
+          ],
+          isError: true,
+        };
+      }
+
+      return result;
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error);
       logError(`Error in tool handler: ${errMsg}`);
@@ -468,6 +510,8 @@ export async function setupHandlers(server: Server): Promise<void> {
         ],
         isError: true,
       };
+    } finally {
+      clearTimeout(handlerTimeoutId);
     }
   });
 }

@@ -148,12 +148,15 @@ function createDispatcher(): unknown {
     return undefined;
   }
 
-  // HTTP/HTTPS proxy
+  // HTTP/HTTPS proxy — apply same Undici timeouts as direct Agent
   if (proxyUrl) {
     logInfo(`Using proxy: ${proxyUrl}`);
     return new undici.ProxyAgent({
       uri: proxyUrl,
       requestTls: hasTlsConfig ? tlsOptions : undefined,
+      headersTimeout: HEADERS_TIMEOUT_MS,
+      bodyTimeout: BODY_TIMEOUT_MS,
+      connect: { timeout: CONNECT_TIMEOUT_MS },
     });
   }
 

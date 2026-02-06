@@ -591,4 +591,287 @@ describe("Fetch Configuration Edge Cases", () => {
       );
     });
   });
+
+  describe("Undici Timeout Error Mapping", () => {
+    // Tests that Undici-native timeout errors are mapped to structured "GitLab API timeout" messages
+    // with the correct phase and timeout value, so isRetryableError() can match them.
+
+    beforeEach(() => {
+      jest.resetModules();
+      jest.clearAllMocks();
+
+      jest.doMock("../../../src/logger", () => ({
+        logger: mockLogger,
+        logInfo: mockLogInfo,
+        logWarn: mockLogWarn,
+        logError: mockLogError,
+        logDebug: mockLogDebug,
+      }));
+
+      jest.doMock("../../../src/config", () => ({
+        SKIP_TLS_VERIFY: false,
+        GITLAB_AUTH_COOKIE_PATH: "",
+        GITLAB_CA_CERT_PATH: "",
+        HTTP_PROXY: "",
+        HTTPS_PROXY: "",
+        NODE_TLS_REJECT_UNAUTHORIZED: "",
+        GITLAB_TOKEN: "test-token",
+        CONNECT_TIMEOUT_MS: 2000,
+        HEADERS_TIMEOUT_MS: 10000,
+        BODY_TIMEOUT_MS: 30000,
+        API_RETRY_ENABLED: false,
+        API_RETRY_MAX_ATTEMPTS: 0,
+        API_RETRY_BASE_DELAY_MS: 100,
+        API_RETRY_MAX_DELAY_MS: 400,
+      }));
+
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: jest.fn(() => false),
+        getTokenContext: jest.fn(() => undefined),
+      }));
+    });
+
+    it("should map HeadersTimeoutError to structured timeout message", async () => {
+      // Simulate Undici HeadersTimeoutError by constructor name
+      class HeadersTimeoutError extends Error {
+        constructor() {
+          super("Headers Timeout Error");
+          this.name = "HeadersTimeoutError";
+        }
+      }
+      mockFetch.mockRejectedValue(new HeadersTimeoutError());
+
+      const { enhancedFetch, resetDispatcherCache } = require("../../../src/utils/fetch");
+      resetDispatcherCache();
+
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "GitLab API timeout after 10000ms (headers phase)"
+      );
+
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        "GitLab API headers timeout",
+        expect.objectContaining({ timeout: 10000 })
+      );
+    });
+
+    it("should map BodyTimeoutError to structured timeout message", async () => {
+      class BodyTimeoutError extends Error {
+        constructor() {
+          super("Body Timeout Error");
+          this.name = "BodyTimeoutError";
+        }
+      }
+      mockFetch.mockRejectedValue(new BodyTimeoutError());
+
+      const { enhancedFetch, resetDispatcherCache } = require("../../../src/utils/fetch");
+      resetDispatcherCache();
+
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "GitLab API timeout after 30000ms (body phase)"
+      );
+
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        "GitLab API body timeout",
+        expect.objectContaining({ timeout: 30000 })
+      );
+    });
+
+    it("should map ConnectTimeoutError to structured timeout message", async () => {
+      class ConnectTimeoutError extends Error {
+        constructor() {
+          super("Connect Timeout Error");
+          this.name = "ConnectTimeoutError";
+        }
+      }
+      mockFetch.mockRejectedValue(new ConnectTimeoutError());
+
+      const { enhancedFetch, resetDispatcherCache } = require("../../../src/utils/fetch");
+      resetDispatcherCache();
+
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "GitLab API timeout after 2000ms (connect phase)"
+      );
+
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        "GitLab API connect timeout",
+        expect.objectContaining({ timeout: 2000 })
+      );
+    });
+
+    it("should detect timeout errors by message when constructor name is unavailable", async () => {
+      // Simulate error where constructor name is generic but message contains "headers timeout"
+      const error = new Error("headers timeout");
+      mockFetch.mockRejectedValue(error);
+
+      const { enhancedFetch, resetDispatcherCache } = require("../../../src/utils/fetch");
+      resetDispatcherCache();
+
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "GitLab API timeout after 10000ms (headers phase)"
+      );
+    });
+
+    it("should detect body timeout by message fallback", async () => {
+      const error = new Error("body timeout");
+      mockFetch.mockRejectedValue(error);
+
+      const { enhancedFetch, resetDispatcherCache } = require("../../../src/utils/fetch");
+      resetDispatcherCache();
+
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "GitLab API timeout after 30000ms (body phase)"
+      );
+    });
+
+    it("should detect connect timeout by message fallback", async () => {
+      const error = new Error("connect timeout");
+      mockFetch.mockRejectedValue(error);
+
+      const { enhancedFetch, resetDispatcherCache } = require("../../../src/utils/fetch");
+      resetDispatcherCache();
+
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "GitLab API timeout after 2000ms (connect phase)"
+      );
+    });
+  });
+
+  describe("Pool Pressure Logging", () => {
+    // Verifies that logWarn is called when Undici pool has queued requests (stats.queued > 0)
+
+    beforeEach(() => {
+      jest.resetModules();
+      jest.clearAllMocks();
+      mockFetch.mockResolvedValue(createMockResponse());
+
+      jest.doMock("../../../src/logger", () => ({
+        logger: mockLogger,
+        logInfo: mockLogInfo,
+        logWarn: mockLogWarn,
+        logError: mockLogError,
+        logDebug: mockLogDebug,
+      }));
+
+      jest.doMock("../../../src/config", () => ({
+        SKIP_TLS_VERIFY: false,
+        GITLAB_AUTH_COOKIE_PATH: "",
+        GITLAB_CA_CERT_PATH: "",
+        HTTP_PROXY: "",
+        HTTPS_PROXY: "",
+        NODE_TLS_REJECT_UNAUTHORIZED: "",
+        GITLAB_TOKEN: "test-token",
+        GITLAB_BASE_URL: "https://example.com",
+        CONNECT_TIMEOUT_MS: 2000,
+        HEADERS_TIMEOUT_MS: 10000,
+        BODY_TIMEOUT_MS: 30000,
+        API_RETRY_ENABLED: false,
+        API_RETRY_MAX_ATTEMPTS: 0,
+        API_RETRY_BASE_DELAY_MS: 100,
+        API_RETRY_MAX_DELAY_MS: 400,
+      }));
+
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: jest.fn(() => false),
+        getTokenContext: jest.fn(() => undefined),
+        getGitLabApiUrlFromContext: jest.fn(() => undefined),
+      }));
+    });
+
+    it("should log warning when pool has queued requests", async () => {
+      // Mock InstanceRegistry to return a dispatcher with queued stats
+      const mockDispatcher = {
+        stats: { queued: 5, running: 25, size: 25 },
+      };
+
+      jest.doMock("../../../src/services/InstanceRegistry", () => ({
+        InstanceRegistry: {
+          getInstance: () => ({
+            isInitialized: () => true,
+            getDispatcher: () => mockDispatcher,
+            acquireSlot: jest.fn(async () => () => {}),
+          }),
+        },
+      }));
+
+      const { enhancedFetch, resetDispatcherCache } = require("../../../src/utils/fetch");
+      resetDispatcherCache();
+
+      await enhancedFetch("https://example.com/api/v4/projects");
+
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        "Connection pool pressure: requests queuing",
+        expect.objectContaining({
+          queued: 5,
+          running: 25,
+          size: 25,
+        })
+      );
+    });
+  });
+
+  describe("ProxyAgent Timeout Configuration", () => {
+    // Verifies that ProxyAgent receives the same timeout options as direct Agent
+
+    beforeEach(() => {
+      jest.resetModules();
+      jest.clearAllMocks();
+      mockFetch.mockResolvedValue(createMockResponse());
+
+      jest.doMock("../../../src/logger", () => ({
+        logger: mockLogger,
+        logInfo: mockLogInfo,
+        logWarn: mockLogWarn,
+        logError: mockLogError,
+        logDebug: mockLogDebug,
+      }));
+    });
+
+    it("should pass timeout options to ProxyAgent", async () => {
+      // Track ProxyAgent constructor calls via a custom spy mock
+      const proxyAgentSpy = jest.fn().mockImplementation(() => ({}));
+
+      jest.doMock("undici", () => ({
+        Agent: jest.fn().mockImplementation(() => ({})),
+        ProxyAgent: proxyAgentSpy,
+      }));
+
+      jest.doMock("../../../src/config", () => ({
+        SKIP_TLS_VERIFY: false,
+        GITLAB_AUTH_COOKIE_PATH: "",
+        GITLAB_CA_CERT_PATH: "",
+        HTTP_PROXY: "",
+        HTTPS_PROXY: "https://proxy.example.com:8443",
+        NODE_TLS_REJECT_UNAUTHORIZED: "",
+        GITLAB_TOKEN: "test-token",
+        CONNECT_TIMEOUT_MS: 2000,
+        HEADERS_TIMEOUT_MS: 10000,
+        BODY_TIMEOUT_MS: 30000,
+        API_RETRY_ENABLED: false,
+        API_RETRY_MAX_ATTEMPTS: 0,
+        API_RETRY_BASE_DELAY_MS: 100,
+        API_RETRY_MAX_DELAY_MS: 400,
+      }));
+
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: jest.fn(() => false),
+        getTokenContext: jest.fn(() => undefined),
+      }));
+
+      // Calling createFetchOptions triggers createDispatcher via getDispatcher
+      // which creates the ProxyAgent with our config
+      const { createFetchOptions, resetDispatcherCache } = require("../../../src/utils/fetch");
+      resetDispatcherCache();
+
+      createFetchOptions();
+
+      expect(proxyAgentSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          uri: "https://proxy.example.com:8443",
+          headersTimeout: 10000,
+          bodyTimeout: 30000,
+          connect: { timeout: 2000 },
+        })
+      );
+    });
+  });
 });

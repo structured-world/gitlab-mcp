@@ -596,5 +596,41 @@ describe("Fetch Utils Coverage Tests", () => {
 
       expect(mockFetch).toHaveBeenCalled();
     });
+
+    it("should check pool stats when dispatcher has stats property", async () => {
+      // Verifies that the pool pressure code path runs when the dispatcher
+      // has a stats property. The actual logging is verified in fetch-config.test.ts
+      // where the logger is properly mocked.
+      const registry = InstanceRegistry.getInstance();
+      await registry.initialize();
+
+      // Register instance and create pool
+      registry.register({
+        url: "https://busy.gitlab.com",
+        insecureSkipVerify: false,
+      });
+      registry.getGraphQLClient("https://busy.gitlab.com");
+
+      // Override getDispatcher to return a mock with queued stats
+      const mockDispatcher = {
+        stats: { queued: 3, running: 25, size: 25 },
+      };
+      jest.spyOn(registry, "getDispatcher").mockReturnValue(mockDispatcher);
+
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({}),
+        headers: new Headers(),
+      });
+
+      // Should complete without error — pool pressure path exercises the stats check
+      await enhancedFetch("https://busy.gitlab.com/api/v4/projects", {
+        retry: false,
+        rateLimit: false,
+      });
+
+      expect(mockFetch).toHaveBeenCalled();
+    });
   });
 });

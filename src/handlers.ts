@@ -277,18 +277,21 @@ export async function setupHandlers(server: Server): Promise<void> {
     };
   });
 
-  // Call tool handler — wrapped with handler-level timeout to prevent infinite hangs
+  // Call tool handler — wrapped with handler-level timeout to prevent infinite hangs.
+  // Uses Promise.race() so that hung operations are actually cut off, not just flagged.
   server.setRequestHandler(CallToolRequestSchema, async request => {
-    const handlerController = new AbortController();
-    const handlerTimeoutId = setTimeout(
-      () =>
-        handlerController.abort(
-          new Error(`Tool execution timed out after ${HANDLER_TIMEOUT_MS}ms`)
-        ),
-      HANDLER_TIMEOUT_MS
-    );
+    // Create a timeout promise that rejects after HANDLER_TIMEOUT_MS
+    const HANDLER_TIMEOUT_SYMBOL = Symbol("handler_timeout");
+    let handlerTimeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<typeof HANDLER_TIMEOUT_SYMBOL>(resolve => {
+      handlerTimeoutId = setTimeout(() => resolve(HANDLER_TIMEOUT_SYMBOL), HANDLER_TIMEOUT_MS);
+    });
 
-    try {
+    // The actual handler logic as a separate async function
+    const handlerWork = async (): Promise<{
+      content: Array<{ type: string; text: string }>;
+      isError?: boolean;
+    }> => {
       if (!request.params.arguments) {
         throw new Error("Arguments are required");
       }
@@ -430,26 +433,14 @@ export async function setupHandlers(server: Server): Promise<void> {
         // Preserve original error as cause to allow action extraction and structured error detection
         throw new Error(`Failed to execute tool '${toolName}': ${errorMessage}`, { cause: error });
       }
-    } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error);
-      logError(`Error in tool handler: ${errMsg}`);
+    };
 
-      // Record error for access logging
-      const reqTracker = getRequestTracker();
-      reqTracker.setErrorForCurrentRequest(errMsg);
+    try {
+      // Race the handler against the timeout — if handler hangs, timeout wins
+      const result = await Promise.race([handlerWork(), timeoutPromise]);
 
-      // Record error on connection stats
-      const curRequestId = getCurrentRequestId();
-      if (curRequestId) {
-        const stack = reqTracker.getStack(curRequestId);
-        if (stack?.sessionId) {
-          const connTracker = getConnectionTracker();
-          connTracker.recordError(stack.sessionId, errMsg);
-        }
-      }
-
-      // Handler-level timeout — return structured timeout error
-      if (handlerController.signal.aborted) {
+      if (result === HANDLER_TIMEOUT_SYMBOL) {
+        // Timeout won the race — handler is still running but we respond immediately
         const toolName = request.params.name;
         const action =
           request.params.arguments && typeof request.params.arguments.action === "string"
@@ -469,6 +460,25 @@ export async function setupHandlers(server: Server): Promise<void> {
           ],
           isError: true,
         };
+      }
+
+      return result;
+    } catch (error) {
+      const errMsg = error instanceof Error ? error.message : String(error);
+      logError(`Error in tool handler: ${errMsg}`);
+
+      // Record error for access logging
+      const reqTracker = getRequestTracker();
+      reqTracker.setErrorForCurrentRequest(errMsg);
+
+      // Record error on connection stats
+      const curRequestId = getCurrentRequestId();
+      if (curRequestId) {
+        const stack = reqTracker.getStack(curRequestId);
+        if (stack?.sessionId) {
+          const connTracker = getConnectionTracker();
+          connTracker.recordError(stack.sessionId, errMsg);
+        }
       }
 
       // Try to convert to structured error for better LLM feedback

@@ -1,3 +1,9 @@
+## [6.60.1](https://github.com/structured-world/gitlab-mcp/compare/v6.60.0...v6.60.1) (2026-02-06)
+
+### Bug Fixes
+
+* **fetch:** proper timeout architecture and connection pool tuning ([#314](https://github.com/structured-world/gitlab-mcp/issues/314)) ([4977828](https://github.com/structured-world/gitlab-mcp/commit/4977828214ab2bf49923586ec8032130ede0c3ca)), closes [#313](https://github.com/structured-world/gitlab-mcp/issues/313) [#313](https://github.com/structured-world/gitlab-mcp/issues/313)
+
 ## [6.60.0](https://github.com/structured-world/gitlab-mcp/compare/v6.59.2...v6.60.0) (2026-02-06)
 
 ### Features

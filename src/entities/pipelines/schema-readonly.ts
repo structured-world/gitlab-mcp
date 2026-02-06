@@ -292,8 +292,11 @@ const GetJobLogsSchema = z.object({
     .number()
     .int()
     .min(1)
+    .max(10000)
     .optional()
-    .describe("Maximum number of lines to return (default: 200). Use with start for pagination"),
+    .describe(
+      "Maximum number of lines to return (default: 200, max: 10000). Use with start for pagination"
+    ),
   start: z
     .number()
     .optional()

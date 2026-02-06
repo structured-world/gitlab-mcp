@@ -239,6 +239,7 @@ const DeleteTimelogSchema = z.object({
   action: z.literal("delete_timelog").describe("Delete a time tracking entry from a work item"),
   timelogId: z
     .string()
+    .min(1)
     .describe(
       "Global ID of the timelog entry (gid://gitlab/Timelog/N) — obtain from work item's TIME_TRACKING widget via browse_work_items get action"
     ),

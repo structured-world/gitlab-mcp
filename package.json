@@ -384,6 +384,26 @@
       }
     ]
   },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "gitlab",
+    "gitlab-api",
+    "ai",
+    "llm",
+    "claude",
+    "anthropic",
+    "devops",
+    "ci-cd",
+    "merge-requests",
+    "pipelines",
+    "work-items",
+    "graphql",
+    "developer-tools",
+    "automation",
+    "typescript"
+  ],
   "license": "Apache-2.0",
   "author": "Dmitry Prudnikov <mail@polaz.com>",
   "packageManager": "yarn@4.12.0",

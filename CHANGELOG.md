@@ -1,3 +1,9 @@
+## [6.59.2](https://github.com/structured-world/gitlab-mcp/compare/v6.59.1...v6.59.2) (2026-02-06)
+
+### Bug Fixes
+
+* **pipelines:** position-aware log truncation and pagination metadata ([#310](https://github.com/structured-world/gitlab-mcp/issues/310)) ([e3dc1db](https://github.com/structured-world/gitlab-mcp/commit/e3dc1dbb0275b1ed60416e0f0a0839759e372baa)), closes [#309](https://github.com/structured-world/gitlab-mcp/issues/309)
+
 ## [6.59.1](https://github.com/structured-world/gitlab-mcp/compare/v6.59.0...v6.59.1) (2026-02-05)
 
 ### Bug Fixes

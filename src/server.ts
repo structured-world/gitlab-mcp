@@ -23,7 +23,7 @@ import {
   shouldSkipAccessLogRequest,
 } from "./config";
 import { TransportMode } from "./types";
-import { logInfo, logError, logDebug } from "./logger";
+import { logInfo, logError, logDebug, logWarn } from "./logger";
 import { getSessionManager } from "./session-manager";
 
 // OAuth imports
@@ -203,6 +203,14 @@ function configureServerTimeouts(server: http.Server | https.Server): void {
   server.headersTimeout = HTTP_KEEPALIVE_TIMEOUT_MS + 5000; // Must be > keepAliveTimeout
   server.timeout = 0; // No socket timeout for SSE streaming
 
+  // Enable TCP keepalive on every incoming socket to detect dead connections
+  // (proxy/client silently disconnected). Without this, half-open sockets
+  // remain alive indefinitely since server.timeout is disabled for SSE.
+  server.on("connection", (socket: import("net").Socket) => {
+    socket.setKeepAlive(true, 30000); // First TCP probe 30s after last data; OS controls subsequent interval
+    socket.setNoDelay(true); // Disable Nagle for SSE chunk flushing
+  });
+
   logInfo("HTTP server timeouts configured for SSE streaming", {
     keepAliveTimeout: server.keepAliveTimeout,
     headersTimeout: server.headersTimeout,
@@ -234,6 +242,9 @@ function getProtocol(): string {
   return isTLSEnabled() ? "https" : "http";
 }
 
+/** How long to wait for TCP buffer drain before declaring connection dead */
+const HEARTBEAT_DRAIN_TIMEOUT_MS = 10000;
+
 /**
  * Start SSE heartbeat on a response to keep the connection alive through proxies.
  *
@@ -241,20 +252,84 @@ function getProtocol(): string {
  * by SSE clients per the spec but prevent intermediate proxies (Cloudflare, Envoy)
  * from killing idle connections.
  *
+ * Verifies write success: if res.write() returns false (backpressure), waits for
+ * drain with a timeout. If drain doesn't happen, the socket is likely dead and
+ * gets destroyed to free resources.
+ *
  * @param res - The HTTP response with an active SSE stream
  * @param sessionId - Session identifier for logging
  * @returns Cleanup function to stop the heartbeat
  */
 function startSseHeartbeat(res: express.Response, sessionId: string): () => void {
+  let waitingForDrain = false;
+  let pendingDrainTimeout: ReturnType<typeof setTimeout> | undefined;
+
+  const drainListener = () => {
+    if (pendingDrainTimeout) {
+      clearTimeout(pendingDrainTimeout);
+      pendingDrainTimeout = undefined;
+    }
+    waitingForDrain = false;
+    logDebug("SSE heartbeat drain recovered", { sessionId });
+  };
+
   const interval = setInterval(() => {
+    // Skip if already waiting for a previous drain
+    if (waitingForDrain) return;
+
     try {
-      if (!res.writableEnded) {
-        res.write(": ping\n\n");
-      } else {
+      if (res.writableEnded || res.destroyed) {
         clearInterval(interval);
+        // Clean up any pending drain state from a previous tick
+        if (pendingDrainTimeout) {
+          clearTimeout(pendingDrainTimeout);
+          pendingDrainTimeout = undefined;
+        }
+        res.removeListener("drain", drainListener);
+        return;
       }
-    } catch {
+
+      const ok = res.write(": ping\n\n");
+      if (!ok) {
+        // Backpressure — TCP send buffer is full.
+        // This often indicates the peer is gone but TCP hasn't detected it yet.
+        waitingForDrain = true;
+
+        pendingDrainTimeout = setTimeout(() => {
+          pendingDrainTimeout = undefined;
+          waitingForDrain = false;
+          res.removeListener("drain", drainListener);
+          logWarn("SSE heartbeat drain timeout — destroying dead connection", {
+            sessionId,
+            drainTimeoutMs: HEARTBEAT_DRAIN_TIMEOUT_MS,
+            reason: "heartbeat_drain_timeout",
+          });
+          clearInterval(interval);
+          // Mark response so close handler can use "heartbeat_failed" reason
+          res.locals = res.locals ?? {};
+          res.locals.heartbeatFailed = true;
+          // Destroy the underlying socket to trigger 'close' event and cleanup
+          if (!res.destroyed) {
+            res.destroy();
+          }
+        }, HEARTBEAT_DRAIN_TIMEOUT_MS);
+
+        res.once("drain", drainListener);
+      }
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : String(err);
+      logWarn("SSE heartbeat write error — connection likely dead", {
+        sessionId,
+        error: errMsg,
+        reason: "heartbeat_write_error",
+      });
       clearInterval(interval);
+      // Clean up any pending drain state
+      if (pendingDrainTimeout) {
+        clearTimeout(pendingDrainTimeout);
+        pendingDrainTimeout = undefined;
+      }
+      res.removeListener("drain", drainListener);
     }
   }, SSE_HEARTBEAT_MS);
 
@@ -262,6 +337,11 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
 
   return () => {
     clearInterval(interval);
+    if (pendingDrainTimeout) {
+      clearTimeout(pendingDrainTimeout);
+      pendingDrainTimeout = undefined;
+    }
+    res.removeListener("drain", drainListener);
     logDebug("SSE heartbeat stopped", { sessionId });
   };
 }
@@ -496,13 +576,40 @@ export async function startServer(): Promise<void> {
         // Start SSE heartbeat to keep connection alive through proxies
         const stopHeartbeat = startSseHeartbeat(res, sessionId);
 
+        // Track socket errors for disconnect reason logging.
+        // Listener is not explicitly removed — socket destruction on close GCs all listeners.
+        let socketError: string | undefined;
+        const socket = res.socket;
+        if (socket) {
+          socket.on("error", (err: NodeJS.ErrnoException) => {
+            socketError = err.code ?? err.message;
+            logWarn("SSE socket error", {
+              sessionId,
+              error: err.message,
+              code: err.code,
+              reason: "socket_error",
+            });
+          });
+        }
+
         // Clean up session when client disconnects
         res.on("close", () => {
           stopHeartbeat();
           delete sseTransports[sessionId];
 
-          // Log connection close
-          connectionTracker.closeConnection(sessionId, "client_disconnect");
+          // Determine disconnect reason
+          const reason: import("./logging/types.js").ConnectionCloseReason = socketError
+            ? `peer_reset:${socketError}` // ECONNRESET, EPIPE, etc.
+            : res.writableFinished
+              ? "normal_close"
+              : res.locals?.heartbeatFailed
+                ? "heartbeat_failed" // Heartbeat drain timeout destroyed the socket
+                : res.destroyed
+                  ? "destroyed" // Other code destroyed the socket
+                  : "client_disconnect"; // Client closed connection cleanly
+
+          logInfo("SSE session disconnected", { sessionId, reason });
+          connectionTracker.closeConnection(sessionId, reason);
 
           sessionManager.removeSession(sessionId).catch((error: unknown) => {
             logDebug("Error removing SSE session on disconnect", { err: error, sessionId });
@@ -657,13 +764,15 @@ export async function startServer(): Promise<void> {
                 delete streamableTransports[closedSessionId];
                 sessionStore.removeMcpSessionAssociation(closedSessionId);
 
-                // Log connection close
-                connectionTracker.closeConnection(closedSessionId, "client_disconnect");
+                connectionTracker.closeConnection(closedSessionId, "session_closed");
 
                 sessionManager.removeSession(closedSessionId).catch((err: unknown) => {
                   logDebug("Error removing closed session", { err, sessionId: closedSessionId });
                 });
-                logInfo("MCP session closed", { sessionId: closedSessionId });
+                logInfo("StreamableHTTP session closed", {
+                  sessionId: closedSessionId,
+                  reason: "session_closed",
+                });
               },
             });
 
@@ -677,8 +786,40 @@ export async function startServer(): Promise<void> {
           // Start SSE heartbeat for GET requests (long-lived SSE streams)
           if (req.method === "GET" && !res.writableEnded) {
             const stopHeartbeat = startSseHeartbeat(res, effectiveSessionId);
+
+            // Track socket errors for disconnect reason logging.
+            // Listener is not explicitly removed — socket destruction on close GCs all listeners.
+            let socketError: string | undefined;
+            const socket = res.socket;
+            if (socket) {
+              socket.on("error", (err: NodeJS.ErrnoException) => {
+                socketError = err.code ?? err.message;
+                logWarn("StreamableHTTP GET socket error", {
+                  sessionId: effectiveSessionId,
+                  error: err.message,
+                  code: err.code,
+                  reason: "socket_error",
+                });
+              });
+            }
+
             res.on("close", () => {
               stopHeartbeat();
+
+              const reason: import("./logging/types.js").ConnectionCloseReason = socketError
+                ? `peer_reset:${socketError}` // ECONNRESET, EPIPE, etc.
+                : res.writableFinished
+                  ? "normal_close"
+                  : res.locals?.heartbeatFailed
+                    ? "heartbeat_failed" // Heartbeat drain timeout destroyed the socket
+                    : res.destroyed
+                      ? "destroyed" // Other code destroyed the socket
+                      : "client_disconnect"; // Client closed connection cleanly
+
+              logInfo("StreamableHTTP GET stream disconnected", {
+                sessionId: effectiveSessionId,
+                reason,
+              });
             });
           }
         } catch (error: unknown) {

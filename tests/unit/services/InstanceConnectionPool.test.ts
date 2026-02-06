@@ -495,7 +495,11 @@ describe("InstanceConnectionPool", () => {
       expect(MockPool).toHaveBeenCalledWith(
         "https://self-signed.gitlab.local",
         expect.objectContaining({
-          connect: expect.objectContaining({ rejectUnauthorized: false, timeout: 2000 }),
+          connect: expect.objectContaining({
+            rejectUnauthorized: false,
+            timeout: 2000,
+            keepAlive: true,
+          }),
         })
       );
     });
@@ -512,7 +516,7 @@ describe("InstanceConnectionPool", () => {
       expect(MockPool).toHaveBeenCalledWith(
         "https://gitlab.com",
         expect.objectContaining({
-          connect: { timeout: 2000 },
+          connect: expect.objectContaining({ timeout: 2000, keepAlive: true }),
         })
       );
     });

@@ -67,7 +67,12 @@ export type ConnectionCloseReason =
   | "idle_timeout"
   | "server_shutdown"
   | "transport_error"
-  | "auth_expired";
+  | "auth_expired"
+  | "session_closed"
+  | "destroyed"
+  | "normal_close"
+  | "heartbeat_failed"
+  | `peer_reset:${string}`;
 
 /**
  * Connection statistics for SSE/persistent connections.

@@ -592,6 +592,83 @@ describe("Fetch Configuration Edge Cases", () => {
     });
   });
 
+  describe("Caller Abort Handling", () => {
+    // Tests that AbortError from caller signal is re-thrown as-is (not mapped to timeout).
+
+    beforeEach(() => {
+      jest.resetModules();
+      jest.clearAllMocks();
+
+      jest.doMock("../../../src/logger", () => ({
+        logger: mockLogger,
+        logInfo: mockLogInfo,
+        logWarn: mockLogWarn,
+        logError: mockLogError,
+        logDebug: mockLogDebug,
+      }));
+
+      jest.doMock("../../../src/config", () => ({
+        SKIP_TLS_VERIFY: false,
+        GITLAB_AUTH_COOKIE_PATH: "",
+        GITLAB_CA_CERT_PATH: "",
+        HTTP_PROXY: "",
+        HTTPS_PROXY: "",
+        NODE_TLS_REJECT_UNAUTHORIZED: "",
+        GITLAB_TOKEN: "test-token",
+        CONNECT_TIMEOUT_MS: 2000,
+        HEADERS_TIMEOUT_MS: 10000,
+        BODY_TIMEOUT_MS: 30000,
+        API_RETRY_ENABLED: false,
+        API_RETRY_MAX_ATTEMPTS: 0,
+        API_RETRY_BASE_DELAY_MS: 100,
+        API_RETRY_MAX_DELAY_MS: 400,
+      }));
+
+      jest.doMock("../../../src/oauth/index", () => ({
+        isOAuthEnabled: jest.fn(() => false),
+        getTokenContext: jest.fn(() => undefined),
+      }));
+    });
+
+    it("should re-throw AbortError as-is when caller aborts request", async () => {
+      const abortError = new Error("The operation was aborted");
+      abortError.name = "AbortError";
+      mockFetch.mockRejectedValue(abortError);
+
+      const { enhancedFetch, resetDispatcherCache } = require("../../../src/utils/fetch");
+      resetDispatcherCache();
+
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "The operation was aborted"
+      );
+
+      expect(mockLogDebug).toHaveBeenCalledWith(
+        "GitLab API request aborted by caller",
+        expect.objectContaining({ method: "GET" })
+      );
+    });
+
+    it("should not convert AbortError to timeout error", async () => {
+      // AbortError with custom reason — must not be treated as Undici timeout
+      const error = new Error("User cancelled");
+      error.name = "AbortError";
+      mockFetch.mockRejectedValue(error);
+
+      const { enhancedFetch, resetDispatcherCache } = require("../../../src/utils/fetch");
+      resetDispatcherCache();
+
+      await expect(enhancedFetch("https://example.com", { retry: false })).rejects.toThrow(
+        "User cancelled"
+      );
+
+      // Should log as caller abort, not as timeout
+      expect(mockLogWarn).not.toHaveBeenCalledWith(
+        expect.stringContaining("timeout"),
+        expect.anything()
+      );
+    });
+  });
+
   describe("Undici Timeout Error Mapping", () => {
     // Tests that Undici-native timeout errors are mapped to structured "GitLab API timeout" messages
     // with the correct phase and timeout value, so isRetryableError() can match them.

@@ -1772,6 +1772,301 @@ describe("server", () => {
       jest.advanceTimersByTime(30000);
       expect(mockRes.write).toHaveBeenCalledTimes(1); // Still 1, not 2
     });
+
+    it("should stop heartbeat when response is destroyed", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find((call: unknown[]) => call[0] === "/sse")[1];
+
+      const mockRes = {
+        on: jest.fn(),
+        once: jest.fn(),
+        removeListener: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
+        writableEnded: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
+        locals: {},
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Mark as destroyed before heartbeat fires
+      mockRes.destroyed = true;
+      jest.advanceTimersByTime(30000);
+
+      // write should NOT be called since response is destroyed
+      expect(mockRes.write).not.toHaveBeenCalled();
+    });
+
+    it("should not call res.destroy in drain timeout if already destroyed", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find((call: unknown[]) => call[0] === "/sse")[1];
+
+      const mockDestroy = jest.fn();
+      const mockRes = {
+        on: jest.fn(),
+        once: jest.fn(),
+        removeListener: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
+        writableEnded: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
+        destroy: mockDestroy,
+        locals: {},
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Trigger backpressure
+      mockRes.write.mockReturnValue(false);
+      jest.advanceTimersByTime(30000);
+
+      // Mark as already destroyed before drain timeout fires
+      mockRes.destroyed = true;
+      jest.advanceTimersByTime(10000);
+
+      // destroy should NOT be called since already destroyed
+      expect(mockDestroy).not.toHaveBeenCalled();
+    });
+
+    it("should handle non-Error throw in heartbeat write", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find((call: unknown[]) => call[0] === "/sse")[1];
+
+      const mockRes = {
+        on: jest.fn(),
+        removeListener: jest.fn(),
+        write: jest.fn().mockImplementation(() => {
+          throw "string error"; // non-Error throw
+        }),
+        writableEnded: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
+        locals: {},
+      };
+
+      await sseHandler({}, mockRes);
+
+      jest.advanceTimersByTime(30000);
+
+      expect(mockLogWarn).toHaveBeenCalledWith(
+        "SSE heartbeat write error — connection likely dead",
+        expect.objectContaining({
+          error: "string error",
+        })
+      );
+    });
+
+    it("should use err.message when err.code is undefined in socket error", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find((call: unknown[]) => call[0] === "/sse")[1];
+
+      let closeHandler: (() => void) | null = null;
+      let socketErrorHandler: ((err: { message: string; code?: string }) => void) | null = null;
+      const mockSocket = {
+        on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+          if (event === "error") socketErrorHandler = handler as typeof socketErrorHandler;
+        }),
+      };
+      const mockRes = {
+        on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+          if (event === "close") closeHandler = handler as typeof closeHandler;
+        }),
+        removeListener: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
+        writableEnded: false,
+        destroyed: false,
+        socket: mockSocket,
+        locals: {},
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Socket error without code
+      socketErrorHandler!({ message: "connection lost" });
+      closeHandler!();
+
+      expect(mockLogInfo).toHaveBeenCalledWith("SSE session disconnected", {
+        sessionId: "test-session-123",
+        reason: "peer_reset:connection lost",
+      });
+    });
+
+    it("should handle null socket gracefully", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find((call: unknown[]) => call[0] === "/sse")[1];
+
+      let closeHandler: (() => void) | null = null;
+      const mockRes = {
+        on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+          if (event === "close") closeHandler = handler as typeof closeHandler;
+        }),
+        removeListener: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
+        writableEnded: false,
+        destroyed: false,
+        socket: null,
+        locals: {},
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Close without socket error tracking — should default to client_disconnect
+      closeHandler!();
+
+      expect(mockLogInfo).toHaveBeenCalledWith("SSE session disconnected", {
+        sessionId: "test-session-123",
+        reason: "client_disconnect",
+      });
+    });
+
+    it("should log destroyed reason when response is destroyed without heartbeat or error", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find((call: unknown[]) => call[0] === "/sse")[1];
+
+      let closeHandler: (() => void) | null = null;
+      const mockRes = {
+        on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+          if (event === "close") closeHandler = handler as typeof closeHandler;
+        }),
+        removeListener: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
+        writableEnded: false,
+        writableFinished: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
+        locals: {},
+      };
+
+      await sseHandler({}, mockRes);
+
+      // Destroyed externally (not by heartbeat)
+      mockRes.destroyed = true;
+      closeHandler!();
+
+      expect(mockLogInfo).toHaveBeenCalledWith("SSE session disconnected", {
+        sessionId: "test-session-123",
+        reason: "destroyed",
+      });
+    });
+
+    it("should cover StreamableHTTP heartbeat_failed and destroyed disconnect reasons", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call: unknown[]) => Array.isArray(call[0]) && (call[0] as string[]).includes("/mcp")
+      )[1];
+
+      // Test heartbeat_failed path
+      let closeHandler: (() => void) | null = null;
+      const mockReq = { headers: {}, method: "GET", path: "/mcp", body: {} };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        destroyed: false,
+        write: jest.fn().mockReturnValue(true),
+        on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+          if (event === "close") closeHandler = handler as typeof closeHandler;
+        }),
+        removeListener: jest.fn(),
+        locals: { heartbeatFailed: true },
+        socket: { on: jest.fn() },
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      closeHandler!();
+
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        "StreamableHTTP GET stream disconnected",
+        expect.objectContaining({ reason: "heartbeat_failed" })
+      );
+    });
+
+    it("should cover StreamableHTTP destroyed disconnect reason", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call: unknown[]) => Array.isArray(call[0]) && (call[0] as string[]).includes("/mcp")
+      )[1];
+
+      let closeHandler: (() => void) | null = null;
+      const mockReq = { headers: {}, method: "GET", path: "/mcp", body: {} };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        destroyed: true,
+        write: jest.fn().mockReturnValue(true),
+        on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+          if (event === "close") closeHandler = handler as typeof closeHandler;
+        }),
+        removeListener: jest.fn(),
+        locals: {},
+        socket: { on: jest.fn() },
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      closeHandler!();
+
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        "StreamableHTTP GET stream disconnected",
+        expect.objectContaining({ reason: "destroyed" })
+      );
+    });
+
+    it("should cover StreamableHTTP client_disconnect reason", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call: unknown[]) => Array.isArray(call[0]) && (call[0] as string[]).includes("/mcp")
+      )[1];
+
+      let closeHandler: (() => void) | null = null;
+      const mockReq = { headers: {}, method: "GET", path: "/mcp", body: {} };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        destroyed: false,
+        write: jest.fn().mockReturnValue(true),
+        on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+          if (event === "close") closeHandler = handler as typeof closeHandler;
+        }),
+        removeListener: jest.fn(),
+        locals: {},
+        socket: { on: jest.fn() },
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      closeHandler!();
+
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        "StreamableHTTP GET stream disconnected",
+        expect.objectContaining({ reason: "client_disconnect" })
+      );
+    });
   });
 
   describe("stdio mode", () => {

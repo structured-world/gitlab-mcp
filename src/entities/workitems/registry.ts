@@ -276,8 +276,6 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               hasNextPage: workItemsData?.pageInfo?.hasNextPage ?? false,
               endCursor: workItemsData?.pageInfo?.endCursor ?? null,
             };
-            const namespaceType = workItemsResponse.namespace?.__typename ?? "Unknown";
-
             // Apply state filtering (client-side since GitLab API doesn't support it reliably)
             const filteredItems = allItems.filter((item: GraphQLWorkItem) => {
               return state.includes(item.state as "OPEN" | "CLOSED");

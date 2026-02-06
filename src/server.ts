@@ -775,7 +775,6 @@ export async function startServer(): Promise<void> {
           if (req.method === "GET" && !res.writableEnded) {
             const stopHeartbeat = startSseHeartbeat(res, effectiveSessionId);
 
-            // Track socket errors for disconnect reason
             // Track socket errors for disconnect reason logging.
             // Listener is not explicitly removed — socket destruction on close GCs all listeners.
             let socketError: string | undefined;

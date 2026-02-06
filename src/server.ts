@@ -794,13 +794,15 @@ export async function startServer(): Promise<void> {
             res.on("close", () => {
               stopHeartbeat();
 
-              const reason = socketError
-                ? `peer_reset:${socketError}`
-                : res.locals?.heartbeatFailed
-                  ? "heartbeat_failed"
-                  : res.destroyed
-                    ? "destroyed"
-                    : "client_disconnect";
+              const reason: import("./logging/types.js").ConnectionCloseReason = socketError
+                ? `peer_reset:${socketError}` // ECONNRESET, EPIPE, etc.
+                : res.writableFinished
+                  ? "normal_close"
+                  : res.locals?.heartbeatFailed
+                    ? "heartbeat_failed" // Heartbeat drain timeout destroyed the socket
+                    : res.destroyed
+                      ? "destroyed" // Other code destroyed the socket
+                      : "client_disconnect"; // Client closed connection cleanly
 
               logInfo("StreamableHTTP GET stream disconnected", {
                 sessionId: effectiveSessionId,

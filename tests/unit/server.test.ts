@@ -2067,6 +2067,42 @@ describe("server", () => {
         expect.objectContaining({ reason: "client_disconnect" })
       );
     });
+
+    it("should cover StreamableHTTP normal_close disconnect reason", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call: unknown[]) => Array.isArray(call[0]) && (call[0] as string[]).includes("/mcp")
+      )[1];
+
+      let closeHandler: (() => void) | null = null;
+      const mockReq = { headers: {}, method: "GET", path: "/mcp", body: {} };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        writableFinished: true,
+        destroyed: false,
+        write: jest.fn().mockReturnValue(true),
+        on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
+          if (event === "close") closeHandler = handler as typeof closeHandler;
+        }),
+        removeListener: jest.fn(),
+        locals: {},
+        socket: { on: jest.fn() },
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      closeHandler!();
+
+      expect(mockLogInfo).toHaveBeenCalledWith(
+        "StreamableHTTP GET stream disconnected",
+        expect.objectContaining({ reason: "normal_close" })
+      );
+    });
   });
 
   describe("stdio mode", () => {

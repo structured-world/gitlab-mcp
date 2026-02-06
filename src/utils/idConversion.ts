@@ -69,6 +69,7 @@ const GID_PREFIXES = {
   Wiki: "gid://gitlab/Wiki/",
   Note: "gid://gitlab/Note/",
   Discussion: "gid://gitlab/Discussion/",
+  Timelog: "gid://gitlab/Timelog/",
 } as const;
 
 export type EntityType = keyof typeof GID_PREFIXES;

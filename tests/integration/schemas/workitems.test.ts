@@ -837,6 +837,130 @@ describe("Work Items Schema - GitLab 18.3 Integration", () => {
     }, 30000);
   });
 
+  describe("Timelog Deletion Integration Tests (Issue #311)", () => {
+    let testWorkItemId: string | null = null;
+    let testTimelogId: string | null = null;
+
+    it("should create work item and add timelog for deletion test", async () => {
+      const testData = getTestData();
+      expect(testData.project?.path_with_namespace).toBeDefined();
+
+      // Create a work item
+      console.log("🔧 Creating work item for timelog deletion test...");
+      const workItem = (await helper.executeTool("manage_work_item", {
+        action: "create",
+        namespace: testData.project!.path_with_namespace,
+        title: `Timelog Delete Test ${Date.now()}`,
+        workItemType: "ISSUE",
+        description: "Test issue for timelog deletion (Issue #311)",
+      })) as any;
+
+      expect(workItem).toBeDefined();
+      expect(workItem.id).toBeDefined();
+      testWorkItemId = workItem.id;
+      console.log(`  ✅ Created work item: ${workItem.iid}`);
+
+      // Add a timelog entry via update action
+      console.log("⏱️  Adding timelog entry...");
+      const updatedWorkItem = (await helper.executeTool("manage_work_item", {
+        action: "update",
+        id: testWorkItemId,
+        timeSpent: "1h 30m",
+        timeSpentSummary: "Integration test timelog for deletion",
+      })) as any;
+
+      expect(updatedWorkItem).toBeDefined();
+
+      // Extract timelog ID from TIME_TRACKING widget
+      const timeWidget = updatedWorkItem.widgets?.find((w: any) => w.type === "TIME_TRACKING");
+      expect(timeWidget).toBeDefined();
+      expect(timeWidget?.timelogs?.nodes?.length).toBeGreaterThan(0);
+
+      testTimelogId = timeWidget.timelogs.nodes[0].id;
+      expect(testTimelogId).toBeDefined();
+      console.log(
+        `  ✅ Timelog created: ${testTimelogId} (${timeWidget.timelogs.nodes[0].timeSpent}s)`
+      );
+    }, 30000);
+
+    it("should validate delete_timelog schema", async () => {
+      expect(testTimelogId).toBeDefined();
+
+      const params = {
+        action: "delete_timelog" as const,
+        timelogId: testTimelogId!,
+      };
+
+      const result = ManageWorkItemSchema.safeParse(params);
+      expect(result.success).toBe(true);
+      console.log("  ✅ delete_timelog schema validation passed");
+    });
+
+    it("should delete the timelog entry", async () => {
+      expect(testWorkItemId).toBeDefined();
+      expect(testTimelogId).toBeDefined();
+
+      console.log(`🗑️ Deleting timelog ${testTimelogId}...`);
+      const deleteResult = (await helper.executeTool("manage_work_item", {
+        action: "delete_timelog",
+        timelogId: testTimelogId!,
+      })) as any;
+
+      expect(deleteResult).toBeDefined();
+      expect(deleteResult.deleted).toBe(true);
+      console.log(`  ✅ Timelog deleted successfully`);
+
+      if (deleteResult.timelog) {
+        console.log(
+          `  Deleted timelog: ${deleteResult.timelog.timeSpent}s, summary="${deleteResult.timelog.summary}"`
+        );
+      }
+
+      // Verify timelog is gone by fetching the work item
+      const workItem = (await helper.executeTool("browse_work_items", {
+        action: "get",
+        id: testWorkItemId!,
+      })) as any;
+
+      const timeWidget = workItem.widgets?.find((w: any) => w.type === "TIME_TRACKING");
+
+      // The deleted timelog should no longer appear
+      const remainingTimelogs = timeWidget?.timelogs?.nodes || [];
+      const deletedStillPresent = remainingTimelogs.some((t: any) => t.id === testTimelogId);
+      expect(deletedStillPresent).toBe(false);
+      console.log(
+        `  ✅ Verified: timelog no longer present (${remainingTimelogs.length} remaining)`
+      );
+
+      testTimelogId = null;
+    }, 30000);
+
+    it("should handle deletion of non-existent timelog", async () => {
+      console.log("🔧 Testing deletion of non-existent timelog...");
+
+      await expect(
+        helper.executeTool("manage_work_item", {
+          action: "delete_timelog",
+          timelogId: "gid://gitlab/Timelog/999999999",
+        })
+      ).rejects.toThrow();
+
+      console.log("  ✅ Non-existent timelog correctly rejected");
+    }, 15000);
+
+    it("should cleanup test work item", async () => {
+      if (testWorkItemId) {
+        console.log("🗑️ Cleaning up timelog test work item...");
+        await helper.executeTool("manage_work_item", {
+          action: "delete",
+          id: testWorkItemId,
+        });
+        testWorkItemId = null;
+        console.log("  ✅ Work item deleted");
+      }
+    }, 30000);
+  });
+
   describe("Multiple Widgets in Single Create/Update", () => {
     let complexWorkItemId: string | null = null;
 

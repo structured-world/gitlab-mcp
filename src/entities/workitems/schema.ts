@@ -7,7 +7,7 @@ import {
 
 // ============================================================================
 // manage_work_item - CQRS Command Tool (discriminated union schema)
-// Actions: create, update, delete, add_link, remove_link
+// Actions: create, update, delete, delete_timelog, add_link, remove_link
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -234,6 +234,17 @@ const DeleteWorkItemSchema = z.object({
   id: workItemIdField,
 });
 
+// --- Action: delete_timelog ---
+const DeleteTimelogSchema = z.object({
+  action: z.literal("delete_timelog").describe("Delete a time tracking entry from a work item"),
+  timelogId: z
+    .string()
+    .min(1)
+    .describe(
+      "Global ID of the timelog entry (gid://gitlab/Timelog/N) — obtain from work item's TIME_TRACKING widget via browse_work_items get action"
+    ),
+});
+
 // --- Action: add_link ---
 const AddLinkSchema = z.object({
   action: z.literal("add_link").describe("Add a relationship link between two work items"),
@@ -255,6 +266,7 @@ export const ManageWorkItemSchema = z.discriminatedUnion("action", [
   CreateWorkItemSchema,
   UpdateWorkItemSchema,
   DeleteWorkItemSchema,
+  DeleteTimelogSchema,
   AddLinkSchema,
   RemoveLinkSchema,
 ]);

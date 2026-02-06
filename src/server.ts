@@ -280,6 +280,12 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
     try {
       if (res.writableEnded || res.destroyed) {
         clearInterval(interval);
+        // Clean up any pending drain state from a previous tick
+        if (pendingDrainTimeout) {
+          clearTimeout(pendingDrainTimeout);
+          pendingDrainTimeout = undefined;
+        }
+        res.removeListener("drain", drainListener);
         return;
       }
 
@@ -318,6 +324,12 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
         reason: "heartbeat_write_error",
       });
       clearInterval(interval);
+      // Clean up any pending drain state
+      if (pendingDrainTimeout) {
+        clearTimeout(pendingDrainTimeout);
+        pendingDrainTimeout = undefined;
+      }
+      res.removeListener("drain", drainListener);
     }
   }, SSE_HEARTBEAT_MS);
 

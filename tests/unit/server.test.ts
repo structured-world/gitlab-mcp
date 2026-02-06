@@ -1139,6 +1139,7 @@ describe("server", () => {
 
       const mockRes = {
         on: jest.fn(),
+        removeListener: jest.fn(),
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
@@ -1660,6 +1661,7 @@ describe("server", () => {
 
       const mockRes = {
         on: jest.fn(),
+        removeListener: jest.fn(),
         write: jest.fn().mockImplementation(() => {
           throw new Error("write EPIPE");
         }),
@@ -1682,6 +1684,86 @@ describe("server", () => {
           reason: "heartbeat_write_error",
         })
       );
+      // Catch block should clean up drain listener
+      expect(mockRes.removeListener).toHaveBeenCalledWith("drain", expect.any(Function));
+    });
+
+    it("should clean up drain state in catch when write throws after backpressure", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find((call: unknown[]) => call[0] === "/sse")[1];
+
+      const mockRes = {
+        on: jest.fn(),
+        once: jest.fn(),
+        removeListener: jest.fn(),
+        write: jest.fn().mockReturnValue(true),
+        writableEnded: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
+        locals: {},
+      };
+
+      await sseHandler({}, mockRes);
+
+      // First heartbeat: backpressure (registers drain listener + timeout)
+      mockRes.write.mockReturnValue(false);
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.once).toHaveBeenCalledWith("drain", expect.any(Function));
+
+      // Simulate drain recovery before timeout
+      const drainHandler = mockRes.once.mock.calls.find(
+        (c: unknown[]) => c[0] === "drain"
+      )![1] as () => void;
+      drainHandler();
+
+      // Second heartbeat: write throws
+      mockRes.write.mockImplementation(() => {
+        throw new Error("write EPIPE");
+      });
+      jest.advanceTimersByTime(30000);
+
+      // Catch block should clean up drain listener
+      expect(mockRes.removeListener).toHaveBeenCalledWith("drain", expect.any(Function));
+    });
+
+    it("should clean up drain state when writableEnded detected after backpressure", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find((call: unknown[]) => call[0] === "/sse")[1];
+
+      const mockRes = {
+        on: jest.fn(),
+        once: jest.fn(),
+        removeListener: jest.fn(),
+        write: jest.fn().mockReturnValue(false),
+        writableEnded: false,
+        destroyed: false,
+        socket: { on: jest.fn() },
+        locals: {},
+      };
+
+      await sseHandler({}, mockRes);
+
+      // First heartbeat: backpressure (registers drain listener + timeout)
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.once).toHaveBeenCalledWith("drain", expect.any(Function));
+
+      // Simulate drain recovery
+      const drainHandler = mockRes.once.mock.calls.find(
+        (c: unknown[]) => c[0] === "drain"
+      )![1] as () => void;
+      drainHandler();
+
+      // Second heartbeat: writableEnded is now true
+      mockRes.writableEnded = true;
+      mockRes.write.mockReturnValue(true); // won't be called but reset mock
+      jest.advanceTimersByTime(30000);
+
+      // Should clean up drain listener in the early-exit path
+      expect(mockRes.removeListener).toHaveBeenCalledWith("drain", expect.any(Function));
     });
 
     it("should track socket error on StreamableHTTP GET stream and log peer_reset", async () => {

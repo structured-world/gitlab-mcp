@@ -288,19 +288,20 @@ const GetJobLogsSchema = z.object({
   action: z.literal("logs").describe("Get job console output/logs"),
   project_id: projectIdField,
   job_id: requiredId.describe("The ID of the job"),
-  limit: z
+  per_page: z
     .number()
+    .int()
+    .min(1)
+    .max(10000)
     .optional()
-    .describe("Maximum number of lines to return. Combined with start, acts as line count"),
-  max_lines: z
-    .number()
-    .optional()
-    .describe("Maximum number of lines to return (alternative to limit)"),
+    .describe(
+      "Maximum number of lines to return (default: 200, max: 10000). Use with start for pagination"
+    ),
   start: z
     .number()
     .optional()
     .describe(
-      "Start from specific line number (0-based). Positive from beginning, negative from end (e.g., -100 = last 100 lines)"
+      "Start from specific line number (0-based). Positive from beginning, negative from end (e.g., -100 = last 100 lines). Use nextStart from previous response to paginate"
     ),
 });
 

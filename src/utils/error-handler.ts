@@ -913,7 +913,7 @@ export function createTimeoutError(
     timeout_ms: timeoutMs,
     retryable,
     message: `Request timed out after ${timeoutMs}ms`,
-    suggested_fix: `The GitLab server is slow to respond. Try again later or increase GITLAB_API_TIMEOUT_MS.${retryHint}`,
+    suggested_fix: `The GitLab server is slow to respond. Try again later or increase GITLAB_API_HEADERS_TIMEOUT_MS / GITLAB_API_BODY_TIMEOUT_MS / GITLAB_TOOL_TIMEOUT_MS.${retryHint}`,
   };
 }
 

@@ -32,6 +32,8 @@ export class ConnectionManager {
   private currentInstanceUrl: string | null = null;
   /** Tracks which instance URL the cached instanceInfo/schemaInfo belongs to */
   private introspectedInstanceUrl: string | null = null;
+  /** Deduplication map: prevents thundering herd on concurrent ensureIntrospected() calls */
+  private introspectionPromises = new Map<string, Promise<void>>();
   private static introspectionCache = new Map<string, CacheEntry>();
   private static readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
 
@@ -213,6 +215,9 @@ export class ConnectionManager {
    * Ensure schema introspection has been performed.
    * In OAuth mode, this should be called within a token context.
    * Supports per-instance introspection caching via InstanceRegistry.
+   *
+   * Uses Promise-based deduplication to prevent thundering herd when
+   * multiple concurrent requests trigger introspection simultaneously.
    */
   public async ensureIntrospected(): Promise<void> {
     if (!this.client || !this.versionDetector || !this.schemaIntrospector) {
@@ -229,9 +234,41 @@ export class ConnectionManager {
       return;
     }
 
+    // Deduplication: if another request is already introspecting this instance, await it
+    const existingPromise = this.introspectionPromises.get(instanceUrl);
+    if (existingPromise) {
+      logDebug("Awaiting existing introspection for instance", { url: instanceUrl });
+      await existingPromise;
+      return;
+    }
+
+    // Start introspection and register the promise for deduplication
+    const promise = this.doIntrospection(instanceUrl);
+    this.introspectionPromises.set(instanceUrl, promise);
+
+    try {
+      await promise;
+    } finally {
+      this.introspectionPromises.delete(instanceUrl);
+    }
+  }
+
+  /**
+   * Perform actual introspection logic for an instance.
+   * Extracted from ensureIntrospected() for deduplication support.
+   */
+  private async doIntrospection(instanceUrl: string): Promise<void> {
+    // Caller (ensureIntrospected) guarantees these are non-null
+    const client = this.client;
+    const versionDet = this.versionDetector;
+    const schemaDet = this.schemaIntrospector;
+    if (!client || !versionDet || !schemaDet) {
+      throw new Error("Connection not initialized. Call initialize() first.");
+    }
+
     // Use per-instance GraphQL client for thread-safe multi-instance support
     // This avoids the singleton endpoint mutation issue in concurrent OAuth scenarios
-    const endpoint = this.client.endpoint;
+    const endpoint = client.endpoint;
     const registry = InstanceRegistry.getInstance();
 
     // Check InstanceRegistry cache first (for multi-instance support)
@@ -252,7 +289,7 @@ export class ConnectionManager {
     }
 
     // Check legacy cache: prefer instanceUrl for multi-instance consistency,
-    // but fall back to endpoint-keyed entries for backward compatibility
+    // but fall back to endpoint-keyed entries
     // (initialize() populates cache with endpoint as key).
     const primaryCacheKey = instanceUrl ?? endpoint;
     const legacyCacheKey = endpoint;
@@ -274,12 +311,12 @@ export class ConnectionManager {
 
     // For multi-instance OAuth: use per-instance client if instanceUrl differs from current
     // This ensures introspection runs against the correct instance
-    let versionDetector = this.versionDetector;
-    let schemaIntrospector = this.schemaIntrospector;
+    let versionDetector = versionDet;
+    let schemaIntrospector = schemaDet;
 
     if (registry.isInitialized() && instanceUrl !== this.currentInstanceUrl) {
       const instanceClient = this.getInstanceClient(instanceUrl);
-      if (instanceClient !== this.client) {
+      if (instanceClient !== client) {
         // Create temporary detectors with per-instance client
         versionDetector = new GitLabVersionDetector(instanceClient);
         schemaIntrospector = new SchemaIntrospector(instanceClient);
@@ -607,6 +644,7 @@ export class ConnectionManager {
     this.tokenScopeInfo = null;
     this.currentInstanceUrl = null;
     this.introspectedInstanceUrl = null;
+    this.introspectionPromises.clear();
     this.isInitialized = false;
   }
 }

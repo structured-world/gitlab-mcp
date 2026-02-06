@@ -361,11 +361,43 @@ export const HTTP_KEEPALIVE_TIMEOUT_MS =
     ? parsedKeepAliveTimeout
     : 620000;
 
-// API timeout configuration (in milliseconds)
-// Default 10s allows time for retries within a reasonable total response time
-const parsedTimeoutMs = parseInt(process.env.GITLAB_API_TIMEOUT_MS ?? "10000", 10);
-export const API_TIMEOUT_MS =
-  Number.isFinite(parsedTimeoutMs) && parsedTimeoutMs > 0 ? parsedTimeoutMs : 10000;
+// === Granular API timeout configuration ===
+// Each phase of an HTTP request has its own timeout to prevent different types of hangs.
+
+// TCP connect timeout (default: 2s)
+const parsedConnectTimeoutMs = parseInt(process.env.GITLAB_API_CONNECT_TIMEOUT_MS ?? "2000", 10);
+export const CONNECT_TIMEOUT_MS =
+  Number.isFinite(parsedConnectTimeoutMs) && parsedConnectTimeoutMs > 0
+    ? parsedConnectTimeoutMs
+    : 2000;
+
+// Response headers timeout (default: 10s) — time to first response byte after connect
+const parsedHeadersTimeoutMs = parseInt(process.env.GITLAB_API_HEADERS_TIMEOUT_MS ?? "10000", 10);
+export const HEADERS_TIMEOUT_MS =
+  Number.isFinite(parsedHeadersTimeoutMs) && parsedHeadersTimeoutMs > 0
+    ? parsedHeadersTimeoutMs
+    : 10000;
+
+// Response body timeout (default: 30s) — time to receive full body after headers
+// Larger default for big responses (pipeline logs, large diffs)
+const parsedBodyTimeoutMs = parseInt(process.env.GITLAB_API_BODY_TIMEOUT_MS ?? "30000", 10);
+export const BODY_TIMEOUT_MS =
+  Number.isFinite(parsedBodyTimeoutMs) && parsedBodyTimeoutMs > 0 ? parsedBodyTimeoutMs : 30000;
+
+// Tool handler timeout (default: 120s) — total time for entire tool execution including retries
+const parsedHandlerTimeoutMs = parseInt(process.env.GITLAB_TOOL_TIMEOUT_MS ?? "120000", 10);
+export const HANDLER_TIMEOUT_MS =
+  Number.isFinite(parsedHandlerTimeoutMs) && parsedHandlerTimeoutMs > 0
+    ? parsedHandlerTimeoutMs
+    : 120000;
+
+// === Connection pool configuration ===
+// Max HTTP connections per GitLab instance (default: 25, up from 10)
+const parsedPoolMaxConnections = parseInt(process.env.GITLAB_POOL_MAX_CONNECTIONS ?? "25", 10);
+export const POOL_MAX_CONNECTIONS =
+  Number.isFinite(parsedPoolMaxConnections) && parsedPoolMaxConnections > 0
+    ? parsedPoolMaxConnections
+    : 25;
 
 // Retry configuration for idempotent operations (GET/HEAD/OPTIONS requests by default)
 // Retries on: timeouts, network errors, 5xx server errors, 429 rate limits

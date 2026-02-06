@@ -66,7 +66,7 @@ describe("Profile Applicator", () => {
       "USE_REFS",
       "USE_MEMBERS",
       "USE_SEARCH",
-      "GITLAB_API_TIMEOUT_MS",
+      "GITLAB_API_HEADERS_TIMEOUT_MS",
       "SKIP_TLS_VERIFY",
       "SSL_CERT_PATH",
       "SSL_KEY_PATH",
@@ -287,7 +287,7 @@ describe("Profile Applicator", () => {
       const { applyProfile } = await import("../../../src/profiles/applicator");
       await applyProfile(profile, "timeout");
 
-      expect(process.env.GITLAB_API_TIMEOUT_MS).toBe("60000");
+      expect(process.env.GITLAB_API_HEADERS_TIMEOUT_MS).toBe("60000");
     });
 
     it("should apply TLS settings", async () => {
@@ -435,7 +435,7 @@ describe("Profile Applicator", () => {
       expect(result.appliedSettings).toContain("GITLAB_API_URL=https://gitlab.example.com");
       expect(result.appliedSettings).toContain("GITLAB_TOKEN=<from MY_TOKEN>");
       expect(result.appliedSettings).toContain("GITLAB_READ_ONLY_MODE=true");
-      expect(result.appliedSettings).toContain("GITLAB_API_TIMEOUT_MS=30000");
+      expect(result.appliedSettings).toContain("GITLAB_API_HEADERS_TIMEOUT_MS=30000");
     });
   });
 
@@ -639,7 +639,7 @@ describe("Profile Applicator", () => {
       const result = await applyPreset(preset, "timeout-preset");
 
       expect(result.success).toBe(true);
-      expect(process.env.GITLAB_API_TIMEOUT_MS).toBe("45000");
+      expect(process.env.GITLAB_API_HEADERS_TIMEOUT_MS).toBe("45000");
     });
 
     it("should return validation errors for invalid preset", async () => {
@@ -701,7 +701,7 @@ describe("Profile Applicator", () => {
       expect(process.env.GITLAB_DENIED_TOOLS_REGEX).toBe("^delete_");
       expect(process.env.GITLAB_ALLOWED_TOOLS).toBe("browse_projects");
       expect(process.env.GITLAB_DENIED_ACTIONS).toBe("manage_project:delete");
-      expect(process.env.GITLAB_API_TIMEOUT_MS).toBe("30000");
+      expect(process.env.GITLAB_API_HEADERS_TIMEOUT_MS).toBe("30000");
     });
   });
 

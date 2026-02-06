@@ -10,7 +10,7 @@ import {
   parseTimeoutError,
 } from "./utils/error-handler";
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from "./logging/index";
-import { LOG_FORMAT } from "./config";
+import { LOG_FORMAT, HANDLER_TIMEOUT_MS } from "./config";
 
 interface JsonSchemaProperty {
   type?: string;
@@ -277,8 +277,17 @@ export async function setupHandlers(server: Server): Promise<void> {
     };
   });
 
-  // Call tool handler
+  // Call tool handler — wrapped with handler-level timeout to prevent infinite hangs
   server.setRequestHandler(CallToolRequestSchema, async request => {
+    const handlerController = new AbortController();
+    const handlerTimeoutId = setTimeout(
+      () =>
+        handlerController.abort(
+          new Error(`Tool execution timed out after ${HANDLER_TIMEOUT_MS}ms`)
+        ),
+      HANDLER_TIMEOUT_MS
+    );
+
     try {
       if (!request.params.arguments) {
         throw new Error("Arguments are required");
@@ -439,6 +448,29 @@ export async function setupHandlers(server: Server): Promise<void> {
         }
       }
 
+      // Handler-level timeout — return structured timeout error
+      if (handlerController.signal.aborted) {
+        const toolName = request.params.name;
+        const action =
+          request.params.arguments && typeof request.params.arguments.action === "string"
+            ? request.params.arguments.action
+            : "unknown";
+        const retryable = isIdempotentOperation(toolName);
+        const timeoutError = createTimeoutError(toolName, action, HANDLER_TIMEOUT_MS, retryable);
+
+        logError(`Handler timeout: tool '${toolName}' timed out after ${HANDLER_TIMEOUT_MS}ms`);
+
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(timeoutError, null, 2),
+            },
+          ],
+          isError: true,
+        };
+      }
+
       // Try to convert to structured error for better LLM feedback
       const toolName = request.params.name;
       const toolArgs = request.params.arguments;
@@ -468,6 +500,8 @@ export async function setupHandlers(server: Server): Promise<void> {
         ],
         isError: true,
       };
+    } finally {
+      clearTimeout(handlerTimeoutId);
     }
   });
 }

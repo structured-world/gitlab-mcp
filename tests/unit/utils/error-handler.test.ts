@@ -676,10 +676,11 @@ describe("Error Handler", () => {
         expect(result.retryable).toBe(false);
       });
 
-      it("should include GITLAB_API_TIMEOUT_MS in suggested fix", () => {
+      it("should include timeout env vars in suggested fix", () => {
         const result = createTimeoutError("browse_commits", "list", 10000, true);
 
-        expect(result.suggested_fix).toContain("GITLAB_API_TIMEOUT_MS");
+        expect(result.suggested_fix).toContain("GITLAB_API_HEADERS_TIMEOUT_MS");
+        expect(result.suggested_fix).toContain("GITLAB_TOOL_TIMEOUT_MS");
       });
     });
   });

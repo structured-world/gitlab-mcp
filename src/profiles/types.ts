@@ -97,7 +97,12 @@ export const ProfileSchema = z.object({
   features: FeatureFlagsSchema,
 
   // Behavior
-  timeout_ms: z.number().int().positive().optional().describe("API timeout in milliseconds"),
+  timeout_ms: z
+    .number()
+    .int()
+    .positive()
+    .optional()
+    .describe("API headers timeout in milliseconds (maps to GITLAB_API_HEADERS_TIMEOUT_MS)"),
   default_project: z.string().optional().describe("Auto-set project context"),
   default_namespace: z.string().optional().describe("Auto-set namespace context"),
 
@@ -197,7 +202,12 @@ export const PresetSchema = z
     features: FeatureFlagsSchema,
 
     // Behavior
-    timeout_ms: z.number().int().positive().optional().describe("API timeout in milliseconds"),
+    timeout_ms: z
+      .number()
+      .int()
+      .positive()
+      .optional()
+      .describe("API headers timeout in milliseconds (maps to GITLAB_API_HEADERS_TIMEOUT_MS)"),
   })
   .strict(); // Reject unknown fields like host/auth for security
 

@@ -426,34 +426,8 @@ describe("Fetch Utils Coverage Tests", () => {
       }
     });
 
-    it("should handle abort controller timeout", async () => {
-      // Test that the abort controller timeout logic is executed
-      // This test covers line 184: controller.abort();
-
-      // Create a timeout spy to verify setTimeout is called with correct timeout
-      const setTimeoutSpy = jest
-        .spyOn(global, "setTimeout")
-        .mockImplementation((callback, delay) => {
-          if (delay === 10000) {
-            // API_TIMEOUT_MS default value
-            // Execute the callback immediately to simulate timeout
-            callback();
-          }
-          return 1234 as any; // Mock timer ID
-        });
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      await enhancedFetch("https://gitlab.example.com/api/test");
-
-      expect(setTimeoutSpy).toHaveBeenCalledWith(expect.any(Function), 10000);
-
-      setTimeoutSpy.mockRestore();
-    });
+    // Manual AbortController timeout was removed — Undici handles timeouts natively now.
+    // The old "should handle abort controller timeout" test is no longer applicable.
 
     it("should handle authorization header without token", async () => {
       const originalToken = process.env.GITLAB_TOKEN;

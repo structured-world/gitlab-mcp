@@ -91,8 +91,8 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
           }
 
           case "logs": {
-            // TypeScript knows: input has job_id (required), limit, max_lines, start (optional)
-            const { project_id, job_id, limit, max_lines, start } = input;
+            // TypeScript knows: input has job_id (required), per_page, start (optional)
+            const { project_id, job_id, per_page, start } = input;
 
             // Custom handling - trace endpoint returns text, needs line processing
             const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/jobs/${job_id}/trace`;
@@ -109,21 +109,22 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const defaultMaxLines = 200;
             let processedLines: string[] = [];
 
-            let maxLinesToShow = defaultMaxLines;
-            if (max_lines !== undefined) {
-              maxLinesToShow = max_lines;
-            } else if (limit !== undefined) {
-              maxLinesToShow = limit;
-            }
+            const maxLinesToShow = per_page ?? defaultMaxLines;
 
             let outOfBoundsMessage = "";
+            // Track the effective start position for pagination metadata
+            let effectiveStart: number;
 
             if (start !== undefined && start < 0) {
+              // Negative start: take from end of log
+              effectiveStart = Math.max(0, totalLines + start);
               processedLines = lines.slice(start);
               if (processedLines.length > maxLinesToShow) {
+                effectiveStart = totalLines - maxLinesToShow;
                 processedLines = processedLines.slice(-maxLinesToShow);
               }
             } else if (start !== undefined && start >= 0) {
+              effectiveStart = start;
               if (start >= totalLines) {
                 processedLines = [];
                 outOfBoundsMessage = `[OUT OF BOUNDS: Start position ${start} exceeds total lines ${totalLines}. Available range: 0-${totalLines - 1}]`;
@@ -135,6 +136,8 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                 }
               }
             } else {
+              // No start specified: take last N lines (default behavior)
+              effectiveStart = Math.max(0, totalLines - maxLinesToShow);
               processedLines = lines.slice(-maxLinesToShow);
             }
 
@@ -144,16 +147,33 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               processedLines.unshift(outOfBoundsMessage);
             }
 
-            if (processedLines.length < totalLines && !outOfBoundsMessage) {
-              const truncatedCount = totalLines - actualDataLines;
-              processedLines.unshift(
-                `[LOG TRUNCATED: Showing last ${actualDataLines} of ${totalLines} lines - ${truncatedCount} lines hidden]`
-              );
+            // Position-aware truncation message
+            if (actualDataLines < totalLines && !outOfBoundsMessage) {
+              const endLine = effectiveStart + actualDataLines - 1;
+              let truncationMessage: string;
+              if (start === undefined || start < 0) {
+                // Default or negative start: showing tail of log
+                truncationMessage = `[LOG TRUNCATED: Showing last ${actualDataLines} of ${totalLines} lines (lines ${effectiveStart}-${endLine})]`;
+              } else {
+                // Positive start: showing specific range from beginning/middle
+                truncationMessage = `[LOG TRUNCATED: Showing lines ${effectiveStart}-${endLine} of ${totalLines}]`;
+              }
+              processedLines.unshift(truncationMessage);
             }
 
             trace = processedLines.join("\n");
 
-            return { trace, totalLines, shownLines: actualDataLines };
+            const hasMore = effectiveStart + actualDataLines < totalLines;
+            const nextStart = hasMore ? effectiveStart + actualDataLines : null;
+
+            return {
+              trace,
+              totalLines,
+              shownLines: actualDataLines,
+              startLine: effectiveStart,
+              hasMore,
+              nextStart,
+            };
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

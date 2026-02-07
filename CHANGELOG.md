@@ -1,3 +1,9 @@
+## [6.60.3](https://github.com/structured-world/gitlab-mcp/compare/v6.60.2...v6.60.3) (2026-02-07)
+
+### Bug Fixes
+
+* **server:** validate session ID in StreamableHTTP transport ([#318](https://github.com/structured-world/gitlab-mcp/issues/318)) ([2262fb8](https://github.com/structured-world/gitlab-mcp/commit/2262fb8c840a5be0d9739bbe5823bbbb23f83c9b)), closes [#317](https://github.com/structured-world/gitlab-mcp/issues/317)
+
 ## [6.60.2](https://github.com/structured-world/gitlab-mcp/compare/v6.60.1...v6.60.2) (2026-02-06)
 
 ### Bug Fixes

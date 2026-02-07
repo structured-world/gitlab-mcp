@@ -723,7 +723,7 @@ export async function startServer(): Promise<void> {
           let transport: StreamableHTTPServerTransport;
           let effectiveSessionId: string;
 
-          if (sessionId && sessionId in streamableTransports) {
+          if (sessionId && Object.hasOwn(streamableTransports, sessionId)) {
             effectiveSessionId = sessionId;
             sessionManager.touchSession(sessionId);
 

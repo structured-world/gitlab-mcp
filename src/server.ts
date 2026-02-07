@@ -723,6 +723,8 @@ export async function startServer(): Promise<void> {
           let transport: StreamableHTTPServerTransport;
           let effectiveSessionId: string;
 
+          // Use Object.hasOwn() instead of 'in' to avoid matching inherited keys
+          // like 'toString' or '__proto__' which could bypass 404 path
           if (sessionId && Object.hasOwn(streamableTransports, sessionId)) {
             effectiveSessionId = sessionId;
             sessionManager.touchSession(sessionId);

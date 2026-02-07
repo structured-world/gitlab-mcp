@@ -620,9 +620,9 @@ describe("server", () => {
         call => Array.isArray(call[0]) && call[0].includes("/mcp")
       )[1];
 
-      // Test error case in MCP handler
+      // Test error case in MCP handler (new session, no session ID)
       const mockReq = {
-        headers: { "mcp-session-id": "existing-session" },
+        headers: {}, // No session ID - test error handling in new session
         method: "POST",
         path: "/mcp",
         body: { test: "data" },
@@ -717,6 +717,42 @@ describe("server", () => {
 
       // createSession MUST be called before handleRequest
       expect(callOrder).toEqual(["createSession", "handleRequest"]);
+    });
+
+    it("should return 404 for invalid session ID in StreamableHTTP POST", async () => {
+      process.env.PORT = "3000";
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        call => Array.isArray(call[0]) && call[0].includes("/mcp")
+      )[1];
+
+      // Test POST request with non-existent session ID
+      const mockReq = {
+        headers: { "mcp-session-id": "invalid-session-123" },
+        method: "POST",
+        path: "/mcp",
+        body: { jsonrpc: "2.0", method: "tools/list", id: 1 },
+      };
+      const mockRes = {
+        status: jest.fn(() => mockRes),
+        json: jest.fn(),
+        headersSent: false,
+        locals: {},
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      // Should return 404 instead of creating new session
+      expect(mockRes.status).toHaveBeenCalledWith(404);
+      expect(mockRes.json).toHaveBeenCalledWith({
+        error: "Session not found",
+        message: "Your session has expired. Please reconnect.",
+      });
+
+      // Should NOT create new session or call transport
+      expect(mockSessionManager.createSession).not.toHaveBeenCalled();
+      expect(mockTransport.handleRequest).not.toHaveBeenCalled();
     });
 
     it("should not send 500 when headers already sent in SSE messages handler", async () => {

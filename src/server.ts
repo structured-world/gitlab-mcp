@@ -723,7 +723,9 @@ export async function startServer(): Promise<void> {
           let transport: StreamableHTTPServerTransport;
           let effectiveSessionId: string;
 
-          if (sessionId && sessionId in streamableTransports) {
+          // Use Object.hasOwn() instead of 'in' to avoid matching inherited keys
+          // like 'toString' or '__proto__' which could bypass 404 path
+          if (sessionId && Object.hasOwn(streamableTransports, sessionId)) {
             effectiveSessionId = sessionId;
             sessionManager.touchSession(sessionId);
 
@@ -733,6 +735,15 @@ export async function startServer(): Promise<void> {
             transport = streamableTransports[sessionId];
             await handleWithContext(transport);
           } else {
+            // Check if client sent invalid session ID
+            if (sessionId) {
+              res.status(404).json({
+                error: "Session not found",
+                message: "Your session has expired. Please reconnect.",
+              });
+              return;
+            }
+
             // Pre-generate session ID so we can connect the Server before handling the request
             const newSessionId = crypto.randomUUID();
             effectiveSessionId = newSessionId;

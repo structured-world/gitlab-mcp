@@ -89,7 +89,7 @@ export class FileStorageBackend implements SessionStorageBackend {
         err: error as Error,
         filePath: this.filePath,
       });
-      throw new Error(`File storage path not writable: ${this.filePath}`);
+      throw new Error(`File storage path not writable: ${this.filePath}`, { cause: error });
     }
 
     // Initialize memory backend (starts cleanup interval)

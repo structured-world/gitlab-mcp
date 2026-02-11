@@ -80,7 +80,7 @@ export async function loadProjectConfig(repoPath: string): Promise<ProjectConfig
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       const message = error instanceof Error ? error.message : String(error);
       logError("Failed to parse project preset", { error: message, path: presetPath });
-      throw new Error(`Invalid project preset at ${presetPath}: ${message}`);
+      throw new Error(`Invalid project preset at ${presetPath}: ${message}`, { cause: error });
     }
   }
 
@@ -96,7 +96,7 @@ export async function loadProjectConfig(repoPath: string): Promise<ProjectConfig
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
       const message = error instanceof Error ? error.message : String(error);
       logError("Failed to parse project profile", { error: message, path: profilePath });
-      throw new Error(`Invalid project profile at ${profilePath}: ${message}`);
+      throw new Error(`Invalid project profile at ${profilePath}: ${message}`, { cause: error });
     }
   }
 

@@ -186,7 +186,7 @@ export class ProfileLoader {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logError("Failed to parse user profiles", { error: message, path: this.userConfigPath });
-      throw new Error(`Invalid profiles config: ${message}`);
+      throw new Error(`Invalid profiles config: ${message}`, { cause: error });
     }
   }
 
@@ -218,7 +218,7 @@ export class ProfileLoader {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logError("Failed to parse built-in preset", { error: message, name });
-      throw new Error(`Invalid built-in preset '${name}': ${message}`);
+      throw new Error(`Invalid built-in preset '${name}': ${message}`, { cause: error });
     }
   }
 

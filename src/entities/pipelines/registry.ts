@@ -107,10 +107,9 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const totalLines = lines.length;
 
             const defaultMaxLines = 200;
-            let processedLines: string[] = [];
-
             const maxLinesToShow = per_page ?? defaultMaxLines;
 
+            let processedLines: string[];
             let outOfBoundsMessage = "";
             // Track the effective start position for pagination metadata
             let effectiveStart: number;

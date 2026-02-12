@@ -58,7 +58,9 @@ async function loadYamlFile(filePath: string): Promise<unknown> {
         message.includes("Cannot find module 'yaml'"));
 
     if (isModuleNotFoundCode || isYamlNotFoundMessage) {
-      throw new Error(`YAML configuration requires 'yaml' package. Install with: yarn add yaml`);
+      throw new Error(`YAML configuration requires 'yaml' package. Install with: yarn add yaml`, {
+        cause: error,
+      });
     }
     throw error;
   }

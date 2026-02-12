@@ -357,7 +357,7 @@ export async function setupHandlers(server: Server): Promise<void> {
           logError(
             `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`
           );
-          throw new Error("Bad Request: Server not initialized");
+          throw new Error("Bad Request: Server not initialized", { cause: initError });
         }
       }
 

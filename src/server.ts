@@ -164,7 +164,7 @@ function loadTLSOptions(): https.ServerOptions | undefined {
     return options;
   } catch (error: unknown) {
     logError("Failed to load TLS certificates", { err: error });
-    throw new Error(`Failed to load TLS certificates: ${String(error)}`);
+    throw new Error(`Failed to load TLS certificates: ${String(error)}`, { cause: error });
   }
 }
 

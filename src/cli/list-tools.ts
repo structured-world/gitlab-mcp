@@ -691,7 +691,7 @@ function generateExample(schema: JsonSchemaProperty): Record<string, unknown> {
 
   // For oneOf, use first branch for example
   let targetSchema = schema;
-  let requiredFields: string[] = [];
+  let requiredFields: string[];
 
   if (schema.oneOf && Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
     targetSchema = schema.oneOf[0];

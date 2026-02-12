@@ -344,8 +344,6 @@ class RegistryManager {
         }
 
         // Tool passes all filters - apply schema transformation and description override
-        let finalTool = tool;
-
         // Transform schema to remove denied actions and apply description overrides
         let transformedSchema = transformToolSchema(toolName, tool.inputSchema);
 
@@ -360,7 +358,7 @@ class RegistryManager {
         // Apply tool-level description override if available
         const customDescription = this.descriptionOverrides.get(toolName);
 
-        finalTool = {
+        const finalTool = {
           ...tool,
           inputSchema: transformedSchema,
           ...(customDescription && { description: customDescription }),

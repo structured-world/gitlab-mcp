@@ -271,7 +271,7 @@ export class ContextManager {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logError("Failed to switch preset", { error: message, preset: presetName });
-      throw new Error(`Failed to switch to preset '${presetName}': ${message}`);
+      throw new Error(`Failed to switch to preset '${presetName}': ${message}`, { cause: error });
     }
   }
 
@@ -302,7 +302,7 @@ export class ContextManager {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logError("Failed to switch profile", { error: message, profile: profileName });
-      throw new Error(`Failed to switch to profile '${profileName}': ${message}`);
+      throw new Error(`Failed to switch to profile '${profileName}': ${message}`, { cause: error });
     }
   }
 
@@ -355,7 +355,7 @@ export class ContextManager {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logError("Failed to set scope", { error: message, namespace });
-      throw new Error(`Failed to set scope for '${namespace}': ${message}`);
+      throw new Error(`Failed to set scope for '${namespace}': ${message}`, { cause: error });
     }
   }
 
@@ -492,7 +492,9 @@ export class ContextManager {
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       logError("Failed to switch instance", { error: message, instanceUrl });
-      throw new Error(`Failed to switch to instance '${instanceUrl}': ${message}`);
+      throw new Error(`Failed to switch to instance '${instanceUrl}': ${message}`, {
+        cause: error,
+      });
     }
   }
 }

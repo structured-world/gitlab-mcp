@@ -882,6 +882,40 @@ describe("Workitems Registry - CQRS Tools", () => {
         expect(widgets.some(widget => widget.type === "TEST_REPORTS")).toBe(false);
       });
 
+      it("should omit TEST_REPORTS widget when nodes is undefined", async () => {
+        const mockWorkItem = createMockWorkItem({
+          workItemType: { name: "Requirement" },
+          widgets: [
+            {
+              type: "TEST_REPORTS",
+              testReports: {},
+            },
+          ],
+        });
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            __typename: "Project",
+            workItems: {
+              nodes: [mockWorkItem],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("browse_work_items");
+        const result = (await tool?.handler({
+          action: "list",
+          namespace: "test-project",
+          simple: true,
+        })) as {
+          items: Array<{ widgets?: Array<{ type: string }> }>;
+        };
+
+        const widgets = result.items[0].widgets || [];
+        expect(widgets.some(widget => widget.type === "TEST_REPORTS")).toBe(false);
+      });
+
       it("should filter by state parameter", async () => {
         const mockWorkItems = [
           createMockWorkItem({ id: "gid://gitlab/WorkItem/1", state: "OPEN" }),

@@ -61,6 +61,7 @@ const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
   // Ultimate tier
   healthStatus: WorkItemWidgetTypes.HEALTH_STATUS,
   color: WorkItemWidgetTypes.COLOR,
+  verificationStatus: WorkItemWidgetTypes.VERIFICATION_STATUS,
 };
 
 export class WidgetAvailability {
@@ -103,6 +104,7 @@ export class WidgetAvailability {
     // Legacy widgets (may not be available)
     [WorkItemWidgetTypes.REQUIREMENT_LEGACY]: { tier: "ultimate", minVersion: "13.1" },
     [WorkItemWidgetTypes.TEST_REPORTS]: { tier: "ultimate", minVersion: "13.6" },
+    [WorkItemWidgetTypes.VERIFICATION_STATUS]: { tier: "ultimate", minVersion: "13.1" },
   };
 
   public static isWidgetAvailable(widget: WorkItemWidgetType): boolean {

@@ -226,6 +226,13 @@ const UpdateWorkItemSchema = z.object({
     .regex(/^#[0-9a-fA-F]{6}$/, "Color must be hex format like #FF5733")
     .optional()
     .describe("Custom hex color for epics (Ultimate tier)"),
+  // Ultimate tier: verification status for requirements
+  verificationStatus: z
+    .enum(["PASSED", "FAILED"])
+    .optional()
+    .describe(
+      "Set verification status for requirement work items: PASSED or FAILED (Ultimate tier). Creates a test report internally."
+    ),
 });
 
 // --- Action: delete ---

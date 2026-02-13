@@ -759,6 +759,129 @@ describe("Workitems Registry - CQRS Tools", () => {
         expect(widgets.some(widget => widget.type === "TIME_TRACKING")).toBe(false);
       });
 
+      it("should include VERIFICATION_STATUS widget in simplified mode", async () => {
+        const mockWorkItem = createMockWorkItem({
+          workItemType: { name: "Requirement" },
+          widgets: [
+            {
+              type: "VERIFICATION_STATUS",
+              verificationStatus: "satisfied",
+            },
+          ],
+        });
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            __typename: "Project",
+            workItems: {
+              nodes: [mockWorkItem],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("browse_work_items");
+        const result = (await tool?.handler({
+          action: "list",
+          namespace: "test-project",
+          simple: true,
+        })) as {
+          items: Array<{ widgets?: Array<{ type: string; verificationStatus?: string }> }>;
+        };
+
+        expect(result.items[0].widgets).toBeDefined();
+        expect(result.items[0].widgets).toContainEqual({
+          type: "VERIFICATION_STATUS",
+          verificationStatus: "satisfied",
+        });
+      });
+
+      it("should include TEST_REPORTS widget in simplified mode", async () => {
+        const mockWorkItem = createMockWorkItem({
+          workItemType: { name: "Requirement" },
+          widgets: [
+            {
+              type: "TEST_REPORTS",
+              testReports: {
+                nodes: [
+                  {
+                    id: "gid://gitlab/RequirementsManagement::TestReport/1",
+                    state: "PASSED",
+                    createdAt: "2025-01-15T10:00:00Z",
+                    author: { id: "gid://gitlab/User/1", username: "testuser" },
+                  },
+                ],
+              },
+            },
+          ],
+        });
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            __typename: "Project",
+            workItems: {
+              nodes: [mockWorkItem],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("browse_work_items");
+        const result = (await tool?.handler({
+          action: "list",
+          namespace: "test-project",
+          simple: true,
+        })) as {
+          items: Array<{
+            widgets?: Array<{
+              type: string;
+              testReports?: Array<{ id: string; state: string; author?: string }>;
+            }>;
+          }>;
+        };
+
+        expect(result.items[0].widgets).toBeDefined();
+        const testReportsWidget = result.items[0].widgets?.find(w => w.type === "TEST_REPORTS");
+        expect(testReportsWidget).toBeDefined();
+        expect(testReportsWidget?.testReports).toHaveLength(1);
+        expect(testReportsWidget?.testReports?.[0].state).toBe("PASSED");
+        expect(testReportsWidget?.testReports?.[0].author).toBe("testuser");
+      });
+
+      it("should omit TEST_REPORTS widget when no reports exist", async () => {
+        const mockWorkItem = createMockWorkItem({
+          workItemType: { name: "Requirement" },
+          widgets: [
+            {
+              type: "TEST_REPORTS",
+              testReports: { nodes: [] },
+            },
+          ],
+        });
+
+        mockClient.request.mockResolvedValueOnce({
+          namespace: {
+            __typename: "Project",
+            workItems: {
+              nodes: [mockWorkItem],
+              pageInfo: { hasNextPage: false, endCursor: null },
+            },
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("browse_work_items");
+        const result = (await tool?.handler({
+          action: "list",
+          namespace: "test-project",
+          simple: true,
+        })) as {
+          items: Array<{ widgets?: Array<{ type: string }> }>;
+        };
+
+        const widgets = result.items[0].widgets || [];
+        expect(widgets.some(widget => widget.type === "TEST_REPORTS")).toBe(false);
+      });
+
       it("should filter by state parameter", async () => {
         const mockWorkItems = [
           createMockWorkItem({ id: "gid://gitlab/WorkItem/1", state: "OPEN" }),
@@ -1597,6 +1720,59 @@ describe("Workitems Registry - CQRS Tools", () => {
             description: "test",
           })
         ).rejects.toThrow("Widget 'HEALTH_STATUS'");
+      });
+
+      it("should handle update with verificationStatus for requirements", async () => {
+        // verificationStatus builds verificationStatusWidget in GraphQL input
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: {
+            workItem: {
+              id: "gid://gitlab/WorkItem/456",
+              widgets: [{ type: "VERIFICATION_STATUS", verificationStatus: "satisfied" }],
+            },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "456",
+          verificationStatus: "PASSED",
+        });
+
+        expect(mockClient.request).toHaveBeenCalledWith(
+          expect.any(Object),
+          expect.objectContaining({
+            input: expect.objectContaining({
+              id: "gid://gitlab/WorkItem/456",
+              verificationStatusWidget: { verificationStatus: "PASSED" },
+            }),
+          })
+        );
+      });
+
+      it("should include verificationStatus in widget params validation", async () => {
+        mockClient.request.mockResolvedValueOnce({
+          workItemUpdate: {
+            workItem: { id: "gid://gitlab/WorkItem/789" },
+            errors: [],
+          },
+        });
+
+        const tool = workitemsToolRegistry.get("manage_work_item");
+        await tool?.handler({
+          action: "update",
+          id: "789",
+          verificationStatus: "FAILED",
+        });
+
+        // verificationStatus should be passed to validateWidgetParams for tier checking
+        expect(mockValidateWidgetParams).toHaveBeenCalledWith(
+          expect.objectContaining({
+            verificationStatus: "FAILED",
+          })
+        );
       });
     });
 

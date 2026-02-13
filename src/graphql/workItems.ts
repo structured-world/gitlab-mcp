@@ -73,6 +73,11 @@ export interface WorkItemUpdateInput {
   colorWidget?: {
     color: string;
   };
+  // Ultimate tier: verification status for requirements
+  // Input uses PASSED/FAILED (TestReportStateEnum), response returns "satisfied"/"failed"/"unverified"
+  verificationStatusWidget?: {
+    verificationStatus: "PASSED" | "FAILED";
+  };
 }
 
 // Work Item State enum - defines possible states
@@ -121,6 +126,7 @@ export const WorkItemWidgetTypes = {
   ERROR_TRACKING: "ERROR_TRACKING",
   LINKED_RESOURCES: "LINKED_RESOURCES",
   VULNERABILITIES: "VULNERABILITIES",
+  VERIFICATION_STATUS: "VERIFICATION_STATUS",
 } as const;
 
 // Work Item Widget Type type - defines all available widget types
@@ -289,7 +295,14 @@ export interface WorkItemRequirementLegacyWidget extends WorkItemWidget {
 
 export interface WorkItemTestReportsWidget extends WorkItemWidget {
   type: "TEST_REPORTS";
-  testReports?: TestReport[];
+  testReports?: {
+    nodes: TestReport[];
+  };
+}
+
+export interface WorkItemVerificationStatusWidget extends WorkItemWidget {
+  type: "VERIFICATION_STATUS";
+  verificationStatus?: string; // "satisfied", "failed", or "unverified"
 }
 
 export interface WorkItemNotificationsWidget extends WorkItemWidget {
@@ -418,15 +431,15 @@ export interface Note {
 export type HealthStatusEnum = "onTrack" | "needsAttention" | "atRisk";
 
 // Supporting types for new widgets
+// Requirement verification test report (from WorkItemWidgetTestReports)
+// Note: This is NOT a CI/CD test report - it tracks requirement verification events
 export interface TestReport {
   id: string;
-  name: string;
-  status: string;
-  summary: {
-    total: number;
-    success: number;
-    failed: number;
-    skipped: number;
+  state: string; // "PASSED" or "FAILED"
+  createdAt: string;
+  author?: {
+    id: string;
+    username: string;
   };
 }
 
@@ -629,6 +642,22 @@ export const GET_NAMESPACE_WORK_ITEMS: TypedDocumentNode<
             ... on WorkItemWidgetTimeTracking {
               timeEstimate
               totalTimeSpent
+            }
+            ... on WorkItemWidgetVerificationStatus {
+              verificationStatus
+            }
+            ... on WorkItemWidgetTestReports {
+              testReports {
+                nodes {
+                  id
+                  state
+                  createdAt
+                  author {
+                    id
+                    username
+                  }
+                }
+              }
             }
           }
         }
@@ -1431,6 +1460,22 @@ export const GET_WORK_ITEM_BY_IID: TypedDocumentNode<
               }
             }
           }
+          ... on WorkItemWidgetVerificationStatus {
+            verificationStatus
+          }
+          ... on WorkItemWidgetTestReports {
+            testReports {
+              nodes {
+                id
+                state
+                createdAt
+                author {
+                  id
+                  username
+                }
+              }
+            }
+          }
         }
       }
     }
@@ -1538,6 +1583,22 @@ export const GET_WORK_ITEM: TypedDocumentNode<{ workItem: WorkItem }, { id: stri
               spentAt
               summary
               user {
+                id
+                username
+              }
+            }
+          }
+        }
+        ... on WorkItemWidgetVerificationStatus {
+          verificationStatus
+        }
+        ... on WorkItemWidgetTestReports {
+          testReports {
+            nodes {
+              id
+              state
+              createdAt
+              author {
                 id
                 username
               }
@@ -1750,6 +1811,22 @@ export const UPDATE_WORK_ITEM: TypedDocumentNode<
                   workItemType {
                     name
                   }
+                }
+              }
+            }
+          }
+          ... on WorkItemWidgetVerificationStatus {
+            verificationStatus
+          }
+          ... on WorkItemWidgetTestReports {
+            testReports {
+              nodes {
+                id
+                state
+                createdAt
+                author {
+                  id
+                  username
                 }
               }
             }

@@ -70,6 +70,18 @@ interface FlexibleWorkItemWidget {
   hasChildren?: boolean;
   timeEstimate?: number;
   totalTimeSpent?: number;
+  verificationStatus?: string;
+  testReports?: {
+    nodes?: Array<{
+      id: string;
+      state: string;
+      createdAt: string;
+      author?: {
+        id: string;
+        username: string;
+      };
+    }>;
+  };
 }
 
 interface SimplifiedWorkItem {
@@ -108,6 +120,13 @@ interface SimplifiedWorkItem {
     hasChildren?: boolean;
     timeEstimate?: number;
     totalTimeSpent?: number;
+    verificationStatus?: string;
+    testReports?: Array<{
+      id: string;
+      state: string;
+      createdAt: string;
+      author?: string;
+    }>;
   }>;
 }
 
@@ -207,6 +226,27 @@ const simplifyWorkItem = (
               type: "TIME_TRACKING",
               timeEstimate: flexWidget.timeEstimate,
               totalTimeSpent: flexWidget.totalTimeSpent,
+            });
+          }
+          break;
+        case "VERIFICATION_STATUS":
+          if (flexWidget.verificationStatus) {
+            essentialWidgets.push({
+              type: "VERIFICATION_STATUS",
+              verificationStatus: flexWidget.verificationStatus,
+            });
+          }
+          break;
+        case "TEST_REPORTS":
+          if (flexWidget.testReports?.nodes && flexWidget.testReports.nodes.length > 0) {
+            essentialWidgets.push({
+              type: "TEST_REPORTS",
+              testReports: flexWidget.testReports.nodes.map(report => ({
+                id: report.id,
+                state: report.state,
+                createdAt: report.createdAt,
+                author: report.author?.username,
+              })),
             });
           }
           break;
@@ -659,6 +699,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               progressCurrentValue,
               healthStatus,
               color,
+              verificationStatus,
               linkType,
               targetId,
             } = input;
@@ -703,6 +744,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               progressCurrentValue,
               healthStatus,
               color,
+              verificationStatus,
               linkType,
               targetId,
             };
@@ -880,6 +922,11 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // Color widget (Ultimate, epics)
             if (color !== undefined) {
               updateInput.colorWidget = { color };
+            }
+
+            // Verification status widget (Ultimate, requirements)
+            if (verificationStatus !== undefined) {
+              updateInput.verificationStatusWidget = { verificationStatus };
             }
 
             // Use single GraphQL mutation with dynamic input

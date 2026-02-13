@@ -104,6 +104,7 @@ describe("WidgetAvailability", () => {
           WorkItemWidgetTypes.VULNERABILITIES,
           WorkItemWidgetTypes.REQUIREMENT_LEGACY,
           WorkItemWidgetTypes.TEST_REPORTS,
+          WorkItemWidgetTypes.VERIFICATION_STATUS,
         ];
 
         for (const widget of ultimateWidgets) {
@@ -300,6 +301,11 @@ describe("WidgetAvailability", () => {
         WorkItemWidgetTypes.CUSTOM_FIELDS
       );
       expect(customFieldsReq).toEqual({ tier: "ultimate", minVersion: "17.0" });
+
+      const verificationStatusReq = WidgetAvailability.getWidgetRequirement(
+        WorkItemWidgetTypes.VERIFICATION_STATUS
+      );
+      expect(verificationStatusReq).toEqual({ tier: "ultimate", minVersion: "13.1" });
     });
 
     it("should return undefined for unknown widget", () => {
@@ -494,6 +500,30 @@ describe("WidgetAvailability", () => {
       expect(result).toBeNull();
     });
 
+    it("should detect verificationStatus as ultimate-tier restricted on free tier", () => {
+      mockConnectionManager.getInstanceInfo.mockReturnValue(mockInstanceInfoFree);
+
+      const result = WidgetAvailability.validateWidgetParams({
+        verificationStatus: "PASSED",
+      });
+
+      expect(result).not.toBeNull();
+      expect(result!.parameter).toBe("verificationStatus");
+      expect(result!.widget).toBe("VERIFICATION_STATUS");
+      expect(result!.requiredTier).toBe("ultimate");
+      expect(result!.currentTier).toBe("free");
+    });
+
+    it("should allow verificationStatus on ultimate tier", () => {
+      mockConnectionManager.getInstanceInfo.mockReturnValue(mockInstanceInfoUltimate);
+
+      const result = WidgetAvailability.validateWidgetParams({
+        verificationStatus: "PASSED",
+      });
+
+      expect(result).toBeNull();
+    });
+
     it("should return null when connection is not initialized", () => {
       // When connection throws, validation should pass (fail at API call)
       mockConnectionManager.getInstanceInfo.mockImplementation(() => {
@@ -568,6 +598,7 @@ describe("WidgetAvailability", () => {
       // Ultimate tier params
       expect(map.healthStatus).toBe("HEALTH_STATUS");
       expect(map.color).toBe("COLOR");
+      expect(map.verificationStatus).toBe("VERIFICATION_STATUS");
     });
 
     it("should return a copy (not the original reference)", () => {

@@ -1,3 +1,9 @@
+## [6.61.0](https://github.com/structured-world/gitlab-mcp/compare/v6.60.3...v6.61.0) (2026-02-13)
+
+### Features
+
+* **workitems:** add verification status and test reports for requirements ([#325](https://github.com/structured-world/gitlab-mcp/issues/325)) ([0dcfd59](https://github.com/structured-world/gitlab-mcp/commit/0dcfd59692687084037301586c026e2cd06ff9c2)), closes [#324](https://github.com/structured-world/gitlab-mcp/issues/324)
+
 ## [6.60.3](https://github.com/structured-world/gitlab-mcp/compare/v6.60.2...v6.60.3) (2026-02-07)
 
 ### Bug Fixes

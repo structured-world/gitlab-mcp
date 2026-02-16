@@ -1,3 +1,9 @@
+## [6.62.0](https://github.com/structured-world/gitlab-mcp/compare/v6.61.0...v6.62.0) (2026-02-16)
+
+### Features
+
+* **files:** add overwrite parameter to manage_files for auto create/update ([#327](https://github.com/structured-world/gitlab-mcp/issues/327)) ([ad7d525](https://github.com/structured-world/gitlab-mcp/commit/ad7d525e43211778a8a407407a19a5bace2be4b1)), closes [#326](https://github.com/structured-world/gitlab-mcp/issues/326)
+
 ## [6.61.0](https://github.com/structured-world/gitlab-mcp/compare/v6.60.3...v6.61.0) (2026-02-13)
 
 ### Features

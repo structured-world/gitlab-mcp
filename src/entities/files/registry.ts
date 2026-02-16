@@ -6,7 +6,7 @@ import { normalizeProjectId } from "../../utils/projectIdentifier";
 import { enhancedFetch } from "../../utils/fetch";
 import { ToolRegistry, EnhancedToolDefinition } from "../../types";
 import { isActionDenied } from "../../config";
-import { parseGitLabApiError } from "../../handlers";
+import { parseGitLabApiError } from "../../utils/error-handler";
 
 /**
  * Files tools registry - 2 CQRS tools replacing 5 individual tools

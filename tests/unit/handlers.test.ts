@@ -5,8 +5,8 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { setupHandlers, parseGitLabApiError } from "../../src/handlers";
-import { StructuredToolError } from "../../src/utils/error-handler";
+import { setupHandlers } from "../../src/handlers";
+import { StructuredToolError, parseGitLabApiError } from "../../src/utils/error-handler";
 
 // Mock ConnectionManager
 const mockConnectionManager = {

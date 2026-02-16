@@ -984,6 +984,44 @@ export function createVersionRestrictedError(
 }
 
 /**
+ * Extract HTTP status code and message from GitLab API error string
+ * Matches patterns like:
+ *   - "GitLab API error: 403 Forbidden - message"
+ *   - "GitLab API error: 403 Forbidden"
+ *   - "GitLab API error: 403"
+ *   - "Failed to execute tool 'name': GitLab API error: 403 Forbidden"
+ *
+ * Exported for direct unit testing.
+ */
+export function parseGitLabApiError(
+  errorMessage: string
+): { status: number; message: string } | null {
+  // Match GitLab API error anywhere in the string (handles wrapped errors)
+  // Pattern: "GitLab API error: <status> [<statusText>] [- <details>]"
+  // Status text uses [\w\s]+? to match word chars and spaces (non-greedy)
+  // Separator is " - " (space-hyphen-space) to avoid matching hyphens in status text
+  const match = errorMessage.match(/GitLab API error:\s*(\d+)(?:\s+([\w\s]+?))?(?:\s+-\s+(.*))?$/);
+  if (!match) return null;
+
+  const status = parseInt(match[1], 10);
+  const statusText = match[2]?.trim() ?? "";
+  const details = match[3]?.trim() ?? "";
+
+  let message: string;
+  if (statusText && details) {
+    message = `${status} ${statusText} - ${details}`;
+  } else if (statusText) {
+    message = `${status} ${statusText}`;
+  } else if (details) {
+    message = `${status} - ${details}`;
+  } else {
+    message = `${status}`;
+  }
+
+  return { status, message };
+}
+
+/**
  * Parse timeout error from error message
  * Returns timeout value in ms if the error is a timeout error, null otherwise
  */

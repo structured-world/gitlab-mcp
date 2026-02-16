@@ -971,6 +971,36 @@ describe("Files Registry", () => {
             },
           ]);
         });
+
+        it("should handle permission errors gracefully with defensive fallback", async () => {
+          // Both file checks fail with 403 (Permission Denied)
+          // Promise.allSettled catches these and defaults to "create"
+          mockEnhancedFetch
+            .mockResolvedValueOnce(mockResponse(null, false, 403)) // file1 GET (403)
+            .mockResolvedValueOnce(mockResponse(null, false, 403)) // file2 GET (403)
+            .mockResolvedValueOnce(mockResponse({ id: "commit123" })); // POST commit
+
+          const tool = filesToolRegistry.get("manage_files")!;
+
+          // Promise.allSettled catches errors, so commit proceeds with "create" actions
+          await tool.handler({
+            action: "batch",
+            project_id: "test/project",
+            branch: "main",
+            commit_message: "Batch with permission errors",
+            files: [
+              { file_path: "file1.txt", content: "content1" },
+              { file_path: "file2.txt", content: "content2" },
+            ],
+            overwrite: true,
+          });
+
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(3);
+          const commitCall = mockEnhancedFetch.mock.calls[2];
+          const body = JSON.parse(commitCall[1]?.body as string);
+          // Both should default to "create" since checks failed
+          expect(body.actions.every((a: any) => a.action === "create")).toBe(true);
+        });
       });
     });
   });

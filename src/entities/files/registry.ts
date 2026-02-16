@@ -6,6 +6,7 @@ import { normalizeProjectId } from "../../utils/projectIdentifier";
 import { enhancedFetch } from "../../utils/fetch";
 import { ToolRegistry, EnhancedToolDefinition } from "../../types";
 import { isActionDenied } from "../../config";
+import { parseGitLabApiError } from "../../utils/error-handler";
 
 /**
  * Files tools registry - 2 CQRS tools replacing 5 individual tools
@@ -119,23 +120,151 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
         switch (input.action) {
           case "single": {
             // TypeScript knows: input has file_path, content, commit_message, branch (required)
-            const { project_id, file_path, action: _action, ...body } = input;
+            const { project_id, file_path, action: _action, overwrite, ...body } = input;
+            const normalizedProjectId = normalizeProjectId(project_id);
+            const encodedFilePath = encodeURIComponent(file_path);
 
+            // If overwrite=true, check file existence and use appropriate HTTP method
+            if (overwrite) {
+              let fileExists = false;
+              try {
+                await gitlab.get(
+                  `projects/${normalizedProjectId}/repository/files/${encodedFilePath}`,
+                  { query: { ref: body.start_branch ?? body.branch } }
+                );
+                fileExists = true;
+              } catch (error: unknown) {
+                // Only treat real 404 as "file does not exist"; re-throw all other errors
+                if (!(error instanceof Error)) {
+                  throw error;
+                }
+
+                const parsed = parseGitLabApiError(error.message);
+                if (!parsed) {
+                  // Unexpected/unparseable error format - propagate instead of masking
+                  throw error;
+                }
+
+                if (parsed.status !== 404) {
+                  // Re-throw non-404 errors (permission denied, server error, etc.)
+                  throw error;
+                }
+
+                // 404 can indicate: file not found (OK), ref not found, project not found, etc.
+                // Only treat as "file missing" if message confirms it's file-specific
+                const message = parsed.message.toLowerCase();
+                const isFileMissing =
+                  message.includes("file not found") ||
+                  message.includes("file does not exist") ||
+                  message.includes("no such file") ||
+                  (message.includes("not found") && message.includes("file"));
+
+                if (!isFileMissing) {
+                  // 404 for non-file reason (ref/branch not found, project not found) - re-throw
+                  throw error;
+                }
+                // Confirmed file doesn't exist, proceed with POST
+              }
+
+              // Use PUT for update, POST for create
+              const method = fileExists ? "put" : "post";
+              return gitlab[method](
+                `projects/${normalizedProjectId}/repository/files/${encodedFilePath}`,
+                {
+                  body,
+                  contentType: "form",
+                }
+              );
+            }
+
+            // Default behavior (overwrite=false or omitted): always POST (create only)
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/repository/files/${encodeURIComponent(file_path)}`,
-              { body, contentType: "form" }
+              `projects/${normalizedProjectId}/repository/files/${encodedFilePath}`,
+              {
+                body,
+                contentType: "form",
+              }
             );
           }
 
           case "batch": {
             // TypeScript knows: input has files, branch, commit_message (required)
-            const actions = input.files.map(file => ({
-              action: "create",
-              file_path: file.file_path,
-              content: file.content,
-              encoding: file.encoding ?? "text",
-              execute_filemode: file.execute_filemode ?? false,
-            }));
+            const normalizedProjectId = normalizeProjectId(input.project_id);
+
+            let actions: Array<{
+              action: string;
+              file_path: string;
+              content: string;
+              encoding: string;
+              execute_filemode: boolean;
+            }>;
+
+            // If overwrite=true, check each file existence and set appropriate action
+            if (input.overwrite) {
+              // Parallel file existence checks - throws on first non-404 error
+              const fileChecks = await Promise.all(
+                input.files.map(async file => {
+                  try {
+                    await gitlab.get(
+                      `projects/${normalizedProjectId}/repository/files/${encodeURIComponent(file.file_path)}`,
+                      { query: { ref: input.start_branch ?? input.branch } }
+                    );
+                    return { file_path: file.file_path, exists: true };
+                  } catch (error: unknown) {
+                    // Parse status from error message (gitlab.get throws plain Error)
+                    if (error instanceof Error) {
+                      const parsed = parseGitLabApiError(error.message);
+                      if (parsed) {
+                        if (parsed.status === 404) {
+                          // 404 can indicate: file not found (OK), ref not found, project not found, etc.
+                          // Only treat as "file missing" if message confirms it's file-specific
+                          const message = parsed.message.toLowerCase();
+                          const isFileMissing =
+                            message.includes("file not found") ||
+                            message.includes("file does not exist") ||
+                            message.includes("no such file") ||
+                            (message.includes("not found") && message.includes("file"));
+
+                          if (isFileMissing) {
+                            return { file_path: file.file_path, exists: false };
+                          }
+                          // 404 for non-file reason (ref/branch not found, project not found) - re-throw
+                          throw error;
+                        }
+                        // Non-404 error (403, 500, etc.) - re-throw to fail the whole batch
+                        throw error;
+                      }
+                    }
+                    // Unparseable error - re-throw
+                    throw error;
+                  }
+                })
+              );
+
+              // Build existence map from successful checks
+              const existenceMap = new Map<string, boolean>();
+              fileChecks.forEach(result => {
+                existenceMap.set(result.file_path, result.exists);
+              });
+
+              // Map files to actions with correct create/update
+              actions = input.files.map(file => ({
+                action: existenceMap.get(file.file_path) ? "update" : "create",
+                file_path: file.file_path,
+                content: file.content,
+                encoding: file.encoding ?? "text",
+                execute_filemode: file.execute_filemode ?? false,
+              }));
+            } else {
+              // Default behavior (overwrite=false or omitted): all actions are "create"
+              actions = input.files.map(file => ({
+                action: "create",
+                file_path: file.file_path,
+                content: file.content,
+                encoding: file.encoding ?? "text",
+                execute_filemode: file.execute_filemode ?? false,
+              }));
+            }
 
             const body: Record<string, unknown> = {
               branch: input.branch,
@@ -147,10 +276,10 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
             if (input.author_email) body.author_email = input.author_email;
             if (input.author_name) body.author_name = input.author_name;
 
-            return gitlab.post(
-              `projects/${normalizeProjectId(input.project_id)}/repository/commits`,
-              { body, contentType: "json" }
-            );
+            return gitlab.post(`projects/${normalizedProjectId}/repository/commits`, {
+              body,
+              contentType: "json",
+            });
           }
 
           case "upload": {

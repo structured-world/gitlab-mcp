@@ -27,6 +27,11 @@ const SingleActionSchema = z.object({
   content: z.string().describe("File content (text or base64 encoded)"),
   commit_message: z.string().describe("Commit message"),
   branch: z.string().describe("Target branch name"),
+  overwrite: flexibleBoolean
+    .optional()
+    .describe(
+      "If true, automatically update existing file or create new one (requires pre-check via GET request). If false or omitted, only create new file (fails if file exists). Use true when unsure if file exists. Note: Non-404 errors (403, 500, etc.) during pre-check will fail the operation."
+    ),
   start_branch: z.string().optional().describe("Base branch to start from"),
   encoding: z.enum(["text", "base64"]).optional().describe("Content encoding (default: text)"),
   author_email: z.string().optional().describe("Commit author email"),
@@ -42,6 +47,11 @@ const BatchActionSchema = z.object({
   branch: z.string().describe("Target branch name"),
   commit_message: z.string().describe("Commit message"),
   files: z.array(BatchFileActionSchema).min(1).describe("Files to commit (at least one required)"),
+  overwrite: flexibleBoolean
+    .optional()
+    .describe(
+      "If true, automatically detect which files exist and update them, create others (requires pre-check for each file via GET requests). If false or omitted, only create new files (fails if any file exists). Use true when batch includes mix of new and existing files. Note: Non-404 errors during any pre-check will fail the entire batch."
+    ),
   start_branch: z.string().optional().describe("Base branch to start from"),
   author_email: z.string().optional().describe("Commit author email"),
   author_name: z.string().optional().describe("Commit author name"),

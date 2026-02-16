@@ -134,14 +134,22 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
                 );
                 fileExists = true;
               } catch (error: unknown) {
-                // Parse status from error message (gitlab.get throws plain Error)
-                if (error instanceof Error) {
-                  const parsed = parseGitLabApiError(error.message);
-                  if (parsed && parsed.status !== 404) {
-                    throw error; // Re-throw non-404 errors (permission denied, server error, etc.)
-                  }
+                // Only treat real 404 as "file does not exist"; re-throw all other errors
+                if (!(error instanceof Error)) {
+                  throw error;
                 }
-                // 404 or unparseable error = file doesn't exist, proceed with POST
+
+                const parsed = parseGitLabApiError(error.message);
+                if (!parsed) {
+                  // Unexpected/unparseable error format - propagate instead of masking
+                  throw error;
+                }
+
+                if (parsed.status !== 404) {
+                  // Re-throw non-404 errors (permission denied, server error, etc.)
+                  throw error;
+                }
+                // parsed.status === 404: file doesn't exist, proceed with POST
               }
 
               // Use PUT for update, POST for create

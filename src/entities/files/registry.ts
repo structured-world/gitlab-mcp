@@ -6,6 +6,7 @@ import { normalizeProjectId } from "../../utils/projectIdentifier";
 import { enhancedFetch } from "../../utils/fetch";
 import { ToolRegistry, EnhancedToolDefinition } from "../../types";
 import { isActionDenied } from "../../config";
+import { parseGitLabApiError } from "../../handlers";
 
 /**
  * Files tools registry - 2 CQRS tools replacing 5 individual tools
@@ -129,19 +130,18 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
               try {
                 await gitlab.get(
                   `projects/${normalizedProjectId}/repository/files/${encodedFilePath}`,
-                  { query: { ref: body.branch } }
+                  { query: { ref: body.start_branch ?? body.branch } }
                 );
                 fileExists = true;
               } catch (error: unknown) {
-                // 404 = file doesn't exist, proceed with POST
-                if (
-                  typeof error === "object" &&
-                  error !== null &&
-                  "status" in error &&
-                  error.status !== 404
-                ) {
-                  throw error; // Re-throw non-404 errors
+                // Parse status from error message (gitlab.get throws plain Error)
+                if (error instanceof Error) {
+                  const parsed = parseGitLabApiError(error.message);
+                  if (parsed && parsed.status !== 404) {
+                    throw error; // Re-throw non-404 errors (permission denied, server error, etc.)
+                  }
                 }
+                // 404 or unparseable error = file doesn't exist, proceed with POST
               }
 
               // Use PUT for update, POST for create
@@ -179,38 +179,37 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
 
             // If overwrite=true, check each file existence and set appropriate action
             if (input.overwrite) {
-              // Parallel file existence checks
-              const fileChecks = await Promise.allSettled(
+              // Parallel file existence checks - throws on first non-404 error
+              const fileChecks = await Promise.all(
                 input.files.map(async file => {
                   try {
                     await gitlab.get(
                       `projects/${normalizedProjectId}/repository/files/${encodeURIComponent(file.file_path)}`,
-                      { query: { ref: input.branch } }
+                      { query: { ref: input.start_branch ?? input.branch } }
                     );
                     return { file_path: file.file_path, exists: true };
                   } catch (error: unknown) {
-                    if (
-                      typeof error === "object" &&
-                      error !== null &&
-                      "status" in error &&
-                      error.status === 404
-                    ) {
-                      return { file_path: file.file_path, exists: false };
+                    // Parse status from error message (gitlab.get throws plain Error)
+                    if (error instanceof Error) {
+                      const parsed = parseGitLabApiError(error.message);
+                      if (parsed) {
+                        if (parsed.status === 404) {
+                          return { file_path: file.file_path, exists: false };
+                        }
+                        // Non-404 error (403, 500, etc.) - re-throw to fail the whole batch
+                        throw error;
+                      }
                     }
+                    // Unparseable error - re-throw
                     throw error;
                   }
                 })
               );
 
-              // Build existence map
+              // Build existence map from successful checks
               const existenceMap = new Map<string, boolean>();
-              fileChecks.forEach((result, index) => {
-                if (result.status === "fulfilled") {
-                  existenceMap.set(result.value.file_path, result.value.exists);
-                } else {
-                  // If check failed, assume file doesn't exist
-                  existenceMap.set(input.files[index].file_path, false);
-                }
+              fileChecks.forEach(result => {
+                existenceMap.set(result.file_path, result.exists);
               });
 
               // Map files to actions with correct create/update

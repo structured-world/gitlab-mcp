@@ -931,75 +931,32 @@ describe("Files Registry", () => {
           expect(body.actions.every((a: any) => a.action === "create")).toBe(true);
         });
 
-        it("should treat failed existence checks as create (defensive fallback)", async () => {
-          // file1 GET succeeds (exists), file2 GET fails with 500 (non-404 error)
+        it("should re-throw non-404 errors during batch existence checks", async () => {
+          // First file check succeeds, second fails with 403 (Permission Denied)
+          // Promise.all will re-throw the error, failing the whole batch
           mockEnhancedFetch
             .mockResolvedValueOnce(mockResponse({ file_path: "file1.txt" })) // file1 GET (200)
-            .mockResolvedValueOnce(mockResponse(null, false, 500)) // file2 GET (500)
-            .mockResolvedValueOnce(mockResponse({ id: "commit123" })); // POST commit
-
-          const tool = filesToolRegistry.get("manage_files")!;
-          await tool.handler({
-            action: "batch",
-            project_id: "test/project",
-            branch: "main",
-            commit_message: "Batch with error",
-            files: [
-              { file_path: "file1.txt", content: "content1" },
-              { file_path: "file2.txt", content: "content2" },
-            ],
-            overwrite: true,
-          });
-
-          expect(mockEnhancedFetch).toHaveBeenCalledTimes(3);
-          const commitCall = mockEnhancedFetch.mock.calls[2];
-          const body = JSON.parse(commitCall[1]?.body as string);
-          expect(body.actions).toEqual([
-            {
-              action: "update", // file1 exists
-              file_path: "file1.txt",
-              content: "content1",
-              encoding: "text",
-              execute_filemode: false,
-            },
-            {
-              action: "create", // file2 check failed - fallback to create
-              file_path: "file2.txt",
-              content: "content2",
-              encoding: "text",
-              execute_filemode: false,
-            },
-          ]);
-        });
-
-        it("should handle permission errors gracefully with defensive fallback", async () => {
-          // Both file checks fail with 403 (Permission Denied)
-          // Promise.allSettled catches these and defaults to "create"
-          mockEnhancedFetch
-            .mockResolvedValueOnce(mockResponse(null, false, 403)) // file1 GET (403)
-            .mockResolvedValueOnce(mockResponse(null, false, 403)) // file2 GET (403)
-            .mockResolvedValueOnce(mockResponse({ id: "commit123" })); // POST commit
+            .mockResolvedValueOnce(mockResponse(null, false, 403)); // file2 GET (403)
 
           const tool = filesToolRegistry.get("manage_files")!;
 
-          // Promise.allSettled catches errors, so commit proceeds with "create" actions
-          await tool.handler({
-            action: "batch",
-            project_id: "test/project",
-            branch: "main",
-            commit_message: "Batch with permission errors",
-            files: [
-              { file_path: "file1.txt", content: "content1" },
-              { file_path: "file2.txt", content: "content2" },
-            ],
-            overwrite: true,
-          });
+          // Should throw GitLab API error for 403 (not silently fallback to create)
+          await expect(
+            tool.handler({
+              action: "batch",
+              project_id: "test/project",
+              branch: "main",
+              commit_message: "Batch with permission errors",
+              files: [
+                { file_path: "file1.txt", content: "content1" },
+                { file_path: "file2.txt", content: "content2" },
+              ],
+              overwrite: true,
+            })
+          ).rejects.toThrow("GitLab API error: 403");
 
-          expect(mockEnhancedFetch).toHaveBeenCalledTimes(3);
-          const commitCall = mockEnhancedFetch.mock.calls[2];
-          const body = JSON.parse(commitCall[1]?.body as string);
-          // Both should default to "create" since checks failed
-          expect(body.actions.every((a: any) => a.action === "create")).toBe(true);
+          // Should have attempted 2 GET requests before failing
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
         });
       });
     });

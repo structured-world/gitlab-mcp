@@ -645,6 +645,21 @@ describe("handlers", () => {
         message: "503 Service Unavailable",
       });
     });
+
+    it("should parse status text with punctuation (hyphens, apostrophes)", () => {
+      // Test that regex handles punctuation in status text (not just \w\s)
+      const result1 = parseGitLabApiError("GitLab API error: 203 Non-Authoritative Information");
+      expect(result1).toEqual({
+        status: 203,
+        message: "203 Non-Authoritative Information",
+      });
+
+      const result2 = parseGitLabApiError("GitLab API error: 418 I'm a teapot");
+      expect(result2).toEqual({
+        status: 418,
+        message: "418 I'm a teapot",
+      });
+    });
   });
 
   describe("structured error handling - additional paths", () => {

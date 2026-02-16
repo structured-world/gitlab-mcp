@@ -149,7 +149,21 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
                   // Re-throw non-404 errors (permission denied, server error, etc.)
                   throw error;
                 }
-                // parsed.status === 404: file doesn't exist, proceed with POST
+
+                // 404 can indicate: file not found (OK), ref not found, project not found, etc.
+                // Only treat as "file missing" if message confirms it's file-specific
+                const message = parsed.message.toLowerCase();
+                const isFileMissing =
+                  message.includes("file not found") ||
+                  message.includes("file does not exist") ||
+                  message.includes("no such file") ||
+                  (message.includes("not found") && message.includes("file"));
+
+                if (!isFileMissing) {
+                  // 404 for non-file reason (ref/branch not found, project not found) - re-throw
+                  throw error;
+                }
+                // Confirmed file doesn't exist, proceed with POST
               }
 
               // Use PUT for update, POST for create
@@ -202,7 +216,20 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
                       const parsed = parseGitLabApiError(error.message);
                       if (parsed) {
                         if (parsed.status === 404) {
-                          return { file_path: file.file_path, exists: false };
+                          // 404 can indicate: file not found (OK), ref not found, project not found, etc.
+                          // Only treat as "file missing" if message confirms it's file-specific
+                          const message = parsed.message.toLowerCase();
+                          const isFileMissing =
+                            message.includes("file not found") ||
+                            message.includes("file does not exist") ||
+                            message.includes("no such file") ||
+                            (message.includes("not found") && message.includes("file"));
+
+                          if (isFileMissing) {
+                            return { file_path: file.file_path, exists: false };
+                          }
+                          // 404 for non-file reason (ref/branch not found, project not found) - re-throw
+                          throw error;
                         }
                         // Non-404 error (403, 500, etc.) - re-throw to fail the whole batch
                         throw error;

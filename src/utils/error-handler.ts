@@ -998,9 +998,9 @@ export function parseGitLabApiError(
 ): { status: number; message: string } | null {
   // Match GitLab API error anywhere in the string (handles wrapped errors)
   // Pattern: "GitLab API error: <status> [<statusText>] [- <details>]"
-  // Status text uses [\w\s]+? to match word chars and spaces (non-greedy)
-  // Separator is " - " (space-hyphen-space) to avoid matching hyphens in status text
-  const match = errorMessage.match(/GitLab API error:\s*(\d+)(?:\s+([\w\s]+?))?(?:\s+-\s+(.*))?$/);
+  // Status text captures any characters lazily up to the optional " - <details>" separator
+  // Separator is " - " (space-hyphen-space) so hyphens and punctuation in status text are allowed
+  const match = errorMessage.match(/GitLab API error:\s*(\d+)(?:\s+(.+?))?(?:\s+-\s+(.*))?$/);
   if (!match) return null;
 
   const status = parseInt(match[1], 10);

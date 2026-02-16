@@ -183,11 +183,11 @@ describe("Files Registry", () => {
   });
 
   describe("Handler Functions", () => {
-    const mockResponse = (data: unknown, ok = true, status = 200) =>
+    const mockResponse = (data: unknown, ok = true, status = 200, statusText?: string) =>
       ({
         ok,
         status,
-        statusText: ok ? "OK" : "Error",
+        statusText: statusText ?? (ok ? "OK" : "Error"),
         json: jest.fn().mockResolvedValue(data),
         text: jest.fn().mockResolvedValue(typeof data === "string" ? data : JSON.stringify(data)),
         headers: {
@@ -736,7 +736,9 @@ describe("Files Registry", () => {
 
         it("should check existence and use POST when overwrite=true and file does not exist", async () => {
           // Mock existence check (GET) - file doesn't exist (404)
-          mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 404));
+          mockEnhancedFetch.mockResolvedValueOnce(
+            mockResponse(null, false, 404, "Not Found - file not found")
+          );
           // Mock create (POST)
           mockEnhancedFetch.mockResolvedValueOnce(
             mockResponse({ file_path: "NEW.md", branch: "main" })
@@ -781,6 +783,56 @@ describe("Files Registry", () => {
 
           // Should call enhancedFetch for GET request, then error should be thrown
           expect(mockEnhancedFetch).toHaveBeenCalled();
+        });
+
+        it("should re-throw 404 with non-file-specific message (ref not found)", async () => {
+          // Mock existence check (GET) - 404 but for ref/branch, not file
+          mockEnhancedFetch.mockResolvedValueOnce(
+            mockResponse(null, false, 404, "Not Found - ref 'nonexistent-branch' not found")
+          );
+
+          const tool = filesToolRegistry.get("manage_files")!;
+
+          await expect(
+            tool.handler({
+              action: "single",
+              project_id: "test/project",
+              file_path: "README.md",
+              content: "# Test",
+              commit_message: "Test",
+              branch: "main",
+              start_branch: "nonexistent-branch",
+              overwrite: true,
+            })
+          ).rejects.toThrow("GitLab API error: 404 Not Found");
+
+          // Should call enhancedFetch for GET request, then re-throw non-file 404
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
+        });
+
+        it("should proceed with POST for 404 with file-specific message", async () => {
+          // Mock existence check (GET) - 404 specifically for file not found
+          mockEnhancedFetch
+            .mockResolvedValueOnce(mockResponse(null, false, 404, "Not Found - file not found"))
+            .mockResolvedValueOnce(mockResponse({ file_path: "newfile.md", branch: "main" })); // POST response
+
+          const tool = filesToolRegistry.get("manage_files")!;
+
+          const result = await tool.handler({
+            action: "single",
+            project_id: "test/project",
+            file_path: "newfile.md",
+            content: "# New File",
+            commit_message: "Create new file",
+            branch: "main",
+            overwrite: true,
+          });
+
+          expect(result).toEqual({ file_path: "newfile.md", branch: "main" });
+          // First call: GET to check existence (404 file not found)
+          // Second call: POST to create file
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+          expect(mockEnhancedFetch.mock.calls[1][1]?.method).toBe("POST");
         });
       });
 
@@ -834,7 +886,7 @@ describe("Files Registry", () => {
           // file1.txt exists (GET returns 200), file2.txt doesn't exist (GET returns 404)
           mockEnhancedFetch
             .mockResolvedValueOnce(mockResponse({ file_path: "file1.txt", content: "old" })) // file1 GET
-            .mockResolvedValueOnce(mockResponse(null, false, 404)) // file2 GET (404)
+            .mockResolvedValueOnce(mockResponse(null, false, 404, "Not Found - file not found")) // file2 GET (404)
             .mockResolvedValueOnce(mockResponse({ id: "commit123" })); // POST commit
 
           const tool = filesToolRegistry.get("manage_files")!;
@@ -908,8 +960,8 @@ describe("Files Registry", () => {
         it("should handle all files not existing when overwrite=true", async () => {
           // Both files don't exist (both GET return 404)
           mockEnhancedFetch
-            .mockResolvedValueOnce(mockResponse(null, false, 404)) // new1.txt GET (404)
-            .mockResolvedValueOnce(mockResponse(null, false, 404)) // new2.txt GET (404)
+            .mockResolvedValueOnce(mockResponse(null, false, 404, "Not Found - file not found")) // new1.txt GET (404)
+            .mockResolvedValueOnce(mockResponse(null, false, 404, "Not Found - file not found")) // new2.txt GET (404)
             .mockResolvedValueOnce(mockResponse({ id: "commit123" })); // POST commit
 
           const tool = filesToolRegistry.get("manage_files")!;
@@ -957,6 +1009,30 @@ describe("Files Registry", () => {
 
           // Should have attempted 2 GET requests before failing
           expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+        });
+
+        it("should re-throw 404 with non-file-specific message in batch mode", async () => {
+          // Mock existence check (GET) - 404 but for ref/branch, not file
+          mockEnhancedFetch.mockResolvedValueOnce(
+            mockResponse(null, false, 404, "Not Found - ref 'invalid-ref' not found")
+          );
+
+          const tool = filesToolRegistry.get("manage_files")!;
+
+          await expect(
+            tool.handler({
+              action: "batch",
+              project_id: "test/project",
+              branch: "main",
+              commit_message: "Batch with invalid ref",
+              files: [{ file_path: "file1.txt", content: "content1" }],
+              start_branch: "invalid-ref",
+              overwrite: true,
+            })
+          ).rejects.toThrow("GitLab API error: 404 Not Found");
+
+          // Should have attempted 1 GET request before re-throwing
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
         });
       });
     });

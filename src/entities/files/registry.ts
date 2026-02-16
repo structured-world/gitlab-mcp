@@ -119,23 +119,118 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
         switch (input.action) {
           case "single": {
             // TypeScript knows: input has file_path, content, commit_message, branch (required)
-            const { project_id, file_path, action: _action, ...body } = input;
+            const { project_id, file_path, action: _action, overwrite, ...body } = input;
+            const normalizedProjectId = normalizeProjectId(project_id);
+            const encodedFilePath = encodeURIComponent(file_path);
 
+            // If overwrite=true, check file existence and use appropriate HTTP method
+            if (overwrite) {
+              let fileExists = false;
+              try {
+                await gitlab.get(
+                  `projects/${normalizedProjectId}/repository/files/${encodedFilePath}`,
+                  { query: { ref: body.branch } }
+                );
+                fileExists = true;
+              } catch (error: unknown) {
+                // 404 = file doesn't exist, proceed with POST
+                if (
+                  typeof error === "object" &&
+                  error !== null &&
+                  "status" in error &&
+                  error.status !== 404
+                ) {
+                  throw error; // Re-throw non-404 errors
+                }
+              }
+
+              // Use PUT for update, POST for create
+              const method = fileExists ? "put" : "post";
+              return gitlab[method](
+                `projects/${normalizedProjectId}/repository/files/${encodedFilePath}`,
+                {
+                  body,
+                  contentType: "form",
+                }
+              );
+            }
+
+            // Default behavior (overwrite=false or omitted): always POST (create only)
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/repository/files/${encodeURIComponent(file_path)}`,
-              { body, contentType: "form" }
+              `projects/${normalizedProjectId}/repository/files/${encodedFilePath}`,
+              {
+                body,
+                contentType: "form",
+              }
             );
           }
 
           case "batch": {
             // TypeScript knows: input has files, branch, commit_message (required)
-            const actions = input.files.map(file => ({
-              action: "create",
-              file_path: file.file_path,
-              content: file.content,
-              encoding: file.encoding ?? "text",
-              execute_filemode: file.execute_filemode ?? false,
-            }));
+            const normalizedProjectId = normalizeProjectId(input.project_id);
+
+            let actions: Array<{
+              action: string;
+              file_path: string;
+              content: string;
+              encoding: string;
+              execute_filemode: boolean;
+            }>;
+
+            // If overwrite=true, check each file existence and set appropriate action
+            if (input.overwrite) {
+              // Parallel file existence checks
+              const fileChecks = await Promise.allSettled(
+                input.files.map(async file => {
+                  try {
+                    await gitlab.get(
+                      `projects/${normalizedProjectId}/repository/files/${encodeURIComponent(file.file_path)}`,
+                      { query: { ref: input.branch } }
+                    );
+                    return { file_path: file.file_path, exists: true };
+                  } catch (error: unknown) {
+                    if (
+                      typeof error === "object" &&
+                      error !== null &&
+                      "status" in error &&
+                      error.status === 404
+                    ) {
+                      return { file_path: file.file_path, exists: false };
+                    }
+                    throw error;
+                  }
+                })
+              );
+
+              // Build existence map
+              const existenceMap = new Map<string, boolean>();
+              fileChecks.forEach((result, index) => {
+                if (result.status === "fulfilled") {
+                  existenceMap.set(result.value.file_path, result.value.exists);
+                } else {
+                  // If check failed, assume file doesn't exist
+                  existenceMap.set(input.files[index].file_path, false);
+                }
+              });
+
+              // Map files to actions with correct create/update
+              actions = input.files.map(file => ({
+                action: existenceMap.get(file.file_path) ? "update" : "create",
+                file_path: file.file_path,
+                content: file.content,
+                encoding: file.encoding ?? "text",
+                execute_filemode: file.execute_filemode ?? false,
+              }));
+            } else {
+              // Default behavior (overwrite=false or omitted): all actions are "create"
+              actions = input.files.map(file => ({
+                action: "create",
+                file_path: file.file_path,
+                content: file.content,
+                encoding: file.encoding ?? "text",
+                execute_filemode: file.execute_filemode ?? false,
+              }));
+            }
 
             const body: Record<string, unknown> = {
               branch: input.branch,
@@ -147,10 +242,10 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
             if (input.author_email) body.author_email = input.author_email;
             if (input.author_name) body.author_name = input.author_name;
 
-            return gitlab.post(
-              `projects/${normalizeProjectId(input.project_id)}/repository/commits`,
-              { body, contentType: "json" }
-            );
+            return gitlab.post(`projects/${normalizedProjectId}/repository/commits`, {
+              body,
+              contentType: "json",
+            });
           }
 
           case "upload": {

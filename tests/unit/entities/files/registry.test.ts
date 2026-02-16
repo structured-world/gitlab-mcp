@@ -663,5 +663,315 @@ describe("Files Registry", () => {
         ).rejects.toThrow("Network error");
       });
     });
+
+    describe('manage_files "overwrite" parameter - Issue #326', () => {
+      describe("single action", () => {
+        it("should use POST when overwrite is not provided (default behavior)", async () => {
+          const mockResult = { file_path: "README.md", branch: "main" };
+          mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockResult));
+
+          const tool = filesToolRegistry.get("manage_files")!;
+          await tool.handler({
+            action: "single",
+            project_id: "test/project",
+            file_path: "README.md",
+            content: "# Hello",
+            commit_message: "Add README",
+            branch: "main",
+          });
+
+          const calls = mockEnhancedFetch.mock.calls;
+          expect(calls).toHaveLength(1);
+          expect(calls[0][1]?.method).toBe("POST");
+        });
+
+        it("should use POST when overwrite is false", async () => {
+          const mockResult = { file_path: "README.md", branch: "main" };
+          mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockResult));
+
+          const tool = filesToolRegistry.get("manage_files")!;
+          await tool.handler({
+            action: "single",
+            project_id: "test/project",
+            file_path: "README.md",
+            content: "# Hello",
+            commit_message: "Add README",
+            branch: "main",
+            overwrite: false,
+          });
+
+          const calls = mockEnhancedFetch.mock.calls;
+          expect(calls).toHaveLength(1);
+          expect(calls[0][1]?.method).toBe("POST");
+        });
+
+        it("should check existence and use PUT when overwrite=true and file exists", async () => {
+          // Mock existence check (GET) - file exists
+          mockEnhancedFetch.mockResolvedValueOnce(
+            mockResponse({ file_path: "README.md", content: "old" })
+          );
+          // Mock update (PUT)
+          mockEnhancedFetch.mockResolvedValueOnce(
+            mockResponse({ file_path: "README.md", branch: "main" })
+          );
+
+          const tool = filesToolRegistry.get("manage_files")!;
+          await tool.handler({
+            action: "single",
+            project_id: "test/project",
+            file_path: "README.md",
+            content: "# Updated",
+            commit_message: "Update README",
+            branch: "main",
+            overwrite: true,
+          });
+
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+          // First call: GET to check existence
+          expect(mockEnhancedFetch.mock.calls[0][0]).toContain("/repository/files/README.md");
+          expect(mockEnhancedFetch.mock.calls[0][0]).toContain("ref=main");
+          // Second call: PUT to update
+          expect(mockEnhancedFetch.mock.calls[1][1]?.method).toBe("PUT");
+        });
+
+        it("should check existence and use POST when overwrite=true and file does not exist", async () => {
+          // Mock existence check (GET) - file doesn't exist (404)
+          mockEnhancedFetch.mockResolvedValueOnce(mockResponse(null, false, 404));
+          // Mock create (POST)
+          mockEnhancedFetch.mockResolvedValueOnce(
+            mockResponse({ file_path: "NEW.md", branch: "main" })
+          );
+
+          const tool = filesToolRegistry.get("manage_files")!;
+          await tool.handler({
+            action: "single",
+            project_id: "test/project",
+            file_path: "NEW.md",
+            content: "# New",
+            commit_message: "Create file",
+            branch: "main",
+            overwrite: true,
+          });
+
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
+          // First call: GET to check existence (404)
+          expect(mockEnhancedFetch.mock.calls[0][0]).toContain("/repository/files/NEW.md");
+          // Second call: POST to create
+          expect(mockEnhancedFetch.mock.calls[1][1]?.method).toBe("POST");
+        });
+
+        it("should re-throw non-404 errors during existence check", async () => {
+          // Mock existence check (GET) - server error (500)
+          // Use mockResolvedValue (not Once) to handle potential multiple calls
+          mockEnhancedFetch.mockResolvedValue(mockResponse(null, false, 500));
+
+          const tool = filesToolRegistry.get("manage_files")!;
+
+          await expect(
+            tool.handler({
+              action: "single",
+              project_id: "test/project",
+              file_path: "README.md",
+              content: "# Test",
+              commit_message: "Test",
+              branch: "main",
+              overwrite: true,
+            })
+          ).rejects.toThrow("GitLab API error: 500 Error");
+
+          // Should call enhancedFetch for GET request, then error should be thrown
+          expect(mockEnhancedFetch).toHaveBeenCalled();
+        });
+      });
+
+      describe("batch action", () => {
+        it("should use action=create for all files when overwrite is not provided", async () => {
+          const mockCommit = { id: "abc123", title: "Batch commit" };
+          mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockCommit));
+
+          const tool = filesToolRegistry.get("manage_files")!;
+          await tool.handler({
+            action: "batch",
+            project_id: "test/project",
+            branch: "main",
+            commit_message: "Batch commit",
+            files: [
+              { file_path: "file1.txt", content: "content1" },
+              { file_path: "file2.txt", content: "content2" },
+            ],
+          });
+
+          const call = mockEnhancedFetch.mock.calls[0];
+          const body = JSON.parse(call[1]?.body as string);
+          expect(body.actions).toHaveLength(2);
+          expect(body.actions[0].action).toBe("create");
+          expect(body.actions[1].action).toBe("create");
+        });
+
+        it("should use action=create for all files when overwrite is false", async () => {
+          const mockCommit = { id: "abc123", title: "Batch commit" };
+          mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockCommit));
+
+          const tool = filesToolRegistry.get("manage_files")!;
+          await tool.handler({
+            action: "batch",
+            project_id: "test/project",
+            branch: "main",
+            commit_message: "Batch commit",
+            files: [
+              { file_path: "file1.txt", content: "content1" },
+              { file_path: "file2.txt", content: "content2" },
+            ],
+            overwrite: false,
+          });
+
+          const call = mockEnhancedFetch.mock.calls[0];
+          const body = JSON.parse(call[1]?.body as string);
+          expect(body.actions.every((a: any) => a.action === "create")).toBe(true);
+        });
+
+        it("should check each file and use correct action when overwrite=true", async () => {
+          // file1.txt exists (GET returns 200), file2.txt doesn't exist (GET returns 404)
+          mockEnhancedFetch
+            .mockResolvedValueOnce(mockResponse({ file_path: "file1.txt", content: "old" })) // file1 GET
+            .mockResolvedValueOnce(mockResponse(null, false, 404)) // file2 GET (404)
+            .mockResolvedValueOnce(mockResponse({ id: "commit123" })); // POST commit
+
+          const tool = filesToolRegistry.get("manage_files")!;
+          await tool.handler({
+            action: "batch",
+            project_id: "test/project",
+            branch: "main",
+            commit_message: "Mixed batch",
+            files: [
+              { file_path: "file1.txt", content: "updated" },
+              { file_path: "file2.txt", content: "new" },
+            ],
+            overwrite: true,
+          });
+
+          // Should have 3 calls: 2 GET (existence checks) + 1 POST (commit)
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(3);
+
+          // First 2 calls are GET requests to check existence
+          expect(mockEnhancedFetch.mock.calls[0][0]).toContain("/repository/files/file1.txt");
+          expect(mockEnhancedFetch.mock.calls[1][0]).toContain("/repository/files/file2.txt");
+
+          // Third call is POST to create commit
+          const commitCall = mockEnhancedFetch.mock.calls[2];
+          expect(commitCall[1]?.method).toBe("POST");
+          const body = JSON.parse(commitCall[1]?.body as string);
+          expect(body.actions).toEqual([
+            {
+              action: "update", // file1 exists
+              file_path: "file1.txt",
+              content: "updated",
+              encoding: "text",
+              execute_filemode: false,
+            },
+            {
+              action: "create", // file2 doesn't exist
+              file_path: "file2.txt",
+              content: "new",
+              encoding: "text",
+              execute_filemode: false,
+            },
+          ]);
+        });
+
+        it("should handle all files existing when overwrite=true", async () => {
+          // Both files exist (both GET return 200)
+          mockEnhancedFetch
+            .mockResolvedValueOnce(mockResponse({ file_path: "file1.txt" })) // file1 GET
+            .mockResolvedValueOnce(mockResponse({ file_path: "file2.txt" })) // file2 GET
+            .mockResolvedValueOnce(mockResponse({ id: "commit123" })); // POST commit
+
+          const tool = filesToolRegistry.get("manage_files")!;
+          await tool.handler({
+            action: "batch",
+            project_id: "test/project",
+            branch: "main",
+            commit_message: "Update all",
+            files: [
+              { file_path: "file1.txt", content: "updated1" },
+              { file_path: "file2.txt", content: "updated2" },
+            ],
+            overwrite: true,
+          });
+
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(3);
+          const commitCall = mockEnhancedFetch.mock.calls[2];
+          const body = JSON.parse(commitCall[1]?.body as string);
+          expect(body.actions.every((a: any) => a.action === "update")).toBe(true);
+        });
+
+        it("should handle all files not existing when overwrite=true", async () => {
+          // Both files don't exist (both GET return 404)
+          mockEnhancedFetch
+            .mockResolvedValueOnce(mockResponse(null, false, 404)) // new1.txt GET (404)
+            .mockResolvedValueOnce(mockResponse(null, false, 404)) // new2.txt GET (404)
+            .mockResolvedValueOnce(mockResponse({ id: "commit123" })); // POST commit
+
+          const tool = filesToolRegistry.get("manage_files")!;
+          await tool.handler({
+            action: "batch",
+            project_id: "test/project",
+            branch: "main",
+            commit_message: "Create all",
+            files: [
+              { file_path: "new1.txt", content: "content1" },
+              { file_path: "new2.txt", content: "content2" },
+            ],
+            overwrite: true,
+          });
+
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(3);
+          const commitCall = mockEnhancedFetch.mock.calls[2];
+          const body = JSON.parse(commitCall[1]?.body as string);
+          expect(body.actions.every((a: any) => a.action === "create")).toBe(true);
+        });
+
+        it("should treat failed existence checks as create (defensive fallback)", async () => {
+          // file1 GET succeeds (exists), file2 GET fails with 500 (non-404 error)
+          mockEnhancedFetch
+            .mockResolvedValueOnce(mockResponse({ file_path: "file1.txt" })) // file1 GET (200)
+            .mockResolvedValueOnce(mockResponse(null, false, 500)) // file2 GET (500)
+            .mockResolvedValueOnce(mockResponse({ id: "commit123" })); // POST commit
+
+          const tool = filesToolRegistry.get("manage_files")!;
+          await tool.handler({
+            action: "batch",
+            project_id: "test/project",
+            branch: "main",
+            commit_message: "Batch with error",
+            files: [
+              { file_path: "file1.txt", content: "content1" },
+              { file_path: "file2.txt", content: "content2" },
+            ],
+            overwrite: true,
+          });
+
+          expect(mockEnhancedFetch).toHaveBeenCalledTimes(3);
+          const commitCall = mockEnhancedFetch.mock.calls[2];
+          const body = JSON.parse(commitCall[1]?.body as string);
+          expect(body.actions).toEqual([
+            {
+              action: "update", // file1 exists
+              file_path: "file1.txt",
+              content: "content1",
+              encoding: "text",
+              execute_filemode: false,
+            },
+            {
+              action: "create", // file2 check failed - fallback to create
+              file_path: "file2.txt",
+              content: "content2",
+              encoding: "text",
+              execute_filemode: false,
+            },
+          ]);
+        });
+      });
+    });
   });
 });

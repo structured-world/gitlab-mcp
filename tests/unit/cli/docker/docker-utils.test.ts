@@ -699,8 +699,9 @@ describe("docker-utils", () => {
 
       // Only default entries
       expect(env).toContain("TRANSPORT=sse");
+      expect(env).toContain("HOST=0.0.0.0");
       expect(env).toContain("PORT=3333");
-      expect(env.length).toBe(3); // TRANSPORT, PORT, OAUTH_ENABLED
+      expect(env.length).toBe(4); // TRANSPORT, HOST, PORT, OAUTH_ENABLED
     });
   });
 

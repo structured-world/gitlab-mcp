@@ -99,7 +99,9 @@ Enable or disable tool groups:
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `PORT` | HTTP server port (enables HTTP mode) | — |
-| `HOST` | Server bind address | `0.0.0.0` |
+| `HOST` | Server bind address | `127.0.0.1` |
+
+> **Security note:** The default `127.0.0.1` binds only to localhost, preventing network access to the server and your `GITLAB_TOKEN`. If you run inside Docker, set `HOST=0.0.0.0` explicitly — containers need it for port mapping to work. The Dockerfile and docker-compose examples already include this setting.
 
 ## TLS Configuration
 

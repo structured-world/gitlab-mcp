@@ -125,7 +125,7 @@ describe("config.ts", () => {
 
       const config = require("../../src/config");
 
-      expect(config.HOST).toBe("0.0.0.0");
+      expect(config.HOST).toBe("127.0.0.1");
       expect(config.PORT).toBe(3002);
     });
 

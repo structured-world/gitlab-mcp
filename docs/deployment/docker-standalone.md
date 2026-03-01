@@ -70,7 +70,7 @@ Select "standalone" when prompted for deployment type.
 | Variable | Required | Description | Default |
 |----------|----------|-------------|---------|
 | `PORT` | Yes | Internal HTTP port | — |
-| `HOST` | No | Bind address | `0.0.0.0` |
+| `HOST` | No | Bind address | `127.0.0.1` (use `0.0.0.0` in Docker) |
 | `GITLAB_TOKEN` | Yes | [GitLab Personal Access Token](/guide/authentication#pat) | — |
 | `GITLAB_API_URL` | No | GitLab instance URL | `https://gitlab.com` |
 | `GITLAB_READ_ONLY_MODE` | No | Restrict to read-only tools | `false` |

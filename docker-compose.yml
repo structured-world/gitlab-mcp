@@ -62,6 +62,10 @@ services:
       # TRANSPORT CONFIGURATION
       # ========================================================================
 
+      # Server bind address — must be 0.0.0.0 inside Docker containers
+      # so that port mapping works (127.0.0.1 only binds to container loopback)
+      HOST: "0.0.0.0"
+
       # Server port (default: 3000)
       # When PORT is set, server runs in HTTP mode with both SSE and StreamableHTTP endpoints
       PORT: 3000
@@ -264,6 +268,9 @@ services:
       GITLAB_API_URL: ${GITLAB_API_URL:-}
       GITLAB_PROJECT_ID: ${GITLAB_PROJECT_ID:-}
       GITLAB_GROUP_PATH: ${GITLAB_GROUP_PATH:-}
+
+      # Server bind address — must be 0.0.0.0 inside Docker containers
+      HOST: "0.0.0.0"
 
       # Transport configuration
       PORT: 3000

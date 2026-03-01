@@ -178,7 +178,12 @@ export function generateDockerCompose(config: DockerConfig): string {
         image: config.image,
         container_name: config.containerName,
         ports: [`\${PORT:-${config.port}}:3333`],
-        environment: ["TRANSPORT=sse", "PORT=3333", `OAUTH_ENABLED=${config.oauthEnabled}`],
+        environment: [
+          "TRANSPORT=sse",
+          "HOST=0.0.0.0",
+          "PORT=3333",
+          `OAUTH_ENABLED=${config.oauthEnabled}`,
+        ],
         volumes: ["gitlab-mcp-data:/data"],
         restart: "unless-stopped",
       },

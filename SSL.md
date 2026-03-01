@@ -549,5 +549,5 @@ networks:
 | `SSL_CA_PATH` | CA certificate chain path | - |
 | `SSL_PASSPHRASE` | Private key passphrase | - |
 | `TRUST_PROXY` | Trust proxy setting | - |
-| `HOST` | Server bind address | `0.0.0.0` |
+| `HOST` | Server bind address | `127.0.0.1` |
 | `PORT` | Server listen port | `3002` |

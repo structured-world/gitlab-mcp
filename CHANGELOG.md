@@ -1,3 +1,9 @@
+## [6.62.1](https://github.com/structured-world/gitlab-mcp/compare/v6.62.0...v6.62.1) (2026-03-01)
+
+### Bug Fixes
+
+* **security:** change default HOST from 0.0.0.0 to 127.0.0.1 ([#336](https://github.com/structured-world/gitlab-mcp/issues/336)) ([039c369](https://github.com/structured-world/gitlab-mcp/commit/039c3696c9308e70629ce03ab3e5ef41b4ee812a)), closes [#333](https://github.com/structured-world/gitlab-mcp/issues/333)
+
 ## [6.62.0](https://github.com/structured-world/gitlab-mcp/compare/v6.61.0...v6.62.0) (2026-02-16)
 
 ### Features

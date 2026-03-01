@@ -329,7 +329,7 @@ export const USE_REFS = process.env.USE_REFS !== "false";
 export const USE_MEMBERS = process.env.USE_MEMBERS !== "false";
 export const USE_SEARCH = process.env.USE_SEARCH !== "false";
 export const USE_ITERATIONS = process.env.USE_ITERATIONS !== "false";
-export const HOST = process.env.HOST ?? "0.0.0.0";
+export const HOST = process.env.HOST ?? "127.0.0.1";
 export const PORT = process.env.PORT ?? 3002;
 
 // TLS/SSL configuration for direct HTTPS termination

@@ -112,6 +112,7 @@ ENV GITLAB_GROUP_PATH=""
 # Server configuration
 ENV NODE_ENV=production
 ENV LOG_LEVEL=info
+ENV HOST=0.0.0.0
 ENV PORT=3000
 
 # Transport mode configuration (default: HTTP streamable)

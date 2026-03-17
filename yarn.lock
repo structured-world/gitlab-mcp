@@ -2645,7 +2645,7 @@ __metadata:
     express: "npm:^5.2.1"
     graphql: "npm:^16.12.0"
     graphql-tag: "npm:^2.12.6"
-    http-proxy-agent: "npm:^7.0.2"
+    http-proxy-agent: "npm:^8.0.0"
     https-proxy-agent: "npm:^7.0.6"
     jest: "npm:^30.2.0"
     open: "npm:^11.0.0"
@@ -3583,6 +3583,13 @@ __metadata:
   bin:
     acorn: bin/acorn
   checksum: 10c0/c9c52697227661b68d0debaf972222d4f622aa06b185824164e153438afa7b08273432ca43ea792cadb24dada1d46f6f6bb1ef8de9956979288cc1b96bf9914e
+  languageName: node
+  linkType: hard
+
+"agent-base@npm:8.0.0":
+  version: 8.0.0
+  resolution: "agent-base@npm:8.0.0"
+  checksum: 10c0/024ab013d665acc86b2aa3b468d920637654cdc5310080261855e294d9834da113dee199a74c44ba6f293d041a97439624f04648135d450fe2e5cd0a36c032dc
   languageName: node
   linkType: hard
 
@@ -6243,13 +6250,23 @@ __metadata:
   languageName: node
   linkType: hard
 
-"http-proxy-agent@npm:^7.0.0, http-proxy-agent@npm:^7.0.2":
+"http-proxy-agent@npm:^7.0.0":
   version: 7.0.2
   resolution: "http-proxy-agent@npm:7.0.2"
   dependencies:
     agent-base: "npm:^7.1.0"
     debug: "npm:^4.3.4"
   checksum: 10c0/4207b06a4580fb85dd6dff521f0abf6db517489e70863dca1a0291daa7f2d3d2d6015a57bd702af068ea5cf9f1f6ff72314f5f5b4228d299c0904135d2aef921
+  languageName: node
+  linkType: hard
+
+"http-proxy-agent@npm:^8.0.0":
+  version: 8.0.0
+  resolution: "http-proxy-agent@npm:8.0.0"
+  dependencies:
+    agent-base: "npm:8.0.0"
+    debug: "npm:^4.3.4"
+  checksum: 10c0/04ffc6eef497412e4e121d57a273018e1ae642648fd862f67b4cafb23c75d406faeef528bb416f681db4bac23c207b4bff560f3cb3493905419f16c63e3f8757
   languageName: node
   linkType: hard
 

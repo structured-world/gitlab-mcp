@@ -2655,7 +2655,7 @@ __metadata:
     prettier: "npm:^3.8.1"
     prisma: "npm:^7.3.0"
     semantic-release: "npm:^25.0.3"
-    socks-proxy-agent: "npm:^8.0.5"
+    socks-proxy-agent: "npm:^9.0.0"
     transliteration: "npm:^2.6.1"
     ts-jest: "npm:^29.4.6"
     ts-node: "npm:^10.9.2"
@@ -3583,6 +3583,13 @@ __metadata:
   bin:
     acorn: bin/acorn
   checksum: 10c0/c9c52697227661b68d0debaf972222d4f622aa06b185824164e153438afa7b08273432ca43ea792cadb24dada1d46f6f6bb1ef8de9956979288cc1b96bf9914e
+  languageName: node
+  linkType: hard
+
+"agent-base@npm:8.0.0":
+  version: 8.0.0
+  resolution: "agent-base@npm:8.0.0"
+  checksum: 10c0/024ab013d665acc86b2aa3b468d920637654cdc5310080261855e294d9834da113dee199a74c44ba6f293d041a97439624f04648135d450fe2e5cd0a36c032dc
   languageName: node
   linkType: hard
 
@@ -10085,7 +10092,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"socks-proxy-agent@npm:^8.0.3, socks-proxy-agent@npm:^8.0.5":
+"socks-proxy-agent@npm:^8.0.3":
   version: 8.0.5
   resolution: "socks-proxy-agent@npm:8.0.5"
   dependencies:
@@ -10093,6 +10100,17 @@ __metadata:
     debug: "npm:^4.3.4"
     socks: "npm:^2.8.3"
   checksum: 10c0/5d2c6cecba6821389aabf18728325730504bf9bb1d9e342e7987a5d13badd7a98838cc9a55b8ed3cb866ad37cc23e1086f09c4d72d93105ce9dfe76330e9d2a6
+  languageName: node
+  linkType: hard
+
+"socks-proxy-agent@npm:^9.0.0":
+  version: 9.0.0
+  resolution: "socks-proxy-agent@npm:9.0.0"
+  dependencies:
+    agent-base: "npm:8.0.0"
+    debug: "npm:^4.3.4"
+    socks: "npm:^2.8.3"
+  checksum: 10c0/83218b89c9611fcaa2a95f82a45ae477c6aa7d7606221ecc4de6bea57273995193b08f807cf320fade2c7b7162a634acef09383646abf53233ea54eb4b30a962
   languageName: node
   linkType: hard
 

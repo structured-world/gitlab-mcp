@@ -27,9 +27,6 @@ jest.mock("../../../src/config", () => ({
 // Mock dependencies
 jest.mock("fs");
 jest.mock("https");
-jest.mock("http-proxy-agent");
-jest.mock("https-proxy-agent");
-jest.mock("socks-proxy-agent");
 jest.mock("../../../src/logger", () => ({
   logger: {
     debug: jest.fn(),

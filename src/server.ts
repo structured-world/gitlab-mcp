@@ -24,7 +24,7 @@ import {
 } from "./config";
 import { TransportMode } from "./types";
 import { logInfo, logError, logDebug, logWarn } from "./logger";
-import { getSessionManager } from "./session-manager";
+import { getSessionManager, STDIO_SESSION_ID } from "./session-manager";
 
 // OAuth imports
 import {
@@ -414,7 +414,7 @@ export async function startServer(): Promise<void> {
   switch (transportMode) {
     case "stdio": {
       const transport = new StdioServerTransport();
-      await sessionManager.createSession("stdio", transport);
+      await sessionManager.createSession(STDIO_SESSION_ID, transport);
       logInfo("GitLab MCP Server running on stdio");
       break;
     }

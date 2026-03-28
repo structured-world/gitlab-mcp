@@ -41,7 +41,12 @@ jest.mock("../../src/logger", () => ({
   logDebug: jest.fn(),
 }));
 
-import { SessionManager, getSessionManager, resetSessionManager } from "../../src/session-manager";
+import {
+  SessionManager,
+  getSessionManager,
+  resetSessionManager,
+  STDIO_SESSION_ID,
+} from "../../src/session-manager";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { setupHandlers } from "../../src/handlers";
 import { setDetectedSchemaMode } from "../../src/utils/schema-utils";
@@ -247,6 +252,38 @@ describe("SessionManager", () => {
       await Promise.resolve();
 
       expect(manager.activeSessionCount).toBe(0);
+    });
+
+    it("should never remove stdio session regardless of inactivity (regression: #361)", async () => {
+      // stdio is single-client, single-process — its lifetime is owned by the
+      // client, not by the session manager's idle timeout.
+      manager.start();
+      await manager.createSession(STDIO_SESSION_ID, mockTransport as any);
+
+      expect(manager.activeSessionCount).toBe(1);
+
+      // Advance well past the 5s timeout + multiple cleanup cycles
+      jest.advanceTimersByTime(120_000);
+      await Promise.resolve();
+
+      // stdio session must still be alive
+      expect(manager.activeSessionCount).toBe(1);
+    });
+
+    it("should remove non-stdio sessions but keep stdio session", async () => {
+      // Verify that cleanup correctly targets only HTTP sessions
+      manager.start();
+      await manager.createSession(STDIO_SESSION_ID, mockTransport as any);
+      await manager.createSession("http-session-1", mockTransport as any);
+
+      expect(manager.activeSessionCount).toBe(2);
+
+      // Advance past timeout + cleanup interval
+      jest.advanceTimersByTime(61_000);
+      await Promise.resolve();
+
+      // Only stdio should survive
+      expect(manager.activeSessionCount).toBe(1);
     });
 
     it("should not remove sessions that are within timeout", async () => {

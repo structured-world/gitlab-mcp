@@ -8,6 +8,9 @@ import { logInfo, logWarn, logError, logDebug } from "./logger";
 /** Default session idle timeout: 30 minutes */
 const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
 
+/** Well-known session ID for stdio transport — exempt from idle timeout */
+export const STDIO_SESSION_ID = "stdio";
+
 interface ManagedSession {
   server: Server;
   sessionId: string;
@@ -159,6 +162,10 @@ export class SessionManager {
     const stale: string[] = [];
 
     for (const [sessionId, session] of this.sessions) {
+      // stdio is a single-client, single-process transport whose lifetime
+      // is owned by the client — it must never be evicted by idle timeout.
+      if (sessionId === STDIO_SESSION_ID) continue;
+
       if (now - session.lastActivityAt > this.sessionTimeoutMs) {
         stale.push(sessionId);
       }

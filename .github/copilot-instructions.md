@@ -14,19 +14,19 @@ This is a GitLab MCP (Model Context Protocol) server that provides GitLab API ac
 
 ### Required Commit Types
 
-| Type | Description | Version Bump |
-|------|-------------|--------------|
-| `feat` | New feature or capability | Minor |
-| `fix` | Bug fix | Patch |
-| `docs` | Documentation only | None |
-| `style` | Code style/formatting | None |
-| `refactor` | Code restructuring | Patch |
-| `perf` | Performance improvement | Patch |
-| `test` | Adding/fixing tests | None |
-| `chore` | Maintenance tasks | None |
-| `ci` | CI/CD changes | None |
-| `build` | Build system changes | None |
-| `revert` | Revert previous commit | Patch |
+| Type       | Description               | Version Bump |
+| ---------- | ------------------------- | ------------ |
+| `feat`     | New feature or capability | Minor        |
+| `fix`      | Bug fix                   | Patch        |
+| `docs`     | Documentation only        | None         |
+| `style`    | Code style/formatting     | None         |
+| `refactor` | Code restructuring        | Patch        |
+| `perf`     | Performance improvement   | Patch        |
+| `test`     | Adding/fixing tests       | None         |
+| `chore`    | Maintenance tasks         | None         |
+| `ci`       | CI/CD changes             | None         |
+| `build`    | Build system changes      | None         |
+| `revert`   | Revert previous commit    | Patch        |
 
 ### Commit Message Guidelines
 

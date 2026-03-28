@@ -5,9 +5,29 @@ import prettierPlugin from "eslint-plugin-prettier";
 
 export default [
   {
-    ignores: ["dist/**", "generated/**", "node_modules/**", "docs/**", "**/*.js"],
+    ignores: ["dist/**", "generated/**", "node_modules/**", "docs/**", "tests/manual/**"],
   },
   js.configs.recommended,
+  {
+    files: ["**/*.js"],
+    ignores: ["tests/manual/**"],
+    languageOptions: {
+      sourceType: "commonjs",
+      globals: {
+        __dirname: "readonly",
+        __filename: "readonly",
+        module: "readonly",
+        require: "readonly",
+        process: "readonly",
+        console: "readonly",
+        setTimeout: "readonly",
+        fetch: "readonly",
+      },
+    },
+    rules: {
+      "no-unused-vars": ["error", { argsIgnorePattern: "^_", varsIgnorePattern: "^_" }],
+    },
+  },
   {
     files: ["**/*.ts"],
     ignores: ["**/__tests__/**/*.ts", "**/*.test.ts", "**/*.spec.ts", "tests/**/*.ts"],

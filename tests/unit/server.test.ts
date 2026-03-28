@@ -143,7 +143,7 @@ jest.mock("../../src/oauth/index", () => ({
 // Mock session manager
 jest.mock("../../src/session-manager", () => ({
   getSessionManager: jest.fn(() => mockSessionManager),
-  STDIO_SESSION_ID: "stdio",
+  STDIO_SESSION_ID: "__TEST_STDIO__",
 }));
 
 import type { Server as _Server } from "@modelcontextprotocol/sdk/server/index.js";

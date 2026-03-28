@@ -284,6 +284,10 @@ describe('SessionManager', () => {
 
       // Only stdio should survive
       expect(manager.activeSessionCount).toBe(1);
+
+      // Verify it's actually the stdio session that survived
+      await manager.removeSession(STDIO_SESSION_ID);
+      expect(manager.activeSessionCount).toBe(0);
     });
 
     it('should not remove sessions that are within timeout', async () => {

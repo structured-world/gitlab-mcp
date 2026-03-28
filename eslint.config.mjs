@@ -10,7 +10,6 @@ export default [
   js.configs.recommended,
   {
     files: ['**/*.js'],
-    ignores: ['tests/manual/**'],
     languageOptions: {
       sourceType: 'commonjs',
       globals: {

@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { flexibleBoolean, requiredId, paginationFields } from "../utils";
+import { z } from 'zod';
+import { flexibleBoolean, requiredId, paginationFields } from '../utils';
 
 // ============================================================================
 // Response schemas for GitLab file API responses
@@ -21,7 +21,7 @@ export const GitLabFileContentSchema = z.object({
 export const GitLabDirectoryContentSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.enum(["tree", "blob"]),
+  type: z.enum(['tree', 'blob']),
   path: z.string(),
   mode: z.string(),
 });
@@ -36,7 +36,7 @@ export const GitLabCreateUpdateFileResponseSchema = z.object({
 export const GitLabTreeSchema = z.object({
   id: z.string(),
   name: z.string(),
-  type: z.enum(["tree", "blob"]),
+  type: z.enum(['tree', 'blob']),
   path: z.string(),
   mode: z.string(),
 });
@@ -49,37 +49,37 @@ export const GitLabTreeSchema = z.object({
 // ============================================================================
 
 // --- Shared fields ---
-const projectIdField = requiredId.describe("Project ID or URL-encoded path");
-const refField = z.string().optional().describe("Branch, tag, or commit SHA");
+const projectIdField = requiredId.describe('Project ID or URL-encoded path');
+const refField = z.string().optional().describe('Branch, tag, or commit SHA');
 
 // --- Action: tree ---
 const TreeActionSchema = z.object({
-  action: z.literal("tree").describe("List files and folders in a directory"),
+  action: z.literal('tree').describe('List files and folders in a directory'),
   project_id: projectIdField,
   ref: refField,
-  path: z.string().optional().describe("Directory path to list"),
-  recursive: flexibleBoolean.optional().describe("Include nested directories"),
+  path: z.string().optional().describe('Directory path to list'),
+  recursive: flexibleBoolean.optional().describe('Include nested directories'),
   ...paginationFields(),
 });
 
 // --- Action: content ---
 const ContentActionSchema = z.object({
-  action: z.literal("content").describe("Read file contents"),
+  action: z.literal('content').describe('Read file contents'),
   project_id: projectIdField,
   ref: refField,
-  file_path: z.string().describe("Path to the file to read"),
+  file_path: z.string().describe('Path to the file to read'),
 });
 
 // --- Action: download_attachment ---
 const DownloadAttachmentActionSchema = z.object({
-  action: z.literal("download_attachment").describe("Download a file attachment from issues/MRs"),
+  action: z.literal('download_attachment').describe('Download a file attachment from issues/MRs'),
   project_id: projectIdField,
-  secret: z.string().describe("Security token from the attachment URL."),
-  filename: z.string().describe("Original filename of the attachment."),
+  secret: z.string().describe('Security token from the attachment URL.'),
+  filename: z.string().describe('Original filename of the attachment.'),
 });
 
 // --- Discriminated union combining all actions ---
-export const BrowseFilesSchema = z.discriminatedUnion("action", [
+export const BrowseFilesSchema = z.discriminatedUnion('action', [
   TreeActionSchema,
   ContentActionSchema,
   DownloadAttachmentActionSchema,

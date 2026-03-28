@@ -1,16 +1,16 @@
-import * as path from "path";
-import * as fs from "fs";
-import { z } from "zod";
-import type { Request } from "express";
+import * as path from 'path';
+import * as fs from 'fs';
+import { z } from 'zod';
+import type { Request } from 'express';
 
 // Get package.json path
-const packageJsonPath = path.resolve(process.cwd(), "package.json");
+const packageJsonPath = path.resolve(process.cwd(), 'package.json');
 
 // Environment variables
 export const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
 export const GITLAB_AUTH_COOKIE_PATH = process.env.GITLAB_AUTH_COOKIE_PATH;
-export const IS_OLD = process.env.GITLAB_IS_OLD === "true";
-export const GITLAB_READ_ONLY_MODE = process.env.GITLAB_READ_ONLY_MODE === "true";
+export const IS_OLD = process.env.GITLAB_IS_OLD === 'true';
+export const GITLAB_READ_ONLY_MODE = process.env.GITLAB_READ_ONLY_MODE === 'true';
 
 /**
  * Whether to include "Related:" cross-references in tool descriptions.
@@ -18,7 +18,7 @@ export const GITLAB_READ_ONLY_MODE = process.env.GITLAB_READ_ONLY_MODE === "true
  * When false, "Related:" sections are stripped from all descriptions.
  * Dynamic resolution (stripping refs to unavailable tools) still applies when enabled.
  */
-export const GITLAB_CROSS_REFS = process.env.GITLAB_CROSS_REFS !== "false";
+export const GITLAB_CROSS_REFS = process.env.GITLAB_CROSS_REFS !== 'false';
 
 export const GITLAB_DENIED_TOOLS_REGEX = process.env.GITLAB_DENIED_TOOLS_REGEX
   ? new RegExp(process.env.GITLAB_DENIED_TOOLS_REGEX)
@@ -38,12 +38,12 @@ function parseDeniedActions(envValue?: string): Map<string, Set<string>> {
   }
 
   const pairs = envValue
-    .split(",")
-    .map(s => s.trim())
+    .split(',')
+    .map((s) => s.trim())
     .filter(Boolean);
 
   for (const pair of pairs) {
-    const colonIndex = pair.indexOf(":");
+    const colonIndex = pair.indexOf(':');
     if (colonIndex === -1) {
       // Invalid format, skip
       continue;
@@ -72,14 +72,14 @@ export const GITLAB_DENIED_ACTIONS = parseDeniedActions(process.env.GITLAB_DENIE
 // Logging format configuration - type imported from logging module to avoid duplication
 // - 'condensed' (default): Single-line access log per request with stack aggregation
 // - 'verbose': Traditional multi-line logging (existing behavior)
-import type { LogFormat } from "./logging/types.js";
+import type { LogFormat } from './logging/types.js';
 
 function parseLogFormat(value?: string): LogFormat {
   const format = value?.toLowerCase();
-  if (format === "verbose") {
-    return "verbose";
+  if (format === 'verbose') {
+    return 'verbose';
   }
-  return "condensed"; // Default - single-line condensed access logs
+  return 'condensed'; // Default - single-line condensed access logs
 }
 
 export const LOG_FORMAT: LogFormat = parseLogFormat(process.env.LOG_FORMAT);
@@ -96,27 +96,27 @@ const LogFilterRuleSchema = z
     method: z
       .string()
       .optional()
-      .describe("HTTP method to match (exact, case-insensitive). If omitted, matches any method."),
+      .describe('HTTP method to match (exact, case-insensitive). If omitted, matches any method.'),
     path: z
       .string()
       .optional()
       .describe(
-        "Request path to match. Exact match, or prefix match if ends with '*'. If omitted, matches any path."
+        "Request path to match. Exact match, or prefix match if ends with '*'. If omitted, matches any path.",
       ),
     userAgent: z
       .string()
       .optional()
       .describe(
-        "Substring to match in User-Agent header (case-insensitive). If omitted, matches any User-Agent."
+        'Substring to match in User-Agent header (case-insensitive). If omitted, matches any User-Agent.',
       ),
   })
-  .describe("Filter rule for skipping access log entries. All specified conditions must match.");
+  .describe('Filter rule for skipping access log entries. All specified conditions must match.');
 
 /**
  * Schema for LOG_FILTER environment variable.
  * JSON array of filter rules.
  */
-const LogFilterSchema = z.array(LogFilterRuleSchema).describe("Array of log filter rules");
+const LogFilterSchema = z.array(LogFilterRuleSchema).describe('Array of log filter rules');
 
 /**
  * Parsed log filter rule
@@ -137,7 +137,7 @@ export interface LogFilterRule {
  * @returns Array of parsed filter rules, empty array if not set or invalid
  */
 function parseLogFilter(envValue?: string): LogFilterRule[] {
-  if (!envValue || envValue.trim() === "") {
+  if (!envValue || envValue.trim() === '') {
     return [];
   }
 
@@ -145,7 +145,7 @@ function parseLogFilter(envValue?: string): LogFilterRule[] {
     const parsed: unknown = JSON.parse(envValue);
     const validated = LogFilterSchema.parse(parsed);
 
-    return validated.map(rule => {
+    return validated.map((rule) => {
       const result: LogFilterRule = {};
 
       if (rule.method) {
@@ -153,7 +153,7 @@ function parseLogFilter(envValue?: string): LogFilterRule[] {
       }
 
       if (rule.path) {
-        if (rule.path.endsWith("*")) {
+        if (rule.path.endsWith('*')) {
           result.path = rule.path.slice(0, -1); // Remove trailing *
           result.pathIsPrefix = true;
         } else {
@@ -171,7 +171,7 @@ function parseLogFilter(envValue?: string): LogFilterRule[] {
   } catch (error) {
     // Log warning at startup for invalid JSON/schema
     console.warn(
-      `[gitlab-mcp] Invalid LOG_FILTER format, logging all requests. Error: ${error instanceof Error ? error.message : String(error)}`
+      `[gitlab-mcp] Invalid LOG_FILTER format, logging all requests. Error: ${error instanceof Error ? error.message : String(error)}`,
     );
     return [];
   }
@@ -182,7 +182,7 @@ function parseLogFilter(envValue?: string): LogFilterRule[] {
  * Claude Code polls GET / every second to check MCP server availability.
  */
 const DEFAULT_LOG_FILTER: LogFilterRule[] = [
-  { method: "get", path: "/", pathIsPrefix: false, userAgent: "claude-code" },
+  { method: 'get', path: '/', pathIsPrefix: false, userAgent: 'claude-code' },
 ];
 
 /**
@@ -211,9 +211,9 @@ export function shouldSkipAccessLog(method: string, path: string, userAgent?: st
   }
 
   const methodLower = method.toLowerCase();
-  const userAgentLower = userAgent?.toLowerCase() ?? "";
+  const userAgentLower = userAgent?.toLowerCase() ?? '';
 
-  return LOG_FILTER.some(rule => {
+  return LOG_FILTER.some((rule) => {
     // Check method (if specified)
     if (rule.method && rule.method !== methodLower) {
       return false;
@@ -250,7 +250,7 @@ export function shouldSkipAccessLog(method: string, path: string, userAgent?: st
  * @returns true if request should be skipped from logging
  */
 export function shouldSkipAccessLogRequest(req: Request): boolean {
-  return shouldSkipAccessLog(req.method, req.path, req.headers["user-agent"]);
+  return shouldSkipAccessLog(req.method, req.path, req.headers['user-agent']);
 }
 
 // Schema mode configuration
@@ -259,17 +259,17 @@ export function shouldSkipAccessLogRequest(req: Request): boolean {
 // - 'auto': Detect schema mode from clientInfo during MCP initialize
 //   NOTE: 'auto' is only reliable for stdio mode (single client). For HTTP/SSE with multiple
 //   concurrent sessions, use explicit 'flat' or 'discriminated' mode instead.
-export type SchemaMode = "flat" | "discriminated" | "auto";
+export type SchemaMode = 'flat' | 'discriminated' | 'auto';
 
 function parseSchemaMode(value?: string): SchemaMode {
   const mode = value?.toLowerCase();
-  if (mode === "discriminated") {
-    return "discriminated";
+  if (mode === 'discriminated') {
+    return 'discriminated';
   }
-  if (mode === "auto") {
-    return "auto";
+  if (mode === 'auto') {
+    return 'auto';
   }
-  return "flat"; // Default - best compatibility with current AI clients
+  return 'flat'; // Default - best compatibility with current AI clients
 }
 
 export const GITLAB_SCHEMA_MODE: SchemaMode = parseSchemaMode(process.env.GITLAB_SCHEMA_MODE);
@@ -284,52 +284,52 @@ export const GITLAB_SCHEMA_MODE: SchemaMode = parseSchemaMode(process.env.GITLAB
  * @param clientName - Client name from clientInfo (e.g., "claude-code", "mcp-inspector")
  * @returns Effective schema mode for this client
  */
-export function detectSchemaMode(clientName?: string): "flat" | "discriminated" {
-  const name = clientName?.toLowerCase() ?? "";
+export function detectSchemaMode(clientName?: string): 'flat' | 'discriminated' {
+  const name = clientName?.toLowerCase() ?? '';
 
   // Known clients that need flat schemas (don't support oneOf well)
   // Use exact match or prefix to avoid false positives (e.g., "my-claude-wrapper")
   if (
-    name === "claude" ||
-    name.startsWith("claude-") ||
-    name === "cursor" ||
-    name.startsWith("cursor-")
+    name === 'claude' ||
+    name.startsWith('claude-') ||
+    name === 'cursor' ||
+    name.startsWith('cursor-')
   ) {
-    return "flat";
+    return 'flat';
   }
 
   // Known clients that support discriminated unions
   // Use same pattern as above: exact match or dash-prefix
   if (
-    name === "inspector" ||
-    name.startsWith("inspector-") ||
-    name === "mcp-inspector" ||
-    name.startsWith("mcp-inspector-")
+    name === 'inspector' ||
+    name.startsWith('inspector-') ||
+    name === 'mcp-inspector' ||
+    name.startsWith('mcp-inspector-')
   ) {
-    return "discriminated";
+    return 'discriminated';
   }
 
   // Safe default for unknown clients
-  return "flat";
+  return 'flat';
 }
 
-export const USE_GITLAB_WIKI = process.env.USE_GITLAB_WIKI !== "false";
-export const USE_MILESTONE = process.env.USE_MILESTONE !== "false";
-export const USE_PIPELINE = process.env.USE_PIPELINE !== "false";
-export const USE_WORKITEMS = process.env.USE_WORKITEMS !== "false";
-export const USE_LABELS = process.env.USE_LABELS !== "false";
-export const USE_MRS = process.env.USE_MRS !== "false";
-export const USE_FILES = process.env.USE_FILES !== "false";
-export const USE_VARIABLES = process.env.USE_VARIABLES !== "false";
-export const USE_SNIPPETS = process.env.USE_SNIPPETS !== "false";
-export const USE_WEBHOOKS = process.env.USE_WEBHOOKS !== "false";
-export const USE_INTEGRATIONS = process.env.USE_INTEGRATIONS !== "false";
-export const USE_RELEASES = process.env.USE_RELEASES !== "false";
-export const USE_REFS = process.env.USE_REFS !== "false";
-export const USE_MEMBERS = process.env.USE_MEMBERS !== "false";
-export const USE_SEARCH = process.env.USE_SEARCH !== "false";
-export const USE_ITERATIONS = process.env.USE_ITERATIONS !== "false";
-export const HOST = process.env.HOST ?? "127.0.0.1";
+export const USE_GITLAB_WIKI = process.env.USE_GITLAB_WIKI !== 'false';
+export const USE_MILESTONE = process.env.USE_MILESTONE !== 'false';
+export const USE_PIPELINE = process.env.USE_PIPELINE !== 'false';
+export const USE_WORKITEMS = process.env.USE_WORKITEMS !== 'false';
+export const USE_LABELS = process.env.USE_LABELS !== 'false';
+export const USE_MRS = process.env.USE_MRS !== 'false';
+export const USE_FILES = process.env.USE_FILES !== 'false';
+export const USE_VARIABLES = process.env.USE_VARIABLES !== 'false';
+export const USE_SNIPPETS = process.env.USE_SNIPPETS !== 'false';
+export const USE_WEBHOOKS = process.env.USE_WEBHOOKS !== 'false';
+export const USE_INTEGRATIONS = process.env.USE_INTEGRATIONS !== 'false';
+export const USE_RELEASES = process.env.USE_RELEASES !== 'false';
+export const USE_REFS = process.env.USE_REFS !== 'false';
+export const USE_MEMBERS = process.env.USE_MEMBERS !== 'false';
+export const USE_SEARCH = process.env.USE_SEARCH !== 'false';
+export const USE_ITERATIONS = process.env.USE_ITERATIONS !== 'false';
+export const HOST = process.env.HOST ?? '127.0.0.1';
 export const PORT = process.env.PORT ?? 3002;
 
 // TLS/SSL configuration for direct HTTPS termination
@@ -345,7 +345,7 @@ export const TRUST_PROXY = process.env.TRUST_PROXY;
 // SSE heartbeat interval (in milliseconds)
 // Sends `: ping\n\n` comments to keep SSE connections alive through proxies (Cloudflare, Envoy, etc.)
 // Default 30s — well under Cloudflare's ~100-125s idle timeout
-const parsedHeartbeatMs = parseInt(process.env.GITLAB_SSE_HEARTBEAT_MS ?? "30000", 10);
+const parsedHeartbeatMs = parseInt(process.env.GITLAB_SSE_HEARTBEAT_MS ?? '30000', 10);
 export const SSE_HEARTBEAT_MS =
   Number.isFinite(parsedHeartbeatMs) && parsedHeartbeatMs > 0 ? parsedHeartbeatMs : 30000;
 
@@ -353,8 +353,8 @@ export const SSE_HEARTBEAT_MS =
 // Must be higher than any upstream proxy timeout (Cloudflare max is 600s for Enterprise)
 // Default 620s ensures the Node.js server doesn't close connections before the proxy does
 const parsedKeepAliveTimeout = parseInt(
-  process.env.GITLAB_HTTP_KEEPALIVE_TIMEOUT_MS ?? "620000",
-  10
+  process.env.GITLAB_HTTP_KEEPALIVE_TIMEOUT_MS ?? '620000',
+  10,
 );
 export const HTTP_KEEPALIVE_TIMEOUT_MS =
   Number.isFinite(parsedKeepAliveTimeout) && parsedKeepAliveTimeout > 0
@@ -365,14 +365,14 @@ export const HTTP_KEEPALIVE_TIMEOUT_MS =
 // Each phase of an HTTP request has its own timeout to prevent different types of hangs.
 
 // TCP connect timeout (default: 2s)
-const parsedConnectTimeoutMs = parseInt(process.env.GITLAB_API_CONNECT_TIMEOUT_MS ?? "2000", 10);
+const parsedConnectTimeoutMs = parseInt(process.env.GITLAB_API_CONNECT_TIMEOUT_MS ?? '2000', 10);
 export const CONNECT_TIMEOUT_MS =
   Number.isFinite(parsedConnectTimeoutMs) && parsedConnectTimeoutMs > 0
     ? parsedConnectTimeoutMs
     : 2000;
 
 // Response headers timeout (default: 10s) — time to first response byte after connect
-const parsedHeadersTimeoutMs = parseInt(process.env.GITLAB_API_HEADERS_TIMEOUT_MS ?? "10000", 10);
+const parsedHeadersTimeoutMs = parseInt(process.env.GITLAB_API_HEADERS_TIMEOUT_MS ?? '10000', 10);
 export const HEADERS_TIMEOUT_MS =
   Number.isFinite(parsedHeadersTimeoutMs) && parsedHeadersTimeoutMs > 0
     ? parsedHeadersTimeoutMs
@@ -380,12 +380,12 @@ export const HEADERS_TIMEOUT_MS =
 
 // Response body timeout (default: 30s) — time to receive full body after headers
 // Larger default for big responses (pipeline logs, large diffs)
-const parsedBodyTimeoutMs = parseInt(process.env.GITLAB_API_BODY_TIMEOUT_MS ?? "30000", 10);
+const parsedBodyTimeoutMs = parseInt(process.env.GITLAB_API_BODY_TIMEOUT_MS ?? '30000', 10);
 export const BODY_TIMEOUT_MS =
   Number.isFinite(parsedBodyTimeoutMs) && parsedBodyTimeoutMs > 0 ? parsedBodyTimeoutMs : 30000;
 
 // Tool handler timeout (default: 120s) — total time for entire tool execution including retries
-const parsedHandlerTimeoutMs = parseInt(process.env.GITLAB_TOOL_TIMEOUT_MS ?? "120000", 10);
+const parsedHandlerTimeoutMs = parseInt(process.env.GITLAB_TOOL_TIMEOUT_MS ?? '120000', 10);
 export const HANDLER_TIMEOUT_MS =
   Number.isFinite(parsedHandlerTimeoutMs) && parsedHandlerTimeoutMs > 0
     ? parsedHandlerTimeoutMs
@@ -393,7 +393,7 @@ export const HANDLER_TIMEOUT_MS =
 
 // === Connection pool configuration ===
 // Max HTTP connections per GitLab instance (default: 25, up from 10)
-const parsedPoolMaxConnections = parseInt(process.env.GITLAB_POOL_MAX_CONNECTIONS ?? "25", 10);
+const parsedPoolMaxConnections = parseInt(process.env.GITLAB_POOL_MAX_CONNECTIONS ?? '25', 10);
 export const POOL_MAX_CONNECTIONS =
   Number.isFinite(parsedPoolMaxConnections) && parsedPoolMaxConnections > 0
     ? parsedPoolMaxConnections
@@ -401,38 +401,38 @@ export const POOL_MAX_CONNECTIONS =
 
 // Retry configuration for idempotent operations (GET/HEAD/OPTIONS requests by default)
 // Retries on: timeouts, network errors, 5xx server errors, 429 rate limits
-export const API_RETRY_ENABLED = process.env.GITLAB_API_RETRY_ENABLED !== "false";
+export const API_RETRY_ENABLED = process.env.GITLAB_API_RETRY_ENABLED !== 'false';
 
-const parsedMaxAttempts = parseInt(process.env.GITLAB_API_RETRY_MAX_ATTEMPTS ?? "3", 10);
+const parsedMaxAttempts = parseInt(process.env.GITLAB_API_RETRY_MAX_ATTEMPTS ?? '3', 10);
 export const API_RETRY_MAX_ATTEMPTS =
   Number.isFinite(parsedMaxAttempts) && parsedMaxAttempts >= 0 ? parsedMaxAttempts : 3;
 
-const parsedBaseDelay = parseInt(process.env.GITLAB_API_RETRY_BASE_DELAY_MS ?? "1000", 10);
+const parsedBaseDelay = parseInt(process.env.GITLAB_API_RETRY_BASE_DELAY_MS ?? '1000', 10);
 export const API_RETRY_BASE_DELAY_MS =
   Number.isFinite(parsedBaseDelay) && parsedBaseDelay > 0 ? parsedBaseDelay : 1000;
 
-const parsedMaxDelay = parseInt(process.env.GITLAB_API_RETRY_MAX_DELAY_MS ?? "4000", 10);
+const parsedMaxDelay = parseInt(process.env.GITLAB_API_RETRY_MAX_DELAY_MS ?? '4000', 10);
 export const API_RETRY_MAX_DELAY_MS =
   Number.isFinite(parsedMaxDelay) && parsedMaxDelay > 0 ? parsedMaxDelay : 4000;
 
 // Rate limiting configuration
 // Per-IP rate limiting (for anonymous requests) - enabled by default
-export const RATE_LIMIT_IP_ENABLED = process.env.RATE_LIMIT_IP_ENABLED !== "false";
-export const RATE_LIMIT_IP_WINDOW_MS = parseInt(process.env.RATE_LIMIT_IP_WINDOW_MS ?? "60000", 10); // 1 minute
+export const RATE_LIMIT_IP_ENABLED = process.env.RATE_LIMIT_IP_ENABLED !== 'false';
+export const RATE_LIMIT_IP_WINDOW_MS = parseInt(process.env.RATE_LIMIT_IP_WINDOW_MS ?? '60000', 10); // 1 minute
 export const RATE_LIMIT_IP_MAX_REQUESTS = parseInt(
-  process.env.RATE_LIMIT_IP_MAX_REQUESTS ?? "100",
-  10
+  process.env.RATE_LIMIT_IP_MAX_REQUESTS ?? '100',
+  10,
 );
 
 // Per-session rate limiting (for authenticated requests) - disabled by default
-export const RATE_LIMIT_SESSION_ENABLED = process.env.RATE_LIMIT_SESSION_ENABLED === "true";
+export const RATE_LIMIT_SESSION_ENABLED = process.env.RATE_LIMIT_SESSION_ENABLED === 'true';
 export const RATE_LIMIT_SESSION_WINDOW_MS = parseInt(
-  process.env.RATE_LIMIT_SESSION_WINDOW_MS ?? "60000",
-  10
+  process.env.RATE_LIMIT_SESSION_WINDOW_MS ?? '60000',
+  10,
 );
 export const RATE_LIMIT_SESSION_MAX_REQUESTS = parseInt(
-  process.env.RATE_LIMIT_SESSION_MAX_REQUESTS ?? "300",
-  10
+  process.env.RATE_LIMIT_SESSION_MAX_REQUESTS ?? '300',
+  10,
 );
 
 // Transport mode selection:
@@ -440,12 +440,12 @@ export const RATE_LIMIT_SESSION_MAX_REQUESTS = parseInt(
 // - If no PORT env var: stdio mode for direct MCP communication
 
 // TLS/SSL configuration
-export const SKIP_TLS_VERIFY = process.env.SKIP_TLS_VERIFY === "true";
+export const SKIP_TLS_VERIFY = process.env.SKIP_TLS_VERIFY === 'true';
 
 // Dashboard configuration
 // When enabled, GET / returns health dashboard (HTML or JSON based on Accept header)
 // When disabled, GET / is handled by MCP StreamableHTTP transport
-export const DASHBOARD_ENABLED = process.env.DASHBOARD_ENABLED !== "false";
+export const DASHBOARD_ENABLED = process.env.DASHBOARD_ENABLED !== 'false';
 
 // Proxy configuration
 export const HTTP_PROXY = process.env.HTTP_PROXY;
@@ -456,26 +456,26 @@ export const GITLAB_CA_CERT_PATH = process.env.GITLAB_CA_CERT_PATH;
 // GitLab base URL configuration (without /api/v4)
 function normalizeGitLabBaseUrl(url?: string): string {
   if (!url) {
-    return "https://gitlab.com";
+    return 'https://gitlab.com';
   }
 
-  if (url.endsWith("/")) {
+  if (url.endsWith('/')) {
     url = url.slice(0, -1);
   }
 
   // Remove /api/v4 if user accidentally added it
-  if (url.endsWith("/api/v4")) {
+  if (url.endsWith('/api/v4')) {
     url = url.slice(0, -7);
   }
 
   return url;
 }
 
-export const GITLAB_BASE_URL = normalizeGitLabBaseUrl(process.env.GITLAB_API_URL ?? "");
+export const GITLAB_BASE_URL = normalizeGitLabBaseUrl(process.env.GITLAB_API_URL ?? '');
 export const GITLAB_API_URL = `${GITLAB_BASE_URL}/api/v4`;
 export const GITLAB_PROJECT_ID = process.env.GITLAB_PROJECT_ID;
 export const GITLAB_ALLOWED_PROJECT_IDS =
-  process.env.GITLAB_ALLOWED_PROJECT_IDS?.split(",").map(id => id.trim()) ?? [];
+  process.env.GITLAB_ALLOWED_PROJECT_IDS?.split(',').map((id) => id.trim()) ?? [];
 
 export function getEffectiveProjectId(projectId: string): string {
   if (GITLAB_PROJECT_ID) {
@@ -485,7 +485,7 @@ export function getEffectiveProjectId(projectId: string): string {
   if (GITLAB_ALLOWED_PROJECT_IDS.length > 0) {
     if (!GITLAB_ALLOWED_PROJECT_IDS.includes(projectId)) {
       throw new Error(
-        `Project ID ${projectId} is not allowed. Allowed project IDs: ${GITLAB_ALLOWED_PROJECT_IDS.join(", ")}`
+        `Project ID ${projectId} is not allowed. Allowed project IDs: ${GITLAB_ALLOWED_PROJECT_IDS.join(', ')}`,
       );
     }
   }
@@ -494,11 +494,11 @@ export function getEffectiveProjectId(projectId: string): string {
 }
 
 // Package info
-let packageName = "gitlab-mcp";
-let packageVersion = "unknown";
+let packageName = 'gitlab-mcp';
+let packageVersion = 'unknown';
 
 try {
-  const packageInfo = JSON.parse(fs.readFileSync(packageJsonPath, "utf8")) as {
+  const packageInfo = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8')) as {
     name?: string;
     version?: string;
   };
@@ -517,7 +517,7 @@ export { packageName, packageVersion };
  */
 export function getToolDescriptionOverrides(): Map<string, string> {
   const overrides = new Map<string, string>();
-  const prefix = "GITLAB_TOOL_";
+  const prefix = 'GITLAB_TOOL_';
 
   // Scan all environment variables for tool description overrides
   for (const [key, value] of Object.entries(process.env)) {
@@ -541,7 +541,7 @@ export function getToolDescriptionOverrides(): Map<string, string> {
  */
 export function getActionDescriptionOverrides(): Map<string, string> {
   const overrides = new Map<string, string>();
-  const prefix = "GITLAB_ACTION_";
+  const prefix = 'GITLAB_ACTION_';
 
   for (const [key, value] of Object.entries(process.env)) {
     if (key.startsWith(prefix) && value) {
@@ -551,7 +551,7 @@ export function getActionDescriptionOverrides(): Map<string, string> {
 
       // Find the last underscore to split tool from action
       // This handles tool names with underscores (e.g., manage_milestone)
-      const lastUnderscoreIndex = rest.lastIndexOf("_");
+      const lastUnderscoreIndex = rest.lastIndexOf('_');
       if (lastUnderscoreIndex === -1) {
         continue;
       }
@@ -578,7 +578,7 @@ export function getActionDescriptionOverrides(): Map<string, string> {
  */
 export function getParamDescriptionOverrides(): Map<string, string> {
   const overrides = new Map<string, string>();
-  const prefix = "GITLAB_PARAM_";
+  const prefix = 'GITLAB_PARAM_';
 
   for (const [key, value] of Object.entries(process.env)) {
     if (key.startsWith(prefix) && value) {
@@ -587,7 +587,7 @@ export function getParamDescriptionOverrides(): Map<string, string> {
       const rest = key.substring(prefix.length).toLowerCase();
 
       // Find the last underscore to split tool from param
-      const lastUnderscoreIndex = rest.lastIndexOf("_");
+      const lastUnderscoreIndex = rest.lastIndexOf('_');
       if (lastUnderscoreIndex === -1) {
         continue;
       }
@@ -631,5 +631,5 @@ export function getAllowedActions(toolName: string, allActions: string[]): strin
   if (!deniedActions || deniedActions.size === 0) {
     return allActions;
   }
-  return allActions.filter(action => !deniedActions.has(action.toLowerCase()));
+  return allActions.filter((action) => !deniedActions.has(action.toLowerCase()));
 }

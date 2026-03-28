@@ -9,15 +9,15 @@
  * - info: Show detailed instance information
  */
 
-import * as p from "@clack/prompts";
-import { InstanceRegistry } from "../../services/InstanceRegistry.js";
-import { loadInstancesConfig, generateSampleConfig } from "../../config/instances-loader.js";
-import { GitLabInstanceConfig } from "../../config/instances-schema.js";
+import * as p from '@clack/prompts';
+import { InstanceRegistry } from '../../services/InstanceRegistry.js';
+import { loadInstancesConfig, generateSampleConfig } from '../../config/instances-loader.js';
+import { GitLabInstanceConfig } from '../../config/instances-schema.js';
 
 /**
  * Instance subcommand type
  */
-export type InstanceSubcommand = "list" | "add" | "remove" | "test" | "info" | "sample-config";
+export type InstanceSubcommand = 'list' | 'add' | 'remove' | 'test' | 'info' | 'sample-config';
 
 /**
  * Parse instance subcommand from CLI args
@@ -30,12 +30,12 @@ export function parseInstanceSubcommand(args: string[]): {
   const subArgs = args.slice(1);
 
   const validSubcommands: InstanceSubcommand[] = [
-    "list",
-    "add",
-    "remove",
-    "test",
-    "info",
-    "sample-config",
+    'list',
+    'add',
+    'remove',
+    'test',
+    'info',
+    'sample-config',
   ];
 
   if (subcommand && !validSubcommands.includes(subcommand)) {
@@ -57,23 +57,23 @@ export async function runInstanceCommand(args: string[]): Promise<void> {
   }
 
   switch (subcommand) {
-    case "list":
+    case 'list':
       await listInstances();
       break;
-    case "add":
+    case 'add':
       await addInstance();
       break;
-    case "remove":
+    case 'remove':
       await removeInstance(subArgs[0]);
       break;
-    case "test":
+    case 'test':
       await testInstance(subArgs[0]);
       break;
-    case "info":
+    case 'info':
       await showInstanceInfo(subArgs[0]);
       break;
-    case "sample-config":
-      showSampleConfig(subArgs[0] as "yaml" | "json" | undefined);
+    case 'sample-config':
+      showSampleConfig(subArgs[0] as 'yaml' | 'json' | undefined);
       break;
   }
 }
@@ -119,17 +119,17 @@ async function listInstances(): Promise<void> {
   console.log(`─`.repeat(60));
 
   if (config.instances.length === 0) {
-    console.log("No instances configured.");
+    console.log('No instances configured.');
     return;
   }
 
   for (const instance of config.instances) {
-    const label = instance.label ? ` (${instance.label})` : "";
-    const oauth = instance.oauth ? " [OAuth]" : "";
+    const label = instance.label ? ` (${instance.label})` : '';
+    const oauth = instance.oauth ? ' [OAuth]' : '';
     const rateLimit = instance.rateLimit
       ? ` [Rate: ${instance.rateLimit.maxConcurrent} concurrent]`
-      : "";
-    const tls = instance.insecureSkipVerify ? " [TLS: skip]" : "";
+      : '';
+    const tls = instance.insecureSkipVerify ? ' [TLS: skip]' : '';
 
     console.log(`  ${instance.url}${label}${oauth}${rateLimit}${tls}`);
   }
@@ -141,72 +141,72 @@ async function listInstances(): Promise<void> {
  * Add a new instance interactively
  */
 async function addInstance(): Promise<void> {
-  p.intro("Add GitLab Instance");
+  p.intro('Add GitLab Instance');
 
   const url = await p.text({
-    message: "GitLab instance URL:",
-    placeholder: "https://gitlab.com",
-    validate: value => {
-      if (!value) return "URL is required";
+    message: 'GitLab instance URL:',
+    placeholder: 'https://gitlab.com',
+    validate: (value) => {
+      if (!value) return 'URL is required';
       try {
         new URL(value);
         return undefined;
       } catch {
-        return "Please enter a valid URL";
+        return 'Please enter a valid URL';
       }
     },
   });
 
   if (p.isCancel(url)) {
-    p.cancel("Cancelled");
+    p.cancel('Cancelled');
     return;
   }
 
   const label = await p.text({
-    message: "Label (optional):",
-    placeholder: "My GitLab",
+    message: 'Label (optional):',
+    placeholder: 'My GitLab',
   });
 
   if (p.isCancel(label)) {
-    p.cancel("Cancelled");
+    p.cancel('Cancelled');
     return;
   }
 
   const useOAuth = await p.confirm({
-    message: "Configure OAuth?",
+    message: 'Configure OAuth?',
     initialValue: false,
   });
 
   if (p.isCancel(useOAuth)) {
-    p.cancel("Cancelled");
+    p.cancel('Cancelled');
     return;
   }
 
-  let oauth: GitLabInstanceConfig["oauth"];
+  let oauth: GitLabInstanceConfig['oauth'];
   if (useOAuth) {
     const clientId = await p.text({
-      message: "OAuth Application ID:",
-      validate: value => (value ? undefined : "Required"),
+      message: 'OAuth Application ID:',
+      validate: (value) => (value ? undefined : 'Required'),
     });
 
     if (p.isCancel(clientId)) {
-      p.cancel("Cancelled");
+      p.cancel('Cancelled');
       return;
     }
 
     const clientSecret = await p.password({
-      message: "OAuth Secret (optional, for confidential apps):",
+      message: 'OAuth Secret (optional, for confidential apps):',
     });
 
     if (p.isCancel(clientSecret)) {
-      p.cancel("Cancelled");
+      p.cancel('Cancelled');
       return;
     }
 
     oauth = {
       clientId: clientId,
       clientSecret: clientSecret || undefined,
-      scopes: "api read_user",
+      scopes: 'api read_user',
     };
   }
 
@@ -233,17 +233,17 @@ async function addInstance(): Promise<void> {
     insecureSkipVerify: config.insecureSkipVerify,
     oauthConfigured: !!config.oauth,
   };
-  console.log("\nInstance Configuration:");
+  console.log('\nInstance Configuration:');
   // Safe: logConfigPreview contains no secrets (allowlist pattern above)
   console.log(JSON.stringify(logConfigPreview, null, 2));
 
   const confirmed = await p.confirm({
-    message: "Add this configuration?",
+    message: 'Add this configuration?',
     initialValue: true,
   });
 
   if (p.isCancel(confirmed) || !confirmed) {
-    p.cancel("Cancelled");
+    p.cancel('Cancelled');
     return;
   }
 
@@ -256,13 +256,13 @@ async function addInstance(): Promise<void> {
 Instance configured! To use it, add to your configuration:
 
 Environment variable:
-  GITLAB_INSTANCES="${config.url}${oauth ? `:${oauth.clientId}` : ""}"
+  GITLAB_INSTANCES="${config.url}${oauth ? `:${oauth.clientId}` : ''}"
 
 Or add to instances.yaml:
   instances:
     - url: ${config.url}
-      label: "${config.label ?? ""}"
-${oauth ? `      oauth:\n        clientId: "${oauth.clientId}"` : ""}
+      label: "${config.label ?? ''}"
+${oauth ? `      oauth:\n        clientId: "${oauth.clientId}"` : ''}
 `);
 }
 
@@ -271,14 +271,14 @@ ${oauth ? `      oauth:\n        clientId: "${oauth.clientId}"` : ""}
  */
 async function removeInstance(url?: string): Promise<void> {
   if (!url) {
-    console.log("Usage: instances remove <url>");
-    console.log("Example: instances remove https://gitlab.com");
+    console.log('Usage: instances remove <url>');
+    console.log('Example: instances remove https://gitlab.com');
     return;
   }
 
   // Note: In a real implementation, this would modify the config file
   console.log(`\nTo remove instance ${url}, edit your configuration file`);
-  console.log("and remove the corresponding entry from the instances array.");
+  console.log('and remove the corresponding entry from the instances array.');
 }
 
 /**
@@ -294,11 +294,11 @@ async function testInstance(url?: string): Promise<void> {
   const urls = url ? [url] : registry.getUrls();
 
   if (urls.length === 0) {
-    console.log("No instances to test.");
+    console.log('No instances to test.');
     return;
   }
 
-  console.log("\nTesting GitLab Instance Connections");
+  console.log('\nTesting GitLab Instance Connections');
   console.log(`─`.repeat(60));
 
   for (const instanceUrl of urls) {
@@ -308,14 +308,14 @@ async function testInstance(url?: string): Promise<void> {
       // Try to fetch version endpoint
       const versionUrl = `${instanceUrl}/api/v4/version`;
       const response = await fetch(versionUrl, {
-        headers: { Accept: "application/json" },
+        headers: { Accept: 'application/json' },
       });
 
       if (response.ok) {
         const data = (await response.json()) as { version?: string; revision?: string };
-        console.log(`✓ Connected (v${data.version ?? "unknown"})`);
+        console.log(`✓ Connected (v${data.version ?? 'unknown'})`);
       } else if (response.status === 401) {
-        console.log("✓ Reachable (authentication required)");
+        console.log('✓ Reachable (authentication required)');
       } else {
         console.log(`✗ Error: HTTP ${response.status}`);
       }
@@ -331,8 +331,8 @@ async function testInstance(url?: string): Promise<void> {
  */
 async function showInstanceInfo(url?: string): Promise<void> {
   if (!url) {
-    console.log("Usage: instances info <url>");
-    console.log("Example: instances info https://gitlab.com");
+    console.log('Usage: instances info <url>');
+    console.log('Example: instances info https://gitlab.com');
     return;
   }
 
@@ -356,25 +356,25 @@ async function showInstanceInfo(url?: string): Promise<void> {
   console.log(`\nInstance Information: ${url}`);
   console.log(`─`.repeat(60));
 
-  console.log("\nConfiguration:");
+  console.log('\nConfiguration:');
   console.log(`  URL: ${config.url}`);
-  console.log(`  Label: ${config.label ?? "(none)"}`);
-  console.log(`  OAuth: ${config.oauth ? "Enabled (client configured)" : "Disabled"}`);
-  console.log(`  TLS Verify: ${config.insecureSkipVerify ? "Disabled" : "Enabled"}`);
+  console.log(`  Label: ${config.label ?? '(none)'}`);
+  console.log(`  OAuth: ${config.oauth ? 'Enabled (client configured)' : 'Disabled'}`);
+  console.log(`  TLS Verify: ${config.insecureSkipVerify ? 'Disabled' : 'Enabled'}`);
 
   if (config.rateLimit) {
-    console.log("\nRate Limit Config:");
+    console.log('\nRate Limit Config:');
     console.log(`  Max Concurrent: ${config.rateLimit.maxConcurrent}`);
     console.log(`  Queue Size: ${config.rateLimit.queueSize}`);
     console.log(`  Queue Timeout: ${config.rateLimit.queueTimeout}ms`);
   }
 
-  console.log("\nRuntime State:");
+  console.log('\nRuntime State:');
   console.log(`  Connection: ${state.connectionStatus}`);
-  console.log(`  Last Health Check: ${state.lastHealthCheck?.toISOString() ?? "(never)"}`);
+  console.log(`  Last Health Check: ${state.lastHealthCheck?.toISOString() ?? '(never)'}`);
 
   if (metrics) {
-    console.log("\nRate Limit Metrics:");
+    console.log('\nRate Limit Metrics:');
     console.log(`  Active Requests: ${metrics.activeRequests}/${metrics.maxConcurrent}`);
     console.log(`  Queued: ${metrics.queuedRequests}/${metrics.queueSize}`);
     console.log(`  Total Requests: ${metrics.requestsTotal}`);
@@ -383,12 +383,12 @@ async function showInstanceInfo(url?: string): Promise<void> {
   }
 
   if (introspection) {
-    console.log("\nIntrospection Cache:");
+    console.log('\nIntrospection Cache:');
     console.log(`  Version: ${introspection.version}`);
     console.log(`  Tier: ${introspection.tier}`);
     console.log(`  Cached At: ${introspection.cachedAt.toISOString()}`);
   } else {
-    console.log("\nIntrospection Cache: (not cached)");
+    console.log('\nIntrospection Cache: (not cached)');
   }
 }
 
@@ -397,14 +397,14 @@ async function showInstanceInfo(url?: string): Promise<void> {
  * Always masks clientSecret fields to prevent setting a dangerous precedent
  * of logging secrets, even though these are placeholder values.
  */
-function showSampleConfig(format?: "yaml" | "json"): void {
-  const fmt = format ?? "yaml";
+function showSampleConfig(format?: 'yaml' | 'json'): void {
+  const fmt = format ?? 'yaml';
   let config = generateSampleConfig(fmt);
 
   // Mask clientSecret in output to prevent dangerous patterns.
   // Even though these are placeholder values, we always mask secrets
   // to avoid copy-paste mistakes and set a consistent security pattern.
-  if (fmt === "json") {
+  if (fmt === 'json') {
     try {
       // Work on a parsed copy - JSON.parse creates a new object
       const parsed = JSON.parse(config) as {
@@ -415,12 +415,12 @@ function showSampleConfig(format?: "yaml" | "json"): void {
       if (parsed?.instances) {
         for (const instance of parsed.instances) {
           if (instance?.oauth?.clientSecret) {
-            instance.oauth.clientSecret = "***masked***";
+            instance.oauth.clientSecret = '***masked***';
           }
         }
       }
       if (parsed?.defaults?.oauth?.clientSecret) {
-        parsed.defaults.oauth.clientSecret = "***masked***";
+        parsed.defaults.oauth.clientSecret = '***masked***';
       }
 
       config = JSON.stringify(parsed, null, 2);

@@ -1,2 +1,2 @@
-export * from "./schema-readonly";
-export * from "./registry";
+export * from './schema-readonly';
+export * from './registry';

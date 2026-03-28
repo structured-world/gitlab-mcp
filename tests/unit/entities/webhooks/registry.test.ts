@@ -3,11 +3,11 @@ import {
   getWebhooksReadOnlyToolNames,
   getWebhooksToolDefinitions,
   getFilteredWebhooksTools,
-} from "../../../../src/entities/webhooks/registry";
-import { enhancedFetch } from "../../../../src/utils/fetch";
+} from '../../../../src/entities/webhooks/registry';
+import { enhancedFetch } from '../../../../src/utils/fetch';
 
 // Mock enhancedFetch to avoid actual API calls
-jest.mock("../../../../src/utils/fetch", () => ({
+jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
 }));
 
@@ -19,8 +19,8 @@ const originalEnv = process.env;
 beforeAll(() => {
   process.env = {
     ...originalEnv,
-    GITLAB_API_URL: "https://gitlab.example.com",
-    GITLAB_TOKEN: "test-token-12345",
+    GITLAB_API_URL: 'https://gitlab.example.com',
+    GITLAB_TOKEN: 'test-token-12345',
   };
 });
 
@@ -34,276 +34,276 @@ beforeEach(() => {
   mockEnhancedFetch.mockReset();
 });
 
-describe("Webhooks Registry", () => {
-  describe("Registry Structure", () => {
-    it("should be a Map instance", () => {
+describe('Webhooks Registry', () => {
+  describe('Registry Structure', () => {
+    it('should be a Map instance', () => {
       expect(webhooksToolRegistry instanceof Map).toBe(true);
     });
 
-    it("should contain expected webhook tools", () => {
+    it('should contain expected webhook tools', () => {
       const toolNames = Array.from(webhooksToolRegistry.keys());
 
       // Check for read-only tools
-      expect(toolNames).toContain("browse_webhooks");
+      expect(toolNames).toContain('browse_webhooks');
 
       // Check for manage tool
-      expect(toolNames).toContain("manage_webhook");
+      expect(toolNames).toContain('manage_webhook');
     });
 
-    it("should have tools with valid structure", () => {
+    it('should have tools with valid structure', () => {
       const toolEntries = Array.from(webhooksToolRegistry.values());
 
-      toolEntries.forEach(tool => {
-        expect(tool).toHaveProperty("name");
-        expect(tool).toHaveProperty("description");
-        expect(tool).toHaveProperty("inputSchema");
-        expect(tool).toHaveProperty("handler");
-        expect(typeof tool.name).toBe("string");
-        expect(typeof tool.description).toBe("string");
-        expect(typeof tool.inputSchema).toBe("object");
-        expect(typeof tool.handler).toBe("function");
+      toolEntries.forEach((tool) => {
+        expect(tool).toHaveProperty('name');
+        expect(tool).toHaveProperty('description');
+        expect(tool).toHaveProperty('inputSchema');
+        expect(tool).toHaveProperty('handler');
+        expect(typeof tool.name).toBe('string');
+        expect(typeof tool.description).toBe('string');
+        expect(typeof tool.inputSchema).toBe('object');
+        expect(typeof tool.handler).toBe('function');
       });
     });
 
-    it("should have unique tool names", () => {
+    it('should have unique tool names', () => {
       const toolNames = Array.from(webhooksToolRegistry.keys());
       const uniqueNames = new Set(toolNames);
       expect(toolNames.length).toBe(uniqueNames.size);
     });
 
-    it("should have exactly 2 webhook tools", () => {
+    it('should have exactly 2 webhook tools', () => {
       expect(webhooksToolRegistry.size).toBe(2);
     });
   });
 
-  describe("Tool Definitions", () => {
-    it("should have proper browse_webhooks tool", () => {
-      const tool = webhooksToolRegistry.get("browse_webhooks");
+  describe('Tool Definitions', () => {
+    it('should have proper browse_webhooks tool', () => {
+      const tool = webhooksToolRegistry.get('browse_webhooks');
       expect(tool).toBeDefined();
-      expect(tool!.name).toBe("browse_webhooks");
-      expect(tool!.description).toContain("webhook configurations");
+      expect(tool!.name).toBe('browse_webhooks');
+      expect(tool!.description).toContain('webhook configurations');
       expect(tool!.inputSchema).toBeDefined();
     });
 
-    it("should have proper manage_webhook tool", () => {
-      const tool = webhooksToolRegistry.get("manage_webhook");
+    it('should have proper manage_webhook tool', () => {
+      const tool = webhooksToolRegistry.get('manage_webhook');
       expect(tool).toBeDefined();
-      expect(tool!.name).toBe("manage_webhook");
-      expect(tool!.description).toContain("webhooks");
-      expect(tool!.description).toContain("create");
-      expect(tool!.description).toContain("test");
+      expect(tool!.name).toBe('manage_webhook');
+      expect(tool!.description).toContain('webhooks');
+      expect(tool!.description).toContain('create');
+      expect(tool!.description).toContain('test');
       expect(tool!.inputSchema).toBeDefined();
     });
   });
 
-  describe("Read-Only Tools Function", () => {
-    it("should return an array of read-only tool names", () => {
+  describe('Read-Only Tools Function', () => {
+    it('should return an array of read-only tool names', () => {
       const readOnlyTools = getWebhooksReadOnlyToolNames();
       expect(Array.isArray(readOnlyTools)).toBe(true);
       expect(readOnlyTools.length).toBeGreaterThan(0);
     });
 
-    it("should include only browse_webhooks as read-only", () => {
+    it('should include only browse_webhooks as read-only', () => {
       const readOnlyTools = getWebhooksReadOnlyToolNames();
-      expect(readOnlyTools).toContain("browse_webhooks");
-      expect(readOnlyTools).not.toContain("manage_webhook");
+      expect(readOnlyTools).toContain('browse_webhooks');
+      expect(readOnlyTools).not.toContain('manage_webhook');
     });
 
-    it("should return exactly 1 tool", () => {
+    it('should return exactly 1 tool', () => {
       const readOnlyTools = getWebhooksReadOnlyToolNames();
       expect(readOnlyTools.length).toBe(1);
     });
 
-    it("should return tools that exist in the registry", () => {
+    it('should return tools that exist in the registry', () => {
       const readOnlyTools = getWebhooksReadOnlyToolNames();
-      readOnlyTools.forEach(toolName => {
+      readOnlyTools.forEach((toolName) => {
         expect(webhooksToolRegistry.has(toolName)).toBe(true);
       });
     });
   });
 
-  describe("Webhooks Tool Definitions Function", () => {
-    it("should return an array of tool definitions", () => {
+  describe('Webhooks Tool Definitions Function', () => {
+    it('should return an array of tool definitions', () => {
       const toolDefinitions = getWebhooksToolDefinitions();
       expect(Array.isArray(toolDefinitions)).toBe(true);
       expect(toolDefinitions.length).toBe(2);
     });
 
-    it("should return all tools from registry", () => {
+    it('should return all tools from registry', () => {
       const toolDefinitions = getWebhooksToolDefinitions();
       const registrySize = webhooksToolRegistry.size;
       expect(toolDefinitions.length).toBe(registrySize);
     });
 
-    it("should return tool definitions with proper structure", () => {
+    it('should return tool definitions with proper structure', () => {
       const toolDefinitions = getWebhooksToolDefinitions();
 
-      toolDefinitions.forEach(tool => {
-        expect(tool).toHaveProperty("name");
-        expect(tool).toHaveProperty("description");
-        expect(tool).toHaveProperty("inputSchema");
-        expect(tool).toHaveProperty("handler");
-        expect(typeof tool.name).toBe("string");
-        expect(typeof tool.description).toBe("string");
-        expect(typeof tool.inputSchema).toBe("object");
+      toolDefinitions.forEach((tool) => {
+        expect(tool).toHaveProperty('name');
+        expect(tool).toHaveProperty('description');
+        expect(tool).toHaveProperty('inputSchema');
+        expect(tool).toHaveProperty('handler');
+        expect(typeof tool.name).toBe('string');
+        expect(typeof tool.description).toBe('string');
+        expect(typeof tool.inputSchema).toBe('object');
       });
     });
   });
 
-  describe("Filtered Webhooks Tools Function", () => {
-    it("should return all tools in normal mode", () => {
+  describe('Filtered Webhooks Tools Function', () => {
+    it('should return all tools in normal mode', () => {
       const filteredTools = getFilteredWebhooksTools(false);
       expect(filteredTools.length).toBe(2);
     });
 
-    it("should return only browse_webhooks in read-only mode", () => {
+    it('should return only browse_webhooks in read-only mode', () => {
       const filteredTools = getFilteredWebhooksTools(true);
       expect(filteredTools.length).toBe(1);
 
-      const toolNames = filteredTools.map(tool => tool.name);
-      expect(toolNames).toContain("browse_webhooks");
-      expect(toolNames).not.toContain("manage_webhook");
+      const toolNames = filteredTools.map((tool) => tool.name);
+      expect(toolNames).toContain('browse_webhooks');
+      expect(toolNames).not.toContain('manage_webhook');
     });
   });
 
-  describe("browse_webhooks Handler", () => {
-    it("should handle list action with project scope", async () => {
-      const tool = webhooksToolRegistry.get("browse_webhooks");
+  describe('browse_webhooks Handler', () => {
+    it('should handle list action with project scope', async () => {
+      const tool = webhooksToolRegistry.get('browse_webhooks');
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
         ok: true,
-        json: async () => [{ id: 1, url: "https://example.com/hook" }],
+        json: async () => [{ id: 1, url: 'https://example.com/hook' }],
       } as Response);
 
       const result = await tool!.handler({
-        action: "list",
-        scope: "project",
-        projectId: "test-project",
+        action: 'list',
+        scope: 'project',
+        projectId: 'test-project',
         page: 1,
         per_page: 20,
       });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        expect.stringContaining("projects/test-project/hooks")
+        expect.stringContaining('projects/test-project/hooks'),
       );
       expect(result).toBeDefined();
     });
 
-    it("should handle list action with group scope", async () => {
-      const tool = webhooksToolRegistry.get("browse_webhooks");
+    it('should handle list action with group scope', async () => {
+      const tool = webhooksToolRegistry.get('browse_webhooks');
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
         ok: true,
-        json: async () => [{ id: 1, url: "https://example.com/hook" }],
+        json: async () => [{ id: 1, url: 'https://example.com/hook' }],
       } as Response);
 
       const result = await tool!.handler({
-        action: "list",
-        scope: "group",
-        groupId: "test-group",
+        action: 'list',
+        scope: 'group',
+        groupId: 'test-group',
         page: 1,
         per_page: 20,
       });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        expect.stringContaining("groups/test-group/hooks")
+        expect.stringContaining('groups/test-group/hooks'),
       );
       expect(result).toBeDefined();
     });
 
-    it("should handle get action", async () => {
-      const tool = webhooksToolRegistry.get("browse_webhooks");
+    it('should handle get action', async () => {
+      const tool = webhooksToolRegistry.get('browse_webhooks');
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, url: "https://example.com/hook" }),
+        json: async () => ({ id: 1, url: 'https://example.com/hook' }),
       } as Response);
 
       const result = await tool!.handler({
-        action: "get",
-        scope: "project",
-        projectId: "test-project",
-        hookId: "1",
+        action: 'get',
+        scope: 'project',
+        projectId: 'test-project',
+        hookId: '1',
       });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        expect.stringContaining("projects/test-project/hooks/1")
+        expect.stringContaining('projects/test-project/hooks/1'),
       );
       expect(result).toBeDefined();
     });
 
-    it("should throw error for missing projectId", async () => {
-      const tool = webhooksToolRegistry.get("browse_webhooks");
+    it('should throw error for missing projectId', async () => {
+      const tool = webhooksToolRegistry.get('browse_webhooks');
       expect(tool).toBeDefined();
 
       await expect(
         tool!.handler({
-          action: "list",
-          scope: "project",
+          action: 'list',
+          scope: 'project',
           // Missing projectId
-        })
+        }),
       ).rejects.toThrow();
     });
   });
 
-  describe("manage_webhook Handler", () => {
-    it("should handle create action", async () => {
-      const tool = webhooksToolRegistry.get("manage_webhook");
+  describe('manage_webhook Handler', () => {
+    it('should handle create action', async () => {
+      const tool = webhooksToolRegistry.get('manage_webhook');
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, url: "https://example.com/hook" }),
+        json: async () => ({ id: 1, url: 'https://example.com/hook' }),
       } as Response);
 
       const result = await tool!.handler({
-        action: "create",
-        scope: "project",
-        projectId: "test-project",
-        url: "https://example.com/hook",
+        action: 'create',
+        scope: 'project',
+        projectId: 'test-project',
+        url: 'https://example.com/hook',
         push_events: true,
       });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        expect.stringContaining("projects/test-project/hooks"),
+        expect.stringContaining('projects/test-project/hooks'),
         expect.objectContaining({
-          method: "POST",
-        })
+          method: 'POST',
+        }),
       );
       expect(result).toBeDefined();
     });
 
-    it("should handle update action", async () => {
-      const tool = webhooksToolRegistry.get("manage_webhook");
+    it('should handle update action', async () => {
+      const tool = webhooksToolRegistry.get('manage_webhook');
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
         ok: true,
-        json: async () => ({ id: 1, url: "https://example.com/hook-updated" }),
+        json: async () => ({ id: 1, url: 'https://example.com/hook-updated' }),
       } as Response);
 
       const result = await tool!.handler({
-        action: "update",
-        scope: "project",
-        projectId: "test-project",
+        action: 'update',
+        scope: 'project',
+        projectId: 'test-project',
         hookId: 1,
-        url: "https://example.com/hook-updated",
+        url: 'https://example.com/hook-updated',
       });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        expect.stringContaining("projects/test-project/hooks/1"),
+        expect.stringContaining('projects/test-project/hooks/1'),
         expect.objectContaining({
-          method: "PUT",
-        })
+          method: 'PUT',
+        }),
       );
       expect(result).toBeDefined();
     });
 
-    it("should handle delete action", async () => {
-      const tool = webhooksToolRegistry.get("manage_webhook");
+    it('should handle delete action', async () => {
+      const tool = webhooksToolRegistry.get('manage_webhook');
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
@@ -313,23 +313,23 @@ describe("Webhooks Registry", () => {
       } as Response);
 
       const result = await tool!.handler({
-        action: "delete",
-        scope: "project",
-        projectId: "test-project",
+        action: 'delete',
+        scope: 'project',
+        projectId: 'test-project',
         hookId: 1,
       });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        expect.stringContaining("projects/test-project/hooks/1"),
+        expect.stringContaining('projects/test-project/hooks/1'),
         expect.objectContaining({
-          method: "DELETE",
-        })
+          method: 'DELETE',
+        }),
       );
-      expect(result).toEqual({ success: true, message: "Webhook deleted successfully" });
+      expect(result).toEqual({ success: true, message: 'Webhook deleted successfully' });
     });
 
-    it("should handle test action", async () => {
-      const tool = webhooksToolRegistry.get("manage_webhook");
+    it('should handle test action', async () => {
+      const tool = webhooksToolRegistry.get('manage_webhook');
       expect(tool).toBeDefined();
 
       mockEnhancedFetch.mockResolvedValue({
@@ -338,48 +338,48 @@ describe("Webhooks Registry", () => {
       } as Response);
 
       const result = await tool!.handler({
-        action: "test",
-        scope: "project",
-        projectId: "test-project",
+        action: 'test',
+        scope: 'project',
+        projectId: 'test-project',
         hookId: 1,
-        trigger: "push_events",
+        trigger: 'push_events',
       });
 
       expect(mockEnhancedFetch).toHaveBeenCalledWith(
-        expect.stringContaining("projects/test-project/hooks/1/test/push_events"),
+        expect.stringContaining('projects/test-project/hooks/1/test/push_events'),
         expect.objectContaining({
-          method: "POST",
-        })
+          method: 'POST',
+        }),
       );
       expect(result).toBeDefined();
     });
 
-    it("should require url for create action", async () => {
-      const tool = webhooksToolRegistry.get("manage_webhook");
+    it('should require url for create action', async () => {
+      const tool = webhooksToolRegistry.get('manage_webhook');
       expect(tool).toBeDefined();
 
       await expect(
         tool!.handler({
-          action: "create",
-          scope: "project",
-          projectId: "test-project",
+          action: 'create',
+          scope: 'project',
+          projectId: 'test-project',
           // Missing url
-        })
+        }),
       ).rejects.toThrow();
     });
 
-    it("should require trigger for test action", async () => {
-      const tool = webhooksToolRegistry.get("manage_webhook");
+    it('should require trigger for test action', async () => {
+      const tool = webhooksToolRegistry.get('manage_webhook');
       expect(tool).toBeDefined();
 
       await expect(
         tool!.handler({
-          action: "test",
-          scope: "project",
-          projectId: "test-project",
+          action: 'test',
+          scope: 'project',
+          projectId: 'test-project',
           hookId: 1,
           // Missing trigger
-        })
+        }),
       ).rejects.toThrow();
     });
   });

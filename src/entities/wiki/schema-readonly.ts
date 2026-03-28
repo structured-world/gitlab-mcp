@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { flexibleBoolean, paginationFields } from "../utils";
+import { z } from 'zod';
+import { flexibleBoolean, paginationFields } from '../utils';
 
 // ============================================================================
 // browse_wiki - CQRS Query Tool (discriminated union schema)
@@ -9,25 +9,25 @@ import { flexibleBoolean, paginationFields } from "../utils";
 // ============================================================================
 
 // --- Shared fields ---
-const namespaceField = z.string().describe("Namespace path (group or project)");
+const namespaceField = z.string().describe('Namespace path (group or project)');
 
 // --- Action: list ---
 const ListWikiSchema = z.object({
-  action: z.literal("list").describe("List all wiki pages"),
+  action: z.literal('list').describe('List all wiki pages'),
   namespace: namespaceField,
-  with_content: flexibleBoolean.optional().describe("Include content of the wiki pages"),
+  with_content: flexibleBoolean.optional().describe('Include content of the wiki pages'),
   ...paginationFields(),
 });
 
 // --- Action: get ---
 const GetWikiSchema = z.object({
-  action: z.literal("get").describe("Get a single wiki page by slug"),
+  action: z.literal('get').describe('Get a single wiki page by slug'),
   namespace: namespaceField,
-  slug: z.string().describe("URL-encoded slug of the wiki page"),
+  slug: z.string().describe('URL-encoded slug of the wiki page'),
 });
 
 // --- Discriminated union combining all actions ---
-export const BrowseWikiSchema = z.discriminatedUnion("action", [ListWikiSchema, GetWikiSchema]);
+export const BrowseWikiSchema = z.discriminatedUnion('action', [ListWikiSchema, GetWikiSchema]);
 
 // ============================================================================
 // Response schemas for wiki pages

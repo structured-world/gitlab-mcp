@@ -12,16 +12,16 @@
  * 5. Sets up token context for the request
  */
 
-import { Request, Response, NextFunction } from "express";
-import { loadOAuthConfig } from "../oauth/config";
-import { sessionStore } from "../oauth/session-store";
-import { verifyMCPToken, isTokenExpiringSoon, calculateTokenExpiry } from "../oauth/token-utils";
-import { refreshGitLabToken } from "../oauth/gitlab-device-flow";
-import { getBaseUrl } from "../oauth/endpoints/metadata";
-import { logWarn, logError, logDebug, truncateId } from "../logger";
-import { OAuthErrorResponse } from "../oauth/types";
-import { getMinimalRequestContext } from "../utils/request-logger";
-import { GITLAB_BASE_URL } from "../config";
+import { Request, Response, NextFunction } from 'express';
+import { loadOAuthConfig } from '../oauth/config';
+import { sessionStore } from '../oauth/session-store';
+import { verifyMCPToken, isTokenExpiringSoon, calculateTokenExpiry } from '../oauth/token-utils';
+import { refreshGitLabToken } from '../oauth/gitlab-device-flow';
+import { getBaseUrl } from '../oauth/endpoints/metadata';
+import { logWarn, logError, logDebug, truncateId } from '../logger';
+import { OAuthErrorResponse } from '../oauth/types';
+import { getMinimalRequestContext } from '../utils/request-logger';
+import { GITLAB_BASE_URL } from '../config';
 
 /**
  * OAuth authentication middleware for Express
@@ -36,27 +36,27 @@ import { GITLAB_BASE_URL } from "../config";
 export async function oauthAuthMiddleware(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> {
   const config = loadOAuthConfig();
   if (!config) {
-    sendUnauthorized(req, res, "server_error", "OAuth not configured");
+    sendUnauthorized(req, res, 'server_error', 'OAuth not configured');
     return;
   }
 
   // Extract Bearer token from Authorization header
   const authHeader = req.headers.authorization;
   if (!authHeader) {
-    sendUnauthorized(req, res, "unauthorized", "Missing Authorization header");
+    sendUnauthorized(req, res, 'unauthorized', 'Missing Authorization header');
     return;
   }
 
-  if (!authHeader.startsWith("Bearer ")) {
+  if (!authHeader.startsWith('Bearer ')) {
     sendUnauthorized(
       req,
       res,
-      "unauthorized",
-      "Invalid Authorization header format. Expected: Bearer <token>"
+      'unauthorized',
+      'Invalid Authorization header format. Expected: Bearer <token>',
     );
     return;
   }
@@ -64,14 +64,14 @@ export async function oauthAuthMiddleware(
   const token = authHeader.slice(7); // Remove "Bearer " prefix
 
   if (!token) {
-    sendUnauthorized(req, res, "unauthorized", "Empty Bearer token");
+    sendUnauthorized(req, res, 'unauthorized', 'Empty Bearer token');
     return;
   }
 
   // Verify JWT token
   const payload = verifyMCPToken(token, config.sessionSecret);
   if (!payload) {
-    sendUnauthorized(req, res, "invalid_token", "Token is invalid or expired");
+    sendUnauthorized(req, res, 'invalid_token', 'Token is invalid or expired');
     return;
   }
 
@@ -80,14 +80,14 @@ export async function oauthAuthMiddleware(
   const session = sessionStore.getSession(sessionId);
 
   if (!session) {
-    sendUnauthorized(req, res, "invalid_token", "Session not found or expired");
+    sendUnauthorized(req, res, 'invalid_token', 'Session not found or expired');
     return;
   }
 
   // Verify token matches session
   if (session.mcpAccessToken !== token) {
     // Token might have been rotated
-    sendUnauthorized(req, res, "invalid_token", "Token has been superseded");
+    sendUnauthorized(req, res, 'invalid_token', 'Token has been superseded');
     return;
   }
 
@@ -102,16 +102,16 @@ export async function oauthAuthMiddleware(
         gitlabTokenExpiry: calculateTokenExpiry(newTokens.expires_in),
       });
 
-      logDebug("GitLab token refreshed during request", {
+      logDebug('GitLab token refreshed during request', {
         sessionId: truncateId(sessionId),
       });
     } catch (error: unknown) {
-      logError("Failed to refresh GitLab token during request", { err: error as Error });
+      logError('Failed to refresh GitLab token during request', { err: error as Error });
       sendUnauthorized(
         req,
         res,
-        "invalid_token",
-        "GitLab token refresh failed. Please re-authenticate."
+        'invalid_token',
+        'GitLab token refresh failed. Please re-authenticate.',
       );
       return;
     }
@@ -120,7 +120,7 @@ export async function oauthAuthMiddleware(
   // Get potentially updated session
   const updatedSession = sessionStore.getSession(sessionId);
   if (!updatedSession) {
-    sendUnauthorized(req, res, "invalid_token", "Session lost during token refresh");
+    sendUnauthorized(req, res, 'invalid_token', 'Session lost during token refresh');
     return;
   }
 
@@ -141,7 +141,7 @@ export async function oauthAuthMiddleware(
   res.locals.gitlabApiUrl = updatedSession.gitlabApiUrl ?? GITLAB_BASE_URL;
   res.locals.instanceLabel = updatedSession.instanceLabel;
 
-  logDebug("OAuth session validated, passing to route handler", {
+  logDebug('OAuth session validated, passing to route handler', {
     sessionId: truncateId(updatedSession.id),
     method: req.method,
     path: req.path,
@@ -173,7 +173,7 @@ export function createOAuthMiddleware(): typeof oauthAuthMiddleware {
 export async function optionalOAuthMiddleware(
   req: Request,
   res: Response,
-  next: NextFunction
+  next: NextFunction,
 ): Promise<void> {
   const config = loadOAuthConfig();
   if (!config) {
@@ -183,7 +183,7 @@ export async function optionalOAuthMiddleware(
   }
 
   const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith("Bearer ")) {
+  if (!authHeader?.startsWith('Bearer ')) {
     // No token provided, continue without context
     next();
     return;
@@ -231,8 +231,8 @@ export async function optionalOAuthMiddleware(
  */
 function sendUnauthorized(req: Request, res: Response, error: string, description: string): void {
   // Log auth rejection with structured context
-  logWarn("Authentication rejected", {
-    event: "auth_rejected",
+  logWarn('Authentication rejected', {
+    event: 'auth_rejected',
     ...getMinimalRequestContext(req),
     reason: error,
     description,
@@ -249,8 +249,8 @@ function sendUnauthorized(req: Request, res: Response, error: string, descriptio
   // Set WWW-Authenticate header with resource_metadata parameter
   // Points to Protected Resource Metadata document per MCP spec
   res.setHeader(
-    "WWW-Authenticate",
-    `Bearer realm="gitlab-mcp", resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`
+    'WWW-Authenticate',
+    `Bearer realm="gitlab-mcp", resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`,
   );
   res.status(401).json(response);
 }

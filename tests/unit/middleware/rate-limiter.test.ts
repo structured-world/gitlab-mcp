@@ -2,15 +2,15 @@
  * Rate Limiter Middleware Unit Tests
  */
 
-import { Request, Response, NextFunction } from "express";
+import { Request, Response, NextFunction } from 'express';
 import {
   rateLimiterMiddleware,
   stopCleanup,
   getRateLimitStats,
-} from "../../../src/middleware/rate-limiter";
+} from '../../../src/middleware/rate-limiter';
 
 // Mock config module
-jest.mock("../../../src/config", () => ({
+jest.mock('../../../src/config', () => ({
   RATE_LIMIT_IP_ENABLED: true,
   RATE_LIMIT_IP_WINDOW_MS: 60000,
   RATE_LIMIT_IP_MAX_REQUESTS: 100,
@@ -20,7 +20,7 @@ jest.mock("../../../src/config", () => ({
 }));
 
 // Mock logger
-jest.mock("../../../src/logger", () => ({
+jest.mock('../../../src/logger', () => ({
   logger: {
     debug: jest.fn(),
     info: jest.fn(),
@@ -32,15 +32,15 @@ jest.mock("../../../src/logger", () => ({
   logError: jest.fn(),
   logDebug: jest.fn(),
   // Real implementation - pure function with no side effects
-  truncateId: (id: string) => (id.length <= 10 ? id : id.substring(0, 4) + ".." + id.slice(-4)),
+  truncateId: (id: string) => (id.length <= 10 ? id : id.substring(0, 4) + '..' + id.slice(-4)),
 }));
 
 // Helper to create mock request
 function createMockReq(overrides: Record<string, unknown> = {}): Request {
   return {
-    path: "/api/test",
-    ip: "192.168.1.1",
-    socket: { remoteAddress: "192.168.1.1" },
+    path: '/api/test',
+    ip: '192.168.1.1',
+    socket: { remoteAddress: '192.168.1.1' },
     headers: {},
     ...overrides,
   } as unknown as Request;
@@ -57,7 +57,7 @@ function createMockRes(locals: Record<string, unknown> = {}): Response {
   return res as unknown as Response;
 }
 
-describe("Rate Limiter Middleware", () => {
+describe('Rate Limiter Middleware', () => {
   let mockNext: NextFunction;
 
   beforeEach(() => {
@@ -69,10 +69,10 @@ describe("Rate Limiter Middleware", () => {
     stopCleanup();
   });
 
-  describe("rateLimiterMiddleware", () => {
-    it("should skip rate limiting for health check endpoint", () => {
+  describe('rateLimiterMiddleware', () => {
+    it('should skip rate limiting for health check endpoint', () => {
       const middleware = rateLimiterMiddleware();
-      const mockReq = createMockReq({ path: "/health" });
+      const mockReq = createMockReq({ path: '/health' });
       const mockRes = createMockRes();
 
       middleware(mockReq, mockRes, mockNext);
@@ -81,10 +81,10 @@ describe("Rate Limiter Middleware", () => {
       expect(mockRes.status).not.toHaveBeenCalled();
     });
 
-    it("should skip rate limiting for authenticated users with oauthSessionId", () => {
+    it('should skip rate limiting for authenticated users with oauthSessionId', () => {
       const middleware = rateLimiterMiddleware();
       const mockReq = createMockReq();
-      const mockRes = createMockRes({ oauthSessionId: "session-123" });
+      const mockRes = createMockRes({ oauthSessionId: 'session-123' });
 
       middleware(mockReq, mockRes, mockNext);
 
@@ -92,9 +92,9 @@ describe("Rate Limiter Middleware", () => {
       expect(mockRes.status).not.toHaveBeenCalled();
     });
 
-    it("should skip rate limiting for authenticated users with mcp-session-id header", () => {
+    it('should skip rate limiting for authenticated users with mcp-session-id header', () => {
       const middleware = rateLimiterMiddleware();
-      const mockReq = createMockReq({ headers: { "mcp-session-id": "mcp-session-456" } });
+      const mockReq = createMockReq({ headers: { 'mcp-session-id': 'mcp-session-456' } });
       const mockRes = createMockRes();
 
       middleware(mockReq, mockRes, mockNext);
@@ -103,35 +103,35 @@ describe("Rate Limiter Middleware", () => {
       expect(mockRes.status).not.toHaveBeenCalled();
     });
 
-    it("should apply IP-based rate limiting for anonymous requests", () => {
+    it('should apply IP-based rate limiting for anonymous requests', () => {
       const middleware = rateLimiterMiddleware();
-      const mockReq = createMockReq({ ip: "10.0.0.1" });
+      const mockReq = createMockReq({ ip: '10.0.0.1' });
       const mockRes = createMockRes();
 
       middleware(mockReq, mockRes, mockNext);
 
       expect(mockNext).toHaveBeenCalled();
-      expect(mockRes.set).toHaveBeenCalledWith("X-RateLimit-Limit", "100");
-      expect(mockRes.set).toHaveBeenCalledWith("X-RateLimit-Remaining", expect.any(String));
-      expect(mockRes.set).toHaveBeenCalledWith("X-RateLimit-Reset", expect.any(String));
+      expect(mockRes.set).toHaveBeenCalledWith('X-RateLimit-Limit', '100');
+      expect(mockRes.set).toHaveBeenCalledWith('X-RateLimit-Remaining', expect.any(String));
+      expect(mockRes.set).toHaveBeenCalledWith('X-RateLimit-Reset', expect.any(String));
     });
 
-    it("should set rate limit headers on response", () => {
+    it('should set rate limit headers on response', () => {
       const middleware = rateLimiterMiddleware();
-      const mockReq = createMockReq({ ip: "10.0.0.2" });
+      const mockReq = createMockReq({ ip: '10.0.0.2' });
       const mockRes = createMockRes();
 
       middleware(mockReq, mockRes, mockNext);
 
-      expect(mockRes.set).toHaveBeenCalledWith("X-RateLimit-Limit", "100");
-      expect(mockRes.set).toHaveBeenCalledWith("X-RateLimit-Remaining", "99");
+      expect(mockRes.set).toHaveBeenCalledWith('X-RateLimit-Limit', '100');
+      expect(mockRes.set).toHaveBeenCalledWith('X-RateLimit-Remaining', '99');
     });
 
-    it("should use socket.remoteAddress when ip is undefined", () => {
+    it('should use socket.remoteAddress when ip is undefined', () => {
       const middleware = rateLimiterMiddleware();
       const mockReq = createMockReq({
         ip: undefined,
-        socket: { remoteAddress: "10.0.0.3" },
+        socket: { remoteAddress: '10.0.0.3' },
       });
       const mockRes = createMockRes();
 
@@ -154,30 +154,30 @@ describe("Rate Limiter Middleware", () => {
     });
   });
 
-  describe("getRateLimitStats", () => {
-    it("should return current rate limit statistics", () => {
+  describe('getRateLimitStats', () => {
+    it('should return current rate limit statistics', () => {
       const middleware = rateLimiterMiddleware();
-      const mockReq = createMockReq({ ip: "10.0.0.100" });
+      const mockReq = createMockReq({ ip: '10.0.0.100' });
       const mockRes = createMockRes();
 
       middleware(mockReq, mockRes, mockNext);
 
       const stats = getRateLimitStats();
 
-      expect(stats).toHaveProperty("totalEntries");
-      expect(stats).toHaveProperty("entries");
+      expect(stats).toHaveProperty('totalEntries');
+      expect(stats).toHaveProperty('entries');
       expect(Array.isArray(stats.entries)).toBe(true);
     });
 
-    it("should return entry with key, count, and resetAt", () => {
+    it('should return entry with key, count, and resetAt', () => {
       const middleware = rateLimiterMiddleware();
-      const mockReq = createMockReq({ ip: "10.0.0.101" });
+      const mockReq = createMockReq({ ip: '10.0.0.101' });
       const mockRes = createMockRes();
 
       middleware(mockReq, mockRes, mockNext);
 
       const stats = getRateLimitStats();
-      const entry = stats.entries.find(e => e.key === "ip:10.0.0.101");
+      const entry = stats.entries.find((e) => e.key === 'ip:10.0.0.101');
 
       expect(entry).toBeDefined();
       expect(entry?.count).toBe(1);
@@ -185,12 +185,12 @@ describe("Rate Limiter Middleware", () => {
     });
   });
 
-  describe("stopCleanup", () => {
-    it("should stop the cleanup interval without error", () => {
+  describe('stopCleanup', () => {
+    it('should stop the cleanup interval without error', () => {
       expect(() => stopCleanup()).not.toThrow();
     });
 
-    it("should be safe to call multiple times", () => {
+    it('should be safe to call multiple times', () => {
       expect(() => {
         stopCleanup();
         stopCleanup();
@@ -200,7 +200,7 @@ describe("Rate Limiter Middleware", () => {
   });
 });
 
-describe("Rate Limiter with Session Rate Limiting Enabled", () => {
+describe('Rate Limiter with Session Rate Limiting Enabled', () => {
   let mockNext: NextFunction;
 
   beforeEach(() => {
@@ -209,9 +209,9 @@ describe("Rate Limiter with Session Rate Limiting Enabled", () => {
     mockNext = jest.fn();
   });
 
-  it("should apply session rate limiting when enabled", async () => {
+  it('should apply session rate limiting when enabled', async () => {
     // Re-mock with session rate limiting enabled
-    jest.doMock("../../../src/config", () => ({
+    jest.doMock('../../../src/config', () => ({
       RATE_LIMIT_IP_ENABLED: true,
       RATE_LIMIT_IP_WINDOW_MS: 60000,
       RATE_LIMIT_IP_MAX_REQUESTS: 100,
@@ -222,11 +222,11 @@ describe("Rate Limiter with Session Rate Limiting Enabled", () => {
 
     // Import fresh module with new config
     const { rateLimiterMiddleware: freshMiddleware, stopCleanup: freshStopCleanup } =
-      await import("../../../src/middleware/rate-limiter");
+      await import('../../../src/middleware/rate-limiter');
 
     const middleware = freshMiddleware();
     const mockReq = createMockReq();
-    const mockRes = createMockRes({ oauthSessionId: "session-rate-test" });
+    const mockRes = createMockRes({ oauthSessionId: 'session-rate-test' });
 
     // Make requests up to the limit
     for (let i = 0; i < 5; i++) {
@@ -244,7 +244,7 @@ describe("Rate Limiter with Session Rate Limiting Enabled", () => {
   });
 });
 
-describe("Rate Limiter with IP Rate Limiting Disabled", () => {
+describe('Rate Limiter with IP Rate Limiting Disabled', () => {
   let mockNext: NextFunction;
 
   beforeEach(() => {
@@ -253,9 +253,9 @@ describe("Rate Limiter with IP Rate Limiting Disabled", () => {
     mockNext = jest.fn();
   });
 
-  it("should skip IP rate limiting when disabled", async () => {
+  it('should skip IP rate limiting when disabled', async () => {
     // Re-mock with IP rate limiting disabled
-    jest.doMock("../../../src/config", () => ({
+    jest.doMock('../../../src/config', () => ({
       RATE_LIMIT_IP_ENABLED: false,
       RATE_LIMIT_IP_WINDOW_MS: 60000,
       RATE_LIMIT_IP_MAX_REQUESTS: 100,
@@ -266,7 +266,7 @@ describe("Rate Limiter with IP Rate Limiting Disabled", () => {
 
     // Import fresh module with new config
     const { rateLimiterMiddleware: freshMiddleware, stopCleanup: freshStopCleanup } =
-      await import("../../../src/middleware/rate-limiter");
+      await import('../../../src/middleware/rate-limiter');
 
     const middleware = freshMiddleware();
     const mockReq = createMockReq();
@@ -276,13 +276,13 @@ describe("Rate Limiter with IP Rate Limiting Disabled", () => {
 
     expect(mockNext).toHaveBeenCalled();
     // Should not set rate limit headers when disabled
-    expect(mockRes.set).not.toHaveBeenCalledWith("X-RateLimit-Limit", expect.any(String));
+    expect(mockRes.set).not.toHaveBeenCalledWith('X-RateLimit-Limit', expect.any(String));
 
     freshStopCleanup();
   });
 });
 
-describe("Rate Limiter - Per-IP Isolation", () => {
+describe('Rate Limiter - Per-IP Isolation', () => {
   let mockNext: NextFunction;
 
   beforeEach(() => {
@@ -291,9 +291,9 @@ describe("Rate Limiter - Per-IP Isolation", () => {
     mockNext = jest.fn();
   });
 
-  it("should track rate limits separately per IP address", async () => {
+  it('should track rate limits separately per IP address', async () => {
     // Re-mock with low IP rate limit
-    jest.doMock("../../../src/config", () => ({
+    jest.doMock('../../../src/config', () => ({
       RATE_LIMIT_IP_ENABLED: true,
       RATE_LIMIT_IP_WINDOW_MS: 60000,
       RATE_LIMIT_IP_MAX_REQUESTS: 2,
@@ -303,21 +303,21 @@ describe("Rate Limiter - Per-IP Isolation", () => {
     }));
 
     const { rateLimiterMiddleware: freshMiddleware, stopCleanup: freshStopCleanup } =
-      await import("../../../src/middleware/rate-limiter");
+      await import('../../../src/middleware/rate-limiter');
 
     const middleware = freshMiddleware();
 
     // First IP makes 2 requests (reaches limit)
-    const ip1 = "10.0.0.1";
-    const mockReq1 = createMockReq({ ip: ip1, path: "/api/test" });
+    const ip1 = '10.0.0.1';
+    const mockReq1 = createMockReq({ ip: ip1, path: '/api/test' });
     const mockRes1 = createMockRes();
 
     middleware(mockReq1, mockRes1, mockNext);
     middleware(mockReq1, mockRes1, mockNext);
 
     // Second IP should still be able to make requests (separate limit)
-    const ip2 = "10.0.0.2";
-    const mockReq2 = createMockReq({ ip: ip2, path: "/api/test" });
+    const ip2 = '10.0.0.2';
+    const mockReq2 = createMockReq({ ip: ip2, path: '/api/test' });
     const mockRes2 = createMockRes();
 
     middleware(mockReq2, mockRes2, mockNext);
@@ -337,7 +337,7 @@ describe("Rate Limiter - Per-IP Isolation", () => {
   });
 });
 
-describe("Rate Limiter - Exceeded and Approaching Limits", () => {
+describe('Rate Limiter - Exceeded and Approaching Limits', () => {
   let mockNext: NextFunction;
 
   beforeEach(() => {
@@ -346,9 +346,9 @@ describe("Rate Limiter - Exceeded and Approaching Limits", () => {
     mockNext = jest.fn();
   });
 
-  it("should return 429 when IP rate limit is exceeded", async () => {
+  it('should return 429 when IP rate limit is exceeded', async () => {
     // Re-mock with very low IP rate limit
-    jest.doMock("../../../src/config", () => ({
+    jest.doMock('../../../src/config', () => ({
       RATE_LIMIT_IP_ENABLED: true,
       RATE_LIMIT_IP_WINDOW_MS: 60000,
       RATE_LIMIT_IP_MAX_REQUESTS: 3, // Very low limit
@@ -358,12 +358,12 @@ describe("Rate Limiter - Exceeded and Approaching Limits", () => {
     }));
 
     const { rateLimiterMiddleware: freshMiddleware, stopCleanup: freshStopCleanup } =
-      await import("../../../src/middleware/rate-limiter");
-    const { logWarn } = require("../../../src/logger");
+      await import('../../../src/middleware/rate-limiter');
+    const { logWarn } = require('../../../src/logger');
 
     const middleware = freshMiddleware();
     const uniqueIp = `192.168.99.${Math.floor(Math.random() * 255)}`;
-    const mockReq = createMockReq({ ip: uniqueIp, path: "/api/test" });
+    const mockReq = createMockReq({ ip: uniqueIp, path: '/api/test' });
     const mockRes = createMockRes();
 
     // Make requests up to the limit
@@ -382,22 +382,22 @@ describe("Rate Limiter - Exceeded and Approaching Limits", () => {
     expect(mockRes.status).toHaveBeenCalledWith(429);
     expect(mockRes.json).toHaveBeenCalledWith(
       expect.objectContaining({
-        error: "Too Many Requests",
-      })
+        error: 'Too Many Requests',
+      }),
     );
     expect(logWarn).toHaveBeenCalledWith(
-      "IP rate limit exceeded",
+      'IP rate limit exceeded',
       expect.objectContaining({
-        event: "rate_limit_exceeded",
-      })
+        event: 'rate_limit_exceeded',
+      }),
     );
 
     freshStopCleanup();
   });
 
-  it("should log debug when approaching IP rate limit threshold (80%)", async () => {
+  it('should log debug when approaching IP rate limit threshold (80%)', async () => {
     // Re-mock with low IP rate limit to easily reach 80%
-    jest.doMock("../../../src/config", () => ({
+    jest.doMock('../../../src/config', () => ({
       RATE_LIMIT_IP_ENABLED: true,
       RATE_LIMIT_IP_WINDOW_MS: 60000,
       RATE_LIMIT_IP_MAX_REQUESTS: 5, // 80% = 4 requests
@@ -407,12 +407,12 @@ describe("Rate Limiter - Exceeded and Approaching Limits", () => {
     }));
 
     const { rateLimiterMiddleware: freshMiddleware, stopCleanup: freshStopCleanup } =
-      await import("../../../src/middleware/rate-limiter");
-    const { logDebug } = require("../../../src/logger");
+      await import('../../../src/middleware/rate-limiter');
+    const { logDebug } = require('../../../src/logger');
 
     const middleware = freshMiddleware();
     const uniqueIp = `192.168.88.${Math.floor(Math.random() * 255)}`;
-    const mockReq = createMockReq({ ip: uniqueIp, path: "/api/test" });
+    const mockReq = createMockReq({ ip: uniqueIp, path: '/api/test' });
     const mockRes = createMockRes();
 
     // Make 4 requests to reach 80% (4/5 = 80%)
@@ -421,10 +421,10 @@ describe("Rate Limiter - Exceeded and Approaching Limits", () => {
     }
 
     expect(logDebug).toHaveBeenCalledWith(
-      "Approaching IP rate limit threshold",
+      'Approaching IP rate limit threshold',
       expect.objectContaining({
-        event: "rate_limit_warning",
-      })
+        event: 'rate_limit_warning',
+      }),
     );
 
     freshStopCleanup();

@@ -1,7 +1,7 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
-import { ConnectionManager } from "./services/ConnectionManager";
-import { logInfo, logWarn, logError, logDebug } from "./logger";
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import { ConnectionManager } from './services/ConnectionManager';
+import { logInfo, logWarn, logError, logDebug } from './logger';
 import {
   handleGitLabError,
   GitLabStructuredError,
@@ -9,9 +9,9 @@ import {
   createTimeoutError,
   parseTimeoutError,
   parseGitLabApiError,
-} from "./utils/error-handler";
-import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from "./logging/index";
-import { LOG_FORMAT, HANDLER_TIMEOUT_MS } from "./config";
+} from './utils/error-handler';
+import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './logging/index';
+import { LOG_FORMAT, HANDLER_TIMEOUT_MS } from './config';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -34,10 +34,10 @@ type JsonSchema = JsonSchemaProperty & {
  */
 function hasAction(value: unknown): value is { action: string } {
   return (
-    typeof value === "object" &&
+    typeof value === 'object' &&
     value !== null &&
-    "action" in value &&
-    typeof (value as { action: unknown }).action === "string"
+    'action' in value &&
+    typeof (value as { action: unknown }).action === 'string'
   );
 }
 
@@ -65,10 +65,10 @@ function extractActionFromError(error: unknown): string | undefined {
  */
 function isIdempotentOperation(toolName: string): boolean {
   return (
-    toolName.startsWith("browse_") ||
-    toolName.startsWith("list_") ||
-    toolName.startsWith("get_") ||
-    toolName.startsWith("download_")
+    toolName.startsWith('browse_') ||
+    toolName.startsWith('list_') ||
+    toolName.startsWith('get_') ||
+    toolName.startsWith('download_')
   );
 }
 
@@ -79,7 +79,7 @@ function isIdempotentOperation(toolName: string): boolean {
 function toStructuredError(
   error: unknown,
   toolName: string,
-  toolArgs?: Record<string, unknown>
+  toolArgs?: Record<string, unknown>,
 ): GitLabStructuredError | null {
   // If already a structured error, return it
   if (isStructuredToolError(error)) {
@@ -96,10 +96,10 @@ function toStructuredError(
 
   // Extract action early - needed for both timeout and API errors
   let action = extractActionFromError(error);
-  if (!action && toolArgs && typeof toolArgs.action === "string") {
+  if (!action && toolArgs && typeof toolArgs.action === 'string') {
     action = toolArgs.action;
   }
-  action ??= "unknown";
+  action ??= 'unknown';
 
   // Check for timeout error first (before parseGitLabApiError)
   const timeoutMs = parseTimeoutError(error.message);
@@ -116,59 +116,59 @@ function toStructuredError(
     { status: parsed.status, message: parsed.message },
     toolName,
     action,
-    toolArgs
+    toolArgs,
   );
 }
 
 export async function setupHandlers(server: Server): Promise<void> {
   // Check if authentication is configured before trying to initialize connection
-  const { isAuthenticationConfigured } = await import("./oauth/index");
+  const { isAuthenticationConfigured } = await import('./oauth/index');
 
   if (isAuthenticationConfigured()) {
     // Initialize connection and detect GitLab instance on startup
     const connectionManager = ConnectionManager.getInstance();
     try {
       await connectionManager.initialize();
-      logInfo("Connection initialized during server setup");
+      logInfo('Connection initialized during server setup');
     } catch (error) {
       logWarn(
-        `Initial connection failed during setup, will retry on first tool call: ${error instanceof Error ? error.message : String(error)}`
+        `Initial connection failed during setup, will retry on first tool call: ${error instanceof Error ? error.message : String(error)}`,
       );
       // Continue without initialization - tools will handle gracefully on first call
     }
   } else {
     // No authentication configured - server will respond to tools/list but tool calls will fail
-    logInfo("Skipping connection initialization - no authentication configured");
+    logInfo('Skipping connection initialization - no authentication configured');
   }
   // List tools handler
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    logInfo("ListToolsRequest received");
+    logInfo('ListToolsRequest received');
 
     // Get tools from registry manager (already filtered)
-    const { RegistryManager } = await import("./registry-manager");
+    const { RegistryManager } = await import('./registry-manager');
     const registryManager = RegistryManager.getInstance();
     const tools = registryManager.getAllToolDefinitions();
 
-    logInfo("Returning tools list", { toolCount: tools.length });
+    logInfo('Returning tools list', { toolCount: tools.length });
 
     // Helper function to resolve $ref references in JSON schema
     function resolveRefs(
       schema: JsonSchemaProperty | JsonSchemaProperty[],
-      rootSchema?: JsonSchema
+      rootSchema?: JsonSchema,
     ): JsonSchemaProperty | JsonSchemaProperty[] {
-      if (!schema || typeof schema !== "object") return schema;
+      if (!schema || typeof schema !== 'object') return schema;
 
       // Set root schema for reference resolution
       rootSchema ??= schema as JsonSchema;
 
       // Handle arrays
       if (Array.isArray(schema)) {
-        return schema.map(item => resolveRefs(item, rootSchema) as JsonSchemaProperty);
+        return schema.map((item) => resolveRefs(item, rootSchema) as JsonSchemaProperty);
       }
 
       // Handle $ref resolution
-      if (schema.$ref && typeof schema.$ref === "string") {
-        const refPath = schema.$ref.replace("#/properties/", "");
+      if (schema.$ref && typeof schema.$ref === 'string') {
+        const refPath = schema.$ref.replace('#/properties/', '');
         const referencedProperty = rootSchema.properties?.[refPath];
 
         if (referencedProperty) {
@@ -188,16 +188,16 @@ export async function setupHandlers(server: Server): Promise<void> {
       // Recursively process all object properties
       const result: JsonSchemaProperty = {};
       for (const [key, value] of Object.entries(schema)) {
-        if (key === "properties" && typeof value === "object" && value !== null) {
+        if (key === 'properties' && typeof value === 'object' && value !== null) {
           // Special handling for properties object
           const resolvedProperties: Record<string, JsonSchemaProperty> = {};
           for (const [propKey, propValue] of Object.entries(
-            value as Record<string, JsonSchemaProperty>
+            value as Record<string, JsonSchemaProperty>,
           )) {
             resolvedProperties[propKey] = resolveRefs(propValue, rootSchema) as JsonSchemaProperty;
           }
           result[key] = resolvedProperties;
-        } else if (typeof value === "object" && value !== null && !Array.isArray(value)) {
+        } else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
           result[key] = resolveRefs(value as JsonSchemaProperty, rootSchema);
         } else {
           result[key] = value;
@@ -208,25 +208,25 @@ export async function setupHandlers(server: Server): Promise<void> {
     }
 
     // Remove $schema for Gemini compatibility and ensure proper JSON schema format
-    const modifiedTools = tools.map(tool => {
+    const modifiedTools = tools.map((tool) => {
       let inputSchema = tool.inputSchema;
 
       // Force all input schemas to be type: "object" for MCP compatibility
-      if (inputSchema && typeof inputSchema === "object") {
-        inputSchema = { ...inputSchema, type: "object" };
+      if (inputSchema && typeof inputSchema === 'object') {
+        inputSchema = { ...inputSchema, type: 'object' };
       }
 
       // Resolve $ref references for MCP agent compatibility
-      if (inputSchema && typeof inputSchema === "object") {
+      if (inputSchema && typeof inputSchema === 'object') {
         const resolved = resolveRefs(inputSchema);
         // Only assign if resolved is an object (not array)
-        if (resolved && typeof resolved === "object" && !Array.isArray(resolved)) {
+        if (resolved && typeof resolved === 'object' && !Array.isArray(resolved)) {
           inputSchema = resolved;
         }
       }
 
       // Remove $schema for Gemini compatibility
-      if (inputSchema && typeof inputSchema === "object" && "$schema" in inputSchema) {
+      if (inputSchema && typeof inputSchema === 'object' && '$schema' in inputSchema) {
         const cleanedSchema = { ...inputSchema } as Record<string, unknown>;
         delete cleanedSchema.$schema;
         inputSchema = cleanedSchema;
@@ -242,11 +242,11 @@ export async function setupHandlers(server: Server): Promise<void> {
 
   // Call tool handler — wrapped with handler-level timeout to prevent infinite hangs.
   // Uses Promise.race() so that hung operations are actually cut off, not just flagged.
-  server.setRequestHandler(CallToolRequestSchema, async request => {
+  server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Create a timeout promise that rejects after HANDLER_TIMEOUT_MS
-    const HANDLER_TIMEOUT_SYMBOL = Symbol("handler_timeout");
+    const HANDLER_TIMEOUT_SYMBOL = Symbol('handler_timeout');
     let handlerTimeoutId: ReturnType<typeof setTimeout> | undefined;
-    const timeoutPromise = new Promise<typeof HANDLER_TIMEOUT_SYMBOL>(resolve => {
+    const timeoutPromise = new Promise<typeof HANDLER_TIMEOUT_SYMBOL>((resolve) => {
       handlerTimeoutId = setTimeout(() => resolve(HANDLER_TIMEOUT_SYMBOL), HANDLER_TIMEOUT_MS);
     });
 
@@ -256,25 +256,25 @@ export async function setupHandlers(server: Server): Promise<void> {
       isError?: boolean;
     }> => {
       if (!request.params.arguments) {
-        throw new Error("Arguments are required");
+        throw new Error('Arguments are required');
       }
 
       // In condensed mode, tool/action is captured via request tracker for single-line log
       // In verbose mode, emit per-request INFO logs
-      if (LOG_FORMAT === "verbose") {
+      if (LOG_FORMAT === 'verbose') {
         logInfo(`Tool called: ${request.params.name}`);
       }
 
       // Check if authentication is configured
-      const { isOAuthEnabled, isAuthenticationConfigured } = await import("./oauth/index");
+      const { isOAuthEnabled, isAuthenticationConfigured } = await import('./oauth/index');
 
       if (!isAuthenticationConfigured()) {
         // No token configured - return clear error with setup instructions
         throw new Error(
-          "GITLAB_TOKEN environment variable is required to execute tools. " +
+          'GITLAB_TOKEN environment variable is required to execute tools. ' +
             "Run 'npx @structured-world/gitlab-mcp setup' for interactive configuration, " +
-            "or set GITLAB_TOKEN manually. " +
-            "Documentation: https://gitlab-mcp.sw.foundation/guide/configuration"
+            'or set GITLAB_TOKEN manually. ' +
+            'Documentation: https://gitlab-mcp.sw.foundation/guide/configuration',
         );
       }
 
@@ -292,12 +292,12 @@ export async function setupHandlers(server: Server): Promise<void> {
         }
 
         const instanceInfo = connectionManager.getInstanceInfo();
-        if (LOG_FORMAT === "verbose") {
+        if (LOG_FORMAT === 'verbose') {
           logInfo(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
         }
       } catch {
-        if (LOG_FORMAT === "verbose") {
-          logInfo("Connection not initialized, attempting to initialize...");
+        if (LOG_FORMAT === 'verbose') {
+          logInfo('Connection not initialized, attempting to initialize...');
         }
         try {
           await connectionManager.initialize();
@@ -309,33 +309,33 @@ export async function setupHandlers(server: Server): Promise<void> {
           }
 
           const instanceInfo = connectionManager.getInstanceInfo();
-          if (LOG_FORMAT === "verbose") {
+          if (LOG_FORMAT === 'verbose') {
             logInfo(`Connection initialized: ${instanceInfo.version} ${instanceInfo.tier}`);
           }
 
           // Rebuild registry cache now that tier/version info is available
-          const { RegistryManager } = await import("./registry-manager");
+          const { RegistryManager } = await import('./registry-manager');
           RegistryManager.getInstance().refreshCache();
         } catch (initError) {
           logError(
-            `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`
+            `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`,
           );
-          throw new Error("Bad Request: Server not initialized", { cause: initError });
+          throw new Error('Bad Request: Server not initialized', { cause: initError });
         }
       }
 
       // Dynamic tool dispatch using the new registry manager
       const toolName = request.params.name;
       const toolArgs = request.params.arguments;
-      const action = toolArgs && typeof toolArgs.action === "string" ? toolArgs.action : undefined;
+      const action = toolArgs && typeof toolArgs.action === 'string' ? toolArgs.action : undefined;
 
       // Access log tracking only runs in condensed mode (verbose mode uses per-line logs)
-      if (LOG_FORMAT === "condensed") {
+      if (LOG_FORMAT === 'condensed') {
         const requestTracker = getRequestTracker();
         requestTracker.setToolForCurrentRequest(toolName, action);
 
         // Capture current context and read-only state for access logging
-        const { getContextManager } = await import("./entities/context/context-manager");
+        const { getContextManager } = await import('./entities/context/context-manager');
         const contextManager = getContextManager();
         const sessionContext = contextManager.getContext();
         if (sessionContext.scope?.path) {
@@ -357,7 +357,7 @@ export async function setupHandlers(server: Server): Promise<void> {
 
       try {
         // Import the registry manager
-        const { RegistryManager } = await import("./registry-manager");
+        const { RegistryManager } = await import('./registry-manager');
         const registryManager = RegistryManager.getInstance();
 
         // Check if tool exists and passes all filtering (applied at registry level)
@@ -365,15 +365,15 @@ export async function setupHandlers(server: Server): Promise<void> {
           throw new Error(`Tool '${toolName}' is not available or has been filtered out`);
         }
 
-        if (LOG_FORMAT === "verbose") {
+        if (LOG_FORMAT === 'verbose') {
           logInfo(`Executing tool: ${toolName}`);
         }
 
         // Check OAuth context
-        const { isOAuthEnabled, getTokenContext } = await import("./oauth/index");
+        const { isOAuthEnabled, getTokenContext } = await import('./oauth/index');
         if (isOAuthEnabled()) {
           const context = getTokenContext();
-          logDebug("OAuth context check before tool execution", {
+          logDebug('OAuth context check before tool execution', {
             hasContext: !!context,
             hasToken: !!context?.gitlabToken,
             tool: toolName,
@@ -386,7 +386,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         return {
           content: [
             {
-              type: "text",
+              type: 'text',
               text: JSON.stringify(result, null, 2),
             },
           ],
@@ -406,9 +406,9 @@ export async function setupHandlers(server: Server): Promise<void> {
         // Timeout won the race — handler is still running but we respond immediately
         const toolName = request.params.name;
         const action =
-          request.params.arguments && typeof request.params.arguments.action === "string"
+          request.params.arguments && typeof request.params.arguments.action === 'string'
             ? request.params.arguments.action
-            : "unknown";
+            : 'unknown';
         const retryable = isIdempotentOperation(toolName);
         const timeoutError = createTimeoutError(toolName, action, HANDLER_TIMEOUT_MS, retryable);
 
@@ -417,7 +417,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         return {
           content: [
             {
-              type: "text",
+              type: 'text',
               text: JSON.stringify(timeoutError, null, 2),
             },
           ],
@@ -450,11 +450,11 @@ export async function setupHandlers(server: Server): Promise<void> {
       const structuredError = toStructuredError(error, toolName, toolArgs);
 
       if (structuredError) {
-        logDebug("Returning structured error response", { structuredError });
+        logDebug('Returning structured error response', { structuredError });
         return {
           content: [
             {
-              type: "text",
+              type: 'text',
               text: JSON.stringify(structuredError, null, 2),
             },
           ],
@@ -467,7 +467,7 @@ export async function setupHandlers(server: Server): Promise<void> {
       return {
         content: [
           {
-            type: "text",
+            type: 'text',
             text: JSON.stringify({ error: errorMessage }, null, 2),
           },
         ],

@@ -8,21 +8,21 @@
  * GitLab Device Flow documentation: https://docs.gitlab.com/api/oauth2/#device-authorization-grant
  */
 
-import { GITLAB_BASE_URL } from "../config";
-import { OAuthConfig } from "./config";
-import { GitLabDeviceResponse, GitLabTokenResponse, GitLabUserInfo } from "./types";
-import { logInfo, logWarn, logError, logDebug } from "../logger";
+import { GITLAB_BASE_URL } from '../config';
+import { OAuthConfig } from './config';
+import { GitLabDeviceResponse, GitLabTokenResponse, GitLabUserInfo } from './types';
+import { logInfo, logWarn, logError, logDebug } from '../logger';
 
 /**
  * Device flow error types from GitLab
  */
 type DeviceFlowError =
-  | "authorization_pending"
-  | "slow_down"
-  | "expired_token"
-  | "access_denied"
-  | "invalid_grant"
-  | "invalid_request";
+  | 'authorization_pending'
+  | 'slow_down'
+  | 'expired_token'
+  | 'access_denied'
+  | 'invalid_grant'
+  | 'invalid_request';
 
 /**
  * Device flow error response from GitLab
@@ -46,16 +46,16 @@ interface DeviceFlowErrorResponse {
 export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDeviceResponse> {
   const url = `${GITLAB_BASE_URL}/oauth/authorize_device`;
 
-  logDebug("Initiating GitLab device flow", { url, clientId: config.gitlabClientId });
+  logDebug('Initiating GitLab device flow', { url, clientId: config.gitlabClientId });
 
   // Convert comma-separated scopes to space-separated (GitLab requirement)
-  const scopes = config.gitlabScopes.replace(/,/g, " ");
+  const scopes = config.gitlabScopes.replace(/,/g, ' ');
 
   const response = await fetch(url, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
     },
     body: new URLSearchParams({
       client_id: config.gitlabClientId,
@@ -65,13 +65,13 @@ export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDev
 
   if (!response.ok) {
     const errorText = await response.text();
-    logError("Failed to initiate device flow", { status: response.status, error: errorText });
+    logError('Failed to initiate device flow', { status: response.status, error: errorText });
     throw new Error(`Failed to initiate device flow: ${response.status} ${errorText}`);
   }
 
   const data = (await response.json()) as GitLabDeviceResponse;
 
-  logInfo("Device flow initiated", {
+  logInfo('Device flow initiated', {
     userCode: data.user_code,
     verificationUri: data.verification_uri,
     expiresIn: data.expires_in,
@@ -93,14 +93,14 @@ export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDev
  */
 export async function pollDeviceFlowOnce(
   deviceCode: string,
-  config: OAuthConfig
+  config: OAuthConfig,
 ): Promise<GitLabTokenResponse | null> {
   const url = `${GITLAB_BASE_URL}/oauth/token`;
 
   const params: Record<string, string> = {
     client_id: config.gitlabClientId,
     device_code: deviceCode,
-    grant_type: "urn:ietf:params:oauth:grant-type:device_code",
+    grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
   };
 
   // Add client secret if configured (for confidential apps)
@@ -109,17 +109,17 @@ export async function pollDeviceFlowOnce(
   }
 
   const response = await fetch(url, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
     },
     body: new URLSearchParams(params),
   });
 
   if (response.ok) {
     const data = (await response.json()) as GitLabTokenResponse;
-    logInfo("Device flow authorization completed successfully");
+    logInfo('Device flow authorization completed successfully');
     return data;
   }
 
@@ -127,24 +127,24 @@ export async function pollDeviceFlowOnce(
   const error = (await response.json()) as DeviceFlowErrorResponse;
 
   switch (error.error) {
-    case "authorization_pending":
+    case 'authorization_pending':
       // User hasn't completed authorization yet - this is normal
       return null;
 
-    case "slow_down":
+    case 'slow_down':
       // GitLab is asking us to slow down - we should increase the interval
       // The caller should handle this by increasing poll interval
-      logDebug("Device flow: slow_down received, should increase poll interval");
+      logDebug('Device flow: slow_down received, should increase poll interval');
       return null;
 
-    case "expired_token":
-      throw new Error("Device code expired. Please start a new authorization.");
+    case 'expired_token':
+      throw new Error('Device code expired. Please start a new authorization.');
 
-    case "access_denied":
-      throw new Error("User denied the authorization request.");
+    case 'access_denied':
+      throw new Error('User denied the authorization request.');
 
-    case "invalid_grant":
-      throw new Error("Invalid device code or grant.");
+    case 'invalid_grant':
+      throw new Error('Invalid device code or grant.');
 
     default:
       throw new Error(`Device flow error: ${error.error_description ?? error.error}`);
@@ -166,7 +166,7 @@ export async function pollDeviceFlowOnce(
 export async function pollForToken(
   deviceCode: string,
   config: OAuthConfig,
-  onPending?: () => void
+  onPending?: () => void,
 ): Promise<GitLabTokenResponse> {
   const startTime = Date.now();
   const timeout = config.deviceTimeout * 1000;
@@ -189,16 +189,16 @@ export async function pollForToken(
       // Re-throw terminal errors
       if (error instanceof Error) {
         if (
-          error.message.includes("expired") ||
-          error.message.includes("denied") ||
-          error.message.includes("invalid")
+          error.message.includes('expired') ||
+          error.message.includes('denied') ||
+          error.message.includes('invalid')
         ) {
           throw error;
         }
       }
 
       // Log but continue for transient errors
-      logWarn("Device flow poll error, will retry", { err: error as Error });
+      logWarn('Device flow poll error, will retry', { err: error as Error });
     }
   }
 
@@ -218,14 +218,14 @@ export async function pollForToken(
  */
 export async function refreshGitLabToken(
   refreshToken: string,
-  config: OAuthConfig
+  config: OAuthConfig,
 ): Promise<GitLabTokenResponse> {
   const url = `${GITLAB_BASE_URL}/oauth/token`;
 
   const params: Record<string, string> = {
     client_id: config.gitlabClientId,
     refresh_token: refreshToken,
-    grant_type: "refresh_token",
+    grant_type: 'refresh_token',
   };
 
   // Add client secret if configured
@@ -233,25 +233,25 @@ export async function refreshGitLabToken(
     params.client_secret = config.gitlabClientSecret;
   }
 
-  logDebug("Refreshing GitLab token");
+  logDebug('Refreshing GitLab token');
 
   const response = await fetch(url, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
     },
     body: new URLSearchParams(params),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    logError("Failed to refresh GitLab token", { status: response.status, error: errorText });
+    logError('Failed to refresh GitLab token', { status: response.status, error: errorText });
     throw new Error(`Failed to refresh token: ${response.status} ${errorText}`);
   }
 
   const data = (await response.json()) as GitLabTokenResponse;
-  logInfo("GitLab token refreshed successfully");
+  logInfo('GitLab token refreshed successfully');
   return data;
 }
 
@@ -270,19 +270,19 @@ export async function getGitLabUser(accessToken: string): Promise<GitLabUserInfo
   const response = await fetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
-      Accept: "application/json",
+      Accept: 'application/json',
     },
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    logError("Failed to get GitLab user info", { status: response.status, error: errorText });
+    logError('Failed to get GitLab user info', { status: response.status, error: errorText });
     throw new Error(`Failed to get GitLab user info: ${response.status}`);
   }
 
   const user = (await response.json()) as GitLabUserInfo;
 
-  logDebug("Retrieved GitLab user info", { userId: user.id, username: user.username });
+  logDebug('Retrieved GitLab user info', { userId: user.id, username: user.username });
 
   return {
     id: user.id,
@@ -305,7 +305,7 @@ export async function validateGitLabToken(accessToken: string): Promise<boolean>
     const url = `${GITLAB_BASE_URL}/api/v4/user`;
 
     const response = await fetch(url, {
-      method: "HEAD",
+      method: 'HEAD',
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
@@ -331,14 +331,14 @@ export async function validateGitLabToken(accessToken: string): Promise<boolean>
 export async function exchangeGitLabAuthCode(
   code: string,
   redirectUri: string,
-  config: OAuthConfig
+  config: OAuthConfig,
 ): Promise<GitLabTokenResponse> {
   const url = `${GITLAB_BASE_URL}/oauth/token`;
 
   const params: Record<string, string> = {
     client_id: config.gitlabClientId,
     code: code,
-    grant_type: "authorization_code",
+    grant_type: 'authorization_code',
     redirect_uri: redirectUri,
   };
 
@@ -347,25 +347,25 @@ export async function exchangeGitLabAuthCode(
     params.client_secret = config.gitlabClientSecret;
   }
 
-  logDebug("Exchanging GitLab authorization code for tokens", { redirectUri });
+  logDebug('Exchanging GitLab authorization code for tokens', { redirectUri });
 
   const response = await fetch(url, {
-    method: "POST",
+    method: 'POST',
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Accept: "application/json",
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
     },
     body: new URLSearchParams(params),
   });
 
   if (!response.ok) {
     const errorText = await response.text();
-    logError("Failed to exchange GitLab auth code", { status: response.status, error: errorText });
+    logError('Failed to exchange GitLab auth code', { status: response.status, error: errorText });
     throw new Error(`Failed to exchange authorization code: ${response.status} ${errorText}`);
   }
 
   const data = (await response.json()) as GitLabTokenResponse;
-  logInfo("GitLab authorization code exchanged successfully");
+  logInfo('GitLab authorization code exchanged successfully');
   return data;
 }
 
@@ -382,15 +382,15 @@ export async function exchangeGitLabAuthCode(
 export function buildGitLabAuthUrl(
   config: OAuthConfig,
   redirectUri: string,
-  state: string
+  state: string,
 ): string {
   // Convert comma-separated scopes to space-separated (GitLab requirement)
-  const scopes = config.gitlabScopes.replace(/,/g, " ");
+  const scopes = config.gitlabScopes.replace(/,/g, ' ');
 
   const params = new URLSearchParams({
     client_id: config.gitlabClientId,
     redirect_uri: redirectUri,
-    response_type: "code",
+    response_type: 'code',
     state: state,
     scope: scopes,
   });
@@ -402,5 +402,5 @@ export function buildGitLabAuthUrl(
  * Helper function to sleep for a specified duration
  */
 function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms));
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }

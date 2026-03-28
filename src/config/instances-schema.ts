@@ -5,7 +5,7 @@
  * Supports YAML/JSON configuration files and environment variable formats.
  */
 
-import { z } from "zod";
+import { z } from 'zod';
 
 /**
  * URL validation and normalization
@@ -16,28 +16,28 @@ import { z } from "zod";
 const GitLabUrlSchema = z
   .string()
   .url()
-  .transform(url => {
+  .transform((url) => {
     const parsed = new URL(url);
 
     // Start with origin (protocol + host + port)
     let path = parsed.pathname;
 
     // Normalize root path to empty
-    if (path === "/") {
-      path = "";
+    if (path === '/') {
+      path = '';
     } else {
       // Remove single trailing slash for non-root paths
-      if (path.endsWith("/")) {
+      if (path.endsWith('/')) {
         path = path.slice(0, -1);
       }
 
       // Strip /api/v4 or /api/graphql suffix if present
-      for (const apiSuffix of ["/api/v4", "/api/graphql"]) {
+      for (const apiSuffix of ['/api/v4', '/api/graphql']) {
         if (path.endsWith(apiSuffix)) {
           path = path.slice(0, -apiSuffix.length);
           // Normalize any resulting "/" back to empty
-          if (path === "/") {
-            path = "";
+          if (path === '/') {
+            path = '';
           }
           break;
         }
@@ -46,21 +46,21 @@ const GitLabUrlSchema = z
 
     return `${parsed.origin}${path}`;
   })
-  .describe("GitLab instance URL (e.g., https://gitlab.com or https://example.com/gitlab)");
+  .describe('GitLab instance URL (e.g., https://gitlab.com or https://example.com/gitlab)');
 
 /**
  * OAuth configuration for an instance
  */
 export const InstanceOAuthConfigSchema = z
   .object({
-    clientId: z.string().min(1).describe("OAuth Application ID"),
-    clientSecret: z.string().optional().describe("OAuth Secret (only for confidential apps)"),
+    clientId: z.string().min(1).describe('OAuth Application ID'),
+    clientSecret: z.string().optional().describe('OAuth Secret (only for confidential apps)'),
     scopes: z
       .string()
-      .default("api read_user")
-      .describe("OAuth scopes to request (space-separated)"),
+      .default('api read_user')
+      .describe('OAuth scopes to request (space-separated)'),
   })
-  .describe("OAuth configuration for this GitLab instance");
+  .describe('OAuth configuration for this GitLab instance');
 
 /**
  * Rate limiting configuration for an instance
@@ -72,21 +72,21 @@ export const InstanceRateLimitConfigSchema = z
       .int()
       .positive()
       .default(100)
-      .describe("Maximum parallel requests to this instance"),
+      .describe('Maximum parallel requests to this instance'),
     queueSize: z
       .number()
       .int()
       .positive()
       .default(500)
-      .describe("Maximum requests to queue when at capacity"),
+      .describe('Maximum requests to queue when at capacity'),
     queueTimeout: z
       .number()
       .int()
       .positive()
       .default(60000)
-      .describe("Queue wait timeout in milliseconds"),
+      .describe('Queue wait timeout in milliseconds'),
   })
-  .describe("Rate limiting configuration for this instance");
+  .describe('Rate limiting configuration for this instance');
 
 /**
  * Single GitLab instance configuration
@@ -94,15 +94,15 @@ export const InstanceRateLimitConfigSchema = z
 export const GitLabInstanceConfigSchema = z
   .object({
     url: GitLabUrlSchema,
-    label: z.string().optional().describe("Human-readable name for UI display"),
+    label: z.string().optional().describe('Human-readable name for UI display'),
     oauth: InstanceOAuthConfigSchema.optional(),
     rateLimit: InstanceRateLimitConfigSchema.optional(),
     insecureSkipVerify: z
       .boolean()
       .default(false)
-      .describe("Skip TLS certificate verification (development only!)"),
+      .describe('Skip TLS certificate verification (development only!)'),
   })
-  .describe("Configuration for a single GitLab instance");
+  .describe('Configuration for a single GitLab instance');
 
 /**
  * Default configuration applied to all instances
@@ -112,11 +112,11 @@ export const InstanceDefaultsSchema = z
     rateLimit: InstanceRateLimitConfigSchema.optional(),
     oauth: z
       .object({
-        scopes: z.string().default("api read_user").describe("Default OAuth scopes"),
+        scopes: z.string().default('api read_user').describe('Default OAuth scopes'),
       })
       .optional(),
   })
-  .describe("Default configuration applied to all instances");
+  .describe('Default configuration applied to all instances');
 
 /**
  * Complete instances configuration file schema
@@ -126,15 +126,15 @@ export const InstancesConfigFileSchema = z
     instances: z
       .array(GitLabInstanceConfigSchema)
       .min(1)
-      .describe("List of GitLab instances to connect to"),
+      .describe('List of GitLab instances to connect to'),
     defaults: InstanceDefaultsSchema.optional(),
   })
-  .describe("GitLab MCP instances configuration file");
+  .describe('GitLab MCP instances configuration file');
 
 /**
  * Connection status for runtime state
  */
-export const ConnectionStatusSchema = z.enum(["healthy", "degraded", "offline"]);
+export const ConnectionStatusSchema = z.enum(['healthy', 'degraded', 'offline']);
 
 /**
  * Inferred types from schemas
@@ -186,7 +186,7 @@ export interface CachedIntrospection {
  * Uses right-to-left parsing to extract OAuth credentials, preserving subpaths.
  */
 export function parseInstanceUrlString(urlString: string): GitLabInstanceConfig {
-  const protocolSeparatorIndex = urlString.indexOf("://");
+  const protocolSeparatorIndex = urlString.indexOf('://');
   if (protocolSeparatorIndex === -1) {
     throw new Error(`Invalid GitLab instance URL format: ${urlString}`);
   }
@@ -218,15 +218,15 @@ export function parseInstanceUrlString(urlString: string): GitLabInstanceConfig 
   // If full URL parsing failed, try extracting OAuth credentials from the end
   if (!baseUrlString) {
     // Try to interpret the string as: <url>:<clientId>:<secret>
-    const lastColonIndex = urlString.lastIndexOf(":");
+    const lastColonIndex = urlString.lastIndexOf(':');
     if (lastColonIndex > protocolEnd) {
       const lastSegment = urlString.slice(lastColonIndex + 1);
       // OAuth segments don't contain slashes and aren't port numbers
-      if (!lastSegment.includes("/") && !isPortNumber(lastSegment)) {
-        const secondLastColonIndex = urlString.lastIndexOf(":", lastColonIndex - 1);
+      if (!lastSegment.includes('/') && !isPortNumber(lastSegment)) {
+        const secondLastColonIndex = urlString.lastIndexOf(':', lastColonIndex - 1);
         if (secondLastColonIndex > protocolEnd) {
           const potentialClientId = urlString.slice(secondLastColonIndex + 1, lastColonIndex);
-          if (!potentialClientId.includes("/") && !isPortNumber(potentialClientId)) {
+          if (!potentialClientId.includes('/') && !isPortNumber(potentialClientId)) {
             const potentialBaseUrl = urlString.slice(0, secondLastColonIndex);
             try {
               baseUrlString = GitLabUrlSchema.parse(potentialBaseUrl);
@@ -243,11 +243,11 @@ export function parseInstanceUrlString(urlString: string): GitLabInstanceConfig 
 
   // If two-part OAuth parsing failed, try: <url>:<clientId>
   if (!baseUrlString) {
-    const singleLastColonIndex = urlString.lastIndexOf(":");
+    const singleLastColonIndex = urlString.lastIndexOf(':');
     if (singleLastColonIndex > protocolEnd) {
       const potentialClientId = urlString.slice(singleLastColonIndex + 1);
       // OAuth clientId doesn't contain slashes and isn't a port number
-      if (!potentialClientId.includes("/") && !isPortNumber(potentialClientId)) {
+      if (!potentialClientId.includes('/') && !isPortNumber(potentialClientId)) {
         const potentialBaseUrl = urlString.slice(0, singleLastColonIndex);
         try {
           baseUrlString = GitLabUrlSchema.parse(potentialBaseUrl);
@@ -277,7 +277,7 @@ export function parseInstanceUrlString(urlString: string): GitLabInstanceConfig 
   if (clientId) {
     config.oauth = {
       clientId,
-      scopes: "api read_user",
+      scopes: 'api read_user',
     };
 
     if (clientSecret) {
@@ -300,7 +300,7 @@ export function validateInstancesConfig(config: unknown): InstancesConfigFile {
  */
 export function applyInstanceDefaults(
   instance: GitLabInstanceConfig,
-  defaults?: InstanceDefaults
+  defaults?: InstanceDefaults,
 ): GitLabInstanceConfig {
   if (!defaults) {
     return instance;

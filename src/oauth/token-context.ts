@@ -8,8 +8,8 @@
  * use the correct token for the current request context.
  */
 
-import { AsyncLocalStorage } from "async_hooks";
-import { TokenContext } from "./types";
+import { AsyncLocalStorage } from 'async_hooks';
+import { TokenContext } from './types';
 
 /**
  * AsyncLocalStorage instance for token context
@@ -42,7 +42,7 @@ const asyncLocalStorage = new AsyncLocalStorage<TokenContext>();
  */
 export function runWithTokenContext<T>(
   context: TokenContext,
-  fn: () => T | Promise<T>
+  fn: () => T | Promise<T>,
 ): T | Promise<T> {
   return asyncLocalStorage.run(context, fn);
 }
@@ -72,7 +72,7 @@ export function getGitLabTokenFromContext(): string {
   const context = asyncLocalStorage.getStore();
   if (!context) {
     throw new Error(
-      "No OAuth token context available - this code must be called within an authenticated request"
+      'No OAuth token context available - this code must be called within an authenticated request',
     );
   }
   return context.gitlabToken;

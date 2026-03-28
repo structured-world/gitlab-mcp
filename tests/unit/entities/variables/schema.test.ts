@@ -3,560 +3,560 @@
  * Tests schema validation for manage_variable CQRS Command tool
  */
 
-import { ManageVariableSchema } from "../../../../src/entities/variables/schema";
+import { ManageVariableSchema } from '../../../../src/entities/variables/schema';
 
-describe("ManageVariableSchema", () => {
-  describe("action field validation", () => {
+describe('ManageVariableSchema', () => {
+  describe('action field validation', () => {
     it("should accept 'create' action", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "NEW_VAR",
-        value: "test-value",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'NEW_VAR',
+        value: 'test-value',
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.action).toBe("create");
+        expect(result.data.action).toBe('create');
       }
     });
 
     it("should accept 'update' action", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "update",
-        namespace: "test/project",
-        key: "EXISTING_VAR",
-        value: "new-value",
+        action: 'update',
+        namespace: 'test/project',
+        key: 'EXISTING_VAR',
+        value: 'new-value',
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.action).toBe("update");
+        expect(result.data.action).toBe('update');
       }
     });
 
     it("should accept 'delete' action", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "delete",
-        namespace: "test/project",
-        key: "VAR_TO_DELETE",
+        action: 'delete',
+        namespace: 'test/project',
+        key: 'VAR_TO_DELETE',
       });
       expect(result.success).toBe(true);
       if (result.success) {
-        expect(result.data.action).toBe("delete");
+        expect(result.data.action).toBe('delete');
       }
     });
 
-    it("should reject invalid action", () => {
+    it('should reject invalid action', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "invalid",
-        namespace: "test/project",
-        key: "VAR",
+        action: 'invalid',
+        namespace: 'test/project',
+        key: 'VAR',
       });
       expect(result.success).toBe(false);
     });
   });
 
-  describe("create action validation", () => {
-    it("should require value for create action", () => {
+  describe('create action validation', () => {
+    it('should require value for create action', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "NEW_VAR",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'NEW_VAR',
         // Missing value
       });
       expect(result.success).toBe(false);
       if (!result.success) {
-        const valueError = result.error.issues.find(i => i.path.includes("value"));
+        const valueError = result.error.issues.find((i) => i.path.includes('value'));
         expect(valueError).toBeDefined();
       }
     });
 
-    it("should accept create with all optional fields", () => {
+    it('should accept create with all optional fields', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "FULL_VAR",
-        value: "my-value",
-        variable_type: "env_var",
-        environment_scope: "production",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'FULL_VAR',
+        value: 'my-value',
+        variable_type: 'env_var',
+        environment_scope: 'production',
         protected: true,
         masked: true,
         raw: false,
-        description: "A test variable",
+        description: 'A test variable',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
-        expect(result.data.variable_type).toBe("env_var");
-        expect(result.data.environment_scope).toBe("production");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.variable_type).toBe('env_var');
+        expect(result.data.environment_scope).toBe('production');
         expect(result.data.protected).toBe(true);
         expect(result.data.masked).toBe(true);
         expect(result.data.raw).toBe(false);
-        expect(result.data.description).toBe("A test variable");
+        expect(result.data.description).toBe('A test variable');
       }
     });
   });
 
-  describe("variable_type field validation", () => {
+  describe('variable_type field validation', () => {
     it("should accept 'env_var' type", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "ENV_VAR",
-        value: "value",
-        variable_type: "env_var",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'ENV_VAR',
+        value: 'value',
+        variable_type: 'env_var',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
-        expect(result.data.variable_type).toBe("env_var");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.variable_type).toBe('env_var');
       }
     });
 
     it("should accept 'file' type", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "FILE_VAR",
-        value: "file content",
-        variable_type: "file",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'FILE_VAR',
+        value: 'file content',
+        variable_type: 'file',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
-        expect(result.data.variable_type).toBe("file");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.variable_type).toBe('file');
       }
     });
 
     it("should coerce 'env' to 'env_var'", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        variable_type: "env",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        variable_type: 'env',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
-        expect(result.data.variable_type).toBe("env_var");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.variable_type).toBe('env_var');
       }
     });
 
     it("should coerce 'environment' to 'env_var'", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        variable_type: "environment",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        variable_type: 'environment',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
-        expect(result.data.variable_type).toBe("env_var");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.variable_type).toBe('env_var');
       }
     });
 
     it("should coerce 'var' to 'env_var'", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        variable_type: "var",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        variable_type: 'var',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
-        expect(result.data.variable_type).toBe("env_var");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.variable_type).toBe('env_var');
       }
     });
 
     it("should coerce 'variable' to 'env_var'", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        variable_type: "variable",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        variable_type: 'variable',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
-        expect(result.data.variable_type).toBe("env_var");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.variable_type).toBe('env_var');
       }
     });
 
     it("should coerce 'file_var' to 'file'", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        variable_type: "file_var",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        variable_type: 'file_var',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
-        expect(result.data.variable_type).toBe("file");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.variable_type).toBe('file');
       }
     });
 
-    it("should be case-insensitive for variable_type coercion", () => {
+    it('should be case-insensitive for variable_type coercion', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        variable_type: "ENV_VAR",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        variable_type: 'ENV_VAR',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
-        expect(result.data.variable_type).toBe("env_var");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.variable_type).toBe('env_var');
       }
     });
 
-    it("should reject invalid variable_type", () => {
+    it('should reject invalid variable_type', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        variable_type: "invalid_type",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        variable_type: 'invalid_type',
       });
       expect(result.success).toBe(false);
     });
   });
 
-  describe("boolean field coercion (flexibleBoolean)", () => {
-    it("should accept boolean true for protected", () => {
+  describe('boolean field coercion (flexibleBoolean)', () => {
+    it('should accept boolean true for protected', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
         protected: true,
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
+      if (result.success && result.data.action === 'create') {
         expect(result.data.protected).toBe(true);
       }
     });
 
-    it("should accept boolean false for masked", () => {
+    it('should accept boolean false for masked', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
         masked: false,
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
+      if (result.success && result.data.action === 'create') {
         expect(result.data.masked).toBe(false);
       }
     });
 
     it("should coerce string 'true' to boolean true", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        protected: "true",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        protected: 'true',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
+      if (result.success && result.data.action === 'create') {
         expect(result.data.protected).toBe(true);
       }
     });
 
     it("should coerce string 'false' to boolean false", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        masked: "false",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        masked: 'false',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
+      if (result.success && result.data.action === 'create') {
         expect(result.data.masked).toBe(false);
       }
     });
 
     it("should coerce string 't' to boolean true", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        raw: "t",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        raw: 't',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
+      if (result.success && result.data.action === 'create') {
         expect(result.data.raw).toBe(true);
       }
     });
 
     it("should coerce string '1' to boolean true", () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        raw: "1",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        raw: '1',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
+      if (result.success && result.data.action === 'create') {
         expect(result.data.raw).toBe(true);
       }
     });
 
-    it("should coerce non-truthy string to boolean false", () => {
+    it('should coerce non-truthy string to boolean false', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        raw: "no",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        raw: 'no',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
+      if (result.success && result.data.action === 'create') {
         expect(result.data.raw).toBe(false);
       }
     });
 
-    it("should coerce number 1 to boolean true", () => {
+    it('should coerce number 1 to boolean true', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
         protected: 1,
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
+      if (result.success && result.data.action === 'create') {
         expect(result.data.protected).toBe(true);
       }
     });
 
-    it("should coerce number 0 to boolean false", () => {
+    it('should coerce number 0 to boolean false', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
         masked: 0,
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
+      if (result.success && result.data.action === 'create') {
         expect(result.data.masked).toBe(false);
       }
     });
   });
 
-  describe("update action validation", () => {
-    it("should allow update without value", () => {
+  describe('update action validation', () => {
+    it('should allow update without value', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "update",
-        namespace: "test/project",
-        key: "EXISTING_VAR",
+        action: 'update',
+        namespace: 'test/project',
+        key: 'EXISTING_VAR',
         protected: true,
       });
       expect(result.success).toBe(true);
     });
 
-    it("should accept update with filter", () => {
+    it('should accept update with filter', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "update",
-        namespace: "test/project",
-        key: "SCOPED_VAR",
-        value: "new-value",
+        action: 'update',
+        namespace: 'test/project',
+        key: 'SCOPED_VAR',
+        value: 'new-value',
         filter: {
-          environment_scope: "staging",
+          environment_scope: 'staging',
         },
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "update") {
-        expect(result.data.filter?.environment_scope).toBe("staging");
+      if (result.success && result.data.action === 'update') {
+        expect(result.data.filter?.environment_scope).toBe('staging');
       }
     });
   });
 
-  describe("delete action validation", () => {
-    it("should allow delete with only required fields", () => {
+  describe('delete action validation', () => {
+    it('should allow delete with only required fields', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "delete",
-        namespace: "test/project",
-        key: "VAR_TO_DELETE",
+        action: 'delete',
+        namespace: 'test/project',
+        key: 'VAR_TO_DELETE',
       });
       expect(result.success).toBe(true);
     });
 
-    it("should accept delete with filter", () => {
+    it('should accept delete with filter', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "delete",
-        namespace: "test/project",
-        key: "SCOPED_VAR",
+        action: 'delete',
+        namespace: 'test/project',
+        key: 'SCOPED_VAR',
         filter: {
-          environment_scope: "development",
+          environment_scope: 'development',
         },
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "delete") {
-        expect(result.data.filter?.environment_scope).toBe("development");
+      if (result.success && result.data.action === 'delete') {
+        expect(result.data.filter?.environment_scope).toBe('development');
       }
     });
 
-    it("should ignore value for delete action", () => {
+    it('should ignore value for delete action', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "delete",
-        namespace: "test/project",
-        key: "VAR",
-        value: "ignored-value",
+        action: 'delete',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'ignored-value',
       });
       expect(result.success).toBe(true);
     });
   });
 
-  describe("key field validation", () => {
-    it("should accept alphanumeric key", () => {
+  describe('key field validation', () => {
+    it('should accept alphanumeric key', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "delete",
-        namespace: "test/project",
-        key: "MY_VAR_123",
+        action: 'delete',
+        namespace: 'test/project',
+        key: 'MY_VAR_123',
       });
       expect(result.success).toBe(true);
     });
 
-    it("should accept key with underscores", () => {
+    it('should accept key with underscores', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "delete",
-        namespace: "test/project",
-        key: "DATABASE_CONNECTION_STRING",
+        action: 'delete',
+        namespace: 'test/project',
+        key: 'DATABASE_CONNECTION_STRING',
       });
       expect(result.success).toBe(true);
     });
 
-    it("should require key", () => {
+    it('should require key', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "delete",
-        namespace: "test/project",
+        action: 'delete',
+        namespace: 'test/project',
         // Missing key
       });
       expect(result.success).toBe(false);
     });
   });
 
-  describe("environment_scope field", () => {
-    it("should accept wildcard scope", () => {
+  describe('environment_scope field', () => {
+    it('should accept wildcard scope', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        environment_scope: "*",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        environment_scope: '*',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
-        expect(result.data.environment_scope).toBe("*");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.environment_scope).toBe('*');
       }
     });
 
-    it("should accept specific environment scope", () => {
+    it('should accept specific environment scope', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        environment_scope: "production",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        environment_scope: 'production',
       });
       expect(result.success).toBe(true);
     });
 
-    it("should accept environment scope with wildcards", () => {
+    it('should accept environment scope with wildcards', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        environment_scope: "review/*",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        environment_scope: 'review/*',
       });
       expect(result.success).toBe(true);
     });
   });
 
-  describe("description field", () => {
-    it("should accept description", () => {
+  describe('description field', () => {
+    it('should accept description', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        description: "API key for external service",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        description: 'API key for external service',
       });
       expect(result.success).toBe(true);
       // Type narrowing: check action to access action-specific properties
-      if (result.success && result.data.action === "create") {
-        expect(result.data.description).toBe("API key for external service");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.description).toBe('API key for external service');
       }
     });
 
-    it("should allow empty description", () => {
+    it('should allow empty description', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        description: "",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        description: '',
       });
       expect(result.success).toBe(true);
     });
   });
 
-  describe("edge cases", () => {
-    it("should handle empty value for create", () => {
+  describe('edge cases', () => {
+    it('should handle empty value for create', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "EMPTY_VAR",
-        value: "",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'EMPTY_VAR',
+        value: '',
       });
       expect(result.success).toBe(true);
     });
 
-    it("should handle multiline value", () => {
+    it('should handle multiline value', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "CERT",
-        value: "-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----",
-        variable_type: "file",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'CERT',
+        value: '-----BEGIN CERTIFICATE-----\nMIIC...\n-----END CERTIFICATE-----',
+        variable_type: 'file',
       });
       expect(result.success).toBe(true);
     });
 
-    it("should strip unknown fields", () => {
+    it('should strip unknown fields', () => {
       const result = ManageVariableSchema.safeParse({
-        action: "create",
-        namespace: "test/project",
-        key: "VAR",
-        value: "value",
-        unknownField: "should be stripped",
+        action: 'create',
+        namespace: 'test/project',
+        key: 'VAR',
+        value: 'value',
+        unknownField: 'should be stripped',
       });
       expect(result.success).toBe(true);
       if (result.success) {

@@ -1,18 +1,18 @@
-import { GraphQLClient } from "../graphql/client";
-import { GitLabVersionDetector, GitLabInstanceInfo } from "./GitLabVersionDetector";
-import { SchemaIntrospector, SchemaInfo } from "./SchemaIntrospector";
+import { GraphQLClient } from '../graphql/client';
+import { GitLabVersionDetector, GitLabInstanceInfo } from './GitLabVersionDetector';
+import { SchemaIntrospector, SchemaInfo } from './SchemaIntrospector';
 import {
   detectTokenScopes,
   logTokenScopeInfo,
   getToolScopeRequirements,
   TokenScopeInfo,
-} from "./TokenScopeDetector";
-import { GITLAB_BASE_URL, GITLAB_TOKEN } from "../config";
-import { isOAuthEnabled, getGitLabApiUrlFromContext } from "../oauth/index";
-import { enhancedFetch } from "../utils/fetch";
-import { logInfo, logDebug, logError } from "../logger";
-import { InstanceRegistry } from "./InstanceRegistry.js";
-import { CachedIntrospection } from "../config/instances-schema.js";
+} from './TokenScopeDetector';
+import { GITLAB_BASE_URL, GITLAB_TOKEN } from '../config';
+import { isOAuthEnabled, getGitLabApiUrlFromContext } from '../oauth/index';
+import { enhancedFetch } from '../utils/fetch';
+import { logInfo, logDebug, logError } from '../logger';
+import { InstanceRegistry } from './InstanceRegistry.js';
+import { CachedIntrospection } from '../config/instances-schema.js';
 
 interface CacheEntry {
   schemaInfo: SchemaInfo;
@@ -65,15 +65,15 @@ export class ConnectionManager {
       // In OAuth mode, token comes from request context via enhancedFetch
       // In static mode, require both base URL and token
       if (!baseUrl) {
-        throw new Error("GitLab base URL is required");
+        throw new Error('GitLab base URL is required');
       }
 
       if (!oauthMode && !GITLAB_TOKEN) {
         throw new Error(
-          "GITLAB_TOKEN is required in static authentication mode. " +
-            "Run `npx @structured-world/gitlab-mcp setup` for interactive configuration, " +
-            "or set the environment variable and restart. " +
-            "Docs: https://gitlab-mcp.sw.foundation/guide/quick-start"
+          'GITLAB_TOKEN is required in static authentication mode. ' +
+            'Run `npx @structured-world/gitlab-mcp setup` for interactive configuration, ' +
+            'or set the environment variable and restart. ' +
+            'Docs: https://gitlab-mcp.sw.foundation/guide/quick-start',
         );
       }
 
@@ -85,7 +85,7 @@ export class ConnectionManager {
       // GITLAB_TOKEN is guaranteed non-empty here (validated above for non-OAuth mode)
       const clientOptions: { headers?: Record<string, string> } = oauthMode
         ? {}
-        : { headers: { "PRIVATE-TOKEN": String(GITLAB_TOKEN) } };
+        : { headers: { 'PRIVATE-TOKEN': String(GITLAB_TOKEN) } };
 
       this.client = new GraphQLClient(endpoint, clientOptions);
 
@@ -95,7 +95,7 @@ export class ConnectionManager {
       // In OAuth mode, try unauthenticated version detection first
       // Many GitLab instances expose /api/v4/version without auth
       if (oauthMode) {
-        logInfo("OAuth mode: attempting unauthenticated version detection");
+        logInfo('OAuth mode: attempting unauthenticated version detection');
         try {
           const versionResponse = await fetch(`${baseUrl}/api/v4/version`);
           if (versionResponse.ok) {
@@ -103,7 +103,7 @@ export class ConnectionManager {
               version: string;
               enterprise?: boolean;
             };
-            logInfo("Detected GitLab version without authentication", {
+            logInfo('Detected GitLab version without authentication', {
               version: versionData.version,
             });
 
@@ -111,29 +111,29 @@ export class ConnectionManager {
             // Default to "premium" tier for enterprise instances - will be refined on first authenticated request
             this.instanceInfo = {
               version: versionData.version,
-              tier: versionData.enterprise ? "premium" : "free",
+              tier: versionData.enterprise ? 'premium' : 'free',
               features: this.getDefaultFeatures(versionData.enterprise ?? false),
               detectedAt: new Date(),
             };
 
             // Schema introspection still deferred (requires auth for full introspection)
             logInfo(
-              "OAuth mode: version detected, full introspection deferred until first authenticated request"
+              'OAuth mode: version detected, full introspection deferred until first authenticated request',
             );
           } else {
             logInfo(
-              "OAuth mode: unauthenticated version detection failed, deferring all introspection",
+              'OAuth mode: unauthenticated version detection failed, deferring all introspection',
               {
                 status: versionResponse.status,
-              }
+              },
             );
           }
         } catch (error) {
           logInfo(
-            "OAuth mode: unauthenticated version detection failed, deferring all introspection",
+            'OAuth mode: unauthenticated version detection failed, deferring all introspection',
             {
               error: error instanceof Error ? error.message : String(error),
-            }
+            },
           );
         }
         this.isInitialized = true;
@@ -163,13 +163,13 @@ export class ConnectionManager {
       const now = Date.now();
 
       if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
-        logInfo("Using cached GraphQL introspection data");
+        logInfo('Using cached GraphQL introspection data');
         this.instanceInfo = cached.instanceInfo;
         this.schemaInfo = cached.schemaInfo;
         // Track which instance was introspected to avoid re-introspection in ensureIntrospected()
         this.introspectedInstanceUrl = baseUrl;
       } else {
-        logDebug("Introspecting GitLab GraphQL schema...");
+        logDebug('Introspecting GitLab GraphQL schema...');
 
         // Detect instance info and introspect schema in parallel
         const [instanceInfo, schemaInfo] = await Promise.all([
@@ -189,12 +189,12 @@ export class ConnectionManager {
           timestamp: now,
         });
 
-        logInfo("GraphQL schema introspection completed");
+        logInfo('GraphQL schema introspection completed');
       }
 
       this.isInitialized = true;
 
-      logInfo("GitLab instance and schema detected", {
+      logInfo('GitLab instance and schema detected', {
         version: this.instanceInfo?.version,
         tier: this.instanceInfo?.tier,
         features: this.instanceInfo
@@ -206,7 +206,7 @@ export class ConnectionManager {
         schemaTypes: this.schemaInfo?.typeDefinitions.size || 0,
       });
     } catch (error) {
-      logError("Failed to initialize connection", { err: error as Error });
+      logError('Failed to initialize connection', { err: error as Error });
       throw error;
     }
   }
@@ -221,7 +221,7 @@ export class ConnectionManager {
    */
   public async ensureIntrospected(): Promise<void> {
     if (!this.client || !this.versionDetector || !this.schemaIntrospector) {
-      throw new Error("Connection not initialized. Call initialize() first.");
+      throw new Error('Connection not initialized. Call initialize() first.');
     }
 
     // Determine the instance URL for caching
@@ -237,7 +237,7 @@ export class ConnectionManager {
     // Deduplication: if another request is already introspecting this instance, await it
     const existingPromise = this.introspectionPromises.get(instanceUrl);
     if (existingPromise) {
-      logDebug("Awaiting existing introspection for instance", { url: instanceUrl });
+      logDebug('Awaiting existing introspection for instance', { url: instanceUrl });
       await existingPromise;
       return;
     }
@@ -263,7 +263,7 @@ export class ConnectionManager {
     const versionDet = this.versionDetector;
     const schemaDet = this.schemaIntrospector;
     if (!client || !versionDet || !schemaDet) {
-      throw new Error("Connection not initialized. Call initialize() first.");
+      throw new Error('Connection not initialized. Call initialize() first.');
     }
 
     // Use per-instance GraphQL client for thread-safe multi-instance support
@@ -275,11 +275,11 @@ export class ConnectionManager {
     if (registry.isInitialized()) {
       const cachedIntrospection = registry.getIntrospection(instanceUrl);
       if (cachedIntrospection) {
-        logInfo("Using cached introspection from InstanceRegistry", { url: instanceUrl });
+        logInfo('Using cached introspection from InstanceRegistry', { url: instanceUrl });
         this.instanceInfo = {
           version: cachedIntrospection.version,
-          tier: cachedIntrospection.tier as "free" | "premium" | "ultimate",
-          features: cachedIntrospection.features as unknown as GitLabInstanceInfo["features"],
+          tier: cachedIntrospection.tier as 'free' | 'premium' | 'ultimate',
+          features: cachedIntrospection.features as unknown as GitLabInstanceInfo['features'],
           detectedAt: cachedIntrospection.cachedAt,
         };
         this.schemaInfo = cachedIntrospection.schemaInfo as SchemaInfo;
@@ -300,14 +300,14 @@ export class ConnectionManager {
     const now = Date.now();
 
     if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
-      logInfo("Using cached GraphQL introspection data");
+      logInfo('Using cached GraphQL introspection data');
       this.instanceInfo = cached.instanceInfo;
       this.schemaInfo = cached.schemaInfo;
       this.introspectedInstanceUrl = instanceUrl;
       return;
     }
 
-    logDebug("Introspecting GitLab GraphQL schema (deferred OAuth mode)...");
+    logDebug('Introspecting GitLab GraphQL schema (deferred OAuth mode)...');
 
     // For multi-instance OAuth: use per-instance client if instanceUrl differs from current
     // This ensures introspection runs against the correct instance
@@ -320,7 +320,7 @@ export class ConnectionManager {
         // Create temporary detectors with per-instance client
         versionDetector = new GitLabVersionDetector(instanceClient);
         schemaIntrospector = new SchemaIntrospector(instanceClient);
-        logDebug("Using per-instance detectors for introspection", { instanceUrl });
+        logDebug('Using per-instance detectors for introspection', { instanceUrl });
       }
     }
 
@@ -353,7 +353,7 @@ export class ConnectionManager {
       registry.setIntrospection(instanceUrl, cachedIntrospection);
     }
 
-    logInfo("GraphQL schema introspection completed (deferred)", {
+    logInfo('GraphQL schema introspection completed (deferred)', {
       version: this.instanceInfo?.version,
       tier: this.instanceInfo?.tier,
       widgetTypes: this.schemaInfo?.workItemWidgetTypes.length || 0,
@@ -362,7 +362,7 @@ export class ConnectionManager {
 
   public getClient(): GraphQLClient {
     if (!this.client) {
-      throw new Error("Connection not initialized. Call initialize() first.");
+      throw new Error('Connection not initialized. Call initialize() first.');
     }
     return this.client;
   }
@@ -379,7 +379,7 @@ export class ConnectionManager {
    */
   public getInstanceClient(
     instanceUrl?: string,
-    authHeaders?: Record<string, string>
+    authHeaders?: Record<string, string>,
   ): GraphQLClient {
     const registry = InstanceRegistry.getInstance();
 
@@ -396,35 +396,35 @@ export class ConnectionManager {
 
     // Fallback to singleton client (static mode or unregistered instance)
     if (!this.client) {
-      throw new Error("Connection not initialized. Call initialize() first.");
+      throw new Error('Connection not initialized. Call initialize() first.');
     }
     return this.client;
   }
 
   public getVersionDetector(): GitLabVersionDetector {
     if (!this.versionDetector) {
-      throw new Error("Connection not initialized. Call initialize() first.");
+      throw new Error('Connection not initialized. Call initialize() first.');
     }
     return this.versionDetector;
   }
 
   public getSchemaIntrospector(): SchemaIntrospector {
     if (!this.schemaIntrospector) {
-      throw new Error("Connection not initialized. Call initialize() first.");
+      throw new Error('Connection not initialized. Call initialize() first.');
     }
     return this.schemaIntrospector;
   }
 
   public getInstanceInfo(): GitLabInstanceInfo {
     if (!this.instanceInfo) {
-      throw new Error("Connection not initialized. Call initialize() first.");
+      throw new Error('Connection not initialized. Call initialize() first.');
     }
     return this.instanceInfo;
   }
 
   public getSchemaInfo(): SchemaInfo {
     if (!this.schemaInfo) {
-      throw new Error("Connection not initialized. Call initialize() first.");
+      throw new Error('Connection not initialized. Call initialize() first.');
     }
     return this.schemaInfo;
   }
@@ -436,7 +436,7 @@ export class ConnectionManager {
     return this.currentInstanceUrl;
   }
 
-  public isFeatureAvailable(feature: keyof GitLabInstanceInfo["features"]): boolean {
+  public isFeatureAvailable(feature: keyof GitLabInstanceInfo['features']): boolean {
     if (!this.instanceInfo) {
       return false;
     }
@@ -445,14 +445,14 @@ export class ConnectionManager {
 
   public getTier(): string {
     if (!this.instanceInfo) {
-      return "unknown";
+      return 'unknown';
     }
     return this.instanceInfo.tier;
   }
 
   public getVersion(): string {
     if (!this.instanceInfo) {
-      return "unknown";
+      return 'unknown';
     }
     return this.instanceInfo.version;
   }
@@ -499,13 +499,13 @@ export class ConnectionManager {
     const newScopes = newScopeInfo.scopes;
     const scopesChanged =
       previousScopes.length !== newScopes.length ||
-      !previousScopes.every(s => newScopes.includes(s)) ||
+      !previousScopes.every((s) => newScopes.includes(s)) ||
       previousHasGraphQL !== newScopeInfo.hasGraphQLAccess ||
       previousHasWrite !== newScopeInfo.hasWriteAccess;
 
     if (scopesChanged) {
       this.tokenScopeInfo = newScopeInfo;
-      logInfo("Token scopes changed - tool registry will be refreshed", {
+      logInfo('Token scopes changed - tool registry will be refreshed', {
         previousScopes,
         newScopes,
         hasGraphQLAccess: newScopeInfo.hasGraphQLAccess,
@@ -526,8 +526,8 @@ export class ConnectionManager {
       const baseUrl = this.currentInstanceUrl ?? GITLAB_BASE_URL;
       const response = await enhancedFetch(`${baseUrl}/api/v4/version`, {
         headers: {
-          "PRIVATE-TOKEN": GITLAB_TOKEN ?? "",
-          Accept: "application/json",
+          'PRIVATE-TOKEN': GITLAB_TOKEN ?? '',
+          Accept: 'application/json',
         },
         retry: false, // Don't retry version detection at startup
       });
@@ -539,31 +539,31 @@ export class ConnectionManager {
           enterprise?: boolean;
         };
 
-        logInfo("Detected GitLab version via REST (GraphQL unavailable)", {
+        logInfo('Detected GitLab version via REST (GraphQL unavailable)', {
           version: data.version,
           enterprise: data.enterprise,
         });
 
         return {
           version: data.version,
-          tier: data.enterprise ? "premium" : "free",
+          tier: data.enterprise ? 'premium' : 'free',
           features: this.getDefaultFeatures(data.enterprise ?? false),
           detectedAt: new Date(),
         };
       }
 
       // Version endpoint also failed - return minimal info
-      logInfo("REST version detection failed, using defaults", { status: response.status });
+      logInfo('REST version detection failed, using defaults', { status: response.status });
     } catch (error) {
-      logInfo("REST version detection failed, using defaults", {
+      logInfo('REST version detection failed, using defaults', {
         error: error instanceof Error ? error.message : String(error),
       });
     }
 
     // Fallback: return unknown version with default features
     return {
-      version: "unknown",
-      tier: "free",
+      version: 'unknown',
+      tier: 'free',
       features: this.getDefaultFeatures(false),
       detectedAt: new Date(),
     };
@@ -574,7 +574,7 @@ export class ConnectionManager {
    * In OAuth mode without full introspection, we default to enabling most features
    * to allow tools to be available - they will fail gracefully if not actually available.
    */
-  private getDefaultFeatures(isEnterprise: boolean): GitLabInstanceInfo["features"] {
+  private getDefaultFeatures(isEnterprise: boolean): GitLabInstanceInfo['features'] {
     // Default to enabling most features - better to allow and fail gracefully
     // than to block tools that might actually be available
     return {
@@ -613,7 +613,7 @@ export class ConnectionManager {
    * @param newInstanceUrl - The new GitLab instance URL to connect to
    */
   public async reinitialize(newInstanceUrl: string): Promise<void> {
-    logInfo("Re-initializing ConnectionManager for new instance", {
+    logInfo('Re-initializing ConnectionManager for new instance', {
       newInstanceUrl,
     });
 
@@ -628,7 +628,7 @@ export class ConnectionManager {
     // This builds a new GraphQL client pointing to the new instance
     await this.initialize(newInstanceUrl);
 
-    logInfo("ConnectionManager re-initialized", {
+    logInfo('ConnectionManager re-initialized', {
       version: this.instanceInfo?.version,
       tier: this.instanceInfo?.tier,
       instanceUrl: this.currentInstanceUrl,

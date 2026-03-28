@@ -18,10 +18,10 @@ export const log = {
 export const note = jest.fn();
 export const cancel = jest.fn();
 export const isCancel = jest.fn().mockReturnValue(false);
-export const text = jest.fn().mockResolvedValue("");
-export const password = jest.fn().mockResolvedValue("");
+export const text = jest.fn().mockResolvedValue('');
+export const password = jest.fn().mockResolvedValue('');
 export const confirm = jest.fn().mockResolvedValue(true);
-export const select = jest.fn().mockResolvedValue("");
+export const select = jest.fn().mockResolvedValue('');
 export const multiselect = jest.fn().mockResolvedValue([]);
 export const spinner = jest.fn().mockReturnValue({
   start: jest.fn(),

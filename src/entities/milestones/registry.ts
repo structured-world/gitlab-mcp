@@ -1,11 +1,11 @@
-import * as z from "zod";
-import { BrowseMilestonesSchema } from "./schema-readonly";
-import { ManageMilestoneSchema } from "./schema";
-import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { resolveNamespaceForAPI } from "../../utils/namespace";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
+import * as z from 'zod';
+import { BrowseMilestonesSchema } from './schema-readonly';
+import { ManageMilestoneSchema } from './schema';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { resolveNamespaceForAPI } from '../../utils/namespace';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 // assertDefined no longer needed - discriminated union provides type safety
-import { isActionDenied } from "../../config";
+import { isActionDenied } from '../../config';
 
 /**
  * Milestones tools registry - 2 CQRS tools replacing 9 individual tools
@@ -19,37 +19,37 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_milestones",
+    'browse_milestones',
     {
-      name: "browse_milestones",
+      name: 'browse_milestones',
       description:
-        "Track milestone progress with associated issues and MRs. Actions: list (filter by state/title/search), get (milestone details), issues (items in milestone), merge_requests (MRs targeting milestone), burndown (chart data for sprint tracking). Related: manage_milestone to create/update.",
+        'Track milestone progress with associated issues and MRs. Actions: list (filter by state/title/search), get (milestone details), issues (items in milestone), merge_requests (MRs targeting milestone), burndown (chart data for sprint tracking). Related: manage_milestone to create/update.',
       inputSchema: z.toJSONSchema(BrowseMilestonesSchema),
-      gate: { envVar: "USE_MILESTONE", defaultValue: true },
+      gate: { envVar: 'USE_MILESTONE', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseMilestonesSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_milestones", input.action)) {
+        if (isActionDenied('browse_milestones', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_milestones tool`);
         }
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             const { action: _action, namespace: _namespace, ...rest } = input;
             const query = toQuery(rest, []);
 
             return gitlab.get(`${entityType}/${encodedPath}/milestones`, { query });
           }
 
-          case "get": {
+          case 'get': {
             // TypeScript knows: input has milestone_id (uses global ID, not IID)
             return gitlab.get(`${entityType}/${encodedPath}/milestones/${input.milestone_id}`);
           }
 
-          case "issues": {
+          case 'issues': {
             // TypeScript knows: input has milestone_id (uses global ID), per_page, page (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
             const query = toQuery(rest, []);
@@ -59,25 +59,25 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
             });
           }
 
-          case "merge_requests": {
+          case 'merge_requests': {
             // TypeScript knows: input has milestone_id (uses global ID), per_page, page (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
             const query = toQuery(rest, []);
 
             return gitlab.get(
               `${entityType}/${encodedPath}/milestones/${milestone_id}/merge_requests`,
-              { query }
+              { query },
             );
           }
 
-          case "burndown": {
+          case 'burndown': {
             // TypeScript knows: input has milestone_id (uses global ID), per_page, page (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...rest } = input;
             const query = toQuery(rest, []);
 
             return gitlab.get(
               `${entityType}/${encodedPath}/milestones/${milestone_id}/burndown_events`,
-              { query }
+              { query },
             );
           }
 
@@ -94,54 +94,54 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_milestone",
+    'manage_milestone',
     {
-      name: "manage_milestone",
+      name: 'manage_milestone',
       description:
-        "Create, update, or delete project/group milestones. Actions: create (title + optional dates/description), update (modify properties or close/activate), delete (remove permanently), promote (elevate project milestone to group). Related: browse_milestones for progress tracking.",
+        'Create, update, or delete project/group milestones. Actions: create (title + optional dates/description), update (modify properties or close/activate), delete (remove permanently), promote (elevate project milestone to group). Related: browse_milestones for progress tracking.',
       inputSchema: z.toJSONSchema(ManageMilestoneSchema),
-      gate: { envVar: "USE_MILESTONE", defaultValue: true },
+      gate: { envVar: 'USE_MILESTONE', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageMilestoneSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_milestone", input.action)) {
+        if (isActionDenied('manage_milestone', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_milestone tool`);
         }
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
         switch (input.action) {
-          case "create": {
+          case 'create': {
             // TypeScript knows: input has title (required), description, due_date, start_date (optional)
             const { action: _action, namespace: _namespace, ...body } = input;
 
             return gitlab.post(`${entityType}/${encodedPath}/milestones`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "update": {
+          case 'update': {
             // TypeScript knows: input has milestone_id (uses global ID), title, description, etc. (optional)
             const { action: _action, namespace: _namespace, milestone_id, ...body } = input;
 
             return gitlab.put(`${entityType}/${encodedPath}/milestones/${milestone_id}`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "delete": {
+          case 'delete': {
             // TypeScript knows: input has milestone_id (uses global ID)
             await gitlab.delete(`${entityType}/${encodedPath}/milestones/${input.milestone_id}`);
             return { deleted: true };
           }
 
-          case "promote": {
+          case 'promote': {
             // TypeScript knows: input has milestone_id (uses global ID)
-            if (entityType !== "projects") {
-              throw new Error("Milestone promotion is only available for projects, not groups");
+            if (entityType !== 'projects') {
+              throw new Error('Milestone promotion is only available for projects, not groups');
             }
 
             return gitlab.post(`projects/${encodedPath}/milestones/${input.milestone_id}/promote`);
@@ -160,7 +160,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
  * Get read-only tool names from the registry
  */
 export function getMilestonesReadOnlyToolNames(): string[] {
-  return ["browse_milestones"];
+  return ['browse_milestones'];
 }
 
 /**
@@ -174,12 +174,12 @@ export function getMilestonesToolDefinitions(): EnhancedToolDefinition[] {
  * Get filtered tools based on read-only mode
  */
 export function getFilteredMilestonesTools(
-  readOnlyMode: boolean = false
+  readOnlyMode: boolean = false,
 ): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getMilestonesReadOnlyToolNames();
-    return Array.from(milestonesToolRegistry.values()).filter(tool =>
-      readOnlyNames.includes(tool.name)
+    return Array.from(milestonesToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
     );
   }
   return getMilestonesToolDefinitions();

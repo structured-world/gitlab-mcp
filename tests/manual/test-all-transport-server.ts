@@ -3,9 +3,9 @@
  * Tests all three transport modes: stdio, SSE, and streamable-http
  */
 
-import * as path from "path";
-import { describe, test, after, before } from "node:test";
-import assert from "node:assert";
+import * as path from 'path';
+import { describe, test, after, before } from 'node:test';
+import assert from 'node:assert';
 import {
   launchServer,
   findAvailablePort,
@@ -14,45 +14,45 @@ import {
   TransportMode,
   checkHealthEndpoint,
   HOST,
-} from "./utils/server-launcher.js";
-import { StdioTestClient } from "./clients/stdio-client.js";
-import { SSETestClient } from "./clients/sse-client.js";
-import { StreamableHTTPTestClient } from "./clients/streamable-http-client.js";
-import { MCPClientInterface } from "./clients/client.js";
-import { ListToolsResult } from "@modelcontextprotocol/sdk/types.js";
+} from './utils/server-launcher.js';
+import { StdioTestClient } from './clients/stdio-client.js';
+import { SSETestClient } from './clients/sse-client.js';
+import { StreamableHTTPTestClient } from './clients/streamable-http-client.js';
+import { MCPClientInterface } from './clients/client.js';
+import { ListToolsResult } from '@modelcontextprotocol/sdk/types.js';
 
-console.log("🚀 GitLab MCP Server Tests");
-console.log("");
+console.log('🚀 GitLab MCP Server Tests');
+console.log('');
 
 // Configuration check
-const GITLAB_API_URL = process.env.GITLAB_API_URL ?? "https://gitlab.com";
+const GITLAB_API_URL = process.env.GITLAB_API_URL ?? 'https://gitlab.com';
 const GITLAB_TOKEN = process.env.GITLAB_TOKEN_TEST ?? process.env.GITLAB_TOKEN;
 const TEST_PROJECT_ID = process.env.TEST_PROJECT_ID;
 
-console.log("🔧 Test Configuration:");
+console.log('🔧 Test Configuration:');
 console.log(`  GitLab URL: ${GITLAB_API_URL}`);
-console.log(`  Token: ${GITLAB_TOKEN ? "✅ Provided" : "❌ Missing"}`);
-console.log(`  Project ID: ${TEST_PROJECT_ID ?? "❌ Missing"}`);
+console.log(`  Token: ${GITLAB_TOKEN ? '✅ Provided' : '❌ Missing'}`);
+console.log(`  Project ID: ${TEST_PROJECT_ID ?? '❌ Missing'}`);
 
 // Validate required configuration
 if (!GITLAB_TOKEN) {
   console.error(
-    "❌ Error: GITLAB_TOKEN_TEST or GITLAB_TOKEN environment variable is required for testing"
+    '❌ Error: GITLAB_TOKEN_TEST or GITLAB_TOKEN environment variable is required for testing',
   );
-  console.error("   Set one of these variables to your GitLab API token");
+  console.error('   Set one of these variables to your GitLab API token');
   process.exit(1);
 }
 
 if (!TEST_PROJECT_ID) {
-  console.error("❌ Error: TEST_PROJECT_ID environment variable is required for testing");
+  console.error('❌ Error: TEST_PROJECT_ID environment variable is required for testing');
   console.error(
-    '   Set this variable to a valid GitLab project ID (e.g., "123" or "group/project")'
+    '   Set this variable to a valid GitLab project ID (e.g., "123" or "group/project")',
   );
   process.exit(1);
 }
 
-console.log("✅ Configuration validated");
-console.log("");
+console.log('✅ Configuration validated');
+console.log('');
 
 let servers: ServerInstance[] = [];
 
@@ -63,11 +63,11 @@ const cleanup = () => {
 };
 
 // Handle process termination
-void process.on("SIGINT", cleanup);
-void process.on("SIGTERM", cleanup);
-void process.on("exit", cleanup);
+void process.on('SIGINT', cleanup);
+void process.on('SIGTERM', cleanup);
+void process.on('exit', cleanup);
 
-void describe("GitLab MCP Server - Stdio Transport", () => {
+void describe('GitLab MCP Server - Stdio Transport', () => {
   let client: MCPClientInterface;
 
   // Prepare environment variables for stdio server
@@ -75,18 +75,18 @@ void describe("GitLab MCP Server - Stdio Transport", () => {
     GITLAB_PERSONAL_ACCESS_TOKEN: GITLAB_TOKEN,
     GITLAB_API_URL: `${GITLAB_API_URL}/api/v4`,
     GITLAB_PROJECT_ID: TEST_PROJECT_ID,
-    GITLAB_READ_ONLY_MODE: "true",
+    GITLAB_READ_ONLY_MODE: 'true',
     // Explicitly disable other transport modes to ensure stdio mode
-    SSE: "false",
-    STREAMABLE_HTTP: "false",
+    SSE: 'false',
+    STREAMABLE_HTTP: 'false',
   };
 
   before(async () => {
     client = new StdioTestClient();
-    const serverPath = path.resolve(process.cwd(), "dist/main.js");
+    const serverPath = path.resolve(process.cwd(), 'dist/main.js');
     await client.connect(serverPath, stdioEnv);
-    assert.ok(client.isConnected, "Client should be connected");
-    console.log("Client connected to stdio server");
+    assert.ok(client.isConnected, 'Client should be connected');
+    console.log('Client connected to stdio server');
   });
 
   after(async () => {
@@ -95,64 +95,64 @@ void describe("GitLab MCP Server - Stdio Transport", () => {
     }
   });
 
-  void test("should list tools via stdio", async () => {
+  void test('should list tools via stdio', async () => {
     const tools = await client.listTools();
-    assert.ok(tools !== null && tools !== undefined, "Tools response should be defined");
-    assert.ok("tools" in tools, "Response should have tools property");
+    assert.ok(tools !== null && tools !== undefined, 'Tools response should be defined');
+    assert.ok('tools' in tools, 'Response should have tools property');
     assert.ok(
       Array.isArray(tools.tools) && tools.tools.length > 0,
-      "Tools array should not be empty"
+      'Tools array should not be empty',
     );
 
     // Check for specific GitLab tools with proper typing
-    const toolNames = tools.tools.map(tool => tool.name);
-    assert.ok(toolNames.includes("list_merge_requests"), "Should have list_merge_requests tool");
-    assert.ok(toolNames.includes("get_project"), "Should have get_project tool");
+    const toolNames = tools.tools.map((tool) => tool.name);
+    assert.ok(toolNames.includes('list_merge_requests'), 'Should have list_merge_requests tool');
+    assert.ok(toolNames.includes('get_project'), 'Should have get_project tool');
 
     // Verify tools have proper structure
     const gitlabTools = tools.tools.filter(
-      tool => tool.name === "list_merge_requests" || tool.name === "get_project"
+      (tool) => tool.name === 'list_merge_requests' || tool.name === 'get_project',
     );
-    assert.ok(gitlabTools.length >= 2, "Should have at least 2 GitLab tools");
+    assert.ok(gitlabTools.length >= 2, 'Should have at least 2 GitLab tools');
 
     for (const tool of gitlabTools) {
       assert.ok(
         tool.description !== null && tool.description !== undefined,
-        `Tool ${tool.name} should have description`
+        `Tool ${tool.name} should have description`,
       );
-      assert.ok("inputSchema" in tool, `Tool ${tool.name} should have input schema`);
+      assert.ok('inputSchema' in tool, `Tool ${tool.name} should have input schema`);
     }
   });
 
-  void test("should call list_merge_requests tool via stdio", async () => {
-    const result = await client.callTool("list_merge_requests", {
+  void test('should call list_merge_requests tool via stdio', async () => {
+    const result = await client.callTool('list_merge_requests', {
       project_id: TEST_PROJECT_ID,
     });
 
-    assert.ok(result !== null && result !== undefined, "Tool call result should be defined");
-    assert.ok("content" in result, "Result should have content property");
+    assert.ok(result !== null && result !== undefined, 'Tool call result should be defined');
+    assert.ok('content' in result, 'Result should have content property');
   });
 
-  void test("should call get_project tool via stdio", async () => {
-    const result = await client.callTool("get_project", {
+  void test('should call get_project tool via stdio', async () => {
+    const result = await client.callTool('get_project', {
       project_id: TEST_PROJECT_ID,
     });
 
     // Verify proper CallToolResult structure
-    assert.ok(result !== null && result !== undefined, "Tool call result should be defined");
-    assert.ok("content" in result, "Result should have content property");
-    assert.ok(Array.isArray(result.content), "Content should be an array");
-    assert.ok(result.content.length > 0, "Content array should not be empty");
+    assert.ok(result !== null && result !== undefined, 'Tool call result should be defined');
+    assert.ok('content' in result, 'Result should have content property');
+    assert.ok(Array.isArray(result.content), 'Content should be an array');
+    assert.ok(result.content.length > 0, 'Content array should not be empty');
 
     // Check content structure
     const firstContent = result.content[0];
     assert.ok(
       firstContent !== null && firstContent !== undefined,
-      "First content item should be defined"
+      'First content item should be defined',
     );
-    assert.ok("type" in firstContent, "Content item should have type");
-    assert.strictEqual(firstContent.type, "text", "Content type should be text");
-    assert.ok("text" in firstContent, "Text content should have text property");
+    assert.ok('type' in firstContent, 'Content item should have type');
+    assert.strictEqual(firstContent.type, 'text', 'Content type should be text');
+    assert.ok('text' in firstContent, 'Text content should have text property');
 
     // Verify it's valid JSON containing project info
     const projectData = JSON.parse((firstContent as { text: string }).text) as Record<
@@ -161,14 +161,14 @@ void describe("GitLab MCP Server - Stdio Transport", () => {
     >;
     assert.ok(
       projectData !== null && projectData !== undefined,
-      "Project data should be parseable JSON"
+      'Project data should be parseable JSON',
     );
-    assert.ok("id" in projectData, "Project should have id");
-    assert.ok("name" in projectData, "Project should have name");
+    assert.ok('id' in projectData, 'Project should have id');
+    assert.ok('name' in projectData, 'Project should have name');
   });
 });
 
-void describe("GitLab MCP Server - SSE Transport", () => {
+void describe('GitLab MCP Server - SSE Transport', () => {
   let server: ServerInstance;
   let client: MCPClientInterface;
   let port: number;
@@ -180,29 +180,29 @@ void describe("GitLab MCP Server - SSE Transport", () => {
       port,
       timeout: 3000,
       env: {
-        SSE: "true",
-        STREAMABLE_HTTP: "false",
+        SSE: 'true',
+        STREAMABLE_HTTP: 'false',
       },
     });
     servers.push(server);
 
     // Verify server started successfully
-    assert.ok(server.process.pid !== undefined, "Server process should have PID");
-    assert.strictEqual(server.mode, TransportMode.SSE, "Server mode should be SSE");
-    assert.strictEqual(server.port, port, "Server should use correct port");
+    assert.ok(server.process.pid !== undefined, 'Server process should have PID');
+    assert.strictEqual(server.mode, TransportMode.SSE, 'Server mode should be SSE');
+    assert.strictEqual(server.port, port, 'Server should use correct port');
 
     // Verify health check
     const health = await checkHealthEndpoint(server.port);
-    assert.strictEqual(health.status, "healthy", "Health status should be healthy");
-    assert.strictEqual(health.transport, "sse", "Transport should be SSE");
-    assert.ok(health.version !== null && health.version !== undefined, "Version should be defined");
+    assert.strictEqual(health.status, 'healthy', 'Health status should be healthy');
+    assert.strictEqual(health.transport, 'sse', 'Transport should be SSE');
+    assert.ok(health.version !== null && health.version !== undefined, 'Version should be defined');
 
     // Create and connect client
     client = new SSETestClient();
     await client.connect(`http://${HOST}:${port}/sse`);
-    assert.ok(client.isConnected, "Client should be connected");
-    assert.ok(await client.testConnection(), "Connection test should pass");
-    console.log("Client connected to SSE server");
+    assert.ok(client.isConnected, 'Client should be connected');
+    assert.ok(await client.testConnection(), 'Connection test should pass');
+    console.log('Client connected to SSE server');
   });
 
   after(async () => {
@@ -210,43 +210,43 @@ void describe("GitLab MCP Server - SSE Transport", () => {
       await client.disconnect();
     }
     cleanup();
-    console.log("Client disconnected from SSE server");
+    console.log('Client disconnected from SSE server');
   });
 
-  void test("should list tools via SSE", async () => {
+  void test('should list tools via SSE', async () => {
     const tools = await client.listTools();
-    assert.ok(tools !== null && tools !== undefined, "Tools response should be defined");
-    assert.ok("tools" in tools, "Response should have tools property");
+    assert.ok(tools !== null && tools !== undefined, 'Tools response should be defined');
+    assert.ok('tools' in tools, 'Response should have tools property');
     assert.ok(
       Array.isArray(tools.tools) && tools.tools.length > 0,
-      "Tools array should not be empty"
+      'Tools array should not be empty',
     );
 
     // Check for specific GitLab tools
     const toolNames = tools.tools.map((tool: { name: string }) => tool.name);
-    assert.ok(toolNames.includes("list_merge_requests"), "Should have list_merge_requests tool");
-    assert.ok(toolNames.includes("get_project"), "Should have get_project tool");
+    assert.ok(toolNames.includes('list_merge_requests'), 'Should have list_merge_requests tool');
+    assert.ok(toolNames.includes('get_project'), 'Should have get_project tool');
   });
 
-  void test("should call list_merge_requests tool via SSE", async () => {
-    const result = await client.callTool("list_merge_requests", {
+  void test('should call list_merge_requests tool via SSE', async () => {
+    const result = await client.callTool('list_merge_requests', {
       project_id: TEST_PROJECT_ID,
     });
 
-    assert.ok(result !== null && result !== undefined, "Tool call result should be defined");
-    assert.ok("content" in result, "Result should have content property");
+    assert.ok(result !== null && result !== undefined, 'Tool call result should be defined');
+    assert.ok('content' in result, 'Result should have content property');
   });
 
-  void test("should call get_project tool via SSE", async () => {
-    const result = await client.callTool("get_project", {
+  void test('should call get_project tool via SSE', async () => {
+    const result = await client.callTool('get_project', {
       project_id: TEST_PROJECT_ID,
     });
-    assert.ok(result !== null && result !== undefined, "Tool call result should be defined");
-    assert.ok("content" in result, "Result should have content property");
+    assert.ok(result !== null && result !== undefined, 'Tool call result should be defined');
+    assert.ok('content' in result, 'Result should have content property');
   });
 });
 
-void describe("GitLab MCP Server - Streamable HTTP Transport", () => {
+void describe('GitLab MCP Server - Streamable HTTP Transport', () => {
   let server: ServerInstance;
   let client: MCPClientInterface;
   let port: number;
@@ -258,38 +258,38 @@ void describe("GitLab MCP Server - Streamable HTTP Transport", () => {
       port,
       timeout: 3000,
       env: {
-        SSE: "false",
-        STREAMABLE_HTTP: "true",
+        SSE: 'false',
+        STREAMABLE_HTTP: 'true',
       },
     });
     servers.push(server);
 
     // Verify server started successfully
-    assert.ok(server.process.pid !== undefined, "Server process should have PID");
+    assert.ok(server.process.pid !== undefined, 'Server process should have PID');
     assert.strictEqual(
       server.mode,
       TransportMode.STREAMABLE_HTTP,
-      "Server mode should be streamable-http"
+      'Server mode should be streamable-http',
     );
-    assert.strictEqual(server.port, port, "Server should use correct port");
+    assert.strictEqual(server.port, port, 'Server should use correct port');
 
     // Verify health check
     const health = await checkHealthEndpoint(server.port);
-    assert.strictEqual(health.status, "healthy", "Health status should be healthy");
-    assert.strictEqual(health.transport, "streamable-http", "Transport should be streamable-http");
-    assert.ok(health.version !== null && health.version !== undefined, "Version should be defined");
+    assert.strictEqual(health.status, 'healthy', 'Health status should be healthy');
+    assert.strictEqual(health.transport, 'streamable-http', 'Transport should be streamable-http');
+    assert.ok(health.version !== null && health.version !== undefined, 'Version should be defined');
     assert.ok(
       health.activeSessions !== null && health.activeSessions !== undefined,
-      "Active sessions should be defined"
+      'Active sessions should be defined',
     );
 
     // Create and connect client
     client = new StreamableHTTPTestClient();
     await client.connect(`http://${HOST}:${port}/mcp`);
-    assert.ok(client.isConnected, "Client should be connected");
-    assert.ok(await client.testConnection(), "Connection test should pass");
+    assert.ok(client.isConnected, 'Client should be connected');
+    assert.ok(await client.testConnection(), 'Connection test should pass');
 
-    console.log("Client connected to Streamable HTTP server");
+    console.log('Client connected to Streamable HTTP server');
   });
 
   after(async () => {
@@ -297,38 +297,38 @@ void describe("GitLab MCP Server - Streamable HTTP Transport", () => {
       await client.disconnect();
     }
     cleanup();
-    console.log("Client disconnected from Streamable HTTP server");
+    console.log('Client disconnected from Streamable HTTP server');
   });
 
-  void test("should list tools via Streamable HTTP", async () => {
+  void test('should list tools via Streamable HTTP', async () => {
     const tools: ListToolsResult = await client.listTools();
-    assert.ok(tools !== null && tools !== undefined, "Tools response should be defined");
-    assert.ok("tools" in tools, "Response should have tools property");
+    assert.ok(tools !== null && tools !== undefined, 'Tools response should be defined');
+    assert.ok('tools' in tools, 'Response should have tools property');
     assert.ok(
       Array.isArray(tools.tools) && tools.tools.length > 0,
-      "Tools array should not be empty"
+      'Tools array should not be empty',
     );
 
     // Check for specific GitLab tools
     const toolNames = tools.tools.map((tool: { name: string }) => tool.name);
-    assert.ok(toolNames.includes("list_merge_requests"), "Should have list_merge_requests tool");
-    assert.ok(toolNames.includes("get_project"), "Should have get_project tool");
+    assert.ok(toolNames.includes('list_merge_requests'), 'Should have list_merge_requests tool');
+    assert.ok(toolNames.includes('get_project'), 'Should have get_project tool');
   });
 
-  void test("should call list_merge_requests tool via Streamable HTTP", async () => {
-    const result = await client.callTool("list_merge_requests", {
+  void test('should call list_merge_requests tool via Streamable HTTP', async () => {
+    const result = await client.callTool('list_merge_requests', {
       project_id: TEST_PROJECT_ID,
     });
-    assert.ok(result !== null && result !== undefined, "Tool call result should be defined");
-    assert.ok("content" in result, "Result should have content property");
+    assert.ok(result !== null && result !== undefined, 'Tool call result should be defined');
+    assert.ok('content' in result, 'Result should have content property');
   });
 
-  void test("should call get_project tool via Streamable HTTP", async () => {
-    const result = await client.callTool("get_project", {
+  void test('should call get_project tool via Streamable HTTP', async () => {
+    const result = await client.callTool('get_project', {
       project_id: TEST_PROJECT_ID,
     });
 
-    assert.ok(result !== null && result !== undefined, "Tool call result should be defined");
-    assert.ok("content" in result, "Result should have content property");
+    assert.ok(result !== null && result !== undefined, 'Tool call result should be defined');
+    assert.ok('content' in result, 'Result should have content property');
   });
 });

@@ -1,9 +1,9 @@
-import * as z from "zod";
-import { BrowseSnippetsSchema } from "./schema-readonly";
-import { ManageSnippetSchema } from "./schema";
-import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { isActionDenied } from "../../config";
+import * as z from 'zod';
+import { BrowseSnippetsSchema } from './schema-readonly';
+import { ManageSnippetSchema } from './schema';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { isActionDenied } from '../../config';
 
 /**
  * Snippets tools registry - 2 CQRS tools replacing 5 individual tools
@@ -17,32 +17,32 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_snippets",
+    'browse_snippets',
     {
-      name: "browse_snippets",
+      name: 'browse_snippets',
       description:
-        "Find and read code snippets with versioning support. Actions: list (personal/project/public scope with filtering), get (snippet metadata or raw file content). Related: manage_snippet to create/update.",
+        'Find and read code snippets with versioning support. Actions: list (personal/project/public scope with filtering), get (snippet metadata or raw file content). Related: manage_snippet to create/update.',
       inputSchema: z.toJSONSchema(BrowseSnippetsSchema),
-      gate: { envVar: "USE_SNIPPETS", defaultValue: true },
+      gate: { envVar: 'USE_SNIPPETS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseSnippetsSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_snippets", input.action)) {
+        if (isActionDenied('browse_snippets', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_snippets tool`);
         }
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             // TypeScript knows: input has scope (required), projectId, visibility, etc. (optional)
             const { action: _action, scope, projectId, ...queryOptions } = input;
 
             // Build the path based on scope
             let path: string;
-            if (scope === "personal") {
-              path = "snippets";
-            } else if (scope === "public") {
-              path = "snippets/public";
+            if (scope === 'personal') {
+              path = 'snippets';
+            } else if (scope === 'public') {
+              path = 'snippets/public';
             } else {
               // project scope - requires projectId
               if (!projectId) {
@@ -57,7 +57,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
             });
           }
 
-          case "get": {
+          case 'get': {
             // TypeScript knows: input has id (required), projectId, raw (optional)
             const { id, projectId, raw } = input;
             const encodedId = id.toString();
@@ -91,23 +91,23 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_snippet",
+    'manage_snippet',
     {
-      name: "manage_snippet",
+      name: 'manage_snippet',
       description:
-        "Create, update, or delete code snippets with multi-file support. Actions: create (new snippet with files and visibility), update (modify content/metadata, file operations), delete (remove permanently). Related: browse_snippets for discovery.",
+        'Create, update, or delete code snippets with multi-file support. Actions: create (new snippet with files and visibility), update (modify content/metadata, file operations), delete (remove permanently). Related: browse_snippets for discovery.',
       inputSchema: z.toJSONSchema(ManageSnippetSchema),
-      gate: { envVar: "USE_SNIPPETS", defaultValue: true },
+      gate: { envVar: 'USE_SNIPPETS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageSnippetSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_snippet", input.action)) {
+        if (isActionDenied('manage_snippet', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_snippet tool`);
         }
 
         switch (input.action) {
-          case "create": {
+          case 'create': {
             // TypeScript knows: input has title, files (required), projectId, description, visibility (optional)
             const { projectId, title, description, visibility, files } = input;
 
@@ -126,16 +126,16 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
               const encodedProjectId = encodeURIComponent(projectId);
               path = `projects/${encodedProjectId}/snippets`;
             } else {
-              path = "snippets";
+              path = 'snippets';
             }
 
             return gitlab.post(path, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "update": {
+          case 'update': {
             // TypeScript knows: input has id (required), projectId, title, description, visibility, files (optional)
             const { id, projectId, title, description, visibility, files } = input;
             const encodedId = id.toString();
@@ -164,11 +164,11 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
 
             return gitlab.put(path, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "delete": {
+          case 'delete': {
             // TypeScript knows: input has id (required), projectId (optional)
             const { id, projectId } = input;
             const encodedId = id.toString();
@@ -198,7 +198,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
  * Get read-only tool names from the registry
  */
 export function getSnippetsReadOnlyToolNames(): string[] {
-  return ["browse_snippets"];
+  return ['browse_snippets'];
 }
 
 /**
@@ -214,8 +214,8 @@ export function getSnippetsToolDefinitions(): EnhancedToolDefinition[] {
 export function getFilteredSnippetsTools(readOnlyMode: boolean = false): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getSnippetsReadOnlyToolNames();
-    return Array.from(snippetsToolRegistry.values()).filter(tool =>
-      readOnlyNames.includes(tool.name)
+    return Array.from(snippetsToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
     );
   }
   return getSnippetsToolDefinitions();

@@ -16,11 +16,11 @@ import {
   runDockerCommand,
   initDocker,
   dockerAddInstance,
-} from "../../../../src/cli/docker/docker-command";
-import * as p from "@clack/prompts";
+} from '../../../../src/cli/docker/docker-command';
+import * as p from '@clack/prompts';
 
 // Mock docker-utils
-jest.mock("../../../../src/cli/docker/docker-utils", () => ({
+jest.mock('../../../../src/cli/docker/docker-utils', () => ({
   getDockerStatus: jest.fn(),
   startContainer: jest.fn(),
   stopContainer: jest.fn(),
@@ -31,11 +31,11 @@ jest.mock("../../../../src/cli/docker/docker-utils", () => ({
   addInstance: jest.fn(),
   removeInstance: jest.fn(),
   initDockerConfig: jest.fn(),
-  getExpandedConfigDir: jest.fn(() => "/home/user/.gitlab-mcp"),
+  getExpandedConfigDir: jest.fn(() => '/home/user/.gitlab-mcp'),
 }));
 
 // Mock @clack/prompts
-jest.mock("@clack/prompts", () => ({
+jest.mock('@clack/prompts', () => ({
   intro: jest.fn(),
   outro: jest.fn(),
   log: {
@@ -67,7 +67,7 @@ import {
   removeInstance,
   addInstance,
   initDockerConfig,
-} from "../../../../src/cli/docker/docker-utils";
+} from '../../../../src/cli/docker/docker-utils';
 
 const mockP = p as jest.Mocked<typeof p>;
 const mockGetDockerStatus = getDockerStatus as jest.Mock;
@@ -81,14 +81,14 @@ const mockGetLogs = getLogs as jest.Mock;
 const mockTailLogs = tailLogs as jest.Mock;
 const mockRemoveInstance = removeInstance as jest.Mock;
 
-describe("docker-command", () => {
+describe('docker-command', () => {
   let consoleLogSpy: jest.SpyInstance;
   let consoleErrorSpy: jest.SpyInstance;
 
   beforeEach(() => {
     jest.clearAllMocks();
-    consoleLogSpy = jest.spyOn(console, "log").mockImplementation();
-    consoleErrorSpy = jest.spyOn(console, "error").mockImplementation();
+    consoleLogSpy = jest.spyOn(console, 'log').mockImplementation();
+    consoleErrorSpy = jest.spyOn(console, 'error').mockImplementation();
   });
 
   afterEach(() => {
@@ -96,106 +96,106 @@ describe("docker-command", () => {
     consoleErrorSpy.mockRestore();
   });
 
-  describe("parseDockerSubcommand", () => {
-    it("should parse status subcommand", () => {
-      const result = parseDockerSubcommand(["status"]);
-      expect(result.subcommand).toBe("status");
+  describe('parseDockerSubcommand', () => {
+    it('should parse status subcommand', () => {
+      const result = parseDockerSubcommand(['status']);
+      expect(result.subcommand).toBe('status');
       expect(result.subArgs).toEqual([]);
     });
 
-    it("should parse init subcommand", () => {
-      const result = parseDockerSubcommand(["init"]);
-      expect(result.subcommand).toBe("init");
+    it('should parse init subcommand', () => {
+      const result = parseDockerSubcommand(['init']);
+      expect(result.subcommand).toBe('init');
     });
 
-    it("should parse start subcommand", () => {
-      const result = parseDockerSubcommand(["start"]);
-      expect(result.subcommand).toBe("start");
+    it('should parse start subcommand', () => {
+      const result = parseDockerSubcommand(['start']);
+      expect(result.subcommand).toBe('start');
     });
 
-    it("should parse stop subcommand", () => {
-      const result = parseDockerSubcommand(["stop"]);
-      expect(result.subcommand).toBe("stop");
+    it('should parse stop subcommand', () => {
+      const result = parseDockerSubcommand(['stop']);
+      expect(result.subcommand).toBe('stop');
     });
 
-    it("should parse restart subcommand", () => {
-      const result = parseDockerSubcommand(["restart"]);
-      expect(result.subcommand).toBe("restart");
+    it('should parse restart subcommand', () => {
+      const result = parseDockerSubcommand(['restart']);
+      expect(result.subcommand).toBe('restart');
     });
 
-    it("should parse upgrade subcommand", () => {
-      const result = parseDockerSubcommand(["upgrade"]);
-      expect(result.subcommand).toBe("upgrade");
+    it('should parse upgrade subcommand', () => {
+      const result = parseDockerSubcommand(['upgrade']);
+      expect(result.subcommand).toBe('upgrade');
     });
 
-    it("should parse logs subcommand", () => {
-      const result = parseDockerSubcommand(["logs"]);
-      expect(result.subcommand).toBe("logs");
+    it('should parse logs subcommand', () => {
+      const result = parseDockerSubcommand(['logs']);
+      expect(result.subcommand).toBe('logs');
     });
 
-    it("should parse logs subcommand with -f flag", () => {
-      const result = parseDockerSubcommand(["logs", "-f"]);
-      expect(result.subcommand).toBe("logs");
-      expect(result.subArgs).toEqual(["-f"]);
+    it('should parse logs subcommand with -f flag', () => {
+      const result = parseDockerSubcommand(['logs', '-f']);
+      expect(result.subcommand).toBe('logs');
+      expect(result.subArgs).toEqual(['-f']);
     });
 
-    it("should parse logs subcommand with --follow flag", () => {
-      const result = parseDockerSubcommand(["logs", "--follow"]);
-      expect(result.subcommand).toBe("logs");
-      expect(result.subArgs).toEqual(["--follow"]);
+    it('should parse logs subcommand with --follow flag', () => {
+      const result = parseDockerSubcommand(['logs', '--follow']);
+      expect(result.subcommand).toBe('logs');
+      expect(result.subArgs).toEqual(['--follow']);
     });
 
-    it("should parse logs subcommand with --lines flag", () => {
-      const result = parseDockerSubcommand(["logs", "--lines=200"]);
-      expect(result.subcommand).toBe("logs");
-      expect(result.subArgs).toEqual(["--lines=200"]);
+    it('should parse logs subcommand with --lines flag', () => {
+      const result = parseDockerSubcommand(['logs', '--lines=200']);
+      expect(result.subcommand).toBe('logs');
+      expect(result.subArgs).toEqual(['--lines=200']);
     });
 
-    it("should parse add-instance subcommand", () => {
-      const result = parseDockerSubcommand(["add-instance"]);
-      expect(result.subcommand).toBe("add-instance");
+    it('should parse add-instance subcommand', () => {
+      const result = parseDockerSubcommand(['add-instance']);
+      expect(result.subcommand).toBe('add-instance');
     });
 
-    it("should parse add-instance subcommand with host argument", () => {
-      const result = parseDockerSubcommand(["add-instance", "gitlab.company.com"]);
-      expect(result.subcommand).toBe("add-instance");
-      expect(result.subArgs).toEqual(["gitlab.company.com"]);
+    it('should parse add-instance subcommand with host argument', () => {
+      const result = parseDockerSubcommand(['add-instance', 'gitlab.company.com']);
+      expect(result.subcommand).toBe('add-instance');
+      expect(result.subArgs).toEqual(['gitlab.company.com']);
     });
 
-    it("should parse remove-instance subcommand", () => {
-      const result = parseDockerSubcommand(["remove-instance"]);
-      expect(result.subcommand).toBe("remove-instance");
+    it('should parse remove-instance subcommand', () => {
+      const result = parseDockerSubcommand(['remove-instance']);
+      expect(result.subcommand).toBe('remove-instance');
     });
 
-    it("should parse remove-instance subcommand with host argument", () => {
-      const result = parseDockerSubcommand(["remove-instance", "gitlab.company.com"]);
-      expect(result.subcommand).toBe("remove-instance");
-      expect(result.subArgs).toEqual(["gitlab.company.com"]);
+    it('should parse remove-instance subcommand with host argument', () => {
+      const result = parseDockerSubcommand(['remove-instance', 'gitlab.company.com']);
+      expect(result.subcommand).toBe('remove-instance');
+      expect(result.subArgs).toEqual(['gitlab.company.com']);
     });
 
-    it("should return undefined for unknown subcommand", () => {
-      const result = parseDockerSubcommand(["unknown-command"]);
+    it('should return undefined for unknown subcommand', () => {
+      const result = parseDockerSubcommand(['unknown-command']);
       expect(result.subcommand).toBeUndefined();
-      expect(result.subArgs).toEqual(["unknown-command"]);
+      expect(result.subArgs).toEqual(['unknown-command']);
     });
 
-    it("should return undefined for empty args", () => {
+    it('should return undefined for empty args', () => {
       const result = parseDockerSubcommand([]);
       expect(result.subcommand).toBeUndefined();
       expect(result.subArgs).toEqual([]);
     });
 
-    it("should handle all valid subcommands", () => {
+    it('should handle all valid subcommands', () => {
       const validSubcommands: DockerSubcommand[] = [
-        "status",
-        "init",
-        "start",
-        "stop",
-        "restart",
-        "upgrade",
-        "logs",
-        "add-instance",
-        "remove-instance",
+        'status',
+        'init',
+        'start',
+        'stop',
+        'restart',
+        'upgrade',
+        'logs',
+        'add-instance',
+        'remove-instance',
       ];
 
       for (const cmd of validSubcommands) {
@@ -205,37 +205,37 @@ describe("docker-command", () => {
     });
   });
 
-  describe("showStatus", () => {
-    it("should display status when Docker is installed and running", () => {
+  describe('showStatus', () => {
+    it('should display status when Docker is installed and running', () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
         composeInstalled: true,
         container: {
-          name: "gitlab-mcp",
-          status: "running",
-          uptime: "2 hours",
-          image: "gitlab-mcp:latest",
-          ports: ["3333:3333"],
+          name: 'gitlab-mcp',
+          status: 'running',
+          uptime: '2 hours',
+          image: 'gitlab-mcp:latest',
+          ports: ['3333:3333'],
         },
         instances: [
           {
-            host: "gitlab.com",
-            name: "GitLab",
-            oauth: { clientId: "abc123" },
-            defaultPreset: "developer",
+            host: 'gitlab.com',
+            name: 'GitLab',
+            oauth: { clientId: 'abc123' },
+            defaultPreset: 'developer',
           },
         ],
       });
 
       showStatus();
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("\nDocker Environment:");
-      expect(consoleLogSpy).toHaveBeenCalledWith("  Docker installed: ✓");
-      expect(consoleLogSpy).toHaveBeenCalledWith("  Docker running: ✓");
+      expect(consoleLogSpy).toHaveBeenCalledWith('\nDocker Environment:');
+      expect(consoleLogSpy).toHaveBeenCalledWith('  Docker installed: ✓');
+      expect(consoleLogSpy).toHaveBeenCalledWith('  Docker running: ✓');
     });
 
-    it("should show warning when Docker is not installed", () => {
+    it('should show warning when Docker is not installed', () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: false,
         dockerRunning: false,
@@ -246,13 +246,13 @@ describe("docker-command", () => {
 
       showStatus();
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("  Docker installed: ✗");
+      expect(consoleLogSpy).toHaveBeenCalledWith('  Docker installed: ✗');
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        "\n⚠ Docker is not installed. Install Docker first."
+        '\n⚠ Docker is not installed. Install Docker first.',
       );
     });
 
-    it("should show warning when Docker is not running", () => {
+    it('should show warning when Docker is not running', () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: false,
@@ -263,13 +263,13 @@ describe("docker-command", () => {
 
       showStatus();
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("  Docker running: ✗");
+      expect(consoleLogSpy).toHaveBeenCalledWith('  Docker running: ✗');
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        "\n⚠ Docker daemon is not running. Start Docker first."
+        '\n⚠ Docker daemon is not running. Start Docker first.',
       );
     });
 
-    it("should show container not found message when no container", () => {
+    it('should show container not found message when no container', () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
@@ -281,124 +281,124 @@ describe("docker-command", () => {
       showStatus();
 
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        "  Container not found. Run 'gitlab-mcp docker init' to set up."
+        "  Container not found. Run 'gitlab-mcp docker init' to set up.",
       );
     });
 
-    it("should show no instances message when instances array is empty", () => {
+    it('should show no instances message when instances array is empty', () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
         composeInstalled: true,
-        container: { name: "test", status: "running", image: "test", ports: [] },
+        container: { name: 'test', status: 'running', image: 'test', ports: [] },
         instances: [],
       });
 
       showStatus();
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("  No instances configured.");
+      expect(consoleLogSpy).toHaveBeenCalledWith('  No instances configured.');
     });
   });
 
-  describe("dockerStart", () => {
-    it("should start container successfully", () => {
-      mockStartContainer.mockReturnValue({ success: true, output: "Started" });
+  describe('dockerStart', () => {
+    it('should start container successfully', () => {
+      mockStartContainer.mockReturnValue({ success: true, output: 'Started' });
 
       dockerStart();
 
       expect(mockStartContainer).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith("✓ Container started");
+      expect(consoleLogSpy).toHaveBeenCalledWith('✓ Container started');
     });
 
-    it("should handle start failure", () => {
-      mockStartContainer.mockReturnValue({ success: false, error: "Failed to start" });
+    it('should handle start failure', () => {
+      mockStartContainer.mockReturnValue({ success: false, error: 'Failed to start' });
 
       dockerStart();
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith("✗ Failed to start container: Failed to start");
+      expect(consoleErrorSpy).toHaveBeenCalledWith('✗ Failed to start container: Failed to start');
     });
   });
 
-  describe("dockerStop", () => {
-    it("should stop container successfully", () => {
+  describe('dockerStop', () => {
+    it('should stop container successfully', () => {
       mockStopContainer.mockReturnValue({ success: true });
 
       dockerStop();
 
       expect(mockStopContainer).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith("✓ Container stopped");
+      expect(consoleLogSpy).toHaveBeenCalledWith('✓ Container stopped');
     });
 
-    it("should handle stop failure", () => {
-      mockStopContainer.mockReturnValue({ success: false, error: "Failed to stop" });
+    it('should handle stop failure', () => {
+      mockStopContainer.mockReturnValue({ success: false, error: 'Failed to stop' });
 
       dockerStop();
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith("✗ Failed to stop container: Failed to stop");
+      expect(consoleErrorSpy).toHaveBeenCalledWith('✗ Failed to stop container: Failed to stop');
     });
   });
 
-  describe("dockerRestart", () => {
-    it("should restart container successfully", () => {
+  describe('dockerRestart', () => {
+    it('should restart container successfully', () => {
       mockRestartContainer.mockReturnValue({ success: true });
 
       dockerRestart();
 
       expect(mockRestartContainer).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith("✓ Container restarted");
+      expect(consoleLogSpy).toHaveBeenCalledWith('✓ Container restarted');
     });
 
-    it("should handle restart failure", () => {
-      mockRestartContainer.mockReturnValue({ success: false, error: "Failed to restart" });
+    it('should handle restart failure', () => {
+      mockRestartContainer.mockReturnValue({ success: false, error: 'Failed to restart' });
 
       dockerRestart();
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "✗ Failed to restart container: Failed to restart"
+        '✗ Failed to restart container: Failed to restart',
       );
     });
   });
 
-  describe("dockerUpgrade", () => {
-    it("should upgrade container successfully", () => {
+  describe('dockerUpgrade', () => {
+    it('should upgrade container successfully', () => {
       mockUpgradeContainer.mockReturnValue({ success: true });
 
       dockerUpgrade();
 
       expect(mockUpgradeContainer).toHaveBeenCalled();
-      expect(consoleLogSpy).toHaveBeenCalledWith("✓ Container upgraded to latest version");
+      expect(consoleLogSpy).toHaveBeenCalledWith('✓ Container upgraded to latest version');
     });
 
-    it("should handle upgrade failure", () => {
-      mockUpgradeContainer.mockReturnValue({ success: false, error: "Failed to upgrade" });
+    it('should handle upgrade failure', () => {
+      mockUpgradeContainer.mockReturnValue({ success: false, error: 'Failed to upgrade' });
 
       dockerUpgrade();
 
       expect(consoleErrorSpy).toHaveBeenCalledWith(
-        "✗ Failed to upgrade container: Failed to upgrade"
+        '✗ Failed to upgrade container: Failed to upgrade',
       );
     });
   });
 
-  describe("dockerLogs", () => {
-    it("should get logs without follow", () => {
-      mockGetLogs.mockReturnValue({ success: true, output: "Log output" });
+  describe('dockerLogs', () => {
+    it('should get logs without follow', () => {
+      mockGetLogs.mockReturnValue({ success: true, output: 'Log output' });
 
       dockerLogs(false, 100);
 
       expect(mockGetLogs).toHaveBeenCalledWith(100);
-      expect(consoleLogSpy).toHaveBeenCalledWith("Log output");
+      expect(consoleLogSpy).toHaveBeenCalledWith('Log output');
     });
 
-    it("should handle logs failure", () => {
-      mockGetLogs.mockReturnValue({ success: false, error: "Failed to get logs" });
+    it('should handle logs failure', () => {
+      mockGetLogs.mockReturnValue({ success: false, error: 'Failed to get logs' });
 
       dockerLogs(false, 100);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to get logs: Failed to get logs");
+      expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to get logs: Failed to get logs');
     });
 
-    it("should tail logs with follow", () => {
+    it('should tail logs with follow', () => {
       const mockProcess = {
         on: jest.fn(),
       };
@@ -408,32 +408,32 @@ describe("docker-command", () => {
 
       expect(mockTailLogs).toHaveBeenCalledWith(true, 100);
       expect(consoleLogSpy).toHaveBeenCalledWith(
-        "Tailing logs (last 100 lines, Ctrl+C to exit)...\n"
+        'Tailing logs (last 100 lines, Ctrl+C to exit)...\n',
       );
     });
   });
 
-  describe("dockerRemoveInstance", () => {
-    it("should remove instance successfully", () => {
+  describe('dockerRemoveInstance', () => {
+    it('should remove instance successfully', () => {
       mockRemoveInstance.mockReturnValue(true);
 
-      dockerRemoveInstance("gitlab.example.com");
+      dockerRemoveInstance('gitlab.example.com');
 
-      expect(mockRemoveInstance).toHaveBeenCalledWith("gitlab.example.com");
-      expect(consoleLogSpy).toHaveBeenCalledWith("✓ Removed instance: gitlab.example.com");
+      expect(mockRemoveInstance).toHaveBeenCalledWith('gitlab.example.com');
+      expect(consoleLogSpy).toHaveBeenCalledWith('✓ Removed instance: gitlab.example.com');
     });
 
-    it("should handle instance not found", () => {
+    it('should handle instance not found', () => {
       mockRemoveInstance.mockReturnValue(false);
 
-      dockerRemoveInstance("unknown.example.com");
+      dockerRemoveInstance('unknown.example.com');
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith("✗ Instance not found: unknown.example.com");
+      expect(consoleErrorSpy).toHaveBeenCalledWith('✗ Instance not found: unknown.example.com');
     });
   });
 
-  describe("runDockerCommand", () => {
-    it("should call showStatus for status subcommand", async () => {
+  describe('runDockerCommand', () => {
+    it('should call showStatus for status subcommand', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
@@ -442,123 +442,123 @@ describe("docker-command", () => {
         instances: [],
       });
 
-      await runDockerCommand(["status"]);
+      await runDockerCommand(['status']);
 
       expect(mockGetDockerStatus).toHaveBeenCalled();
     });
 
-    it("should call dockerStart for start subcommand", async () => {
+    it('should call dockerStart for start subcommand', async () => {
       mockStartContainer.mockReturnValue({ success: true });
 
-      await runDockerCommand(["start"]);
+      await runDockerCommand(['start']);
 
       expect(mockStartContainer).toHaveBeenCalled();
     });
 
-    it("should call dockerStop for stop subcommand", async () => {
+    it('should call dockerStop for stop subcommand', async () => {
       mockStopContainer.mockReturnValue({ success: true });
 
-      await runDockerCommand(["stop"]);
+      await runDockerCommand(['stop']);
 
       expect(mockStopContainer).toHaveBeenCalled();
     });
 
-    it("should call dockerRestart for restart subcommand", async () => {
+    it('should call dockerRestart for restart subcommand', async () => {
       mockRestartContainer.mockReturnValue({ success: true });
 
-      await runDockerCommand(["restart"]);
+      await runDockerCommand(['restart']);
 
       expect(mockRestartContainer).toHaveBeenCalled();
     });
 
-    it("should call dockerUpgrade for upgrade subcommand", async () => {
+    it('should call dockerUpgrade for upgrade subcommand', async () => {
       mockUpgradeContainer.mockReturnValue({ success: true });
 
-      await runDockerCommand(["upgrade"]);
+      await runDockerCommand(['upgrade']);
 
       expect(mockUpgradeContainer).toHaveBeenCalled();
     });
 
-    it("should call dockerLogs for logs subcommand", async () => {
-      mockGetLogs.mockReturnValue({ success: true, output: "logs" });
+    it('should call dockerLogs for logs subcommand', async () => {
+      mockGetLogs.mockReturnValue({ success: true, output: 'logs' });
 
-      await runDockerCommand(["logs"]);
+      await runDockerCommand(['logs']);
 
       expect(mockGetLogs).toHaveBeenCalled();
     });
 
-    it("should call dockerLogs with follow for logs -f", async () => {
+    it('should call dockerLogs with follow for logs -f', async () => {
       const mockProcess = { on: jest.fn() };
       mockTailLogs.mockReturnValue(mockProcess);
 
-      await runDockerCommand(["logs", "-f"]);
+      await runDockerCommand(['logs', '-f']);
 
       expect(mockTailLogs).toHaveBeenCalledWith(true, 100);
     });
 
-    it("should call dockerLogs with custom lines", async () => {
-      mockGetLogs.mockReturnValue({ success: true, output: "logs" });
+    it('should call dockerLogs with custom lines', async () => {
+      mockGetLogs.mockReturnValue({ success: true, output: 'logs' });
 
-      await runDockerCommand(["logs", "--lines=50"]);
+      await runDockerCommand(['logs', '--lines=50']);
 
       expect(mockGetLogs).toHaveBeenCalledWith(50);
     });
 
-    it("should call dockerRemoveInstance for remove-instance with host", async () => {
+    it('should call dockerRemoveInstance for remove-instance with host', async () => {
       mockRemoveInstance.mockReturnValue(true);
 
-      await runDockerCommand(["remove-instance", "gitlab.example.com"]);
+      await runDockerCommand(['remove-instance', 'gitlab.example.com']);
 
-      expect(mockRemoveInstance).toHaveBeenCalledWith("gitlab.example.com");
+      expect(mockRemoveInstance).toHaveBeenCalledWith('gitlab.example.com');
     });
 
-    it("should show help for unknown subcommand", async () => {
+    it('should show help for unknown subcommand', async () => {
       await runDockerCommand([]);
 
-      expect(consoleLogSpy).toHaveBeenCalledWith("GitLab MCP Docker Commands:\n");
+      expect(consoleLogSpy).toHaveBeenCalledWith('GitLab MCP Docker Commands:\n');
     });
 
-    it("should call initDocker for init subcommand", async () => {
+    it('should call initDocker for init subcommand', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: false,
         dockerRunning: false,
         composeInstalled: false,
       });
 
-      await runDockerCommand(["init"]);
+      await runDockerCommand(['init']);
 
-      expect(mockP.intro).toHaveBeenCalledWith("Initialize GitLab MCP Docker Setup");
+      expect(mockP.intro).toHaveBeenCalledWith('Initialize GitLab MCP Docker Setup');
     });
 
-    it("should call dockerAddInstance for add-instance subcommand", async () => {
+    it('should call dockerAddInstance for add-instance subcommand', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
         composeInstalled: true,
       });
-      mockP.text.mockResolvedValue("gitlab.company.com");
+      mockP.text.mockResolvedValue('gitlab.company.com');
       mockP.confirm.mockResolvedValue(false);
-      mockP.select.mockResolvedValue("developer");
+      mockP.select.mockResolvedValue('developer');
 
-      await runDockerCommand(["add-instance", "gitlab.example.com"]);
+      await runDockerCommand(['add-instance', 'gitlab.example.com']);
 
-      expect(mockP.intro).toHaveBeenCalledWith("Add GitLab Instance");
+      expect(mockP.intro).toHaveBeenCalledWith('Add GitLab Instance');
     });
 
-    it("should throw error for remove-instance without host", async () => {
-      await expect(runDockerCommand(["remove-instance"])).rejects.toThrow(
-        "Usage: gitlab-mcp docker remove-instance <host>"
+    it('should throw error for remove-instance without host', async () => {
+      await expect(runDockerCommand(['remove-instance'])).rejects.toThrow(
+        'Usage: gitlab-mcp docker remove-instance <host>',
       );
     });
   });
 
-  describe("initDocker", () => {
+  describe('initDocker', () => {
     beforeEach(() => {
       jest.clearAllMocks();
       mockP.isCancel.mockReturnValue(false);
     });
 
-    it("should exit if Docker is not installed", async () => {
+    it('should exit if Docker is not installed', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: false,
         dockerRunning: false,
@@ -567,11 +567,11 @@ describe("docker-command", () => {
 
       await initDocker();
 
-      expect(mockP.log.error).toHaveBeenCalledWith("Docker is not installed.");
-      expect(mockP.outro).toHaveBeenCalledWith("Setup cancelled.");
+      expect(mockP.log.error).toHaveBeenCalledWith('Docker is not installed.');
+      expect(mockP.outro).toHaveBeenCalledWith('Setup cancelled.');
     });
 
-    it("should exit if Docker Compose is not installed", async () => {
+    it('should exit if Docker Compose is not installed', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
@@ -580,47 +580,47 @@ describe("docker-command", () => {
 
       await initDocker();
 
-      expect(mockP.log.error).toHaveBeenCalledWith("Docker Compose is not installed.");
+      expect(mockP.log.error).toHaveBeenCalledWith('Docker Compose is not installed.');
     });
 
-    it("should handle port input cancellation", async () => {
+    it('should handle port input cancellation', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
         composeInstalled: true,
       });
-      const cancelSymbol = Symbol.for("cancel");
+      const cancelSymbol = Symbol.for('cancel');
       mockP.text.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
 
       await initDocker();
 
-      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+      expect(mockP.cancel).toHaveBeenCalledWith('Setup cancelled');
     });
 
-    it("should handle OAuth enable cancellation", async () => {
+    it('should handle OAuth enable cancellation', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
         composeInstalled: true,
       });
-      mockP.text.mockResolvedValueOnce("3333");
-      const cancelSymbol = Symbol.for("cancel");
+      mockP.text.mockResolvedValueOnce('3333');
+      const cancelSymbol = Symbol.for('cancel');
       mockP.confirm.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
 
       await initDocker();
 
-      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+      expect(mockP.cancel).toHaveBeenCalledWith('Setup cancelled');
     });
 
-    it("should create config with OAuth enabled", async () => {
+    it('should create config with OAuth enabled', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
         composeInstalled: true,
       });
-      mockP.text.mockResolvedValueOnce("3333");
+      mockP.text.mockResolvedValueOnce('3333');
       mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
       mockP.confirm.mockResolvedValueOnce(false); // don't start now
       mockP.isCancel.mockReturnValue(false);
@@ -629,17 +629,17 @@ describe("docker-command", () => {
 
       expect(mockInitDockerConfig).toHaveBeenCalled();
       expect(mockP.log.warn).toHaveBeenCalledWith(
-        expect.stringContaining("Session secret will be stored in docker-compose.yml")
+        expect.stringContaining('Session secret will be stored in docker-compose.yml'),
       );
     });
 
-    it("should start container after init if requested", async () => {
+    it('should start container after init if requested', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
         composeInstalled: true,
       });
-      mockP.text.mockResolvedValueOnce("3333");
+      mockP.text.mockResolvedValueOnce('3333');
       mockP.confirm.mockResolvedValueOnce(false); // no OAuth
       mockP.confirm.mockResolvedValueOnce(true); // start now
       mockP.isCancel.mockReturnValue(false);
@@ -650,173 +650,173 @@ describe("docker-command", () => {
       expect(mockStartContainer).toHaveBeenCalled();
     });
 
-    it("should handle container start failure", async () => {
+    it('should handle container start failure', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
         composeInstalled: true,
       });
-      mockP.text.mockResolvedValueOnce("3333");
+      mockP.text.mockResolvedValueOnce('3333');
       mockP.confirm.mockResolvedValueOnce(false);
       mockP.confirm.mockResolvedValueOnce(true);
       mockP.isCancel.mockReturnValue(false);
-      mockStartContainer.mockReturnValue({ success: false, error: "Failed" });
+      mockStartContainer.mockReturnValue({ success: false, error: 'Failed' });
 
       await initDocker();
 
-      expect(mockP.log.error).toHaveBeenCalledWith("Failed");
+      expect(mockP.log.error).toHaveBeenCalledWith('Failed');
     });
 
-    it("should handle cancellation when asking to start container", async () => {
+    it('should handle cancellation when asking to start container', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
         composeInstalled: true,
       });
-      mockP.text.mockResolvedValueOnce("3333");
+      mockP.text.mockResolvedValueOnce('3333');
       mockP.confirm.mockResolvedValueOnce(false);
-      const cancelSymbol = Symbol.for("cancel");
+      const cancelSymbol = Symbol.for('cancel');
       mockP.confirm.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
 
       await initDocker();
 
-      expect(mockP.cancel).toHaveBeenCalledWith("Setup complete without starting container");
+      expect(mockP.cancel).toHaveBeenCalledWith('Setup complete without starting container');
     });
 
-    it("should handle initDockerConfig error", async () => {
+    it('should handle initDockerConfig error', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,
         dockerRunning: true,
         composeInstalled: true,
       });
-      mockP.text.mockResolvedValueOnce("3333");
+      mockP.text.mockResolvedValueOnce('3333');
       mockP.confirm.mockResolvedValueOnce(false);
       mockP.isCancel.mockReturnValue(false);
       mockInitDockerConfig.mockImplementation(() => {
-        throw new Error("Config error");
+        throw new Error('Config error');
       });
 
       await initDocker();
 
-      expect(mockP.log.error).toHaveBeenCalledWith("Config error");
+      expect(mockP.log.error).toHaveBeenCalledWith('Config error');
     });
   });
 
-  describe("dockerAddInstance", () => {
+  describe('dockerAddInstance', () => {
     beforeEach(() => {
       jest.clearAllMocks();
       mockP.isCancel.mockReturnValue(false);
     });
 
-    it("should add instance with provided host", async () => {
-      mockP.text.mockResolvedValueOnce("Company GitLab"); // name
+    it('should add instance with provided host', async () => {
+      mockP.text.mockResolvedValueOnce('Company GitLab'); // name
       mockP.confirm.mockResolvedValueOnce(false); // no OAuth
-      mockP.select.mockResolvedValueOnce("developer");
+      mockP.select.mockResolvedValueOnce('developer');
 
-      await dockerAddInstance("gitlab.company.com");
+      await dockerAddInstance('gitlab.company.com');
 
       expect(mockAddInstance).toHaveBeenCalledWith(
         expect.objectContaining({
-          host: "gitlab.company.com",
-          name: "Company GitLab",
-        })
+          host: 'gitlab.company.com',
+          name: 'Company GitLab',
+        }),
       );
     });
 
-    it("should prompt for host if not provided", async () => {
-      mockP.text.mockResolvedValueOnce("gitlab.example.com"); // host
-      mockP.text.mockResolvedValueOnce("Example GitLab"); // name
+    it('should prompt for host if not provided', async () => {
+      mockP.text.mockResolvedValueOnce('gitlab.example.com'); // host
+      mockP.text.mockResolvedValueOnce('Example GitLab'); // name
       mockP.confirm.mockResolvedValueOnce(false);
-      mockP.select.mockResolvedValueOnce("developer");
+      mockP.select.mockResolvedValueOnce('developer');
 
       await dockerAddInstance();
 
       expect(mockP.text).toHaveBeenCalledWith(
-        expect.objectContaining({ message: "GitLab instance host:" })
+        expect.objectContaining({ message: 'GitLab instance host:' }),
       );
     });
 
-    it("should handle host input cancellation", async () => {
-      const cancelSymbol = Symbol.for("cancel");
+    it('should handle host input cancellation', async () => {
+      const cancelSymbol = Symbol.for('cancel');
       mockP.text.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
 
       await dockerAddInstance();
 
-      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+      expect(mockP.cancel).toHaveBeenCalledWith('Setup cancelled');
     });
 
-    it("should handle name input cancellation", async () => {
-      const cancelSymbol = Symbol.for("cancel");
+    it('should handle name input cancellation', async () => {
+      const cancelSymbol = Symbol.for('cancel');
       mockP.text.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
 
-      await dockerAddInstance("gitlab.company.com");
+      await dockerAddInstance('gitlab.company.com');
 
-      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+      expect(mockP.cancel).toHaveBeenCalledWith('Setup cancelled');
     });
 
-    it("should handle OAuth confirmation cancellation", async () => {
-      mockP.text.mockResolvedValueOnce("Name");
-      const cancelSymbol = Symbol.for("cancel");
+    it('should handle OAuth confirmation cancellation', async () => {
+      mockP.text.mockResolvedValueOnce('Name');
+      const cancelSymbol = Symbol.for('cancel');
       mockP.confirm.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
 
-      await dockerAddInstance("gitlab.company.com");
+      await dockerAddInstance('gitlab.company.com');
 
-      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+      expect(mockP.cancel).toHaveBeenCalledWith('Setup cancelled');
     });
 
-    it("should configure OAuth when enabled", async () => {
-      mockP.text.mockResolvedValueOnce("Company GitLab"); // name
+    it('should configure OAuth when enabled', async () => {
+      mockP.text.mockResolvedValueOnce('Company GitLab'); // name
       mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
-      mockP.text.mockResolvedValueOnce("app-id-12345"); // client ID
-      mockP.select.mockResolvedValueOnce("developer");
+      mockP.text.mockResolvedValueOnce('app-id-12345'); // client ID
+      mockP.select.mockResolvedValueOnce('developer');
 
-      await dockerAddInstance("gitlab.company.com");
+      await dockerAddInstance('gitlab.company.com');
 
       expect(mockAddInstance).toHaveBeenCalledWith(
         expect.objectContaining({
           oauth: {
-            clientId: "app-id-12345",
-            clientSecretEnv: "GITLAB_COMPANY_COM_SECRET",
+            clientId: 'app-id-12345',
+            clientSecretEnv: 'GITLAB_COMPANY_COM_SECRET',
           },
-        })
+        }),
       );
     });
 
-    it("should handle OAuth client ID cancellation", async () => {
-      mockP.text.mockResolvedValueOnce("Name");
+    it('should handle OAuth client ID cancellation', async () => {
+      mockP.text.mockResolvedValueOnce('Name');
       mockP.confirm.mockResolvedValueOnce(true);
-      const cancelSymbol = Symbol.for("cancel");
+      const cancelSymbol = Symbol.for('cancel');
       mockP.text.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
 
-      await dockerAddInstance("gitlab.company.com");
+      await dockerAddInstance('gitlab.company.com');
 
-      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+      expect(mockP.cancel).toHaveBeenCalledWith('Setup cancelled');
     });
 
-    it("should handle preset selection cancellation", async () => {
-      mockP.text.mockResolvedValueOnce("Name");
+    it('should handle preset selection cancellation', async () => {
+      mockP.text.mockResolvedValueOnce('Name');
       mockP.confirm.mockResolvedValueOnce(false);
-      const cancelSymbol = Symbol.for("cancel");
+      const cancelSymbol = Symbol.for('cancel');
       mockP.select.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation(val => val === cancelSymbol);
+      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
 
-      await dockerAddInstance("gitlab.company.com");
+      await dockerAddInstance('gitlab.company.com');
 
-      expect(mockP.cancel).toHaveBeenCalledWith("Setup cancelled");
+      expect(mockP.cancel).toHaveBeenCalledWith('Setup cancelled');
     });
   });
 
-  describe("dockerLogs error handling", () => {
-    it("should handle tailLogs error event", () => {
+  describe('dockerLogs error handling', () => {
+    it('should handle tailLogs error event', () => {
       const mockProcess = {
         on: jest.fn((event: string, callback: (error: Error) => void) => {
-          if (event === "error") {
-            callback(new Error("Connection failed"));
+          if (event === 'error') {
+            callback(new Error('Connection failed'));
           }
         }),
       };
@@ -824,11 +824,11 @@ describe("docker-command", () => {
 
       dockerLogs(true, 100);
 
-      expect(consoleErrorSpy).toHaveBeenCalledWith("Failed to get logs: Connection failed");
+      expect(consoleErrorSpy).toHaveBeenCalledWith('Failed to get logs: Connection failed');
     });
   });
 
-  describe("hostname/IPv4 validation", () => {
+  describe('hostname/IPv4 validation', () => {
     /**
      * Tests for the hostname/IPv4 validation logic in dockerAddInstance.
      * The validation requires:
@@ -847,83 +847,83 @@ describe("docker-command", () => {
         if (opts.validate) {
           capturedValidate = opts.validate;
         }
-        return Promise.resolve("gitlab.example.com");
+        return Promise.resolve('gitlab.example.com');
       });
     });
 
-    it("should accept valid hostname", async () => {
+    it('should accept valid hostname', async () => {
       await dockerAddInstance();
 
       expect(capturedValidate).toBeDefined();
-      expect(capturedValidate!("gitlab.example.com")).toBeUndefined();
+      expect(capturedValidate!('gitlab.example.com')).toBeUndefined();
     });
 
-    it("should accept localhost", async () => {
+    it('should accept localhost', async () => {
       await dockerAddInstance();
 
-      expect(capturedValidate!("localhost")).toBeUndefined();
+      expect(capturedValidate!('localhost')).toBeUndefined();
     });
 
-    it("should accept simple hostname without domain", async () => {
+    it('should accept simple hostname without domain', async () => {
       await dockerAddInstance();
 
-      expect(capturedValidate!("gitlab")).toBeUndefined();
+      expect(capturedValidate!('gitlab')).toBeUndefined();
     });
 
-    it("should accept hostname with hyphens", async () => {
+    it('should accept hostname with hyphens', async () => {
       await dockerAddInstance();
 
-      expect(capturedValidate!("my-gitlab-server.example.com")).toBeUndefined();
+      expect(capturedValidate!('my-gitlab-server.example.com')).toBeUndefined();
     });
 
-    it("should accept valid IPv4 addresses", async () => {
+    it('should accept valid IPv4 addresses', async () => {
       await dockerAddInstance();
 
-      expect(capturedValidate!("192.168.1.1")).toBeUndefined();
-      expect(capturedValidate!("10.0.0.1")).toBeUndefined();
-      expect(capturedValidate!("172.16.0.1")).toBeUndefined();
+      expect(capturedValidate!('192.168.1.1')).toBeUndefined();
+      expect(capturedValidate!('10.0.0.1')).toBeUndefined();
+      expect(capturedValidate!('172.16.0.1')).toBeUndefined();
     });
 
-    it("should accept boundary IPv4 values (0 and 255)", async () => {
+    it('should accept boundary IPv4 values (0 and 255)', async () => {
       await dockerAddInstance();
 
-      expect(capturedValidate!("0.0.0.0")).toBeUndefined();
-      expect(capturedValidate!("255.255.255.255")).toBeUndefined();
+      expect(capturedValidate!('0.0.0.0')).toBeUndefined();
+      expect(capturedValidate!('255.255.255.255')).toBeUndefined();
     });
 
-    it("should reject IPv4 with octets > 255", async () => {
+    it('should reject IPv4 with octets > 255', async () => {
       await dockerAddInstance();
 
-      expect(capturedValidate!("256.1.1.1")).toBe("IP address octets must be between 0 and 255");
-      expect(capturedValidate!("1.256.1.1")).toBe("IP address octets must be between 0 and 255");
-      expect(capturedValidate!("1.1.256.1")).toBe("IP address octets must be between 0 and 255");
-      expect(capturedValidate!("1.1.1.256")).toBe("IP address octets must be between 0 and 255");
+      expect(capturedValidate!('256.1.1.1')).toBe('IP address octets must be between 0 and 255');
+      expect(capturedValidate!('1.256.1.1')).toBe('IP address octets must be between 0 and 255');
+      expect(capturedValidate!('1.1.256.1')).toBe('IP address octets must be between 0 and 255');
+      expect(capturedValidate!('1.1.1.256')).toBe('IP address octets must be between 0 and 255');
     });
 
-    it("should reject IPv4 with large invalid octets", async () => {
+    it('should reject IPv4 with large invalid octets', async () => {
       await dockerAddInstance();
 
-      expect(capturedValidate!("999.999.999.999")).toBe(
-        "IP address octets must be between 0 and 255"
+      expect(capturedValidate!('999.999.999.999')).toBe(
+        'IP address octets must be between 0 and 255',
       );
     });
 
-    it("should reject empty hostname", async () => {
+    it('should reject empty hostname', async () => {
       await dockerAddInstance();
 
-      expect(capturedValidate!("")).toBe("Host is required");
+      expect(capturedValidate!('')).toBe('Host is required');
     });
 
-    it("should reject invalid hostname formats", async () => {
+    it('should reject invalid hostname formats', async () => {
       await dockerAddInstance();
 
-      expect(capturedValidate!("invalid..hostname")).toBe("Invalid hostname or IP address format");
-      expect(capturedValidate!("-invalid")).toBe("Invalid hostname or IP address format");
-      expect(capturedValidate!("invalid-")).toBe("Invalid hostname or IP address format");
+      expect(capturedValidate!('invalid..hostname')).toBe('Invalid hostname or IP address format');
+      expect(capturedValidate!('-invalid')).toBe('Invalid hostname or IP address format');
+      expect(capturedValidate!('invalid-')).toBe('Invalid hostname or IP address format');
     });
   });
 
-  describe("environment variable name sanitization", () => {
+  describe('environment variable name sanitization', () => {
     /**
      * Tests for env var name generation in dockerAddInstance OAuth config.
      * The sanitization converts hostname to UPPER_SNAKE_CASE_SECRET format.
@@ -933,58 +933,58 @@ describe("docker-command", () => {
       mockP.isCancel.mockReturnValue(false);
     });
 
-    it("should sanitize hostname to valid env var name", async () => {
-      mockP.text.mockResolvedValueOnce("Company GitLab"); // name
+    it('should sanitize hostname to valid env var name', async () => {
+      mockP.text.mockResolvedValueOnce('Company GitLab'); // name
       mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
-      mockP.text.mockResolvedValueOnce("app-id-12345"); // client ID
-      mockP.select.mockResolvedValueOnce("developer");
+      mockP.text.mockResolvedValueOnce('app-id-12345'); // client ID
+      mockP.select.mockResolvedValueOnce('developer');
 
-      await dockerAddInstance("gitlab.company.com");
+      await dockerAddInstance('gitlab.company.com');
 
       // Check that addInstance was called with properly sanitized env var name
       expect(mockAddInstance).toHaveBeenCalledWith(
         expect.objectContaining({
           oauth: {
-            clientId: "app-id-12345",
-            clientSecretEnv: "GITLAB_COMPANY_COM_SECRET",
+            clientId: 'app-id-12345',
+            clientSecretEnv: 'GITLAB_COMPANY_COM_SECRET',
           },
-        })
+        }),
       );
     });
 
-    it("should sanitize hyphenated hostname", async () => {
-      mockP.text.mockResolvedValueOnce("My GitLab"); // name
+    it('should sanitize hyphenated hostname', async () => {
+      mockP.text.mockResolvedValueOnce('My GitLab'); // name
       mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
-      mockP.text.mockResolvedValueOnce("app-id-123"); // client ID
-      mockP.select.mockResolvedValueOnce("developer");
+      mockP.text.mockResolvedValueOnce('app-id-123'); // client ID
+      mockP.select.mockResolvedValueOnce('developer');
 
-      await dockerAddInstance("my-gitlab-server.example.com");
+      await dockerAddInstance('my-gitlab-server.example.com');
 
       expect(mockAddInstance).toHaveBeenCalledWith(
         expect.objectContaining({
           oauth: {
-            clientId: "app-id-123",
-            clientSecretEnv: "MY_GITLAB_SERVER_EXAMPLE_COM_SECRET",
+            clientId: 'app-id-123',
+            clientSecretEnv: 'MY_GITLAB_SERVER_EXAMPLE_COM_SECRET',
           },
-        })
+        }),
       );
     });
 
-    it("should sanitize special characters in hostname", async () => {
-      mockP.text.mockResolvedValueOnce("GitLab"); // name
+    it('should sanitize special characters in hostname', async () => {
+      mockP.text.mockResolvedValueOnce('GitLab'); // name
       mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
-      mockP.text.mockResolvedValueOnce("app-id"); // client ID
-      mockP.select.mockResolvedValueOnce("developer");
+      mockP.text.mockResolvedValueOnce('app-id'); // client ID
+      mockP.select.mockResolvedValueOnce('developer');
 
-      await dockerAddInstance("git.lab");
+      await dockerAddInstance('git.lab');
 
       expect(mockAddInstance).toHaveBeenCalledWith(
         expect.objectContaining({
           oauth: {
-            clientId: "app-id",
-            clientSecretEnv: "GIT_LAB_SECRET",
+            clientId: 'app-id',
+            clientSecretEnv: 'GIT_LAB_SECRET',
           },
-        })
+        }),
       );
     });
   });

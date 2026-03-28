@@ -5,9 +5,9 @@
  * that the rest of the application understands.
  */
 
-import { Profile, Preset, ProfileValidationResult } from "./types";
-import { ProfileLoader } from "./loader";
-import { logInfo, logWarn, logError, logDebug } from "../logger";
+import { Profile, Preset, ProfileValidationResult } from './types';
+import { ProfileLoader } from './loader';
+import { logInfo, logWarn, logError, logDebug } from '../logger';
 
 // ============================================================================
 // Environment Variable Mapping
@@ -17,22 +17,22 @@ import { logInfo, logWarn, logError, logDebug } from "../logger";
  * Map of profile feature flags to USE_* environment variables
  */
 const FEATURE_ENV_MAP: Record<string, string> = {
-  wiki: "USE_GITLAB_WIKI",
-  milestones: "USE_MILESTONE",
-  pipelines: "USE_PIPELINE",
-  labels: "USE_LABELS",
-  mrs: "USE_MRS",
-  files: "USE_FILES",
-  variables: "USE_VARIABLES",
-  workitems: "USE_WORKITEMS",
-  webhooks: "USE_WEBHOOKS",
-  snippets: "USE_SNIPPETS",
-  integrations: "USE_INTEGRATIONS",
+  wiki: 'USE_GITLAB_WIKI',
+  milestones: 'USE_MILESTONE',
+  pipelines: 'USE_PIPELINE',
+  labels: 'USE_LABELS',
+  mrs: 'USE_MRS',
+  files: 'USE_FILES',
+  variables: 'USE_VARIABLES',
+  workitems: 'USE_WORKITEMS',
+  webhooks: 'USE_WEBHOOKS',
+  snippets: 'USE_SNIPPETS',
+  integrations: 'USE_INTEGRATIONS',
   // New entities (#78, #81, #82, #83)
-  releases: "USE_RELEASES",
-  refs: "USE_REFS",
-  members: "USE_MEMBERS",
-  search: "USE_SEARCH",
+  releases: 'USE_RELEASES',
+  refs: 'USE_REFS',
+  members: 'USE_MEMBERS',
+  search: 'USE_SEARCH',
 };
 
 // ============================================================================
@@ -71,7 +71,7 @@ export interface ApplyPresetResult {
  */
 export async function applyProfile(
   profile: Profile,
-  profileName: string
+  profileName: string,
 ): Promise<ApplyProfileResult> {
   const appliedSettings: string[] = [];
   const loader = new ProfileLoader();
@@ -84,7 +84,7 @@ export async function applyProfile(
 
   // Stop on errors
   if (!validation.valid) {
-    logError("Profile validation failed", { profile: profileName, errors: validation.errors });
+    logError('Profile validation failed', { profile: profileName, errors: validation.errors });
     return {
       success: false,
       profileName,
@@ -101,7 +101,7 @@ export async function applyProfile(
 
   // Apply authentication
   switch (profile.auth.type) {
-    case "pat":
+    case 'pat':
       if (profile.auth.token_env) {
         const token = process.env[profile.auth.token_env];
         if (token) {
@@ -111,7 +111,7 @@ export async function applyProfile(
       }
       break;
 
-    case "oauth":
+    case 'oauth':
       if (profile.auth.client_id_env) {
         const clientId = process.env[profile.auth.client_id_env];
         if (clientId) {
@@ -124,15 +124,15 @@ export async function applyProfile(
         if (clientSecret) {
           process.env.GITLAB_OAUTH_CLIENT_SECRET = clientSecret;
           appliedSettings.push(
-            `GITLAB_OAUTH_CLIENT_SECRET=<from ${profile.auth.client_secret_env}>`
+            `GITLAB_OAUTH_CLIENT_SECRET=<from ${profile.auth.client_secret_env}>`,
           );
         }
       }
-      process.env.OAUTH_ENABLED = "true";
-      appliedSettings.push("OAUTH_ENABLED=true");
+      process.env.OAUTH_ENABLED = 'true';
+      appliedSettings.push('OAUTH_ENABLED=true');
       break;
 
-    case "cookie":
+    case 'cookie':
       if (profile.auth.cookie_path) {
         process.env.GITLAB_AUTH_COOKIE_PATH = profile.auth.cookie_path;
         appliedSettings.push(`GITLAB_AUTH_COOKIE_PATH=${profile.auth.cookie_path}`);
@@ -142,23 +142,23 @@ export async function applyProfile(
 
   // Apply access control
   if (profile.read_only) {
-    process.env.GITLAB_READ_ONLY_MODE = "true";
-    appliedSettings.push("GITLAB_READ_ONLY_MODE=true");
+    process.env.GITLAB_READ_ONLY_MODE = 'true';
+    appliedSettings.push('GITLAB_READ_ONLY_MODE=true');
   }
 
   if (profile.allowed_projects && profile.allowed_projects.length > 0) {
-    process.env.GITLAB_ALLOWED_PROJECT_IDS = profile.allowed_projects.join(",");
-    appliedSettings.push(`GITLAB_ALLOWED_PROJECT_IDS=${profile.allowed_projects.join(",")}`);
+    process.env.GITLAB_ALLOWED_PROJECT_IDS = profile.allowed_projects.join(',');
+    appliedSettings.push(`GITLAB_ALLOWED_PROJECT_IDS=${profile.allowed_projects.join(',')}`);
   }
 
   if (profile.allowed_groups && profile.allowed_groups.length > 0) {
-    process.env.GITLAB_ALLOWED_GROUP_IDS = profile.allowed_groups.join(",");
-    appliedSettings.push(`GITLAB_ALLOWED_GROUP_IDS=${profile.allowed_groups.join(",")}`);
+    process.env.GITLAB_ALLOWED_GROUP_IDS = profile.allowed_groups.join(',');
+    appliedSettings.push(`GITLAB_ALLOWED_GROUP_IDS=${profile.allowed_groups.join(',')}`);
   }
 
   if (profile.allowed_tools && profile.allowed_tools.length > 0) {
-    process.env.GITLAB_ALLOWED_TOOLS = profile.allowed_tools.join(",");
-    appliedSettings.push(`GITLAB_ALLOWED_TOOLS=${profile.allowed_tools.join(",")}`);
+    process.env.GITLAB_ALLOWED_TOOLS = profile.allowed_tools.join(',');
+    appliedSettings.push(`GITLAB_ALLOWED_TOOLS=${profile.allowed_tools.join(',')}`);
   }
 
   if (profile.denied_tools_regex) {
@@ -167,8 +167,8 @@ export async function applyProfile(
   }
 
   if (profile.denied_actions && profile.denied_actions.length > 0) {
-    process.env.GITLAB_DENIED_ACTIONS = profile.denied_actions.join(",");
-    appliedSettings.push(`GITLAB_DENIED_ACTIONS=${profile.denied_actions.join(",")}`);
+    process.env.GITLAB_DENIED_ACTIONS = profile.denied_actions.join(',');
+    appliedSettings.push(`GITLAB_DENIED_ACTIONS=${profile.denied_actions.join(',')}`);
   }
 
   // Apply feature flags
@@ -176,7 +176,7 @@ export async function applyProfile(
     for (const [feature, envVar] of Object.entries(FEATURE_ENV_MAP)) {
       const value = profile.features[feature as keyof typeof profile.features];
       if (value !== undefined) {
-        process.env[envVar] = value ? "true" : "false";
+        process.env[envVar] = value ? 'true' : 'false';
         appliedSettings.push(`${envVar}=${value}`);
       }
     }
@@ -190,8 +190,8 @@ export async function applyProfile(
 
   // Apply TLS settings
   if (profile.skip_tls_verify) {
-    process.env.SKIP_TLS_VERIFY = "true";
-    appliedSettings.push("SKIP_TLS_VERIFY=true");
+    process.env.SKIP_TLS_VERIFY = 'true';
+    appliedSettings.push('SKIP_TLS_VERIFY=true');
   }
 
   if (profile.ssl_cert_path) {
@@ -220,7 +220,7 @@ export async function applyProfile(
     appliedSettings.push(`GITLAB_DEFAULT_NAMESPACE=${profile.default_namespace}`);
   }
 
-  logInfo("Profile applied successfully", {
+  logInfo('Profile applied successfully', {
     profile: profileName,
     host: profile.host,
     authType: profile.auth.type,
@@ -264,7 +264,7 @@ export async function applyPreset(preset: Preset, presetName: string): Promise<A
 
   // Stop on errors
   if (!validation.valid) {
-    logError("Preset validation failed", { preset: presetName, errors: validation.errors });
+    logError('Preset validation failed', { preset: presetName, errors: validation.errors });
     return {
       success: false,
       presetName,
@@ -275,15 +275,15 @@ export async function applyPreset(preset: Preset, presetName: string): Promise<A
 
   // Verify that host/auth are already configured (presets require existing connection)
   if (!process.env.GITLAB_API_URL && !process.env.GITLAB_TOKEN) {
-    logWarn("Preset applied but GITLAB_API_URL/GITLAB_TOKEN not set - connection may fail", {
+    logWarn('Preset applied but GITLAB_API_URL/GITLAB_TOKEN not set - connection may fail', {
       preset: presetName,
     });
   }
 
   // Apply access control
   if (preset.read_only) {
-    process.env.GITLAB_READ_ONLY_MODE = "true";
-    appliedSettings.push("GITLAB_READ_ONLY_MODE=true");
+    process.env.GITLAB_READ_ONLY_MODE = 'true';
+    appliedSettings.push('GITLAB_READ_ONLY_MODE=true');
   }
 
   if (preset.denied_tools_regex) {
@@ -292,13 +292,13 @@ export async function applyPreset(preset: Preset, presetName: string): Promise<A
   }
 
   if (preset.denied_actions && preset.denied_actions.length > 0) {
-    process.env.GITLAB_DENIED_ACTIONS = preset.denied_actions.join(",");
-    appliedSettings.push(`GITLAB_DENIED_ACTIONS=${preset.denied_actions.join(",")}`);
+    process.env.GITLAB_DENIED_ACTIONS = preset.denied_actions.join(',');
+    appliedSettings.push(`GITLAB_DENIED_ACTIONS=${preset.denied_actions.join(',')}`);
   }
 
   if (preset.allowed_tools && preset.allowed_tools.length > 0) {
-    process.env.GITLAB_ALLOWED_TOOLS = preset.allowed_tools.join(",");
-    appliedSettings.push(`GITLAB_ALLOWED_TOOLS=${preset.allowed_tools.join(",")}`);
+    process.env.GITLAB_ALLOWED_TOOLS = preset.allowed_tools.join(',');
+    appliedSettings.push(`GITLAB_ALLOWED_TOOLS=${preset.allowed_tools.join(',')}`);
   }
 
   // Apply feature flags
@@ -306,7 +306,7 @@ export async function applyPreset(preset: Preset, presetName: string): Promise<A
     for (const [feature, envVar] of Object.entries(FEATURE_ENV_MAP)) {
       const value = preset.features[feature as keyof typeof preset.features];
       if (value !== undefined) {
-        process.env[envVar] = value ? "true" : "false";
+        process.env[envVar] = value ? 'true' : 'false';
         appliedSettings.push(`${envVar}=${value}`);
       }
     }
@@ -318,7 +318,7 @@ export async function applyPreset(preset: Preset, presetName: string): Promise<A
     appliedSettings.push(`GITLAB_API_HEADERS_TIMEOUT_MS=${preset.timeout_ms}`);
   }
 
-  logInfo("Preset applied successfully", {
+  logInfo('Preset applied successfully', {
     preset: presetName,
     readOnly: preset.read_only ?? false,
     settingsCount: appliedSettings.length,
@@ -374,13 +374,13 @@ export async function loadAndApplyPreset(presetName: string): Promise<ApplyPrese
  * @returns Result if a profile/preset was applied, undefined otherwise
  */
 export async function tryApplyProfileFromEnv(
-  cliProfileName?: string
+  cliProfileName?: string,
 ): Promise<ApplyProfileResult | ApplyPresetResult | undefined> {
   // Priority: CLI arg > env var > default profile
   const name = cliProfileName ?? process.env.GITLAB_PROFILE ?? (await getDefaultProfileName());
 
   if (!name) {
-    logDebug("No profile specified, using environment variables directly");
+    logDebug('No profile specified, using environment variables directly');
     return undefined;
   }
 
@@ -388,14 +388,14 @@ export async function tryApplyProfileFromEnv(
     const loader = new ProfileLoader();
     const loaded = await loader.loadAny(name);
 
-    if (loaded.type === "profile") {
+    if (loaded.type === 'profile') {
       return await applyProfile(loaded.data, name);
     } else {
       return await applyPreset(loaded.data, name);
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logError("Failed to apply profile/preset", { profile: name, error: message });
+    logError('Failed to apply profile/preset', { profile: name, error: message });
     throw error;
   }
 }

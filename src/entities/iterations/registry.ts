@@ -1,9 +1,9 @@
 /* eslint-disable @typescript-eslint/no-unsafe-return */
-import * as z from "zod";
-import { BrowseIterationsSchema } from "./schema-readonly";
-import { enhancedFetch } from "../../utils/fetch";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { isActionDenied } from "../../config";
+import * as z from 'zod';
+import { BrowseIterationsSchema } from './schema-readonly';
+import { enhancedFetch } from '../../utils/fetch';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { isActionDenied } from '../../config';
 
 /**
  * Iterations tools registry - 1 CQRS tool
@@ -12,31 +12,31 @@ import { isActionDenied } from "../../config";
  */
 export const iterationsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
   [
-    "browse_iterations",
+    'browse_iterations',
     {
-      name: "browse_iterations",
+      name: 'browse_iterations',
       description:
-        "View group iterations for agile sprint planning. Actions: list (filter by state: current, upcoming, closed), get (retrieve specific iteration details). Related: browse_work_items for items in an iteration.",
+        'View group iterations for agile sprint planning. Actions: list (filter by state: current, upcoming, closed), get (retrieve specific iteration details). Related: browse_work_items for items in an iteration.',
       inputSchema: z.toJSONSchema(BrowseIterationsSchema),
       handler: async (args: unknown) => {
         const input = BrowseIterationsSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_iterations", input.action)) {
+        if (isActionDenied('browse_iterations', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_iterations tool`);
         }
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             const { group_id } = input;
 
             const queryParams = new URLSearchParams();
-            if (input.state) queryParams.set("state", input.state);
-            if (input.search) queryParams.set("search", input.search);
+            if (input.state) queryParams.set('state', input.state);
+            if (input.search) queryParams.set('search', input.search);
             if (input.include_ancestors !== undefined)
-              queryParams.set("include_ancestors", String(input.include_ancestors));
-            if (input.per_page) queryParams.set("per_page", String(input.per_page));
-            if (input.page) queryParams.set("page", String(input.page));
+              queryParams.set('include_ancestors', String(input.include_ancestors));
+            if (input.per_page) queryParams.set('per_page', String(input.per_page));
+            if (input.page) queryParams.set('page', String(input.page));
 
             const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(group_id)}/iterations?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
@@ -48,7 +48,7 @@ export const iterationsToolRegistry: ToolRegistry = new Map<string, EnhancedTool
             return await response.json();
           }
 
-          case "get": {
+          case 'get': {
             const { group_id, iteration_id } = input;
 
             const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(group_id)}/iterations/${encodeURIComponent(iteration_id)}`;
@@ -71,7 +71,7 @@ export const iterationsToolRegistry: ToolRegistry = new Map<string, EnhancedTool
 ]);
 
 export function getIterationsReadOnlyToolNames(): string[] {
-  return ["browse_iterations"];
+  return ['browse_iterations'];
 }
 
 export function getIterationsToolDefinitions(): EnhancedToolDefinition[] {
@@ -79,12 +79,12 @@ export function getIterationsToolDefinitions(): EnhancedToolDefinition[] {
 }
 
 export function getFilteredIterationsTools(
-  readOnlyMode: boolean = false
+  readOnlyMode: boolean = false,
 ): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getIterationsReadOnlyToolNames();
-    return Array.from(iterationsToolRegistry.values()).filter(tool =>
-      readOnlyNames.includes(tool.name)
+    return Array.from(iterationsToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
     );
   }
   return getIterationsToolDefinitions();

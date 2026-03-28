@@ -2,7 +2,7 @@
  * MCP Client Interface and error classes for testing
  */
 
-import { CallToolResult, ListToolsResult } from "@modelcontextprotocol/sdk/types.js";
+import { CallToolResult, ListToolsResult } from '@modelcontextprotocol/sdk/types.js';
 
 export interface MCPClientInterface {
   /**
@@ -45,10 +45,10 @@ export class MCPClientError extends Error {
   constructor(
     message: string,
 
-    public readonly _cause?: Error
+    public readonly _cause?: Error,
   ) {
     super(message);
-    this.name = "MCPClientError";
+    this.name = 'MCPClientError';
   }
 }
 
@@ -58,7 +58,7 @@ export class MCPClientError extends Error {
 export class MCPConnectionError extends MCPClientError {
   constructor(message: string, _cause?: Error) {
     super(message, _cause);
-    this.name = "MCPConnectionError";
+    this.name = 'MCPConnectionError';
   }
 }
 
@@ -70,9 +70,9 @@ export class MCPToolCallError extends MCPClientError {
     message: string,
 
     public readonly _toolName?: string,
-    _cause?: Error
+    _cause?: Error,
   ) {
     super(message, _cause);
-    this.name = "MCPToolCallError";
+    this.name = 'MCPToolCallError';
   }
 }

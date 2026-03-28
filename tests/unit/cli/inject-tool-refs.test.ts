@@ -5,11 +5,11 @@
  */
 
 // Mock fs module before imports
-jest.mock("fs");
+jest.mock('fs');
 
 // Mock RegistryManager with configurable return value
 const mockGetAllToolDefinitionsUnfiltered = jest.fn().mockReturnValue([]);
-jest.mock("../../../src/registry-manager", () => ({
+jest.mock('../../../src/registry-manager', () => ({
   RegistryManager: {
     getInstance: () => ({
       getAllToolDefinitionsUnfiltered: mockGetAllToolDefinitionsUnfiltered,
@@ -26,35 +26,35 @@ import {
   countEntities,
   getVersion,
   main,
-} from "../../../src/cli/inject-tool-refs";
-import type { JsonSchemaProperty, ActionInfo } from "../../../src/cli/inject-tool-refs";
-import * as fs from "fs";
-import * as path from "path";
+} from '../../../src/cli/inject-tool-refs';
+import type { JsonSchemaProperty, ActionInfo } from '../../../src/cli/inject-tool-refs';
+import * as fs from 'fs';
+import * as path from 'path';
 
 const mockedFs = fs as jest.Mocked<typeof fs>;
 
-describe("inject-tool-refs", () => {
+describe('inject-tool-refs', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  describe("extractActions", () => {
-    it("should extract actions from oneOf discriminated union schema", () => {
+  describe('extractActions', () => {
+    it('should extract actions from oneOf discriminated union schema', () => {
       const schema: JsonSchemaProperty = {
         oneOf: [
           {
             properties: {
-              action: { const: "list", description: "List all items" },
+              action: { const: 'list', description: 'List all items' },
             },
           },
           {
             properties: {
-              action: { const: "get", description: "Get single item" },
+              action: { const: 'get', description: 'Get single item' },
             },
           },
           {
             properties: {
-              action: { const: "create", description: "Create new item" },
+              action: { const: 'create', description: 'Create new item' },
             },
           },
         ],
@@ -63,16 +63,16 @@ describe("inject-tool-refs", () => {
       const actions = extractActions(schema);
 
       expect(actions).toHaveLength(3);
-      expect(actions[0]).toEqual({ name: "list", description: "List all items" });
-      expect(actions[1]).toEqual({ name: "get", description: "Get single item" });
-      expect(actions[2]).toEqual({ name: "create", description: "Create new item" });
+      expect(actions[0]).toEqual({ name: 'list', description: 'List all items' });
+      expect(actions[1]).toEqual({ name: 'get', description: 'Get single item' });
+      expect(actions[2]).toEqual({ name: 'create', description: 'Create new item' });
     });
 
-    it("should extract actions from flat enum schema", () => {
+    it('should extract actions from flat enum schema', () => {
       const schema: JsonSchemaProperty = {
         properties: {
           action: {
-            enum: ["list", "get", "create"],
+            enum: ['list', 'get', 'create'],
           },
         },
       };
@@ -82,14 +82,14 @@ describe("inject-tool-refs", () => {
       expect(actions).toHaveLength(3);
       // Uses ACTION_DESCRIPTIONS fallback for known actions
       expect(actions[0]).toEqual({
-        name: "list",
-        description: "List items with filtering and pagination",
+        name: 'list',
+        description: 'List items with filtering and pagination',
       });
-      expect(actions[1]).toEqual({ name: "get", description: "Get a single item by ID" });
-      expect(actions[2]).toEqual({ name: "create", description: "Create a new item" });
+      expect(actions[1]).toEqual({ name: 'get', description: 'Get a single item by ID' });
+      expect(actions[2]).toEqual({ name: 'create', description: 'Create a new item' });
     });
 
-    it("should return empty array for empty schema", () => {
+    it('should return empty array for empty schema', () => {
       const schema: JsonSchemaProperty = {};
 
       const actions = extractActions(schema);
@@ -97,11 +97,11 @@ describe("inject-tool-refs", () => {
       expect(actions).toHaveLength(0);
     });
 
-    it("should return empty array for schema with no action property", () => {
+    it('should return empty array for schema with no action property', () => {
       const schema: JsonSchemaProperty = {
         properties: {
-          project_id: { type: "string" },
-          name: { type: "string" },
+          project_id: { type: 'string' },
+          name: { type: 'string' },
         },
       };
 
@@ -110,17 +110,17 @@ describe("inject-tool-refs", () => {
       expect(actions).toHaveLength(0);
     });
 
-    it("should fall back to ACTION_DESCRIPTIONS when oneOf branch has no description", () => {
+    it('should fall back to ACTION_DESCRIPTIONS when oneOf branch has no description', () => {
       const schema: JsonSchemaProperty = {
         oneOf: [
           {
             properties: {
-              action: { const: "delete" }, // Known action, no description
+              action: { const: 'delete' }, // Known action, no description
             },
           },
           {
             properties: {
-              action: { const: "search" }, // Known action, no description
+              action: { const: 'search' }, // Known action, no description
             },
           },
         ],
@@ -129,8 +129,8 @@ describe("inject-tool-refs", () => {
       const actions = extractActions(schema);
 
       expect(actions).toHaveLength(2);
-      expect(actions[0]).toEqual({ name: "delete", description: "Delete an item" });
-      expect(actions[1]).toEqual({ name: "search", description: "Search for items" });
+      expect(actions[0]).toEqual({ name: 'delete', description: 'Delete an item' });
+      expect(actions[1]).toEqual({ name: 'search', description: 'Search for items' });
     });
 
     it("should use 'Perform X operation' when action is not in ACTION_DESCRIPTIONS", () => {
@@ -138,7 +138,7 @@ describe("inject-tool-refs", () => {
         oneOf: [
           {
             properties: {
-              action: { const: "custom_action" }, // Unknown action, no description
+              action: { const: 'custom_action' }, // Unknown action, no description
             },
           },
         ],
@@ -148,8 +148,8 @@ describe("inject-tool-refs", () => {
 
       expect(actions).toHaveLength(1);
       expect(actions[0]).toEqual({
-        name: "custom_action",
-        description: "Perform custom_action operation",
+        name: 'custom_action',
+        description: 'Perform custom_action operation',
       });
     });
 
@@ -157,7 +157,7 @@ describe("inject-tool-refs", () => {
       const schema: JsonSchemaProperty = {
         properties: {
           action: {
-            enum: ["custom_action", "another_unknown"],
+            enum: ['custom_action', 'another_unknown'],
           },
         },
       };
@@ -166,20 +166,20 @@ describe("inject-tool-refs", () => {
 
       expect(actions).toHaveLength(2);
       expect(actions[0]).toEqual({
-        name: "custom_action",
-        description: "Perform custom_action operation",
+        name: 'custom_action',
+        description: 'Perform custom_action operation',
       });
       expect(actions[1]).toEqual({
-        name: "another_unknown",
-        description: "Perform another_unknown operation",
+        name: 'another_unknown',
+        description: 'Perform another_unknown operation',
       });
     });
 
-    it("should skip non-string values in flat enum", () => {
+    it('should skip non-string values in flat enum', () => {
       const schema: JsonSchemaProperty = {
         properties: {
           action: {
-            enum: ["list", 123, null, "get", undefined],
+            enum: ['list', 123, null, 'get', undefined],
           },
         },
       };
@@ -188,16 +188,16 @@ describe("inject-tool-refs", () => {
 
       // Only string values should be extracted
       expect(actions).toHaveLength(2);
-      expect(actions[0].name).toBe("list");
-      expect(actions[1].name).toBe("get");
+      expect(actions[0].name).toBe('list');
+      expect(actions[1].name).toBe('get');
     });
 
-    it("should skip oneOf branches without action.const", () => {
+    it('should skip oneOf branches without action.const', () => {
       const schema: JsonSchemaProperty = {
         oneOf: [
           {
             properties: {
-              action: { const: "list", description: "List items" },
+              action: { const: 'list', description: 'List items' },
             },
           },
           {
@@ -206,14 +206,14 @@ describe("inject-tool-refs", () => {
           {
             properties: {
               // No action property
-              name: { type: "string" },
+              name: { type: 'string' },
             },
           },
           {
             properties: {
               action: {
                 // Action with no const value
-                type: "string",
+                type: 'string',
               },
             },
           },
@@ -224,22 +224,22 @@ describe("inject-tool-refs", () => {
 
       // Only the first branch has a valid action.const
       expect(actions).toHaveLength(1);
-      expect(actions[0].name).toBe("list");
+      expect(actions[0].name).toBe('list');
     });
 
-    it("should prefer oneOf over flat enum when both exist", () => {
+    it('should prefer oneOf over flat enum when both exist', () => {
       // oneOf is checked first, and returns early if found
       const schema: JsonSchemaProperty = {
         oneOf: [
           {
             properties: {
-              action: { const: "merge", description: "Merge from oneOf" },
+              action: { const: 'merge', description: 'Merge from oneOf' },
             },
           },
         ],
         properties: {
           action: {
-            enum: ["list", "get"],
+            enum: ['list', 'get'],
           },
         },
       };
@@ -248,32 +248,32 @@ describe("inject-tool-refs", () => {
 
       // Should use oneOf results, not enum
       expect(actions).toHaveLength(1);
-      expect(actions[0].name).toBe("merge");
+      expect(actions[0].name).toBe('merge');
     });
 
-    it("should handle all known ACTION_DESCRIPTIONS fallbacks for flat enum", () => {
+    it('should handle all known ACTION_DESCRIPTIONS fallbacks for flat enum', () => {
       const schema: JsonSchemaProperty = {
         properties: {
           action: {
             enum: [
-              "list",
-              "get",
-              "create",
-              "update",
-              "delete",
-              "search",
-              "diffs",
-              "compare",
-              "merge",
-              "approve",
-              "unapprove",
-              "cancel",
-              "retry",
-              "play",
-              "publish",
-              "resolve",
-              "disable",
-              "test",
+              'list',
+              'get',
+              'create',
+              'update',
+              'delete',
+              'search',
+              'diffs',
+              'compare',
+              'merge',
+              'approve',
+              'unapprove',
+              'cancel',
+              'retry',
+              'play',
+              'publish',
+              'resolve',
+              'disable',
+              'test',
             ],
           },
         },
@@ -282,32 +282,32 @@ describe("inject-tool-refs", () => {
       const actions = extractActions(schema);
 
       expect(actions).toHaveLength(18);
-      expect(actions[0].description).toBe("List items with filtering and pagination");
-      expect(actions[1].description).toBe("Get a single item by ID");
-      expect(actions[2].description).toBe("Create a new item");
-      expect(actions[3].description).toBe("Update an existing item");
-      expect(actions[4].description).toBe("Delete an item");
-      expect(actions[5].description).toBe("Search for items");
-      expect(actions[6].description).toBe("Get file changes/diffs");
-      expect(actions[7].description).toBe("Compare two branches or commits");
-      expect(actions[8].description).toBe("Merge a merge request");
-      expect(actions[9].description).toBe("Approve a merge request");
-      expect(actions[10].description).toBe("Remove approval from a merge request");
-      expect(actions[11].description).toBe("Cancel a running operation");
-      expect(actions[12].description).toBe("Retry a failed operation");
-      expect(actions[13].description).toBe("Run a manual job");
-      expect(actions[14].description).toBe("Publish draft notes");
-      expect(actions[15].description).toBe("Resolve a discussion thread");
-      expect(actions[16].description).toBe("Disable the integration");
-      expect(actions[17].description).toBe("Test a webhook");
+      expect(actions[0].description).toBe('List items with filtering and pagination');
+      expect(actions[1].description).toBe('Get a single item by ID');
+      expect(actions[2].description).toBe('Create a new item');
+      expect(actions[3].description).toBe('Update an existing item');
+      expect(actions[4].description).toBe('Delete an item');
+      expect(actions[5].description).toBe('Search for items');
+      expect(actions[6].description).toBe('Get file changes/diffs');
+      expect(actions[7].description).toBe('Compare two branches or commits');
+      expect(actions[8].description).toBe('Merge a merge request');
+      expect(actions[9].description).toBe('Approve a merge request');
+      expect(actions[10].description).toBe('Remove approval from a merge request');
+      expect(actions[11].description).toBe('Cancel a running operation');
+      expect(actions[12].description).toBe('Retry a failed operation');
+      expect(actions[13].description).toBe('Run a manual job');
+      expect(actions[14].description).toBe('Publish draft notes');
+      expect(actions[15].description).toBe('Resolve a discussion thread');
+      expect(actions[16].description).toBe('Disable the integration');
+      expect(actions[17].description).toBe('Test a webhook');
     });
 
-    it("should handle oneOf with description taking priority over ACTION_DESCRIPTIONS", () => {
+    it('should handle oneOf with description taking priority over ACTION_DESCRIPTIONS', () => {
       const schema: JsonSchemaProperty = {
         oneOf: [
           {
             properties: {
-              action: { const: "list", description: "Custom list description" },
+              action: { const: 'list', description: 'Custom list description' },
             },
           },
         ],
@@ -317,155 +317,155 @@ describe("inject-tool-refs", () => {
 
       expect(actions).toHaveLength(1);
       // Schema description should take priority over ACTION_DESCRIPTIONS fallback
-      expect(actions[0].description).toBe("Custom list description");
+      expect(actions[0].description).toBe('Custom list description');
     });
   });
 
-  describe("generateActionsTable", () => {
-    it("should generate correct markdown table format", () => {
+  describe('generateActionsTable', () => {
+    it('should generate correct markdown table format', () => {
       const actions: ActionInfo[] = [
-        { name: "list", description: "List items with filtering and pagination" },
-        { name: "get", description: "Get a single item by ID" },
+        { name: 'list', description: 'List items with filtering and pagination' },
+        { name: 'get', description: 'Get a single item by ID' },
       ];
 
       const table = generateActionsTable(actions);
 
-      const lines = table.split("\n");
+      const lines = table.split('\n');
       expect(lines).toHaveLength(4);
-      expect(lines[0]).toBe("| Action | Description |");
-      expect(lines[1]).toBe("|--------|-------------|");
-      expect(lines[2]).toBe("| `list` | List items with filtering and pagination |");
-      expect(lines[3]).toBe("| `get` | Get a single item by ID |");
+      expect(lines[0]).toBe('| Action | Description |');
+      expect(lines[1]).toBe('|--------|-------------|');
+      expect(lines[2]).toBe('| `list` | List items with filtering and pagination |');
+      expect(lines[3]).toBe('| `get` | Get a single item by ID |');
     });
 
-    it("should generate table with single action", () => {
-      const actions: ActionInfo[] = [{ name: "create", description: "Create a new item" }];
+    it('should generate table with single action', () => {
+      const actions: ActionInfo[] = [{ name: 'create', description: 'Create a new item' }];
 
       const table = generateActionsTable(actions);
 
-      const lines = table.split("\n");
+      const lines = table.split('\n');
       expect(lines).toHaveLength(3);
-      expect(lines[2]).toBe("| `create` | Create a new item |");
+      expect(lines[2]).toBe('| `create` | Create a new item |');
     });
 
-    it("should generate table with many actions", () => {
+    it('should generate table with many actions', () => {
       const actions: ActionInfo[] = [
-        { name: "list", description: "List items" },
-        { name: "get", description: "Get item" },
-        { name: "create", description: "Create item" },
-        { name: "update", description: "Update item" },
-        { name: "delete", description: "Delete item" },
+        { name: 'list', description: 'List items' },
+        { name: 'get', description: 'Get item' },
+        { name: 'create', description: 'Create item' },
+        { name: 'update', description: 'Update item' },
+        { name: 'delete', description: 'Delete item' },
       ];
 
       const table = generateActionsTable(actions);
 
-      const lines = table.split("\n");
+      const lines = table.split('\n');
       // Header (2 lines) + 5 action rows
       expect(lines).toHaveLength(7);
     });
 
-    it("should handle empty actions array", () => {
+    it('should handle empty actions array', () => {
       const actions: ActionInfo[] = [];
 
       const table = generateActionsTable(actions);
 
-      const lines = table.split("\n");
+      const lines = table.split('\n');
       // Just the header lines, no data rows
       expect(lines).toHaveLength(2);
-      expect(lines[0]).toBe("| Action | Description |");
-      expect(lines[1]).toBe("|--------|-------------|");
+      expect(lines[0]).toBe('| Action | Description |');
+      expect(lines[1]).toBe('|--------|-------------|');
     });
 
-    it("should properly escape action names with backticks", () => {
-      const actions: ActionInfo[] = [{ name: "my_action", description: "My action description" }];
+    it('should properly escape action names with backticks', () => {
+      const actions: ActionInfo[] = [{ name: 'my_action', description: 'My action description' }];
 
       const table = generateActionsTable(actions);
 
-      expect(table).toContain("| `my_action` | My action description |");
+      expect(table).toContain('| `my_action` | My action description |');
     });
 
-    it("should escape pipe characters in descriptions", () => {
+    it('should escape pipe characters in descriptions', () => {
       const actions: ActionInfo[] = [
-        { name: "filter", description: "Filter by type | status | priority" },
+        { name: 'filter', description: 'Filter by type | status | priority' },
       ];
 
       const table = generateActionsTable(actions);
 
-      expect(table).toContain("| `filter` | Filter by type \\| status \\| priority |");
-      expect(table).not.toContain("| `filter` | Filter by type | status");
+      expect(table).toContain('| `filter` | Filter by type \\| status \\| priority |');
+      expect(table).not.toContain('| `filter` | Filter by type | status');
     });
 
-    it("should escape backslash characters before pipe characters", () => {
-      const actions: ActionInfo[] = [{ name: "test", description: "Path is C:\\Users\\name" }];
+    it('should escape backslash characters before pipe characters', () => {
+      const actions: ActionInfo[] = [{ name: 'test', description: 'Path is C:\\Users\\name' }];
 
       const table = generateActionsTable(actions);
 
-      expect(table).toContain("| `test` | Path is C:\\\\Users\\\\name |");
+      expect(table).toContain('| `test` | Path is C:\\\\Users\\\\name |');
     });
   });
 
-  describe("findMarkers", () => {
-    it("should find a single marker in content", () => {
+  describe('findMarkers', () => {
+    it('should find a single marker in content', () => {
       const content =
-        "Some text\n" +
-        "<!-- @autogen:tool browse_projects -->\n" +
-        "old content\n" +
-        "<!-- @autogen:end -->\n" +
-        "more text";
+        'Some text\n' +
+        '<!-- @autogen:tool browse_projects -->\n' +
+        'old content\n' +
+        '<!-- @autogen:end -->\n' +
+        'more text';
 
       const markers = findMarkers(content);
 
       expect(markers).toHaveLength(1);
-      expect(markers[0].toolName).toBe("browse_projects");
-      expect(markers[0].startIdx).toBe(content.indexOf("<!-- @autogen:tool"));
+      expect(markers[0].toolName).toBe('browse_projects');
+      expect(markers[0].startIdx).toBe(content.indexOf('<!-- @autogen:tool'));
       expect(markers[0].endIdx).toBe(
-        content.indexOf("<!-- @autogen:end -->") + "<!-- @autogen:end -->".length
+        content.indexOf('<!-- @autogen:end -->') + '<!-- @autogen:end -->'.length,
       );
     });
 
-    it("should find multiple markers in content", () => {
+    it('should find multiple markers in content', () => {
       const content =
-        "# Tools\n" +
-        "## Projects\n" +
-        "<!-- @autogen:tool browse_projects -->\n" +
-        "projects table\n" +
-        "<!-- @autogen:end -->\n" +
-        "\n" +
-        "## Labels\n" +
-        "<!-- @autogen:tool manage_label -->\n" +
-        "labels table\n" +
-        "<!-- @autogen:end -->\n" +
-        "footer";
+        '# Tools\n' +
+        '## Projects\n' +
+        '<!-- @autogen:tool browse_projects -->\n' +
+        'projects table\n' +
+        '<!-- @autogen:end -->\n' +
+        '\n' +
+        '## Labels\n' +
+        '<!-- @autogen:tool manage_label -->\n' +
+        'labels table\n' +
+        '<!-- @autogen:end -->\n' +
+        'footer';
 
       const markers = findMarkers(content);
 
       expect(markers).toHaveLength(2);
-      expect(markers[0].toolName).toBe("browse_projects");
-      expect(markers[1].toolName).toBe("manage_label");
+      expect(markers[0].toolName).toBe('browse_projects');
+      expect(markers[1].toolName).toBe('manage_label');
     });
 
-    it("should return empty array when no markers present", () => {
-      const content = "# Regular markdown\n\nSome content without markers.\n";
+    it('should return empty array when no markers present', () => {
+      const content = '# Regular markdown\n\nSome content without markers.\n';
 
       const markers = findMarkers(content);
 
       expect(markers).toHaveLength(0);
     });
 
-    it("should throw Error when end tag is missing", () => {
+    it('should throw Error when end tag is missing', () => {
       const content =
-        "Some text\n" +
-        "<!-- @autogen:tool browse_projects -->\n" +
-        "content without closing tag\n";
+        'Some text\n' +
+        '<!-- @autogen:tool browse_projects -->\n' +
+        'content without closing tag\n';
 
       expect(() => findMarkers(content)).toThrow(
-        'Missing <!-- @autogen:end --> for tool "browse_projects"'
+        'Missing <!-- @autogen:end --> for tool "browse_projects"',
       );
     });
 
-    it("should correctly identify start and end indices", () => {
-      const startTag = "<!-- @autogen:tool test_tool -->";
-      const endTag = "<!-- @autogen:end -->";
+    it('should correctly identify start and end indices', () => {
+      const startTag = '<!-- @autogen:tool test_tool -->';
+      const endTag = '<!-- @autogen:end -->';
       const content = `prefix\n${startTag}\ninner content\n${endTag}\nsuffix`;
 
       const markers = findMarkers(content);
@@ -473,388 +473,388 @@ describe("inject-tool-refs", () => {
       expect(markers).toHaveLength(1);
       // startIdx should be where the start tag begins
       expect(content.substring(markers[0].startIdx, markers[0].startIdx + startTag.length)).toBe(
-        startTag
+        startTag,
       );
       // endIdx should be right after the end tag
       expect(content.substring(markers[0].endIdx - endTag.length, markers[0].endIdx)).toBe(endTag);
     });
 
-    it("should handle markers with no content between them", () => {
-      const content = "<!-- @autogen:tool my_tool --><!-- @autogen:end -->";
+    it('should handle markers with no content between them', () => {
+      const content = '<!-- @autogen:tool my_tool --><!-- @autogen:end -->';
 
       const markers = findMarkers(content);
 
       expect(markers).toHaveLength(1);
-      expect(markers[0].toolName).toBe("my_tool");
+      expect(markers[0].toolName).toBe('my_tool');
     });
 
-    it("should handle tool names with underscores and hyphens", () => {
+    it('should handle tool names with underscores and hyphens', () => {
       const content =
-        "<!-- @autogen:tool browse_merge_requests -->\n" + "content\n" + "<!-- @autogen:end -->";
+        '<!-- @autogen:tool browse_merge_requests -->\n' + 'content\n' + '<!-- @autogen:end -->';
 
       const markers = findMarkers(content);
 
       expect(markers).toHaveLength(1);
-      expect(markers[0].toolName).toBe("browse_merge_requests");
+      expect(markers[0].toolName).toBe('browse_merge_requests');
     });
 
-    it("should throw for first marker without end when multiple markers exist", () => {
-      const contentNoEnd = "<!-- @autogen:tool orphaned_tool -->\n" + "no end tag anywhere";
+    it('should throw for first marker without end when multiple markers exist', () => {
+      const contentNoEnd = '<!-- @autogen:tool orphaned_tool -->\n' + 'no end tag anywhere';
 
       expect(() => findMarkers(contentNoEnd)).toThrow(
-        'Missing <!-- @autogen:end --> for tool "orphaned_tool"'
+        'Missing <!-- @autogen:end --> for tool "orphaned_tool"',
       );
     });
   });
 
-  describe("processFile", () => {
-    it("should replace marker content with generated action table", () => {
+  describe('processFile', () => {
+    it('should replace marker content with generated action table', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
-      toolSchemas.set("browse_projects", {
+      toolSchemas.set('browse_projects', {
         oneOf: [
           {
             properties: {
-              action: { const: "list", description: "List projects" },
+              action: { const: 'list', description: 'List projects' },
             },
           },
           {
             properties: {
-              action: { const: "get", description: "Get a project" },
+              action: { const: 'get', description: 'Get a project' },
             },
           },
         ],
       });
 
       const fileContent =
-        "# Projects\n\n" +
-        "<!-- @autogen:tool browse_projects -->\n" +
-        "old table content\n" +
-        "<!-- @autogen:end -->\n\n" +
-        "More docs.";
+        '# Projects\n\n' +
+        '<!-- @autogen:tool browse_projects -->\n' +
+        'old table content\n' +
+        '<!-- @autogen:end -->\n\n' +
+        'More docs.';
 
       mockedFs.readFileSync.mockReturnValue(fileContent);
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = processFile("/path/to/file.md", toolSchemas);
+      const result = processFile('/path/to/file.md', toolSchemas);
 
       expect(result).toBe(true);
       expect(mockedFs.writeFileSync).toHaveBeenCalledTimes(1);
 
       // Verify the written content contains the new table
       const writtenContent = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1] as string;
-      expect(writtenContent).toContain("| Action | Description |");
-      expect(writtenContent).toContain("| `list` | List projects |");
-      expect(writtenContent).toContain("| `get` | Get a project |");
-      expect(writtenContent).toContain("<!-- @autogen:tool browse_projects -->");
-      expect(writtenContent).toContain("<!-- @autogen:end -->");
+      expect(writtenContent).toContain('| Action | Description |');
+      expect(writtenContent).toContain('| `list` | List projects |');
+      expect(writtenContent).toContain('| `get` | Get a project |');
+      expect(writtenContent).toContain('<!-- @autogen:tool browse_projects -->');
+      expect(writtenContent).toContain('<!-- @autogen:end -->');
       // Original content should be replaced
-      expect(writtenContent).not.toContain("old table content");
+      expect(writtenContent).not.toContain('old table content');
     });
 
-    it("should be idempotent - running twice produces same result", () => {
+    it('should be idempotent - running twice produces same result', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
-      toolSchemas.set("browse_labels", {
+      toolSchemas.set('browse_labels', {
         properties: {
-          action: { enum: ["list", "get"] },
+          action: { enum: ['list', 'get'] },
         },
       });
 
       const originalContent =
-        "# Labels\n\n" +
-        "<!-- @autogen:tool browse_labels -->\n" +
-        "| Action | Description |\n" +
-        "|--------|-------------|\n" +
-        "| `list` | List items with filtering and pagination |\n" +
-        "| `get` | Get a single item by ID |\n" +
-        "<!-- @autogen:end -->\n";
+        '# Labels\n\n' +
+        '<!-- @autogen:tool browse_labels -->\n' +
+        '| Action | Description |\n' +
+        '|--------|-------------|\n' +
+        '| `list` | List items with filtering and pagination |\n' +
+        '| `get` | Get a single item by ID |\n' +
+        '<!-- @autogen:end -->\n';
 
       // First call - generate the table
       mockedFs.readFileSync.mockReturnValue(originalContent);
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = processFile("/path/to/labels.md", toolSchemas);
+      const result = processFile('/path/to/labels.md', toolSchemas);
 
       // The content already matches what would be generated, so no write needed
       expect(result).toBe(false);
       expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
     });
 
-    it("should return false when no markers are present", () => {
+    it('should return false when no markers are present', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
-      toolSchemas.set("browse_projects", {
-        oneOf: [{ properties: { action: { const: "list" } } }],
+      toolSchemas.set('browse_projects', {
+        oneOf: [{ properties: { action: { const: 'list' } } }],
       });
 
-      const fileContent = "# Regular file\n\nNo markers here.\n";
+      const fileContent = '# Regular file\n\nNo markers here.\n';
 
       mockedFs.readFileSync.mockReturnValue(fileContent);
 
-      const result = processFile("/path/to/regular.md", toolSchemas);
+      const result = processFile('/path/to/regular.md', toolSchemas);
 
       expect(result).toBe(false);
       expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
     });
 
-    it("should throw when tool name is not in schema map", () => {
+    it('should throw when tool name is not in schema map', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
-      toolSchemas.set("browse_projects", {
-        oneOf: [{ properties: { action: { const: "list" } } }],
+      toolSchemas.set('browse_projects', {
+        oneOf: [{ properties: { action: { const: 'list' } } }],
       });
 
       const fileContent =
-        "<!-- @autogen:tool unknown_tool -->\n" + "content\n" + "<!-- @autogen:end -->\n";
+        '<!-- @autogen:tool unknown_tool -->\n' + 'content\n' + '<!-- @autogen:end -->\n';
 
       mockedFs.readFileSync.mockReturnValue(fileContent);
 
-      expect(() => processFile("/path/to/file.md", toolSchemas)).toThrow(
-        'Unknown tool "unknown_tool"'
+      expect(() => processFile('/path/to/file.md', toolSchemas)).toThrow(
+        'Unknown tool "unknown_tool"',
       );
-      expect(() => processFile("/path/to/file.md", toolSchemas)).toThrow(
-        "Available tools: browse_projects"
+      expect(() => processFile('/path/to/file.md', toolSchemas)).toThrow(
+        'Available tools: browse_projects',
       );
     });
 
-    it("should throw when tool has no extractable actions", () => {
+    it('should throw when tool has no extractable actions', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
       // Schema with no action property at all
-      toolSchemas.set("empty_tool", {
+      toolSchemas.set('empty_tool', {
         properties: {
-          name: { type: "string" },
+          name: { type: 'string' },
         },
       });
 
       const fileContent =
-        "<!-- @autogen:tool empty_tool -->\n" + "content\n" + "<!-- @autogen:end -->\n";
+        '<!-- @autogen:tool empty_tool -->\n' + 'content\n' + '<!-- @autogen:end -->\n';
 
       mockedFs.readFileSync.mockReturnValue(fileContent);
 
-      expect(() => processFile("/path/to/file.md", toolSchemas)).toThrow(
-        'Tool "empty_tool" has no extractable actions'
+      expect(() => processFile('/path/to/file.md', toolSchemas)).toThrow(
+        'Tool "empty_tool" has no extractable actions',
       );
     });
 
-    it("should handle multiple markers in a single file", () => {
+    it('should handle multiple markers in a single file', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
-      toolSchemas.set("browse_projects", {
-        oneOf: [{ properties: { action: { const: "list", description: "List projects" } } }],
+      toolSchemas.set('browse_projects', {
+        oneOf: [{ properties: { action: { const: 'list', description: 'List projects' } } }],
       });
-      toolSchemas.set("manage_label", {
+      toolSchemas.set('manage_label', {
         properties: {
-          action: { enum: ["create", "delete"] },
+          action: { enum: ['create', 'delete'] },
         },
       });
 
       const fileContent =
-        "# Tools\n\n" +
-        "## Projects\n" +
-        "<!-- @autogen:tool browse_projects -->\n" +
-        "old projects\n" +
-        "<!-- @autogen:end -->\n\n" +
-        "## Labels\n" +
-        "<!-- @autogen:tool manage_label -->\n" +
-        "old labels\n" +
-        "<!-- @autogen:end -->\n";
+        '# Tools\n\n' +
+        '## Projects\n' +
+        '<!-- @autogen:tool browse_projects -->\n' +
+        'old projects\n' +
+        '<!-- @autogen:end -->\n\n' +
+        '## Labels\n' +
+        '<!-- @autogen:tool manage_label -->\n' +
+        'old labels\n' +
+        '<!-- @autogen:end -->\n';
 
       mockedFs.readFileSync.mockReturnValue(fileContent);
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = processFile("/path/to/tools.md", toolSchemas);
+      const result = processFile('/path/to/tools.md', toolSchemas);
 
       expect(result).toBe(true);
       const writtenContent = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1] as string;
 
       // Both tables should be present
-      expect(writtenContent).toContain("| `list` | List projects |");
-      expect(writtenContent).toContain("| `create` | Create a new item |");
-      expect(writtenContent).toContain("| `delete` | Delete an item |");
+      expect(writtenContent).toContain('| `list` | List projects |');
+      expect(writtenContent).toContain('| `create` | Create a new item |');
+      expect(writtenContent).toContain('| `delete` | Delete an item |');
       // Old content should be replaced
-      expect(writtenContent).not.toContain("old projects");
-      expect(writtenContent).not.toContain("old labels");
+      expect(writtenContent).not.toContain('old projects');
+      expect(writtenContent).not.toContain('old labels');
     });
 
-    it("should preserve content outside markers", () => {
+    it('should preserve content outside markers', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
-      toolSchemas.set("browse_wiki", {
-        oneOf: [{ properties: { action: { const: "list", description: "List wiki pages" } } }],
+      toolSchemas.set('browse_wiki', {
+        oneOf: [{ properties: { action: { const: 'list', description: 'List wiki pages' } } }],
       });
 
-      const prefix = "# Wiki Documentation\n\nIntro paragraph.\n\n";
-      const suffix = "\n\nFooter content.\n";
+      const prefix = '# Wiki Documentation\n\nIntro paragraph.\n\n';
+      const suffix = '\n\nFooter content.\n';
       const fileContent =
         prefix +
-        "<!-- @autogen:tool browse_wiki -->\n" +
-        "to be replaced\n" +
-        "<!-- @autogen:end -->" +
+        '<!-- @autogen:tool browse_wiki -->\n' +
+        'to be replaced\n' +
+        '<!-- @autogen:end -->' +
         suffix;
 
       mockedFs.readFileSync.mockReturnValue(fileContent);
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
-      processFile("/path/to/wiki.md", toolSchemas);
+      processFile('/path/to/wiki.md', toolSchemas);
 
       const writtenContent = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1] as string;
-      expect(writtenContent).toContain("# Wiki Documentation");
-      expect(writtenContent).toContain("Intro paragraph.");
-      expect(writtenContent).toContain("Footer content.");
+      expect(writtenContent).toContain('# Wiki Documentation');
+      expect(writtenContent).toContain('Intro paragraph.');
+      expect(writtenContent).toContain('Footer content.');
     });
 
-    it("should read file with utf8 encoding", () => {
+    it('should read file with utf8 encoding', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
 
-      mockedFs.readFileSync.mockReturnValue("no markers here");
+      mockedFs.readFileSync.mockReturnValue('no markers here');
 
-      processFile("/path/to/file.md", toolSchemas);
+      processFile('/path/to/file.md', toolSchemas);
 
-      expect(mockedFs.readFileSync).toHaveBeenCalledWith("/path/to/file.md", "utf8");
+      expect(mockedFs.readFileSync).toHaveBeenCalledWith('/path/to/file.md', 'utf8');
     });
 
-    it("should write file with utf8 encoding when modified", () => {
+    it('should write file with utf8 encoding when modified', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
-      toolSchemas.set("browse_refs", {
+      toolSchemas.set('browse_refs', {
         properties: {
-          action: { enum: ["list"] },
+          action: { enum: ['list'] },
         },
       });
 
-      const fileContent = "<!-- @autogen:tool browse_refs -->\nold\n<!-- @autogen:end -->";
+      const fileContent = '<!-- @autogen:tool browse_refs -->\nold\n<!-- @autogen:end -->';
 
       mockedFs.readFileSync.mockReturnValue(fileContent);
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
-      processFile("/docs/refs.md", toolSchemas);
+      processFile('/docs/refs.md', toolSchemas);
 
       expect(mockedFs.writeFileSync).toHaveBeenCalledWith(
-        "/docs/refs.md",
+        '/docs/refs.md',
         expect.any(String),
-        "utf8"
+        'utf8',
       );
     });
 
-    it("should include the file path in error messages for unknown tools", () => {
+    it('should include the file path in error messages for unknown tools', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
 
       const fileContent =
-        "<!-- @autogen:tool missing_tool -->\n" + "content\n" + "<!-- @autogen:end -->";
+        '<!-- @autogen:tool missing_tool -->\n' + 'content\n' + '<!-- @autogen:end -->';
 
       mockedFs.readFileSync.mockReturnValue(fileContent);
 
-      expect(() => processFile("/docs/tools/missing.md", toolSchemas)).toThrow(
-        "/docs/tools/missing.md"
+      expect(() => processFile('/docs/tools/missing.md', toolSchemas)).toThrow(
+        '/docs/tools/missing.md',
       );
     });
 
-    it("should include the file path in error messages for tools with no actions", () => {
+    it('should include the file path in error messages for tools with no actions', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
-      toolSchemas.set("no_actions_tool", { type: "object" });
+      toolSchemas.set('no_actions_tool', { type: 'object' });
 
       const fileContent =
-        "<!-- @autogen:tool no_actions_tool -->\n" + "content\n" + "<!-- @autogen:end -->";
+        '<!-- @autogen:tool no_actions_tool -->\n' + 'content\n' + '<!-- @autogen:end -->';
 
       mockedFs.readFileSync.mockReturnValue(fileContent);
 
-      expect(() => processFile("/docs/tools/noactions.md", toolSchemas)).toThrow(
-        "/docs/tools/noactions.md"
+      expect(() => processFile('/docs/tools/noactions.md', toolSchemas)).toThrow(
+        '/docs/tools/noactions.md',
       );
     });
 
-    it("should use provided content instead of reading file when passed", () => {
+    it('should use provided content instead of reading file when passed', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
-      toolSchemas.set("browse_refs", {
+      toolSchemas.set('browse_refs', {
         properties: {
-          action: { enum: ["list_branches", "get_branch"] },
+          action: { enum: ['list_branches', 'get_branch'] },
         },
       });
 
-      const content = "<!-- @autogen:tool browse_refs -->\nold\n<!-- @autogen:end -->";
+      const content = '<!-- @autogen:tool browse_refs -->\nold\n<!-- @autogen:end -->';
 
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
-      processFile("/docs/refs.md", toolSchemas, content);
+      processFile('/docs/refs.md', toolSchemas, content);
 
       // Should NOT read the file since content was provided
       expect(mockedFs.readFileSync).not.toHaveBeenCalled();
       expect(mockedFs.writeFileSync).toHaveBeenCalled();
     });
 
-    it("should list available tools in error message when tool is unknown", () => {
+    it('should list available tools in error message when tool is unknown', () => {
       const toolSchemas = new Map<string, JsonSchemaProperty>();
-      toolSchemas.set("browse_projects", { oneOf: [] });
-      toolSchemas.set("manage_label", { properties: {} });
-      toolSchemas.set("browse_wiki", { oneOf: [] });
+      toolSchemas.set('browse_projects', { oneOf: [] });
+      toolSchemas.set('manage_label', { properties: {} });
+      toolSchemas.set('browse_wiki', { oneOf: [] });
 
       const fileContent =
-        "<!-- @autogen:tool nonexistent -->\n" + "content\n" + "<!-- @autogen:end -->";
+        '<!-- @autogen:tool nonexistent -->\n' + 'content\n' + '<!-- @autogen:end -->';
 
       mockedFs.readFileSync.mockReturnValue(fileContent);
 
-      expect(() => processFile("/file.md", toolSchemas)).toThrow(
-        "Available tools: browse_projects, browse_wiki, manage_label"
+      expect(() => processFile('/file.md', toolSchemas)).toThrow(
+        'Available tools: browse_projects, browse_wiki, manage_label',
       );
     });
   });
 
-  describe("replacePlaceholders", () => {
-    it("should replace all placeholders including version and return true", () => {
+  describe('replacePlaceholders', () => {
+    it('should replace all placeholders including version and return true', () => {
       const placeholders = {
         toolCount: 44,
         entityCount: 18,
         readonlyToolCount: 24,
-        version: "6.43.0",
+        version: '6.43.0',
       };
       mockedFs.readFileSync.mockReturnValue(
-        "We have __TOOL_COUNT__ tools, __ENTITY_COUNT__ entities, __READONLY_TOOL_COUNT__ read-only. Version: __VERSION__"
+        'We have __TOOL_COUNT__ tools, __ENTITY_COUNT__ entities, __READONLY_TOOL_COUNT__ read-only. Version: __VERSION__',
       );
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = replacePlaceholders("/some/file.md", placeholders);
+      const result = replacePlaceholders('/some/file.md', placeholders);
 
       expect(result).toBe(true);
       expect(mockedFs.writeFileSync).toHaveBeenCalledWith(
-        "/some/file.md",
-        "We have 44 tools, 18 entities, 24 read-only. Version: 6.43.0",
-        "utf8"
+        '/some/file.md',
+        'We have 44 tools, 18 entities, 24 read-only. Version: 6.43.0',
+        'utf8',
       );
     });
 
-    it("should return false when no placeholders found", () => {
+    it('should return false when no placeholders found', () => {
       const placeholders = {
         toolCount: 44,
         entityCount: 18,
         readonlyToolCount: 24,
-        version: "1.0.0",
+        version: '1.0.0',
       };
-      mockedFs.readFileSync.mockReturnValue("No placeholders here.");
+      mockedFs.readFileSync.mockReturnValue('No placeholders here.');
 
-      const result = replacePlaceholders("/some/file.md", placeholders);
+      const result = replacePlaceholders('/some/file.md', placeholders);
 
       expect(result).toBe(false);
       expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
     });
 
-    it("should replace version placeholder in download URLs", () => {
+    it('should replace version placeholder in download URLs', () => {
       const placeholders = {
         toolCount: 44,
         entityCount: 18,
         readonlyToolCount: 24,
-        version: "6.43.0",
+        version: '6.43.0',
       };
       mockedFs.readFileSync.mockReturnValue(
-        '<a href="/downloads/gitlab-mcp-__VERSION__.mcpb" download>Download</a>'
+        '<a href="/downloads/gitlab-mcp-__VERSION__.mcpb" download>Download</a>',
       );
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = replacePlaceholders("/some/file.md", placeholders);
+      const result = replacePlaceholders('/some/file.md', placeholders);
 
       expect(result).toBe(true);
       expect(mockedFs.writeFileSync).toHaveBeenCalledWith(
-        "/some/file.md",
+        '/some/file.md',
         '<a href="/downloads/gitlab-mcp-6.43.0.mcpb" download>Download</a>',
-        "utf8"
+        'utf8',
       );
     });
   });
 
-  describe("getVersion", () => {
+  describe('getVersion', () => {
     const originalEnv = process.env;
 
     beforeEach(() => {
@@ -865,63 +865,63 @@ describe("inject-tool-refs", () => {
       process.env = originalEnv;
     });
 
-    it("should return RELEASE_VERSION from environment when set", () => {
-      process.env.RELEASE_VERSION = "7.0.0";
+    it('should return RELEASE_VERSION from environment when set', () => {
+      process.env.RELEASE_VERSION = '7.0.0';
       mockedFs.existsSync.mockReturnValue(true);
 
-      const result = getVersion("/project");
+      const result = getVersion('/project');
 
-      expect(result).toBe("7.0.0");
+      expect(result).toBe('7.0.0');
     });
 
-    it("should fall back to package.json version when RELEASE_VERSION not set", () => {
+    it('should fall back to package.json version when RELEASE_VERSION not set', () => {
       delete process.env.RELEASE_VERSION;
       mockedFs.existsSync.mockReturnValue(true);
       mockedFs.readFileSync.mockReturnValue('{"version": "6.42.0"}');
 
-      const result = getVersion("/project");
+      const result = getVersion('/project');
 
-      expect(result).toBe("6.42.0");
+      expect(result).toBe('6.42.0');
     });
 
-    it("should return 0.0.0 when no version source available", () => {
+    it('should return 0.0.0 when no version source available', () => {
       delete process.env.RELEASE_VERSION;
       mockedFs.existsSync.mockReturnValue(false);
 
-      const result = getVersion("/project");
+      const result = getVersion('/project');
 
-      expect(result).toBe("0.0.0");
+      expect(result).toBe('0.0.0');
     });
 
-    it("should return 0.0.0 when package.json exists but has no version field", () => {
+    it('should return 0.0.0 when package.json exists but has no version field', () => {
       // Edge case: package.json exists but is missing the version field
       delete process.env.RELEASE_VERSION;
       mockedFs.existsSync.mockReturnValue(true);
       mockedFs.readFileSync.mockReturnValue('{"name": "some-package"}');
 
-      const result = getVersion("/project");
+      const result = getVersion('/project');
 
-      expect(result).toBe("0.0.0");
+      expect(result).toBe('0.0.0');
     });
   });
 
-  describe("countEntities", () => {
-    it("should return 0 when entities directory does not exist", () => {
+  describe('countEntities', () => {
+    it('should return 0 when entities directory does not exist', () => {
       mockedFs.existsSync.mockReturnValue(false);
 
-      const result = countEntities("/project");
+      const result = countEntities('/project');
 
       expect(result).toBe(0);
     });
 
-    it("should count only directories with registry.ts files", () => {
+    it('should count only directories with registry.ts files', () => {
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
-        if (pathStr.endsWith("entities")) return true;
-        if (pathStr.endsWith(path.join("core", "registry.ts"))) return true;
-        if (pathStr.endsWith(path.join("mrs", "registry.ts"))) return true;
+        if (pathStr.endsWith('entities')) return true;
+        if (pathStr.endsWith(path.join('core', 'registry.ts'))) return true;
+        if (pathStr.endsWith(path.join('mrs', 'registry.ts'))) return true;
         // "utils" dir has no registry.ts
-        if (pathStr.endsWith(path.join("utils", "registry.ts"))) return false;
+        if (pathStr.endsWith(path.join('utils', 'registry.ts'))) return false;
         return true;
       });
 
@@ -932,19 +932,19 @@ describe("inject-tool-refs", () => {
       });
 
       mockedFs.readdirSync.mockReturnValue([
-        mockDirent("core", true),
-        mockDirent("mrs", true),
-        mockDirent("utils", true),
-        mockDirent("README.md", false),
+        mockDirent('core', true),
+        mockDirent('mrs', true),
+        mockDirent('utils', true),
+        mockDirent('README.md', false),
       ] as never);
 
-      const result = countEntities("/project");
+      const result = countEntities('/project');
 
       expect(result).toBe(2);
     });
   });
 
-  describe("main", () => {
+  describe('main', () => {
     let mockConsoleLog: jest.SpyInstance;
     let mockConsoleError: jest.SpyInstance;
     let mockProcessExit: jest.SpyInstance;
@@ -954,12 +954,12 @@ describe("inject-tool-refs", () => {
       jest.clearAllMocks();
       // Restore default return value after clearAllMocks wipes it
       mockGetAllToolDefinitionsUnfiltered.mockReturnValue([]);
-      mockConsoleLog = jest.spyOn(console, "log").mockImplementation(() => undefined);
-      mockConsoleError = jest.spyOn(console, "error").mockImplementation(() => undefined);
-      mockProcessExit = jest.spyOn(process, "exit").mockImplementation((() => {
-        throw new Error("process.exit");
+      mockConsoleLog = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+      mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
+      mockProcessExit = jest.spyOn(process, 'exit').mockImplementation((() => {
+        throw new Error('process.exit');
       }) as never);
-      mockProcessCwd = jest.spyOn(process, "cwd").mockReturnValue("/project");
+      mockProcessCwd = jest.spyOn(process, 'cwd').mockReturnValue('/project');
     });
 
     afterEach(() => {
@@ -969,30 +969,30 @@ describe("inject-tool-refs", () => {
       mockProcessCwd.mockRestore();
     });
 
-    it("should exit with error when docs/tools/ directory does not exist", () => {
+    it('should exit with error when docs/tools/ directory does not exist', () => {
       // package.json exists in cwd, but docs/tools/ does not
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
-        if (pathStr === path.join("/project", "package.json")) return true;
-        if (pathStr === path.join("/project", "docs", "tools")) return false;
+        if (pathStr === path.join('/project', 'package.json')) return true;
+        if (pathStr === path.join('/project', 'docs', 'tools')) return false;
         return false;
       });
 
-      expect(() => main()).toThrow("process.exit");
+      expect(() => main()).toThrow('process.exit');
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("docs/tools/ directory not found")
+        expect.stringContaining('docs/tools/ directory not found'),
       );
       expect(mockProcessExit).toHaveBeenCalledWith(1);
     });
 
-    it("should traverse up directories to find package.json", () => {
+    it('should traverse up directories to find package.json', () => {
       // package.json is not in cwd but in parent
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
-        if (pathStr === path.join("/project", "package.json")) return false;
-        if (pathStr === path.join("/", "package.json")) return true;
-        if (pathStr.endsWith(path.join("docs", "tools"))) return true;
+        if (pathStr === path.join('/project', 'package.json')) return false;
+        if (pathStr === path.join('/', 'package.json')) return true;
+        if (pathStr.endsWith(path.join('docs', 'tools'))) return true;
         return false;
       });
 
@@ -1005,35 +1005,35 @@ describe("inject-tool-refs", () => {
       expect(mockProcessExit).not.toHaveBeenCalled();
     });
 
-    it("should process markdown files in docs/tools/ directory", () => {
+    it('should process markdown files in docs/tools/ directory', () => {
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
-        if (pathStr === path.join("/project", "package.json")) return true;
-        if (pathStr === path.join("/project", "docs", "tools")) return true;
+        if (pathStr === path.join('/project', 'package.json')) return true;
+        if (pathStr === path.join('/project', 'docs', 'tools')) return true;
         return false;
       });
 
       mockGetAllToolDefinitionsUnfiltered.mockReturnValue([
         {
-          name: "browse_projects",
+          name: 'browse_projects',
           inputSchema: {
-            oneOf: [{ properties: { action: { const: "list", description: "List projects" } } }],
+            oneOf: [{ properties: { action: { const: 'list', description: 'List projects' } } }],
           },
         },
       ]);
 
       // docs/tools/ has one .md file with a marker
-      mockedFs.readdirSync.mockReturnValue(["projects.md", "readme.txt"] as never);
+      mockedFs.readdirSync.mockReturnValue(['projects.md', 'readme.txt'] as never);
 
       const mdContent =
-        "# Projects\n" +
-        "<!-- @autogen:tool browse_projects -->\n" +
-        "old\n" +
-        "<!-- @autogen:end -->\n";
+        '# Projects\n' +
+        '<!-- @autogen:tool browse_projects -->\n' +
+        'old\n' +
+        '<!-- @autogen:end -->\n';
 
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
-        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
+        if (pathStr.endsWith('package.json')) return '{"version": "1.0.0"}';
         return mdContent;
       });
       mockedFs.writeFileSync.mockImplementation(() => undefined);
@@ -1041,86 +1041,86 @@ describe("inject-tool-refs", () => {
       main();
 
       // Should have processed the file and logged update
-      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining("Updated:"));
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('Updated:'));
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("1 marker(s) in 1 file(s), 1 updated")
+        expect.stringContaining('1 marker(s) in 1 file(s), 1 updated'),
       );
     });
 
-    it("should log summary with zero updates when no markers found", () => {
+    it('should log summary with zero updates when no markers found', () => {
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
-        if (pathStr === path.join("/project", "package.json")) return true;
-        if (pathStr === path.join("/project", "docs", "tools")) return true;
+        if (pathStr === path.join('/project', 'package.json')) return true;
+        if (pathStr === path.join('/project', 'docs', 'tools')) return true;
         return false;
       });
 
       mockGetAllToolDefinitionsUnfiltered.mockReturnValue([]);
-      mockedFs.readdirSync.mockReturnValue(["page.md"] as never);
+      mockedFs.readdirSync.mockReturnValue(['page.md'] as never);
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
-        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
-        return "# No markers\n\nJust text.";
+        if (pathStr.endsWith('package.json')) return '{"version": "1.0.0"}';
+        return '# No markers\n\nJust text.';
       });
 
       main();
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("0 marker(s) in 1 file(s), 0 updated")
+        expect.stringContaining('0 marker(s) in 1 file(s), 0 updated'),
       );
     });
 
-    it("should skip non-markdown files in docs/tools/ directory", () => {
+    it('should skip non-markdown files in docs/tools/ directory', () => {
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
-        if (pathStr === path.join("/project", "package.json")) return true;
-        if (pathStr === path.join("/project", "docs", "tools")) return true;
+        if (pathStr === path.join('/project', 'package.json')) return true;
+        if (pathStr === path.join('/project', 'docs', 'tools')) return true;
         return false;
       });
 
       mockGetAllToolDefinitionsUnfiltered.mockReturnValue([]);
       // Only .txt file, no .md files
-      mockedFs.readdirSync.mockReturnValue(["notes.txt", "data.json"] as never);
+      mockedFs.readdirSync.mockReturnValue(['notes.txt', 'data.json'] as never);
 
       main();
 
       // No files to process, readFileSync should not be called for processing
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("0 marker(s) in 0 file(s), 0 updated")
+        expect.stringContaining('0 marker(s) in 0 file(s), 0 updated'),
       );
     });
 
-    it("should not log update when file content is already up to date", () => {
+    it('should not log update when file content is already up to date', () => {
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
-        if (pathStr === path.join("/project", "package.json")) return true;
-        if (pathStr === path.join("/project", "docs", "tools")) return true;
+        if (pathStr === path.join('/project', 'package.json')) return true;
+        if (pathStr === path.join('/project', 'docs', 'tools')) return true;
         return false;
       });
 
       mockGetAllToolDefinitionsUnfiltered.mockReturnValue([
         {
-          name: "browse_labels",
+          name: 'browse_labels',
           inputSchema: {
-            properties: { action: { enum: ["list"] } },
+            properties: { action: { enum: ['list'] } },
           },
         },
       ]);
 
-      mockedFs.readdirSync.mockReturnValue(["labels.md"] as never);
+      mockedFs.readdirSync.mockReturnValue(['labels.md'] as never);
 
       // File already has the correct generated content
       const upToDateContent =
-        "# Labels\n" +
-        "<!-- @autogen:tool browse_labels -->\n" +
-        "| Action | Description |\n" +
-        "|--------|-------------|\n" +
-        "| `list` | List items with filtering and pagination |\n" +
-        "<!-- @autogen:end -->\n";
+        '# Labels\n' +
+        '<!-- @autogen:tool browse_labels -->\n' +
+        '| Action | Description |\n' +
+        '|--------|-------------|\n' +
+        '| `list` | List items with filtering and pagination |\n' +
+        '<!-- @autogen:end -->\n';
 
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
-        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
+        if (pathStr.endsWith('package.json')) return '{"version": "1.0.0"}';
         return upToDateContent;
       });
 
@@ -1128,62 +1128,62 @@ describe("inject-tool-refs", () => {
 
       // Should count marker but not update
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("1 marker(s) in 1 file(s), 0 updated")
+        expect.stringContaining('1 marker(s) in 1 file(s), 0 updated'),
       );
       expect(mockedFs.writeFileSync).not.toHaveBeenCalled();
     });
 
-    it("should handle multiple markdown files with mixed markers", () => {
+    it('should handle multiple markdown files with mixed markers', () => {
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
-        if (pathStr === path.join("/project", "package.json")) return true;
-        if (pathStr === path.join("/project", "docs", "tools")) return true;
+        if (pathStr === path.join('/project', 'package.json')) return true;
+        if (pathStr === path.join('/project', 'docs', 'tools')) return true;
         return false;
       });
 
       mockGetAllToolDefinitionsUnfiltered.mockReturnValue([
         {
-          name: "browse_projects",
+          name: 'browse_projects',
           inputSchema: {
-            oneOf: [{ properties: { action: { const: "list", description: "List projects" } } }],
+            oneOf: [{ properties: { action: { const: 'list', description: 'List projects' } } }],
           },
         },
       ]);
 
-      mockedFs.readdirSync.mockReturnValue(["projects.md", "overview.md"] as never);
+      mockedFs.readdirSync.mockReturnValue(['projects.md', 'overview.md'] as never);
 
       // First file has marker, second doesn't
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
-        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
-        if (pathStr.includes("projects.md")) {
-          return "<!-- @autogen:tool browse_projects -->\nold\n<!-- @autogen:end -->";
+        if (pathStr.endsWith('package.json')) return '{"version": "1.0.0"}';
+        if (pathStr.includes('projects.md')) {
+          return '<!-- @autogen:tool browse_projects -->\nold\n<!-- @autogen:end -->';
         }
-        return "# Overview\n\nNo markers here.";
+        return '# Overview\n\nNo markers here.';
       });
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
       main();
 
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining("1 marker(s) in 2 file(s), 1 updated")
+        expect.stringContaining('1 marker(s) in 2 file(s), 1 updated'),
       );
     });
 
-    it("should generate .md from .md.in templates with all placeholders including version", () => {
+    it('should generate .md from .md.in templates with all placeholders including version', () => {
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
-        if (pathStr === path.join("/project", "package.json")) return true;
-        if (pathStr === path.join("/project", "docs")) return true;
-        if (pathStr === path.join("/project", "docs", "tools")) return true;
-        if (pathStr === path.join("/project", "src", "entities")) return true;
-        if (pathStr.endsWith("registry.ts")) return true;
+        if (pathStr === path.join('/project', 'package.json')) return true;
+        if (pathStr === path.join('/project', 'docs')) return true;
+        if (pathStr === path.join('/project', 'docs', 'tools')) return true;
+        if (pathStr === path.join('/project', 'src', 'entities')) return true;
+        if (pathStr.endsWith('registry.ts')) return true;
         return false;
       });
 
       mockGetAllToolDefinitionsUnfiltered.mockReturnValue([
-        { name: "browse_projects", inputSchema: { properties: { action: { enum: ["list"] } } } },
-        { name: "manage_project", inputSchema: { properties: { action: { enum: ["create"] } } } },
+        { name: 'browse_projects', inputSchema: { properties: { action: { enum: ['list'] } } } },
+        { name: 'manage_project', inputSchema: { properties: { action: { enum: ['create'] } } } },
       ]);
 
       // Mock Dirent objects for docs/ directory scan
@@ -1198,11 +1198,11 @@ describe("inject-tool-refs", () => {
         const opts = options as { withFileTypes?: boolean } | undefined;
         if (opts?.withFileTypes) {
           // Template scan (docs/ and src/entities/)
-          if (dirStr === path.join("/project", "docs")) {
-            return [mockDirent("index.md.in", false)] as never;
+          if (dirStr === path.join('/project', 'docs')) {
+            return [mockDirent('index.md.in', false)] as never;
           }
-          if (dirStr === path.join("/project", "src", "entities")) {
-            return [mockDirent("core", true), mockDirent("mrs", true)] as never;
+          if (dirStr === path.join('/project', 'src', 'entities')) {
+            return [mockDirent('core', true), mockDirent('mrs', true)] as never;
           }
           return [] as never;
         }
@@ -1211,18 +1211,18 @@ describe("inject-tool-refs", () => {
       });
 
       const templateContent =
-        "# Home\n\nWe have __TOOL_COUNT__ tools across __ENTITY_COUNT__ entities (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__";
+        '# Home\n\nWe have __TOOL_COUNT__ tools across __ENTITY_COUNT__ entities (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__';
 
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
         // After copyFileSync, readFileSync is called on the output path
-        if (pathStr.endsWith("index.md.in") || pathStr.endsWith("index.md")) {
+        if (pathStr.endsWith('index.md.in') || pathStr.endsWith('index.md')) {
           return templateContent;
         }
-        if (pathStr.endsWith("package.json")) {
+        if (pathStr.endsWith('package.json')) {
           return '{"version": "6.43.0"}';
         }
-        return "";
+        return '';
       });
 
       mockedFs.copyFileSync.mockImplementation(() => undefined);
@@ -1232,35 +1232,35 @@ describe("inject-tool-refs", () => {
 
       // Verify generated file has replaced placeholders
       const writeCall = (mockedFs.writeFileSync as jest.Mock).mock.calls.find((call: unknown[]) =>
-        (call[0] as string).endsWith("index.md")
+        (call[0] as string).endsWith('index.md'),
       );
       expect(writeCall).toBeDefined();
       const generatedContent = writeCall![1] as string;
-      expect(generatedContent).toContain("2 tools");
-      expect(generatedContent).toContain("2 entities");
-      expect(generatedContent).toContain("1 read-only");
-      expect(generatedContent).toContain("6.43.0");
-      expect(generatedContent).not.toContain("__TOOL_COUNT__");
-      expect(generatedContent).not.toContain("__ENTITY_COUNT__");
-      expect(generatedContent).not.toContain("__READONLY_TOOL_COUNT__");
-      expect(generatedContent).not.toContain("__VERSION__");
+      expect(generatedContent).toContain('2 tools');
+      expect(generatedContent).toContain('2 entities');
+      expect(generatedContent).toContain('1 read-only');
+      expect(generatedContent).toContain('6.43.0');
+      expect(generatedContent).not.toContain('__TOOL_COUNT__');
+      expect(generatedContent).not.toContain('__ENTITY_COUNT__');
+      expect(generatedContent).not.toContain('__READONLY_TOOL_COUNT__');
+      expect(generatedContent).not.toContain('__VERSION__');
     });
 
-    it("should recursively process .in templates in subdirectories", () => {
+    it('should recursively process .in templates in subdirectories', () => {
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
-        if (pathStr === path.join("/project", "package.json")) return true;
-        if (pathStr === path.join("/project", "docs")) return true;
-        if (pathStr === path.join("/project", "docs", "tools")) return true;
-        if (pathStr === path.join("/project", "src", "entities")) return true;
-        if (pathStr.endsWith("registry.ts")) return true;
+        if (pathStr === path.join('/project', 'package.json')) return true;
+        if (pathStr === path.join('/project', 'docs')) return true;
+        if (pathStr === path.join('/project', 'docs', 'tools')) return true;
+        if (pathStr === path.join('/project', 'src', 'entities')) return true;
+        if (pathStr.endsWith('registry.ts')) return true;
         return false;
       });
 
       mockGetAllToolDefinitionsUnfiltered.mockReturnValue([
-        { name: "browse_projects", inputSchema: { properties: { action: { enum: ["list"] } } } },
-        { name: "browse_files", inputSchema: { properties: { action: { enum: ["get"] } } } },
-        { name: "manage_project", inputSchema: { properties: { action: { enum: ["create"] } } } },
+        { name: 'browse_projects', inputSchema: { properties: { action: { enum: ['list'] } } } },
+        { name: 'browse_files', inputSchema: { properties: { action: { enum: ['get'] } } } },
+        { name: 'manage_project', inputSchema: { properties: { action: { enum: ['create'] } } } },
       ]);
 
       const mockDirent = (name: string, isDir: boolean) => ({
@@ -1273,17 +1273,17 @@ describe("inject-tool-refs", () => {
         const dirStr = dir.toString();
         const opts = options as { withFileTypes?: boolean } | undefined;
         if (opts?.withFileTypes) {
-          if (dirStr === path.join("/project", "docs")) {
-            return [mockDirent("guide", true), mockDirent("public", true)] as never;
+          if (dirStr === path.join('/project', 'docs')) {
+            return [mockDirent('guide', true), mockDirent('public', true)] as never;
           }
-          if (dirStr === path.join("/project", "docs", "guide")) {
-            return [mockDirent("index.md.in", false)] as never;
+          if (dirStr === path.join('/project', 'docs', 'guide')) {
+            return [mockDirent('index.md.in', false)] as never;
           }
-          if (dirStr === path.join("/project", "docs", "public")) {
-            return [mockDirent("llms.txt.in", false)] as never;
+          if (dirStr === path.join('/project', 'docs', 'public')) {
+            return [mockDirent('llms.txt.in', false)] as never;
           }
-          if (dirStr === path.join("/project", "src", "entities")) {
-            return [mockDirent("core", true)] as never;
+          if (dirStr === path.join('/project', 'src', 'entities')) {
+            return [mockDirent('core', true)] as never;
           }
           return [] as never;
         }
@@ -1291,21 +1291,21 @@ describe("inject-tool-refs", () => {
       });
 
       const mdTemplate =
-        "**__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types. Version: __VERSION__";
+        '**__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types. Version: __VERSION__';
       const txtTemplate =
-        "> Provides __TOOL_COUNT__ tools (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__";
+        '> Provides __TOOL_COUNT__ tools (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__';
 
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
-        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
+        if (pathStr.endsWith('package.json')) return '{"version": "1.0.0"}';
         // After copyFileSync, readFileSync is called on the output path
-        if (pathStr.endsWith("index.md.in") || pathStr.endsWith("index.md")) {
+        if (pathStr.endsWith('index.md.in') || pathStr.endsWith('index.md')) {
           return mdTemplate;
         }
-        if (pathStr.endsWith("llms.txt.in") || pathStr.endsWith("llms.txt")) {
+        if (pathStr.endsWith('llms.txt.in') || pathStr.endsWith('llms.txt')) {
           return txtTemplate;
         }
-        return "";
+        return '';
       });
 
       mockedFs.copyFileSync.mockImplementation(() => undefined);
@@ -1315,46 +1315,46 @@ describe("inject-tool-refs", () => {
 
       const writeCalls = (mockedFs.writeFileSync as jest.Mock).mock.calls;
       const mdWrite = writeCalls.find((c: unknown[]) =>
-        (c[0] as string).endsWith(path.join("guide", "index.md"))
+        (c[0] as string).endsWith(path.join('guide', 'index.md')),
       );
       const txtWrite = writeCalls.find((c: unknown[]) =>
-        (c[0] as string).endsWith(path.join("public", "llms.txt"))
+        (c[0] as string).endsWith(path.join('public', 'llms.txt')),
       );
 
       expect(mdWrite).toBeDefined();
-      expect(mdWrite![1]).toBe("**3 tools** across 1 entity types. Version: 1.0.0");
+      expect(mdWrite![1]).toBe('**3 tools** across 1 entity types. Version: 1.0.0');
 
       expect(txtWrite).toBeDefined();
-      expect(txtWrite![1]).toBe("> Provides 3 tools (2 read-only). Version: 1.0.0");
+      expect(txtWrite![1]).toBe('> Provides 3 tools (2 read-only). Version: 1.0.0');
     });
 
-    it("should build toolSchemas map from registry tool definitions", () => {
+    it('should build toolSchemas map from registry tool definitions', () => {
       mockedFs.existsSync.mockImplementation((p: fs.PathLike) => {
         const pathStr = p.toString();
-        if (pathStr === path.join("/project", "package.json")) return true;
-        if (pathStr === path.join("/project", "docs", "tools")) return true;
+        if (pathStr === path.join('/project', 'package.json')) return true;
+        if (pathStr === path.join('/project', 'docs', 'tools')) return true;
         return false;
       });
 
       const toolDef = {
-        name: "manage_wiki",
+        name: 'manage_wiki',
         inputSchema: {
           oneOf: [
-            { properties: { action: { const: "create", description: "Create wiki page" } } },
-            { properties: { action: { const: "update", description: "Update wiki page" } } },
+            { properties: { action: { const: 'create', description: 'Create wiki page' } } },
+            { properties: { action: { const: 'update', description: 'Update wiki page' } } },
           ],
         },
       };
 
       mockGetAllToolDefinitionsUnfiltered.mockReturnValue([toolDef]);
 
-      mockedFs.readdirSync.mockReturnValue(["wiki.md"] as never);
+      mockedFs.readdirSync.mockReturnValue(['wiki.md'] as never);
 
-      const fileContent = "<!-- @autogen:tool manage_wiki -->\nold\n<!-- @autogen:end -->";
+      const fileContent = '<!-- @autogen:tool manage_wiki -->\nold\n<!-- @autogen:end -->';
 
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
-        if (pathStr.endsWith("package.json")) return '{"version": "1.0.0"}';
+        if (pathStr.endsWith('package.json')) return '{"version": "1.0.0"}';
         return fileContent;
       });
       mockedFs.writeFileSync.mockImplementation(() => undefined);
@@ -1363,8 +1363,8 @@ describe("inject-tool-refs", () => {
 
       // Verify the tool was properly resolved and table generated
       const writtenContent = (mockedFs.writeFileSync as jest.Mock).mock.calls[0][1] as string;
-      expect(writtenContent).toContain("| `create` | Create wiki page |");
-      expect(writtenContent).toContain("| `update` | Update wiki page |");
+      expect(writtenContent).toContain('| `create` | Create wiki page |');
+      expect(writtenContent).toContain('| `update` | Update wiki page |');
     });
   });
 });

@@ -12,7 +12,7 @@
  * - Metrics tracking for monitoring
  */
 
-import { logDebug, logWarn } from "../logger.js";
+import { logDebug, logWarn } from '../logger.js';
 
 /**
  * Rate limiter configuration
@@ -102,7 +102,7 @@ export class InstanceRateLimiter {
     // If under limit, acquire immediately
     if (this.activeRequests < this.config.maxConcurrent) {
       this.activeRequests++;
-      logDebug("Rate limiter: slot acquired immediately", {
+      logDebug('Rate limiter: slot acquired immediately', {
         active: this.activeRequests,
         max: this.config.maxConcurrent,
       });
@@ -114,13 +114,13 @@ export class InstanceRateLimiter {
       this.requestsRejected++;
       throw new Error(
         `Rate limit exceeded: ${this.activeRequests} active, ` +
-          `${this.queue.length} queued (max: ${this.config.queueSize})`
+          `${this.queue.length} queued (max: ${this.config.queueSize})`,
       );
     }
 
     // Add to queue and wait
     this.requestsQueued++;
-    logDebug("Rate limiter: request queued", {
+    logDebug('Rate limiter: request queued', {
       active: this.activeRequests,
       queued: this.queue.length + 1,
       queueSize: this.config.queueSize,
@@ -131,18 +131,18 @@ export class InstanceRateLimiter {
 
       // Timeout handler
       const timeoutId = setTimeout(() => {
-        const idx = this.queue.findIndex(e => e.timeoutId === timeoutId);
+        const idx = this.queue.findIndex((e) => e.timeoutId === timeoutId);
         if (idx !== -1) {
           this.queue.splice(idx, 1);
-          logWarn("Rate limiter: request timed out in queue", {
+          logWarn('Rate limiter: request timed out in queue', {
             timeout: this.config.queueTimeout,
             waitedMs: Date.now() - enqueuedAt,
           });
           reject(
             new Error(
               `Request queued for ${this.config.queueTimeout}ms, timing out. ` +
-                `Active: ${this.activeRequests}, Queued: ${this.queue.length}`
-            )
+                `Active: ${this.activeRequests}, Queued: ${this.queue.length}`,
+            ),
           );
         }
       }, this.config.queueTimeout);
@@ -178,7 +178,7 @@ export class InstanceRateLimiter {
       this.totalQueueWaitMs += waitMs;
       this.queuedRequestsCompleted++;
 
-      logDebug("Rate limiter: processing queued request", {
+      logDebug('Rate limiter: processing queued request', {
         waitMs,
         active: this.activeRequests + 1,
         remainingQueue: this.queue.length,
@@ -197,7 +197,7 @@ export class InstanceRateLimiter {
     let released = false;
     return () => {
       if (released) {
-        logWarn("Rate limiter: release() called multiple times, ignoring");
+        logWarn('Rate limiter: release() called multiple times, ignoring');
         return;
       }
       released = true;

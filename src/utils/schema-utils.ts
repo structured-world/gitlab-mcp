@@ -20,8 +20,8 @@ import {
   detectSchemaMode,
   getActionDescriptionOverrides,
   getParamDescriptionOverrides,
-} from "../config";
-import { logInfo, logDebug, logWarn } from "../logger";
+} from '../config';
+import { logInfo, logDebug, logWarn } from '../logger';
 
 // ============================================================================
 // Per-Session Schema Mode (for GITLAB_SCHEMA_MODE=auto)
@@ -32,7 +32,7 @@ import { logInfo, logDebug, logWarn } from "../logger";
 // For HTTP/SSE modes with multiple concurrent sessions, this is a known limitation -
 // all sessions will share the same detected mode. Use explicit GITLAB_SCHEMA_MODE for
 // multi-session deployments where different clients may connect simultaneously.
-let detectedSchemaMode: "flat" | "discriminated" | null = null;
+let detectedSchemaMode: 'flat' | 'discriminated' | null = null;
 
 /**
  * Set the detected schema mode based on clientInfo from MCP initialize
@@ -41,12 +41,12 @@ let detectedSchemaMode: "flat" | "discriminated" | null = null;
  * @param clientName - Client name from server.getClientVersion().name
  */
 export function setDetectedSchemaMode(clientName?: string): void {
-  if (GITLAB_SCHEMA_MODE !== "auto") {
+  if (GITLAB_SCHEMA_MODE !== 'auto') {
     return; // Only detect when in auto mode
   }
 
   detectedSchemaMode = detectSchemaMode(clientName);
-  logInfo("Auto-detected schema mode from client", {
+  logInfo('Auto-detected schema mode from client', {
     clientName,
     detectedMode: detectedSchemaMode,
   });
@@ -108,7 +108,7 @@ export function filterDiscriminatedUnionActions(schema: JSONSchema, toolName: st
 
   // Filter oneOf branches - keep only allowed actions
   const originalOneOf = result.oneOf ?? [];
-  result.oneOf = originalOneOf.filter(branch => {
+  result.oneOf = originalOneOf.filter((branch) => {
     // Find the action value in this branch
     const actionProp = branch.properties?.action;
     if (!actionProp) return true; // Keep branches without action
@@ -137,7 +137,7 @@ export function filterDiscriminatedUnionActions(schema: JSONSchema, toolName: st
   // If all branches filtered out, return empty schema
   if (result.oneOf.length === 0) {
     logWarn(`Tool '${toolName}': all actions filtered out!`);
-    return { type: "object", properties: {} };
+    return { type: 'object', properties: {} };
   }
 
   // If only one branch left, we could simplify but keep oneOf for consistency
@@ -178,7 +178,7 @@ export function flattenDiscriminatedUnion(schema: JSONSchema): JSONSchema {
 
     for (const [propName, propDef] of Object.entries(branch.properties)) {
       // Track action values
-      if (propName === "action") {
+      if (propName === 'action') {
         if (propDef.const) {
           actionValues.push(propDef.const);
         } else if (propDef.enum) {
@@ -194,7 +194,7 @@ export function flattenDiscriminatedUnion(schema: JSONSchema): JSONSchema {
       } else {
         propertyBranches.set(propName, (propertyBranches.get(propName) ?? 0) + 1);
         // Merge descriptions if different (take longest)
-        const existingDesc = allProperties[propName].description ?? "";
+        const existingDesc = allProperties[propName].description ?? '';
         if (propDef.description && propDef.description.length > existingDesc.length) {
           allProperties[propName].description = propDef.description;
         }
@@ -218,16 +218,16 @@ export function flattenDiscriminatedUnion(schema: JSONSchema): JSONSchema {
 
   // Build flat schema
   const flatSchema: JSONSchema = {
-    type: "object",
+    type: 'object',
     properties: {
       action: {
-        type: "string",
+        type: 'string',
         enum: [...new Set(actionValues)], // Deduplicate
-        description: `Action to perform: ${[...new Set(actionValues)].join(", ")}`,
+        description: `Action to perform: ${[...new Set(actionValues)].join(', ')}`,
       },
       ...allProperties,
     },
-    required: ["action", ...Array.from(requiredInAllBranches)],
+    required: ['action', ...Array.from(requiredInAllBranches)],
   };
 
   // Add descriptions for parameters that are only used by specific actions
@@ -249,11 +249,11 @@ export function flattenDiscriminatedUnion(schema: JSONSchema): JSONSchema {
       // Append "Used by: action1, action2" to description if not already mentioned
       const propRef = flatSchema.properties?.[propName];
       if (propRef) {
-        const currentDesc = propRef.description ?? "";
-        if (actionsUsingProp.length > 0 && !currentDesc.includes("Required for")) {
-          const actionList = actionsUsingProp.map(a => `'${a}'`).join(", ");
+        const currentDesc = propRef.description ?? '';
+        if (actionsUsingProp.length > 0 && !currentDesc.includes('Required for')) {
+          const actionList = actionsUsingProp.map((a) => `'${a}'`).join(', ');
           propRef.description =
-            currentDesc + (currentDesc ? " " : "") + `Required for ${actionList} action(s).`;
+            currentDesc + (currentDesc ? ' ' : '') + `Required for ${actionList} action(s).`;
         }
       }
     }
@@ -275,7 +275,7 @@ function applyOverridesToProperties(
   properties: Record<string, JSONSchemaProperty>,
   toolName: string,
   paramOverrides: Map<string, string>,
-  actionOverrides: Map<string, string>
+  actionOverrides: Map<string, string>,
 ): void {
   const lowerToolName = toolName.toLowerCase();
 
@@ -288,7 +288,7 @@ function applyOverridesToProperties(
     }
 
     // For action property, also check action-level overrides
-    if (propName === "action") {
+    if (propName === 'action') {
       const actionKey = `${lowerToolName}:action`;
       const actionOverride = actionOverrides.get(actionKey);
       if (actionOverride) {
@@ -313,8 +313,8 @@ export function applyDescriptionOverrides(schema: JSONSchema, toolName: string):
 
   // Check if any overrides exist for this tool
   const lowerToolName = toolName.toLowerCase();
-  const hasOverrides = [...paramOverrides.keys(), ...actionOverrides.keys()].some(key =>
-    key.startsWith(`${lowerToolName}:`)
+  const hasOverrides = [...paramOverrides.keys(), ...actionOverrides.keys()].some((key) =>
+    key.startsWith(`${lowerToolName}:`),
   );
 
   if (!hasOverrides) {
@@ -351,10 +351,10 @@ export function applyDescriptionOverrides(schema: JSONSchema, toolName: string):
  * - If GITLAB_SCHEMA_MODE is 'flat' or 'discriminated': use that directly
  * - If GITLAB_SCHEMA_MODE is 'auto': use detected mode from clientInfo, or 'flat' as fallback
  */
-function getSchemaMode(): "flat" | "discriminated" {
-  if (GITLAB_SCHEMA_MODE === "auto") {
+function getSchemaMode(): 'flat' | 'discriminated' {
+  if (GITLAB_SCHEMA_MODE === 'auto') {
     // Use detected mode, or fall back to flat if not yet detected
-    return detectedSchemaMode ?? "flat";
+    return detectedSchemaMode ?? 'flat';
   }
   // Explicit mode configured
   return GITLAB_SCHEMA_MODE;
@@ -390,7 +390,7 @@ export function transformToolSchema(toolName: string, inputSchema: JSONSchema): 
 
   // Step 3: Conditional flatten based on config
   const schemaMode = getSchemaMode();
-  if (schemaMode === "flat" && schema.oneOf) {
+  if (schemaMode === 'flat' && schema.oneOf) {
     schema = flattenDiscriminatedUnion(schema);
   }
 
@@ -414,16 +414,16 @@ function filterFlatSchemaActions(schema: JSONSchema, toolName: string): JSONSche
   if (result.properties?.action?.enum) {
     const originalActions = result.properties.action.enum;
     const filteredActions = originalActions.filter(
-      action => !deniedActions.has(action.toLowerCase())
+      (action) => !deniedActions.has(action.toLowerCase()),
     );
 
     if (filteredActions.length === 0) {
       logWarn(`Tool '${toolName}': all actions filtered out from flat schema!`);
     } else if (filteredActions.length < originalActions.length) {
       result.properties.action.enum = filteredActions;
-      result.properties.action.description = `Action to perform: ${filteredActions.join(", ")}`;
+      result.properties.action.description = `Action to perform: ${filteredActions.join(', ')}`;
       logDebug(
-        `Tool '${toolName}': filtered flat schema actions [${originalActions.join(", ")}] -> [${filteredActions.join(", ")}]`
+        `Tool '${toolName}': filtered flat schema actions [${originalActions.join(', ')}] -> [${filteredActions.join(', ')}]`,
       );
     }
   }
@@ -448,7 +448,7 @@ function filterFlatSchemaActions(schema: JSONSchema, toolName: string): JSONSche
  */
 export function stripTierRestrictedParameters(
   schema: JSONSchema,
-  restrictedParams: string[]
+  restrictedParams: string[],
 ): JSONSchema {
   if (restrictedParams.length === 0) {
     return schema;
@@ -484,7 +484,7 @@ function stripFromProperties(schema: JSONSchema, restrictedParams: Set<string>):
   }
 
   if (schema.required) {
-    schema.required = schema.required.filter(name => !restrictedParams.has(name));
+    schema.required = schema.required.filter((name) => !restrictedParams.has(name));
   }
 }
 
@@ -501,7 +501,7 @@ export function shouldRemoveTool(toolName: string, allActions: string[]): boolea
     return false;
   }
 
-  const allowedActions = allActions.filter(action => !deniedActions.has(action.toLowerCase()));
+  const allowedActions = allActions.filter((action) => !deniedActions.has(action.toLowerCase()));
   return allowedActions.length === 0;
 }
 

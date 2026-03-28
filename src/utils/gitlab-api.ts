@@ -10,10 +10,10 @@
  * - Authentication via enhancedFetch
  */
 
-import { enhancedFetch } from "./fetch";
-import { cleanGidsFromObject } from "./idConversion";
+import { enhancedFetch } from './fetch';
+import { cleanGidsFromObject } from './idConversion';
 
-type HttpMethod = "GET" | "POST" | "PUT" | "DELETE" | "PATCH";
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
 type QueryParamValue = string | number | boolean | undefined | null;
 type QueryParamArray = string[] | number[];
@@ -25,7 +25,7 @@ interface RequestOptions {
   /** Request body for POST/PUT/PATCH */
   body?: Record<string, unknown> | URLSearchParams | FormData;
   /** Content type: 'json' or 'form' for x-www-form-urlencoded (default: 'form') */
-  contentType?: "json" | "form";
+  contentType?: 'json' | 'form';
   /** Skip GID cleanup from response */
   rawResponse?: boolean;
 }
@@ -36,7 +36,7 @@ interface RequestOptions {
  * Example: { scope: ["failed", "success"] } -> "scope[]=failed&scope[]=success"
  */
 function buildQueryString(params?: QueryParams): string {
-  if (!params) return "";
+  if (!params) return '';
 
   const searchParams = new URLSearchParams();
   for (const [key, value] of Object.entries(params)) {
@@ -53,7 +53,7 @@ function buildQueryString(params?: QueryParams): string {
   }
 
   const str = searchParams.toString();
-  return str ? `?${str}` : "";
+  return str ? `?${str}` : '';
 }
 
 /**
@@ -61,7 +61,7 @@ function buildQueryString(params?: QueryParams): string {
  */
 function encodeBody(
   body: Record<string, unknown> | URLSearchParams | FormData | undefined,
-  contentType: "json" | "form"
+  contentType: 'json' | 'form',
 ): { body?: string | FormData; headers: Record<string, string> } {
   if (!body) {
     return { headers: {} };
@@ -71,7 +71,7 @@ function encodeBody(
   if (body instanceof URLSearchParams) {
     return {
       body: body.toString(),
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     };
   }
 
@@ -83,10 +83,10 @@ function encodeBody(
   }
 
   // Encode as JSON or form
-  if (contentType === "json") {
+  if (contentType === 'json') {
     return {
       body: JSON.stringify(body),
-      headers: { "Content-Type": "application/json" },
+      headers: { 'Content-Type': 'application/json' },
     };
   }
 
@@ -99,7 +99,7 @@ function encodeBody(
   }
   return {
     body: params.toString(),
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
   };
 }
 
@@ -109,20 +109,20 @@ function encodeBody(
 async function request<T>(
   method: HttpMethod,
   path: string,
-  options: RequestOptions = {}
+  options: RequestOptions = {},
 ): Promise<T> {
-  const baseUrl = process.env.GITLAB_API_URL ?? "https://gitlab.com";
+  const baseUrl = process.env.GITLAB_API_URL ?? 'https://gitlab.com';
   const queryString = buildQueryString(options.query);
   const url = `${baseUrl}/api/v4/${path}${queryString}`;
 
-  const { body, headers } = encodeBody(options.body, options.contentType ?? "form");
+  const { body, headers } = encodeBody(options.body, options.contentType ?? 'form');
 
   // For GET requests with no body/headers, don't pass options (matches existing behavior)
   const hasBody = !!body;
   const hasHeaders = Object.keys(headers).length > 0;
 
   let response: Response;
-  if (method === "GET" && !hasBody && !hasHeaders) {
+  if (method === 'GET' && !hasBody && !hasHeaders) {
     response = await enhancedFetch(url);
   } else {
     const fetchOptions: RequestInit = {
@@ -134,9 +134,9 @@ async function request<T>(
   }
 
   if (!response.ok) {
-    let errorDetails = "";
+    let errorDetails = '';
     try {
-      if (typeof response.text === "function") {
+      if (typeof response.text === 'function') {
         const text = await response.text();
         if (text.trim()) {
           // Try to parse as JSON and extract meaningful error info
@@ -146,14 +146,14 @@ async function request<T>(
           };
           const parts: string[] = [];
           if (errorResponse.message) {
-            if (typeof errorResponse.message === "string") {
+            if (typeof errorResponse.message === 'string') {
               parts.push(errorResponse.message);
             } else if (
-              typeof errorResponse.message === "object" &&
-              "value" in errorResponse.message &&
+              typeof errorResponse.message === 'object' &&
+              'value' in errorResponse.message &&
               Array.isArray(errorResponse.message.value)
             ) {
-              parts.push(errorResponse.message.value.join(", "));
+              parts.push(errorResponse.message.value.join(', '));
             } else {
               parts.push(JSON.stringify(errorResponse.message));
             }
@@ -161,14 +161,14 @@ async function request<T>(
           if (errorResponse.error) {
             parts.push(errorResponse.error);
           }
-          errorDetails = parts.join(" - ");
+          errorDetails = parts.join(' - ');
         }
       }
     } catch {
       // If error response can't be parsed, leave errorDetails empty
     }
     throw new Error(
-      `GitLab API error: ${response.status} ${response.statusText}${errorDetails ? ` - ${errorDetails}` : ""}`
+      `GitLab API error: ${response.status} ${response.statusText}${errorDetails ? ` - ${errorDetails}` : ''}`,
     );
   }
 
@@ -191,34 +191,34 @@ export const gitlab = {
    * GET request
    * @example gitlab.get('projects/123/labels', { query: { per_page: 20 } })
    */
-  get: <T = unknown>(path: string, options?: Omit<RequestOptions, "body" | "contentType">) =>
-    request<T>("GET", path, options),
+  get: <T = unknown>(path: string, options?: Omit<RequestOptions, 'body' | 'contentType'>) =>
+    request<T>('GET', path, options),
 
   /**
    * POST request
    * @example gitlab.post('projects/123/labels', { body: { name: 'bug', color: '#ff0000' } })
    */
-  post: <T = unknown>(path: string, options?: RequestOptions) => request<T>("POST", path, options),
+  post: <T = unknown>(path: string, options?: RequestOptions) => request<T>('POST', path, options),
 
   /**
    * PUT request
    * @example gitlab.put('projects/123/labels/1', { body: { color: '#00ff00' } })
    */
-  put: <T = unknown>(path: string, options?: RequestOptions) => request<T>("PUT", path, options),
+  put: <T = unknown>(path: string, options?: RequestOptions) => request<T>('PUT', path, options),
 
   /**
    * DELETE request
    * @example gitlab.delete('projects/123/labels/1')
    */
-  delete: <T = unknown>(path: string, options?: Omit<RequestOptions, "body" | "contentType">) =>
-    request<T>("DELETE", path, options),
+  delete: <T = unknown>(path: string, options?: Omit<RequestOptions, 'body' | 'contentType'>) =>
+    request<T>('DELETE', path, options),
 
   /**
    * PATCH request
    * @example gitlab.patch('projects/123', { body: { description: 'New desc' } })
    */
   patch: <T = unknown>(path: string, options?: RequestOptions) =>
-    request<T>("PATCH", path, options),
+    request<T>('PATCH', path, options),
 };
 
 /**
@@ -230,13 +230,13 @@ export const paths = {
 
   /** Projects path */
   project: (id: string | number) =>
-    `projects/${typeof id === "number" ? id : encodeURIComponent(id)}`,
+    `projects/${typeof id === 'number' ? id : encodeURIComponent(id)}`,
 
   /** Groups path */
-  group: (id: string | number) => `groups/${typeof id === "number" ? id : encodeURIComponent(id)}`,
+  group: (id: string | number) => `groups/${typeof id === 'number' ? id : encodeURIComponent(id)}`,
 
   /** Namespace (project or group) path based on detection */
-  namespace: (path: string, entityType: "projects" | "groups") =>
+  namespace: (path: string, entityType: 'projects' | 'groups') =>
     `${entityType}/${encodeURIComponent(path)}`,
 };
 
@@ -246,7 +246,7 @@ export const paths = {
  */
 export function toQuery<T extends Record<string, unknown>>(
   options: T,
-  exclude: (keyof T)[] = []
+  exclude: (keyof T)[] = [],
 ): QueryParams {
   const result: QueryParams = {};
   for (const [key, value] of Object.entries(options)) {

@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { requiredId } from "../utils";
+import { z } from 'zod';
+import { requiredId } from '../utils';
 
 // ============================================================================
 // manage_milestone - CQRS Command Tool (discriminated union schema)
@@ -14,7 +14,7 @@ import { requiredId } from "../utils";
 // ============================================================================
 
 // --- Base fields shared by all actions ---
-const namespaceField = z.string().describe("Namespace path (group or project)");
+const namespaceField = z.string().describe('Namespace path (group or project)');
 
 // NOTE on milestone_id:
 // GitLab Milestones REST API uses the global ID in URL paths, NOT the IID.
@@ -22,52 +22,52 @@ const namespaceField = z.string().describe("Namespace path (group or project)");
 // The API response contains both 'id' (global unique) and 'iid' (project-scoped).
 // Unlike issues/MRs which use IID in URLs, milestones use the global ID.
 const milestoneIdField = requiredId.describe(
-  "The ID of a project or group milestone. Required for 'update', 'delete', 'promote' action(s)."
+  "The ID of a project or group milestone. Required for 'update', 'delete', 'promote' action(s).",
 );
 
 // --- Create action: creates a new milestone ---
 const CreateMilestoneSchema = z.object({
-  action: z.literal("create"),
+  action: z.literal('create'),
   namespace: namespaceField,
-  title: z.string().describe("The title of the milestone"),
-  description: z.string().optional().describe("The description of the milestone"),
-  due_date: z.string().optional().describe("The due date of the milestone (YYYY-MM-DD)"),
-  start_date: z.string().optional().describe("The start date of the milestone (YYYY-MM-DD)"),
+  title: z.string().describe('The title of the milestone'),
+  description: z.string().optional().describe('The description of the milestone'),
+  due_date: z.string().optional().describe('The due date of the milestone (YYYY-MM-DD)'),
+  start_date: z.string().optional().describe('The start date of the milestone (YYYY-MM-DD)'),
 });
 
 // --- Update action: modifies an existing milestone ---
 const UpdateMilestoneSchema = z.object({
-  action: z.literal("update"),
+  action: z.literal('update'),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
-  title: z.string().optional().describe("The new title of the milestone"),
-  description: z.string().optional().describe("The new description of the milestone"),
-  due_date: z.string().optional().describe("The due date of the milestone (YYYY-MM-DD)"),
-  start_date: z.string().optional().describe("The start date of the milestone (YYYY-MM-DD)"),
+  title: z.string().optional().describe('The new title of the milestone'),
+  description: z.string().optional().describe('The new description of the milestone'),
+  due_date: z.string().optional().describe('The due date of the milestone (YYYY-MM-DD)'),
+  start_date: z.string().optional().describe('The start date of the milestone (YYYY-MM-DD)'),
   state_event: z
     .string()
-    .transform(val => val.toLowerCase())
-    .pipe(z.enum(["close", "activate"]))
+    .transform((val) => val.toLowerCase())
+    .pipe(z.enum(['close', 'activate']))
     .optional()
     .describe("State event to apply: 'close' or 'activate'"),
 });
 
 // --- Delete action: removes a milestone ---
 const DeleteMilestoneSchema = z.object({
-  action: z.literal("delete"),
+  action: z.literal('delete'),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
 });
 
 // --- Promote action: elevates project milestone to group level ---
 const PromoteMilestoneSchema = z.object({
-  action: z.literal("promote"),
+  action: z.literal('promote'),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
 });
 
 // --- Discriminated union combining all actions ---
-export const ManageMilestoneSchema = z.discriminatedUnion("action", [
+export const ManageMilestoneSchema = z.discriminatedUnion('action', [
   CreateMilestoneSchema,
   UpdateMilestoneSchema,
   DeleteMilestoneSchema,

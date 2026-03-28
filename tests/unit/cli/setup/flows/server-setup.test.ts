@@ -2,9 +2,9 @@
  * Unit tests for server-setup flow
  */
 
-import * as p from "@clack/prompts";
+import * as p from '@clack/prompts';
 
-jest.mock("@clack/prompts", () => ({
+jest.mock('@clack/prompts', () => ({
   select: jest.fn(),
   confirm: jest.fn(),
   text: jest.fn(),
@@ -22,39 +22,39 @@ jest.mock("@clack/prompts", () => ({
   isCancel: jest.fn().mockReturnValue(false),
 }));
 
-jest.mock("../../../../../src/cli/docker/docker-utils", () => ({
+jest.mock('../../../../../src/cli/docker/docker-utils', () => ({
   initDockerConfig: jest.fn(),
   startContainer: jest.fn().mockReturnValue({ success: true }),
 }));
 
-jest.mock("../../../../../src/cli/docker/container-runtime", () => ({
+jest.mock('../../../../../src/cli/docker/container-runtime', () => ({
   getContainerRuntime: jest.fn().mockReturnValue({
-    runtime: "docker",
-    runtimeCmd: "docker",
+    runtime: 'docker',
+    runtimeCmd: 'docker',
     runtimeAvailable: true,
-    composeCmd: ["docker", "compose"],
-    runtimeVersion: "24.0.7",
+    composeCmd: ['docker', 'compose'],
+    runtimeVersion: '24.0.7',
   }),
 }));
 
-jest.mock("../../../../../src/cli/docker/types", () => ({
-  DEFAULT_DOCKER_CONFIG: { port: 3333, image: "ghcr.io/structured-world/gitlab-mcp:latest" },
+jest.mock('../../../../../src/cli/docker/types', () => ({
+  DEFAULT_DOCKER_CONFIG: { port: 3333, image: 'ghcr.io/structured-world/gitlab-mcp:latest' },
 }));
 
-jest.mock("../../../../../src/cli/setup/flows/tool-selection", () => ({
+jest.mock('../../../../../src/cli/setup/flows/tool-selection', () => ({
   runToolSelectionFlow: jest
     .fn()
-    .mockResolvedValue({ mode: "preset", preset: "developer", enabledCategories: ["core"] }),
+    .mockResolvedValue({ mode: 'preset', preset: 'developer', enabledCategories: ['core'] }),
   applyManualCategories: jest.fn(),
 }));
 
-import { runServerSetupFlow } from "../../../../../src/cli/setup/flows/server-setup";
-import { DiscoveryResult } from "../../../../../src/cli/setup/types";
-import { initDockerConfig, startContainer } from "../../../../../src/cli/docker/docker-utils";
+import { runServerSetupFlow } from '../../../../../src/cli/setup/flows/server-setup';
+import { DiscoveryResult } from '../../../../../src/cli/setup/types';
+import { initDockerConfig, startContainer } from '../../../../../src/cli/docker/docker-utils';
 import {
   runToolSelectionFlow,
   applyManualCategories,
-} from "../../../../../src/cli/setup/flows/tool-selection";
+} from '../../../../../src/cli/setup/flows/tool-selection';
 
 const mockSelect = p.select as jest.MockedFunction<typeof p.select>;
 const mockConfirm = p.confirm as jest.MockedFunction<typeof p.confirm>;
@@ -73,13 +73,13 @@ const dockerReadyDiscovery: DiscoveryResult = {
   },
 };
 
-describe("flows/server-setup", () => {
+describe('flows/server-setup', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockIsCancel.mockReturnValue(false);
   });
 
-  it("should fail when Docker is not installed", async () => {
+  it('should fail when Docker is not installed', async () => {
     const discovery: DiscoveryResult = {
       ...dockerReadyDiscovery,
       docker: { ...dockerReadyDiscovery.docker, dockerInstalled: false },
@@ -88,10 +88,10 @@ describe("flows/server-setup", () => {
     const result = await runServerSetupFlow(discovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Container runtime not installed");
+    expect(result.error).toBe('Container runtime not installed');
   });
 
-  it("should fail when Docker Compose is not installed", async () => {
+  it('should fail when Docker Compose is not installed', async () => {
     const discovery: DiscoveryResult = {
       ...dockerReadyDiscovery,
       docker: { ...dockerReadyDiscovery.docker, composeInstalled: false },
@@ -100,34 +100,34 @@ describe("flows/server-setup", () => {
     const result = await runServerSetupFlow(discovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Compose tool not installed");
+    expect(result.error).toBe('Compose tool not installed');
   });
 
-  it("should return cancelled when deployment type is cancelled", async () => {
+  it('should return cancelled when deployment type is cancelled', async () => {
     mockIsCancel.mockReturnValueOnce(true);
-    mockSelect.mockResolvedValueOnce(Symbol("cancel"));
+    mockSelect.mockResolvedValueOnce(Symbol('cancel'));
 
     const result = await runServerSetupFlow(dockerReadyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Cancelled");
+    expect(result.error).toBe('Cancelled');
   });
 
-  it("should return cancelled when port is cancelled", async () => {
-    mockSelect.mockResolvedValueOnce("standalone");
-    mockText.mockResolvedValueOnce(Symbol("cancel"));
+  it('should return cancelled when port is cancelled', async () => {
+    mockSelect.mockResolvedValueOnce('standalone');
+    mockText.mockResolvedValueOnce(Symbol('cancel'));
     mockIsCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     const result = await runServerSetupFlow(dockerReadyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Cancelled");
+    expect(result.error).toBe('Cancelled');
   });
 
-  it("should return cancelled when OAuth confirm is cancelled", async () => {
-    mockSelect.mockResolvedValueOnce("standalone");
-    mockText.mockResolvedValueOnce("3333");
-    mockConfirm.mockResolvedValueOnce(Symbol("cancel"));
+  it('should return cancelled when OAuth confirm is cancelled', async () => {
+    mockSelect.mockResolvedValueOnce('standalone');
+    mockText.mockResolvedValueOnce('3333');
+    mockConfirm.mockResolvedValueOnce(Symbol('cancel'));
     mockIsCancel
       .mockReturnValueOnce(false) // deployment
       .mockReturnValueOnce(false) // port
@@ -136,24 +136,24 @@ describe("flows/server-setup", () => {
     const result = await runServerSetupFlow(dockerReadyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Cancelled");
+    expect(result.error).toBe('Cancelled');
   });
 
-  it("should return cancelled when tool selection returns null", async () => {
-    mockSelect.mockResolvedValueOnce("standalone");
-    mockText.mockResolvedValueOnce("3333");
+  it('should return cancelled when tool selection returns null', async () => {
+    mockSelect.mockResolvedValueOnce('standalone');
+    mockText.mockResolvedValueOnce('3333');
     mockConfirm.mockResolvedValueOnce(false); // no oauth
     (runToolSelectionFlow as jest.Mock).mockResolvedValueOnce(null);
 
     const result = await runServerSetupFlow(dockerReadyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Cancelled");
+    expect(result.error).toBe('Cancelled');
   });
 
-  it("should complete standalone setup without OAuth", async () => {
-    mockSelect.mockResolvedValueOnce("standalone");
-    mockText.mockResolvedValueOnce("3333");
+  it('should complete standalone setup without OAuth', async () => {
+    mockSelect.mockResolvedValueOnce('standalone');
+    mockText.mockResolvedValueOnce('3333');
     mockConfirm
       .mockResolvedValueOnce(false) // no oauth
       .mockResolvedValueOnce(true); // start now
@@ -164,12 +164,12 @@ describe("flows/server-setup", () => {
     expect(startContainer).toHaveBeenCalled();
     expect(result.success).toBe(true);
     expect(result.dockerConfig!.port).toBe(3333);
-    expect(result.dockerConfig!.deploymentType).toBe("standalone");
+    expect(result.dockerConfig!.deploymentType).toBe('standalone');
   });
 
-  it("should apply tool config env to Docker config", async () => {
-    mockSelect.mockResolvedValueOnce("standalone");
-    mockText.mockResolvedValueOnce("4000");
+  it('should apply tool config env to Docker config', async () => {
+    mockSelect.mockResolvedValueOnce('standalone');
+    mockText.mockResolvedValueOnce('4000');
     mockConfirm
       .mockResolvedValueOnce(false) // no oauth
       .mockResolvedValueOnce(false); // don't start
@@ -177,14 +177,14 @@ describe("flows/server-setup", () => {
     await runServerSetupFlow(dockerReadyDiscovery);
 
     const configArg = (initDockerConfig as jest.Mock).mock.calls[0][0];
-    expect(configArg.environment.GITLAB_PROFILE).toBe("developer");
+    expect(configArg.environment.GITLAB_PROFILE).toBe('developer');
   });
 
-  it("should handle OAuth with external database", async () => {
-    mockSelect.mockResolvedValueOnce("external-db");
+  it('should handle OAuth with external database', async () => {
+    mockSelect.mockResolvedValueOnce('external-db');
     mockText
-      .mockResolvedValueOnce("3333") // port
-      .mockResolvedValueOnce("postgresql://user:pass@host:5432/db"); // db url
+      .mockResolvedValueOnce('3333') // port
+      .mockResolvedValueOnce('postgresql://user:pass@host:5432/db'); // db url
     mockConfirm
       .mockResolvedValueOnce(true) // enable oauth
       .mockResolvedValueOnce(false); // don't start
@@ -194,13 +194,13 @@ describe("flows/server-setup", () => {
     expect(result.success).toBe(true);
     const configArg = (initDockerConfig as jest.Mock).mock.calls[0][0];
     expect(configArg.oauthEnabled).toBe(true);
-    expect(configArg.databaseUrl).toBe("postgresql://user:pass@host:5432/db");
+    expect(configArg.databaseUrl).toBe('postgresql://user:pass@host:5432/db');
     expect(configArg.oauthSessionSecret).toBeDefined();
   });
 
-  it("should return cancelled when database URL is cancelled", async () => {
-    mockSelect.mockResolvedValueOnce("external-db");
-    mockText.mockResolvedValueOnce("3333").mockResolvedValueOnce(Symbol("cancel")); // db url cancel
+  it('should return cancelled when database URL is cancelled', async () => {
+    mockSelect.mockResolvedValueOnce('external-db');
+    mockText.mockResolvedValueOnce('3333').mockResolvedValueOnce(Symbol('cancel')); // db url cancel
     mockConfirm.mockResolvedValueOnce(true); // enable oauth
     mockIsCancel
       .mockReturnValueOnce(false) // deployment
@@ -211,42 +211,42 @@ describe("flows/server-setup", () => {
     const result = await runServerSetupFlow(dockerReadyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Cancelled");
+    expect(result.error).toBe('Cancelled');
   });
 
-  it("should handle initDockerConfig error", async () => {
-    mockSelect.mockResolvedValueOnce("standalone");
-    mockText.mockResolvedValueOnce("3333");
+  it('should handle initDockerConfig error', async () => {
+    mockSelect.mockResolvedValueOnce('standalone');
+    mockText.mockResolvedValueOnce('3333');
     mockConfirm.mockResolvedValueOnce(false);
     (initDockerConfig as jest.Mock).mockImplementationOnce(() => {
-      throw new Error("Permission denied");
+      throw new Error('Permission denied');
     });
 
     const result = await runServerSetupFlow(dockerReadyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Permission denied");
+    expect(result.error).toBe('Permission denied');
   });
 
-  it("should handle container start failure", async () => {
-    mockSelect.mockResolvedValueOnce("standalone");
-    mockText.mockResolvedValueOnce("3333");
+  it('should handle container start failure', async () => {
+    mockSelect.mockResolvedValueOnce('standalone');
+    mockText.mockResolvedValueOnce('3333');
     mockConfirm.mockResolvedValueOnce(false).mockResolvedValueOnce(true); // start now
-    (startContainer as jest.Mock).mockReturnValueOnce({ success: false, error: "Port in use" });
+    (startContainer as jest.Mock).mockReturnValueOnce({ success: false, error: 'Port in use' });
 
     const result = await runServerSetupFlow(dockerReadyDiscovery);
 
     expect(result.success).toBe(true); // Setup still successful, container just didn't start
-    expect(p.log.error).toHaveBeenCalledWith("Port in use");
+    expect(p.log.error).toHaveBeenCalledWith('Port in use');
   });
 
-  it("should apply advanced envOverrides to Docker config", async () => {
+  it('should apply advanced envOverrides to Docker config', async () => {
     (runToolSelectionFlow as jest.Mock).mockResolvedValueOnce({
-      mode: "advanced",
-      envOverrides: { LOG_LEVEL: "debug", GITLAB_READ_ONLY_MODE: "true" },
+      mode: 'advanced',
+      envOverrides: { LOG_LEVEL: 'debug', GITLAB_READ_ONLY_MODE: 'true' },
     });
-    mockSelect.mockResolvedValueOnce("standalone");
-    mockText.mockResolvedValueOnce("3333");
+    mockSelect.mockResolvedValueOnce('standalone');
+    mockText.mockResolvedValueOnce('3333');
     mockConfirm
       .mockResolvedValueOnce(false) // no oauth
       .mockResolvedValueOnce(false); // don't start
@@ -254,30 +254,30 @@ describe("flows/server-setup", () => {
     await runServerSetupFlow(dockerReadyDiscovery);
 
     const configArg = (initDockerConfig as jest.Mock).mock.calls[0][0];
-    expect(configArg.environment.LOG_LEVEL).toBe("debug");
-    expect(configArg.environment.GITLAB_READ_ONLY_MODE).toBe("true");
+    expect(configArg.environment.LOG_LEVEL).toBe('debug');
+    expect(configArg.environment.GITLAB_READ_ONLY_MODE).toBe('true');
   });
 
-  it("should apply manual categories to Docker config", async () => {
+  it('should apply manual categories to Docker config', async () => {
     (runToolSelectionFlow as jest.Mock).mockResolvedValueOnce({
-      mode: "manual",
-      enabledCategories: ["merge-requests"],
+      mode: 'manual',
+      enabledCategories: ['merge-requests'],
     });
-    mockSelect.mockResolvedValueOnce("standalone");
-    mockText.mockResolvedValueOnce("3333");
+    mockSelect.mockResolvedValueOnce('standalone');
+    mockText.mockResolvedValueOnce('3333');
     mockConfirm
       .mockResolvedValueOnce(false) // no oauth
       .mockResolvedValueOnce(false); // don't start
 
     await runServerSetupFlow(dockerReadyDiscovery);
 
-    expect(applyManualCategories).toHaveBeenCalledWith(["merge-requests"], expect.any(Object));
+    expect(applyManualCategories).toHaveBeenCalledWith(['merge-requests'], expect.any(Object));
   });
 
-  it("should validate port number", async () => {
-    mockSelect.mockResolvedValueOnce("standalone");
+  it('should validate port number', async () => {
+    mockSelect.mockResolvedValueOnce('standalone');
     // Provide valid port after validation would reject invalid
-    mockText.mockResolvedValueOnce("3333");
+    mockText.mockResolvedValueOnce('3333');
     mockConfirm.mockResolvedValueOnce(false).mockResolvedValueOnce(false);
 
     await runServerSetupFlow(dockerReadyDiscovery);
@@ -286,17 +286,17 @@ describe("flows/server-setup", () => {
     const textCall = (mockText.mock.calls[0] as unknown[])[0] as {
       validate: (v: string) => string | undefined;
     };
-    expect(textCall.validate("0")).toBe("Port must be between 1 and 65535");
-    expect(textCall.validate("99999")).toBe("Port must be between 1 and 65535");
-    expect(textCall.validate("abc")).toBe("Port must be between 1 and 65535");
-    expect(textCall.validate("3333")).toBeUndefined();
+    expect(textCall.validate('0')).toBe('Port must be between 1 and 65535');
+    expect(textCall.validate('99999')).toBe('Port must be between 1 and 65535');
+    expect(textCall.validate('abc')).toBe('Port must be between 1 and 65535');
+    expect(textCall.validate('3333')).toBeUndefined();
   });
 
-  it("should validate database URL format", async () => {
-    mockSelect.mockResolvedValueOnce("external-db");
+  it('should validate database URL format', async () => {
+    mockSelect.mockResolvedValueOnce('external-db');
     mockText
-      .mockResolvedValueOnce("3333")
-      .mockResolvedValueOnce("postgresql://user:pass@host:5432/db");
+      .mockResolvedValueOnce('3333')
+      .mockResolvedValueOnce('postgresql://user:pass@host:5432/db');
     mockConfirm
       .mockResolvedValueOnce(true) // enable oauth
       .mockResolvedValueOnce(false); // don't start
@@ -307,8 +307,8 @@ describe("flows/server-setup", () => {
     const dbTextCall = (mockText.mock.calls[1] as unknown[])[0] as {
       validate: (v: string) => string | undefined;
     };
-    expect(dbTextCall.validate("mysql://host/db")).toBe("Must be a valid PostgreSQL URL");
-    expect(dbTextCall.validate("")).toBe("Must be a valid PostgreSQL URL");
-    expect(dbTextCall.validate("postgresql://host/db")).toBeUndefined();
+    expect(dbTextCall.validate('mysql://host/db')).toBe('Must be a valid PostgreSQL URL');
+    expect(dbTextCall.validate('')).toBe('Must be a valid PostgreSQL URL');
+    expect(dbTextCall.validate('postgresql://host/db')).toBeUndefined();
   });
 });

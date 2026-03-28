@@ -2,9 +2,9 @@
  * Unit tests for local-setup flow
  */
 
-import * as p from "@clack/prompts";
+import * as p from '@clack/prompts';
 
-jest.mock("@clack/prompts", () => ({
+jest.mock('@clack/prompts', () => ({
   select: jest.fn(),
   multiselect: jest.fn(),
   confirm: jest.fn(),
@@ -25,38 +25,38 @@ jest.mock("@clack/prompts", () => ({
   isCancel: jest.fn().mockReturnValue(false),
 }));
 
-jest.mock("../../../../../src/cli/init/connection", () => ({
+jest.mock('../../../../../src/cli/init/connection', () => ({
   testConnection: jest
     .fn()
-    .mockResolvedValue({ success: true, username: "testuser", gitlabVersion: "16.0" }),
+    .mockResolvedValue({ success: true, username: 'testuser', gitlabVersion: '16.0' }),
   validateGitLabUrl: jest.fn().mockReturnValue({ valid: true }),
   getPatCreationUrl: jest
     .fn()
-    .mockReturnValue("https://gitlab.com/-/user_settings/personal_access_tokens"),
+    .mockReturnValue('https://gitlab.com/-/user_settings/personal_access_tokens'),
 }));
 
-jest.mock("../../../../../src/cli/init/browser", () => ({
+jest.mock('../../../../../src/cli/init/browser', () => ({
   openUrl: jest.fn().mockResolvedValue(true),
 }));
 
-jest.mock("../../../../../src/cli/install/installers", () => ({
+jest.mock('../../../../../src/cli/install/installers', () => ({
   installToClients: jest
     .fn()
-    .mockReturnValue([{ success: true, client: "cursor", configPath: "/home/.cursor/mcp.json" }]),
+    .mockReturnValue([{ success: true, client: 'cursor', configPath: '/home/.cursor/mcp.json' }]),
 }));
 
-jest.mock("../../../../../src/cli/setup/flows/tool-selection", () => ({
+jest.mock('../../../../../src/cli/setup/flows/tool-selection', () => ({
   runToolSelectionFlow: jest
     .fn()
-    .mockResolvedValue({ mode: "preset", preset: "developer", enabledCategories: ["core"] }),
+    .mockResolvedValue({ mode: 'preset', preset: 'developer', enabledCategories: ['core'] }),
   applyManualCategories: jest.fn(),
 }));
 
-import { runLocalSetupFlow } from "../../../../../src/cli/setup/flows/local-setup";
-import { DiscoveryResult } from "../../../../../src/cli/setup/types";
-import { testConnection } from "../../../../../src/cli/init/connection";
-import { installToClients } from "../../../../../src/cli/install/installers";
-import { runToolSelectionFlow } from "../../../../../src/cli/setup/flows/tool-selection";
+import { runLocalSetupFlow } from '../../../../../src/cli/setup/flows/local-setup';
+import { DiscoveryResult } from '../../../../../src/cli/setup/types';
+import { testConnection } from '../../../../../src/cli/init/connection';
+import { installToClients } from '../../../../../src/cli/install/installers';
+import { runToolSelectionFlow } from '../../../../../src/cli/setup/flows/tool-selection';
 
 const mockSelect = p.select as jest.MockedFunction<typeof p.select>;
 const mockConfirm = p.confirm as jest.MockedFunction<typeof p.confirm>;
@@ -80,13 +80,13 @@ const emptyDiscovery: DiscoveryResult = {
 const discoveryWithClients: DiscoveryResult = {
   ...emptyDiscovery,
   clients: {
-    detected: [{ client: "cursor", detected: true, method: "config-file" }],
+    detected: [{ client: 'cursor', detected: true, method: 'config-file' }],
     configured: [],
-    unconfigured: [{ client: "cursor", detected: true, method: "config-file" }],
+    unconfigured: [{ client: 'cursor', detected: true, method: 'config-file' }],
   },
 };
 
-describe("flows/local-setup", () => {
+describe('flows/local-setup', () => {
   beforeEach(() => {
     jest.resetAllMocks();
     // Restore clack mocks that resetAllMocks clears
@@ -97,34 +97,34 @@ describe("flows/local-setup", () => {
     });
     // Restore module mocks
     (installToClients as jest.Mock).mockReturnValue([
-      { success: true, client: "cursor", configPath: "/home/.cursor/mcp.json" },
+      { success: true, client: 'cursor', configPath: '/home/.cursor/mcp.json' },
     ]);
     (testConnection as jest.Mock).mockResolvedValue({
       success: true,
-      username: "testuser",
-      gitlabVersion: "16.0",
+      username: 'testuser',
+      gitlabVersion: '16.0',
     });
     (runToolSelectionFlow as jest.Mock).mockResolvedValue({
-      mode: "preset",
-      preset: "developer",
-      enabledCategories: ["core"],
+      mode: 'preset',
+      preset: 'developer',
+      enabledCategories: ['core'],
     });
   });
 
-  it("should return cancelled when instance type is cancelled", async () => {
+  it('should return cancelled when instance type is cancelled', async () => {
     mockIsCancel.mockReturnValueOnce(true);
-    mockSelect.mockResolvedValueOnce(Symbol("cancel"));
+    mockSelect.mockResolvedValueOnce(Symbol('cancel'));
 
     const result = await runLocalSetupFlow(emptyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Cancelled");
+    expect(result.error).toBe('Cancelled');
   });
 
-  it("should use gitlab.com for SaaS selection", async () => {
-    mockSelect.mockResolvedValueOnce("saas"); // instance type
+  it('should use gitlab.com for SaaS selection', async () => {
+    mockSelect.mockResolvedValueOnce('saas'); // instance type
     mockConfirm.mockResolvedValueOnce(true); // has token
-    mockPassword.mockResolvedValueOnce("glpat-xxxxxxxxxxxxxxxxxxxx");
+    mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
     mockMultiselect.mockResolvedValueOnce([]); // no clients selected
 
     const result = await runLocalSetupFlow(emptyDiscovery);
@@ -132,11 +132,11 @@ describe("flows/local-setup", () => {
     expect(result.success).toBe(true);
   });
 
-  it("should prompt for URL when self-hosted selected", async () => {
-    mockSelect.mockResolvedValueOnce("self-hosted"); // instance type
-    mockText.mockResolvedValueOnce("https://gitlab.example.com"); // URL
+  it('should prompt for URL when self-hosted selected', async () => {
+    mockSelect.mockResolvedValueOnce('self-hosted'); // instance type
+    mockText.mockResolvedValueOnce('https://gitlab.example.com'); // URL
     mockConfirm.mockResolvedValueOnce(true); // has token
-    mockPassword.mockResolvedValueOnce("glpat-xxxxxxxxxxxxxxxxxxxx");
+    mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
     mockMultiselect.mockResolvedValueOnce([]); // no clients
 
     const result = await runLocalSetupFlow(emptyDiscovery);
@@ -144,34 +144,34 @@ describe("flows/local-setup", () => {
     expect(result.success).toBe(true);
   });
 
-  it("should return cancelled when URL input is cancelled", async () => {
-    mockSelect.mockResolvedValueOnce("self-hosted");
-    mockText.mockResolvedValueOnce(Symbol("cancel"));
+  it('should return cancelled when URL input is cancelled', async () => {
+    mockSelect.mockResolvedValueOnce('self-hosted');
+    mockText.mockResolvedValueOnce(Symbol('cancel'));
     mockIsCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     const result = await runLocalSetupFlow(emptyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Cancelled");
+    expect(result.error).toBe('Cancelled');
   });
 
-  it("should return cancelled when has-token confirm is cancelled", async () => {
-    mockSelect.mockResolvedValueOnce("saas");
-    mockConfirm.mockResolvedValueOnce(Symbol("cancel"));
+  it('should return cancelled when has-token confirm is cancelled', async () => {
+    mockSelect.mockResolvedValueOnce('saas');
+    mockConfirm.mockResolvedValueOnce(Symbol('cancel'));
     mockIsCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     const result = await runLocalSetupFlow(emptyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Cancelled");
+    expect(result.error).toBe('Cancelled');
   });
 
-  it("should show PAT creation note and open browser when user has no token", async () => {
-    mockSelect.mockResolvedValueOnce("saas");
+  it('should show PAT creation note and open browser when user has no token', async () => {
+    mockSelect.mockResolvedValueOnce('saas');
     mockConfirm
       .mockResolvedValueOnce(false) // no token
       .mockResolvedValueOnce(true); // open browser
-    mockPassword.mockResolvedValueOnce("glpat-xxxxxxxxxxxxxxxxxxxx");
+    mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
     mockMultiselect.mockResolvedValueOnce([]); // no clients
 
     const result = await runLocalSetupFlow(emptyDiscovery);
@@ -180,10 +180,10 @@ describe("flows/local-setup", () => {
     expect(result.success).toBe(true);
   });
 
-  it("should return cancelled when token input is cancelled", async () => {
-    mockSelect.mockResolvedValueOnce("saas");
+  it('should return cancelled when token input is cancelled', async () => {
+    mockSelect.mockResolvedValueOnce('saas');
     mockConfirm.mockResolvedValueOnce(true); // has token
-    mockPassword.mockResolvedValueOnce(Symbol("cancel"));
+    mockPassword.mockResolvedValueOnce(Symbol('cancel'));
     mockIsCancel
       .mockReturnValueOnce(false) // instance
       .mockReturnValueOnce(false) // confirm
@@ -192,67 +192,67 @@ describe("flows/local-setup", () => {
     const result = await runLocalSetupFlow(emptyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Cancelled");
+    expect(result.error).toBe('Cancelled');
   });
 
-  it("should return error when connection fails", async () => {
-    mockSelect.mockResolvedValueOnce("saas");
+  it('should return error when connection fails', async () => {
+    mockSelect.mockResolvedValueOnce('saas');
     mockConfirm.mockResolvedValueOnce(true);
-    mockPassword.mockResolvedValueOnce("glpat-xxxxxxxxxxxxxxxxxxxx");
+    mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
     (testConnection as jest.Mock).mockResolvedValueOnce({
       success: false,
-      error: "401 Unauthorized",
+      error: '401 Unauthorized',
     });
 
     const result = await runLocalSetupFlow(emptyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("401 Unauthorized");
+    expect(result.error).toBe('401 Unauthorized');
   });
 
-  it("should return cancelled when tool selection returns null", async () => {
-    mockSelect.mockResolvedValueOnce("saas");
+  it('should return cancelled when tool selection returns null', async () => {
+    mockSelect.mockResolvedValueOnce('saas');
     mockConfirm.mockResolvedValueOnce(true);
-    mockPassword.mockResolvedValueOnce("glpat-xxxxxxxxxxxxxxxxxxxx");
+    mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
     (runToolSelectionFlow as jest.Mock).mockResolvedValueOnce(null);
 
     const result = await runLocalSetupFlow(emptyDiscovery);
 
     expect(result.success).toBe(false);
-    expect(result.error).toBe("Cancelled");
+    expect(result.error).toBe('Cancelled');
   });
 
-  it("should install to selected clients", async () => {
-    mockSelect.mockResolvedValueOnce("saas");
+  it('should install to selected clients', async () => {
+    mockSelect.mockResolvedValueOnce('saas');
     mockConfirm.mockResolvedValueOnce(true);
-    mockPassword.mockResolvedValueOnce("glpat-xxxxxxxxxxxxxxxxxxxx");
-    mockMultiselect.mockResolvedValueOnce(["cursor"]); // select client
+    mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
+    mockMultiselect.mockResolvedValueOnce(['cursor']); // select client
 
     const result = await runLocalSetupFlow(discoveryWithClients);
 
     expect(installToClients).toHaveBeenCalled();
     expect(result.success).toBe(true);
-    expect(result.configuredClients).toContain("cursor");
+    expect(result.configuredClients).toContain('cursor');
   });
 
-  it("should show config when no clients detected", async () => {
-    mockSelect.mockResolvedValueOnce("saas");
+  it('should show config when no clients detected', async () => {
+    mockSelect.mockResolvedValueOnce('saas');
     mockConfirm.mockResolvedValueOnce(true);
-    mockPassword.mockResolvedValueOnce("glpat-xxxxxxxxxxxxxxxxxxxx");
+    mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
 
     const result = await runLocalSetupFlow(emptyDiscovery);
 
-    expect(p.log.warn).toHaveBeenCalledWith(expect.stringContaining("No MCP clients detected"));
+    expect(p.log.warn).toHaveBeenCalledWith(expect.stringContaining('No MCP clients detected'));
     expect(result.success).toBe(true);
   });
 
-  it("should report failed client installations", async () => {
-    mockSelect.mockResolvedValueOnce("saas");
+  it('should report failed client installations', async () => {
+    mockSelect.mockResolvedValueOnce('saas');
     mockConfirm.mockResolvedValueOnce(true);
-    mockPassword.mockResolvedValueOnce("glpat-xxxxxxxxxxxxxxxxxxxx");
-    mockMultiselect.mockResolvedValueOnce(["cursor"]);
+    mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
+    mockMultiselect.mockResolvedValueOnce(['cursor']);
     (installToClients as jest.Mock).mockReturnValueOnce([
-      { success: false, client: "cursor", error: "Permission denied" },
+      { success: false, client: 'cursor', error: 'Permission denied' },
     ]);
 
     const result = await runLocalSetupFlow(discoveryWithClients);
@@ -261,43 +261,43 @@ describe("flows/local-setup", () => {
     expect(result.success).toBe(false);
   });
 
-  it("should set GITLAB_API_URL in generated config", async () => {
+  it('should set GITLAB_API_URL in generated config', async () => {
     (installToClients as jest.Mock).mockReturnValue([
-      { success: true, client: "cursor", configPath: "/home/.cursor/mcp.json" },
+      { success: true, client: 'cursor', configPath: '/home/.cursor/mcp.json' },
     ]);
-    mockSelect.mockResolvedValueOnce("saas");
+    mockSelect.mockResolvedValueOnce('saas');
     mockConfirm.mockResolvedValueOnce(true);
-    mockPassword.mockResolvedValueOnce("glpat-xxxxxxxxxxxxxxxxxxxx");
-    mockMultiselect.mockResolvedValueOnce(["cursor"]);
+    mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
+    mockMultiselect.mockResolvedValueOnce(['cursor']);
 
     await runLocalSetupFlow(discoveryWithClients);
 
     const installCall = (installToClients as jest.Mock).mock.calls[0];
     const serverConfig = installCall[1];
-    expect(serverConfig.env.GITLAB_API_URL).toBe("https://gitlab.com");
-    expect(serverConfig.env.GITLAB_TOKEN).toBe("glpat-xxxxxxxxxxxxxxxxxxxx");
+    expect(serverConfig.env.GITLAB_API_URL).toBe('https://gitlab.com');
+    expect(serverConfig.env.GITLAB_TOKEN).toBe('glpat-xxxxxxxxxxxxxxxxxxxx');
   });
 
-  it("should set GITLAB_PROFILE for preset mode", async () => {
+  it('should set GITLAB_PROFILE for preset mode', async () => {
     (installToClients as jest.Mock).mockReturnValue([
-      { success: true, client: "cursor", configPath: "/home/.cursor/mcp.json" },
+      { success: true, client: 'cursor', configPath: '/home/.cursor/mcp.json' },
     ]);
-    mockSelect.mockResolvedValueOnce("saas");
+    mockSelect.mockResolvedValueOnce('saas');
     mockConfirm.mockResolvedValueOnce(true);
-    mockPassword.mockResolvedValueOnce("glpat-xxxxxxxxxxxxxxxxxxxx");
-    mockMultiselect.mockResolvedValueOnce(["cursor"]);
+    mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
+    mockMultiselect.mockResolvedValueOnce(['cursor']);
 
     await runLocalSetupFlow(discoveryWithClients);
 
     const installCall = (installToClients as jest.Mock).mock.calls[0];
     const serverConfig = installCall[1];
-    expect(serverConfig.env.GITLAB_PROFILE).toBe("developer");
+    expect(serverConfig.env.GITLAB_PROFILE).toBe('developer');
   });
 
-  it("should show config when client selection returns empty", async () => {
-    mockSelect.mockResolvedValueOnce("saas");
+  it('should show config when client selection returns empty', async () => {
+    mockSelect.mockResolvedValueOnce('saas');
     mockConfirm.mockResolvedValueOnce(true);
-    mockPassword.mockResolvedValueOnce("glpat-xxxxxxxxxxxxxxxxxxxx");
+    mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
     mockMultiselect.mockResolvedValueOnce([]); // empty selection
 
     const result = await runLocalSetupFlow(discoveryWithClients);

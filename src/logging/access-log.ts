@@ -14,8 +14,8 @@ import type {
   AccessLogEntry,
   ConnectionCloseEntry,
   ConnectionCloseReason,
-} from "./types.js";
-import { truncateId } from "../logger.js";
+} from './types.js';
+import { truncateId } from '../logger.js';
 
 /**
  * Truncate session ID to first 4 + ".." + last 4 characters
@@ -24,7 +24,7 @@ import { truncateId } from "../logger.js";
  * Example: "9fd82b35-6789-abcd" → "9fd8..abcd"
  */
 export function truncateSessionId(sessionId?: string): string {
-  if (!sessionId) return "-";
+  if (!sessionId) return '-';
   return truncateId(sessionId);
 }
 
@@ -51,10 +51,10 @@ export function formatDuration(ms: number): string {
  * Format GitLab status for access log
  * Returns "GL:200", "GL:404", "GL:timeout", or "-"
  */
-export function formatGitLabStatus(status?: number | "timeout" | "error"): string {
-  if (status === undefined) return "-";
-  if (status === "timeout") return "GL:timeout";
-  if (status === "error") return "GL:error";
+export function formatGitLabStatus(status?: number | 'timeout' | 'error'): string {
+  if (status === undefined) return '-';
+  if (status === 'timeout') return 'GL:timeout';
+  if (status === 'error') return 'GL:error';
   return `GL:${status}`;
 }
 
@@ -65,11 +65,11 @@ export function formatGitLabStatus(status?: number | "timeout" | "error"): strin
  */
 function escapeLogValue(value: string): string {
   return value
-    .replace(/\\/g, "\\\\")
+    .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
-    .replace(/\n/g, "\\n")
-    .replace(/\r/g, "\\r")
-    .replace(/\t/g, "\\t");
+    .replace(/\n/g, '\\n')
+    .replace(/\r/g, '\\r')
+    .replace(/\t/g, '\\t');
 }
 
 /**
@@ -86,7 +86,7 @@ function needsQuoting(value: string): boolean {
  */
 export function formatDetails(details: Record<string, string | number | boolean>): string {
   const entries = Object.entries(details);
-  if (entries.length === 0) return "";
+  if (entries.length === 0) return '';
 
   return entries
     .map(([key, value]) => {
@@ -96,7 +96,7 @@ export function formatDetails(details: Record<string, string | number | boolean>
       }
       return `${key}=${strValue}`;
     })
-    .join(" ");
+    .join(' ');
 }
 
 /**
@@ -110,16 +110,16 @@ export function createAccessLogEntry(stack: RequestStack): AccessLogEntry {
     timestamp: new Date(now).toISOString(),
     clientIp: stack.clientIp,
     session: truncateSessionId(stack.sessionId),
-    ctx: stack.context ?? "-",
-    ro: stack.readOnly ? "RO" : "-",
+    ctx: stack.context ?? '-',
+    ro: stack.readOnly ? 'RO' : '-',
     method: stack.method,
     path: stack.path,
     status: stack.status ?? 0,
     durationMs,
-    tool: stack.tool ?? "-",
-    action: stack.action ?? "-",
+    tool: stack.tool ?? '-',
+    action: stack.action ?? '-',
     gitlabStatus: formatGitLabStatus(stack.gitlabStatus),
-    gitlabDurationMs: stack.gitlabDuration !== undefined ? `${stack.gitlabDuration}ms` : "-",
+    gitlabDurationMs: stack.gitlabDuration !== undefined ? `${stack.gitlabDuration}ms` : '-',
     details: formatDetails(stack.details),
   };
 }
@@ -153,17 +153,17 @@ export function formatAccessLog(entry: AccessLogEntry): string {
     entry.path,
     String(entry.status),
     `${entry.durationMs}ms`,
-    "|",
+    '|',
     entry.tool,
     entry.action,
-    "|",
+    '|',
     entry.gitlabStatus,
     entry.gitlabDurationMs,
-    "|",
-    entry.details || "-",
+    '|',
+    entry.details || '-',
   ];
 
-  return parts.join(" ");
+  return parts.join(' ');
 }
 
 /**
@@ -171,7 +171,7 @@ export function formatAccessLog(entry: AccessLogEntry): string {
  */
 export function createConnectionCloseEntry(
   stats: ConnectionStats,
-  reason: ConnectionCloseReason
+  reason: ConnectionCloseReason,
 ): ConnectionCloseEntry {
   const now = Date.now();
   const durationMs = now - stats.connectedAt;
@@ -202,12 +202,12 @@ export function createConnectionCloseEntry(
 export function formatConnectionClose(entry: ConnectionCloseEntry): string {
   const parts = [
     `[${entry.timestamp}]`,
-    "CONN_CLOSE",
+    'CONN_CLOSE',
     entry.clientIp,
     entry.session,
     entry.duration,
     entry.reason,
-    "|",
+    '|',
     `reqs=${entry.requests}`,
     `tools=${entry.tools}`,
     `errs=${entry.errors}`,
@@ -218,7 +218,7 @@ export function formatConnectionClose(entry: ConnectionCloseEntry): string {
     parts.push(`last_err="${escapeLogValue(entry.lastError)}"`);
   }
 
-  return parts.join(" ");
+  return parts.join(' ');
 }
 
 /**
@@ -258,7 +258,7 @@ export class AccessLogFormatter {
    */
   getConnectionCloseEntry(
     stats: ConnectionStats,
-    reason: ConnectionCloseReason
+    reason: ConnectionCloseReason,
   ): ConnectionCloseEntry {
     return createConnectionCloseEntry(stats, reason);
   }

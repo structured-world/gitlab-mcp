@@ -5,9 +5,9 @@
  * Supports SSH and HTTPS formats, including nested groups.
  */
 
-import * as fs from "fs/promises";
-import * as path from "path";
-import { logWarn, logDebug } from "../logger";
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { logWarn, logDebug } from '../logger';
 
 // ============================================================================
 // Types
@@ -19,7 +19,7 @@ export interface GitRemoteInfo {
   /** Project path (e.g., group/project or group/subgroup/project) */
   projectPath: string;
   /** Remote URL protocol */
-  protocol: "ssh" | "https";
+  protocol: 'ssh' | 'https';
   /** Original remote URL */
   url: string;
   /** Remote name (e.g., origin, upstream) */
@@ -49,7 +49,7 @@ export interface ParseGitRemoteOptions {
  * @param url Git remote URL
  * @returns Parsed info or null if not a valid GitLab URL
  */
-export function parseRemoteUrl(url: string): Omit<GitRemoteInfo, "remoteName"> | null {
+export function parseRemoteUrl(url: string): Omit<GitRemoteInfo, 'remoteName'> | null {
   // Normalize URL: trim whitespace
   const normalizedUrl = url.trim();
 
@@ -59,14 +59,14 @@ export function parseRemoteUrl(url: string): Omit<GitRemoteInfo, "remoteName"> |
     return {
       host: sshMatch[1],
       projectPath: normalizeProjectPath(sshMatch[2]),
-      protocol: "ssh",
+      protocol: 'ssh',
       url: normalizedUrl,
     };
   }
 
   // SSH with explicit protocol: ssh://git@host/path.git or ssh://git@host:port/path.git
   const sshProtocolMatch = normalizedUrl.match(
-    /^ssh:\/\/git@([^/:]+)(?::(\d+))?\/(.+?)(?:\.git)?$/
+    /^ssh:\/\/git@([^/:]+)(?::(\d+))?\/(.+?)(?:\.git)?$/,
   );
   if (sshProtocolMatch) {
     const sshHost = sshProtocolMatch[2]
@@ -75,7 +75,7 @@ export function parseRemoteUrl(url: string): Omit<GitRemoteInfo, "remoteName"> |
     return {
       host: sshHost,
       projectPath: normalizeProjectPath(sshProtocolMatch[3]),
-      protocol: "ssh",
+      protocol: 'ssh',
       url: normalizedUrl,
     };
   }
@@ -87,12 +87,12 @@ export function parseRemoteUrl(url: string): Omit<GitRemoteInfo, "remoteName"> |
     return {
       host: httpsHost,
       projectPath: normalizeProjectPath(httpsMatch[3]),
-      protocol: "https",
+      protocol: 'https',
       url: normalizedUrl,
     };
   }
 
-  logDebug("Could not parse remote URL", { url: normalizedUrl });
+  logDebug('Could not parse remote URL', { url: normalizedUrl });
   return null;
 }
 
@@ -100,7 +100,7 @@ export function parseRemoteUrl(url: string): Omit<GitRemoteInfo, "remoteName"> |
  * Normalize project path: remove leading/trailing slashes
  */
 function normalizeProjectPath(projectPath: string): string {
-  return projectPath.replace(/^\/+|\/+$/g, "");
+  return projectPath.replace(/^\/+|\/+$/g, '');
 }
 
 // ============================================================================
@@ -136,7 +136,7 @@ export function parseGitConfig(content: string): Map<string, string> {
     }
 
     // Any other section header ends the current remote section
-    if (line.startsWith("[") && line.endsWith("]")) {
+    if (line.startsWith('[') && line.endsWith(']')) {
       currentRemote = null;
       continue;
     }
@@ -149,7 +149,7 @@ export function parseGitConfig(content: string): Map<string, string> {
     const urlMatch = line.match(/^url\s*=\s*(.+)$/);
     if (urlMatch) {
       const url = urlMatch[1].trim();
-      if (url !== "") {
+      if (url !== '') {
         remotes.set(currentRemote, url);
       }
     }
@@ -172,7 +172,7 @@ export function parseGitConfig(content: string): Map<string, string> {
  */
 export function selectBestRemote(
   remotes: Map<string, string>,
-  preferredRemote?: string
+  preferredRemote?: string,
 ): { name: string; url: string } | null {
   if (remotes.size === 0) {
     return null;
@@ -187,9 +187,9 @@ export function selectBestRemote(
   }
 
   // Prefer "origin"
-  const originUrl = remotes.get("origin");
+  const originUrl = remotes.get('origin');
   if (originUrl !== undefined) {
-    return { name: "origin", url: originUrl };
+    return { name: 'origin', url: originUrl };
   }
 
   // Fall back to first remote
@@ -212,33 +212,33 @@ export function selectBestRemote(
  * @returns GitRemoteInfo or null if no valid remote found
  */
 export async function parseGitRemote(
-  options: ParseGitRemoteOptions = {}
+  options: ParseGitRemoteOptions = {},
 ): Promise<GitRemoteInfo | null> {
   const repoPath = options.repoPath ?? process.cwd();
-  const gitConfigPath = path.join(repoPath, ".git", "config");
+  const gitConfigPath = path.join(repoPath, '.git', 'config');
 
   // Check if .git/config exists
   try {
     await fs.access(gitConfigPath);
   } catch {
-    logDebug("No .git/config found - not a git repository", { path: repoPath });
+    logDebug('No .git/config found - not a git repository', { path: repoPath });
     return null;
   }
 
   // Read and parse git config
   let content: string;
   try {
-    content = await fs.readFile(gitConfigPath, "utf-8");
+    content = await fs.readFile(gitConfigPath, 'utf-8');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    logWarn("Failed to read git config", { error: message, path: gitConfigPath });
+    logWarn('Failed to read git config', { error: message, path: gitConfigPath });
     return null;
   }
 
   // Parse remotes from config
   const remotes = parseGitConfig(content);
   if (remotes.size === 0) {
-    logDebug("No remotes found in git config", { path: repoPath });
+    logDebug('No remotes found in git config', { path: repoPath });
     return null;
   }
 
@@ -251,11 +251,11 @@ export async function parseGitRemote(
   // Parse the remote URL
   const parsed = parseRemoteUrl(selected.url);
   if (!parsed) {
-    logWarn("Could not parse remote URL format", { remote: selected.name, url: selected.url });
+    logWarn('Could not parse remote URL format', { remote: selected.name, url: selected.url });
     return null;
   }
 
-  logDebug("Parsed git remote", {
+  logDebug('Parsed git remote', {
     remote: selected.name,
     host: parsed.host,
     projectPath: parsed.projectPath,
@@ -275,10 +275,10 @@ export async function parseGitRemote(
  * @returns Array of parsed remote info
  */
 export async function listGitRemotes(repoPath?: string): Promise<GitRemoteInfo[]> {
-  const gitConfigPath = path.join(repoPath ?? process.cwd(), ".git", "config");
+  const gitConfigPath = path.join(repoPath ?? process.cwd(), '.git', 'config');
 
   try {
-    const content = await fs.readFile(gitConfigPath, "utf-8");
+    const content = await fs.readFile(gitConfigPath, 'utf-8');
     const remotes = parseGitConfig(content);
     const result: GitRemoteInfo[] = [];
 

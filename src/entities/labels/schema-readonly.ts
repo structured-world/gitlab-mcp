@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { flexibleBoolean, requiredId, paginationFields } from "../utils";
+import { z } from 'zod';
+import { flexibleBoolean, requiredId, paginationFields } from '../utils';
 
 // ============================================================================
 // browse_labels - CQRS Query Tool (discriminated union schema)
@@ -9,31 +9,31 @@ import { flexibleBoolean, requiredId, paginationFields } from "../utils";
 // ============================================================================
 
 // --- Shared fields ---
-const namespaceField = z.string().describe("Namespace path (group or project)");
+const namespaceField = z.string().describe('Namespace path (group or project)');
 const includeAncestorGroupsField = flexibleBoolean
   .optional()
-  .describe("Include ancestor groups when listing or getting labels");
+  .describe('Include ancestor groups when listing or getting labels');
 
 // --- Action: list ---
 const ListLabelsSchema = z.object({
-  action: z.literal("list").describe("List labels with optional filtering"),
+  action: z.literal('list').describe('List labels with optional filtering'),
   namespace: namespaceField,
-  search: z.string().optional().describe("Keyword to filter labels by"),
-  with_counts: flexibleBoolean.optional().describe("Include issue and merge request counts"),
+  search: z.string().optional().describe('Keyword to filter labels by'),
+  with_counts: flexibleBoolean.optional().describe('Include issue and merge request counts'),
   include_ancestor_groups: includeAncestorGroupsField,
   ...paginationFields(),
 });
 
 // --- Action: get ---
 const GetLabelSchema = z.object({
-  action: z.literal("get").describe("Get a single label by ID or title"),
+  action: z.literal('get').describe('Get a single label by ID or title'),
   namespace: namespaceField,
-  label_id: requiredId.describe("The ID or title of the label"),
+  label_id: requiredId.describe('The ID or title of the label'),
   include_ancestor_groups: includeAncestorGroupsField,
 });
 
 // --- Discriminated union combining all actions ---
-export const BrowseLabelsSchema = z.discriminatedUnion("action", [
+export const BrowseLabelsSchema = z.discriminatedUnion('action', [
   ListLabelsSchema,
   GetLabelSchema,
 ]);

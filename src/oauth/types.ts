@@ -12,7 +12,7 @@
  */
 export interface NamespaceTierInfo {
   /** Tier level (free, premium, ultimate) */
-  tier: "free" | "premium" | "ultimate";
+  tier: 'free' | 'premium' | 'ultimate';
   /** Available features for this tier */
   features: Record<string, boolean>;
   /** Cache timestamp */
@@ -203,7 +203,7 @@ export interface GitLabUserInfo {
  */
 export interface MCPTokenResponse {
   access_token: string;
-  token_type: "Bearer";
+  token_type: 'Bearer';
   expires_in: number;
   refresh_token: string;
   scope: string;
@@ -220,7 +220,7 @@ export interface OAuthErrorResponse {
 /**
  * Device flow poll status
  */
-export type DeviceFlowPollStatus = "pending" | "complete" | "failed" | "expired";
+export type DeviceFlowPollStatus = 'pending' | 'complete' | 'failed' | 'expired';
 
 /**
  * Device flow poll response

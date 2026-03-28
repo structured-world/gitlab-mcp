@@ -11,97 +11,97 @@ import {
   applyInstanceDefaults,
   GitLabInstanceConfig,
   InstanceDefaults,
-} from "../../../src/config/instances-schema";
+} from '../../../src/config/instances-schema';
 
-describe("Instance Configuration Schemas", () => {
-  describe("GitLabInstanceConfigSchema", () => {
-    it("should validate minimal config with just URL", () => {
+describe('Instance Configuration Schemas', () => {
+  describe('GitLabInstanceConfigSchema', () => {
+    it('should validate minimal config with just URL', () => {
       const config = {
-        url: "https://gitlab.com",
+        url: 'https://gitlab.com',
       };
 
       const result = GitLabInstanceConfigSchema.parse(config);
-      expect(result.url).toBe("https://gitlab.com");
+      expect(result.url).toBe('https://gitlab.com');
       expect(result.insecureSkipVerify).toBe(false);
     });
 
-    it("should normalize URL by removing trailing slash", () => {
+    it('should normalize URL by removing trailing slash', () => {
       const config = {
-        url: "https://gitlab.com/",
+        url: 'https://gitlab.com/',
       };
 
       const result = GitLabInstanceConfigSchema.parse(config);
-      expect(result.url).toBe("https://gitlab.com");
+      expect(result.url).toBe('https://gitlab.com');
     });
 
-    it("should normalize URL by removing /api/v4 suffix", () => {
+    it('should normalize URL by removing /api/v4 suffix', () => {
       const config = {
-        url: "https://gitlab.com/api/v4",
+        url: 'https://gitlab.com/api/v4',
       };
 
       const result = GitLabInstanceConfigSchema.parse(config);
-      expect(result.url).toBe("https://gitlab.com");
+      expect(result.url).toBe('https://gitlab.com');
     });
 
-    it("should normalize URL by removing /api/graphql suffix", () => {
+    it('should normalize URL by removing /api/graphql suffix', () => {
       // Tests the /api/graphql suffix stripping branch (line 35-37)
       const config = {
-        url: "https://gitlab.com/api/graphql",
+        url: 'https://gitlab.com/api/graphql',
       };
 
       const result = GitLabInstanceConfigSchema.parse(config);
-      expect(result.url).toBe("https://gitlab.com");
+      expect(result.url).toBe('https://gitlab.com');
     });
 
-    it("should normalize subpath URL by removing trailing slash", () => {
+    it('should normalize subpath URL by removing trailing slash', () => {
       // Tests trailing slash removal for non-root paths (line 30-31)
       const config = {
-        url: "https://example.com/gitlab/",
+        url: 'https://example.com/gitlab/',
       };
 
       const result = GitLabInstanceConfigSchema.parse(config);
-      expect(result.url).toBe("https://example.com/gitlab");
+      expect(result.url).toBe('https://example.com/gitlab');
     });
 
-    it("should preserve subpath when removing /api/v4 suffix", () => {
+    it('should preserve subpath when removing /api/v4 suffix', () => {
       // Tests that subpath-deployed GitLab keeps subpath after stripping API suffix
       const config = {
-        url: "https://example.com/gitlab/api/v4",
+        url: 'https://example.com/gitlab/api/v4',
       };
 
       const result = GitLabInstanceConfigSchema.parse(config);
-      expect(result.url).toBe("https://example.com/gitlab");
+      expect(result.url).toBe('https://example.com/gitlab');
     });
 
-    it("should preserve subpath when removing /api/graphql suffix", () => {
+    it('should preserve subpath when removing /api/graphql suffix', () => {
       // Tests that subpath-deployed GitLab keeps subpath after stripping GraphQL suffix
       const config = {
-        url: "https://example.com/gitlab/api/graphql",
+        url: 'https://example.com/gitlab/api/graphql',
       };
 
       const result = GitLabInstanceConfigSchema.parse(config);
-      expect(result.url).toBe("https://example.com/gitlab");
+      expect(result.url).toBe('https://example.com/gitlab');
     });
 
-    it("should normalize URL with double slash before /api/v4 to origin only", () => {
+    it('should normalize URL with double slash before /api/v4 to origin only', () => {
       // Tests line 40 - edge case where stripping /api/v4 leaves "/"
       // URL pathname "//api/v4" stripped becomes "/" which normalizes to ""
       const config = {
-        url: "https://example.com//api/v4",
+        url: 'https://example.com//api/v4',
       };
 
       const result = GitLabInstanceConfigSchema.parse(config);
-      expect(result.url).toBe("https://example.com");
+      expect(result.url).toBe('https://example.com');
     });
 
-    it("should validate full config with all fields", () => {
+    it('should validate full config with all fields', () => {
       const config = {
-        url: "https://git.corp.io",
-        label: "Corporate GitLab",
+        url: 'https://git.corp.io',
+        label: 'Corporate GitLab',
         oauth: {
-          clientId: "app_123",
-          clientSecret: "secret_456",
-          scopes: "api read_user write_repository",
+          clientId: 'app_123',
+          clientSecret: 'secret_456',
+          scopes: 'api read_user write_repository',
         },
         rateLimit: {
           maxConcurrent: 50,
@@ -112,58 +112,58 @@ describe("Instance Configuration Schemas", () => {
       };
 
       const result = GitLabInstanceConfigSchema.parse(config);
-      expect(result.url).toBe("https://git.corp.io");
-      expect(result.label).toBe("Corporate GitLab");
-      expect(result.oauth?.clientId).toBe("app_123");
-      expect(result.oauth?.clientSecret).toBe("secret_456");
-      expect(result.oauth?.scopes).toBe("api read_user write_repository");
+      expect(result.url).toBe('https://git.corp.io');
+      expect(result.label).toBe('Corporate GitLab');
+      expect(result.oauth?.clientId).toBe('app_123');
+      expect(result.oauth?.clientSecret).toBe('secret_456');
+      expect(result.oauth?.scopes).toBe('api read_user write_repository');
       expect(result.rateLimit?.maxConcurrent).toBe(50);
       expect(result.insecureSkipVerify).toBe(true);
     });
 
-    it("should reject invalid URL", () => {
+    it('should reject invalid URL', () => {
       const config = {
-        url: "not-a-valid-url",
+        url: 'not-a-valid-url',
       };
 
       expect(() => GitLabInstanceConfigSchema.parse(config)).toThrow();
     });
 
-    it("should use default OAuth scopes when not specified", () => {
+    it('should use default OAuth scopes when not specified', () => {
       const config = {
-        url: "https://gitlab.com",
+        url: 'https://gitlab.com',
         oauth: {
-          clientId: "app_123",
+          clientId: 'app_123',
         },
       };
 
       const result = GitLabInstanceConfigSchema.parse(config);
-      expect(result.oauth?.scopes).toBe("api read_user");
+      expect(result.oauth?.scopes).toBe('api read_user');
     });
   });
 
-  describe("InstancesConfigFileSchema", () => {
-    it("should validate config file with single instance", () => {
+  describe('InstancesConfigFileSchema', () => {
+    it('should validate config file with single instance', () => {
       const config = {
         instances: [
           {
-            url: "https://gitlab.com",
-            label: "GitLab.com",
+            url: 'https://gitlab.com',
+            label: 'GitLab.com',
           },
         ],
       };
 
       const result = InstancesConfigFileSchema.parse(config);
       expect(result.instances).toHaveLength(1);
-      expect(result.instances[0].url).toBe("https://gitlab.com");
+      expect(result.instances[0].url).toBe('https://gitlab.com');
     });
 
-    it("should validate config file with multiple instances", () => {
+    it('should validate config file with multiple instances', () => {
       const config = {
         instances: [
-          { url: "https://gitlab.com", label: "GitLab.com" },
-          { url: "https://git.corp.io", label: "Corporate" },
-          { url: "https://gl.dev.net", label: "Development" },
+          { url: 'https://gitlab.com', label: 'GitLab.com' },
+          { url: 'https://git.corp.io', label: 'Corporate' },
+          { url: 'https://gl.dev.net', label: 'Development' },
         ],
         defaults: {
           rateLimit: {
@@ -179,7 +179,7 @@ describe("Instance Configuration Schemas", () => {
       expect(result.defaults?.rateLimit?.maxConcurrent).toBe(100);
     });
 
-    it("should reject empty instances array", () => {
+    it('should reject empty instances array', () => {
       const config = {
         instances: [],
       };
@@ -188,87 +188,87 @@ describe("Instance Configuration Schemas", () => {
     });
   });
 
-  describe("parseInstanceUrlString", () => {
-    it("should parse simple URL", () => {
-      const result = parseInstanceUrlString("https://gitlab.com");
-      expect(result.url).toBe("https://gitlab.com");
+  describe('parseInstanceUrlString', () => {
+    it('should parse simple URL', () => {
+      const result = parseInstanceUrlString('https://gitlab.com');
+      expect(result.url).toBe('https://gitlab.com');
       expect(result.oauth).toBeUndefined();
     });
 
-    it("should parse URL with client ID", () => {
-      const result = parseInstanceUrlString("https://gitlab.com:app_123");
-      expect(result.url).toBe("https://gitlab.com");
-      expect(result.oauth?.clientId).toBe("app_123");
+    it('should parse URL with client ID', () => {
+      const result = parseInstanceUrlString('https://gitlab.com:app_123');
+      expect(result.url).toBe('https://gitlab.com');
+      expect(result.oauth?.clientId).toBe('app_123');
       expect(result.oauth?.clientSecret).toBeUndefined();
     });
 
-    it("should parse URL with client ID and secret", () => {
-      const result = parseInstanceUrlString("https://gitlab.com:app_123:secret_456");
-      expect(result.url).toBe("https://gitlab.com");
-      expect(result.oauth?.clientId).toBe("app_123");
-      expect(result.oauth?.clientSecret).toBe("secret_456");
+    it('should parse URL with client ID and secret', () => {
+      const result = parseInstanceUrlString('https://gitlab.com:app_123:secret_456');
+      expect(result.url).toBe('https://gitlab.com');
+      expect(result.oauth?.clientId).toBe('app_123');
+      expect(result.oauth?.clientSecret).toBe('secret_456');
     });
 
-    it("should handle URL with port number", () => {
-      const result = parseInstanceUrlString("https://gitlab.local:8443");
-      expect(result.url).toBe("https://gitlab.local:8443");
+    it('should handle URL with port number', () => {
+      const result = parseInstanceUrlString('https://gitlab.local:8443');
+      expect(result.url).toBe('https://gitlab.local:8443');
       expect(result.oauth).toBeUndefined();
     });
 
-    it("should handle URL with port and client ID", () => {
-      const result = parseInstanceUrlString("https://gitlab.local:8443:app_123");
-      expect(result.url).toBe("https://gitlab.local:8443");
-      expect(result.oauth?.clientId).toBe("app_123");
+    it('should handle URL with port and client ID', () => {
+      const result = parseInstanceUrlString('https://gitlab.local:8443:app_123');
+      expect(result.url).toBe('https://gitlab.local:8443');
+      expect(result.oauth?.clientId).toBe('app_123');
     });
 
-    it("should throw on invalid URL format", () => {
-      expect(() => parseInstanceUrlString("not-a-url")).toThrow();
+    it('should throw on invalid URL format', () => {
+      expect(() => parseInstanceUrlString('not-a-url')).toThrow();
     });
 
-    it("should throw on URL with protocol but invalid structure", () => {
+    it('should throw on URL with protocol but invalid structure', () => {
       // Tests line 265 - URL has :// but fails all parsing attempts
       // This triggers the final throw after all parsing strategies exhausted
-      expect(() => parseInstanceUrlString("http://")).toThrow(/Invalid GitLab instance URL format/);
+      expect(() => parseInstanceUrlString('http://')).toThrow(/Invalid GitLab instance URL format/);
     });
 
-    it("should treat number > 65535 as OAuth client ID, not port", () => {
+    it('should treat number > 65535 as OAuth client ID, not port', () => {
       // Numbers larger than valid port range (1-65535) should be treated as OAuth client IDs
-      const result = parseInstanceUrlString("https://gitlab.com:123456789");
-      expect(result.url).toBe("https://gitlab.com");
-      expect(result.oauth?.clientId).toBe("123456789");
+      const result = parseInstanceUrlString('https://gitlab.com:123456789');
+      expect(result.url).toBe('https://gitlab.com');
+      expect(result.oauth?.clientId).toBe('123456789');
     });
 
-    it("should parse URL with large numeric client ID and secret", () => {
-      const result = parseInstanceUrlString("https://gitlab.com:999999999:mysecret");
-      expect(result.url).toBe("https://gitlab.com");
-      expect(result.oauth?.clientId).toBe("999999999");
-      expect(result.oauth?.clientSecret).toBe("mysecret");
+    it('should parse URL with large numeric client ID and secret', () => {
+      const result = parseInstanceUrlString('https://gitlab.com:999999999:mysecret');
+      expect(result.url).toBe('https://gitlab.com');
+      expect(result.oauth?.clientId).toBe('999999999');
+      expect(result.oauth?.clientSecret).toBe('mysecret');
     });
   });
 
-  describe("validateInstancesConfig", () => {
-    it("should validate and return config", () => {
+  describe('validateInstancesConfig', () => {
+    it('should validate and return config', () => {
       const config = {
-        instances: [{ url: "https://gitlab.com" }],
+        instances: [{ url: 'https://gitlab.com' }],
       };
 
       const result = validateInstancesConfig(config);
       expect(result.instances).toHaveLength(1);
     });
 
-    it("should throw on invalid config", () => {
+    it('should throw on invalid config', () => {
       const config = {
-        instances: "not-an-array",
+        instances: 'not-an-array',
       };
 
       expect(() => validateInstancesConfig(config)).toThrow();
     });
   });
 
-  describe("applyInstanceDefaults", () => {
-    it("should return instance unchanged when no defaults", () => {
+  describe('applyInstanceDefaults', () => {
+    it('should return instance unchanged when no defaults', () => {
       const instance: GitLabInstanceConfig = {
-        url: "https://gitlab.com",
+        url: 'https://gitlab.com',
         insecureSkipVerify: false,
       };
 
@@ -276,9 +276,9 @@ describe("Instance Configuration Schemas", () => {
       expect(result).toEqual(instance);
     });
 
-    it("should apply rate limit defaults when not set on instance", () => {
+    it('should apply rate limit defaults when not set on instance', () => {
       const instance: GitLabInstanceConfig = {
-        url: "https://gitlab.com",
+        url: 'https://gitlab.com',
         insecureSkipVerify: false,
       };
 
@@ -295,9 +295,9 @@ describe("Instance Configuration Schemas", () => {
       expect(result.rateLimit?.queueSize).toBe(500);
     });
 
-    it("should not override instance rate limit with defaults", () => {
+    it('should not override instance rate limit with defaults', () => {
       const instance: GitLabInstanceConfig = {
-        url: "https://gitlab.com",
+        url: 'https://gitlab.com',
         rateLimit: {
           maxConcurrent: 50,
           queueSize: 200,
@@ -318,48 +318,48 @@ describe("Instance Configuration Schemas", () => {
       expect(result.rateLimit?.maxConcurrent).toBe(50);
     });
 
-    it("should apply OAuth scope defaults when instance has oauth but no scopes", () => {
+    it('should apply OAuth scope defaults when instance has oauth but no scopes', () => {
       // Instance has oauth config but scopes will have default from schema
       // This tests the edge case where oauth.scopes might be empty string
       const instance: GitLabInstanceConfig = {
-        url: "https://gitlab.com",
+        url: 'https://gitlab.com',
         oauth: {
-          clientId: "app_123",
-          scopes: "", // Empty scopes
+          clientId: 'app_123',
+          scopes: '', // Empty scopes
         },
         insecureSkipVerify: false,
       };
 
       const defaults: InstanceDefaults = {
         oauth: {
-          scopes: "api read_user",
+          scopes: 'api read_user',
         },
       };
 
       const result = applyInstanceDefaults(instance, defaults);
       // Empty string is falsy, so defaults should apply
-      expect(result.oauth?.scopes).toBe("api read_user");
+      expect(result.oauth?.scopes).toBe('api read_user');
     });
 
-    it("should not override existing OAuth scopes with defaults", () => {
+    it('should not override existing OAuth scopes with defaults', () => {
       const instance: GitLabInstanceConfig = {
-        url: "https://gitlab.com",
+        url: 'https://gitlab.com',
         oauth: {
-          clientId: "app_123",
-          scopes: "api",
+          clientId: 'app_123',
+          scopes: 'api',
         },
         insecureSkipVerify: false,
       };
 
       const defaults: InstanceDefaults = {
         oauth: {
-          scopes: "api read_user write_repository",
+          scopes: 'api read_user write_repository',
         },
       };
 
       const result = applyInstanceDefaults(instance, defaults);
       // Existing scopes should be preserved
-      expect(result.oauth?.scopes).toBe("api");
+      expect(result.oauth?.scopes).toBe('api');
     });
   });
 });

@@ -2,7 +2,7 @@
  * Configuration generator for various MCP clients
  */
 
-import { McpServerConfig, WizardConfig, MCP_CLIENT_INFO, ROLE_PRESETS } from "./types";
+import { McpServerConfig, WizardConfig, MCP_CLIENT_INFO, ROLE_PRESETS } from './types';
 
 /**
  * Escape a string for safe use in shell double-quoted context.
@@ -10,11 +10,11 @@ import { McpServerConfig, WizardConfig, MCP_CLIENT_INFO, ROLE_PRESETS } from "./
  */
 function shellEscape(value: string): string {
   return value
-    .replace(/\\/g, "\\\\")
+    .replace(/\\/g, '\\\\')
     .replace(/"/g, '\\"')
-    .replace(/\$/g, "\\$")
-    .replace(/`/g, "\\`")
-    .replace(/\n/g, "\\n");
+    .replace(/\$/g, '\\$')
+    .replace(/`/g, '\\`')
+    .replace(/\n/g, '\\n');
 }
 
 /**
@@ -22,7 +22,7 @@ function shellEscape(value: string): string {
  */
 export function generateServerConfig(config: WizardConfig): McpServerConfig {
   // Normalize instance URL to avoid double-appending /api/v4 later
-  const normalizedUrl = config.instanceUrl.replace(/\/+$/, "").replace(/\/api\/v4$/i, "");
+  const normalizedUrl = config.instanceUrl.replace(/\/+$/, '').replace(/\/api\/v4$/i, '');
 
   const env: Record<string, string> = {
     GITLAB_API_URL: normalizedUrl,
@@ -37,12 +37,12 @@ export function generateServerConfig(config: WizardConfig): McpServerConfig {
 
   // Add read-only mode if selected
   if (config.readOnly) {
-    env.GITLAB_READ_ONLY_MODE = "true";
+    env.GITLAB_READ_ONLY_MODE = 'true';
   }
 
   return {
-    command: "npx",
-    args: ["-y", "@structured-world/gitlab-mcp@latest"],
+    command: 'npx',
+    args: ['-y', '@structured-world/gitlab-mcp@latest'],
     env,
   };
 }
@@ -50,7 +50,7 @@ export function generateServerConfig(config: WizardConfig): McpServerConfig {
 /**
  * Generate JSON configuration for mcpServers format (most clients)
  */
-export function generateMcpServersJson(config: WizardConfig, serverName = "gitlab"): string {
+export function generateMcpServersJson(config: WizardConfig, serverName = 'gitlab'): string {
   const serverConfig = generateServerConfig(config);
 
   const mcpServers = {
@@ -65,23 +65,23 @@ export function generateMcpServersJson(config: WizardConfig, serverName = "gitla
 /**
  * Generate Claude Code CLI command
  */
-export function generateClaudeCodeCommand(config: WizardConfig, serverName = "gitlab"): string {
+export function generateClaudeCodeCommand(config: WizardConfig, serverName = 'gitlab'): string {
   const serverConfig = generateServerConfig(config);
 
   // Build environment variable flags with proper shell escaping
   const envFlags = Object.entries(serverConfig.env)
     .map(([key, value]) => `--env ${key}="${shellEscape(value)}"`)
-    .join(" ");
+    .join(' ');
 
   // claude mcp add <name> <command> [args...] --env KEY=VALUE
-  return `claude mcp add ${serverName} ${serverConfig.command} ${serverConfig.args.join(" ")} ${envFlags}`;
+  return `claude mcp add ${serverName} ${serverConfig.command} ${serverConfig.args.join(' ')} ${envFlags}`;
 }
 
 /**
  * Generate configuration based on client type
  */
 export function generateClientConfig(config: WizardConfig): {
-  type: "json" | "cli" | "instructions";
+  type: 'json' | 'cli' | 'instructions';
   content: string;
   configPath?: string;
   cliCommand?: string;
@@ -89,9 +89,9 @@ export function generateClientConfig(config: WizardConfig): {
   const clientInfo = MCP_CLIENT_INFO[config.client];
 
   // Claude Code supports CLI installation
-  if (config.client === "claude-code") {
+  if (config.client === 'claude-code') {
     return {
-      type: "cli",
+      type: 'cli',
       content: generateMcpServersJson(config),
       cliCommand: generateClaudeCodeCommand(config),
       configPath: clientInfo.configPath,
@@ -99,9 +99,9 @@ export function generateClientConfig(config: WizardConfig): {
   }
 
   // Most clients use mcpServers JSON format
-  if (config.client !== "generic") {
+  if (config.client !== 'generic') {
     return {
-      type: "json",
+      type: 'json',
       content: generateMcpServersJson(config),
       configPath: clientInfo.configPath,
     };
@@ -109,7 +109,7 @@ export function generateClientConfig(config: WizardConfig): {
 
   // Generic: just provide the server config
   return {
-    type: "instructions",
+    type: 'instructions',
     content: generateMcpServersJson(config),
   };
 }
@@ -121,7 +121,7 @@ export function generateClientConfig(config: WizardConfig): {
  * Uses URL-safe Base64 encoding to handle characters that may be
  * problematic in query strings (+, /, =)
  */
-export function generateClaudeDeepLink(config: WizardConfig, serverName = "gitlab"): string {
+export function generateClaudeDeepLink(config: WizardConfig, serverName = 'gitlab'): string {
   const serverConfig = generateServerConfig(config);
 
   const configObject = {
@@ -131,10 +131,10 @@ export function generateClaudeDeepLink(config: WizardConfig, serverName = "gitla
 
   // URL-safe Base64: replace + with -, / with _, and remove = padding
   const base64Config = Buffer.from(JSON.stringify(configObject))
-    .toString("base64")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
 
   return `claude://settings/mcp/add?config=${base64Config}`;
 }

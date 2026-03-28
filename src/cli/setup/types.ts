@@ -2,28 +2,28 @@
  * Types for the unified setup wizard
  */
 
-import { InstallableClient, ClientDetectionResult } from "../install/types";
-import { DockerStatusResult, GitLabInstance } from "../docker/types";
+import { InstallableClient, ClientDetectionResult } from '../install/types';
+import { DockerStatusResult, GitLabInstance } from '../docker/types';
 
 /**
  * Setup mode - what the user wants to do
  */
-export type SetupMode = "configure-existing" | "local" | "server";
+export type SetupMode = 'configure-existing' | 'local' | 'server';
 
 /**
  * Transport mode for the MCP server
  */
-export type TransportMode = "stdio" | "sse";
+export type TransportMode = 'stdio' | 'sse';
 
 /**
  * Tool configuration mode
  */
-export type ToolConfigMode = "preset" | "manual" | "advanced";
+export type ToolConfigMode = 'preset' | 'manual' | 'advanced';
 
 /**
  * Docker deployment type
  */
-export type DockerDeploymentType = "standalone" | "external-db" | "compose-bundle";
+export type DockerDeploymentType = 'standalone' | 'external-db' | 'compose-bundle';
 
 /**
  * Discovery result from environment detection
@@ -146,7 +146,7 @@ export interface AdvancedSetting {
   /** Default value */
   defaultValue: string;
   /** Setting type */
-  type: "text" | "boolean" | "select" | "password";
+  type: 'text' | 'boolean' | 'select' | 'password';
   /** Options for select type */
   options?: { value: string; label: string }[];
   /** Whether this is a sensitive value (password, token) */

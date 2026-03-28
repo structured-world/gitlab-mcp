@@ -42,7 +42,7 @@ export interface RequestStack {
   action?: string;
 
   /** GitLab API response status (200, 404, etc.) or special values */
-  gitlabStatus?: number | "timeout" | "error";
+  gitlabStatus?: number | 'timeout' | 'error';
 
   /** Time spent waiting for GitLab API response in milliseconds */
   gitlabDuration?: number;
@@ -63,15 +63,15 @@ export interface RequestStack {
  * Connection close reason types
  */
 export type ConnectionCloseReason =
-  | "client_disconnect"
-  | "idle_timeout"
-  | "server_shutdown"
-  | "transport_error"
-  | "auth_expired"
-  | "session_closed"
-  | "destroyed"
-  | "normal_close"
-  | "heartbeat_failed"
+  | 'client_disconnect'
+  | 'idle_timeout'
+  | 'server_shutdown'
+  | 'transport_error'
+  | 'auth_expired'
+  | 'session_closed'
+  | 'destroyed'
+  | 'normal_close'
+  | 'heartbeat_failed'
   | `peer_reset:${string}`;
 
 /**
@@ -184,9 +184,9 @@ export interface ConnectionCloseEntry {
 /**
  * Log format mode configuration
  */
-export type LogFormat = "condensed" | "verbose";
+export type LogFormat = 'condensed' | 'verbose';
 
 /**
  * Default log format
  */
-export const DEFAULT_LOG_FORMAT: LogFormat = "condensed";
+export const DEFAULT_LOG_FORMAT: LogFormat = 'condensed';

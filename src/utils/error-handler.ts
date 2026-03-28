@@ -8,15 +8,15 @@
  * actual GitLab instance capabilities, not static mappings.
  */
 
-import { ConnectionManager } from "../services/ConnectionManager.js";
-import { GitLabFeatures, GitLabTier as InternalTier } from "../services/GitLabVersionDetector.js";
-import { parseVersion } from "./version.js";
+import { ConnectionManager } from '../services/ConnectionManager.js';
+import { GitLabFeatures, GitLabTier as InternalTier } from '../services/GitLabVersionDetector.js';
+import { parseVersion } from './version.js';
 
 /**
  * Display-friendly tier type with capitalized values for API responses.
  * Distinct from InternalTier (lowercase) - converted via normalizeTier().
  */
-export type GitLabTier = "Free" | "Premium" | "Ultimate";
+export type GitLabTier = 'Free' | 'Premium' | 'Ultimate';
 
 // ============================================================================
 // Error Types
@@ -43,11 +43,11 @@ export interface StructuredError {
  */
 export interface ActionValidationError extends StructuredError {
   error_code:
-    | "MISSING_REQUIRED_FIELD"
-    | "INVALID_ACTION"
-    | "FIELD_NOT_ALLOWED"
-    | "TYPE_MISMATCH"
-    | "VALIDATION_ERROR";
+    | 'MISSING_REQUIRED_FIELD'
+    | 'INVALID_ACTION'
+    | 'FIELD_NOT_ALLOWED'
+    | 'TYPE_MISMATCH'
+    | 'VALIDATION_ERROR';
   /** Fields that are missing but required */
   missing_fields?: string[];
   /** Fields with invalid values */
@@ -80,7 +80,7 @@ export interface TierAlternative {
  * Error for tier-restricted features
  */
 export interface TierRestrictedError extends StructuredError {
-  error_code: "TIER_RESTRICTED";
+  error_code: 'TIER_RESTRICTED';
   /** HTTP status code from GitLab */
   http_status: number;
   /** Required tier for this feature */
@@ -101,7 +101,7 @@ export interface TierRestrictedError extends StructuredError {
  * Error for permission denied (not tier-related)
  */
 export interface PermissionDeniedError extends StructuredError {
-  error_code: "PERMISSION_DENIED";
+  error_code: 'PERMISSION_DENIED';
   /** HTTP status code from GitLab */
   http_status: number;
   /** Required access level */
@@ -114,7 +114,7 @@ export interface PermissionDeniedError extends StructuredError {
  * Error for resource not found
  */
 export interface NotFoundError extends StructuredError {
-  error_code: "NOT_FOUND";
+  error_code: 'NOT_FOUND';
   /** HTTP status code from GitLab */
   http_status: number;
   /** Resource type that wasn't found */
@@ -127,7 +127,7 @@ export interface NotFoundError extends StructuredError {
  * Generic API error
  */
 export interface ApiError extends StructuredError {
-  error_code: "API_ERROR" | "RATE_LIMITED" | "SERVER_ERROR";
+  error_code: 'API_ERROR' | 'RATE_LIMITED' | 'SERVER_ERROR';
   /** HTTP status code from GitLab */
   http_status: number;
   /** Raw error from GitLab */
@@ -138,7 +138,7 @@ export interface ApiError extends StructuredError {
  * Error for version-restricted widget parameters
  */
 export interface VersionRestrictedError extends StructuredError {
-  error_code: "VERSION_RESTRICTED";
+  error_code: 'VERSION_RESTRICTED';
   /** Widget type that is restricted */
   widget: string;
   /** Parameter name that maps to the widget */
@@ -159,7 +159,7 @@ export interface VersionRestrictedError extends StructuredError {
  * Timeout error for API requests that exceeded the timeout limit
  */
 export interface TimeoutError extends StructuredError {
-  error_code: "TIMEOUT";
+  error_code: 'TIMEOUT';
   /** Timeout duration in milliseconds */
   timeout_ms: number;
   /** Whether the request can be retried (idempotent operation) */
@@ -214,226 +214,226 @@ const FEATURE_METADATA: Record<
   }
 > = {
   workItems: {
-    name: "Work Items",
-    requiredTier: "Free",
-    docsUrl: "https://docs.gitlab.com/ee/user/project/work_items/",
+    name: 'Work Items',
+    requiredTier: 'Free',
+    docsUrl: 'https://docs.gitlab.com/ee/user/project/work_items/',
     alternatives: [],
   },
   epics: {
-    name: "Epics",
-    requiredTier: "Premium",
-    docsUrl: "https://docs.gitlab.com/ee/user/group/epics/",
+    name: 'Epics',
+    requiredTier: 'Premium',
+    docsUrl: 'https://docs.gitlab.com/ee/user/group/epics/',
     alternatives: [
       {
-        action: "Use issues for tracking",
-        description: "Create issues with labels to organize work instead of epics",
-        available_on: "Free",
+        action: 'Use issues for tracking',
+        description: 'Create issues with labels to organize work instead of epics',
+        available_on: 'Free',
       },
       {
-        action: "Use milestones",
-        description: "Group related issues under milestones for release planning",
-        available_on: "Free",
+        action: 'Use milestones',
+        description: 'Group related issues under milestones for release planning',
+        available_on: 'Free',
       },
     ],
   },
   iterations: {
-    name: "Iterations",
-    requiredTier: "Premium",
-    docsUrl: "https://docs.gitlab.com/ee/user/group/iterations/",
+    name: 'Iterations',
+    requiredTier: 'Premium',
+    docsUrl: 'https://docs.gitlab.com/ee/user/group/iterations/',
     alternatives: [
       {
-        action: "Use milestones",
-        description: "Use milestones to track time-boxed work periods",
-        available_on: "Free",
+        action: 'Use milestones',
+        description: 'Use milestones to track time-boxed work periods',
+        available_on: 'Free',
       },
     ],
   },
   roadmaps: {
-    name: "Roadmaps",
-    requiredTier: "Premium",
-    docsUrl: "https://docs.gitlab.com/ee/user/group/roadmap/",
+    name: 'Roadmaps',
+    requiredTier: 'Premium',
+    docsUrl: 'https://docs.gitlab.com/ee/user/group/roadmap/',
     alternatives: [
       {
-        action: "Use milestone views",
-        description: "View milestones timeline for basic roadmap functionality",
-        available_on: "Free",
+        action: 'Use milestone views',
+        description: 'View milestones timeline for basic roadmap functionality',
+        available_on: 'Free',
       },
     ],
   },
   portfolioManagement: {
-    name: "Portfolio Management",
-    requiredTier: "Ultimate",
-    docsUrl: "https://docs.gitlab.com/ee/user/group/planning_hierarchy/",
+    name: 'Portfolio Management',
+    requiredTier: 'Ultimate',
+    docsUrl: 'https://docs.gitlab.com/ee/user/group/planning_hierarchy/',
     alternatives: [
       {
-        action: "Use group-level milestones",
-        description: "Track progress across projects using group milestones",
-        available_on: "Free",
+        action: 'Use group-level milestones',
+        description: 'Track progress across projects using group milestones',
+        available_on: 'Free',
       },
     ],
   },
   advancedSearch: {
-    name: "Advanced Search",
-    requiredTier: "Premium",
-    docsUrl: "https://docs.gitlab.com/ee/user/search/advanced_search.html",
+    name: 'Advanced Search',
+    requiredTier: 'Premium',
+    docsUrl: 'https://docs.gitlab.com/ee/user/search/advanced_search.html',
     alternatives: [
       {
-        action: "Use basic search",
-        description: "Use standard GitLab search functionality",
-        available_on: "Free",
+        action: 'Use basic search',
+        description: 'Use standard GitLab search functionality',
+        available_on: 'Free',
       },
     ],
   },
   codeReview: {
-    name: "Code Review Analytics",
-    requiredTier: "Premium",
-    docsUrl: "https://docs.gitlab.com/ee/user/analytics/code_review_analytics.html",
+    name: 'Code Review Analytics',
+    requiredTier: 'Premium',
+    docsUrl: 'https://docs.gitlab.com/ee/user/analytics/code_review_analytics.html',
     alternatives: [],
   },
   securityDashboard: {
-    name: "Security Dashboard",
-    requiredTier: "Ultimate",
-    docsUrl: "https://docs.gitlab.com/ee/user/application_security/security_dashboard/",
+    name: 'Security Dashboard',
+    requiredTier: 'Ultimate',
+    docsUrl: 'https://docs.gitlab.com/ee/user/application_security/security_dashboard/',
     alternatives: [],
   },
   complianceFramework: {
-    name: "Compliance Framework",
-    requiredTier: "Ultimate",
-    docsUrl: "https://docs.gitlab.com/ee/user/project/settings/compliance_frameworks.html",
+    name: 'Compliance Framework',
+    requiredTier: 'Ultimate',
+    docsUrl: 'https://docs.gitlab.com/ee/user/project/settings/compliance_frameworks.html',
     alternatives: [],
   },
   valueStreamAnalytics: {
-    name: "Value Stream Analytics",
-    requiredTier: "Premium",
-    docsUrl: "https://docs.gitlab.com/ee/user/group/value_stream_analytics/",
+    name: 'Value Stream Analytics',
+    requiredTier: 'Premium',
+    docsUrl: 'https://docs.gitlab.com/ee/user/group/value_stream_analytics/',
     alternatives: [],
   },
   customFields: {
-    name: "Custom Fields",
-    requiredTier: "Ultimate",
-    docsUrl: "https://docs.gitlab.com/ee/user/project/working_with_projects.html",
+    name: 'Custom Fields',
+    requiredTier: 'Ultimate',
+    docsUrl: 'https://docs.gitlab.com/ee/user/project/working_with_projects.html',
     alternatives: [
       {
-        action: "Use labels",
-        description: "Use labels to categorize and tag work items",
-        available_on: "Free",
+        action: 'Use labels',
+        description: 'Use labels to categorize and tag work items',
+        available_on: 'Free',
       },
     ],
   },
   okrs: {
-    name: "OKRs (Objectives and Key Results)",
-    requiredTier: "Ultimate",
-    docsUrl: "https://docs.gitlab.com/ee/user/okrs/",
+    name: 'OKRs (Objectives and Key Results)',
+    requiredTier: 'Ultimate',
+    docsUrl: 'https://docs.gitlab.com/ee/user/okrs/',
     alternatives: [
       {
-        action: "Use issues with labels",
-        description: "Track objectives as issues with specific labels",
-        available_on: "Free",
+        action: 'Use issues with labels',
+        description: 'Track objectives as issues with specific labels',
+        available_on: 'Free',
       },
     ],
   },
   healthStatus: {
-    name: "Health Status",
-    requiredTier: "Ultimate",
-    docsUrl: "https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#health-status",
+    name: 'Health Status',
+    requiredTier: 'Ultimate',
+    docsUrl: 'https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#health-status',
     alternatives: [
       {
-        action: "Use labels for status",
+        action: 'Use labels for status',
         description: "Create labels like 'on-track', 'at-risk', 'needs-attention'",
-        available_on: "Free",
+        available_on: 'Free',
       },
     ],
   },
   weight: {
-    name: "Issue Weight",
-    requiredTier: "Premium",
-    docsUrl: "https://docs.gitlab.com/ee/user/project/issues/issue_weight.html",
+    name: 'Issue Weight',
+    requiredTier: 'Premium',
+    docsUrl: 'https://docs.gitlab.com/ee/user/project/issues/issue_weight.html',
     alternatives: [
       {
-        action: "Use labels for estimation",
+        action: 'Use labels for estimation',
         description: "Create labels like 'size::S', 'size::M', 'size::L' for estimation",
-        available_on: "Free",
+        available_on: 'Free',
       },
     ],
   },
   multiLevelEpics: {
-    name: "Multi-level Epics",
-    requiredTier: "Ultimate",
+    name: 'Multi-level Epics',
+    requiredTier: 'Ultimate',
     docsUrl:
-      "https://docs.gitlab.com/ee/user/group/epics/manage_epics.html#multi-level-child-epics",
+      'https://docs.gitlab.com/ee/user/group/epics/manage_epics.html#multi-level-child-epics',
     alternatives: [
       {
-        action: "Use flat epics",
-        description: "Organize work with single-level epics (Premium)",
-        available_on: "Premium",
+        action: 'Use flat epics',
+        description: 'Organize work with single-level epics (Premium)',
+        available_on: 'Premium',
       },
     ],
   },
   serviceDesk: {
-    name: "Service Desk",
-    requiredTier: "Premium",
-    docsUrl: "https://docs.gitlab.com/ee/user/project/service_desk/",
+    name: 'Service Desk',
+    requiredTier: 'Premium',
+    docsUrl: 'https://docs.gitlab.com/ee/user/project/service_desk/',
     alternatives: [],
   },
   requirements: {
-    name: "Requirements Management",
-    requiredTier: "Ultimate",
-    docsUrl: "https://docs.gitlab.com/ee/user/project/requirements/",
+    name: 'Requirements Management',
+    requiredTier: 'Ultimate',
+    docsUrl: 'https://docs.gitlab.com/ee/user/project/requirements/',
     alternatives: [
       {
-        action: "Use issues",
-        description: "Track requirements as issues with a dedicated label",
-        available_on: "Free",
+        action: 'Use issues',
+        description: 'Track requirements as issues with a dedicated label',
+        available_on: 'Free',
       },
     ],
   },
   qualityManagement: {
-    name: "Quality Management",
-    requiredTier: "Ultimate",
-    docsUrl: "https://docs.gitlab.com/ee/ci/testing/",
+    name: 'Quality Management',
+    requiredTier: 'Ultimate',
+    docsUrl: 'https://docs.gitlab.com/ee/ci/testing/',
     alternatives: [],
   },
   timeTracking: {
-    name: "Time Tracking",
-    requiredTier: "Premium",
-    docsUrl: "https://docs.gitlab.com/ee/user/project/time_tracking.html",
+    name: 'Time Tracking',
+    requiredTier: 'Premium',
+    docsUrl: 'https://docs.gitlab.com/ee/user/project/time_tracking.html',
     alternatives: [],
   },
   crmContacts: {
-    name: "CRM Contacts",
-    requiredTier: "Ultimate",
-    docsUrl: "https://docs.gitlab.com/ee/user/crm/",
+    name: 'CRM Contacts',
+    requiredTier: 'Ultimate',
+    docsUrl: 'https://docs.gitlab.com/ee/user/crm/',
     alternatives: [],
   },
   vulnerabilities: {
-    name: "Vulnerability Management",
-    requiredTier: "Ultimate",
-    docsUrl: "https://docs.gitlab.com/ee/user/application_security/vulnerabilities/",
+    name: 'Vulnerability Management',
+    requiredTier: 'Ultimate',
+    docsUrl: 'https://docs.gitlab.com/ee/user/application_security/vulnerabilities/',
     alternatives: [],
   },
   errorTracking: {
-    name: "Error Tracking",
-    requiredTier: "Ultimate",
-    docsUrl: "https://docs.gitlab.com/ee/operations/error_tracking.html",
+    name: 'Error Tracking',
+    requiredTier: 'Ultimate',
+    docsUrl: 'https://docs.gitlab.com/ee/operations/error_tracking.html',
     alternatives: [],
   },
   designManagement: {
-    name: "Design Management",
-    requiredTier: "Premium",
-    docsUrl: "https://docs.gitlab.com/ee/user/project/issues/design_management.html",
+    name: 'Design Management',
+    requiredTier: 'Premium',
+    docsUrl: 'https://docs.gitlab.com/ee/user/project/issues/design_management.html',
     alternatives: [],
   },
   linkedResources: {
-    name: "Linked Resources",
-    requiredTier: "Premium",
-    docsUrl: "https://docs.gitlab.com/ee/user/project/issues/related_issues.html",
+    name: 'Linked Resources',
+    requiredTier: 'Premium',
+    docsUrl: 'https://docs.gitlab.com/ee/user/project/issues/related_issues.html',
     alternatives: [],
   },
   emailParticipants: {
-    name: "Email Participants",
-    requiredTier: "Premium",
+    name: 'Email Participants',
+    requiredTier: 'Premium',
     docsUrl:
-      "https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#add-an-email-participant",
+      'https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#add-an-email-participant',
     alternatives: [],
   },
 };
@@ -447,7 +447,7 @@ const FEATURE_METADATA: Record<
 function detectTierRestriction(
   tool: string,
   action: string,
-  toolArgs?: Record<string, unknown>
+  toolArgs?: Record<string, unknown>,
 ): TierRestrictionInfo | null {
   let connectionManager: ConnectionManager;
   try {
@@ -462,35 +462,35 @@ function detectTierRestriction(
   const currentTier = normalizeTier(currentTierRaw);
 
   // Check for work item type restrictions
-  if (tool === "browse_work_items" || tool === "manage_work_item") {
+  if (tool === 'browse_work_items' || tool === 'manage_work_item') {
     const restriction = checkWorkItemTypeRestriction(connectionManager, toolArgs, currentTier);
     if (restriction) return restriction;
   }
 
   // Check for iterations
-  if (tool === "browse_iterations") {
-    if (!connectionManager.isFeatureAvailable("iterations")) {
-      return createRestrictionInfo("iterations", currentTier);
+  if (tool === 'browse_iterations') {
+    if (!connectionManager.isFeatureAvailable('iterations')) {
+      return createRestrictionInfo('iterations', currentTier);
     }
   }
 
   // Check for group webhooks (tool name pattern)
-  if ((tool === "browse_webhooks" || tool === "manage_webhook") && toolArgs?.scope === "group") {
+  if ((tool === 'browse_webhooks' || tool === 'manage_webhook') && toolArgs?.scope === 'group') {
     // Group webhooks require Premium - check if we have serviceDesk (Premium feature) as proxy
-    if (!connectionManager.isFeatureAvailable("serviceDesk")) {
+    if (!connectionManager.isFeatureAvailable('serviceDesk')) {
       return {
-        feature: "serviceDesk", // Using serviceDesk as proxy for Premium tier
-        name: "Group Webhooks",
-        requiredTier: "Premium",
+        feature: 'serviceDesk', // Using serviceDesk as proxy for Premium tier
+        name: 'Group Webhooks',
+        requiredTier: 'Premium',
         currentTier,
         alternatives: [
           {
-            action: "Use project-level webhooks",
-            description: "Configure webhooks on individual projects instead",
-            available_on: "Free",
+            action: 'Use project-level webhooks',
+            description: 'Configure webhooks on individual projects instead',
+            available_on: 'Free',
           },
         ],
-        docsUrl: "https://docs.gitlab.com/ee/user/project/integrations/webhooks.html",
+        docsUrl: 'https://docs.gitlab.com/ee/user/project/integrations/webhooks.html',
       };
     }
   }
@@ -504,7 +504,7 @@ function detectTierRestriction(
 function checkWorkItemTypeRestriction(
   connectionManager: ConnectionManager,
   toolArgs?: Record<string, unknown>,
-  currentTier?: GitLabTier
+  currentTier?: GitLabTier,
 ): TierRestrictionInfo | null {
   if (!toolArgs) return null;
 
@@ -512,23 +512,23 @@ function checkWorkItemTypeRestriction(
   const types = extractWorkItemTypes(toolArgs);
 
   // Check for EPIC
-  if (types.includes("EPIC")) {
-    if (!connectionManager.isFeatureAvailable("epics")) {
-      return createRestrictionInfo("epics", currentTier);
+  if (types.includes('EPIC')) {
+    if (!connectionManager.isFeatureAvailable('epics')) {
+      return createRestrictionInfo('epics', currentTier);
     }
   }
 
   // Check for OBJECTIVE/KEY_RESULT (OKRs)
-  if (types.includes("OBJECTIVE") || types.includes("KEY_RESULT")) {
-    if (!connectionManager.isFeatureAvailable("okrs")) {
-      return createRestrictionInfo("okrs", currentTier);
+  if (types.includes('OBJECTIVE') || types.includes('KEY_RESULT')) {
+    if (!connectionManager.isFeatureAvailable('okrs')) {
+      return createRestrictionInfo('okrs', currentTier);
     }
   }
 
   // Check for REQUIREMENT
-  if (types.includes("REQUIREMENT")) {
-    if (!connectionManager.isFeatureAvailable("requirements")) {
-      return createRestrictionInfo("requirements", currentTier);
+  if (types.includes('REQUIREMENT')) {
+    if (!connectionManager.isFeatureAvailable('requirements')) {
+      return createRestrictionInfo('requirements', currentTier);
     }
   }
 
@@ -543,16 +543,16 @@ function extractWorkItemTypes(toolArgs: Record<string, unknown>): string[] {
 
   // Handle 'types' array parameter (browse_work_items)
   if (Array.isArray(toolArgs.types)) {
-    types.push(...toolArgs.types.map(t => String(t).toUpperCase()));
+    types.push(...toolArgs.types.map((t) => String(t).toUpperCase()));
   }
 
   // Handle 'workItemType' string parameter (manage_work_item)
-  if (typeof toolArgs.workItemType === "string") {
+  if (typeof toolArgs.workItemType === 'string') {
     types.push(toolArgs.workItemType.toUpperCase());
   }
 
   // Handle 'type' string parameter (alternative naming)
-  if (typeof toolArgs.type === "string") {
+  if (typeof toolArgs.type === 'string') {
     types.push(toolArgs.type.toUpperCase());
   }
 
@@ -564,7 +564,7 @@ function extractWorkItemTypes(toolArgs: Record<string, unknown>): string[] {
  */
 function createRestrictionInfo(
   feature: keyof GitLabFeatures,
-  currentTier?: GitLabTier
+  currentTier?: GitLabTier,
 ): TierRestrictionInfo {
   const metadata = FEATURE_METADATA[feature];
   return {
@@ -584,9 +584,9 @@ function createRestrictionInfo(
  */
 export function normalizeTier(tier: string | InternalTier): GitLabTier {
   const lower = tier.toLowerCase();
-  if (lower === "ultimate" || lower === "gold") return "Ultimate";
-  if (lower === "premium" || lower === "silver") return "Premium";
-  return "Free";
+  if (lower === 'ultimate' || lower === 'gold') return 'Ultimate';
+  if (lower === 'premium' || lower === 'silver') return 'Premium';
+  return 'Free';
 }
 
 // ============================================================================
@@ -616,10 +616,10 @@ export function handleGitLabError(
   error: GitLabApiErrorResponse,
   tool: string,
   action: string,
-  toolArgs?: Record<string, unknown>
+  toolArgs?: Record<string, unknown>,
 ): GitLabStructuredError {
   const { status, message, error: errorMsg, error_description } = error;
-  const rawMessage = message ?? errorMsg ?? error_description ?? "Unknown error";
+  const rawMessage = message ?? errorMsg ?? error_description ?? 'Unknown error';
 
   // 403 Forbidden - could be tier restriction or permission issue
   if (status === 403) {
@@ -640,12 +640,12 @@ export function handleGitLabError(
   // 429 Rate Limited
   if (status === 429) {
     return {
-      error_code: "RATE_LIMITED",
+      error_code: 'RATE_LIMITED',
       tool,
       action,
       http_status: status,
-      message: "Rate limit exceeded. Please wait before retrying.",
-      suggested_fix: "Wait a few minutes and try again, or reduce request frequency",
+      message: 'Rate limit exceeded. Please wait before retrying.',
+      suggested_fix: 'Wait a few minutes and try again, or reduce request frequency',
       gitlab_error: rawMessage,
     };
   }
@@ -653,24 +653,24 @@ export function handleGitLabError(
   // 5xx Server Errors
   if (status >= 500) {
     return {
-      error_code: "SERVER_ERROR",
+      error_code: 'SERVER_ERROR',
       tool,
       action,
       http_status: status,
-      message: "GitLab server error. The service may be temporarily unavailable.",
-      suggested_fix: "Wait and retry. If the problem persists, check GitLab status page.",
+      message: 'GitLab server error. The service may be temporarily unavailable.',
+      suggested_fix: 'Wait and retry. If the problem persists, check GitLab status page.',
       gitlab_error: rawMessage,
     };
   }
 
   // Generic API error for other status codes
   return {
-    error_code: "API_ERROR",
+    error_code: 'API_ERROR',
     tool,
     action,
     http_status: status,
     message: rawMessage,
-    suggested_fix: "Check the GitLab API documentation for this endpoint",
+    suggested_fix: 'Check the GitLab API documentation for this endpoint',
     gitlab_error: rawMessage,
   };
 }
@@ -682,10 +682,10 @@ function createTierRestrictedError(
   tool: string,
   action: string,
   status: number,
-  restriction: TierRestrictionInfo
+  restriction: TierRestrictionInfo,
 ): TierRestrictedError {
   return {
-    error_code: "TIER_RESTRICTED",
+    error_code: 'TIER_RESTRICTED',
     tool,
     action,
     http_status: status,
@@ -699,7 +699,7 @@ function createTierRestrictedError(
         : `Upgrade to GitLab ${restriction.requiredTier} to access this feature`,
     alternatives: restriction.alternatives.length > 0 ? restriction.alternatives : undefined,
     docs_url: restriction.docsUrl,
-    upgrade_url: "https://about.gitlab.com/pricing/",
+    upgrade_url: 'https://about.gitlab.com/pricing/',
   };
 }
 
@@ -710,19 +710,19 @@ function createPermissionDeniedError(
   tool: string,
   action: string,
   status: number,
-  rawMessage: string
+  rawMessage: string,
 ): PermissionDeniedError {
   const baseSuggestedFix =
-    "Check your access level for this project/group. Reporter access or higher may be required.";
+    'Check your access level for this project/group. Reporter access or higher may be required.';
 
   // Include raw message if it provides additional context
   const suggestedFix =
-    rawMessage && rawMessage !== "Unknown error" && !rawMessage.includes("403")
+    rawMessage && rawMessage !== 'Unknown error' && !rawMessage.includes('403')
       ? `${baseSuggestedFix} GitLab message: ${rawMessage}`
       : baseSuggestedFix;
 
   return {
-    error_code: "PERMISSION_DENIED",
+    error_code: 'PERMISSION_DENIED',
     tool,
     action,
     http_status: status,
@@ -730,9 +730,9 @@ function createPermissionDeniedError(
     suggested_fix: suggestedFix,
     alternatives: [
       {
-        action: "Verify your access level",
-        description: "Check your role in the project settings or contact a project maintainer",
-        available_on: "Free",
+        action: 'Verify your access level',
+        description: 'Check your role in the project settings or contact a project maintainer',
+        available_on: 'Free',
       },
     ],
   };
@@ -745,7 +745,7 @@ function createNotFoundError(
   tool: string,
   action: string,
   status: number,
-  rawMessage: string
+  rawMessage: string,
 ): NotFoundError {
   // Try to extract resource info from the message
   let resourceType: string | undefined;
@@ -753,18 +753,18 @@ function createNotFoundError(
 
   const lowerMessage = rawMessage.toLowerCase();
 
-  if (lowerMessage.includes("project")) {
-    resourceType = "project";
-  } else if (lowerMessage.includes("merge request") || lowerMessage.includes("mr")) {
-    resourceType = "merge_request";
-  } else if (lowerMessage.includes("issue")) {
-    resourceType = "issue";
-  } else if (lowerMessage.includes("pipeline")) {
-    resourceType = "pipeline";
-  } else if (lowerMessage.includes("branch")) {
-    resourceType = "branch";
-  } else if (lowerMessage.includes("user")) {
-    resourceType = "user";
+  if (lowerMessage.includes('project')) {
+    resourceType = 'project';
+  } else if (lowerMessage.includes('merge request') || lowerMessage.includes('mr')) {
+    resourceType = 'merge_request';
+  } else if (lowerMessage.includes('issue')) {
+    resourceType = 'issue';
+  } else if (lowerMessage.includes('pipeline')) {
+    resourceType = 'pipeline';
+  } else if (lowerMessage.includes('branch')) {
+    resourceType = 'branch';
+  } else if (lowerMessage.includes('user')) {
+    resourceType = 'user';
   }
 
   // Try to extract path-like identifier first (e.g., "'group/project'")
@@ -779,7 +779,7 @@ function createNotFoundError(
   if (!resourceId) {
     // First try: look for ID after resource type keyword (e.g., "Project 123")
     const contextMatch = rawMessage.match(
-      /(?:project|issue|merge.?request|mr|pipeline|branch|user|group)\s+#?(\d+)/i
+      /(?:project|issue|merge.?request|mr|pipeline|branch|user|group)\s+#?(\d+)/i,
     );
     if (contextMatch) {
       resourceId = contextMatch[1];
@@ -793,13 +793,13 @@ function createNotFoundError(
   }
 
   return {
-    error_code: "NOT_FOUND",
+    error_code: 'NOT_FOUND',
     tool,
     action,
     http_status: status,
     message: "Resource not found or you don't have access to it",
     suggested_fix:
-      "Verify the ID/path is correct and you have at least Reporter access to the project",
+      'Verify the ID/path is correct and you have at least Reporter access to the project',
     resource_type: resourceType,
     resource_id: resourceId,
   };
@@ -816,15 +816,15 @@ export function createMissingFieldsError(
   tool: string,
   action: string,
   missingFields: string[],
-  actionRequiredFields?: Record<string, string[]>
+  actionRequiredFields?: Record<string, string[]>,
 ): ActionValidationError {
   return {
-    error_code: "MISSING_REQUIRED_FIELD",
+    error_code: 'MISSING_REQUIRED_FIELD',
     tool,
     action,
-    message: `Missing required field(s): ${missingFields.join(", ")}`,
+    message: `Missing required field(s): ${missingFields.join(', ')}`,
     missing_fields: missingFields,
-    suggested_fix: `Add required fields: ${missingFields.join(", ")}`,
+    suggested_fix: `Add required fields: ${missingFields.join(', ')}`,
     action_required_fields: actionRequiredFields,
   };
 }
@@ -835,14 +835,14 @@ export function createMissingFieldsError(
 export function createInvalidActionError(
   tool: string,
   action: string,
-  validActions: string[]
+  validActions: string[],
 ): ActionValidationError {
   return {
-    error_code: "INVALID_ACTION",
+    error_code: 'INVALID_ACTION',
     tool,
     action,
-    message: `Invalid action '${action}'. Valid actions are: ${validActions.join(", ")}`,
-    suggested_fix: `Use one of the valid actions: ${validActions.join(", ")}`,
+    message: `Invalid action '${action}'. Valid actions are: ${validActions.join(', ')}`,
+    suggested_fix: `Use one of the valid actions: ${validActions.join(', ')}`,
     valid_actions: validActions,
   };
 }
@@ -855,10 +855,10 @@ export function createTypeMismatchError(
   action: string,
   field: string,
   expected: string,
-  received: string
+  received: string,
 ): ActionValidationError {
   return {
-    error_code: "TYPE_MISMATCH",
+    error_code: 'TYPE_MISMATCH',
     tool,
     action,
     message: `Type mismatch for field '${field}': expected ${expected}, got ${received}`,
@@ -873,14 +873,14 @@ export function createTypeMismatchError(
 export function createValidationError(
   tool: string,
   action: string,
-  zodMessage: string
+  zodMessage: string,
 ): ActionValidationError {
   return {
-    error_code: "VALIDATION_ERROR",
+    error_code: 'VALIDATION_ERROR',
     tool,
     action,
     message: zodMessage,
-    suggested_fix: "Check the tool documentation for correct parameter format",
+    suggested_fix: 'Check the tool documentation for correct parameter format',
   };
 }
 
@@ -900,14 +900,14 @@ export function createTimeoutError(
   tool: string,
   action: string,
   timeoutMs: number,
-  retryable: boolean = false
+  retryable: boolean = false,
 ): TimeoutError {
   const retryHint = retryable
-    ? " This is a read-only operation - you can safely retry."
-    : " This is a write operation - check if it completed before retrying.";
+    ? ' This is a read-only operation - you can safely retry.'
+    : ' This is a write operation - check if it completed before retrying.';
 
   return {
-    error_code: "TIMEOUT",
+    error_code: 'TIMEOUT',
     tool,
     action,
     timeout_ms: timeoutMs,
@@ -941,7 +941,7 @@ export function createVersionRestrictedError(
   requiredVersion: string,
   detectedVersion: string,
   requiredTier?: GitLabTier,
-  currentTier?: GitLabTier
+  currentTier?: GitLabTier,
 ): VersionRestrictedError {
   // Determine which constraints are violated
   const tierHierarchy: Record<GitLabTier, number> = { Free: 0, Premium: 1, Ultimate: 2 };
@@ -968,7 +968,7 @@ export function createVersionRestrictedError(
   }
 
   return {
-    error_code: "VERSION_RESTRICTED",
+    error_code: 'VERSION_RESTRICTED',
     tool,
     action,
     widget,
@@ -979,7 +979,7 @@ export function createVersionRestrictedError(
     current_tier: isTierInsufficient ? currentTier : undefined,
     message,
     suggested_fix: suggestedFix,
-    docs_url: "https://docs.gitlab.com/ee/user/project/work_items/",
+    docs_url: 'https://docs.gitlab.com/ee/user/project/work_items/',
   };
 }
 
@@ -994,7 +994,7 @@ export function createVersionRestrictedError(
  * Exported for direct unit testing.
  */
 export function parseGitLabApiError(
-  errorMessage: string
+  errorMessage: string,
 ): { status: number; message: string } | null {
   // Match GitLab API error anywhere in the string (handles wrapped errors)
   // Pattern: "GitLab API error: <status> [<statusText>] [- <details>]"
@@ -1004,8 +1004,8 @@ export function parseGitLabApiError(
   if (!match) return null;
 
   const status = parseInt(match[1], 10);
-  const statusText = match[2]?.trim() ?? "";
-  const details = match[3]?.trim() ?? "";
+  const statusText = match[2]?.trim() ?? '';
+  const details = match[3]?.trim() ?? '';
 
   let message: string;
   if (statusText && details) {
@@ -1044,7 +1044,7 @@ export class StructuredToolError extends Error {
 
   constructor(structuredError: GitLabStructuredError) {
     super(structuredError.message);
-    this.name = "StructuredToolError";
+    this.name = 'StructuredToolError';
     this.structuredError = structuredError;
 
     // Maintain proper stack trace

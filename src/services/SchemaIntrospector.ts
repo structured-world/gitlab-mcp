@@ -1,6 +1,6 @@
-import { GraphQLClient } from "../graphql/client";
-import { gql } from "graphql-tag";
-import { logDebug, logInfo, logWarn } from "../logger";
+import { GraphQLClient } from '../graphql/client';
+import { gql } from 'graphql-tag';
+import { logDebug, logInfo, logWarn } from '../logger';
 
 export interface FieldInfo {
   name: string;
@@ -79,28 +79,28 @@ export class SchemaIntrospector {
     }
 
     try {
-      logDebug("Introspecting GitLab GraphQL schema...");
+      logDebug('Introspecting GitLab GraphQL schema...');
 
       const result = await this.client.request<IntrospectionResult>(INTROSPECTION_QUERY);
       const types = result.__schema.types;
 
       // Extract WorkItem widget types
-      const workItemWidgetType = types.find(type => type.name === "WorkItemWidgetType");
-      const workItemWidgetTypes = workItemWidgetType?.enumValues?.map(value => value.name) ?? [];
+      const workItemWidgetType = types.find((type) => type.name === 'WorkItemWidgetType');
+      const workItemWidgetTypes = workItemWidgetType?.enumValues?.map((value) => value.name) ?? [];
 
       // Build type definitions map
       const typeDefinitions = new Map<string, TypeInfo>();
 
       // Focus on WorkItem-related types
       const relevantTypes = types.filter(
-        type =>
+        (type) =>
           type.name &&
-          (type.name.startsWith("WorkItem") ||
-            type.name.includes("Widget") ||
-            type.name === "AwardEmoji" ||
-            type.name === "Milestone" ||
-            type.name === "User" ||
-            type.name === "Label")
+          (type.name.startsWith('WorkItem') ||
+            type.name.includes('Widget') ||
+            type.name === 'AwardEmoji' ||
+            type.name === 'Milestone' ||
+            type.name === 'User' ||
+            type.name === 'Label'),
       );
 
       for (const type of relevantTypes) {
@@ -123,7 +123,7 @@ export class SchemaIntrospector {
         availableFeatures,
       };
 
-      logInfo("GraphQL schema introspection completed", {
+      logInfo('GraphQL schema introspection completed', {
         widgetTypes: workItemWidgetTypes.length,
         typeDefinitions: typeDefinitions.size,
         features: availableFeatures.size,
@@ -131,27 +131,27 @@ export class SchemaIntrospector {
 
       return this.cachedSchema;
     } catch (error) {
-      logWarn("Schema introspection failed, using fallback schema info", {
+      logWarn('Schema introspection failed, using fallback schema info', {
         err: error as Error,
       });
 
       // Provide fallback schema info when introspection fails
       this.cachedSchema = {
         workItemWidgetTypes: [
-          "ASSIGNEES",
-          "LABELS",
-          "MILESTONE",
-          "DESCRIPTION",
-          "START_AND_DUE_DATE",
-          "WEIGHT",
-          "TIME_TRACKING",
-          "HEALTH_STATUS",
-          "COLOR",
-          "NOTIFICATIONS",
-          "NOTES",
+          'ASSIGNEES',
+          'LABELS',
+          'MILESTONE',
+          'DESCRIPTION',
+          'START_AND_DUE_DATE',
+          'WEIGHT',
+          'TIME_TRACKING',
+          'HEALTH_STATUS',
+          'COLOR',
+          'NOTIFICATIONS',
+          'NOTES',
         ],
         typeDefinitions: new Map(),
-        availableFeatures: new Set(["workItems", "epics", "issues"]),
+        availableFeatures: new Set(['workItems', 'epics', 'issues']),
       };
 
       return this.cachedSchema;
@@ -160,14 +160,14 @@ export class SchemaIntrospector {
 
   public isWidgetTypeAvailable(widgetType: string): boolean {
     if (!this.cachedSchema) {
-      throw new Error("Schema not introspected yet. Call introspectSchema() first.");
+      throw new Error('Schema not introspected yet. Call introspectSchema() first.');
     }
     return this.cachedSchema.availableFeatures.has(widgetType);
   }
 
   public getFieldsForType(typeName: string): FieldInfo[] {
     if (!this.cachedSchema) {
-      throw new Error("Schema not introspected yet. Call introspectSchema() first.");
+      throw new Error('Schema not introspected yet. Call introspectSchema() first.');
     }
 
     const typeInfo = this.cachedSchema.typeDefinitions.get(typeName);
@@ -176,14 +176,14 @@ export class SchemaIntrospector {
     }
 
     // Fallback field information for common widget types when full schema unavailable
-    if (typeName === "WorkItemWidgetAssignees") {
-      return [{ name: "assignees", type: { name: "UserConnection", kind: "OBJECT" } }];
+    if (typeName === 'WorkItemWidgetAssignees') {
+      return [{ name: 'assignees', type: { name: 'UserConnection', kind: 'OBJECT' } }];
     }
-    if (typeName === "WorkItemWidgetLabels") {
-      return [{ name: "labels", type: { name: "LabelConnection", kind: "OBJECT" } }];
+    if (typeName === 'WorkItemWidgetLabels') {
+      return [{ name: 'labels', type: { name: 'LabelConnection', kind: 'OBJECT' } }];
     }
-    if (typeName === "WorkItemWidgetMilestone") {
-      return [{ name: "milestone", type: { name: "Milestone", kind: "OBJECT" } }];
+    if (typeName === 'WorkItemWidgetMilestone') {
+      return [{ name: 'milestone', type: { name: 'Milestone', kind: 'OBJECT' } }];
     }
 
     return [];
@@ -191,19 +191,19 @@ export class SchemaIntrospector {
 
   public hasField(typeName: string, fieldName: string): boolean {
     const fields = this.getFieldsForType(typeName);
-    return fields.some(field => field.name === fieldName);
+    return fields.some((field) => field.name === fieldName);
   }
 
   public getAvailableWidgetTypes(): string[] {
     if (!this.cachedSchema) {
-      throw new Error("Schema not introspected yet. Call introspectSchema() first.");
+      throw new Error('Schema not introspected yet. Call introspectSchema() first.');
     }
     return this.cachedSchema.workItemWidgetTypes;
   }
 
   public generateSafeWidgetQuery(requestedWidgets: string[]): string {
     if (!this.cachedSchema) {
-      throw new Error("Schema not introspected yet. Call introspectSchema() first.");
+      throw new Error('Schema not introspected yet. Call introspectSchema() first.');
     }
 
     const safeWidgets: string[] = [];
@@ -225,14 +225,14 @@ export class SchemaIntrospector {
         if (safeFields.length > 0) {
           safeWidgets.push(`
             ... on ${widgetTypeName} {
-              ${safeFields.join("\n              ")}
+              ${safeFields.join('\n              ')}
             }
           `);
         }
       }
     }
 
-    return safeWidgets.join("\n");
+    return safeWidgets.join('\n');
   }
 
   private generateSafeFieldSelections(fields: FieldInfo[]): string[] {
@@ -240,15 +240,15 @@ export class SchemaIntrospector {
 
     for (const field of fields) {
       // Skip complex fields that require sub-selections for now
-      if (field.type.kind === "SCALAR" || field.type.kind === "ENUM") {
+      if (field.type.kind === 'SCALAR' || field.type.kind === 'ENUM') {
         safeFields.push(field.name);
-      } else if (field.type.kind === "OBJECT" && field.name !== "type") {
+      } else if (field.type.kind === 'OBJECT' && field.name !== 'type') {
         // Add basic object fields with simple sub-selections
-        if (field.name === "milestone") {
+        if (field.name === 'milestone') {
           safeFields.push(`${field.name} { id title state }`);
-        } else if (field.name === "assignees" || field.name === "participants") {
+        } else if (field.name === 'assignees' || field.name === 'participants') {
           safeFields.push(`${field.name} { nodes { id username } }`);
-        } else if (field.name === "labels") {
+        } else if (field.name === 'labels') {
           safeFields.push(`${field.name} { nodes { id title color } }`);
         }
       }

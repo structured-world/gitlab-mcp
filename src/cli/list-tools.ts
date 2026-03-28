@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unsafe-assignment, @typescript-eslint/no-unsafe-member-access, @typescript-eslint/no-unsafe-argument, @typescript-eslint/no-non-null-assertion, no-case-declarations */
-import * as fs from "fs";
-import * as path from "path";
-import { RegistryManager } from "../registry-manager";
-import { ToolAvailability } from "../services/ToolAvailability";
-import { EnhancedToolDefinition } from "../types";
-import { ProfileLoader, Preset, Profile } from "../profiles";
+import * as fs from 'fs';
+import * as path from 'path';
+import { RegistryManager } from '../registry-manager';
+import { ToolAvailability } from '../services/ToolAvailability';
+import { EnhancedToolDefinition } from '../types';
+import { ProfileLoader, Preset, Profile } from '../profiles';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -29,7 +29,7 @@ interface JsonSchemaProperty {
 }
 
 interface CliOptions {
-  format: "markdown" | "json" | "simple" | "export";
+  format: 'markdown' | 'json' | 'simple' | 'export';
   entity?: string;
   tool?: string;
   showEnv?: boolean;
@@ -50,7 +50,7 @@ interface CliOptions {
 function parseArgs(): CliOptions {
   const args = process.argv.slice(2);
   const options: CliOptions = {
-    format: "markdown",
+    format: 'markdown',
     showEnv: false,
     showEnvGates: false,
     verbose: false,
@@ -65,90 +65,90 @@ function parseArgs(): CliOptions {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     switch (arg) {
-      case "--json":
-        options.format = "json";
+      case '--json':
+        options.format = 'json';
         break;
-      case "--simple":
-        options.format = "simple";
+      case '--simple':
+        options.format = 'simple';
         break;
-      case "--export":
-        options.format = "export";
+      case '--export':
+        options.format = 'export';
         break;
-      case "--entity":
+      case '--entity':
         if (i + 1 >= args.length) {
-          console.error("Error: --entity flag requires a value.");
-          console.error("Usage: yarn list-tools --entity <entity_name>");
+          console.error('Error: --entity flag requires a value.');
+          console.error('Usage: yarn list-tools --entity <entity_name>');
           process.exit(1);
         }
         options.entity = args[++i];
         break;
-      case "--tool":
+      case '--tool':
         if (i + 1 >= args.length) {
-          console.error("Error: --tool flag requires a value.");
-          console.error("Usage: yarn list-tools --tool <tool_name>");
+          console.error('Error: --tool flag requires a value.');
+          console.error('Usage: yarn list-tools --tool <tool_name>');
           process.exit(1);
         }
         options.tool = args[++i];
         break;
-      case "--env":
+      case '--env':
         options.showEnv = true;
         break;
-      case "--env-gates":
+      case '--env-gates':
         options.showEnvGates = true;
         break;
-      case "--verbose":
-      case "-v":
+      case '--verbose':
+      case '-v':
         options.verbose = true;
         break;
-      case "--detail":
+      case '--detail':
         options.detail = true;
         break;
-      case "--no-examples":
+      case '--no-examples':
         options.noExamples = true;
         break;
-      case "--toc":
+      case '--toc':
         options.toc = true;
         break;
-      case "--presets":
+      case '--presets':
         options.showPresets = true;
         break;
-      case "--profiles":
+      case '--profiles':
         options.showProfiles = true;
         break;
-      case "--preset":
+      case '--preset':
         if (i + 1 >= args.length) {
-          console.error("Error: --preset flag requires a value.");
-          console.error("Usage: yarn list-tools --preset <preset_name>");
+          console.error('Error: --preset flag requires a value.');
+          console.error('Usage: yarn list-tools --preset <preset_name>');
           process.exit(1);
         }
         options.preset = args[++i];
         break;
-      case "--profile":
+      case '--profile':
         if (i + 1 >= args.length) {
-          console.error("Error: --profile flag requires a value.");
-          console.error("Usage: yarn list-tools --profile <profile_name>");
+          console.error('Error: --profile flag requires a value.');
+          console.error('Usage: yarn list-tools --profile <profile_name>');
           process.exit(1);
         }
         options.profile = args[++i];
         break;
-      case "--validate":
+      case '--validate':
         options.validate = true;
         break;
-      case "--compare":
+      case '--compare':
         if (i + 1 >= args.length) {
-          console.error("Error: --compare flag requires a value.");
-          console.error("Usage: yarn list-tools --preset <name> --compare <other_name>");
+          console.error('Error: --compare flag requires a value.');
+          console.error('Usage: yarn list-tools --preset <name> --compare <other_name>');
           process.exit(1);
         }
         options.compare = args[++i];
         break;
-      case "--help":
-      case "-h":
+      case '--help':
+      case '-h':
         printHelp();
         process.exit(0);
         break;
       default:
-        if (arg.startsWith("-")) {
+        if (arg.startsWith('-')) {
           console.error(`Error: Unrecognized option '${arg}'.`);
           console.error("Use '--help' to see available options.");
           process.exit(1);
@@ -220,17 +220,17 @@ Environment Variables:
 function resolveJsonSchemaType(prop: JsonSchemaProperty, schema: JsonSchemaProperty): string {
   // Handle $ref references
   if (prop.$ref) {
-    const refPath = prop.$ref.replace("#/properties/", "");
+    const refPath = prop.$ref.replace('#/properties/', '');
     const referencedProp = schema.properties?.[refPath];
     if (referencedProp) {
       return resolveJsonSchemaType(referencedProp, schema);
     }
-    return "reference";
+    return 'reference';
   }
 
   // Handle direct type
   if (prop.type) {
-    if (prop.type === "array" && prop.items) {
+    if (prop.type === 'array' && prop.items) {
       const itemType = resolveJsonSchemaType(prop.items, schema);
       return `${itemType}[]`;
     }
@@ -239,17 +239,17 @@ function resolveJsonSchemaType(prop: JsonSchemaProperty, schema: JsonSchemaPrope
 
   // Handle enum without explicit type (usually string)
   if (prop.enum) {
-    return "enum";
+    return 'enum';
   }
 
   // Handle union types
   if (prop.oneOf ?? prop.anyOf) {
     const unionTypes =
-      (prop.oneOf ?? prop.anyOf)?.map(option => resolveJsonSchemaType(option, schema)) ?? [];
-    return unionTypes.join(" | ");
+      (prop.oneOf ?? prop.anyOf)?.map((option) => resolveJsonSchemaType(option, schema)) ?? [];
+    return unionTypes.join(' | ');
   }
 
-  return "unknown";
+  return 'unknown';
 }
 
 function getParameterDescription(schema: JsonSchemaProperty): string[] {
@@ -260,9 +260,9 @@ function getParameterDescription(schema: JsonSchemaProperty): string[] {
       const prop = value;
       const required = schema.required?.includes(key) ?? false;
       const type = resolveJsonSchemaType(prop, schema);
-      const description = prop.description ?? "";
+      const description = prop.description ?? '';
 
-      let paramStr = `  - \`${key}\` (${type}${required ? ", required" : ", optional"})`;
+      let paramStr = `  - \`${key}\` (${type}${required ? ', required' : ', optional'})`;
       if (description) {
         paramStr += `: ${description}`;
       }
@@ -284,13 +284,13 @@ function getParameterDescription(schema: JsonSchemaProperty): string[] {
 }
 
 function printEnvironmentInfo(): void {
-  console.log("=== Environment Configuration ===\n");
-  console.log(`GITLAB_READONLY: ${process.env.GITLAB_READONLY ?? "false"}`);
-  console.log(`GITLAB_DENIED_TOOLS_REGEX: ${process.env.GITLAB_DENIED_TOOLS_REGEX ?? "(not set)"}`);
+  console.log('=== Environment Configuration ===\n');
+  console.log(`GITLAB_READONLY: ${process.env.GITLAB_READONLY ?? 'false'}`);
+  console.log(`GITLAB_DENIED_TOOLS_REGEX: ${process.env.GITLAB_DENIED_TOOLS_REGEX ?? '(not set)'}`);
   console.log(
-    `GITLAB_ALLOWED_TOOLS_REGEX: ${process.env.GITLAB_ALLOWED_TOOLS_REGEX ?? "(not set)"}`
+    `GITLAB_ALLOWED_TOOLS_REGEX: ${process.env.GITLAB_ALLOWED_TOOLS_REGEX ?? '(not set)'}`,
   );
-  console.log(`GITLAB_API_URL: ${process.env.GITLAB_API_URL ?? "https://gitlab.com"}`);
+  console.log(`GITLAB_API_URL: ${process.env.GITLAB_API_URL ?? 'https://gitlab.com'}`);
   console.log();
 }
 
@@ -312,13 +312,13 @@ function getToolTierInfo(toolName: string, action?: string): string {
   // For action-specific queries, get exact tier
   if (action) {
     const requirement = ToolAvailability.getToolRequirement(toolName, action);
-    if (!requirement) return "";
+    if (!requirement) return '';
 
     const tierBadge =
       {
-        free: "Free",
-        premium: "Premium",
-        ultimate: "Ultimate",
+        free: 'Free',
+        premium: 'Premium',
+        ultimate: 'Ultimate',
       }[requirement.requiredTier] ?? requirement.requiredTier;
 
     return `[tier: ${tierBadge}]`;
@@ -328,14 +328,14 @@ function getToolTierInfo(toolName: string, action?: string): string {
   const highestTier = ToolAvailability.getHighestTier(toolName);
   const tierBadge =
     {
-      free: "Free",
-      premium: "Premium",
-      ultimate: "Ultimate",
+      free: 'Free',
+      premium: 'Premium',
+      ultimate: 'Ultimate',
     }[highestTier] ?? highestTier;
 
   // Mark if tool has mixed tiers (default tier differs from highest tier)
   const toolReq = ToolAvailability.getActionRequirement(toolName);
-  const defaultTier = toolReq?.tier ?? "free";
+  const defaultTier = toolReq?.tier ?? 'free';
   const hasMixedTiers = highestTier !== defaultTier;
 
   if (hasMixedTiers) {
@@ -351,60 +351,60 @@ function getToolTierInfo(toolName: string, action?: string): string {
  * 7 categories reflecting functional grouping.
  */
 const ENTITY_TOOLS: Record<string, string[]> = {
-  "Projects & Repository": [
-    "browse_projects",
-    "browse_namespaces",
-    "browse_commits",
-    "browse_events",
-    "browse_files",
-    "browse_refs",
-    "manage_project",
-    "manage_namespace",
-    "manage_files",
-    "manage_ref",
-    "browse_releases",
-    "manage_release",
+  'Projects & Repository': [
+    'browse_projects',
+    'browse_namespaces',
+    'browse_commits',
+    'browse_events',
+    'browse_files',
+    'browse_refs',
+    'manage_project',
+    'manage_namespace',
+    'manage_files',
+    'manage_ref',
+    'browse_releases',
+    'manage_release',
   ],
   Collaboration: [
-    "browse_merge_requests",
-    "browse_mr_discussions",
-    "manage_merge_request",
-    "manage_mr_discussion",
-    "manage_draft_notes",
-    "browse_members",
-    "manage_member",
-    "browse_users",
-    "browse_todos",
-    "manage_todos",
+    'browse_merge_requests',
+    'browse_mr_discussions',
+    'manage_merge_request',
+    'manage_mr_discussion',
+    'manage_draft_notes',
+    'browse_members',
+    'manage_member',
+    'browse_users',
+    'browse_todos',
+    'manage_todos',
   ],
   Planning: [
-    "browse_work_items",
-    "manage_work_item",
-    "browse_milestones",
-    "manage_milestone",
-    "browse_labels",
-    "manage_label",
-    "browse_iterations",
+    'browse_work_items',
+    'manage_work_item',
+    'browse_milestones',
+    'manage_milestone',
+    'browse_labels',
+    'manage_label',
+    'browse_iterations',
   ],
-  "CI/CD": [
-    "browse_pipelines",
-    "manage_pipeline",
-    "manage_pipeline_job",
-    "browse_variables",
-    "manage_variable",
+  'CI/CD': [
+    'browse_pipelines',
+    'manage_pipeline',
+    'manage_pipeline_job',
+    'browse_variables',
+    'manage_variable',
   ],
-  "Integrations & Content": [
-    "browse_wiki",
-    "manage_wiki",
-    "browse_snippets",
-    "manage_snippet",
-    "browse_webhooks",
-    "manage_webhook",
-    "browse_integrations",
-    "manage_integration",
+  'Integrations & Content': [
+    'browse_wiki',
+    'manage_wiki',
+    'browse_snippets',
+    'manage_snippet',
+    'browse_webhooks',
+    'manage_webhook',
+    'browse_integrations',
+    'manage_integration',
   ],
-  Discovery: ["browse_search"],
-  Session: ["manage_context"],
+  Discovery: ['browse_search'],
+  Session: ['manage_context'],
 };
 
 function groupToolsByEntity(tools: any[]): Map<string, any[]> {
@@ -419,7 +419,7 @@ function groupToolsByEntity(tools: any[]): Map<string, any[]> {
   }
 
   for (const tool of tools) {
-    const entity = toolToEntity.get(tool.name) ?? "Other";
+    const entity = toolToEntity.get(tool.name) ?? 'Other';
 
     if (!grouped.has(entity)) {
       grouped.set(entity, []);
@@ -429,14 +429,14 @@ function groupToolsByEntity(tools: any[]): Map<string, any[]> {
 
   // Sort entities in a logical order
   const entityOrder = [
-    "Projects & Repository",
-    "Collaboration",
-    "Planning",
-    "CI/CD",
-    "Integrations & Content",
-    "Discovery",
-    "Session",
-    "Other",
+    'Projects & Repository',
+    'Collaboration',
+    'Planning',
+    'CI/CD',
+    'Integrations & Content',
+    'Discovery',
+    'Session',
+    'Other',
   ];
 
   const sortedGrouped = new Map<string, any[]>();
@@ -472,32 +472,32 @@ interface GroupedParameters {
 
 // Action descriptions for documentation generation
 const ACTION_DESCRIPTIONS: Record<string, string> = {
-  list: "List items with filtering and pagination",
-  get: "Get a single item by ID",
-  create: "Create a new item",
-  update: "Update an existing item",
-  delete: "Delete an item",
-  search: "Search for items",
-  diffs: "Get file changes/diffs",
-  compare: "Compare two branches or commits",
-  merge: "Merge a merge request",
-  approve: "Approve a merge request",
-  unapprove: "Remove approval from a merge request",
-  rebase: "Rebase a merge request",
-  cancel: "Cancel a running operation",
-  retry: "Retry a failed operation",
-  play: "Run a manual job",
-  publish: "Publish draft notes",
-  drafts: "List draft notes",
-  draft: "Get a single draft note",
-  resolve: "Resolve a discussion thread",
-  unresolve: "Unresolve a discussion thread",
-  note: "Add a note/comment",
-  mark_done: "Mark as done",
-  mark_pending: "Mark as pending",
-  disable: "Disable the integration",
-  test: "Test a webhook",
-  read: "Read item details",
+  list: 'List items with filtering and pagination',
+  get: 'Get a single item by ID',
+  create: 'Create a new item',
+  update: 'Update an existing item',
+  delete: 'Delete an item',
+  search: 'Search for items',
+  diffs: 'Get file changes/diffs',
+  compare: 'Compare two branches or commits',
+  merge: 'Merge a merge request',
+  approve: 'Approve a merge request',
+  unapprove: 'Remove approval from a merge request',
+  rebase: 'Rebase a merge request',
+  cancel: 'Cancel a running operation',
+  retry: 'Retry a failed operation',
+  play: 'Run a manual job',
+  publish: 'Publish draft notes',
+  drafts: 'List draft notes',
+  draft: 'Get a single draft note',
+  resolve: 'Resolve a discussion thread',
+  unresolve: 'Unresolve a discussion thread',
+  note: 'Add a note/comment',
+  mark_done: 'Mark as done',
+  mark_pending: 'Mark as pending',
+  disable: 'Disable the integration',
+  test: 'Test a webhook',
+  read: 'Read item details',
 };
 
 /**
@@ -529,7 +529,7 @@ function extractActions(schema: JsonSchemaProperty): ActionInfo[] {
   const actionProp = schema.properties?.action;
   if (actionProp?.enum && Array.isArray(actionProp.enum)) {
     for (const actionName of actionProp.enum) {
-      if (typeof actionName === "string") {
+      if (typeof actionName === 'string') {
         const description = ACTION_DESCRIPTIONS[actionName] ?? `Perform ${actionName} operation`;
         actions.push({ name: actionName, description });
       }
@@ -555,7 +555,7 @@ function extractParameters(schema: JsonSchemaProperty): ParameterInfo[] {
       name,
       type: resolveJsonSchemaType(prop, schema),
       required: requiredFields.includes(name),
-      description: prop.description ?? "",
+      description: prop.description ?? '',
     });
   }
 
@@ -566,8 +566,8 @@ function sortParameters(params: ParameterInfo[]): ParameterInfo[] {
   return params.sort((a, b) => {
     if (a.required && !b.required) return -1;
     if (!a.required && b.required) return 1;
-    if (a.name === "action") return -1;
-    if (b.name === "action") return 1;
+    if (a.name === 'action') return -1;
+    if (b.name === 'action') return 1;
     return a.name.localeCompare(b.name);
   });
 }
@@ -609,11 +609,11 @@ function extractParametersGrouped(schema: JsonSchemaProperty): GroupedParameters
     const requiredFields = branch.required ?? [];
 
     for (const [name, prop] of Object.entries(branch.properties)) {
-      if (name === "action") continue; // Skip action field itself
+      if (name === 'action') continue; // Skip action field itself
 
       const type = resolveJsonSchemaType(prop, branch);
       const required = requiredFields.includes(name);
-      const description = prop.description ?? "";
+      const description = prop.description ?? '';
 
       if (!paramOccurrences.has(name)) {
         paramOccurrences.set(name, {
@@ -637,7 +637,7 @@ function extractParametersGrouped(schema: JsonSchemaProperty): GroupedParameters
     if (data.actions.size === totalActions) {
       // Parameter appears in ALL actions - it's common
       // Required only if required in all actions
-      const requiredInAll = Array.from(data.actions.values()).every(a => a.required);
+      const requiredInAll = Array.from(data.actions.values()).every((a) => a.required);
       result.common.push({
         name,
         type: data.type,
@@ -670,7 +670,7 @@ function extractParametersGrouped(schema: JsonSchemaProperty): GroupedParameters
         if (a.requiredForAction && !b.requiredForAction) return -1;
         if (!a.requiredForAction && b.requiredForAction) return 1;
         return a.name.localeCompare(b.name);
-      })
+      }),
     );
   }
 
@@ -705,10 +705,10 @@ function generateExample(schema: JsonSchemaProperty): Record<string, unknown> {
   if (!targetSchema.properties) return example;
 
   for (const [name, prop] of Object.entries(targetSchema.properties)) {
-    if (name === "action") continue; // Already handled
+    if (name === 'action') continue; // Already handled
 
     const isRequired = requiredFields.includes(name);
-    const description = (prop.description ?? "").toLowerCase();
+    const description = (prop.description ?? '').toLowerCase();
 
     // Only include required fields and some common optional ones
     if (!isRequired) continue;
@@ -716,35 +716,35 @@ function generateExample(schema: JsonSchemaProperty): Record<string, unknown> {
     // Generate example values based on type and name
     if (prop.enum && Array.isArray(prop.enum) && prop.enum.length > 0) {
       example[name] = prop.enum[0];
-    } else if (name.includes("project_id") || name === "projectId") {
-      example[name] = "my-group/my-project";
-    } else if (name.includes("group_id") || name === "groupId") {
-      example[name] = "my-group";
-    } else if (name.includes("namespace")) {
-      example[name] = "my-group/my-project";
-    } else if (name.includes("_iid") || name === "iid") {
-      example[name] = "1";
-    } else if (name.includes("_id") || name === "id") {
-      example[name] = "123";
-    } else if (name === "title") {
-      example[name] = "Example title";
-    } else if (name === "description") {
-      example[name] = "Example description";
-    } else if (name === "url") {
-      example[name] = "https://example.com/webhook";
-    } else if (name === "content") {
-      example[name] = "File content here";
-    } else if (name === "file_path" || name === "path") {
-      example[name] = "path/to/file.txt";
-    } else if (name === "ref" || name === "branch") {
-      example[name] = "main";
-    } else if (name === "from" || name === "to") {
-      example[name] = name === "from" ? "main" : "feature-branch";
-    } else if (description.includes("boolean") || prop.type === "boolean") {
+    } else if (name.includes('project_id') || name === 'projectId') {
+      example[name] = 'my-group/my-project';
+    } else if (name.includes('group_id') || name === 'groupId') {
+      example[name] = 'my-group';
+    } else if (name.includes('namespace')) {
+      example[name] = 'my-group/my-project';
+    } else if (name.includes('_iid') || name === 'iid') {
+      example[name] = '1';
+    } else if (name.includes('_id') || name === 'id') {
+      example[name] = '123';
+    } else if (name === 'title') {
+      example[name] = 'Example title';
+    } else if (name === 'description') {
+      example[name] = 'Example description';
+    } else if (name === 'url') {
+      example[name] = 'https://example.com/webhook';
+    } else if (name === 'content') {
+      example[name] = 'File content here';
+    } else if (name === 'file_path' || name === 'path') {
+      example[name] = 'path/to/file.txt';
+    } else if (name === 'ref' || name === 'branch') {
+      example[name] = 'main';
+    } else if (name === 'from' || name === 'to') {
+      example[name] = name === 'from' ? 'main' : 'feature-branch';
+    } else if (description.includes('boolean') || prop.type === 'boolean') {
       example[name] = true;
-    } else if (prop.type === "number" || prop.type === "integer") {
+    } else if (prop.type === 'number' || prop.type === 'integer') {
       example[name] = 10;
-    } else if (prop.type === "array") {
+    } else if (prop.type === 'array') {
       example[name] = [];
     } else {
       example[name] = `example_${name}`;
@@ -765,9 +765,9 @@ function getPackageVersion(): string {
     let fallbackVersion: string | null = null;
 
     for (let i = 0; i < 5; i++) {
-      const pkgPath = path.join(dir, "package.json");
+      const pkgPath = path.join(dir, 'package.json');
       if (fs.existsSync(pkgPath)) {
-        const content = fs.readFileSync(pkgPath, "utf8");
+        const content = fs.readFileSync(pkgPath, 'utf8');
         const pkg = JSON.parse(content) as { version?: string; name?: string };
 
         // Store first found version as fallback
@@ -776,8 +776,8 @@ function getPackageVersion(): string {
         }
 
         // Verify it's our package (exact match preferred)
-        if (pkg.name === "@structured-world/gitlab-mcp") {
-          return pkg.version ?? "unknown";
+        if (pkg.name === '@structured-world/gitlab-mcp') {
+          return pkg.version ?? 'unknown';
         }
       }
       const parent = path.dirname(dir);
@@ -786,9 +786,9 @@ function getPackageVersion(): string {
     }
 
     // Use fallback version if exact package not found (dev/testing scenarios)
-    return fallbackVersion ?? "unknown";
+    return fallbackVersion ?? 'unknown';
   } catch {
-    return "unknown";
+    return 'unknown';
   }
 }
 
@@ -797,61 +797,61 @@ function getPackageVersion(): string {
  */
 function generateExportMarkdown(
   tools: any[],
-  options: { noExamples?: boolean; toc?: boolean }
+  options: { noExamples?: boolean; toc?: boolean },
 ): string {
   const lines: string[] = [];
   const version = getPackageVersion();
-  const timestamp = new Date().toISOString().split("T")[0];
+  const timestamp = new Date().toISOString().split('T')[0];
 
   // Header
-  lines.push("# GitLab MCP Tools Reference");
-  lines.push("");
-  lines.push("> Auto-generated from source code. Do not edit manually.");
+  lines.push('# GitLab MCP Tools Reference');
+  lines.push('');
+  lines.push('> Auto-generated from source code. Do not edit manually.');
   lines.push(`> Generated: ${timestamp} | Tools: ${tools.length} | Version: ${version}`);
-  lines.push("");
+  lines.push('');
 
   const grouped = groupToolsByEntity(tools);
 
   // Table of Contents
   if (options.toc) {
-    lines.push("## Table of Contents");
-    lines.push("");
+    lines.push('## Table of Contents');
+    lines.push('');
     for (const [entity, entityTools] of grouped) {
-      const anchor = entity.toLowerCase().replace(/\s+/g, "-");
+      const anchor = entity.toLowerCase().replace(/\s+/g, '-');
       lines.push(`- [${entity} (${entityTools.length})](#${anchor})`);
     }
-    lines.push("");
-    lines.push("---");
-    lines.push("");
+    lines.push('');
+    lines.push('---');
+    lines.push('');
   }
 
   // Tools by category
   for (const [entity, entityTools] of grouped) {
     lines.push(`## ${entity}`);
-    lines.push("");
+    lines.push('');
 
     for (const tool of entityTools) {
       const tierInfo = getToolTierInfo(tool.name);
-      const tierDisplay = tierInfo ? ` ${tierInfo}` : "";
+      const tierDisplay = tierInfo ? ` ${tierInfo}` : '';
 
       lines.push(`### ${tool.name}${tierDisplay}`);
-      lines.push("");
+      lines.push('');
       lines.push(tool.description);
-      lines.push("");
+      lines.push('');
 
       // Actions table
       const actions = extractActions(tool.inputSchema);
       if (actions.length > 0) {
-        lines.push("#### Actions");
-        lines.push("");
-        lines.push("| Action | Tier | Description |");
-        lines.push("|--------|------|-------------|");
+        lines.push('#### Actions');
+        lines.push('');
+        lines.push('| Action | Tier | Description |');
+        lines.push('|--------|------|-------------|');
         for (const action of actions) {
           const actionTierInfo = getToolTierInfo(tool.name, action.name);
-          const tierDisplay = actionTierInfo.replace("[tier: ", "").replace(/]/g, "") || "Free";
+          const tierDisplay = actionTierInfo.replace('[tier: ', '').replace(/]/g, '') || 'Free';
           lines.push(`| \`${action.name}\` | ${tierDisplay} | ${action.description} |`);
         }
-        lines.push("");
+        lines.push('');
       }
 
       // Parameters - grouped by common vs action-specific
@@ -859,23 +859,23 @@ function generateExportMarkdown(
       const hasParams = groupedParams.common.length > 0 || groupedParams.byAction.size > 0;
 
       if (hasParams) {
-        lines.push("#### Parameters");
-        lines.push("");
+        lines.push('#### Parameters');
+        lines.push('');
 
         // Common parameters (shared across all actions)
         if (groupedParams.common.length > 0) {
           if (groupedParams.byAction.size > 0) {
-            lines.push("**Common** (all actions):");
-            lines.push("");
+            lines.push('**Common** (all actions):');
+            lines.push('');
           }
-          lines.push("| Parameter | Type | Required | Description |");
-          lines.push("|-----------|------|----------|-------------|");
+          lines.push('| Parameter | Type | Required | Description |');
+          lines.push('|-----------|------|----------|-------------|');
           for (const param of groupedParams.common) {
-            const req = param.required ? "Yes" : "No";
-            const desc = param.description || "-";
+            const req = param.required ? 'Yes' : 'No';
+            const desc = param.description || '-';
             lines.push(`| \`${param.name}\` | ${param.type} | ${req} | ${desc} |`);
           }
-          lines.push("");
+          lines.push('');
         }
 
         // Action-specific parameters
@@ -886,15 +886,15 @@ function generateExportMarkdown(
             if (actionParams.length === 0) continue;
 
             lines.push(`**Action \`${actionName}\`**:`);
-            lines.push("");
-            lines.push("| Parameter | Type | Required | Description |");
-            lines.push("|-----------|------|----------|-------------|");
+            lines.push('');
+            lines.push('| Parameter | Type | Required | Description |');
+            lines.push('|-----------|------|----------|-------------|');
             for (const param of actionParams) {
-              const req = param.requiredForAction ? "Yes" : "No";
-              const desc = param.description || "-";
+              const req = param.requiredForAction ? 'Yes' : 'No';
+              const desc = param.description || '-';
               lines.push(`| \`${param.name}\` | ${param.type} | ${req} | ${desc} |`);
             }
-            lines.push("");
+            lines.push('');
           }
         }
       }
@@ -903,21 +903,21 @@ function generateExportMarkdown(
       if (!options.noExamples && tool.inputSchema) {
         const example = generateExample(tool.inputSchema);
         if (Object.keys(example).length > 0) {
-          lines.push("#### Example");
-          lines.push("");
-          lines.push("```json");
+          lines.push('#### Example');
+          lines.push('');
+          lines.push('```json');
           lines.push(JSON.stringify(example, null, 2));
-          lines.push("```");
-          lines.push("");
+          lines.push('```');
+          lines.push('');
         }
       }
 
-      lines.push("---");
-      lines.push("");
+      lines.push('---');
+      lines.push('');
     }
   }
 
-  return lines.join("\n");
+  return lines.join('\n');
 }
 
 // ============================================================================
@@ -959,7 +959,7 @@ function extractEnvGates(tools: EnhancedToolDefinition[]): EnvGateInfo[] {
  * Get tools without any gate (always enabled)
  */
 function getUngatedTools(tools: EnhancedToolDefinition[]): string[] {
-  return tools.filter(tool => !tool.gate).map(tool => tool.name);
+  return tools.filter((tool) => !tool.gate).map((tool) => tool.name);
 }
 
 /**
@@ -968,17 +968,17 @@ function getUngatedTools(tools: EnhancedToolDefinition[]): string[] {
 function printEnvGatesMarkdown(
   gates: EnvGateInfo[],
   ungatedTools: string[],
-  format: "markdown" | "json"
+  format: 'markdown' | 'json',
 ): void {
-  if (format === "json") {
+  if (format === 'json') {
     const output = {
-      gates: gates.map(g => ({
+      gates: gates.map((g) => ({
         envVar: g.envVar,
         defaultValue: g.defaultValue,
         tools: g.tools,
       })),
       ungated: {
-        description: "Core tools (always enabled)",
+        description: 'Core tools (always enabled)',
         tools: ungatedTools,
       },
     };
@@ -987,32 +987,32 @@ function printEnvGatesMarkdown(
   }
 
   // Markdown format
-  console.log("# Environment Variable Gates\n");
-  console.log("This table shows which `USE_*` environment variables control which tools.\n");
-  console.log("| Variable | Default | Tools Controlled |");
-  console.log("|----------|---------|------------------|");
+  console.log('# Environment Variable Gates\n');
+  console.log('This table shows which `USE_*` environment variables control which tools.\n');
+  console.log('| Variable | Default | Tools Controlled |');
+  console.log('|----------|---------|------------------|');
 
   for (const gate of gates) {
-    const defaultStr = gate.defaultValue ? "`true`" : "`false`";
-    const toolsStr = gate.tools.map(t => `\`${t}\``).join(", ");
+    const defaultStr = gate.defaultValue ? '`true`' : '`false`';
+    const toolsStr = gate.tools.map((t) => `\`${t}\``).join(', ');
     console.log(`| \`${gate.envVar}\` | ${defaultStr} | ${toolsStr} |`);
   }
 
   // Show ungated (core) tools
   if (ungatedTools.length > 0) {
-    const toolsStr = ungatedTools.map(t => `\`${t}\``).join(", ");
+    const toolsStr = ungatedTools.map((t) => `\`${t}\``).join(', ');
     console.log(`| *(none - always on)* | - | ${toolsStr} |`);
   }
 
-  console.log("\n## Usage\n");
-  console.log("Set environment variables to `false` to disable tool groups:\n");
-  console.log("```bash");
-  console.log("# Disable wiki tools");
-  console.log("USE_GITLAB_WIKI=false");
-  console.log("");
-  console.log("# Disable pipeline tools");
-  console.log("USE_PIPELINE=false");
-  console.log("```");
+  console.log('\n## Usage\n');
+  console.log('Set environment variables to `false` to disable tool groups:\n');
+  console.log('```bash');
+  console.log('# Disable wiki tools');
+  console.log('USE_GITLAB_WIKI=false');
+  console.log('');
+  console.log('# Disable pipeline tools');
+  console.log('USE_PIPELINE=false');
+  console.log('```');
 }
 
 // ============================================================================
@@ -1024,24 +1024,24 @@ function printEnvGatesMarkdown(
  * Used by countToolsForPreset and getToolsForPreset to filter tools based on features.
  */
 const FEATURE_TO_TOOLS: Record<string, string[]> = {
-  wiki: ["browse_wiki", "manage_wiki"],
-  milestones: ["browse_milestones", "manage_milestone"],
-  pipelines: ["browse_pipelines", "manage_pipeline", "manage_pipeline_job"],
-  labels: ["browse_labels", "manage_label"],
+  wiki: ['browse_wiki', 'manage_wiki'],
+  milestones: ['browse_milestones', 'manage_milestone'],
+  pipelines: ['browse_pipelines', 'manage_pipeline', 'manage_pipeline_job'],
+  labels: ['browse_labels', 'manage_label'],
   mrs: [
-    "browse_merge_requests",
-    "browse_mr_discussions",
-    "manage_merge_request",
-    "manage_mr_discussion",
-    "manage_draft_notes",
+    'browse_merge_requests',
+    'browse_mr_discussions',
+    'manage_merge_request',
+    'manage_mr_discussion',
+    'manage_draft_notes',
   ],
-  files: ["browse_files", "manage_files"],
-  variables: ["browse_variables", "manage_variable"],
-  workitems: ["browse_work_items", "manage_work_item"],
-  webhooks: ["browse_webhooks", "manage_webhook"],
-  snippets: ["browse_snippets", "manage_snippet"],
-  integrations: ["browse_integrations", "manage_integration"],
-  iterations: ["browse_iterations"],
+  files: ['browse_files', 'manage_files'],
+  variables: ['browse_variables', 'manage_variable'],
+  workitems: ['browse_work_items', 'manage_work_item'],
+  webhooks: ['browse_webhooks', 'manage_webhook'],
+  snippets: ['browse_snippets', 'manage_snippet'],
+  integrations: ['browse_integrations', 'manage_integration'],
+  iterations: ['browse_iterations'],
 };
 
 /**
@@ -1058,17 +1058,17 @@ function countToolsForPreset(preset: Preset, allToolNames: string[]): number {
 
   // Apply read_only filter (removes manage_* tools)
   if (preset.read_only) {
-    enabledTools = enabledTools.filter(name => !name.startsWith("manage_"));
+    enabledTools = enabledTools.filter((name) => !name.startsWith('manage_'));
   }
 
   // Apply denied_tools_regex
   if (preset.denied_tools_regex) {
     try {
       const regex = new RegExp(preset.denied_tools_regex);
-      enabledTools = enabledTools.filter(name => !regex.test(name));
+      enabledTools = enabledTools.filter((name) => !regex.test(name));
     } catch (error) {
       console.warn(
-        `Warning: invalid denied_tools_regex "${preset.denied_tools_regex}": ${error instanceof Error ? error.message : "unknown error"}`
+        `Warning: invalid denied_tools_regex "${preset.denied_tools_regex}": ${error instanceof Error ? error.message : 'unknown error'}`,
       );
     }
   }
@@ -1076,7 +1076,7 @@ function countToolsForPreset(preset: Preset, allToolNames: string[]): number {
   // Apply allowed_tools (whitelist overrides everything)
   if (preset.allowed_tools && preset.allowed_tools.length > 0) {
     const allowedSet = new Set(preset.allowed_tools);
-    enabledTools = enabledTools.filter(name => allowedSet.has(name));
+    enabledTools = enabledTools.filter((name) => allowedSet.has(name));
   }
 
   // Apply feature flags
@@ -1085,7 +1085,7 @@ function countToolsForPreset(preset: Preset, allToolNames: string[]): number {
       const featureKey = feature as keyof typeof preset.features;
       if (preset.features[featureKey] === false) {
         const toolSet = new Set(tools);
-        enabledTools = enabledTools.filter(name => !toolSet.has(name));
+        enabledTools = enabledTools.filter((name) => !toolSet.has(name));
       }
     }
   }
@@ -1098,28 +1098,28 @@ function countToolsForPreset(preset: Preset, allToolNames: string[]): number {
  */
 function getToolsForPreset(
   preset: Preset,
-  allToolNames: string[]
+  allToolNames: string[],
 ): { enabled: string[]; disabled: string[] } {
   let enabledTools = [...allToolNames];
   const disabledTools: string[] = [];
 
   // Apply read_only filter
   if (preset.read_only) {
-    const manageTools = enabledTools.filter(name => name.startsWith("manage_"));
+    const manageTools = enabledTools.filter((name) => name.startsWith('manage_'));
     disabledTools.push(...manageTools);
-    enabledTools = enabledTools.filter(name => !name.startsWith("manage_"));
+    enabledTools = enabledTools.filter((name) => !name.startsWith('manage_'));
   }
 
   // Apply denied_tools_regex
   if (preset.denied_tools_regex) {
     try {
       const regex = new RegExp(preset.denied_tools_regex);
-      const denied = enabledTools.filter(name => regex.test(name));
+      const denied = enabledTools.filter((name) => regex.test(name));
       disabledTools.push(...denied);
-      enabledTools = enabledTools.filter(name => !regex.test(name));
+      enabledTools = enabledTools.filter((name) => !regex.test(name));
     } catch (error) {
       console.warn(
-        `Warning: invalid denied_tools_regex "${preset.denied_tools_regex}": ${error instanceof Error ? error.message : "unknown error"}`
+        `Warning: invalid denied_tools_regex "${preset.denied_tools_regex}": ${error instanceof Error ? error.message : 'unknown error'}`,
       );
     }
   }
@@ -1127,9 +1127,9 @@ function getToolsForPreset(
   // Apply allowed_tools (whitelist)
   if (preset.allowed_tools && preset.allowed_tools.length > 0) {
     const allowedSet = new Set(preset.allowed_tools);
-    const notAllowed = enabledTools.filter(name => !allowedSet.has(name));
+    const notAllowed = enabledTools.filter((name) => !allowedSet.has(name));
     disabledTools.push(...notAllowed);
-    enabledTools = enabledTools.filter(name => allowedSet.has(name));
+    enabledTools = enabledTools.filter((name) => allowedSet.has(name));
   }
 
   // Apply feature flags
@@ -1138,9 +1138,9 @@ function getToolsForPreset(
       const featureKey = feature as keyof typeof preset.features;
       if (preset.features[featureKey] === false) {
         const toolSet = new Set(tools);
-        const disabled = enabledTools.filter(name => toolSet.has(name));
+        const disabled = enabledTools.filter((name) => toolSet.has(name));
         disabledTools.push(...disabled);
-        enabledTools = enabledTools.filter(name => !toolSet.has(name));
+        enabledTools = enabledTools.filter((name) => !toolSet.has(name));
       }
     }
   }
@@ -1157,24 +1157,24 @@ function getToolsForPreset(
 async function printPresetsList(
   loader: ProfileLoader,
   allToolNames: string[],
-  format: "markdown" | "json"
+  format: 'markdown' | 'json',
 ): Promise<void> {
   const profiles = await loader.listProfiles();
-  const presets = profiles.filter(p => p.isPreset);
-  const userProfiles = profiles.filter(p => !p.isPreset);
+  const presets = profiles.filter((p) => p.isPreset);
+  const userProfiles = profiles.filter((p) => !p.isPreset);
 
-  if (format === "json") {
+  if (format === 'json') {
     const output = {
       builtIn: await Promise.all(
-        presets.map(async p => {
+        presets.map(async (p) => {
           const preset = await loader.loadPreset(p.name);
           return {
             name: p.name,
-            description: p.description ?? "",
+            description: p.description ?? '',
             readOnly: p.readOnly,
             toolCount: countToolsForPreset(preset, allToolNames),
           };
-        })
+        }),
       ),
       userPresets: userProfiles.length, // Count only, no details for user profiles
       totalTools: allToolNames.length,
@@ -1184,27 +1184,27 @@ async function printPresetsList(
   }
 
   // Markdown format
-  console.log("# Available Presets\n");
+  console.log('# Available Presets\n');
   console.log(`Total tools available: ${allToolNames.length}\n`);
 
-  console.log("## Built-in Presets\n");
-  console.log("| Preset | Tools | Read-Only | Description |");
-  console.log("|--------|-------|-----------|-------------|");
+  console.log('## Built-in Presets\n');
+  console.log('| Preset | Tools | Read-Only | Description |');
+  console.log('|--------|-------|-----------|-------------|');
 
   for (const p of presets) {
     const preset = await loader.loadPreset(p.name);
     const toolCount = countToolsForPreset(preset, allToolNames);
-    const ro = p.readOnly ? "Yes" : "No";
-    const desc = p.description ?? "-";
+    const ro = p.readOnly ? 'Yes' : 'No';
+    const desc = p.description ?? '-';
     console.log(`| \`${p.name}\` | ${toolCount} | ${ro} | ${desc} |`);
   }
 
   if (userProfiles.length > 0) {
-    console.log("\n## User Profiles\n");
+    console.log('\n## User Profiles\n');
     console.log(`${userProfiles.length} user profile(s) defined. Use \`--profiles\` to list them.`);
   }
 
-  console.log("\nUse `yarn list-tools --preset <name>` for details.");
+  console.log('\nUse `yarn list-tools --preset <name>` for details.');
 }
 
 /**
@@ -1212,13 +1212,13 @@ async function printPresetsList(
  */
 async function printProfilesList(
   loader: ProfileLoader,
-  format: "markdown" | "json"
+  format: 'markdown' | 'json',
 ): Promise<void> {
   const profiles = await loader.listProfiles();
-  const userProfiles = profiles.filter(p => !p.isPreset);
+  const userProfiles = profiles.filter((p) => !p.isPreset);
 
-  if (format === "json") {
-    const output = userProfiles.map(p => ({
+  if (format === 'json') {
+    const output = userProfiles.map((p) => ({
       name: p.name,
       host: p.host,
       authType: p.authType,
@@ -1229,32 +1229,32 @@ async function printProfilesList(
   }
 
   // Markdown format
-  console.log("# User Profiles\n");
+  console.log('# User Profiles\n');
 
   if (userProfiles.length === 0) {
-    console.log("No user profiles defined.\n");
-    console.log("Create profiles in: `~/.config/gitlab-mcp/profiles.yaml`\n");
-    console.log("Example:\n");
-    console.log("```yaml");
-    console.log("profiles:");
-    console.log("  work:");
-    console.log("    host: gitlab.company.com");
-    console.log("    auth:");
-    console.log("      type: pat");
-    console.log("      token_env: GITLAB_WORK_TOKEN");
-    console.log("```");
+    console.log('No user profiles defined.\n');
+    console.log('Create profiles in: `~/.config/gitlab-mcp/profiles.yaml`\n');
+    console.log('Example:\n');
+    console.log('```yaml');
+    console.log('profiles:');
+    console.log('  work:');
+    console.log('    host: gitlab.company.com');
+    console.log('    auth:');
+    console.log('      type: pat');
+    console.log('      token_env: GITLAB_WORK_TOKEN');
+    console.log('```');
     return;
   }
 
-  console.log("| Profile | Host | Auth | Read-Only |");
-  console.log("|---------|------|------|-----------|");
+  console.log('| Profile | Host | Auth | Read-Only |');
+  console.log('|---------|------|------|-----------|');
 
   for (const p of userProfiles) {
-    const ro = p.readOnly ? "Yes" : "No";
-    console.log(`| \`${p.name}\` | ${p.host ?? "-"} | ${p.authType ?? "-"} | ${ro} |`);
+    const ro = p.readOnly ? 'Yes' : 'No';
+    console.log(`| \`${p.name}\` | ${p.host ?? '-'} | ${p.authType ?? '-'} | ${ro} |`);
   }
 
-  console.log("\nUse `yarn list-tools --profile <name>` for details.");
+  console.log('\nUse `yarn list-tools --profile <name>` for details.');
 }
 
 /**
@@ -1264,8 +1264,8 @@ async function printPresetDetails(
   loader: ProfileLoader,
   presetName: string,
   allToolNames: string[],
-  format: "markdown" | "json",
-  validate: boolean
+  format: 'markdown' | 'json',
+  validate: boolean,
 ): Promise<void> {
   let preset: Preset | undefined;
   try {
@@ -1278,10 +1278,10 @@ async function printPresetDetails(
 
   const { enabled, disabled } = getToolsForPreset(preset, allToolNames);
 
-  if (format === "json") {
+  if (format === 'json') {
     const output: Record<string, unknown> = {
       name: presetName,
-      type: "builtin",
+      type: 'builtin',
       description: preset.description ?? null,
       readOnly: preset.read_only ?? false,
       toolsEnabled: enabled.length,
@@ -1306,30 +1306,30 @@ async function printPresetDetails(
   // Markdown format
   console.log(`# Preset: ${presetName}\n`);
   console.log(`**Type:** Built-in`);
-  console.log(`**Description:** ${preset.description ?? "-"}`);
+  console.log(`**Description:** ${preset.description ?? '-'}`);
   console.log(`**Tools Enabled:** ${enabled.length} (of ${allToolNames.length} available)`);
-  console.log(`**Read-Only:** ${preset.read_only ? "Yes" : "No"}\n`);
+  console.log(`**Read-Only:** ${preset.read_only ? 'Yes' : 'No'}\n`);
 
   // Features table
   if (preset.features) {
-    console.log("## Features\n");
-    console.log("| Feature | Status |");
-    console.log("|---------|--------|");
+    console.log('## Features\n');
+    console.log('| Feature | Status |');
+    console.log('|---------|--------|');
     for (const f of FEATURE_NAMES) {
       const featureKey = f as keyof typeof preset.features;
       const status =
         preset.features[featureKey] === true
-          ? "Enabled"
+          ? 'Enabled'
           : preset.features[featureKey] === false
-            ? "Disabled"
-            : "-";
+            ? 'Disabled'
+            : '-';
       console.log(`| ${f} | ${status} |`);
     }
     console.log();
   }
 
   // Tool restrictions
-  console.log("## Tool Restrictions\n");
+  console.log('## Tool Restrictions\n');
   if (preset.denied_tools_regex) {
     console.log(`**Denied tools regex:** \`${preset.denied_tools_regex}\`\n`);
   }
@@ -1337,18 +1337,18 @@ async function printPresetDetails(
     console.log(`**Allowed tools (whitelist):** ${preset.allowed_tools.length} tools\n`);
   }
   if (preset.denied_actions && preset.denied_actions.length > 0) {
-    console.log(`**Denied actions:** ${preset.denied_actions.join(", ")}\n`);
+    console.log(`**Denied actions:** ${preset.denied_actions.join(', ')}\n`);
   }
   if (
     !preset.denied_tools_regex &&
     !preset.allowed_tools?.length &&
     !preset.denied_actions?.length
   ) {
-    console.log("No explicit tool restrictions.\n");
+    console.log('No explicit tool restrictions.\n');
   }
 
   // Enabled tools
-  console.log("## Enabled Tools\n");
+  console.log('## Enabled Tools\n');
   for (const tool of enabled) {
     console.log(`- ${tool}`);
   }
@@ -1356,7 +1356,7 @@ async function printPresetDetails(
 
   // Disabled tools (if any)
   if (disabled.length > 0) {
-    console.log("## Disabled Tools\n");
+    console.log('## Disabled Tools\n');
     for (const tool of disabled) {
       console.log(`- ${tool}`);
     }
@@ -1365,24 +1365,24 @@ async function printPresetDetails(
 
   // Validation
   if (validate) {
-    console.log("## Validation\n");
+    console.log('## Validation\n');
     const validation = await loader.validatePreset(preset);
     if (validation.valid && validation.warnings.length === 0) {
-      console.log("**Status: VALID**\n");
+      console.log('**Status: VALID**\n');
     } else if (validation.valid) {
       console.log(`**Status: VALID** (${validation.warnings.length} warning(s))\n`);
-      console.log("### Warnings\n");
+      console.log('### Warnings\n');
       for (const w of validation.warnings) {
         console.log(`- ${w}`);
       }
     } else {
       console.log(`**Status: INVALID** (${validation.errors.length} error(s))\n`);
-      console.log("### Errors\n");
+      console.log('### Errors\n');
       for (const e of validation.errors) {
         console.log(`- ${e}`);
       }
       if (validation.warnings.length > 0) {
-        console.log("\n### Warnings\n");
+        console.log('\n### Warnings\n');
         for (const w of validation.warnings) {
           console.log(`- ${w}`);
         }
@@ -1397,8 +1397,8 @@ async function printPresetDetails(
 async function printProfileDetails(
   loader: ProfileLoader,
   profileName: string,
-  format: "markdown" | "json",
-  validate: boolean
+  format: 'markdown' | 'json',
+  validate: boolean,
 ): Promise<void> {
   let profile: Profile | undefined;
   try {
@@ -1409,10 +1409,10 @@ async function printProfileDetails(
     return; // For test environment where process.exit is mocked
   }
 
-  if (format === "json") {
+  if (format === 'json') {
     const output: Record<string, unknown> = {
       name: profileName,
-      type: "user",
+      type: 'user',
       host: profile.host,
       authType: profile.auth.type,
       readOnly: profile.read_only ?? false,
@@ -1442,14 +1442,14 @@ async function printProfileDetails(
   console.log(`**Type:** User-defined`);
   console.log(`**Host:** ${profile.host}`);
   console.log(`**Auth:** ${profile.auth.type}`);
-  console.log(`**Read-Only:** ${profile.read_only ? "Yes" : "No"}\n`);
+  console.log(`**Read-Only:** ${profile.read_only ? 'Yes' : 'No'}\n`);
 
   // Settings
-  console.log("## Settings\n");
-  console.log("| Setting | Value |");
-  console.log("|---------|-------|");
-  console.log(`| Timeout | ${profile.timeout_ms ?? "default"}ms |`);
-  console.log(`| TLS Verify | ${profile.skip_tls_verify ? "No" : "Yes"} |`);
+  console.log('## Settings\n');
+  console.log('| Setting | Value |');
+  console.log('|---------|-------|');
+  console.log(`| Timeout | ${profile.timeout_ms ?? 'default'}ms |`);
+  console.log(`| TLS Verify | ${profile.skip_tls_verify ? 'No' : 'Yes'} |`);
   if (profile.default_project) {
     console.log(`| Default Project | ${profile.default_project} |`);
   }
@@ -1460,12 +1460,12 @@ async function printProfileDetails(
 
   // Access restrictions
   if (profile.allowed_projects?.length || profile.allowed_groups?.length) {
-    console.log("## Access Restrictions\n");
+    console.log('## Access Restrictions\n');
     if (profile.allowed_projects?.length) {
-      console.log(`**Allowed Projects:** ${profile.allowed_projects.join(", ")}\n`);
+      console.log(`**Allowed Projects:** ${profile.allowed_projects.join(', ')}\n`);
     }
     if (profile.allowed_groups?.length) {
-      console.log(`**Allowed Groups:** ${profile.allowed_groups.join(", ")}\n`);
+      console.log(`**Allowed Groups:** ${profile.allowed_groups.join(', ')}\n`);
     }
   }
 
@@ -1475,7 +1475,7 @@ async function printProfileDetails(
     profile.allowed_tools?.length ||
     profile.denied_actions?.length
   ) {
-    console.log("## Tool Restrictions\n");
+    console.log('## Tool Restrictions\n');
     if (profile.denied_tools_regex) {
       console.log(`**Denied tools regex:** \`${profile.denied_tools_regex}\`\n`);
     }
@@ -1483,25 +1483,25 @@ async function printProfileDetails(
       console.log(`**Allowed tools (whitelist):** ${profile.allowed_tools.length} tools\n`);
     }
     if (profile.denied_actions?.length) {
-      console.log(`**Denied actions:** ${profile.denied_actions.join(", ")}\n`);
+      console.log(`**Denied actions:** ${profile.denied_actions.join(', ')}\n`);
     }
   }
 
   // Validation
   if (validate) {
-    console.log("## Validation\n");
+    console.log('## Validation\n');
     const validation = await loader.validateProfile(profile);
     if (validation.valid && validation.warnings.length === 0) {
-      console.log("**Status: VALID**\n");
+      console.log('**Status: VALID**\n');
     } else if (validation.valid) {
       console.log(`**Status: VALID** (${validation.warnings.length} warning(s))\n`);
-      console.log("### Warnings\n");
+      console.log('### Warnings\n');
       for (const w of validation.warnings) {
         console.log(`- ${w}`);
       }
     } else {
       console.log(`**Status: INVALID** (${validation.errors.length} error(s))\n`);
-      console.log("### Errors\n");
+      console.log('### Errors\n');
       for (const e of validation.errors) {
         console.log(`- ${e}`);
       }
@@ -1517,7 +1517,7 @@ async function comparePresets(
   presetA: string,
   presetB: string,
   allToolNames: string[],
-  format: "markdown" | "json"
+  format: 'markdown' | 'json',
 ): Promise<void> {
   let a: Preset | undefined, b: Preset | undefined;
   try {
@@ -1541,11 +1541,11 @@ async function comparePresets(
   const enabledSetA = new Set(toolsA.enabled);
   const enabledSetB = new Set(toolsB.enabled);
 
-  const onlyInA = toolsA.enabled.filter(t => !enabledSetB.has(t));
-  const onlyInB = toolsB.enabled.filter(t => !enabledSetA.has(t));
-  const common = toolsA.enabled.filter(t => enabledSetB.has(t));
+  const onlyInA = toolsA.enabled.filter((t) => !enabledSetB.has(t));
+  const onlyInB = toolsB.enabled.filter((t) => !enabledSetA.has(t));
+  const common = toolsA.enabled.filter((t) => enabledSetB.has(t));
 
-  if (format === "json") {
+  if (format === 'json') {
     const output = {
       presetA: {
         name: presetA,
@@ -1574,11 +1574,11 @@ async function comparePresets(
   // Markdown format
   console.log(`# Comparison: ${presetA} vs ${presetB}\n`);
 
-  console.log("## Summary\n");
-  console.log("| | " + presetA + " | " + presetB + " |");
-  console.log("|---|---|---|");
+  console.log('## Summary\n');
+  console.log('| | ' + presetA + ' | ' + presetB + ' |');
+  console.log('|---|---|---|');
   console.log(`| Tools | ${toolsA.enabled.length} | ${toolsB.enabled.length} |`);
-  console.log(`| Read-Only | ${a.read_only ? "Yes" : "No"} | ${b.read_only ? "Yes" : "No"} |`);
+  console.log(`| Read-Only | ${a.read_only ? 'Yes' : 'No'} | ${b.read_only ? 'Yes' : 'No'} |`);
   console.log();
 
   console.log(`**Common tools:** ${common.length}\n`);
@@ -1601,15 +1601,15 @@ async function comparePresets(
 
   // Feature comparison
   if (a.features || b.features) {
-    console.log("## Feature Comparison\n");
-    console.log("| Feature | " + presetA + " | " + presetB + " |");
-    console.log("|---------|---|---|");
+    console.log('## Feature Comparison\n');
+    console.log('| Feature | ' + presetA + ' | ' + presetB + ' |');
+    console.log('|---------|---|---|');
     for (const f of FEATURE_NAMES) {
       const featureKey = f as keyof typeof a.features;
       const statusA =
-        a.features?.[featureKey] === true ? "Yes" : a.features?.[featureKey] === false ? "No" : "-";
+        a.features?.[featureKey] === true ? 'Yes' : a.features?.[featureKey] === false ? 'No' : '-';
       const statusB =
-        b.features?.[featureKey] === true ? "Yes" : b.features?.[featureKey] === false ? "No" : "-";
+        b.features?.[featureKey] === true ? 'Yes' : b.features?.[featureKey] === false ? 'No' : '-';
       if (statusA !== statusB) {
         console.log(`| **${f}** | ${statusA} | ${statusB} |`);
       } else {
@@ -1624,16 +1624,16 @@ export async function main() {
 
   // Validate flag combinations
   if (options.compare && !options.preset) {
-    console.error("Error: --compare flag must be used with --preset.");
-    console.error("Usage: yarn list-tools --preset <name> --compare <other_name>");
+    console.error('Error: --compare flag must be used with --preset.');
+    console.error('Usage: yarn list-tools --preset <name> --compare <other_name>');
     process.exit(1);
     return;
   }
 
   if (options.validate && !options.preset && !options.profile) {
-    console.error("Error: --validate flag must be used with --preset or --profile.");
-    console.error("Usage: yarn list-tools --preset <name> --validate");
-    console.error("   or: yarn list-tools --profile <name> --validate");
+    console.error('Error: --validate flag must be used with --preset or --profile.');
+    console.error('Usage: yarn list-tools --preset <name> --validate');
+    console.error('   or: yarn list-tools --profile <name> --validate');
     process.exit(1);
     return;
   }
@@ -1650,7 +1650,7 @@ export async function main() {
     const allTools = registryManager.getAllToolDefinitionsUnfiltered();
     const gates = extractEnvGates(allTools);
     const ungated = getUngatedTools(allTools);
-    printEnvGatesMarkdown(gates, ungated, options.format === "json" ? "json" : "markdown");
+    printEnvGatesMarkdown(gates, ungated, options.format === 'json' ? 'json' : 'markdown');
     return;
   }
 
@@ -1663,17 +1663,17 @@ export async function main() {
 
   if (needsProfileLoader) {
     const loader = new ProfileLoader();
-    const allToolNames = registryManager.getAllToolDefinitionsUnfiltered().map(t => t.name);
+    const allToolNames = registryManager.getAllToolDefinitionsUnfiltered().map((t) => t.name);
 
     // --presets: List all presets
     if (options.showPresets) {
-      await printPresetsList(loader, allToolNames, options.format === "json" ? "json" : "markdown");
+      await printPresetsList(loader, allToolNames, options.format === 'json' ? 'json' : 'markdown');
       return;
     }
 
     // --profiles: List user profiles
     if (options.showProfiles) {
-      await printProfilesList(loader, options.format === "json" ? "json" : "markdown");
+      await printProfilesList(loader, options.format === 'json' ? 'json' : 'markdown');
       return;
     }
 
@@ -1684,7 +1684,7 @@ export async function main() {
         options.preset,
         options.compare,
         allToolNames,
-        options.format === "json" ? "json" : "markdown"
+        options.format === 'json' ? 'json' : 'markdown',
       );
       return;
     }
@@ -1695,8 +1695,8 @@ export async function main() {
         loader,
         options.preset,
         allToolNames,
-        options.format === "json" ? "json" : "markdown",
-        options.validate ?? false
+        options.format === 'json' ? 'json' : 'markdown',
+        options.validate ?? false,
       );
       return;
     }
@@ -1706,8 +1706,8 @@ export async function main() {
       await printProfileDetails(
         loader,
         options.profile,
-        options.format === "json" ? "json" : "markdown",
-        options.validate ?? false
+        options.format === 'json' ? 'json' : 'markdown',
+        options.validate ?? false,
       );
       return;
     }
@@ -1716,10 +1716,10 @@ export async function main() {
   // For export mode: get ALL tools without filtering (for documentation)
   // For other modes: respect env vars filtering
   const toolDefinitions =
-    options.format === "export"
+    options.format === 'export'
       ? registryManager.getAllToolDefinitionsUnfiltered()
       : registryManager.getAllToolDefinitionsTierless();
-  const tools = toolDefinitions.map(def => ({
+  const tools = toolDefinitions.map((def) => ({
     name: def.name,
     description: def.description,
     inputSchema: def.inputSchema,
@@ -1730,7 +1730,7 @@ export async function main() {
   if (options.entity) {
     const grouped = groupToolsByEntity(tools);
     const entityKey = Array.from(grouped.keys()).find(
-      k => k.toLowerCase().replace(/ /g, "") === options.entity!.toLowerCase().replace(/ /g, "")
+      (k) => k.toLowerCase().replace(/ /g, '') === options.entity!.toLowerCase().replace(/ /g, ''),
     );
     filteredTools = entityKey ? (grouped.get(entityKey) ?? []) : [];
 
@@ -1742,7 +1742,7 @@ export async function main() {
 
   // Filter by specific tool if specified
   if (options.tool) {
-    filteredTools = filteredTools.filter(t => t.name === options.tool);
+    filteredTools = filteredTools.filter((t) => t.name === options.tool);
     if (filteredTools.length === 0) {
       console.error(`Tool not found: ${options.tool}`);
       process.exit(1);
@@ -1751,24 +1751,24 @@ export async function main() {
 
   // Output based on format
   switch (options.format) {
-    case "json":
-      const output = filteredTools.map(tool => ({
+    case 'json':
+      const output = filteredTools.map((tool) => ({
         name: tool.name,
         description: tool.description,
-        tier: ToolAvailability.getToolRequirement(tool.name)?.requiredTier ?? "unknown",
+        tier: ToolAvailability.getToolRequirement(tool.name)?.requiredTier ?? 'unknown',
         minVersion: ToolAvailability.getToolRequirement(tool.name)?.minVersion,
         parameters: tool.inputSchema,
       }));
       console.log(JSON.stringify(output, null, 2));
       break;
 
-    case "simple":
-      filteredTools.forEach(tool => {
+    case 'simple':
+      filteredTools.forEach((tool) => {
         console.log(tool.name);
       });
       break;
 
-    case "export":
+    case 'export':
       const markdown = generateExportMarkdown(filteredTools, {
         noExamples: options.noExamples,
         toc: options.toc,
@@ -1776,16 +1776,16 @@ export async function main() {
       console.log(markdown);
       break;
 
-    case "markdown":
+    case 'markdown':
     default:
       if (!options.entity && !options.tool) {
-        console.log("# GitLab MCP Tools\n");
+        console.log('# GitLab MCP Tools\n');
         console.log(`Total tools available: ${filteredTools.length}\n`);
 
         const grouped = groupToolsByEntity(filteredTools);
 
         // Show summary
-        console.log("## Categories\n");
+        console.log('## Categories\n');
         for (const [entity, entityTools] of grouped) {
           console.log(`- **${entity}**: ${entityTools.length} tools`);
         }
@@ -1797,17 +1797,17 @@ export async function main() {
 
           for (const tool of entityTools) {
             const tierInfo = getToolTierInfo(tool.name);
-            const tierDisplay = tierInfo ? ` ${tierInfo}` : "";
+            const tierDisplay = tierInfo ? ` ${tierInfo}` : '';
             console.log(`### ${tool.name}${tierDisplay}`);
             console.log(`**Description**: ${tool.description}\n`);
 
             if ((options.verbose || options.detail) && tool.inputSchema) {
-              console.log("**Parameters**:");
+              console.log('**Parameters**:');
               const params = getParameterDescription(tool.inputSchema);
               if (params.length > 0) {
-                params.forEach(p => console.log(p));
+                params.forEach((p) => console.log(p));
               } else {
-                console.log("  (no parameters)");
+                console.log('  (no parameters)');
               }
               console.log();
             }
@@ -1817,17 +1817,17 @@ export async function main() {
         // Detailed view for filtered results
         for (const tool of filteredTools) {
           const tierInfo = getToolTierInfo(tool.name);
-          const tierDisplay = tierInfo ? ` ${tierInfo}` : "";
+          const tierDisplay = tierInfo ? ` ${tierInfo}` : '';
           console.log(`## ${tool.name}${tierDisplay}\n`);
           console.log(`**Description**: ${tool.description}\n`);
 
           if (tool.inputSchema) {
-            console.log("**Parameters**:\n");
+            console.log('**Parameters**:\n');
             const params = getParameterDescription(tool.inputSchema);
             if (params.length > 0) {
-              params.forEach(p => console.log(p));
+              params.forEach((p) => console.log(p));
             } else {
-              console.log("(no parameters)");
+              console.log('(no parameters)');
             }
           }
           console.log();
@@ -1836,16 +1836,16 @@ export async function main() {
       break;
   }
 
-  if (options.showEnv && options.format === "markdown") {
-    console.log("\n---\n");
-    console.log("*Note: Tool availability may be affected by environment variables shown above.*");
+  if (options.showEnv && options.format === 'markdown') {
+    console.log('\n---\n');
+    console.log('*Note: Tool availability may be affected by environment variables shown above.*');
   }
 }
 
 // Auto-execute when script is run directly
-if (!process.env.NODE_ENV || process.env.NODE_ENV !== "test") {
-  main().catch(error => {
-    console.error("Error:", error);
+if (!process.env.NODE_ENV || process.env.NODE_ENV !== 'test') {
+  main().catch((error) => {
+    console.error('Error:', error);
     process.exit(1);
   });
 }

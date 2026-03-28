@@ -5,7 +5,7 @@
  * Supports in-memory, file-based, and database storage.
  */
 
-import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } from "../types";
+import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } from '../types';
 
 /**
  * Session storage backend interface
@@ -16,7 +16,7 @@ import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } f
 
 export interface SessionStorageBackend {
   /** Backend type identifier */
-  readonly type: "memory" | "file" | "postgresql" | "redis";
+  readonly type: 'memory' | 'file' | 'postgresql' | 'redis';
 
   // Session operations
   createSession(session: OAuthSession): Promise<void>;
@@ -73,7 +73,7 @@ export interface SessionStorageStats {
  */
 export interface StorageConfig {
   /** Storage type: "memory", "file", "postgresql" */
-  type: "memory" | "file" | "postgresql";
+  type: 'memory' | 'file' | 'postgresql';
 
   /** File storage options */
   file?: {

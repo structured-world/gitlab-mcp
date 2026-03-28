@@ -1,9 +1,9 @@
-import * as z from "zod";
-import { BrowseMembersSchema } from "./schema-readonly";
-import { ManageMemberSchema } from "./schema";
-import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { isActionDenied } from "../../config";
+import * as z from 'zod';
+import { BrowseMembersSchema } from './schema-readonly';
+import { ManageMemberSchema } from './schema';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { isActionDenied } from '../../config';
 
 /**
  * Members tools registry - 2 CQRS tools
@@ -18,22 +18,22 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
   // browse_members - CQRS Query Tool (discriminated union schema)
   // ============================================================================
   [
-    "browse_members",
+    'browse_members',
     {
-      name: "browse_members",
+      name: 'browse_members',
       description:
-        "View team members and access levels in projects or groups. Actions: list_project, list_group, get_project, get_group (direct members), list_all_project, list_all_group (includes inherited). Levels: Guest(10), Reporter(20), Developer(30), Maintainer(40), Owner(50). Related: manage_member to add/remove, browse_users to find users by name.",
+        'View team members and access levels in projects or groups. Actions: list_project, list_group, get_project, get_group (direct members), list_all_project, list_all_group (includes inherited). Levels: Guest(10), Reporter(20), Developer(30), Maintainer(40), Owner(50). Related: manage_member to add/remove, browse_users to find users by name.',
       inputSchema: z.toJSONSchema(BrowseMembersSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseMembersSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_members", input.action)) {
+        if (isActionDenied('browse_members', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_members tool`);
         }
 
         switch (input.action) {
-          case "list_project": {
+          case 'list_project': {
             const { action: _action, project_id, ...queryOptions } = input;
             const encodedProjectId = encodeURIComponent(project_id);
             return gitlab.get(`projects/${encodedProjectId}/members`, {
@@ -41,7 +41,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
             });
           }
 
-          case "list_group": {
+          case 'list_group': {
             const { action: _action, group_id, ...queryOptions } = input;
             const encodedGroupId = encodeURIComponent(group_id);
             return gitlab.get(`groups/${encodedGroupId}/members`, {
@@ -49,7 +49,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
             });
           }
 
-          case "get_project": {
+          case 'get_project': {
             const { project_id, user_id, include_inherited } = input;
             const encodedProjectId = encodeURIComponent(project_id);
             const encodedUserId = encodeURIComponent(user_id);
@@ -59,7 +59,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
             return gitlab.get(endpoint);
           }
 
-          case "get_group": {
+          case 'get_group': {
             const { group_id, user_id, include_inherited } = input;
             const encodedGroupId = encodeURIComponent(group_id);
             const encodedUserId = encodeURIComponent(user_id);
@@ -69,7 +69,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
             return gitlab.get(endpoint);
           }
 
-          case "list_all_project": {
+          case 'list_all_project': {
             const { action: _action, project_id, ...queryOptions } = input;
             const encodedProjectId = encodeURIComponent(project_id);
             return gitlab.get(`projects/${encodedProjectId}/members/all`, {
@@ -77,7 +77,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
             });
           }
 
-          case "list_all_group": {
+          case 'list_all_group': {
             const { action: _action, group_id, ...queryOptions } = input;
             const encodedGroupId = encodeURIComponent(group_id);
             return gitlab.get(`groups/${encodedGroupId}/members/all`, {
@@ -97,22 +97,22 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
   // manage_member - CQRS Command Tool (discriminated union schema)
   // ============================================================================
   [
-    "manage_member",
+    'manage_member',
     {
-      name: "manage_member",
+      name: 'manage_member',
       description:
-        "Add, remove, or update access levels for project/group members. Actions: add_to_project, add_to_group (with access level + optional expiry), remove_from_project, remove_from_group, update_project, update_group (change access level). Related: browse_members for current membership.",
+        'Add, remove, or update access levels for project/group members. Actions: add_to_project, add_to_group (with access level + optional expiry), remove_from_project, remove_from_group, update_project, update_group (change access level). Related: browse_members for current membership.',
       inputSchema: z.toJSONSchema(ManageMemberSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageMemberSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_member", input.action)) {
+        if (isActionDenied('manage_member', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_member tool`);
         }
 
         switch (input.action) {
-          case "add_to_project": {
+          case 'add_to_project': {
             const { project_id, user_id, access_level, expires_at } = input;
             const encodedProjectId = encodeURIComponent(project_id);
 
@@ -124,11 +124,11 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
             return gitlab.post(`projects/${encodedProjectId}/members`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "add_to_group": {
+          case 'add_to_group': {
             const { group_id, user_id, access_level, expires_at } = input;
             const encodedGroupId = encodeURIComponent(group_id);
 
@@ -140,11 +140,11 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
             return gitlab.post(`groups/${encodedGroupId}/members`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "remove_from_project": {
+          case 'remove_from_project': {
             const { project_id, user_id, skip_subresources, unassign_issuables } = input;
             const encodedProjectId = encodeURIComponent(project_id);
             const encodedUserId = encodeURIComponent(user_id);
@@ -159,7 +159,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
             return { removed: true, project_id, user_id };
           }
 
-          case "remove_from_group": {
+          case 'remove_from_group': {
             const { group_id, user_id, skip_subresources, unassign_issuables } = input;
             const encodedGroupId = encodeURIComponent(group_id);
             const encodedUserId = encodeURIComponent(user_id);
@@ -174,7 +174,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
             return { removed: true, group_id, user_id };
           }
 
-          case "update_project": {
+          case 'update_project': {
             const { project_id, user_id, access_level, expires_at } = input;
             const encodedProjectId = encodeURIComponent(project_id);
             const encodedUserId = encodeURIComponent(user_id);
@@ -184,11 +184,11 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
             return gitlab.put(`projects/${encodedProjectId}/members/${encodedUserId}`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "update_group": {
+          case 'update_group': {
             const { group_id, user_id, access_level, expires_at, member_role_id } = input;
             const encodedGroupId = encodeURIComponent(group_id);
             const encodedUserId = encodeURIComponent(user_id);
@@ -199,7 +199,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
             return gitlab.put(`groups/${encodedGroupId}/members/${encodedUserId}`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
@@ -216,7 +216,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
  * Get read-only tool names from the registry
  */
 export function getMembersReadOnlyToolNames(): string[] {
-  return ["browse_members"];
+  return ['browse_members'];
 }
 
 /**
@@ -232,8 +232,8 @@ export function getMembersToolDefinitions(): EnhancedToolDefinition[] {
 export function getFilteredMembersTools(readOnlyMode: boolean = false): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getMembersReadOnlyToolNames();
-    return Array.from(membersToolRegistry.values()).filter(tool =>
-      readOnlyNames.includes(tool.name)
+    return Array.from(membersToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
     );
   }
   return getMembersToolDefinitions();

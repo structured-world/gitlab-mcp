@@ -4,8 +4,8 @@
  * Matches GitLab host from git remote to user-defined profiles.
  */
 
-import { ProfileLoader, ProfileInfo } from "../profiles";
-import { logDebug } from "../logger";
+import { ProfileLoader, ProfileInfo } from '../profiles';
+import { logDebug } from '../logger';
 
 // ============================================================================
 // Types
@@ -17,7 +17,7 @@ export interface ProfileMatchResult {
   /** Profile info */
   profile: ProfileInfo;
   /** How the match was made */
-  matchType: "exact" | "subdomain";
+  matchType: 'exact' | 'subdomain';
 }
 
 // ============================================================================
@@ -37,29 +37,29 @@ export interface ProfileMatchResult {
  */
 export function matchProfileByHost(
   host: string,
-  profiles: ProfileInfo[]
+  profiles: ProfileInfo[],
 ): ProfileMatchResult | null {
   const normalizedHost = host.toLowerCase();
 
   // Only consider user profiles (with host defined)
   // Type guard ensures profile.host is string (not undefined)
   const userProfiles = profiles.filter(
-    (p): p is ProfileInfo & { host: string } => typeof p.host === "string" && !p.isPreset
+    (p): p is ProfileInfo & { host: string } => typeof p.host === 'string' && !p.isPreset,
   );
 
   // 1. Try exact match first
   for (const profile of userProfiles) {
     const profileHost = profile.host.toLowerCase();
     if (normalizedHost === profileHost) {
-      logDebug("Matched profile by exact host", {
+      logDebug('Matched profile by exact host', {
         host,
         profile: profile.name,
-        matchType: "exact",
+        matchType: 'exact',
       });
       return {
         profileName: profile.name,
         profile,
-        matchType: "exact",
+        matchType: 'exact',
       };
     }
   }
@@ -69,20 +69,20 @@ export function matchProfileByHost(
   for (const profile of userProfiles) {
     const profileHost = profile.host.toLowerCase();
     if (normalizedHost.endsWith(`.${profileHost}`)) {
-      logDebug("Matched profile by subdomain", {
+      logDebug('Matched profile by subdomain', {
         host,
         profile: profile.name,
-        matchType: "subdomain",
+        matchType: 'subdomain',
       });
       return {
         profileName: profile.name,
         profile,
-        matchType: "subdomain",
+        matchType: 'subdomain',
       };
     }
   }
 
-  logDebug("No profile match found", { host, availableHosts: userProfiles.map(p => p.host) });
+  logDebug('No profile match found', { host, availableHosts: userProfiles.map((p) => p.host) });
   return null;
 }
 
@@ -95,7 +95,7 @@ export function matchProfileByHost(
  */
 export async function findProfileByHost(
   host: string,
-  loader?: ProfileLoader
+  loader?: ProfileLoader,
 ): Promise<ProfileMatchResult | null> {
   const profileLoader = loader ?? new ProfileLoader();
   const profiles = await profileLoader.listProfiles();

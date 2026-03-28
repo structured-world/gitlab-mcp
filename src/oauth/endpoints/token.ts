@@ -9,21 +9,21 @@
  * GitLab authentication.
  */
 
-import { Request, Response } from "express";
-import { loadOAuthConfig, OAuthConfig } from "../config";
-import { sessionStore } from "../session-store";
+import { Request, Response } from 'express';
+import { loadOAuthConfig, OAuthConfig } from '../config';
+import { sessionStore } from '../session-store';
 import {
   verifyCodeChallenge,
   createJWT,
   generateRefreshToken,
   calculateTokenExpiry,
   isTokenExpiringSoon,
-} from "../token-utils";
-import { refreshGitLabToken } from "../gitlab-device-flow";
-import { getBaseUrl } from "./metadata";
-import { logInfo, logDebug, logWarn, logError, truncateId } from "../../logger";
-import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from "../types";
-import { getIpAddress } from "../../utils/request-logger";
+} from '../token-utils';
+import { refreshGitLabToken } from '../gitlab-device-flow';
+import { getBaseUrl } from './metadata';
+import { logInfo, logDebug, logWarn, logError, truncateId } from '../../logger';
+import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from '../types';
+import { getIpAddress } from '../../utils/request-logger';
 
 /**
  * Token endpoint handler
@@ -37,18 +37,18 @@ import { getIpAddress } from "../../utils/request-logger";
 export async function tokenHandler(req: Request, res: Response): Promise<void> {
   const config = loadOAuthConfig();
   if (!config) {
-    sendError(req, res, 500, "server_error", "OAuth not configured");
+    sendError(req, res, 500, 'server_error', 'OAuth not configured');
     return;
   }
 
   const { grant_type } = req.body as { grant_type?: string };
 
   switch (grant_type) {
-    case "authorization_code":
+    case 'authorization_code':
       await handleAuthorizationCode(req, res, config);
       break;
 
-    case "refresh_token":
+    case 'refresh_token':
       await handleRefreshToken(req, res, config);
       break;
 
@@ -57,8 +57,8 @@ export async function tokenHandler(req: Request, res: Response): Promise<void> {
         req,
         res,
         400,
-        "unsupported_grant_type",
-        `Grant type "${grant_type}" is not supported`
+        'unsupported_grant_type',
+        `Grant type "${grant_type}" is not supported`,
       );
   }
 }
@@ -72,7 +72,7 @@ export async function tokenHandler(req: Request, res: Response): Promise<void> {
 async function handleAuthorizationCode(
   req: Request,
   res: Response,
-  config: OAuthConfig
+  config: OAuthConfig,
 ): Promise<void> {
   const { code, code_verifier, redirect_uri } = req.body as {
     code?: string;
@@ -82,45 +82,45 @@ async function handleAuthorizationCode(
 
   // Validate required parameters
   if (!code) {
-    sendError(req, res, 400, "invalid_request", "Missing authorization code");
+    sendError(req, res, 400, 'invalid_request', 'Missing authorization code');
     return;
   }
 
   if (!code_verifier) {
-    sendError(req, res, 400, "invalid_request", "Missing code_verifier (PKCE required)");
+    sendError(req, res, 400, 'invalid_request', 'Missing code_verifier (PKCE required)');
     return;
   }
 
   // Look up authorization code
   const authCode = sessionStore.getAuthCode(code);
   if (!authCode) {
-    sendError(req, res, 400, "invalid_grant", "Invalid or expired authorization code");
+    sendError(req, res, 400, 'invalid_grant', 'Invalid or expired authorization code');
     return;
   }
 
   // Check if code has expired
   if (Date.now() > authCode.expiresAt) {
     sessionStore.deleteAuthCode(code);
-    sendError(req, res, 400, "invalid_grant", "Authorization code has expired");
+    sendError(req, res, 400, 'invalid_grant', 'Authorization code has expired');
     return;
   }
 
   // Verify PKCE code challenge
   if (!verifyCodeChallenge(code_verifier, authCode.codeChallenge, authCode.codeChallengeMethod)) {
-    sendError(req, res, 400, "invalid_grant", "Invalid code_verifier");
+    sendError(req, res, 400, 'invalid_grant', 'Invalid code_verifier');
     return;
   }
 
   // Verify redirect_uri matches (if it was provided in authorization)
   if (authCode.redirectUri && redirect_uri !== authCode.redirectUri) {
-    sendError(req, res, 400, "invalid_grant", "redirect_uri does not match");
+    sendError(req, res, 400, 'invalid_grant', 'redirect_uri does not match');
     return;
   }
 
   // Get the session created during device flow
   const session = sessionStore.getSession(authCode.sessionId);
   if (!session) {
-    sendError(req, res, 400, "invalid_grant", "Session not found");
+    sendError(req, res, 400, 'invalid_grant', 'Session not found');
     return;
   }
 
@@ -133,11 +133,11 @@ async function handleAuthorizationCode(
       sub: session.gitlabUserId.toString(),
       aud: authCode.clientId,
       sid: session.id,
-      scope: session.scopes.join(" "),
+      scope: session.scopes.join(' '),
       gitlab_user: session.gitlabUsername,
     },
     config.sessionSecret,
-    config.tokenTtl
+    config.tokenTtl,
   );
 
   const refreshToken = generateRefreshToken();
@@ -152,7 +152,7 @@ async function handleAuthorizationCode(
   // Delete authorization code (single use)
   sessionStore.deleteAuthCode(code);
 
-  logInfo("MCP tokens issued via authorization_code grant", {
+  logInfo('MCP tokens issued via authorization_code grant', {
     sessionId: truncateId(session.id),
     userId: session.gitlabUserId,
   });
@@ -160,10 +160,10 @@ async function handleAuthorizationCode(
   // Return token response
   const response: MCPTokenResponse = {
     access_token: accessToken,
-    token_type: "Bearer",
+    token_type: 'Bearer',
     expires_in: config.tokenTtl,
     refresh_token: refreshToken,
-    scope: session.scopes.join(" "),
+    scope: session.scopes.join(' '),
   };
 
   res.json(response);
@@ -179,14 +179,14 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
   const { refresh_token } = req.body as { refresh_token?: string };
 
   if (!refresh_token) {
-    sendError(req, res, 400, "invalid_request", "Missing refresh_token");
+    sendError(req, res, 400, 'invalid_request', 'Missing refresh_token');
     return;
   }
 
   // Find session by refresh token
   const session = sessionStore.getSessionByRefreshToken(refresh_token);
   if (!session) {
-    sendError(req, res, 400, "invalid_grant", "Invalid refresh token");
+    sendError(req, res, 400, 'invalid_grant', 'Invalid refresh token');
     return;
   }
 
@@ -206,15 +206,15 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
       // Get updated session
       const refreshedSession = sessionStore.getSession(session.id);
       if (!refreshedSession) {
-        sendError(req, res, 400, "invalid_grant", "Session lost during refresh");
+        sendError(req, res, 400, 'invalid_grant', 'Session lost during refresh');
         return;
       }
       updatedSession = refreshedSession;
 
-      logDebug("GitLab token refreshed", { sessionId: truncateId(session.id) });
+      logDebug('GitLab token refreshed', { sessionId: truncateId(session.id) });
     } catch (error: unknown) {
-      logError("Failed to refresh GitLab token", { err: error as Error });
-      sendError(req, res, 400, "invalid_grant", "Failed to refresh underlying GitLab token");
+      logError('Failed to refresh GitLab token', { err: error as Error });
+      sendError(req, res, 400, 'invalid_grant', 'Failed to refresh underlying GitLab token');
       return;
     }
   }
@@ -228,11 +228,11 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
       sub: updatedSession.gitlabUserId.toString(),
       aud: updatedSession.clientId,
       sid: updatedSession.id,
-      scope: updatedSession.scopes.join(" "),
+      scope: updatedSession.scopes.join(' '),
       gitlab_user: updatedSession.gitlabUsername,
     },
     config.sessionSecret,
-    config.tokenTtl
+    config.tokenTtl,
   );
 
   const newRefreshToken = generateRefreshToken();
@@ -244,7 +244,7 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
     mcpTokenExpiry: calculateTokenExpiry(config.tokenTtl),
   });
 
-  logInfo("MCP tokens refreshed via refresh_token grant", {
+  logInfo('MCP tokens refreshed via refresh_token grant', {
     sessionId: truncateId(updatedSession.id),
     userId: updatedSession.gitlabUserId,
   });
@@ -252,10 +252,10 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
   // Return token response
   const response: MCPTokenResponse = {
     access_token: accessToken,
-    token_type: "Bearer",
+    token_type: 'Bearer',
     expires_in: config.tokenTtl,
     refresh_token: newRefreshToken,
-    scope: updatedSession.scopes.join(" "),
+    scope: updatedSession.scopes.join(' '),
   };
 
   res.json(response);
@@ -271,12 +271,12 @@ function sendError(
   res: Response,
   status: number,
   error: string,
-  description: string
+  description: string,
 ): void {
   // Log OAuth error with structured context
-  logWarn("OAuth token request failed", {
-    event: "oauth_error",
-    endpoint: "/token",
+  logWarn('OAuth token request failed', {
+    event: 'oauth_error',
+    endpoint: '/token',
     ip: getIpAddress(req),
     error,
     description,

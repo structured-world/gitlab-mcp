@@ -1,20 +1,20 @@
-import * as z from "zod";
-import picomatch from "picomatch";
+import * as z from 'zod';
+import picomatch from 'picomatch';
 import {
   BrowseMergeRequestsSchema,
   BrowseMrDiscussionsSchema,
   LOCKFILE_PATTERNS,
   GENERATED_PATTERNS,
-} from "./schema-readonly";
+} from './schema-readonly';
 import {
   ManageMergeRequestSchema,
   ManageMrDiscussionSchema,
   ManageDraftNotesSchema,
-} from "./schema";
-import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { normalizeProjectId } from "../../utils/projectIdentifier";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { isActionDenied } from "../../config";
+} from './schema';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { normalizeProjectId } from '../../utils/projectIdentifier';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { isActionDenied } from '../../config';
 
 /**
  * Response shape for MR status check before merge.
@@ -51,18 +51,18 @@ export interface MergeBlockedResponse {
  * Agent should wait and retry for these statuses.
  */
 export const RETRYABLE_MERGE_STATUSES = [
-  "checking",
-  "unchecked",
-  "ci_still_running",
-  "ci_must_pass",
-  "approvals_syncing",
+  'checking',
+  'unchecked',
+  'ci_still_running',
+  'ci_must_pass',
+  'approvals_syncing',
 ] as const;
 
 /**
  * Statuses where auto-merge (merge_when_pipeline_succeeds) is applicable.
  * Agent can suggest using auto-merge for these statuses.
  */
-export const AUTO_MERGE_ELIGIBLE_STATUSES = ["ci_still_running", "ci_must_pass"] as const;
+export const AUTO_MERGE_ELIGIBLE_STATUSES = ['ci_still_running', 'ci_must_pass'] as const;
 
 /**
  * Returns actionable hint for a given merge status.
@@ -74,36 +74,36 @@ export const AUTO_MERGE_ELIGIBLE_STATUSES = ["ci_still_running", "ci_must_pass"]
 export function getMergeStatusHint(status: string): string {
   const hints: Record<string, string> = {
     // Async check in progress - agent should wait and retry
-    checking: "Wait a moment and retry - GitLab is calculating mergeability",
-    unchecked: "Wait a moment and retry - GitLab has not checked mergeability yet",
+    checking: 'Wait a moment and retry - GitLab is calculating mergeability',
+    unchecked: 'Wait a moment and retry - GitLab has not checked mergeability yet',
 
     // CI/Pipeline related - suggest auto-merge
     ci_must_pass:
-      "Pipeline must pass. Use merge_when_pipeline_succeeds: true for auto-merge, or wait for pipeline",
+      'Pipeline must pass. Use merge_when_pipeline_succeeds: true for auto-merge, or wait for pipeline',
     ci_still_running:
-      "Pipeline is running. Use merge_when_pipeline_succeeds: true for auto-merge, or wait for completion",
+      'Pipeline is running. Use merge_when_pipeline_succeeds: true for auto-merge, or wait for completion',
 
     // Approval related
-    not_approved: "MR requires approval before merging",
-    approvals_syncing: "Approvals are being synchronized - wait and retry",
+    not_approved: 'MR requires approval before merging',
+    approvals_syncing: 'Approvals are being synchronized - wait and retry',
 
     // Conflict related
-    conflict: "Resolve merge conflicts before merging",
-    need_rebase: "Rebase the source branch before merging",
+    conflict: 'Resolve merge conflicts before merging',
+    need_rebase: 'Rebase the source branch before merging',
 
     // Status related
     draft_status:
       "Remove draft status before merging by updating the title to remove any 'Draft:' or 'WIP:' prefix",
-    discussions_not_resolved: "Resolve all blocking discussions before merging",
-    blocked_status: "MR is blocked by another MR or issue",
+    discussions_not_resolved: 'Resolve all blocking discussions before merging',
+    blocked_status: 'MR is blocked by another MR or issue',
 
     // External checks
-    external_status_checks: "External status checks are pending",
-    jira_association_missing: "Jira issue association is required",
+    external_status_checks: 'External status checks are pending',
+    jira_association_missing: 'Jira issue association is required',
 
     // Other statuses
-    not_open: "MR is not in open state - cannot merge closed or already merged MRs",
-    mergeable: "MR is ready to merge",
+    not_open: 'MR is not in open state - cannot merge closed or already merged MRs',
+    mergeable: 'MR is ready to merge',
   };
 
   return hints[status] || `Check MR detailed status: ${status}`;
@@ -114,12 +114,12 @@ export function getMergeStatusHint(status: string): string {
  */
 export function getSuggestedAction(isRetryable: boolean, canAutoMerge: boolean): string {
   if (canAutoMerge) {
-    return "Consider using merge_when_pipeline_succeeds: true to auto-merge when pipeline passes";
+    return 'Consider using merge_when_pipeline_succeeds: true to auto-merge when pipeline passes';
   }
   if (isRetryable) {
-    return "Wait a moment and retry the merge";
+    return 'Wait a moment and retry the merge';
   }
-  return "Resolve the blocking condition before merging";
+  return 'Resolve the blocking condition before merging';
 }
 
 /**
@@ -131,20 +131,20 @@ export function getSuggestedAction(isRetryable: boolean, canAutoMerge: boolean):
  */
 export function flattenPositionToFormFields(
   body: Record<string, unknown>,
-  position: Record<string, unknown>
+  position: Record<string, unknown>,
 ): void {
   for (const [key, value] of Object.entries(position)) {
     if (value === undefined || value === null) continue;
 
-    if (typeof value === "object" && !Array.isArray(value)) {
+    if (typeof value === 'object' && !Array.isArray(value)) {
       // Handle nested objects like line_range.start, line_range.end
       for (const [nestedKey, nestedValue] of Object.entries(value as Record<string, unknown>)) {
         if (nestedValue === undefined || nestedValue === null) continue;
 
-        if (typeof nestedValue === "object" && !Array.isArray(nestedValue)) {
+        if (typeof nestedValue === 'object' && !Array.isArray(nestedValue)) {
           // Handle deeply nested (line_range.start.line_code, etc.)
           for (const [deepKey, deepValue] of Object.entries(
-            nestedValue as Record<string, unknown>
+            nestedValue as Record<string, unknown>,
           )) {
             if (deepValue !== undefined && deepValue !== null) {
               body[`position[${key}][${nestedKey}][${deepKey}]`] = deepValue;
@@ -175,23 +175,23 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_merge_requests",
+    'browse_merge_requests',
     {
-      name: "browse_merge_requests",
+      name: 'browse_merge_requests',
       description:
-        "Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), diffs (file-level changes with inline suggestions), compare (diff between any two refs), versions (list diff versions from pushes), version (get specific version with diffs). Related: manage_merge_request to create/update/merge.",
+        'Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), diffs (file-level changes with inline suggestions), compare (diff between any two refs), versions (list diff versions from pushes), version (get specific version with diffs). Related: manage_merge_request to create/update/merge.',
       inputSchema: z.toJSONSchema(BrowseMergeRequestsSchema),
-      gate: { envVar: "USE_MRS", defaultValue: true },
+      gate: { envVar: 'USE_MRS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseMergeRequestsSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_merge_requests", input.action)) {
+        if (isActionDenied('browse_merge_requests', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_merge_requests tool`);
         }
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             // TypeScript knows: input has state, order_by, sort, milestone, etc. (all optional)
             const { action: _action, project_id, ...rest } = input;
             const query = toQuery(rest, []);
@@ -203,7 +203,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             return gitlab.get(path, { query });
           }
 
-          case "get": {
+          case 'get': {
             // TypeScript knows: input has project_id (required), merge_request_iid (optional), branch_name (optional)
             const { project_id, merge_request_iid, branch_name } = input;
 
@@ -217,24 +217,24 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             if (merge_request_iid) {
               return gitlab.get(
                 `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}`,
-                Object.keys(query).length > 0 ? { query } : undefined
+                Object.keys(query).length > 0 ? { query } : undefined,
               );
             } else if (branch_name) {
               const result = await gitlab.get<unknown[]>(
                 `projects/${normalizeProjectId(project_id)}/merge_requests`,
-                { query: { source_branch: branch_name, ...query } }
+                { query: { source_branch: branch_name, ...query } },
               );
 
               if (Array.isArray(result) && result.length > 0) {
                 return result[0];
               }
-              throw new Error("No merge request found for branch");
+              throw new Error('No merge request found for branch');
             }
             /* istanbul ignore next -- unreachable: schema validation ensures merge_request_iid or branch_name */
-            throw new Error("Either merge_request_iid or branch_name must be provided");
+            throw new Error('Either merge_request_iid or branch_name must be provided');
           }
 
-          case "diffs": {
+          case 'diffs': {
             // TypeScript knows: input has project_id (required), merge_request_iid (required)
             const {
               project_id,
@@ -257,7 +257,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
               [key: string]: unknown;
             }>(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/changes`,
-              { query }
+              { query },
             );
 
             // Build exclusion patterns list
@@ -279,7 +279,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
               response.changes = response.changes.filter(
                 (diff: { new_path: string; old_path: string }) =>
-                  !matcher(diff.new_path) && !matcher(diff.old_path)
+                  !matcher(diff.new_path) && !matcher(diff.old_path),
               );
 
               // Add metadata about filtering (response type already has index signature)
@@ -294,7 +294,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             return response;
           }
 
-          case "compare": {
+          case 'compare': {
             // TypeScript knows: input has project_id (required), from (required), to (required)
             const { project_id, from, to, straight } = input;
 
@@ -309,23 +309,23 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             });
           }
 
-          case "versions": {
+          case 'versions': {
             // TypeScript knows: input has project_id (required), merge_request_iid (required)
             const { action: _action, project_id, merge_request_iid, ...rest } = input;
             const query = toQuery(rest, []);
 
             return gitlab.get(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/versions`,
-              { query }
+              { query },
             );
           }
 
-          case "version": {
+          case 'version': {
             // TypeScript knows: input has project_id (required), merge_request_iid (required), version_id (required)
             const { project_id, merge_request_iid, version_id } = input;
 
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/versions/${version_id}`
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/versions/${version_id}`,
             );
           }
 
@@ -342,46 +342,46 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_mr_discussions",
+    'browse_mr_discussions',
     {
-      name: "browse_mr_discussions",
+      name: 'browse_mr_discussions',
       description:
-        "Read discussion threads and draft review notes on merge requests. Actions: list (all threads with resolution status), drafts (unpublished draft notes), draft (single draft details). Related: manage_mr_discussion to comment, manage_draft_notes to create drafts.",
+        'Read discussion threads and draft review notes on merge requests. Actions: list (all threads with resolution status), drafts (unpublished draft notes), draft (single draft details). Related: manage_mr_discussion to comment, manage_draft_notes to create drafts.',
       inputSchema: z.toJSONSchema(BrowseMrDiscussionsSchema),
-      gate: { envVar: "USE_MRS", defaultValue: true },
+      gate: { envVar: 'USE_MRS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseMrDiscussionsSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_mr_discussions", input.action)) {
+        if (isActionDenied('browse_mr_discussions', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_mr_discussions tool`);
         }
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             // TypeScript knows: input has project_id (required), merge_request_iid (required), per_page, page (optional)
             const { action: _action, project_id, merge_request_iid, ...rest } = input;
             const query = toQuery(rest, []);
 
             return gitlab.get(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/discussions`,
-              { query }
+              { query },
             );
           }
 
-          case "drafts": {
+          case 'drafts': {
             // TypeScript knows: input has project_id (required), merge_request_iid (required)
             const { project_id, merge_request_iid } = input;
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes`
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes`,
             );
           }
 
-          case "draft": {
+          case 'draft': {
             // TypeScript knows: input has project_id (required), merge_request_iid (required), draft_note_id (required)
             const { project_id, merge_request_iid, draft_note_id } = input;
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}`
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}`,
             );
           }
 
@@ -398,23 +398,23 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_merge_request",
+    'manage_merge_request',
     {
-      name: "manage_merge_request",
+      name: 'manage_merge_request',
       description:
-        "Create, update, merge, or approve merge requests. Actions: create (new MR from source to target), update (title/description/assignees/reviewers/labels), merge (into target branch), approve/unapprove (review approval), get_approval_state (current approvals). Related: browse_merge_requests for discovery.",
+        'Create, update, merge, or approve merge requests. Actions: create (new MR from source to target), update (title/description/assignees/reviewers/labels), merge (into target branch), approve/unapprove (review approval), get_approval_state (current approvals). Related: browse_merge_requests for discovery.',
       inputSchema: z.toJSONSchema(ManageMergeRequestSchema),
-      gate: { envVar: "USE_MRS", defaultValue: true },
+      gate: { envVar: 'USE_MRS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageMergeRequestSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_merge_request", input.action)) {
+        if (isActionDenied('manage_merge_request', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_merge_request tool`);
         }
 
         switch (input.action) {
-          case "create": {
+          case 'create': {
             // TypeScript knows: input has source_branch (required), target_branch (required), title (required)
             const { action: _action, project_id, ...body } = input;
 
@@ -422,7 +422,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const processedBody: Record<string, unknown> = {};
             for (const [key, value] of Object.entries(body)) {
               if (Array.isArray(value)) {
-                processedBody[key] = value.join(",");
+                processedBody[key] = value.join(',');
               } else {
                 processedBody[key] = value;
               }
@@ -430,11 +430,11 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             return gitlab.post(`projects/${normalizeProjectId(project_id)}/merge_requests`, {
               body: processedBody,
-              contentType: "form",
+              contentType: 'form',
             });
           }
 
-          case "update": {
+          case 'update': {
             // TypeScript knows: input has merge_request_iid (required)
             const { action: _action, project_id, merge_request_iid, ...body } = input;
 
@@ -442,7 +442,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             const processedBody: Record<string, unknown> = {};
             for (const [key, value] of Object.entries(body)) {
               if (Array.isArray(value)) {
-                processedBody[key] = value.join(",");
+                processedBody[key] = value.join(',');
               } else {
                 processedBody[key] = value;
               }
@@ -450,11 +450,11 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             return gitlab.put(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}`,
-              { body: processedBody, contentType: "form" }
+              { body: processedBody, contentType: 'form' },
             );
           }
 
-          case "merge": {
+          case 'merge': {
             // TypeScript knows: input has merge_request_iid (required)
             const {
               action: _action,
@@ -471,28 +471,28 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             if (merge_when_pipeline_succeeds) {
               return gitlab.put(mergeEndpoint, {
                 body: { ...body, merge_when_pipeline_succeeds: true },
-                contentType: "form",
+                contentType: 'form',
               });
             }
 
             // Pre-check mergeability to provide actionable errors instead of 405
             const mrStatus = await gitlab.get<MergeRequestStatusResponse>(
-              `projects/${projectPath}/merge_requests/${merge_request_iid}`
+              `projects/${projectPath}/merge_requests/${merge_request_iid}`,
             );
 
             const detailedStatus = mrStatus.detailed_merge_status;
 
             // If mergeable, proceed with merge
-            if (detailedStatus === "mergeable") {
-              return gitlab.put(mergeEndpoint, { body, contentType: "form" });
+            if (detailedStatus === 'mergeable') {
+              return gitlab.put(mergeEndpoint, { body, contentType: 'form' });
             }
 
             // Determine if status is retryable or eligible for auto-merge
             const isRetryable = (RETRYABLE_MERGE_STATUSES as readonly string[]).includes(
-              detailedStatus
+              detailedStatus,
             );
             const canAutoMerge = (AUTO_MERGE_ELIGIBLE_STATUSES as readonly string[]).includes(
-              detailedStatus
+              detailedStatus,
             );
 
             // Return structured error with actionable guidance
@@ -512,7 +512,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             return blockedResponse;
           }
 
-          case "approve": {
+          case 'approve': {
             // TypeScript knows: input has merge_request_iid (required), sha (optional)
             const { project_id, merge_request_iid, sha } = input;
 
@@ -521,25 +521,25 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             return gitlab.post(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/approve`,
-              { body: Object.keys(body).length > 0 ? body : undefined, contentType: "json" }
+              { body: Object.keys(body).length > 0 ? body : undefined, contentType: 'json' },
             );
           }
 
-          case "unapprove": {
+          case 'unapprove': {
             // TypeScript knows: input has merge_request_iid (required)
             const { project_id, merge_request_iid } = input;
 
             return gitlab.post(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/unapprove`
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/unapprove`,
             );
           }
 
-          case "get_approval_state": {
+          case 'get_approval_state': {
             // TypeScript knows: input has merge_request_iid (required)
             const { project_id, merge_request_iid } = input;
 
             return gitlab.get(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/approval_state`
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/approval_state`,
             );
           }
 
@@ -556,23 +556,23 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_mr_discussion",
+    'manage_mr_discussion',
     {
-      name: "manage_mr_discussion",
+      name: 'manage_mr_discussion',
       description:
-        "Post comments, start threads, and suggest code changes on merge requests. Actions: comment (simple note), thread (line-level discussion), reply (to existing thread), update (edit note text), resolve (toggle thread resolution), suggest (code suggestion block), apply_suggestion/apply_suggestions (accept code suggestions). Related: browse_mr_discussions to read threads.",
+        'Post comments, start threads, and suggest code changes on merge requests. Actions: comment (simple note), thread (line-level discussion), reply (to existing thread), update (edit note text), resolve (toggle thread resolution), suggest (code suggestion block), apply_suggestion/apply_suggestions (accept code suggestions). Related: browse_mr_discussions to read threads.',
       inputSchema: z.toJSONSchema(ManageMrDiscussionSchema),
-      gate: { envVar: "USE_MRS", defaultValue: true },
+      gate: { envVar: 'USE_MRS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageMrDiscussionSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_mr_discussion", input.action)) {
+        if (isActionDenied('manage_mr_discussion', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_mr_discussion tool`);
         }
 
         switch (input.action) {
-          case "comment": {
+          case 'comment': {
             // TypeScript knows: input has noteable_type (required), noteable_id (required), body (required)
             const {
               project_id,
@@ -587,15 +587,15 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             if (created_at) body.created_at = created_at;
             if (confidential !== undefined) body.confidential = confidential;
 
-            const resourceType = noteable_type === "merge_request" ? "merge_requests" : "issues";
+            const resourceType = noteable_type === 'merge_request' ? 'merge_requests' : 'issues';
 
             return gitlab.post(
               `projects/${normalizeProjectId(project_id)}/${resourceType}/${noteable_id}/notes`,
-              { body, contentType: "form" }
+              { body, contentType: 'form' },
             );
           }
 
-          case "thread": {
+          case 'thread': {
             // TypeScript knows: input has merge_request_iid (required), body (required)
             const { project_id, merge_request_iid, body: noteBody, position, commit_id } = input;
 
@@ -605,11 +605,11 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             return gitlab.post(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/discussions`,
-              { body, contentType: "form" }
+              { body, contentType: 'form' },
             );
           }
 
-          case "reply": {
+          case 'reply': {
             // TypeScript knows: input has merge_request_iid (required), discussion_id (required), body (required)
             const {
               project_id,
@@ -624,21 +624,21 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             return gitlab.post(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/discussions/${discussion_id}/notes`,
-              { body, contentType: "form" }
+              { body, contentType: 'form' },
             );
           }
 
-          case "update": {
+          case 'update': {
             // TypeScript knows: input has merge_request_iid (required), note_id (required), body (required)
             const { project_id, merge_request_iid, note_id, body: noteBody } = input;
 
             return gitlab.put(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/notes/${note_id}`,
-              { body: { body: noteBody }, contentType: "form" }
+              { body: { body: noteBody }, contentType: 'form' },
             );
           }
 
-          case "apply_suggestion": {
+          case 'apply_suggestion': {
             // TypeScript knows: input has suggestion_id (required), commit_message (optional)
             // Note: project_id and merge_request_iid are in schema for context but not used in API
             // GitLab suggestions API uses global endpoint: PUT /suggestions/:id/apply
@@ -651,11 +651,11 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             return gitlab.put(`suggestions/${suggestion_id}/apply`, {
               body: Object.keys(body).length > 0 ? body : undefined,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "apply_suggestions": {
+          case 'apply_suggestions': {
             // TypeScript knows: input has suggestion_ids (required), commit_message (optional)
             // Note: project_id and merge_request_iid are in schema for context but not used in API
             // GitLab suggestions API uses global endpoint: PUT /suggestions/batch_apply
@@ -668,20 +668,20 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
               body.commit_message = commit_message;
             }
 
-            return gitlab.put(`suggestions/batch_apply`, { body, contentType: "json" });
+            return gitlab.put(`suggestions/batch_apply`, { body, contentType: 'json' });
           }
 
-          case "resolve": {
+          case 'resolve': {
             // TypeScript knows: input has discussion_id (required), resolved (required)
             const { project_id, merge_request_iid, discussion_id, resolved } = input;
 
             return gitlab.put(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/discussions/${discussion_id}`,
-              { body: { resolved }, contentType: "form" }
+              { body: { resolved }, contentType: 'form' },
             );
           }
 
-          case "suggest": {
+          case 'suggest': {
             // TypeScript knows: input has position (required), suggestion (required)
             const {
               project_id,
@@ -696,7 +696,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             // Build markdown suggestion block with line range syntax
             // Format: ```suggestion:-N+M where N=lines_above, M=lines_below
             const rangeSpec =
-              lines_above || lines_below ? `:-${lines_above || 0}+${lines_below || 0}` : "";
+              lines_above || lines_below ? `:-${lines_above || 0}+${lines_below || 0}` : '';
             const suggestionBlock = `\`\`\`suggestion${rangeSpec}\n${suggestion}\n\`\`\``;
 
             // Prepend optional comment
@@ -710,7 +710,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             return gitlab.post(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/discussions`,
-              { body, contentType: "form" }
+              { body, contentType: 'form' },
             );
           }
 
@@ -727,23 +727,23 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_draft_notes",
+    'manage_draft_notes',
     {
-      name: "manage_draft_notes",
+      name: 'manage_draft_notes',
       description:
         "Create and manage unpublished review comments on merge requests. Actions: create (new draft), update (modify text), publish (make single draft visible), publish_all (submit entire review), delete (discard draft). Related: browse_mr_discussions action 'drafts' to list existing drafts.",
       inputSchema: z.toJSONSchema(ManageDraftNotesSchema),
-      gate: { envVar: "USE_MRS", defaultValue: true },
+      gate: { envVar: 'USE_MRS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageDraftNotesSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_draft_notes", input.action)) {
+        if (isActionDenied('manage_draft_notes', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_draft_notes tool`);
         }
 
         switch (input.action) {
-          case "create": {
+          case 'create': {
             // TypeScript knows: input has note (required), position, in_reply_to_discussion_id, commit_id (optional)
             const {
               project_id,
@@ -762,11 +762,11 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             return gitlab.post(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes`,
-              { body, contentType: "form" }
+              { body, contentType: 'form' },
             );
           }
 
-          case "update": {
+          case 'update': {
             // TypeScript knows: input has draft_note_id (required), note (required)
             const { project_id, merge_request_iid, draft_note_id, note, position } = input;
 
@@ -775,40 +775,40 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
 
             return gitlab.put(
               `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}`,
-              { body, contentType: "form" }
+              { body, contentType: 'form' },
             );
           }
 
-          case "publish": {
+          case 'publish': {
             // TypeScript knows: input has draft_note_id (required)
             const { project_id, merge_request_iid, draft_note_id } = input;
 
             const result = await gitlab.put<void>(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}/publish`
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}/publish`,
             );
             // PUT publish returns 204 No Content (undefined) on success
             return result ?? { published: true };
           }
 
-          case "publish_all": {
+          case 'publish_all': {
             // TypeScript knows: input has project_id (required), merge_request_iid (required)
             const { project_id, merge_request_iid } = input;
 
             const result = await gitlab.post<void>(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/bulk_publish`
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/bulk_publish`,
             );
             // POST bulk_publish returns 204 No Content (undefined) on success
             return result ?? { published: true };
           }
 
-          case "delete": {
+          case 'delete': {
             // TypeScript knows: input has draft_note_id (required)
             const { project_id, merge_request_iid, draft_note_id } = input;
 
             await gitlab.delete<void>(
-              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}`
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/draft_notes/${draft_note_id}`,
             );
-            return { success: true, message: "Draft note deleted successfully" };
+            return { success: true, message: 'Draft note deleted successfully' };
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
@@ -824,7 +824,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
  * Get read-only tool names from the registry
  */
 export function getMrsReadOnlyToolNames(): string[] {
-  return ["browse_merge_requests", "browse_mr_discussions"];
+  return ['browse_merge_requests', 'browse_mr_discussions'];
 }
 
 /**
@@ -840,7 +840,7 @@ export function getMrsToolDefinitions(): EnhancedToolDefinition[] {
 export function getFilteredMrsTools(readOnlyMode: boolean = false): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getMrsReadOnlyToolNames();
-    return Array.from(mrsToolRegistry.values()).filter(tool => readOnlyNames.includes(tool.name));
+    return Array.from(mrsToolRegistry.values()).filter((tool) => readOnlyNames.includes(tool.name));
   }
   return getMrsToolDefinitions();
 }

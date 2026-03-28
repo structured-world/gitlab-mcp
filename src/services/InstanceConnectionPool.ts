@@ -12,18 +12,18 @@
  * isolated clients per instance instead of mutating a shared client.
  */
 
-import { GraphQLClient } from "../graphql/client.js";
-import { logInfo, logDebug, logWarn } from "../logger.js";
-import { GitLabInstanceConfig } from "../config/instances-schema.js";
+import { GraphQLClient } from '../graphql/client.js';
+import { logInfo, logDebug, logWarn } from '../logger.js';
+import { GitLabInstanceConfig } from '../config/instances-schema.js';
 import {
   CONNECT_TIMEOUT_MS,
   HEADERS_TIMEOUT_MS,
   BODY_TIMEOUT_MS,
   POOL_MAX_CONNECTIONS,
-} from "../config.js";
+} from '../config.js';
 
 // Dynamic require to avoid TypeScript analyzing complex undici types at compile time
-const undici = require("undici") as {
+const undici = require('undici') as {
   Agent: new (opts?: UndiciAgentOptions) => UndiciAgent;
   Pool: new (origin: string, opts?: UndiciPoolOptions) => UndiciPool;
 };
@@ -168,7 +168,7 @@ export class InstanceConnectionPool {
    */
   public getGraphQLClient(
     instanceConfig: GitLabInstanceConfig,
-    authHeaders?: Record<string, string>
+    authHeaders?: Record<string, string>,
   ): GraphQLClient {
     const entry = this.getOrCreateEntry(instanceConfig);
     entry.lastUsedAt = new Date();
@@ -186,9 +186,9 @@ export class InstanceConnectionPool {
     type RequestFn = (...fnArgs: unknown[]) => unknown;
     const clientWithAuth = new Proxy(baseClient, {
       get(target, prop: string | symbol, receiver): unknown {
-        if (prop === "request" || prop === "rawRequest") {
+        if (prop === 'request' || prop === 'rawRequest') {
           const original = (target as unknown as Record<string, unknown>)[prop];
-          if (typeof original !== "function") {
+          if (typeof original !== 'function') {
             return Reflect.get(target, prop, receiver) as unknown;
           }
           return (...args: unknown[]): unknown => {
@@ -204,7 +204,7 @@ export class InstanceConnectionPool {
             // For 1-2 args, append headers as new argument
             if (args.length >= 3) {
               const lastArg = adjustedArgs[adjustedArgs.length - 1];
-              if (lastArg && typeof lastArg === "object" && !Array.isArray(lastArg)) {
+              if (lastArg && typeof lastArg === 'object' && !Array.isArray(lastArg)) {
                 // Merge into existing request headers
                 adjustedArgs[adjustedArgs.length - 1] = {
                   ...(lastArg as Record<string, string>),
@@ -246,7 +246,7 @@ export class InstanceConnectionPool {
    * Get pool statistics for all instances
    */
   public getStats(): PoolStats[] {
-    return Array.from(this.pools.values()).map(entry => ({
+    return Array.from(this.pools.values()).map((entry) => ({
       baseUrl: entry.baseUrl,
       graphqlEndpoint: entry.graphqlEndpoint,
       ...entry.pool.stats,
@@ -283,7 +283,7 @@ export class InstanceConnectionPool {
     if (entry) {
       await entry.pool.destroy();
       this.pools.delete(normalizedUrl);
-      logDebug("Connection pool destroyed", { baseUrl: normalizedUrl });
+      logDebug('Connection pool destroyed', { baseUrl: normalizedUrl });
     }
   }
 
@@ -291,10 +291,10 @@ export class InstanceConnectionPool {
    * Destroy all pools (cleanup on shutdown)
    */
   public async destroyAll(): Promise<void> {
-    const destroyPromises = Array.from(this.pools.values()).map(entry => entry.pool.destroy());
+    const destroyPromises = Array.from(this.pools.values()).map((entry) => entry.pool.destroy());
     await Promise.all(destroyPromises);
     this.pools.clear();
-    logInfo("All connection pools destroyed");
+    logInfo('All connection pools destroyed');
   }
 
   /**
@@ -322,7 +322,7 @@ export class InstanceConnectionPool {
     entry = this.createEntry(instanceConfig, normalizedUrl);
     this.pools.set(normalizedUrl, entry);
 
-    logInfo("Connection pool created for instance", {
+    logInfo('Connection pool created for instance', {
       baseUrl: normalizedUrl,
       maxConnections: this.config.maxConnections,
       keepAliveTimeout: this.config.keepAliveTimeout,
@@ -336,7 +336,7 @@ export class InstanceConnectionPool {
    */
   private createEntry(
     instanceConfig: GitLabInstanceConfig,
-    normalizedUrl: string
+    normalizedUrl: string,
   ): ConnectionEntry {
     // Build connect options — always includes timeout, optionally TLS overrides.
     // TCP keepalive detects dead upstream connections (GitLab restart, network drop).
@@ -354,7 +354,7 @@ export class InstanceConnectionPool {
 
     if (instanceConfig.insecureSkipVerify) {
       connectOptions.rejectUnauthorized = false;
-      logWarn("TLS verification disabled for instance", { url: normalizedUrl });
+      logWarn('TLS verification disabled for instance', { url: normalizedUrl });
     }
 
     // Create Undici Pool for this instance.
@@ -395,17 +395,17 @@ export class InstanceConnectionPool {
     let normalized = url;
 
     // Remove trailing slash
-    if (normalized.endsWith("/")) {
+    if (normalized.endsWith('/')) {
       normalized = normalized.slice(0, -1);
     }
 
     // Remove /api/v4 suffix
-    if (normalized.endsWith("/api/v4")) {
+    if (normalized.endsWith('/api/v4')) {
       normalized = normalized.slice(0, -7);
     }
 
     // Remove /api/graphql suffix
-    if (normalized.endsWith("/api/graphql")) {
+    if (normalized.endsWith('/api/graphql')) {
       normalized = normalized.slice(0, -12);
     }
 

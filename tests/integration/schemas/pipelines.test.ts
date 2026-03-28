@@ -3,31 +3,31 @@
  * Tests browse_pipelines CQRS tool with real GitLab API
  */
 
-import { BrowsePipelinesSchema } from "../../../src/entities/pipelines/schema-readonly";
-import { IntegrationTestHelper } from "../helpers/registry-helper";
+import { BrowsePipelinesSchema } from '../../../src/entities/pipelines/schema-readonly';
+import { IntegrationTestHelper } from '../helpers/registry-helper';
 
-describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
+describe('Pipelines Schema - GitLab Integration (CQRS)', () => {
   let helper: IntegrationTestHelper;
 
   beforeAll(async () => {
     const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
     if (!GITLAB_TOKEN) {
-      throw new Error("GITLAB_TOKEN environment variable is required");
+      throw new Error('GITLAB_TOKEN environment variable is required');
     }
 
     helper = new IntegrationTestHelper();
     await helper.initialize();
-    console.log("Integration test helper initialized for pipelines testing");
+    console.log('Integration test helper initialized for pipelines testing');
   });
 
-  describe("BrowsePipelinesSchema - list action", () => {
-    it("should validate and test with real project data using handler functions", async () => {
-      console.log("Getting real project for pipelines testing");
+  describe('BrowsePipelinesSchema - list action', () => {
+    it('should validate and test with real project data using handler functions', async () => {
+      console.log('Getting real project for pipelines testing');
 
       // Get actual project from data lifecycle
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("No projects available for testing");
+        console.log('No projects available for testing');
         return;
       }
 
@@ -35,13 +35,13 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
       console.log(`Using project: ${testProject.name} (ID: ${testProject.id})`);
 
       const validParams = {
-        action: "list" as const,
+        action: 'list' as const,
         project_id: testProject.id.toString(),
-        scope: "finished" as const,
-        status: "success" as const,
+        scope: 'finished' as const,
+        status: 'success' as const,
         per_page: 10,
-        order_by: "id" as const,
-        sort: "desc" as const,
+        order_by: 'id' as const,
+        sort: 'desc' as const,
       };
 
       // Validate schema
@@ -50,56 +50,56 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
 
       if (result.success) {
         // Test actual handler function
-        const pipelines = (await helper.executeTool("browse_pipelines", result.data)) as any[];
+        const pipelines = (await helper.executeTool('browse_pipelines', result.data)) as any[];
         expect(Array.isArray(pipelines)).toBe(true);
         console.log(`Retrieved ${pipelines.length} pipelines via handler`);
 
         // Validate structure if we have pipelines
         if (pipelines.length > 0) {
           const pipeline = pipelines[0];
-          expect(pipeline).toHaveProperty("id");
-          expect(pipeline).toHaveProperty("status");
-          expect(pipeline).toHaveProperty("ref");
-          expect(pipeline).toHaveProperty("sha");
-          expect(pipeline).toHaveProperty("source");
+          expect(pipeline).toHaveProperty('id');
+          expect(pipeline).toHaveProperty('status');
+          expect(pipeline).toHaveProperty('ref');
+          expect(pipeline).toHaveProperty('sha');
+          expect(pipeline).toHaveProperty('source');
           console.log(`Validated pipeline structure: ${pipeline.id} (${pipeline.status})`);
         }
       }
 
-      console.log("BrowsePipelinesSchema list action test completed with real data");
+      console.log('BrowsePipelinesSchema list action test completed with real data');
     });
 
-    it("should validate scope and status filtering parameters", async () => {
+    it('should validate scope and status filtering parameters', async () => {
       const testCases = [
         {
-          action: "list" as const,
-          project_id: "123",
-          scope: "running" as const,
-          status: "running" as const,
+          action: 'list' as const,
+          project_id: '123',
+          scope: 'running' as const,
+          status: 'running' as const,
         },
         {
-          action: "list" as const,
-          project_id: "123",
-          scope: "pending" as const,
-          status: "pending" as const,
+          action: 'list' as const,
+          project_id: '123',
+          scope: 'pending' as const,
+          status: 'pending' as const,
         },
         {
-          action: "list" as const,
-          project_id: "123",
-          scope: "finished" as const,
-          status: "success" as const,
+          action: 'list' as const,
+          project_id: '123',
+          scope: 'finished' as const,
+          status: 'success' as const,
         },
         {
-          action: "list" as const,
-          project_id: "123",
-          scope: "branches" as const,
-          status: "failed" as const,
+          action: 'list' as const,
+          project_id: '123',
+          scope: 'branches' as const,
+          status: 'failed' as const,
         },
         {
-          action: "list" as const,
-          project_id: "123",
-          scope: "tags" as const,
-          status: "canceled" as const,
+          action: 'list' as const,
+          project_id: '123',
+          scope: 'tags' as const,
+          status: 'canceled' as const,
         },
       ];
 
@@ -107,28 +107,28 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
         const result = BrowsePipelinesSchema.safeParse(testCase);
         expect(result.success).toBe(true);
 
-        if (result.success && result.data.action === "list") {
+        if (result.success && result.data.action === 'list') {
           expect(result.data.scope).toBe(testCase.scope);
           expect(result.data.status).toBe(testCase.status);
         }
       }
 
-      console.log("BrowsePipelinesSchema validates scope and status combinations");
+      console.log('BrowsePipelinesSchema validates scope and status combinations');
     });
 
-    it("should validate source and pipeline parameters with real commit data", async () => {
+    it('should validate source and pipeline parameters with real commit data', async () => {
       // Get actual project from data lifecycle
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("No projects available for pipeline parameter testing");
+        console.log('No projects available for pipeline parameter testing');
         return;
       }
 
       const testProject = projects[0];
 
       // Get real commits from the repository to use actual SHAs (CQRS consolidation - Issue #16)
-      const commits = (await helper.executeTool("browse_commits", {
-        action: "list",
+      const commits = (await helper.executeTool('browse_commits', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 1,
       })) as any[];
@@ -136,12 +136,12 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
       // Use real commit SHA and ref from data lifecycle
       const realSha = commits.length > 0 ? commits[0].id : undefined;
       const realRef =
-        commits.length > 0 ? (commits[0].message.includes("Initial") ? "main" : "main") : "main";
+        commits.length > 0 ? (commits[0].message.includes('Initial') ? 'main' : 'main') : 'main';
 
       const sourceParams = {
-        action: "list" as const,
+        action: 'list' as const,
         project_id: testProject.id.toString(),
-        source: "push" as const,
+        source: 'push' as const,
         ref: realRef,
         sha: realSha,
         yaml_errors: true,
@@ -151,8 +151,8 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
       const result = BrowsePipelinesSchema.safeParse(sourceParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "list") {
-        expect(result.data.source).toBe("push");
+      if (result.success && result.data.action === 'list') {
+        expect(result.data.source).toBe('push');
         expect(result.data.ref).toBe(realRef);
         if (realSha) {
           expect(result.data.sha).toBe(realSha);
@@ -163,42 +163,42 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
       }
 
       console.log(
-        "BrowsePipelinesSchema validates parameters with real commit data from data lifecycle"
+        'BrowsePipelinesSchema validates parameters with real commit data from data lifecycle',
       );
     });
 
-    it("should validate date filtering parameters", async () => {
+    it('should validate date filtering parameters', async () => {
       const dateParams = {
-        action: "list" as const,
-        project_id: "123",
-        updated_after: "2023-01-01T00:00:00Z",
-        updated_before: "2023-12-31T23:59:59Z",
-        order_by: "updated_at" as const,
-        sort: "asc" as const,
+        action: 'list' as const,
+        project_id: '123',
+        updated_after: '2023-01-01T00:00:00Z',
+        updated_before: '2023-12-31T23:59:59Z',
+        order_by: 'updated_at' as const,
+        sort: 'asc' as const,
       };
 
       const result = BrowsePipelinesSchema.safeParse(dateParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "list") {
-        expect(result.data.updated_after).toBe("2023-01-01T00:00:00Z");
-        expect(result.data.updated_before).toBe("2023-12-31T23:59:59Z");
-        expect(result.data.order_by).toBe("updated_at");
-        expect(result.data.sort).toBe("asc");
+      if (result.success && result.data.action === 'list') {
+        expect(result.data.updated_after).toBe('2023-01-01T00:00:00Z');
+        expect(result.data.updated_before).toBe('2023-12-31T23:59:59Z');
+        expect(result.data.order_by).toBe('updated_at');
+        expect(result.data.sort).toBe('asc');
       }
 
-      console.log("BrowsePipelinesSchema validates date filtering parameters");
+      console.log('BrowsePipelinesSchema validates date filtering parameters');
     });
 
-    it("should reject invalid parameters", async () => {
+    it('should reject invalid parameters', async () => {
       const invalidParams = {
-        action: "list",
-        project_id: "123",
-        scope: "invalid_scope", // Invalid enum value
-        status: "invalid_status", // Invalid enum value
-        source: "invalid_source", // Invalid enum value
-        order_by: "invalid_field", // Invalid enum value
-        sort: "sideways", // Invalid enum value
+        action: 'list',
+        project_id: '123',
+        scope: 'invalid_scope', // Invalid enum value
+        status: 'invalid_status', // Invalid enum value
+        source: 'invalid_source', // Invalid enum value
+        order_by: 'invalid_field', // Invalid enum value
+        sort: 'sideways', // Invalid enum value
         per_page: 150, // Exceeds max of 100
         page: 0, // Below minimum of 1
       };
@@ -210,34 +210,34 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
         expect(result.error.issues.length).toBeGreaterThan(0);
       }
 
-      console.log("BrowsePipelinesSchema correctly rejects invalid parameters");
+      console.log('BrowsePipelinesSchema correctly rejects invalid parameters');
     });
   });
 
-  describe("BrowsePipelinesSchema - get action", () => {
-    it("should validate get pipeline parameters with real data", async () => {
+  describe('BrowsePipelinesSchema - get action', () => {
+    it('should validate get pipeline parameters with real data', async () => {
       // Get a project and its pipelines for testing
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("No projects available for get action testing");
+        console.log('No projects available for get action testing');
         return;
       }
 
       const testProject = projects[0];
-      const pipelines = (await helper.executeTool("browse_pipelines", {
-        action: "list",
+      const pipelines = (await helper.executeTool('browse_pipelines', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 1,
       })) as any[];
 
       if (pipelines.length === 0) {
-        console.log("No pipelines found for get action testing");
+        console.log('No pipelines found for get action testing');
         return;
       }
 
       const testPipeline = pipelines[0];
       const validParams = {
-        action: "get" as const,
+        action: 'get' as const,
         project_id: testProject.id.toString(),
         pipeline_id: testPipeline.id.toString(),
       };
@@ -245,37 +245,37 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
       const result = BrowsePipelinesSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "get") {
+      if (result.success && result.data.action === 'get') {
         expect(result.data.project_id).toBe(testProject.id.toString());
         expect(result.data.pipeline_id).toBe(testPipeline.id.toString());
       }
 
-      console.log("BrowsePipelinesSchema get action validates parameters correctly");
+      console.log('BrowsePipelinesSchema get action validates parameters correctly');
     });
 
-    it("should test handler function for single pipeline", async () => {
+    it('should test handler function for single pipeline', async () => {
       // Get a project and its pipelines for testing
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("No projects available for handler testing");
+        console.log('No projects available for handler testing');
         return;
       }
 
       const testProject = projects[0];
-      const pipelines = (await helper.executeTool("browse_pipelines", {
-        action: "list",
+      const pipelines = (await helper.executeTool('browse_pipelines', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 1,
       })) as any[];
 
       if (pipelines.length === 0) {
-        console.log("No pipelines found for handler testing");
+        console.log('No pipelines found for handler testing');
         return;
       }
 
       const testPipeline = pipelines[0];
       const params = {
-        action: "get" as const,
+        action: 'get' as const,
         project_id: testProject.id.toString(),
         pipeline_id: testPipeline.id.toString(),
       };
@@ -286,93 +286,93 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
 
       if (paramResult.success) {
         // Test handler function
-        const pipeline = (await helper.executeTool("browse_pipelines", paramResult.data)) as any;
+        const pipeline = (await helper.executeTool('browse_pipelines', paramResult.data)) as any;
 
         // Validate pipeline structure
-        expect(pipeline).toHaveProperty("id");
-        expect(pipeline).toHaveProperty("status");
-        expect(pipeline).toHaveProperty("ref");
-        expect(pipeline).toHaveProperty("sha");
-        expect(pipeline).toHaveProperty("source");
-        expect(pipeline).toHaveProperty("created_at");
-        expect(pipeline).toHaveProperty("updated_at");
-        expect(pipeline).toHaveProperty("started_at");
-        expect(pipeline).toHaveProperty("finished_at");
-        expect(pipeline).toHaveProperty("duration");
-        expect(pipeline).toHaveProperty("queued_duration");
+        expect(pipeline).toHaveProperty('id');
+        expect(pipeline).toHaveProperty('status');
+        expect(pipeline).toHaveProperty('ref');
+        expect(pipeline).toHaveProperty('sha');
+        expect(pipeline).toHaveProperty('source');
+        expect(pipeline).toHaveProperty('created_at');
+        expect(pipeline).toHaveProperty('updated_at');
+        expect(pipeline).toHaveProperty('started_at');
+        expect(pipeline).toHaveProperty('finished_at');
+        expect(pipeline).toHaveProperty('duration');
+        expect(pipeline).toHaveProperty('queued_duration');
 
         console.log(
-          `BrowsePipelinesSchema get action handler test successful: ${pipeline.id} (${pipeline.status})`
+          `BrowsePipelinesSchema get action handler test successful: ${pipeline.id} (${pipeline.status})`,
         );
       }
     });
 
-    it("should validate required pipeline parameters", async () => {
+    it('should validate required pipeline parameters', async () => {
       // Test that valid parameters pass validation
       const validParams = {
-        action: "get" as const,
-        project_id: "123",
-        pipeline_id: "456",
+        action: 'get' as const,
+        project_id: '123',
+        pipeline_id: '456',
       };
 
       const result = BrowsePipelinesSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "get") {
-        expect(result.data.project_id).toBe("123");
-        expect(result.data.pipeline_id).toBe("456");
+      if (result.success && result.data.action === 'get') {
+        expect(result.data.project_id).toBe('123');
+        expect(result.data.pipeline_id).toBe('456');
       }
 
-      console.log("BrowsePipelinesSchema get action validates required parameters correctly");
+      console.log('BrowsePipelinesSchema get action validates required parameters correctly');
     });
   });
 
-  describe("BrowsePipelinesSchema - jobs action", () => {
-    it("should validate jobs action parameters (schema only)", async () => {
+  describe('BrowsePipelinesSchema - jobs action', () => {
+    it('should validate jobs action parameters (schema only)', async () => {
       const validParams = {
-        action: "jobs" as const,
-        project_id: "123",
-        pipeline_id: "456",
-        job_scope: ["failed", "success"] as const,
+        action: 'jobs' as const,
+        project_id: '123',
+        pipeline_id: '456',
+        job_scope: ['failed', 'success'] as const,
         include_retried: true,
       };
 
       const result = BrowsePipelinesSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "jobs") {
-        expect(result.data.project_id).toBe("123");
-        expect(result.data.pipeline_id).toBe("456");
-        expect(result.data.job_scope).toEqual(["failed", "success"]);
+      if (result.success && result.data.action === 'jobs') {
+        expect(result.data.project_id).toBe('123');
+        expect(result.data.pipeline_id).toBe('456');
+        expect(result.data.job_scope).toEqual(['failed', 'success']);
         expect(result.data.include_retried).toBe(true);
       }
     });
 
-    it("should list pipeline jobs via real API without scope filter", async () => {
+    it('should list pipeline jobs via real API without scope filter', async () => {
       // Get a project with pipelines for testing
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("No projects available for jobs testing");
+        console.log('No projects available for jobs testing');
         return;
       }
 
       const testProject = projects[0];
-      const pipelines = (await helper.executeTool("browse_pipelines", {
-        action: "list",
+      const pipelines = (await helper.executeTool('browse_pipelines', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 1,
       })) as any[];
 
       if (pipelines.length === 0) {
-        console.log("No pipelines found for jobs testing");
+        console.log('No pipelines found for jobs testing');
         return;
       }
 
       const testPipeline = pipelines[0];
 
       // Call jobs action WITHOUT scope filter - should return all jobs
-      const jobs = (await helper.executeTool("browse_pipelines", {
-        action: "jobs",
+      const jobs = (await helper.executeTool('browse_pipelines', {
+        action: 'jobs',
         project_id: testProject.id.toString(),
         pipeline_id: testPipeline.id.toString(),
         per_page: 20,
@@ -383,31 +383,31 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
 
       if (jobs.length > 0) {
         const job = jobs[0];
-        expect(job).toHaveProperty("id");
-        expect(job).toHaveProperty("status");
-        expect(job).toHaveProperty("name");
-        expect(job).toHaveProperty("stage");
+        expect(job).toHaveProperty('id');
+        expect(job).toHaveProperty('status');
+        expect(job).toHaveProperty('name');
+        expect(job).toHaveProperty('stage');
       }
     });
 
-    it("should list pipeline jobs with job_scope array filter via real API", async () => {
+    it('should list pipeline jobs with job_scope array filter via real API', async () => {
       // This test catches the bug where array params were serialized as
       // "scope=val1,val2" instead of "scope[]=val1&scope[]=val2"
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("No projects available for job_scope testing");
+        console.log('No projects available for job_scope testing');
         return;
       }
 
       const testProject = projects[0];
-      const pipelines = (await helper.executeTool("browse_pipelines", {
-        action: "list",
+      const pipelines = (await helper.executeTool('browse_pipelines', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 1,
       })) as any[];
 
       if (pipelines.length === 0) {
-        console.log("No pipelines found for job_scope testing");
+        console.log('No pipelines found for job_scope testing');
         return;
       }
 
@@ -416,17 +416,17 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
       // Call jobs action WITH job_scope array - this was the exact production failure:
       // scope=created,pending,running,failed,success,canceled,skipped -> 400 Bad Request
       const scopeValues = [
-        "created",
-        "pending",
-        "running",
-        "failed",
-        "success",
-        "canceled",
-        "skipped",
+        'created',
+        'pending',
+        'running',
+        'failed',
+        'success',
+        'canceled',
+        'skipped',
       ] as const;
 
-      const jobs = (await helper.executeTool("browse_pipelines", {
-        action: "jobs",
+      const jobs = (await helper.executeTool('browse_pipelines', {
+        action: 'jobs',
         project_id: testProject.id.toString(),
         pipeline_id: testPipeline.id.toString(),
         job_scope: [...scopeValues],
@@ -435,45 +435,45 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
 
       // If we get here without 400 error, array params are serialized correctly
       expect(Array.isArray(jobs)).toBe(true);
-      console.log(`Retrieved ${jobs.length} jobs with scope filter [${scopeValues.join(", ")}]`);
+      console.log(`Retrieved ${jobs.length} jobs with scope filter [${scopeValues.join(', ')}]`);
 
       if (jobs.length > 0) {
         const job = jobs[0];
-        expect(job).toHaveProperty("id");
-        expect(job).toHaveProperty("status");
+        expect(job).toHaveProperty('id');
+        expect(job).toHaveProperty('status');
         // Verify returned jobs have status within requested scopes
         expect(scopeValues).toContain(job.status);
       }
     });
 
-    it("should list pipeline jobs with single-element job_scope array", async () => {
+    it('should list pipeline jobs with single-element job_scope array', async () => {
       // Edge case: single-element array should also use key[] format
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("No projects available for single-scope testing");
+        console.log('No projects available for single-scope testing');
         return;
       }
 
       const testProject = projects[0];
-      const pipelines = (await helper.executeTool("browse_pipelines", {
-        action: "list",
+      const pipelines = (await helper.executeTool('browse_pipelines', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 1,
       })) as any[];
 
       if (pipelines.length === 0) {
-        console.log("No pipelines found for single-scope testing");
+        console.log('No pipelines found for single-scope testing');
         return;
       }
 
       const testPipeline = pipelines[0];
 
       // Single-element array - common case when agent filters by one status
-      const jobs = (await helper.executeTool("browse_pipelines", {
-        action: "jobs",
+      const jobs = (await helper.executeTool('browse_pipelines', {
+        action: 'jobs',
         project_id: testProject.id.toString(),
         pipeline_id: testPipeline.id.toString(),
-        job_scope: ["success"],
+        job_scope: ['success'],
         per_page: 10,
       })) as any[];
 
@@ -482,47 +482,47 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
     });
   });
 
-  describe("BrowsePipelinesSchema - triggers action", () => {
-    it("should validate triggers action parameters (schema only)", async () => {
+  describe('BrowsePipelinesSchema - triggers action', () => {
+    it('should validate triggers action parameters (schema only)', async () => {
       const validParams = {
-        action: "triggers" as const,
-        project_id: "123",
-        pipeline_id: "456",
+        action: 'triggers' as const,
+        project_id: '123',
+        pipeline_id: '456',
       };
 
       const result = BrowsePipelinesSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "triggers") {
-        expect(result.data.project_id).toBe("123");
-        expect(result.data.pipeline_id).toBe("456");
+      if (result.success && result.data.action === 'triggers') {
+        expect(result.data.project_id).toBe('123');
+        expect(result.data.pipeline_id).toBe('456');
       }
     });
 
-    it("should list pipeline triggers/bridges via real API", async () => {
+    it('should list pipeline triggers/bridges via real API', async () => {
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("No projects available for triggers testing");
+        console.log('No projects available for triggers testing');
         return;
       }
 
       const testProject = projects[0];
-      const pipelines = (await helper.executeTool("browse_pipelines", {
-        action: "list",
+      const pipelines = (await helper.executeTool('browse_pipelines', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 1,
       })) as any[];
 
       if (pipelines.length === 0) {
-        console.log("No pipelines found for triggers testing");
+        console.log('No pipelines found for triggers testing');
         return;
       }
 
       const testPipeline = pipelines[0];
 
       // Call triggers action without scope - should not error
-      const bridges = (await helper.executeTool("browse_pipelines", {
-        action: "triggers",
+      const bridges = (await helper.executeTool('browse_pipelines', {
+        action: 'triggers',
         project_id: testProject.id.toString(),
         pipeline_id: testPipeline.id.toString(),
         per_page: 20,
@@ -532,34 +532,34 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
       console.log(`Retrieved ${bridges.length} bridges from pipeline ${testPipeline.id}`);
     });
 
-    it("should list pipeline triggers with trigger_scope array filter", async () => {
+    it('should list pipeline triggers with trigger_scope array filter', async () => {
       // Same array serialization bug as job_scope - trigger_scope is also an array
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("No projects available for trigger_scope testing");
+        console.log('No projects available for trigger_scope testing');
         return;
       }
 
       const testProject = projects[0];
-      const pipelines = (await helper.executeTool("browse_pipelines", {
-        action: "list",
+      const pipelines = (await helper.executeTool('browse_pipelines', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 1,
       })) as any[];
 
       if (pipelines.length === 0) {
-        console.log("No pipelines found for trigger_scope testing");
+        console.log('No pipelines found for trigger_scope testing');
         return;
       }
 
       const testPipeline = pipelines[0];
 
       // Call with trigger_scope array - validates array serialization for bridges endpoint
-      const bridges = (await helper.executeTool("browse_pipelines", {
-        action: "triggers",
+      const bridges = (await helper.executeTool('browse_pipelines', {
+        action: 'triggers',
         project_id: testProject.id.toString(),
         pipeline_id: testPipeline.id.toString(),
-        trigger_scope: ["created", "pending", "running", "failed", "success"],
+        trigger_scope: ['created', 'pending', 'running', 'failed', 'success'],
         per_page: 20,
       })) as any[];
 
@@ -569,32 +569,32 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
     });
   });
 
-  describe("BrowsePipelinesSchema - job action", () => {
-    it("should validate job action parameters", async () => {
+  describe('BrowsePipelinesSchema - job action', () => {
+    it('should validate job action parameters', async () => {
       const validParams = {
-        action: "job" as const,
-        project_id: "123",
-        job_id: "789",
+        action: 'job' as const,
+        project_id: '123',
+        job_id: '789',
       };
 
       const result = BrowsePipelinesSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "job") {
-        expect(result.data.project_id).toBe("123");
-        expect(result.data.job_id).toBe("789");
+      if (result.success && result.data.action === 'job') {
+        expect(result.data.project_id).toBe('123');
+        expect(result.data.job_id).toBe('789');
       }
 
-      console.log("BrowsePipelinesSchema job action validates parameters correctly");
+      console.log('BrowsePipelinesSchema job action validates parameters correctly');
     });
   });
 
-  describe("BrowsePipelinesSchema - logs action", () => {
-    it("should validate logs action parameters", async () => {
+  describe('BrowsePipelinesSchema - logs action', () => {
+    it('should validate logs action parameters', async () => {
       const validParams = {
-        action: "logs" as const,
-        project_id: "123",
-        job_id: "789",
+        action: 'logs' as const,
+        project_id: '123',
+        job_id: '789',
         per_page: 100,
         start: 50,
       };
@@ -602,14 +602,14 @@ describe("Pipelines Schema - GitLab Integration (CQRS)", () => {
       const result = BrowsePipelinesSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "logs") {
-        expect(result.data.project_id).toBe("123");
-        expect(result.data.job_id).toBe("789");
+      if (result.success && result.data.action === 'logs') {
+        expect(result.data.project_id).toBe('123');
+        expect(result.data.job_id).toBe('789');
         expect(result.data.per_page).toBe(100);
         expect(result.data.start).toBe(50);
       }
 
-      console.log("BrowsePipelinesSchema logs action validates parameters correctly");
+      console.log('BrowsePipelinesSchema logs action validates parameters correctly');
     });
   });
 });

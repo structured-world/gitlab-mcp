@@ -1,11 +1,11 @@
-import { ConnectionManager } from "./ConnectionManager";
-import { GitLabTier } from "./GitLabVersionDetector";
-import { logDebug, logWarn } from "../logger";
-import { parseVersion } from "../utils/version";
+import { ConnectionManager } from './ConnectionManager';
+import { GitLabTier } from './GitLabVersionDetector';
+import { logDebug, logWarn } from '../logger';
+import { parseVersion } from '../utils/version';
 
 interface ToolRequirement {
   minVersion: string;
-  requiredTier: "free" | "premium" | "ultimate";
+  requiredTier: 'free' | 'premium' | 'ultimate';
   notes?: string;
 }
 
@@ -13,7 +13,7 @@ interface ToolRequirement {
  * Action-level tier requirement
  */
 interface ActionRequirement {
-  tier: "free" | "premium" | "ultimate";
+  tier: 'free' | 'premium' | 'ultimate';
   minVersion: string;
   notes?: string;
 }
@@ -50,256 +50,256 @@ export class ToolAvailability {
   private static actionRequirements: Record<string, ToolActionRequirements> = {
     // Core tools
     browse_projects: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
     browse_namespaces: {
-      default: { tier: "free", minVersion: "9.0" },
+      default: { tier: 'free', minVersion: '9.0' },
     },
     browse_commits: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
     browse_events: {
-      default: { tier: "free", minVersion: "9.0" },
+      default: { tier: 'free', minVersion: '9.0' },
     },
     browse_users: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
     browse_todos: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
     browse_iterations: {
-      default: { tier: "premium", minVersion: "13.1", notes: "Iterations/Sprints" },
+      default: { tier: 'premium', minVersion: '13.1', notes: 'Iterations/Sprints' },
     },
     manage_project: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
       actions: {
-        create: { tier: "free", minVersion: "8.0" },
-        fork: { tier: "free", minVersion: "8.0" },
-        update: { tier: "free", minVersion: "8.0" },
-        delete: { tier: "free", minVersion: "8.0" },
-        archive: { tier: "free", minVersion: "8.0" },
-        unarchive: { tier: "free", minVersion: "8.0" },
-        transfer: { tier: "free", minVersion: "8.0" },
+        create: { tier: 'free', minVersion: '8.0' },
+        fork: { tier: 'free', minVersion: '8.0' },
+        update: { tier: 'free', minVersion: '8.0' },
+        delete: { tier: 'free', minVersion: '8.0' },
+        archive: { tier: 'free', minVersion: '8.0' },
+        unarchive: { tier: 'free', minVersion: '8.0' },
+        transfer: { tier: 'free', minVersion: '8.0' },
       },
     },
     manage_namespace: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
       actions: {
-        create: { tier: "free", minVersion: "8.0" },
-        update: { tier: "free", minVersion: "8.0" },
-        delete: { tier: "free", minVersion: "8.0" },
+        create: { tier: 'free', minVersion: '8.0' },
+        update: { tier: 'free', minVersion: '8.0' },
+        delete: { tier: 'free', minVersion: '8.0' },
       },
     },
 
     // Merge Requests
     browse_merge_requests: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
       actions: {
-        approvals: { tier: "premium", minVersion: "10.6", notes: "MR approvals" },
+        approvals: { tier: 'premium', minVersion: '10.6', notes: 'MR approvals' },
       },
     },
     browse_mr_discussions: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
     manage_merge_request: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
       actions: {
-        create: { tier: "free", minVersion: "8.0" },
-        update: { tier: "free", minVersion: "8.0" },
-        merge: { tier: "free", minVersion: "8.0" },
-        approve: { tier: "premium", minVersion: "10.6", notes: "MR approvals" },
-        unapprove: { tier: "premium", minVersion: "10.6", notes: "MR approvals" },
-        get_approval_state: { tier: "premium", minVersion: "13.8", notes: "MR approval state" },
+        create: { tier: 'free', minVersion: '8.0' },
+        update: { tier: 'free', minVersion: '8.0' },
+        merge: { tier: 'free', minVersion: '8.0' },
+        approve: { tier: 'premium', minVersion: '10.6', notes: 'MR approvals' },
+        unapprove: { tier: 'premium', minVersion: '10.6', notes: 'MR approvals' },
+        get_approval_state: { tier: 'premium', minVersion: '13.8', notes: 'MR approval state' },
       },
     },
     manage_mr_discussion: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
       actions: {
-        comment: { tier: "free", minVersion: "8.0" },
-        thread: { tier: "free", minVersion: "11.0" },
-        reply: { tier: "free", minVersion: "11.0" },
-        update: { tier: "free", minVersion: "8.0" },
-        apply_suggestion: { tier: "free", minVersion: "13.0" },
-        apply_suggestions: { tier: "free", minVersion: "13.0" },
-        resolve: { tier: "free", minVersion: "10.0", notes: "Resolve discussion threads" },
-        suggest: { tier: "free", minVersion: "10.5", notes: "Code suggestions" },
+        comment: { tier: 'free', minVersion: '8.0' },
+        thread: { tier: 'free', minVersion: '11.0' },
+        reply: { tier: 'free', minVersion: '11.0' },
+        update: { tier: 'free', minVersion: '8.0' },
+        apply_suggestion: { tier: 'free', minVersion: '13.0' },
+        apply_suggestions: { tier: 'free', minVersion: '13.0' },
+        resolve: { tier: 'free', minVersion: '10.0', notes: 'Resolve discussion threads' },
+        suggest: { tier: 'free', minVersion: '10.5', notes: 'Code suggestions' },
       },
     },
     manage_draft_notes: {
-      default: { tier: "free", minVersion: "13.2" },
+      default: { tier: 'free', minVersion: '13.2' },
     },
 
     // Work Items
     browse_work_items: {
-      default: { tier: "free", minVersion: "15.0" },
+      default: { tier: 'free', minVersion: '15.0' },
     },
     manage_work_item: {
-      default: { tier: "free", minVersion: "15.0" },
+      default: { tier: 'free', minVersion: '15.0' },
     },
 
     // Labels
     browse_labels: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
     manage_label: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
 
     // Wiki
     browse_wiki: {
-      default: { tier: "free", minVersion: "9.0" },
+      default: { tier: 'free', minVersion: '9.0' },
     },
     manage_wiki: {
-      default: { tier: "free", minVersion: "9.0" },
+      default: { tier: 'free', minVersion: '9.0' },
     },
 
     // Pipelines
     browse_pipelines: {
-      default: { tier: "free", minVersion: "9.0" },
+      default: { tier: 'free', minVersion: '9.0' },
     },
     manage_pipeline: {
-      default: { tier: "free", minVersion: "9.0" },
+      default: { tier: 'free', minVersion: '9.0' },
     },
     manage_pipeline_job: {
-      default: { tier: "free", minVersion: "9.0" },
+      default: { tier: 'free', minVersion: '9.0' },
     },
 
     // Variables
     browse_variables: {
-      default: { tier: "free", minVersion: "9.0" },
+      default: { tier: 'free', minVersion: '9.0' },
     },
     manage_variable: {
-      default: { tier: "free", minVersion: "9.0" },
+      default: { tier: 'free', minVersion: '9.0' },
     },
 
     // Milestones
     browse_milestones: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
       actions: {
-        burndown: { tier: "premium", minVersion: "12.0", notes: "Burndown charts" },
+        burndown: { tier: 'premium', minVersion: '12.0', notes: 'Burndown charts' },
       },
     },
     manage_milestone: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
 
     // Files
     browse_files: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
     manage_files: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
 
     // Snippets
     browse_snippets: {
-      default: { tier: "free", minVersion: "8.15" },
+      default: { tier: 'free', minVersion: '8.15' },
     },
     manage_snippet: {
-      default: { tier: "free", minVersion: "8.15" },
+      default: { tier: 'free', minVersion: '8.15' },
     },
 
     // Webhooks
     browse_webhooks: {
-      default: { tier: "free", minVersion: "8.0", notes: "Project webhooks" },
+      default: { tier: 'free', minVersion: '8.0', notes: 'Project webhooks' },
     },
     manage_webhook: {
-      default: { tier: "free", minVersion: "8.0", notes: "Project webhooks" },
+      default: { tier: 'free', minVersion: '8.0', notes: 'Project webhooks' },
       actions: {
-        create_group: { tier: "premium", minVersion: "10.4", notes: "Group webhooks" },
-        update_group: { tier: "premium", minVersion: "10.4", notes: "Group webhooks" },
-        delete_group: { tier: "premium", minVersion: "10.4", notes: "Group webhooks" },
+        create_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
+        update_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
+        delete_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
       },
     },
 
     // Integrations
     browse_integrations: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
     manage_integration: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
 
     // Todos
     manage_todos: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
     },
 
     // Releases
     browse_releases: {
-      default: { tier: "free", minVersion: "11.7" },
+      default: { tier: 'free', minVersion: '11.7' },
     },
     manage_release: {
-      default: { tier: "free", minVersion: "11.7" },
+      default: { tier: 'free', minVersion: '11.7' },
     },
 
     // Refs (branches and tags)
     browse_refs: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
       actions: {
-        list_branches: { tier: "free", minVersion: "8.0" },
-        get_branch: { tier: "free", minVersion: "8.0" },
-        list_tags: { tier: "free", minVersion: "8.0" },
-        get_tag: { tier: "free", minVersion: "8.0" },
-        list_protected_branches: { tier: "free", minVersion: "8.11" },
-        get_protected_branch: { tier: "free", minVersion: "8.11" },
-        list_protected_tags: { tier: "premium", minVersion: "11.3", notes: "Protected tags" },
+        list_branches: { tier: 'free', minVersion: '8.0' },
+        get_branch: { tier: 'free', minVersion: '8.0' },
+        list_tags: { tier: 'free', minVersion: '8.0' },
+        get_tag: { tier: 'free', minVersion: '8.0' },
+        list_protected_branches: { tier: 'free', minVersion: '8.11' },
+        get_protected_branch: { tier: 'free', minVersion: '8.11' },
+        list_protected_tags: { tier: 'premium', minVersion: '11.3', notes: 'Protected tags' },
       },
     },
     manage_ref: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
       actions: {
-        create_branch: { tier: "free", minVersion: "8.0" },
-        delete_branch: { tier: "free", minVersion: "8.0" },
-        protect_branch: { tier: "free", minVersion: "8.11" },
-        unprotect_branch: { tier: "free", minVersion: "8.11" },
+        create_branch: { tier: 'free', minVersion: '8.0' },
+        delete_branch: { tier: 'free', minVersion: '8.0' },
+        protect_branch: { tier: 'free', minVersion: '8.11' },
+        unprotect_branch: { tier: 'free', minVersion: '8.11' },
         update_branch_protection: {
-          tier: "free",
-          minVersion: "11.9",
-          notes: "PATCH endpoint; code owners require Premium",
+          tier: 'free',
+          minVersion: '11.9',
+          notes: 'PATCH endpoint; code owners require Premium',
         },
-        create_tag: { tier: "free", minVersion: "8.0" },
-        delete_tag: { tier: "free", minVersion: "8.0" },
-        protect_tag: { tier: "premium", minVersion: "11.3", notes: "Protected tags" },
-        unprotect_tag: { tier: "premium", minVersion: "11.3", notes: "Protected tags" },
+        create_tag: { tier: 'free', minVersion: '8.0' },
+        delete_tag: { tier: 'free', minVersion: '8.0' },
+        protect_tag: { tier: 'premium', minVersion: '11.3', notes: 'Protected tags' },
+        unprotect_tag: { tier: 'premium', minVersion: '11.3', notes: 'Protected tags' },
       },
     },
 
     // Members (team management)
     browse_members: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
       actions: {
-        list_project: { tier: "free", minVersion: "8.0" },
-        list_group: { tier: "free", minVersion: "8.0" },
-        get_project: { tier: "free", minVersion: "8.0" },
-        get_group: { tier: "free", minVersion: "8.0" },
-        list_all_project: { tier: "free", minVersion: "12.4", notes: "Includes inherited members" },
-        list_all_group: { tier: "free", minVersion: "12.4", notes: "Includes inherited members" },
+        list_project: { tier: 'free', minVersion: '8.0' },
+        list_group: { tier: 'free', minVersion: '8.0' },
+        get_project: { tier: 'free', minVersion: '8.0' },
+        get_group: { tier: 'free', minVersion: '8.0' },
+        list_all_project: { tier: 'free', minVersion: '12.4', notes: 'Includes inherited members' },
+        list_all_group: { tier: 'free', minVersion: '12.4', notes: 'Includes inherited members' },
       },
     },
     manage_member: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
       actions: {
-        add_to_project: { tier: "free", minVersion: "8.0" },
-        add_to_group: { tier: "free", minVersion: "8.0" },
-        remove_from_project: { tier: "free", minVersion: "8.0" },
-        remove_from_group: { tier: "free", minVersion: "8.0" },
-        update_project: { tier: "free", minVersion: "8.0" },
+        add_to_project: { tier: 'free', minVersion: '8.0' },
+        add_to_group: { tier: 'free', minVersion: '8.0' },
+        remove_from_project: { tier: 'free', minVersion: '8.0' },
+        remove_from_group: { tier: 'free', minVersion: '8.0' },
+        update_project: { tier: 'free', minVersion: '8.0' },
         update_group: {
-          tier: "free",
-          minVersion: "8.0",
-          notes: "member_role_id requires Ultimate",
+          tier: 'free',
+          minVersion: '8.0',
+          notes: 'member_role_id requires Ultimate',
         },
       },
     },
 
     // Search (read-only)
     browse_search: {
-      default: { tier: "free", minVersion: "8.0" },
+      default: { tier: 'free', minVersion: '8.0' },
       actions: {
-        global: { tier: "free", minVersion: "8.0", notes: "Global search across GitLab instance" },
-        project: { tier: "free", minVersion: "8.0", notes: "Project-scoped search" },
-        group: { tier: "free", minVersion: "10.5", notes: "Group-scoped search" },
+        global: { tier: 'free', minVersion: '8.0', notes: 'Global search across GitLab instance' },
+        project: { tier: 'free', minVersion: '8.0', notes: 'Project-scoped search' },
+        group: { tier: 'free', minVersion: '10.5', notes: 'Group-scoped search' },
       },
     },
   };
@@ -315,9 +315,9 @@ export class ToolAvailability {
    */
   private static parameterRequirements: Record<string, Record<string, ParameterRequirement>> = {
     manage_work_item: {
-      weight: { tier: "premium", minVersion: "15.0", notes: "Work item weight widget" },
-      iterationId: { tier: "premium", minVersion: "15.0", notes: "Iteration widget" },
-      healthStatus: { tier: "ultimate", minVersion: "15.0", notes: "Health status widget" },
+      weight: { tier: 'premium', minVersion: '15.0', notes: 'Work item weight widget' },
+      iterationId: { tier: 'premium', minVersion: '15.0', notes: 'Iteration widget' },
+      healthStatus: { tier: 'ultimate', minVersion: '15.0', notes: 'Health status widget' },
     },
   };
 
@@ -330,7 +330,7 @@ export class ToolAvailability {
    */
   public static getRestrictedParameters(
     toolName: string,
-    cachedInstanceInfo?: { tier: GitLabTier; version: string }
+    cachedInstanceInfo?: { tier: GitLabTier; version: string },
   ): string[] {
     const paramReqs = this.parameterRequirements[toolName];
     if (!paramReqs) return [];
@@ -370,11 +370,11 @@ export class ToolAvailability {
     }
 
     if (restricted.length > 0) {
-      logDebug("Tool restricted parameters", {
+      logDebug('Tool restricted parameters', {
         toolName,
         tier: instanceTier,
         version: rawVersion,
-        restricted: restricted.join(", "),
+        restricted: restricted.join(', '),
       });
     }
 
@@ -386,7 +386,7 @@ export class ToolAvailability {
    */
   public static getActionRequirement(
     toolName: string,
-    action?: string
+    action?: string,
   ): ActionRequirement | undefined {
     const toolReq = this.actionRequirements[toolName];
     if (!toolReq) return undefined;
@@ -402,9 +402,9 @@ export class ToolAvailability {
   /**
    * Get the highest tier required by any action of a tool
    */
-  public static getHighestTier(toolName: string): "free" | "premium" | "ultimate" {
+  public static getHighestTier(toolName: string): 'free' | 'premium' | 'ultimate' {
     const toolReq = this.actionRequirements[toolName];
-    if (!toolReq) return "free";
+    if (!toolReq) return 'free';
 
     let highest = toolReq.default.tier;
 
@@ -422,7 +422,7 @@ export class ToolAvailability {
   /**
    * Get all actions that require a specific tier or higher
    */
-  public static getTierRestrictedActions(toolName: string, tier: "premium" | "ultimate"): string[] {
+  public static getTierRestrictedActions(toolName: string, tier: 'premium' | 'ultimate'): string[] {
     const toolReq = this.actionRequirements[toolName];
     if (!toolReq?.actions) return [];
 
@@ -438,7 +438,7 @@ export class ToolAvailability {
 
     // Add null check as extra safety
     if (!connectionManager) {
-      logDebug("Tool availability check: ConnectionManager instance is null", { toolName });
+      logDebug('Tool availability check: ConnectionManager instance is null', { toolName });
       return false;
     }
 
@@ -455,27 +455,27 @@ export class ToolAvailability {
       }
 
       // Tool not found in requirements - unknown tool
-      logDebug("Tool not found in requirements database", { toolName });
-      return parseVersion(instanceInfo.version) >= parseVersion("15.0");
+      logDebug('Tool not found in requirements database', { toolName });
+      return parseVersion(instanceInfo.version) >= parseVersion('15.0');
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : String(error);
 
       // In OAuth mode, introspection is deferred until first authenticated request.
       // Allow all tools initially - they'll be properly filtered on actual use.
-      if (errorMessage.includes("Connection not initialized")) {
-        logDebug("Tool availability check: instance info not available yet, allowing", {
+      if (errorMessage.includes('Connection not initialized')) {
+        logDebug('Tool availability check: instance info not available yet, allowing', {
           toolName,
         });
         return true;
       }
 
-      logWarn("Failed to check tool availability", { toolName, error: errorMessage });
+      logWarn('Failed to check tool availability', { toolName, error: errorMessage });
       return false;
     }
   }
 
   public static getAvailableTools(): string[] {
-    return Object.keys(this.actionRequirements).filter(tool => this.isToolAvailable(tool));
+    return Object.keys(this.actionRequirements).filter((tool) => this.isToolAvailable(tool));
   }
 
   public static getToolRequirement(toolName: string, action?: string): ToolRequirement | undefined {
@@ -512,13 +512,13 @@ export class ToolAvailability {
 
       return null; // Tool is available
     } catch {
-      return "GitLab connection not initialized";
+      return 'GitLab connection not initialized';
     }
   }
 
   private static isTierSufficient(
     actualTier: GitLabTier,
-    requiredTier: "free" | "premium" | "ultimate"
+    requiredTier: 'free' | 'premium' | 'ultimate',
   ): boolean {
     const tierHierarchy: Record<string, number> = {
       free: 0,
@@ -533,10 +533,10 @@ export class ToolAvailability {
   }
 
   public static filterToolsByAvailability(tools: string[]): string[] {
-    return tools.filter(tool => this.isToolAvailable(tool));
+    return tools.filter((tool) => this.isToolAvailable(tool));
   }
 
-  public static getToolsByTier(tier: "free" | "premium" | "ultimate"): string[] {
+  public static getToolsByTier(tier: 'free' | 'premium' | 'ultimate'): string[] {
     return Object.entries(this.actionRequirements)
       .filter(([, req]) => req.default.tier === tier)
       .map(([toolName]) => toolName);

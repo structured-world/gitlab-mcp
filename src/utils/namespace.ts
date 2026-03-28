@@ -1,4 +1,4 @@
-import { enhancedFetch } from "./fetch";
+import { enhancedFetch } from './fetch';
 
 /**
  * Extract namespace (group path) from a full project path.
@@ -17,7 +17,7 @@ export function extractNamespaceFromPath(projectPath: string): string | undefine
     return undefined;
   }
 
-  const pathParts = projectPath.split("/");
+  const pathParts = projectPath.split('/');
 
   // Single segment = root-level project, namespace equals project path
   if (pathParts.length === 1) {
@@ -25,7 +25,7 @@ export function extractNamespaceFromPath(projectPath: string): string | undefine
   }
 
   // Multiple segments = namespace is everything except the last part
-  return pathParts.slice(0, -1).join("/");
+  return pathParts.slice(0, -1).join('/');
 }
 
 /**
@@ -33,35 +33,35 @@ export function extractNamespaceFromPath(projectPath: string): string | undefine
  * Projects typically contain a slash (group/project), while groups usually don't
  */
 export function isLikelyProjectPath(namespacePath: string): boolean {
-  return namespacePath.includes("/");
+  return namespacePath.includes('/');
 }
 
 /**
  * Detect namespace type by attempting to fetch from GitLab API
  * Tries both project and group endpoints to determine which one exists
  */
-export async function detectNamespaceType(namespacePath: string): Promise<"project" | "group"> {
+export async function detectNamespaceType(namespacePath: string): Promise<'project' | 'group'> {
   // First try heuristic for common cases
   if (isLikelyProjectPath(namespacePath)) {
     // Try project first, fallback to group if needed
-    const isProject = await verifyNamespaceType(namespacePath, "project");
-    if (isProject) return "project";
+    const isProject = await verifyNamespaceType(namespacePath, 'project');
+    if (isProject) return 'project';
 
-    const isGroup = await verifyNamespaceType(namespacePath, "group");
-    if (isGroup) return "group";
+    const isGroup = await verifyNamespaceType(namespacePath, 'group');
+    if (isGroup) return 'group';
 
     // Default fallback for paths with slash
-    return "project";
+    return 'project';
   } else {
     // Try group first, fallback to project if needed
-    const isGroup = await verifyNamespaceType(namespacePath, "group");
-    if (isGroup) return "group";
+    const isGroup = await verifyNamespaceType(namespacePath, 'group');
+    if (isGroup) return 'group';
 
-    const isProject = await verifyNamespaceType(namespacePath, "project");
-    if (isProject) return "project";
+    const isProject = await verifyNamespaceType(namespacePath, 'project');
+    if (isProject) return 'project';
 
     // Default fallback for paths without slash
-    return "group";
+    return 'group';
   }
 }
 
@@ -70,10 +70,10 @@ export async function detectNamespaceType(namespacePath: string): Promise<"proje
  */
 async function verifyNamespaceType(
   namespacePath: string,
-  type: "project" | "group"
+  type: 'project' | 'group',
 ): Promise<boolean> {
   try {
-    const entityType = type === "project" ? "projects" : "groups";
+    const entityType = type === 'project' ? 'projects' : 'groups';
     const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(namespacePath)}`;
 
     const response = await enhancedFetch(apiUrl);
@@ -90,12 +90,12 @@ async function verifyNamespaceType(
  * Returns the entity type ('projects' or 'groups') and ensures proper encoding
  */
 export async function resolveNamespaceForAPI(namespacePath: string): Promise<{
-  entityType: "projects" | "groups";
+  entityType: 'projects' | 'groups';
   encodedPath: string;
 }> {
   const namespaceType = await detectNamespaceType(namespacePath);
   return {
-    entityType: namespaceType === "project" ? "projects" : "groups",
+    entityType: namespaceType === 'project' ? 'projects' : 'groups',
     encodedPath: encodeURIComponent(namespacePath),
   };
 }

@@ -28,10 +28,10 @@ export {
   listGitRemotes,
   GitRemoteInfo,
   ParseGitRemoteOptions,
-} from "./git-remote";
+} from './git-remote';
 
 // Profile matching
-export { matchProfileByHost, findProfileByHost, ProfileMatchResult } from "./profile-matcher";
+export { matchProfileByHost, findProfileByHost, ProfileMatchResult } from './profile-matcher';
 
 // Auto-discovery orchestrator
 export {
@@ -39,4 +39,4 @@ export {
   formatDiscoveryResult,
   AutoDiscoveryOptions,
   AutoDiscoveryResult,
-} from "./auto";
+} from './auto';

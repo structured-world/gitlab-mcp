@@ -3,11 +3,11 @@
  * Tests schemas using handler functions with real GitLab API
  */
 
-import { BrowseWebhooksSchema } from "../../../src/entities/webhooks/schema-readonly";
-import { ManageWebhookSchema } from "../../../src/entities/webhooks/schema";
-import { IntegrationTestHelper } from "../helpers/registry-helper";
+import { BrowseWebhooksSchema } from '../../../src/entities/webhooks/schema-readonly';
+import { ManageWebhookSchema } from '../../../src/entities/webhooks/schema';
+import { IntegrationTestHelper } from '../helpers/registry-helper';
 
-describe("Webhooks Schema - GitLab Integration", () => {
+describe('Webhooks Schema - GitLab Integration', () => {
   let helper: IntegrationTestHelper;
   let testProjectId: string;
   let createdWebhookId: number | null = null;
@@ -15,12 +15,12 @@ describe("Webhooks Schema - GitLab Integration", () => {
   beforeAll(async () => {
     const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
     if (!GITLAB_TOKEN) {
-      throw new Error("GITLAB_TOKEN environment variable is required");
+      throw new Error('GITLAB_TOKEN environment variable is required');
     }
 
     helper = new IntegrationTestHelper();
     await helper.initialize();
-    console.log("Integration test helper initialized for webhooks testing");
+    console.log('Integration test helper initialized for webhooks testing');
 
     // Get a test project from the "test" group for webhook operations
     const projects = (await helper.listProjects({ per_page: 5 })) as {
@@ -30,7 +30,7 @@ describe("Webhooks Schema - GitLab Integration", () => {
     }[];
 
     // Find a project in the "test" group (required by testing restrictions)
-    const testProject = projects.find(p => p.path_with_namespace.startsWith("test/"));
+    const testProject = projects.find((p) => p.path_with_namespace.startsWith('test/'));
     if (!testProject) {
       console.log("No projects in 'test' group available for webhooks testing");
       return;
@@ -44,9 +44,9 @@ describe("Webhooks Schema - GitLab Integration", () => {
     // Cleanup: delete any webhook created during tests
     if (createdWebhookId && testProjectId) {
       try {
-        await helper.executeTool("manage_webhook", {
-          action: "delete",
-          scope: "project",
+        await helper.executeTool('manage_webhook', {
+          action: 'delete',
+          scope: 'project',
           projectId: testProjectId,
           hookId: createdWebhookId,
         });
@@ -57,16 +57,16 @@ describe("Webhooks Schema - GitLab Integration", () => {
     }
   });
 
-  describe("BrowseWebhooksSchema - list action", () => {
-    it("should validate list webhooks parameters", async () => {
+  describe('BrowseWebhooksSchema - list action', () => {
+    it('should validate list webhooks parameters', async () => {
       if (!testProjectId) {
-        console.log("Skipping: no test project available");
+        console.log('Skipping: no test project available');
         return;
       }
 
       const validParams = {
-        action: "list" as const,
-        scope: "project" as const,
+        action: 'list' as const,
+        scope: 'project' as const,
         projectId: testProjectId,
         per_page: 10,
       };
@@ -77,7 +77,7 @@ describe("Webhooks Schema - GitLab Integration", () => {
 
       if (result.success) {
         // Test actual handler function
-        const webhooks = (await helper.executeTool("browse_webhooks", result.data)) as {
+        const webhooks = (await helper.executeTool('browse_webhooks', result.data)) as {
           id: number;
           url: string;
         }[];
@@ -87,26 +87,26 @@ describe("Webhooks Schema - GitLab Integration", () => {
         // Validate structure if we have webhooks
         if (webhooks.length > 0) {
           const webhook = webhooks[0];
-          expect(webhook).toHaveProperty("id");
-          expect(webhook).toHaveProperty("url");
+          expect(webhook).toHaveProperty('id');
+          expect(webhook).toHaveProperty('url');
           console.log(`Validated webhook structure: ID ${webhook.id}`);
         }
       }
 
-      console.log("BrowseWebhooksSchema list action test completed");
+      console.log('BrowseWebhooksSchema list action test completed');
     });
 
     // Note: projectId requirement when scope=project is validated at runtime in handler,
     // not in the Zod schema. Schema only defines field types, handler enforces business logic.
   });
 
-  describe("ManageWebhookSchema - create action", () => {
-    it("should validate create webhook parameters", () => {
+  describe('ManageWebhookSchema - create action', () => {
+    it('should validate create webhook parameters', () => {
       const params = {
-        action: "create" as const,
-        scope: "project" as const,
-        projectId: "test/project",
-        url: "https://example.com/webhook",
+        action: 'create' as const,
+        scope: 'project' as const,
+        projectId: 'test/project',
+        url: 'https://example.com/webhook',
         push_events: true,
         merge_requests_events: true,
         enable_ssl_verification: true,
@@ -115,20 +115,20 @@ describe("Webhooks Schema - GitLab Integration", () => {
       const result = ManageWebhookSchema.safeParse(params);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "create") {
-        expect(result.data.action).toBe("create");
-        expect(result.data.url).toBe("https://example.com/webhook");
+      if (result.success && result.data.action === 'create') {
+        expect(result.data.action).toBe('create');
+        expect(result.data.url).toBe('https://example.com/webhook');
         expect(result.data.push_events).toBe(true);
       }
 
-      console.log("ManageWebhookSchema create action validates correctly");
+      console.log('ManageWebhookSchema create action validates correctly');
     });
 
-    it("should require url for create action", () => {
+    it('should require url for create action', () => {
       const invalidParams = {
-        action: "create" as const,
-        scope: "project" as const,
-        projectId: "test/project",
+        action: 'create' as const,
+        scope: 'project' as const,
+        projectId: 'test/project',
         // Missing url
         push_events: true,
       };
@@ -136,21 +136,21 @@ describe("Webhooks Schema - GitLab Integration", () => {
       const result = ManageWebhookSchema.safeParse(invalidParams);
       expect(result.success).toBe(false);
 
-      console.log("ManageWebhookSchema correctly requires url for create action");
+      console.log('ManageWebhookSchema correctly requires url for create action');
     });
 
-    it("should create a webhook and get it via browse_webhooks", async () => {
+    it('should create a webhook and get it via browse_webhooks', async () => {
       if (!testProjectId) {
-        console.log("Skipping: no test project available");
+        console.log('Skipping: no test project available');
         return;
       }
 
       // Create a webhook
       const createParams = {
-        action: "create" as const,
-        scope: "project" as const,
+        action: 'create' as const,
+        scope: 'project' as const,
         projectId: testProjectId,
-        url: "https://example.com/test-webhook-integration",
+        url: 'https://example.com/test-webhook-integration',
         push_events: true,
         enable_ssl_verification: false, // Disable for test URL
       };
@@ -159,14 +159,14 @@ describe("Webhooks Schema - GitLab Integration", () => {
       expect(createResult.success).toBe(true);
 
       if (createResult.success) {
-        const webhook = (await helper.executeTool("manage_webhook", createResult.data)) as {
+        const webhook = (await helper.executeTool('manage_webhook', createResult.data)) as {
           id: number;
           url: string;
           push_events: boolean;
         };
 
-        expect(webhook).toHaveProperty("id");
-        expect(webhook.url).toBe("https://example.com/test-webhook-integration");
+        expect(webhook).toHaveProperty('id');
+        expect(webhook.url).toBe('https://example.com/test-webhook-integration');
         expect(webhook.push_events).toBe(true);
 
         createdWebhookId = webhook.id;
@@ -174,8 +174,8 @@ describe("Webhooks Schema - GitLab Integration", () => {
 
         // Get the webhook back via browse_webhooks (action: get)
         const getParams = {
-          action: "get" as const,
-          scope: "project" as const,
+          action: 'get' as const,
+          scope: 'project' as const,
           projectId: testProjectId,
           hookId: webhook.id,
         };
@@ -184,7 +184,7 @@ describe("Webhooks Schema - GitLab Integration", () => {
         expect(getResult.success).toBe(true);
 
         if (getResult.success) {
-          const readWebhook = (await helper.executeTool("browse_webhooks", getResult.data)) as {
+          const readWebhook = (await helper.executeTool('browse_webhooks', getResult.data)) as {
             id: number;
             url: string;
           };
@@ -196,14 +196,14 @@ describe("Webhooks Schema - GitLab Integration", () => {
     });
   });
 
-  describe("ManageWebhookSchema - update action", () => {
-    it("should validate update webhook parameters", () => {
+  describe('ManageWebhookSchema - update action', () => {
+    it('should validate update webhook parameters', () => {
       const params = {
-        action: "update" as const,
-        scope: "project" as const,
-        projectId: "test/project",
+        action: 'update' as const,
+        scope: 'project' as const,
+        projectId: 'test/project',
         hookId: 123,
-        url: "https://example.com/updated-webhook",
+        url: 'https://example.com/updated-webhook',
         push_events: false,
         merge_requests_events: true,
       };
@@ -211,39 +211,39 @@ describe("Webhooks Schema - GitLab Integration", () => {
       const result = ManageWebhookSchema.safeParse(params);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "update") {
-        expect(result.data.action).toBe("update");
+      if (result.success && result.data.action === 'update') {
+        expect(result.data.action).toBe('update');
         // hookId is coerced to string by requiredId
-        expect(result.data.hookId).toBe("123");
+        expect(result.data.hookId).toBe('123');
       }
 
-      console.log("ManageWebhookSchema update action validates correctly");
+      console.log('ManageWebhookSchema update action validates correctly');
     });
 
-    it("should require hookId for update action", () => {
+    it('should require hookId for update action', () => {
       const invalidParams = {
-        action: "update" as const,
-        scope: "project" as const,
-        projectId: "test/project",
+        action: 'update' as const,
+        scope: 'project' as const,
+        projectId: 'test/project',
         // Missing hookId
-        url: "https://example.com/webhook",
+        url: 'https://example.com/webhook',
       };
 
       const result = ManageWebhookSchema.safeParse(invalidParams);
       expect(result.success).toBe(false);
 
-      console.log("ManageWebhookSchema correctly requires hookId for update action");
+      console.log('ManageWebhookSchema correctly requires hookId for update action');
     });
 
-    it("should update a webhook via handler", async () => {
+    it('should update a webhook via handler', async () => {
       if (!testProjectId || !createdWebhookId) {
-        console.log("Skipping: no test webhook available");
+        console.log('Skipping: no test webhook available');
         return;
       }
 
       const updateParams = {
-        action: "update" as const,
-        scope: "project" as const,
+        action: 'update' as const,
+        scope: 'project' as const,
         projectId: testProjectId,
         hookId: createdWebhookId,
         merge_requests_events: true,
@@ -254,7 +254,7 @@ describe("Webhooks Schema - GitLab Integration", () => {
       expect(updateResult.success).toBe(true);
 
       if (updateResult.success) {
-        const webhook = (await helper.executeTool("manage_webhook", updateResult.data)) as {
+        const webhook = (await helper.executeTool('manage_webhook', updateResult.data)) as {
           id: number;
           merge_requests_events: boolean;
           issues_events: boolean;
@@ -268,32 +268,32 @@ describe("Webhooks Schema - GitLab Integration", () => {
     });
   });
 
-  describe("ManageWebhookSchema - test action", () => {
-    it("should validate test webhook parameters", () => {
+  describe('ManageWebhookSchema - test action', () => {
+    it('should validate test webhook parameters', () => {
       const params = {
-        action: "test" as const,
-        scope: "project" as const,
-        projectId: "test/project",
+        action: 'test' as const,
+        scope: 'project' as const,
+        projectId: 'test/project',
         hookId: 123,
-        trigger: "push_events" as const,
+        trigger: 'push_events' as const,
       };
 
       const result = ManageWebhookSchema.safeParse(params);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "test") {
-        expect(result.data.action).toBe("test");
-        expect(result.data.trigger).toBe("push_events");
+      if (result.success && result.data.action === 'test') {
+        expect(result.data.action).toBe('test');
+        expect(result.data.trigger).toBe('push_events');
       }
 
-      console.log("ManageWebhookSchema test action validates correctly");
+      console.log('ManageWebhookSchema test action validates correctly');
     });
 
-    it("should require trigger for test action", () => {
+    it('should require trigger for test action', () => {
       const invalidParams = {
-        action: "test" as const,
-        scope: "project" as const,
-        projectId: "test/project",
+        action: 'test' as const,
+        scope: 'project' as const,
+        projectId: 'test/project',
         hookId: 123,
         // Missing trigger
       };
@@ -301,31 +301,31 @@ describe("Webhooks Schema - GitLab Integration", () => {
       const result = ManageWebhookSchema.safeParse(invalidParams);
       expect(result.success).toBe(false);
 
-      console.log("ManageWebhookSchema correctly requires trigger for test action");
+      console.log('ManageWebhookSchema correctly requires trigger for test action');
     });
 
-    it("should validate all trigger types", () => {
+    it('should validate all trigger types', () => {
       const triggers = [
-        "push_events",
-        "tag_push_events",
-        "merge_requests_events",
-        "issues_events",
-        "confidential_issues_events",
-        "note_events",
-        "job_events",
-        "pipeline_events",
-        "wiki_page_events",
-        "releases_events",
-        "milestone_events",
-        "emoji_events",
-        "resource_access_token_events",
+        'push_events',
+        'tag_push_events',
+        'merge_requests_events',
+        'issues_events',
+        'confidential_issues_events',
+        'note_events',
+        'job_events',
+        'pipeline_events',
+        'wiki_page_events',
+        'releases_events',
+        'milestone_events',
+        'emoji_events',
+        'resource_access_token_events',
       ] as const;
 
       for (const trigger of triggers) {
         const params = {
-          action: "test" as const,
-          scope: "project" as const,
-          projectId: "test/project",
+          action: 'test' as const,
+          scope: 'project' as const,
+          projectId: 'test/project',
           hookId: 123,
           trigger,
         };
@@ -338,50 +338,50 @@ describe("Webhooks Schema - GitLab Integration", () => {
     });
   });
 
-  describe("ManageWebhookSchema - delete action", () => {
-    it("should validate delete webhook parameters", () => {
+  describe('ManageWebhookSchema - delete action', () => {
+    it('should validate delete webhook parameters', () => {
       const params = {
-        action: "delete" as const,
-        scope: "project" as const,
-        projectId: "test/project",
+        action: 'delete' as const,
+        scope: 'project' as const,
+        projectId: 'test/project',
         hookId: 123,
       };
 
       const result = ManageWebhookSchema.safeParse(params);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "delete") {
-        expect(result.data.action).toBe("delete");
+      if (result.success && result.data.action === 'delete') {
+        expect(result.data.action).toBe('delete');
         // hookId is coerced to string by requiredId
-        expect(result.data.hookId).toBe("123");
+        expect(result.data.hookId).toBe('123');
       }
 
-      console.log("ManageWebhookSchema delete action validates correctly");
+      console.log('ManageWebhookSchema delete action validates correctly');
     });
 
-    it("should require hookId for delete action", () => {
+    it('should require hookId for delete action', () => {
       const invalidParams = {
-        action: "delete" as const,
-        scope: "project" as const,
-        projectId: "test/project",
+        action: 'delete' as const,
+        scope: 'project' as const,
+        projectId: 'test/project',
         // Missing hookId
       };
 
       const result = ManageWebhookSchema.safeParse(invalidParams);
       expect(result.success).toBe(false);
 
-      console.log("ManageWebhookSchema correctly requires hookId for delete action");
+      console.log('ManageWebhookSchema correctly requires hookId for delete action');
     });
 
-    it("should delete a webhook via handler", async () => {
+    it('should delete a webhook via handler', async () => {
       if (!testProjectId || !createdWebhookId) {
-        console.log("Skipping: no test webhook available");
+        console.log('Skipping: no test webhook available');
         return;
       }
 
       const deleteParams = {
-        action: "delete" as const,
-        scope: "project" as const,
+        action: 'delete' as const,
+        scope: 'project' as const,
         projectId: testProjectId,
         hookId: createdWebhookId,
       };
@@ -390,7 +390,7 @@ describe("Webhooks Schema - GitLab Integration", () => {
       expect(deleteResult.success).toBe(true);
 
       if (deleteResult.success) {
-        const result = (await helper.executeTool("manage_webhook", deleteResult.data)) as {
+        const result = (await helper.executeTool('manage_webhook', deleteResult.data)) as {
           success: boolean;
         };
 
@@ -403,13 +403,13 @@ describe("Webhooks Schema - GitLab Integration", () => {
     });
   });
 
-  describe("ManageWebhookSchema - group webhook parameters", () => {
-    it("should validate group-specific parameters", () => {
+  describe('ManageWebhookSchema - group webhook parameters', () => {
+    it('should validate group-specific parameters', () => {
       const params = {
-        action: "create" as const,
-        scope: "group" as const,
-        groupId: "test-group",
-        url: "https://example.com/group-webhook",
+        action: 'create' as const,
+        scope: 'group' as const,
+        groupId: 'test-group',
+        url: 'https://example.com/group-webhook',
         push_events: true,
         subgroup_events: true, // Group-only parameter
         project_events: true, // Group-only parameter
@@ -418,24 +418,24 @@ describe("Webhooks Schema - GitLab Integration", () => {
       const result = ManageWebhookSchema.safeParse(params);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "create") {
+      if (result.success && result.data.action === 'create') {
         expect(result.data.subgroup_events).toBe(true);
         expect(result.data.project_events).toBe(true);
       }
 
-      console.log("ManageWebhookSchema validates group-specific parameters");
+      console.log('ManageWebhookSchema validates group-specific parameters');
     });
   });
 
-  describe("ManageWebhookSchema - all event types", () => {
-    it("should validate all event type parameters", () => {
+  describe('ManageWebhookSchema - all event types', () => {
+    it('should validate all event type parameters', () => {
       const params = {
-        action: "create" as const,
-        scope: "project" as const,
-        projectId: "test/project",
-        url: "https://example.com/all-events-webhook",
+        action: 'create' as const,
+        scope: 'project' as const,
+        projectId: 'test/project',
+        url: 'https://example.com/all-events-webhook',
         push_events: true,
-        push_events_branch_filter: "main",
+        push_events_branch_filter: 'main',
         tag_push_events: true,
         merge_requests_events: true,
         issues_events: true,
@@ -457,7 +457,7 @@ describe("Webhooks Schema - GitLab Integration", () => {
       const result = ManageWebhookSchema.safeParse(params);
       expect(result.success).toBe(true);
 
-      console.log("ManageWebhookSchema validates all event type parameters");
+      console.log('ManageWebhookSchema validates all event type parameters');
     });
   });
 });

@@ -1,9 +1,9 @@
-import * as z from "zod";
-import { BrowseRefsSchema } from "./schema-readonly";
-import { ManageRefSchema } from "./schema";
-import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { isActionDenied } from "../../config";
+import * as z from 'zod';
+import { BrowseRefsSchema } from './schema-readonly';
+import { ManageRefSchema } from './schema';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { isActionDenied } from '../../config';
 
 /**
  * Refs tools registry - 2 CQRS tools
@@ -19,63 +19,63 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_refs",
+    'browse_refs',
     {
-      name: "browse_refs",
+      name: 'browse_refs',
       description:
-        "Inspect branches, tags, and their protection rules. Actions: list_branches, get_branch, list_tags, get_tag, list_protected_branches, get_protected_branch, list_protected_tags (protection details and access levels). Related: manage_ref to create/delete/protect, browse_commits for commit history.",
+        'Inspect branches, tags, and their protection rules. Actions: list_branches, get_branch, list_tags, get_tag, list_protected_branches, get_protected_branch, list_protected_tags (protection details and access levels). Related: manage_ref to create/delete/protect, browse_commits for commit history.',
       inputSchema: z.toJSONSchema(BrowseRefsSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseRefsSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_refs", input.action)) {
+        if (isActionDenied('browse_refs', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_refs tool`);
         }
 
         const encodedProjectId = encodeURIComponent(input.project_id);
 
         switch (input.action) {
-          case "list_branches": {
+          case 'list_branches': {
             const { action: _action, project_id: _projectId, ...queryOptions } = input;
             return gitlab.get(`projects/${encodedProjectId}/repository/branches`, {
               query: toQuery(queryOptions, []),
             });
           }
 
-          case "get_branch": {
+          case 'get_branch': {
             const { branch } = input;
             const encodedBranch = encodeURIComponent(branch);
             return gitlab.get(`projects/${encodedProjectId}/repository/branches/${encodedBranch}`);
           }
 
-          case "list_tags": {
+          case 'list_tags': {
             const { action: _action, project_id: _projectId, ...queryOptions } = input;
             return gitlab.get(`projects/${encodedProjectId}/repository/tags`, {
               query: toQuery(queryOptions, []),
             });
           }
 
-          case "get_tag": {
+          case 'get_tag': {
             const { tag_name } = input;
             const encodedTagName = encodeURIComponent(tag_name);
             return gitlab.get(`projects/${encodedProjectId}/repository/tags/${encodedTagName}`);
           }
 
-          case "list_protected_branches": {
+          case 'list_protected_branches': {
             const { action: _action, project_id: _projectId, ...queryOptions } = input;
             return gitlab.get(`projects/${encodedProjectId}/protected_branches`, {
               query: toQuery(queryOptions, []),
             });
           }
 
-          case "get_protected_branch": {
+          case 'get_protected_branch': {
             const { name } = input;
             const encodedName = encodeURIComponent(name);
             return gitlab.get(`projects/${encodedProjectId}/protected_branches/${encodedName}`);
           }
 
-          case "list_protected_tags": {
+          case 'list_protected_tags': {
             const { action: _action, project_id: _projectId, ...queryOptions } = input;
             return gitlab.get(`projects/${encodedProjectId}/protected_tags`, {
               query: toQuery(queryOptions, []),
@@ -95,41 +95,41 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_ref",
+    'manage_ref',
     {
-      name: "manage_ref",
+      name: 'manage_ref',
       description:
-        "Create, delete, and protect branches and tags. Actions: create_branch (from ref), delete_branch, protect_branch (set allowed roles), unprotect_branch, update_branch_protection, create_tag (annotated or lightweight), delete_tag, protect_tag, unprotect_tag. Related: browse_refs for inspection.",
+        'Create, delete, and protect branches and tags. Actions: create_branch (from ref), delete_branch, protect_branch (set allowed roles), unprotect_branch, update_branch_protection, create_tag (annotated or lightweight), delete_tag, protect_tag, unprotect_tag. Related: browse_refs for inspection.',
       inputSchema: z.toJSONSchema(ManageRefSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageRefSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_ref", input.action)) {
+        if (isActionDenied('manage_ref', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_ref tool`);
         }
 
         const encodedProjectId = encodeURIComponent(input.project_id);
 
         switch (input.action) {
-          case "create_branch": {
+          case 'create_branch': {
             const { branch, ref } = input;
             return gitlab.post(`projects/${encodedProjectId}/repository/branches`, {
               body: { branch, ref },
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "delete_branch": {
+          case 'delete_branch': {
             const { branch } = input;
             const encodedBranch = encodeURIComponent(branch);
             await gitlab.delete(
-              `projects/${encodedProjectId}/repository/branches/${encodedBranch}`
+              `projects/${encodedProjectId}/repository/branches/${encodedBranch}`,
             );
             return { deleted: true, branch };
           }
 
-          case "protect_branch": {
+          case 'protect_branch': {
             const {
               action: _action,
               project_id: _projectId,
@@ -160,18 +160,18 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
             return gitlab.post(`projects/${encodedProjectId}/protected_branches`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "unprotect_branch": {
+          case 'unprotect_branch': {
             const { name } = input;
             const encodedName = encodeURIComponent(name);
             await gitlab.delete(`projects/${encodedProjectId}/protected_branches/${encodedName}`);
             return { unprotected: true, name };
           }
 
-          case "update_branch_protection": {
+          case 'update_branch_protection': {
             const {
               action: _action,
               project_id: _projectId,
@@ -196,11 +196,11 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
             return gitlab.patch(`projects/${encodedProjectId}/protected_branches/${encodedName}`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "create_tag": {
+          case 'create_tag': {
             const { tag_name, ref, message } = input;
             const body: Record<string, unknown> = { tag_name, ref };
 
@@ -208,18 +208,18 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
             return gitlab.post(`projects/${encodedProjectId}/repository/tags`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "delete_tag": {
+          case 'delete_tag': {
             const { tag_name } = input;
             const encodedTagName = encodeURIComponent(tag_name);
             await gitlab.delete(`projects/${encodedProjectId}/repository/tags/${encodedTagName}`);
             return { deleted: true, tag_name };
           }
 
-          case "protect_tag": {
+          case 'protect_tag': {
             const {
               action: _action,
               project_id: _projectId,
@@ -235,11 +235,11 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
             return gitlab.post(`projects/${encodedProjectId}/protected_tags`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "unprotect_tag": {
+          case 'unprotect_tag': {
             const { name } = input;
             const encodedName = encodeURIComponent(name);
             await gitlab.delete(`projects/${encodedProjectId}/protected_tags/${encodedName}`);
@@ -259,7 +259,7 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
  * Get read-only tool names from the registry
  */
 export function getRefsReadOnlyToolNames(): string[] {
-  return ["browse_refs"];
+  return ['browse_refs'];
 }
 
 /**
@@ -275,7 +275,9 @@ export function getRefsToolDefinitions(): EnhancedToolDefinition[] {
 export function getFilteredRefsTools(readOnlyMode: boolean = false): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getRefsReadOnlyToolNames();
-    return Array.from(refsToolRegistry.values()).filter(tool => readOnlyNames.includes(tool.name));
+    return Array.from(refsToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
+    );
   }
   return getRefsToolDefinitions();
 }

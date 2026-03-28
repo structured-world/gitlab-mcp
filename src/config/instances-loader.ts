@@ -12,17 +12,17 @@
  * 3. GITLAB_API_URL (legacy single-instance)
  */
 
-import * as fs from "fs";
-import * as os from "os";
-import * as path from "path";
-import { logInfo, logWarn, logError, logDebug } from "../logger.js";
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
+import { logInfo, logWarn, logError, logDebug } from '../logger.js';
 import {
   GitLabInstanceConfig,
   InstancesConfigFile,
   validateInstancesConfig,
   parseInstanceUrlString,
   applyInstanceDefaults,
-} from "./instances-schema.js";
+} from './instances-schema.js';
 
 /**
  * Loaded instances configuration result
@@ -31,7 +31,7 @@ export interface LoadedInstancesConfig {
   /** List of configured instances */
   instances: GitLabInstanceConfig[];
   /** Configuration source for logging */
-  source: "file" | "env" | "legacy" | "none";
+  source: 'file' | 'env' | 'legacy' | 'none';
   /** Source details (file path or env var name) */
   sourceDetails: string;
 }
@@ -42,8 +42,8 @@ export interface LoadedInstancesConfig {
 async function loadYamlFile(filePath: string): Promise<unknown> {
   try {
     // Dynamic import to avoid requiring yaml as mandatory dependency
-    const yaml = await import("yaml");
-    const content = fs.readFileSync(filePath, "utf-8");
+    const yaml = await import('yaml');
+    const content = fs.readFileSync(filePath, 'utf-8');
     return yaml.parse(content);
   } catch (error) {
     const err = error as NodeJS.ErrnoException & { code?: string; message?: string };
@@ -51,9 +51,9 @@ async function loadYamlFile(filePath: string): Promise<unknown> {
     const message = err.message;
 
     // Check for missing yaml module - Node ESM uses ERR_MODULE_NOT_FOUND
-    const isModuleNotFoundCode = code === "MODULE_NOT_FOUND" || code === "ERR_MODULE_NOT_FOUND";
+    const isModuleNotFoundCode = code === 'MODULE_NOT_FOUND' || code === 'ERR_MODULE_NOT_FOUND';
     const isYamlNotFoundMessage =
-      typeof message === "string" &&
+      typeof message === 'string' &&
       (message.includes("Cannot find package 'yaml'") ||
         message.includes("Cannot find module 'yaml'"));
 
@@ -70,7 +70,7 @@ async function loadYamlFile(filePath: string): Promise<unknown> {
  * Load JSON configuration
  */
 function loadJsonFile(filePath: string): unknown {
-  const content = fs.readFileSync(filePath, "utf-8");
+  const content = fs.readFileSync(filePath, 'utf-8');
   return JSON.parse(content);
 }
 
@@ -79,7 +79,7 @@ function loadJsonFile(filePath: string): unknown {
  */
 async function loadConfigFile(filePath: string): Promise<InstancesConfigFile> {
   // Resolve home directory expansion using os.homedir() for cross-platform support
-  const resolvedPath = filePath.startsWith("~")
+  const resolvedPath = filePath.startsWith('~')
     ? path.join(os.homedir(), filePath.slice(1))
     : filePath;
 
@@ -91,14 +91,14 @@ async function loadConfigFile(filePath: string): Promise<InstancesConfigFile> {
 
   let rawConfig: unknown;
 
-  if (ext === ".yaml" || ext === ".yml") {
+  if (ext === '.yaml' || ext === '.yml') {
     rawConfig = await loadYamlFile(resolvedPath);
-  } else if (ext === ".json") {
+  } else if (ext === '.json') {
     rawConfig = loadJsonFile(resolvedPath);
   } else {
     // Try to detect format from content
-    const content = fs.readFileSync(resolvedPath, "utf-8").trim();
-    if (content.startsWith("{")) {
+    const content = fs.readFileSync(resolvedPath, 'utf-8').trim();
+    if (content.startsWith('{')) {
       rawConfig = JSON.parse(content);
     } else {
       rawConfig = await loadYamlFile(resolvedPath);
@@ -120,20 +120,20 @@ function parseInstancesEnvVar(value: string): GitLabInstanceConfig[] {
   const trimmed = value.trim();
 
   // Check for JSON object format
-  if (trimmed.startsWith("{")) {
+  if (trimmed.startsWith('{')) {
     const parsed: unknown = JSON.parse(trimmed);
     const config = validateInstancesConfig(parsed);
     return config.instances;
   }
 
   // Check for JSON array format
-  if (trimmed.startsWith("[")) {
+  if (trimmed.startsWith('[')) {
     const parsed = JSON.parse(trimmed) as string[];
     return parsed.map((url: string) => parseInstanceUrlString(url));
   }
 
   // Check for bash array format: (url1 url2 url3)
-  if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
+  if (trimmed.startsWith('(') && trimmed.endsWith(')')) {
     const inner = trimmed.slice(1, -1).trim();
     // Split by whitespace, handling quoted strings
     const urls: string[] = inner.match(/(?:[^\s"]+|"[^"]*")+/g) ?? [];
@@ -146,7 +146,7 @@ function parseInstancesEnvVar(value: string): GitLabInstanceConfig[] {
 
   // Check for whitespace-separated URLs (space, tab, newline)
   if (/\s/.test(trimmed)) {
-    const urls = trimmed.split(/\s+/).filter(url => url.length > 0);
+    const urls = trimmed.split(/\s+/).filter((url) => url.length > 0);
     return urls.map((url: string) => parseInstanceUrlString(url));
   }
 
@@ -165,25 +165,27 @@ export async function loadInstancesConfig(): Promise<LoadedInstancesConfig> {
   // Priority 1: Configuration file
   if (instancesFile) {
     try {
-      logDebug("Loading instances from configuration file", { path: instancesFile });
+      logDebug('Loading instances from configuration file', { path: instancesFile });
       const config = await loadConfigFile(instancesFile);
 
       // Apply defaults to all instances
-      const instances = config.instances.map(inst => applyInstanceDefaults(inst, config.defaults));
+      const instances = config.instances.map((inst) =>
+        applyInstanceDefaults(inst, config.defaults),
+      );
 
-      logInfo("Loaded GitLab instances from configuration file", {
+      logInfo('Loaded GitLab instances from configuration file', {
         path: instancesFile,
         count: instances.length,
-        instances: instances.map(i => i.label ?? i.url),
+        instances: instances.map((i) => i.label ?? i.url),
       });
 
       return {
         instances,
-        source: "file",
+        source: 'file',
         sourceDetails: instancesFile,
       };
     } catch (error) {
-      logError("Failed to load instances configuration file", {
+      logError('Failed to load instances configuration file', {
         path: instancesFile,
         err: error instanceof Error ? error : new Error(String(error)),
       });
@@ -194,21 +196,21 @@ export async function loadInstancesConfig(): Promise<LoadedInstancesConfig> {
   // Priority 2: Environment variable
   if (instancesEnv) {
     try {
-      logDebug("Loading instances from GITLAB_INSTANCES env var");
+      logDebug('Loading instances from GITLAB_INSTANCES env var');
       const instances = parseInstancesEnvVar(instancesEnv);
 
-      logInfo("Loaded GitLab instances from environment variable", {
+      logInfo('Loaded GitLab instances from environment variable', {
         count: instances.length,
-        instances: instances.map(i => i.label ?? i.url),
+        instances: instances.map((i) => i.label ?? i.url),
       });
 
       return {
         instances,
-        source: "env",
-        sourceDetails: "GITLAB_INSTANCES",
+        source: 'env',
+        sourceDetails: 'GITLAB_INSTANCES',
       };
     } catch (error) {
-      logError("Failed to parse GITLAB_INSTANCES environment variable", {
+      logError('Failed to parse GITLAB_INSTANCES environment variable', {
         err: error instanceof Error ? error : new Error(String(error)),
       });
       throw error;
@@ -217,50 +219,50 @@ export async function loadInstancesConfig(): Promise<LoadedInstancesConfig> {
 
   // Priority 3: Legacy single-instance mode
   if (legacyBaseUrl) {
-    logDebug("Using legacy GITLAB_API_URL configuration");
+    logDebug('Using legacy GITLAB_API_URL configuration');
 
     // Normalize URL (same logic as config.ts normalizeGitLabBaseUrl)
     let normalizedUrl = legacyBaseUrl;
-    if (normalizedUrl.endsWith("/")) {
+    if (normalizedUrl.endsWith('/')) {
       normalizedUrl = normalizedUrl.slice(0, -1);
     }
-    if (normalizedUrl.endsWith("/api/v4")) {
+    if (normalizedUrl.endsWith('/api/v4')) {
       normalizedUrl = normalizedUrl.slice(0, -7);
     }
-    if (normalizedUrl.endsWith("/api/graphql")) {
+    if (normalizedUrl.endsWith('/api/graphql')) {
       normalizedUrl = normalizedUrl.slice(0, -12);
     }
 
     const instance: GitLabInstanceConfig = {
       url: normalizedUrl,
-      label: "Default Instance",
-      insecureSkipVerify: process.env.SKIP_TLS_VERIFY === "true",
+      label: 'Default Instance',
+      insecureSkipVerify: process.env.SKIP_TLS_VERIFY === 'true',
     };
 
-    logInfo("Using legacy single-instance configuration", {
+    logInfo('Using legacy single-instance configuration', {
       url: normalizedUrl,
     });
 
     return {
       instances: [instance],
-      source: "legacy",
-      sourceDetails: "GITLAB_API_URL",
+      source: 'legacy',
+      sourceDetails: 'GITLAB_API_URL',
     };
   }
 
   // No configuration - use default gitlab.com
-  logWarn("No GitLab instance configuration found, using gitlab.com as default");
+  logWarn('No GitLab instance configuration found, using gitlab.com as default');
 
   return {
     instances: [
       {
-        url: "https://gitlab.com",
-        label: "GitLab.com",
+        url: 'https://gitlab.com',
+        label: 'GitLab.com',
         insecureSkipVerify: false,
       },
     ],
-    source: "none",
-    sourceDetails: "default",
+    source: 'none',
+    sourceDetails: 'default',
   };
 }
 
@@ -269,21 +271,21 @@ export async function loadInstancesConfig(): Promise<LoadedInstancesConfig> {
  */
 export function getInstanceByUrl(
   instances: GitLabInstanceConfig[],
-  url: string
+  url: string,
 ): GitLabInstanceConfig | undefined {
   // Normalize the search URL
   let normalizedSearch = url;
-  if (normalizedSearch.endsWith("/")) {
+  if (normalizedSearch.endsWith('/')) {
     normalizedSearch = normalizedSearch.slice(0, -1);
   }
-  if (normalizedSearch.endsWith("/api/v4")) {
+  if (normalizedSearch.endsWith('/api/v4')) {
     normalizedSearch = normalizedSearch.slice(0, -7);
   }
-  if (normalizedSearch.endsWith("/api/graphql")) {
+  if (normalizedSearch.endsWith('/api/graphql')) {
     normalizedSearch = normalizedSearch.slice(0, -12);
   }
 
-  return instances.find(inst => inst.url === normalizedSearch);
+  return instances.find((inst) => inst.url === normalizedSearch);
 }
 
 /**
@@ -296,21 +298,21 @@ export function isKnownInstance(instances: GitLabInstanceConfig[], url: string):
 /**
  * Create a sample configuration file content
  */
-export function generateSampleConfig(format: "yaml" | "json"): string {
+export function generateSampleConfig(format: 'yaml' | 'json'): string {
   const config: InstancesConfigFile = {
     instances: [
       {
-        url: "https://gitlab.com",
-        label: "GitLab.com",
+        url: 'https://gitlab.com',
+        label: 'GitLab.com',
         insecureSkipVerify: false,
       },
       {
-        url: "https://git.corp.io",
-        label: "Corporate GitLab",
+        url: 'https://git.corp.io',
+        label: 'Corporate GitLab',
         oauth: {
-          clientId: "your_app_id",
-          clientSecret: "your_secret",
-          scopes: "api read_user",
+          clientId: 'your_app_id',
+          clientSecret: 'your_secret',
+          scopes: 'api read_user',
         },
         rateLimit: {
           maxConcurrent: 50,
@@ -327,12 +329,12 @@ export function generateSampleConfig(format: "yaml" | "json"): string {
         queueTimeout: 60000,
       },
       oauth: {
-        scopes: "api read_user",
+        scopes: 'api read_user',
       },
     },
   };
 
-  if (format === "json") {
+  if (format === 'json') {
     return JSON.stringify(config, null, 2);
   }
 

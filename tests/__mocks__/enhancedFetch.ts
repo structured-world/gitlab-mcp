@@ -12,10 +12,10 @@ mockEnhancedFetch.mockImplementation(async (_url: string, _options?: any) => {
   return {
     ok: true,
     status: 200,
-    statusText: "OK",
+    statusText: 'OK',
     json: jest.fn().mockResolvedValue({ data: {} }),
     text: jest.fn().mockResolvedValue('{"data":{}}'),
-    headers: new Map([["content-type", "application/json"]]),
+    headers: new Map([['content-type', 'application/json']]),
   };
 });
 

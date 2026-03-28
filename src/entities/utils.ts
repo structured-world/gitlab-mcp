@@ -1,6 +1,6 @@
-import { z } from "zod";
+import { z } from 'zod';
 
-const DEFAULT_NULL = process.env.DEFAULT_NULL === "true";
+const DEFAULT_NULL = process.env.DEFAULT_NULL === 'true';
 
 /**
  * GitLab REST API default pagination value.
@@ -37,11 +37,11 @@ export const GITLAB_MAX_PER_PAGE = 100;
  */
 export function paginationFields(
   defaultPerPage: number = GITLAB_DEFAULT_PER_PAGE,
-  maxPerPage: number = GITLAB_MAX_PER_PAGE
+  maxPerPage: number = GITLAB_MAX_PER_PAGE,
 ) {
   if (defaultPerPage > maxPerPage) {
     throw new Error(
-      `Invalid pagination config: defaultPerPage (${defaultPerPage}) cannot exceed maxPerPage (${maxPerPage})`
+      `Invalid pagination config: defaultPerPage (${defaultPerPage}) cannot exceed maxPerPage (${maxPerPage})`,
     );
   }
   return {
@@ -53,17 +53,17 @@ export function paginationFields(
       .optional()
       .default(defaultPerPage)
       .describe(`Number of items per page (default: ${defaultPerPage}, max: ${maxPerPage})`),
-    page: z.number().int().min(1).optional().describe("Page number"),
+    page: z.number().int().min(1).optional().describe('Page number'),
   };
 }
 
-export const flexibleBoolean = z.preprocess(val => {
-  if (typeof val === "boolean") {
+export const flexibleBoolean = z.preprocess((val) => {
+  if (typeof val === 'boolean') {
     return val;
   }
   try {
     const result = String(val).toLowerCase();
-    return ["true", "t", "1"].includes(result);
+    return ['true', 't', '1'].includes(result);
   } catch {
     return false;
   }
@@ -78,7 +78,7 @@ export const flexibleBooleanNullable = DEFAULT_NULL
  * Unlike z.coerce.string(), this properly rejects undefined/null values
  * instead of coercing them to the literal string "undefined"/"null".
  */
-export const requiredId = z.preprocess(val => val ?? "", z.coerce.string().min(1));
+export const requiredId = z.preprocess((val) => val ?? '', z.coerce.string().min(1));
 
 /**
  * Asserts that a value is defined (not undefined).
@@ -108,14 +108,14 @@ export function assertDefined<T>(value: T | undefined, fieldName: string): asser
  * @returns true if validation passes
  */
 export function validateScopeId(data: {
-  scope: "project" | "group";
+  scope: 'project' | 'group';
   projectId?: string;
   groupId?: string;
 }): boolean {
-  if (data.scope === "project") {
+  if (data.scope === 'project') {
     return !!data.projectId;
   }
-  if (data.scope === "group") {
+  if (data.scope === 'group') {
     return !!data.groupId;
   }
   return true;

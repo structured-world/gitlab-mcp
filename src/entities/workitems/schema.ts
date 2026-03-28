@@ -1,9 +1,9 @@
-import { z } from "zod";
+import { z } from 'zod';
 import {
   WorkItemIdSchema,
   WorkItemTypeEnumSchema,
   WorkItemStateEventSchema,
-} from "./schema-readonly";
+} from './schema-readonly';
 
 // ============================================================================
 // manage_work_item - CQRS Command Tool (discriminated union schema)
@@ -41,138 +41,138 @@ import {
 
 // --- Shared fields ---
 const workItemIdField = WorkItemIdSchema.describe(
-  "Work item ID - use numeric ID from list results (e.g., '5953')"
+  "Work item ID - use numeric ID from list results (e.g., '5953')",
 );
 
 // --- Link type enum (matches GitLab GraphQL API values directly, see #177) ---
 const LinkTypeSchema = z
-  .enum(["BLOCKS", "BLOCKED_BY", "RELATED"])
+  .enum(['BLOCKS', 'BLOCKED_BY', 'RELATED'])
   .describe(
-    "Relationship type: BLOCKS (this blocks target), BLOCKED_BY (this is blocked by target), RELATED (general relationship)"
+    'Relationship type: BLOCKS (this blocks target), BLOCKED_BY (this is blocked by target), RELATED (general relationship)',
   );
 
 // --- Date validation pattern ---
-const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Date must be in YYYY-MM-DD format");
+const DateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM-DD format');
 
 // --- Action: create ---
 const CreateWorkItemSchema = z.object({
-  action: z.literal("create").describe("Create a new work item"),
+  action: z.literal('create').describe('Create a new work item'),
   namespace: z
     .string()
     .describe(
-      'CRITICAL: Namespace path (group OR project). For Epics use GROUP path (e.g. "my-group"). For Issues/Tasks use PROJECT path (e.g. "my-group/my-project").'
+      'CRITICAL: Namespace path (group OR project). For Epics use GROUP path (e.g. "my-group"). For Issues/Tasks use PROJECT path (e.g. "my-group/my-project").',
     ),
-  workItemType: WorkItemTypeEnumSchema.describe("Type of work item"),
-  title: z.string().describe("Title of the work item"),
-  description: z.string().optional().describe("Description of the work item"),
-  assigneeIds: z.array(z.string()).optional().describe("Array of assignee user IDs"),
-  labelIds: z.array(z.string()).optional().describe("Array of label IDs"),
-  milestoneId: z.string().optional().describe("Milestone ID"),
+  workItemType: WorkItemTypeEnumSchema.describe('Type of work item'),
+  title: z.string().describe('Title of the work item'),
+  description: z.string().optional().describe('Description of the work item'),
+  assigneeIds: z.array(z.string()).optional().describe('Array of assignee user IDs'),
+  labelIds: z.array(z.string()).optional().describe('Array of label IDs'),
+  milestoneId: z.string().optional().describe('Milestone ID'),
   // Free tier: dates
-  startDate: DateSchema.optional().describe("Start date in YYYY-MM-DD format"),
-  dueDate: DateSchema.optional().describe("Due date in YYYY-MM-DD format"),
+  startDate: DateSchema.optional().describe('Start date in YYYY-MM-DD format'),
+  dueDate: DateSchema.optional().describe('Due date in YYYY-MM-DD format'),
   // Free tier: hierarchy
   parentId: z
     .string()
     .min(1)
     .optional()
-    .describe("Parent work item ID to set hierarchy relationship"),
+    .describe('Parent work item ID to set hierarchy relationship'),
   childrenIds: z
     .array(z.string().min(1))
     .optional()
-    .describe("Array of child work item IDs to add"),
+    .describe('Array of child work item IDs to add'),
   // Free tier: time tracking
   // NOTE: timeEstimate is applied via update after create (GitLab API limitation)
   timeEstimate: z
     .string()
     .optional()
     .describe(
-      'Time estimate (e.g. "1h 30m", "2d"). Applied via update after create. Check _warning in response if application failed.'
+      'Time estimate (e.g. "1h 30m", "2d"). Applied via update after create. Check _warning in response if application failed.',
     ),
   // Premium tier
   isFixed: z
     .boolean()
     .optional()
-    .describe("Fixed dates - not inherited from children (Premium tier)"),
-  weight: z.number().int().min(0).optional().describe("Story points / weight value (Premium tier)"),
+    .describe('Fixed dates - not inherited from children (Premium tier)'),
+  weight: z.number().int().min(0).optional().describe('Story points / weight value (Premium tier)'),
   iterationId: z
     .string()
     .min(1)
     .optional()
-    .describe("Iteration/sprint ID to assign (Premium tier)"),
+    .describe('Iteration/sprint ID to assign (Premium tier)'),
   progressCurrentValue: z
     .number()
     .int()
     .min(0)
     .max(100)
     .optional()
-    .describe("Current progress value 0-100 for OKR key results (Premium tier)"),
+    .describe('Current progress value 0-100 for OKR key results (Premium tier)'),
   // Ultimate tier
   healthStatus: z
-    .enum(["onTrack", "needsAttention", "atRisk"])
+    .enum(['onTrack', 'needsAttention', 'atRisk'])
     .optional()
-    .describe("Health status indicator (Ultimate tier)"),
+    .describe('Health status indicator (Ultimate tier)'),
   color: z
     .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, "Color must be hex format like #FF5733")
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Color must be hex format like #FF5733')
     .optional()
-    .describe("Custom hex color for epics (Ultimate tier)"),
+    .describe('Custom hex color for epics (Ultimate tier)'),
 });
 
 // --- Action: update ---
 const UpdateWorkItemSchema = z.object({
-  action: z.literal("update").describe("Update an existing work item"),
+  action: z.literal('update').describe('Update an existing work item'),
   id: workItemIdField,
-  title: z.string().optional().describe("Title of the work item"),
-  description: z.string().optional().describe("Description of the work item"),
-  assigneeIds: z.array(z.string()).optional().describe("Array of assignee user IDs"),
+  title: z.string().optional().describe('Title of the work item'),
+  description: z.string().optional().describe('Description of the work item'),
+  assigneeIds: z.array(z.string()).optional().describe('Array of assignee user IDs'),
   labelIds: z
     .array(z.string())
     .optional()
     .describe(
-      "Array of label IDs to SET (replaces all existing labels). Cannot be used with addLabelIds or removeLabelIds."
+      'Array of label IDs to SET (replaces all existing labels). Cannot be used with addLabelIds or removeLabelIds.',
     ),
   addLabelIds: z
     .array(z.string())
     .optional()
     .describe(
-      "Array of label IDs to ADD to existing labels. Can be used with removeLabelIds. Cannot be used with labelIds."
+      'Array of label IDs to ADD to existing labels. Can be used with removeLabelIds. Cannot be used with labelIds.',
     ),
   removeLabelIds: z
     .array(z.string())
     .optional()
     .describe(
-      "Array of label IDs to REMOVE from existing labels. Can be used with addLabelIds. Cannot be used with labelIds."
+      'Array of label IDs to REMOVE from existing labels. Can be used with addLabelIds. Cannot be used with labelIds.',
     ),
-  milestoneId: z.string().optional().describe("Milestone ID"),
+  milestoneId: z.string().optional().describe('Milestone ID'),
   state: WorkItemStateEventSchema.optional().describe(
-    "State event for the work item (CLOSE, REOPEN)"
+    'State event for the work item (CLOSE, REOPEN)',
   ),
   // Linked items (applied via follow-up mutation after update)
   linkType: LinkTypeSchema.optional().describe(
-    "Relationship type to create. Use with targetId to link work items during update. Applied via separate mutation after the main update."
+    'Relationship type to create. Use with targetId to link work items during update. Applied via separate mutation after the main update.',
   ),
   targetId: WorkItemIdSchema.optional().describe(
-    "Target work item ID to link to. Use with linkType to create a relationship during update."
+    'Target work item ID to link to. Use with linkType to create a relationship during update.',
   ),
   // Free tier: dates
   startDate: DateSchema.nullable()
     .optional()
-    .describe("Start date in YYYY-MM-DD format (null to clear)"),
+    .describe('Start date in YYYY-MM-DD format (null to clear)'),
   dueDate: DateSchema.nullable()
     .optional()
-    .describe("Due date in YYYY-MM-DD format (null to clear)"),
+    .describe('Due date in YYYY-MM-DD format (null to clear)'),
   // Free tier: hierarchy
   parentId: z
     .string()
     .min(1)
     .nullable()
     .optional()
-    .describe("Parent work item ID (null to unlink parent)"),
+    .describe('Parent work item ID (null to unlink parent)'),
   childrenIds: z
     .array(z.string().min(1))
     .optional()
-    .describe("Array of child work item IDs to add"),
+    .describe('Array of child work item IDs to add'),
   // Free tier: time tracking
   timeEstimate: z
     .string()
@@ -185,91 +185,91 @@ const UpdateWorkItemSchema = z.object({
   timeSpentAt: z
     .string()
     .optional()
-    .describe("When time was spent in ISO 8601 format (defaults to now)"),
+    .describe('When time was spent in ISO 8601 format (defaults to now)'),
   timeSpentSummary: z
     .string()
     .optional()
-    .describe("Summary/description of work done for the timelog entry"),
+    .describe('Summary/description of work done for the timelog entry'),
   // Premium tier
   isFixed: z
     .boolean()
     .optional()
-    .describe("Fixed dates - not inherited from children (Premium tier)"),
+    .describe('Fixed dates - not inherited from children (Premium tier)'),
   weight: z
     .number()
     .int()
     .min(0)
     .nullable()
     .optional()
-    .describe("Story points / weight value, null to clear (Premium tier)"),
+    .describe('Story points / weight value, null to clear (Premium tier)'),
   iterationId: z
     .string()
     .min(1)
     .nullable()
     .optional()
-    .describe("Iteration/sprint ID, null to unassign (Premium tier)"),
+    .describe('Iteration/sprint ID, null to unassign (Premium tier)'),
   progressCurrentValue: z
     .number()
     .int()
     .min(0)
     .max(100)
     .optional()
-    .describe("Current progress value 0-100 for OKR key results (Premium tier)"),
+    .describe('Current progress value 0-100 for OKR key results (Premium tier)'),
   // Ultimate tier
   healthStatus: z
-    .enum(["onTrack", "needsAttention", "atRisk"])
+    .enum(['onTrack', 'needsAttention', 'atRisk'])
     .nullable()
     .optional()
-    .describe("Health status indicator, null to clear (Ultimate tier)"),
+    .describe('Health status indicator, null to clear (Ultimate tier)'),
   color: z
     .string()
-    .regex(/^#[0-9a-fA-F]{6}$/, "Color must be hex format like #FF5733")
+    .regex(/^#[0-9a-fA-F]{6}$/, 'Color must be hex format like #FF5733')
     .optional()
-    .describe("Custom hex color for epics (Ultimate tier)"),
+    .describe('Custom hex color for epics (Ultimate tier)'),
   // Ultimate tier: verification status for requirements
   verificationStatus: z
-    .enum(["PASSED", "FAILED"])
+    .enum(['PASSED', 'FAILED'])
     .optional()
     .describe(
-      "Set verification status for requirement work items: PASSED or FAILED (Ultimate tier). Creates a test report internally."
+      'Set verification status for requirement work items: PASSED or FAILED (Ultimate tier). Creates a test report internally.',
     ),
 });
 
 // --- Action: delete ---
 const DeleteWorkItemSchema = z.object({
-  action: z.literal("delete").describe("Delete a work item"),
+  action: z.literal('delete').describe('Delete a work item'),
   id: workItemIdField,
 });
 
 // --- Action: delete_timelog ---
 const DeleteTimelogSchema = z.object({
-  action: z.literal("delete_timelog").describe("Delete a time tracking entry from a work item"),
+  action: z.literal('delete_timelog').describe('Delete a time tracking entry from a work item'),
   timelogId: z
     .string()
     .min(1)
     .describe(
-      "Global ID of the timelog entry (gid://gitlab/Timelog/N) — obtain from work item's TIME_TRACKING widget via browse_work_items get action"
+      "Global ID of the timelog entry (gid://gitlab/Timelog/N) — obtain from work item's TIME_TRACKING widget via browse_work_items get action",
     ),
 });
 
 // --- Action: add_link ---
 const AddLinkSchema = z.object({
-  action: z.literal("add_link").describe("Add a relationship link between two work items"),
-  id: workItemIdField.describe("Source work item ID"),
-  targetId: WorkItemIdSchema.describe("Target work item ID to link to"),
+  action: z.literal('add_link').describe('Add a relationship link between two work items'),
+  id: workItemIdField.describe('Source work item ID'),
+  targetId: WorkItemIdSchema.describe('Target work item ID to link to'),
   linkType: LinkTypeSchema,
 });
 
 // --- Action: remove_link ---
 const RemoveLinkSchema = z.object({
-  action: z.literal("remove_link").describe("Remove a relationship link between two work items"),
-  id: workItemIdField.describe("Source work item ID"),
-  targetId: WorkItemIdSchema.describe("Target work item ID to unlink"),
+  action: z.literal('remove_link').describe('Remove a relationship link between two work items'),
+  id: workItemIdField.describe('Source work item ID'),
+  targetId: WorkItemIdSchema.describe('Target work item ID to unlink'),
   // Note: linkType is NOT used by GitLab API for remove - links identified by source+target only
 });
 
 // --- Discriminated union combining all actions ---
-export const ManageWorkItemSchema = z.discriminatedUnion("action", [
+export const ManageWorkItemSchema = z.discriminatedUnion('action', [
   CreateWorkItemSchema,
   UpdateWorkItemSchema,
   DeleteWorkItemSchema,

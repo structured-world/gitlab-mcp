@@ -10,7 +10,7 @@
  * - Standard rate limit headers (X-RateLimit-*)
  */
 
-import { Request, Response, NextFunction, RequestHandler } from "express";
+import { Request, Response, NextFunction, RequestHandler } from 'express';
 import {
   RATE_LIMIT_IP_ENABLED,
   RATE_LIMIT_IP_WINDOW_MS,
@@ -18,9 +18,9 @@ import {
   RATE_LIMIT_SESSION_ENABLED,
   RATE_LIMIT_SESSION_WINDOW_MS,
   RATE_LIMIT_SESSION_MAX_REQUESTS,
-} from "../config";
-import { logDebug, logWarn } from "../logger";
-import { getMinimalRequestContext, buildRateLimitInfo, truncateId } from "../utils/request-logger";
+} from '../config';
+import { logDebug, logWarn } from '../logger';
+import { getMinimalRequestContext, buildRateLimitInfo, truncateId } from '../utils/request-logger';
 
 interface RateLimitEntry {
   count: number;
@@ -52,7 +52,7 @@ function startCleanup(): void {
     }
 
     if (cleaned > 0) {
-      logDebug("Rate limiter cleanup: removed expired entries", { cleaned });
+      logDebug('Rate limiter cleanup: removed expired entries', { cleaned });
     }
   }, CLEANUP_INTERVAL_MS);
 
@@ -74,7 +74,7 @@ export function stopCleanup(): void {
  * Get the IP address from a request
  */
 function getIpAddress(req: Request): string {
-  return req.ip ?? req.socket.remoteAddress ?? "unknown";
+  return req.ip ?? req.socket.remoteAddress ?? 'unknown';
 }
 
 /**
@@ -88,7 +88,7 @@ function isAuthenticated(req: Request, res: Response): boolean {
   }
 
   // Check for MCP session ID header (indicates active session)
-  const mcpSessionId = req.headers["mcp-session-id"] as string | undefined;
+  const mcpSessionId = req.headers['mcp-session-id'] as string | undefined;
   if (mcpSessionId) {
     return true;
   }
@@ -102,7 +102,7 @@ function isAuthenticated(req: Request, res: Response): boolean {
 function checkRateLimit(
   key: string,
   windowMs: number,
-  maxRequests: number
+  maxRequests: number,
 ): {
   allowed: boolean;
   remaining: number;
@@ -144,11 +144,11 @@ function checkRateLimit(
  */
 function setRateLimitHeaders(
   res: Response,
-  info: { remaining: number; resetAt: number; total: number }
+  info: { remaining: number; resetAt: number; total: number },
 ): void {
-  res.set("X-RateLimit-Limit", info.total.toString());
-  res.set("X-RateLimit-Remaining", info.remaining.toString());
-  res.set("X-RateLimit-Reset", Math.ceil(info.resetAt / 1000).toString());
+  res.set('X-RateLimit-Limit', info.total.toString());
+  res.set('X-RateLimit-Remaining', info.remaining.toString());
+  res.set('X-RateLimit-Reset', Math.ceil(info.resetAt / 1000).toString());
 }
 
 /**
@@ -169,7 +169,7 @@ export function rateLimiterMiddleware(): RequestHandler {
 
   return (req: Request, res: Response, next: NextFunction): void => {
     // Skip health check endpoint (monitoring should always work)
-    if (req.path === "/health") {
+    if (req.path === '/health') {
       next();
       return;
     }
@@ -188,12 +188,12 @@ export function rateLimiterMiddleware(): RequestHandler {
 
       // Apply per-session rate limiting (optional)
       const sessionId =
-        (res.locals.oauthSessionId as string) || (req.headers["mcp-session-id"] as string);
+        (res.locals.oauthSessionId as string) || (req.headers['mcp-session-id'] as string);
       const key = `session:${sessionId}`;
       const info = checkRateLimit(
         key,
         RATE_LIMIT_SESSION_WINDOW_MS,
-        RATE_LIMIT_SESSION_MAX_REQUESTS
+        RATE_LIMIT_SESSION_MAX_REQUESTS,
       );
 
       setRateLimitHeaders(res, info);
@@ -202,14 +202,14 @@ export function rateLimiterMiddleware(): RequestHandler {
       const usagePercent = (info.used / info.total) * 100;
       if (info.allowed && usagePercent >= 80) {
         const rateLimitInfo = buildRateLimitInfo(
-          "session",
+          'session',
           sessionId,
           info.used,
           info.total,
-          info.resetAt
+          info.resetAt,
         );
-        logDebug("Approaching session rate limit threshold", {
-          event: "rate_limit_warning",
+        logDebug('Approaching session rate limit threshold', {
+          event: 'rate_limit_warning',
           ...getMinimalRequestContext(req),
           rateLimit: rateLimitInfo,
         });
@@ -218,25 +218,25 @@ export function rateLimiterMiddleware(): RequestHandler {
       if (!info.allowed) {
         const retryAfter = Math.ceil((info.resetAt - Date.now()) / 1000);
         const rateLimitInfo = buildRateLimitInfo(
-          "session",
+          'session',
           sessionId,
           info.used,
           info.total,
-          info.resetAt
+          info.resetAt,
         );
 
-        logWarn("Session rate limit exceeded", {
-          event: "rate_limit_exceeded",
+        logWarn('Session rate limit exceeded', {
+          event: 'rate_limit_exceeded',
           ...getMinimalRequestContext(req),
           rateLimit: rateLimitInfo,
           hasOAuthSession: !!res.locals.oauthSessionId,
-          hasMcpSessionHeader: !!req.headers["mcp-session-id"],
+          hasMcpSessionHeader: !!req.headers['mcp-session-id'],
         });
 
-        res.set("Retry-After", retryAfter.toString());
+        res.set('Retry-After', retryAfter.toString());
         res.status(429).json({
-          error: "Too Many Requests",
-          message: "Session rate limit exceeded. Please slow down your requests.",
+          error: 'Too Many Requests',
+          message: 'Session rate limit exceeded. Please slow down your requests.',
           retryAfter,
           limit: info.total,
           remaining: info.remaining,
@@ -264,36 +264,36 @@ export function rateLimiterMiddleware(): RequestHandler {
     // Log warning when approaching limit (>80%)
     const usagePercent = (info.used / info.total) * 100;
     if (info.allowed && usagePercent >= 80) {
-      const rateLimitInfo = buildRateLimitInfo("ip", ip, info.used, info.total, info.resetAt);
-      logDebug("Approaching IP rate limit threshold", {
-        event: "rate_limit_warning",
+      const rateLimitInfo = buildRateLimitInfo('ip', ip, info.used, info.total, info.resetAt);
+      logDebug('Approaching IP rate limit threshold', {
+        event: 'rate_limit_warning',
         ...getMinimalRequestContext(req),
         rateLimit: rateLimitInfo,
-        authClassification: "anonymous",
-        authReason: "no OAuth session and no MCP-Session-Id header",
+        authClassification: 'anonymous',
+        authReason: 'no OAuth session and no MCP-Session-Id header',
       });
     }
 
     if (!info.allowed) {
       const retryAfter = Math.ceil((info.resetAt - Date.now()) / 1000);
-      const rateLimitInfo = buildRateLimitInfo("ip", ip, info.used, info.total, info.resetAt);
+      const rateLimitInfo = buildRateLimitInfo('ip', ip, info.used, info.total, info.resetAt);
 
       // Get MCP session header if present (helps debug why request was classified as anonymous)
-      const mcpSessionHeader = req.headers["mcp-session-id"] as string | undefined;
+      const mcpSessionHeader = req.headers['mcp-session-id'] as string | undefined;
 
-      logWarn("IP rate limit exceeded", {
-        event: "rate_limit_exceeded",
+      logWarn('IP rate limit exceeded', {
+        event: 'rate_limit_exceeded',
         ...getMinimalRequestContext(req),
         rateLimit: rateLimitInfo,
-        authClassification: "anonymous",
-        authReason: "no OAuth session and no MCP-Session-Id header",
+        authClassification: 'anonymous',
+        authReason: 'no OAuth session and no MCP-Session-Id header',
         mcpSessionId: truncateId(mcpSessionHeader),
       });
 
-      res.set("Retry-After", retryAfter.toString());
+      res.set('Retry-After', retryAfter.toString());
       res.status(429).json({
-        error: "Too Many Requests",
-        message: "Rate limit exceeded. Please authenticate or slow down your requests.",
+        error: 'Too Many Requests',
+        message: 'Rate limit exceeded. Please authenticate or slow down your requests.',
         retryAfter,
         limit: info.total,
         remaining: info.remaining,

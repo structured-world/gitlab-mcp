@@ -8,11 +8,11 @@
  * 4. Sets default context (namespace/project)
  */
 
-import { parseGitRemote, GitRemoteInfo, listGitRemotes } from "./git-remote";
-import { findProfileByHost, ProfileMatchResult } from "./profile-matcher";
-import { findProjectConfig, ProjectConfig, loadAndApplyProfile } from "../profiles";
-import { logInfo, logWarn, logError, logDebug } from "../logger";
-import { extractNamespaceFromPath } from "../utils/namespace";
+import { parseGitRemote, GitRemoteInfo, listGitRemotes } from './git-remote';
+import { findProfileByHost, ProfileMatchResult } from './profile-matcher';
+import { findProjectConfig, ProjectConfig, loadAndApplyProfile } from '../profiles';
+import { logInfo, logWarn, logError, logDebug } from '../logger';
+import { extractNamespaceFromPath } from '../utils/namespace';
 
 // ============================================================================
 // Types
@@ -61,11 +61,11 @@ export interface AutoDiscoveryResult {
  * @returns Discovery result or null if not in a git repo
  */
 export async function autoDiscover(
-  options: AutoDiscoveryOptions = {}
+  options: AutoDiscoveryOptions = {},
 ): Promise<AutoDiscoveryResult | null> {
   const repoPath = options.repoPath ?? process.cwd();
 
-  logInfo("Starting auto-discovery", { path: repoPath });
+  logInfo('Starting auto-discovery', { path: repoPath });
 
   // 1. Parse git remote
   const remote = await parseGitRemote({
@@ -74,11 +74,11 @@ export async function autoDiscover(
   });
 
   if (!remote) {
-    logWarn("Auto-discovery: No git remote found", { path: repoPath });
+    logWarn('Auto-discovery: No git remote found', { path: repoPath });
     return null;
   }
 
-  logInfo("Detected git remote", {
+  logInfo('Detected git remote', {
     host: remote.host,
     projectPath: remote.projectPath,
     remote: remote.remoteName,
@@ -91,12 +91,12 @@ export async function autoDiscover(
   const matchedProfile = await findProfileByHost(remote.host);
 
   if (matchedProfile) {
-    logInfo("Matched host to user profile", {
+    logInfo('Matched host to user profile', {
       profile: matchedProfile.profileName,
       matchType: matchedProfile.matchType,
     });
   } else {
-    logDebug("No matching user profile found", { host: remote.host });
+    logDebug('No matching user profile found', { host: remote.host });
   }
 
   // 3. Load project configs (unless disabled)
@@ -104,7 +104,7 @@ export async function autoDiscover(
   if (!options.noProjectConfig) {
     projectConfig = await findProjectConfig(repoPath);
     if (projectConfig) {
-      logInfo("Found project configuration", { path: projectConfig.configPath });
+      logInfo('Found project configuration', { path: projectConfig.configPath });
     }
   }
 
@@ -131,16 +131,16 @@ export async function autoDiscover(
       try {
         await loadAndApplyProfile(matchedProfile.profileName);
         result.profileApplied = true;
-        logInfo("Applied matched profile", { profile: matchedProfile.profileName });
+        logInfo('Applied matched profile', { profile: matchedProfile.profileName });
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        logError("Failed to apply matched profile", { error: message });
+        logError('Failed to apply matched profile', { error: message });
       }
     } else {
       // Set API URL from discovered host if no profile matched
       if (!process.env.GITLAB_API_URL) {
         process.env.GITLAB_API_URL = apiUrl;
-        logInfo("Set GITLAB_API_URL from discovered host", { apiUrl });
+        logInfo('Set GITLAB_API_URL from discovered host', { apiUrl });
       }
     }
 
@@ -149,7 +149,7 @@ export async function autoDiscover(
       result.projectConfigApplied = true;
       // Project config application is logged but not enforced yet
       // See: https://github.com/structured-world/gitlab-mcp/issues/61
-      logDebug("Project config loaded (enforcement pending)", { config: projectConfig });
+      logDebug('Project config loaded (enforcement pending)', { config: projectConfig });
     }
 
     // Set default context
@@ -166,7 +166,7 @@ function setDefaultContext(projectPath: string): void {
   // Set as environment variables for tools to use
   if (!process.env.GITLAB_DEFAULT_PROJECT) {
     process.env.GITLAB_DEFAULT_PROJECT = projectPath;
-    logDebug("Set default project context", { project: projectPath });
+    logDebug('Set default project context', { project: projectPath });
   }
 
   if (!process.env.GITLAB_DEFAULT_NAMESPACE) {
@@ -174,7 +174,7 @@ function setDefaultContext(projectPath: string): void {
     const namespace = extractNamespaceFromPath(projectPath);
     if (namespace) {
       process.env.GITLAB_DEFAULT_NAMESPACE = namespace;
-      logDebug("Set default namespace context", { namespace });
+      logDebug('Set default namespace context', { namespace });
     }
   }
 }
@@ -189,31 +189,31 @@ function setDefaultContext(projectPath: string): void {
 export function formatDiscoveryResult(result: AutoDiscoveryResult): string {
   const lines: string[] = [];
 
-  lines.push("Auto-discovery Results");
-  lines.push("======================");
-  lines.push("");
+  lines.push('Auto-discovery Results');
+  lines.push('======================');
+  lines.push('');
 
   // Git Remote
-  lines.push("Git Remote:");
+  lines.push('Git Remote:');
   lines.push(`  Remote: ${result.remote.remoteName}`);
   lines.push(`  Host: ${result.host}`);
   lines.push(`  Project: ${result.projectPath}`);
   lines.push(`  Protocol: ${result.remote.protocol}`);
   lines.push(`  URL: ${result.remote.url}`);
-  lines.push("");
+  lines.push('');
 
   // Multiple remotes warning
   if (result.availableRemotes.length > 1) {
-    lines.push("Available Remotes:");
+    lines.push('Available Remotes:');
     for (const remote of result.availableRemotes) {
-      const selected = remote.remoteName === result.remote.remoteName ? " (selected)" : "";
+      const selected = remote.remoteName === result.remote.remoteName ? ' (selected)' : '';
       lines.push(`  ${remote.remoteName}: ${remote.host}/${remote.projectPath}${selected}`);
     }
-    lines.push("");
+    lines.push('');
   }
 
   // Profile Match
-  lines.push("Profile Match:");
+  lines.push('Profile Match:');
   if (result.matchedProfile) {
     lines.push(`  Profile: ${result.matchedProfile.profileName}`);
     lines.push(`  Match Type: ${result.matchedProfile.matchType}`);
@@ -228,14 +228,14 @@ export function formatDiscoveryResult(result: AutoDiscoveryResult): string {
     lines.push(`  Will use: ${result.apiUrl} (from discovered host)`);
     lines.push(`  Auth: GITLAB_TOKEN environment variable required`);
   }
-  lines.push("");
+  lines.push('');
 
   // Project Config
-  lines.push("Project Configuration:");
+  lines.push('Project Configuration:');
   if (result.projectConfig) {
     lines.push(`  Path: ${result.projectConfig.configPath}`);
     if (result.projectConfig.preset) {
-      lines.push(`  Preset: ${result.projectConfig.preset.description ?? "custom restrictions"}`);
+      lines.push(`  Preset: ${result.projectConfig.preset.description ?? 'custom restrictions'}`);
       if (result.projectConfig.preset.scope) {
         const scope = result.projectConfig.preset.scope;
         if (scope.project) {
@@ -252,7 +252,7 @@ export function formatDiscoveryResult(result: AutoDiscoveryResult): string {
     }
     if (result.projectConfig.profile) {
       lines.push(
-        `  Profile: ${result.projectConfig.profile.description ?? "custom tool selection"}`
+        `  Profile: ${result.projectConfig.profile.description ?? 'custom tool selection'}`,
       );
       if (result.projectConfig.profile.extends) {
         lines.push(`    Extends: ${result.projectConfig.profile.extends}`);
@@ -261,13 +261,13 @@ export function formatDiscoveryResult(result: AutoDiscoveryResult): string {
   } else {
     lines.push(`  No .gitlab-mcp/ directory found`);
   }
-  lines.push("");
+  lines.push('');
 
   // Default Context
-  lines.push("Default Context:");
+  lines.push('Default Context:');
   lines.push(`  Project: ${result.projectPath}`);
   const namespace = extractNamespaceFromPath(result.projectPath) ?? result.projectPath;
   lines.push(`  Namespace: ${namespace}`);
 
-  return lines.join("\n");
+  return lines.join('\n');
 }

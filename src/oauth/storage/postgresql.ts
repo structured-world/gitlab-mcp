@@ -16,9 +16,9 @@ import {
   DeviceFlowState as DeviceFlowStateType,
   AuthCodeFlowState as AuthCodeFlowStateType,
   AuthorizationCode as AuthorizationCodeType,
-} from "../types";
-import { SessionStorageBackend, SessionStorageStats } from "./types";
-import { logInfo, logError, logDebug } from "../../logger";
+} from '../types';
+import { SessionStorageBackend, SessionStorageStats } from './types';
+import { logInfo, logError, logDebug } from '../../logger';
 
 /**
  * Explicit interfaces for Prisma model results.
@@ -141,7 +141,7 @@ export interface PostgreSQLStorageOptions {
 }
 
 export class PostgreSQLStorageBackend implements SessionStorageBackend {
-  readonly type = "postgresql" as const;
+  readonly type = 'postgresql' as const;
 
   private prisma: GenericPrismaClient | null = null;
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
@@ -149,7 +149,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   async initialize(): Promise<void> {
     try {
       // Dynamic import Prisma client to avoid initialization if not used
-      const prismaModule = (await import("../../../generated/prisma/client")) as {
+      const prismaModule = (await import('../../../generated/prisma/client')) as {
         PrismaClient: new (opts: Record<string, unknown>) => GenericPrismaClient;
       };
 
@@ -162,16 +162,16 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       // Start cleanup interval
       this.startCleanupInterval();
 
-      logInfo("PostgreSQL storage backend initialized via Prisma");
+      logInfo('PostgreSQL storage backend initialized via Prisma');
     } catch (error) {
-      logError("Failed to initialize PostgreSQL storage backend", { err: error as Error });
+      logError('Failed to initialize PostgreSQL storage backend', { err: error as Error });
       throw error;
     }
   }
 
   private getPrisma(): GenericPrismaClient {
     if (!this.prisma) {
-      throw new Error("PostgreSQL/Prisma client not initialized");
+      throw new Error('PostgreSQL/Prisma client not initialized');
     }
     return this.prisma;
   }
@@ -198,7 +198,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         updatedAt: BigInt(session.updatedAt),
       },
     });
-    logDebug("Session created in PostgreSQL", { sessionId: session.id });
+    logDebug('Session created in PostgreSQL', { sessionId: session.id });
   }
 
   async getSession(sessionId: string): Promise<OAuthSession | undefined> {
@@ -277,7 +277,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   async getAllSessions(): Promise<OAuthSession[]> {
     const prisma = this.getPrisma();
     const rows = (await prisma.oAuthSession.findMany()) as PrismaOAuthSessionRow[];
-    return rows.map(row => this.rowToSession(row));
+    return rows.map((row) => this.rowToSession(row));
   }
 
   private rowToSession(row: PrismaOAuthSessionRow): OAuthSession {
@@ -537,7 +537,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         expiredAuthCodeFlows > 0 ||
         expiredAuthCodes > 0
       ) {
-        logDebug("PostgreSQL cleanup completed", {
+        logDebug('PostgreSQL cleanup completed', {
           expiredSessions,
           expiredDeviceFlows,
           expiredAuthCodeFlows,
@@ -545,7 +545,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         });
       }
     } catch (error) {
-      logError("PostgreSQL cleanup failed", { err: error as Error });
+      logError('PostgreSQL cleanup failed', { err: error as Error });
     }
   }
 
@@ -555,7 +555,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       await this.prisma.$disconnect();
       this.prisma = null;
     }
-    logInfo("PostgreSQL storage backend closed");
+    logInfo('PostgreSQL storage backend closed');
   }
 
   async getStats(): Promise<SessionStorageStats> {
@@ -580,9 +580,9 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   private startCleanupInterval(): void {
     this.cleanupIntervalId = setInterval(
       () => {
-        this.cleanup().catch(err => logError("PostgreSQL cleanup error", { err }));
+        this.cleanup().catch((err) => logError('PostgreSQL cleanup error', { err }));
       },
-      5 * 60 * 1000
+      5 * 60 * 1000,
     );
 
     if (this.cleanupIntervalId.unref) {

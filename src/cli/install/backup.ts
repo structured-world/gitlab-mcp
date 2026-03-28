@@ -3,9 +3,9 @@
  * Creates timestamped backups before modifying config files
  */
 
-import { existsSync, copyFileSync, mkdirSync } from "fs";
-import { dirname, basename, join } from "path";
-import { BackupOptions, BackupResult } from "./types";
+import { existsSync, copyFileSync, mkdirSync } from 'fs';
+import { dirname, basename, join } from 'path';
+import { BackupOptions, BackupResult } from './types';
 
 /**
  * Generate backup filename with timestamp
@@ -13,7 +13,7 @@ import { BackupOptions, BackupResult } from "./types";
 export function generateBackupFilename(originalPath: string): string {
   const dir = dirname(originalPath);
   const name = basename(originalPath);
-  const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
   return join(dir, `${name}.backup-${timestamp}`);
 }
 
@@ -27,7 +27,7 @@ export function createBackup(options: BackupOptions): BackupResult {
   if (!existsSync(configPath)) {
     return {
       created: false,
-      error: "Config file does not exist, no backup needed",
+      error: 'Config file does not exist, no backup needed',
     };
   }
 
@@ -39,7 +39,7 @@ export function createBackup(options: BackupOptions): BackupResult {
       if (!existsSync(backupDir)) {
         mkdirSync(backupDir, { recursive: true });
       }
-      const timestamp = new Date().toISOString().replace(/[:.]/g, "-");
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
       backupPath = join(backupDir, `${basename(configPath)}.backup-${timestamp}`);
     } else {
       backupPath = generateBackupFilename(configPath);

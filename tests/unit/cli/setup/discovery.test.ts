@@ -2,25 +2,25 @@
  * Unit tests for setup wizard discovery module
  */
 
-import { DiscoveryResult } from "../../../../src/cli/setup/types";
-import { ContainerRuntimeInfo } from "../../../../src/cli/docker/types";
-import { formatDiscoverySummary } from "../../../../src/cli/setup/discovery";
+import { DiscoveryResult } from '../../../../src/cli/setup/types';
+import { ContainerRuntimeInfo } from '../../../../src/cli/docker/types';
+import { formatDiscoverySummary } from '../../../../src/cli/setup/discovery';
 
 // Mock container-runtime module
-jest.mock("../../../../src/cli/docker/container-runtime");
+jest.mock('../../../../src/cli/docker/container-runtime');
 // Mock docker-utils getContainerInfo
-jest.mock("../../../../src/cli/docker/docker-utils", () => ({
+jest.mock('../../../../src/cli/docker/docker-utils', () => ({
   getContainerInfo: jest.fn().mockReturnValue(undefined),
 }));
 
 // Mock detector to control client detection results
-jest.mock("../../../../src/cli/install/detector", () => ({
+jest.mock('../../../../src/cli/install/detector', () => ({
   detectAllClients: jest.fn().mockReturnValue([]),
 }));
 
-import { getContainerRuntime } from "../../../../src/cli/docker/container-runtime";
-import { getContainerInfo } from "../../../../src/cli/docker/docker-utils";
-import { detectAllClients } from "../../../../src/cli/install/detector";
+import { getContainerRuntime } from '../../../../src/cli/docker/container-runtime';
+import { getContainerInfo } from '../../../../src/cli/docker/docker-utils';
+import { detectAllClients } from '../../../../src/cli/install/detector';
 
 const mockGetContainerRuntime = getContainerRuntime as jest.MockedFunction<
   typeof getContainerRuntime
@@ -30,30 +30,30 @@ const mockDetectAllClients = detectAllClients as jest.MockedFunction<typeof dete
 
 // Default: no runtime available
 const noRuntime: ContainerRuntimeInfo = {
-  runtime: "docker",
-  runtimeCmd: "docker",
+  runtime: 'docker',
+  runtimeCmd: 'docker',
   runtimeAvailable: false,
   composeCmd: null,
   runtimeVersion: undefined,
 };
 
 const dockerRuntime: ContainerRuntimeInfo = {
-  runtime: "docker",
-  runtimeCmd: "docker",
+  runtime: 'docker',
+  runtimeCmd: 'docker',
   runtimeAvailable: true,
-  composeCmd: ["docker", "compose"],
-  runtimeVersion: "24.0.7",
+  composeCmd: ['docker', 'compose'],
+  runtimeVersion: '24.0.7',
 };
 
 const podmanRuntime: ContainerRuntimeInfo = {
-  runtime: "podman",
-  runtimeCmd: "podman",
+  runtime: 'podman',
+  runtimeCmd: 'podman',
   runtimeAvailable: true,
-  composeCmd: ["podman", "compose"],
-  runtimeVersion: "4.9.3",
+  composeCmd: ['podman', 'compose'],
+  runtimeVersion: '4.9.3',
 };
 
-describe("setup/discovery", () => {
+describe('setup/discovery', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     // Default: no runtime, no clients
@@ -62,9 +62,9 @@ describe("setup/discovery", () => {
     mockDetectAllClients.mockReturnValue([]);
   });
 
-  describe("runDiscovery", () => {
-    it("should return empty discovery when no clients or runtime detected", async () => {
-      const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
+  describe('runDiscovery', () => {
+    it('should return empty discovery when no clients or runtime detected', async () => {
+      const { runDiscovery } = await import('../../../../src/cli/setup/discovery');
       const result = runDiscovery();
 
       expect(result.clients.detected).toHaveLength(0);
@@ -74,28 +74,28 @@ describe("setup/discovery", () => {
       expect(result.summary.hasExistingSetup).toBe(false);
     });
 
-    it("should detect installed clients", async () => {
+    it('should detect installed clients', async () => {
       mockDetectAllClients.mockReturnValue([
         {
-          client: "claude-code",
+          client: 'claude-code',
           detected: true,
-          method: "cli-command",
+          method: 'cli-command',
           alreadyConfigured: false,
         },
         {
-          client: "cursor",
+          client: 'cursor',
           detected: true,
-          method: "config-file",
+          method: 'config-file',
           alreadyConfigured: true,
         },
         {
-          client: "windsurf",
+          client: 'windsurf',
           detected: false,
-          method: "config-file",
+          method: 'config-file',
         },
       ]);
 
-      const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
+      const { runDiscovery } = await import('../../../../src/cli/setup/discovery');
       const result = runDiscovery();
 
       expect(result.clients.detected).toHaveLength(2);
@@ -106,63 +106,63 @@ describe("setup/discovery", () => {
       expect(result.summary.hasExistingSetup).toBe(true);
     });
 
-    it("should detect Docker runtime when available", async () => {
+    it('should detect Docker runtime when available', async () => {
       mockGetContainerRuntime.mockReturnValue(dockerRuntime);
       mockGetContainerInfo.mockReturnValue(undefined);
 
-      const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
+      const { runDiscovery } = await import('../../../../src/cli/setup/discovery');
       const result = runDiscovery();
 
       expect(result.docker.dockerInstalled).toBe(true);
       expect(result.docker.dockerRunning).toBe(true);
       expect(result.docker.composeInstalled).toBe(true);
-      expect(result.docker.runtime?.runtime).toBe("docker");
+      expect(result.docker.runtime?.runtime).toBe('docker');
     });
 
-    it("should detect Podman runtime", async () => {
+    it('should detect Podman runtime', async () => {
       mockGetContainerRuntime.mockReturnValue(podmanRuntime);
       mockGetContainerInfo.mockReturnValue(undefined);
 
-      const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
+      const { runDiscovery } = await import('../../../../src/cli/setup/discovery');
       const result = runDiscovery();
 
       expect(result.docker.dockerInstalled).toBe(true);
       expect(result.docker.dockerRunning).toBe(true);
-      expect(result.docker.runtime?.runtime).toBe("podman");
+      expect(result.docker.runtime?.runtime).toBe('podman');
     });
 
-    it("should include container info when runtime is available", async () => {
+    it('should include container info when runtime is available', async () => {
       mockGetContainerRuntime.mockReturnValue(dockerRuntime);
       mockGetContainerInfo.mockReturnValue({
-        id: "abc123",
-        name: "gitlab-mcp",
-        image: "ghcr.io/structured-world/gitlab-mcp:latest",
-        status: "running",
-        ports: ["3333:3333"],
-        created: "2024-01-01",
+        id: 'abc123',
+        name: 'gitlab-mcp',
+        image: 'ghcr.io/structured-world/gitlab-mcp:latest',
+        status: 'running',
+        ports: ['3333:3333'],
+        created: '2024-01-01',
       });
 
-      const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
+      const { runDiscovery } = await import('../../../../src/cli/setup/discovery');
       const result = runDiscovery();
 
       expect(result.docker.container).toBeDefined();
-      expect(result.docker.container?.status).toBe("running");
+      expect(result.docker.container?.status).toBe('running');
       expect(result.summary.containerExists).toBe(true);
       expect(result.summary.hasExistingSetup).toBe(true);
     });
 
-    it("should not call getContainerInfo when runtime is unavailable", async () => {
+    it('should not call getContainerInfo when runtime is unavailable', async () => {
       mockGetContainerRuntime.mockReturnValue(noRuntime);
 
-      const { runDiscovery } = await import("../../../../src/cli/setup/discovery");
+      const { runDiscovery } = await import('../../../../src/cli/setup/discovery');
       runDiscovery();
 
       expect(mockGetContainerInfo).not.toHaveBeenCalled();
     });
   });
 
-  describe("formatDiscoverySummary", () => {
-    it("should format empty discovery result", () => {
+  describe('formatDiscoverySummary', () => {
+    it('should format empty discovery result', () => {
       const result: DiscoveryResult = {
         clients: { detected: [], configured: [], unconfigured: [] },
         docker: {
@@ -181,20 +181,20 @@ describe("setup/discovery", () => {
       };
 
       const formatted = formatDiscoverySummary(result);
-      expect(formatted).toContain("No MCP clients detected");
+      expect(formatted).toContain('No MCP clients detected');
     });
 
-    it("should show detected clients", () => {
+    it('should show detected clients', () => {
       const result: DiscoveryResult = {
         clients: {
           detected: [
-            { client: "claude-code", detected: true, method: "cli-command" },
-            { client: "cursor", detected: true, method: "config-file" },
+            { client: 'claude-code', detected: true, method: 'cli-command' },
+            { client: 'cursor', detected: true, method: 'config-file' },
           ],
           configured: [
-            { client: "cursor", detected: true, method: "config-file", alreadyConfigured: true },
+            { client: 'cursor', detected: true, method: 'config-file', alreadyConfigured: true },
           ],
-          unconfigured: [{ client: "claude-code", detected: true, method: "cli-command" }],
+          unconfigured: [{ client: 'claude-code', detected: true, method: 'cli-command' }],
         },
         docker: {
           dockerInstalled: false,
@@ -212,13 +212,13 @@ describe("setup/discovery", () => {
       };
 
       const formatted = formatDiscoverySummary(result);
-      expect(formatted).toContain("Clients:");
-      expect(formatted).toContain("claude-code");
-      expect(formatted).toContain("cursor ✓");
-      expect(formatted).toContain("Configured: 1 client(s)");
+      expect(formatted).toContain('Clients:');
+      expect(formatted).toContain('claude-code');
+      expect(formatted).toContain('cursor ✓');
+      expect(formatted).toContain('Configured: 1 client(s)');
     });
 
-    it("should show Docker container status", () => {
+    it('should show Docker container status', () => {
       const result: DiscoveryResult = {
         clients: { detected: [], configured: [], unconfigured: [] },
         docker: {
@@ -226,12 +226,12 @@ describe("setup/discovery", () => {
           dockerRunning: true,
           composeInstalled: true,
           container: {
-            id: "abc123",
-            name: "gitlab-mcp",
-            image: "ghcr.io/structured-world/gitlab-mcp:latest",
-            status: "running",
-            ports: ["3333:3333"],
-            created: "",
+            id: 'abc123',
+            name: 'gitlab-mcp',
+            image: 'ghcr.io/structured-world/gitlab-mcp:latest',
+            status: 'running',
+            ports: ['3333:3333'],
+            created: '',
           },
           instances: [],
           runtime: dockerRuntime,
@@ -246,10 +246,10 @@ describe("setup/discovery", () => {
       };
 
       const formatted = formatDiscoverySummary(result);
-      expect(formatted).toContain("Docker: container running");
+      expect(formatted).toContain('Docker: container running');
     });
 
-    it("should show Podman label when runtime is podman", () => {
+    it('should show Podman label when runtime is podman', () => {
       const result: DiscoveryResult = {
         clients: { detected: [], configured: [], unconfigured: [] },
         docker: {
@@ -269,10 +269,10 @@ describe("setup/discovery", () => {
       };
 
       const formatted = formatDiscoverySummary(result);
-      expect(formatted).toContain("Podman: installed, no container");
+      expect(formatted).toContain('Podman: installed, no container');
     });
 
-    it("should show Docker installed without container", () => {
+    it('should show Docker installed without container', () => {
       const result: DiscoveryResult = {
         clients: { detected: [], configured: [], unconfigured: [] },
         docker: {
@@ -292,7 +292,7 @@ describe("setup/discovery", () => {
       };
 
       const formatted = formatDiscoverySummary(result);
-      expect(formatted).toContain("Docker: installed, no container");
+      expect(formatted).toContain('Docker: installed, no container');
     });
   });
 });

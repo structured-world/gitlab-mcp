@@ -1,8 +1,8 @@
-import * as z from "zod";
-import { BrowseSearchSchema } from "./schema-readonly";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { isActionDenied } from "../../config";
-import { gitlab, paths, toQuery } from "../../utils/gitlab-api";
+import * as z from 'zod';
+import { BrowseSearchSchema } from './schema-readonly';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { isActionDenied } from '../../config';
+import { gitlab, paths, toQuery } from '../../utils/gitlab-api';
 
 /**
  * Search tools registry - 1 read-only CQRS tool
@@ -17,31 +17,31 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_search",
+    'browse_search',
     {
-      name: "browse_search",
+      name: 'browse_search',
       description:
-        "Search across GitLab resources globally or within a scope. Actions: global (entire instance), project (within specific project), group (within specific group). Searchable: projects, issues, merge_requests, milestones, users, blobs (code), commits, wiki_blobs, notes.",
+        'Search across GitLab resources globally or within a scope. Actions: global (entire instance), project (within specific project), group (within specific group). Searchable: projects, issues, merge_requests, milestones, users, blobs (code), commits, wiki_blobs, notes.',
       inputSchema: z.toJSONSchema(BrowseSearchSchema),
-      gate: { envVar: "USE_SEARCH", defaultValue: true },
+      gate: { envVar: 'USE_SEARCH', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseSearchSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_search", input.action)) {
+        if (isActionDenied('browse_search', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_search tool`);
         }
 
         switch (input.action) {
-          case "global": {
+          case 'global': {
             // TypeScript knows: input has scope, search, and optional filters
             const { scope, ...params } = input;
 
             // Build query params excluding action (not an API parameter)
-            const query = toQuery(params, ["action"]);
+            const query = toQuery(params, ['action']);
 
             // Global search endpoint
-            const results = await gitlab.get<unknown[]>("search", {
+            const results = await gitlab.get<unknown[]>('search', {
               query: { ...query, scope },
             });
 
@@ -52,12 +52,12 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
             };
           }
 
-          case "project": {
+          case 'project': {
             // TypeScript knows: input has project_id, scope, search, and optional filters
             const { project_id, scope, ref, ...params } = input;
 
             // Build query params excluding action (project_id, scope, ref are already destructured)
-            const query = toQuery(params, ["action"]);
+            const query = toQuery(params, ['action']);
 
             // Project-scoped search endpoint
             const results = await gitlab.get<unknown[]>(`${paths.project(project_id)}/search`, {
@@ -72,12 +72,12 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
             };
           }
 
-          case "group": {
+          case 'group': {
             // TypeScript knows: input has group_id, scope, search, and optional filters
             const { group_id, scope, ...params } = input;
 
             // Build query params excluding action (group_id, scope are already destructured)
-            const query = toQuery(params, ["action"]);
+            const query = toQuery(params, ['action']);
 
             // Group-scoped search endpoint
             const results = await gitlab.get<unknown[]>(`${paths.group(group_id)}/search`, {
@@ -106,7 +106,7 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
  * Search is entirely read-only, so all tools are read-only
  */
 export function getSearchReadOnlyToolNames(): string[] {
-  return ["browse_search"];
+  return ['browse_search'];
 }
 
 /**

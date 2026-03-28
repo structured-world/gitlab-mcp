@@ -2,11 +2,11 @@
  * Docker utilities for gitlab-mcp container management
  */
 
-import { spawnSync, spawn, ChildProcess } from "child_process";
-import { randomBytes } from "crypto";
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { join } from "path";
-import YAML from "yaml";
+import { spawnSync, spawn, ChildProcess } from 'child_process';
+import { randomBytes } from 'crypto';
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { join } from 'path';
+import YAML from 'yaml';
 import {
   DockerConfig,
   DockerComposeFile,
@@ -18,12 +18,12 @@ import {
   InstancesYaml,
   DEFAULT_DOCKER_CONFIG,
   getConfigDir,
-} from "./types";
-import { getContainerRuntime } from "./container-runtime";
-import { expandPath } from "../utils/path-utils.js";
+} from './types';
+import { getContainerRuntime } from './container-runtime';
+import { expandPath } from '../utils/path-utils.js';
 
 // Re-export expandPath for backwards compatibility with existing imports
-export { expandPath } from "../utils/path-utils.js";
+export { expandPath } from '../utils/path-utils.js';
 
 /**
  * Get expanded config directory path
@@ -67,11 +67,11 @@ function isValidContainerName(name: string): boolean {
 /**
  * Get container info
  */
-export function getContainerInfo(containerName: string = "gitlab-mcp"): ContainerInfo | undefined {
+export function getContainerInfo(containerName: string = 'gitlab-mcp'): ContainerInfo | undefined {
   // Validate container name to prevent command injection
   if (!isValidContainerName(containerName)) {
     console.error(
-      `Invalid container name: "${containerName}". Name must match [a-zA-Z0-9][a-zA-Z0-9_.-]*`
+      `Invalid container name: "${containerName}". Name must match [a-zA-Z0-9][a-zA-Z0-9_.-]*`,
     );
     return undefined;
   }
@@ -81,25 +81,25 @@ export function getContainerInfo(containerName: string = "gitlab-mcp"): Containe
     const result = spawnSync(
       runtime.runtimeCmd,
       [
-        "ps",
-        "-a",
-        "--filter",
+        'ps',
+        '-a',
+        '--filter',
         `name=${containerName}`,
-        "--format",
-        "{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}|{{.CreatedAt}}",
+        '--format',
+        '{{.ID}}|{{.Names}}|{{.Image}}|{{.Status}}|{{.Ports}}|{{.CreatedAt}}',
       ],
       {
-        stdio: "pipe",
-        encoding: "utf8",
-      }
+        stdio: 'pipe',
+        encoding: 'utf8',
+      },
     );
 
     if (result.status !== 0 || !result.stdout.trim()) {
       return undefined;
     }
 
-    const line = result.stdout.trim().split("\n")[0];
-    const parts = line.split("|");
+    const line = result.stdout.trim().split('\n')[0];
+    const parts = line.split('|');
 
     if (parts.length < 6) {
       return undefined;
@@ -108,18 +108,18 @@ export function getContainerInfo(containerName: string = "gitlab-mcp"): Containe
     const [id, name, image, statusStr, ports, created] = parts;
 
     // Parse status
-    let status: ContainerStatus = "exited";
+    let status: ContainerStatus = 'exited';
     const statusLower = statusStr.toLowerCase();
-    if (statusLower.includes("up")) {
-      status = "running";
-    } else if (statusLower.includes("paused")) {
-      status = "paused";
-    } else if (statusLower.includes("restarting")) {
-      status = "restarting";
-    } else if (statusLower.includes("created")) {
-      status = "created";
-    } else if (statusLower.includes("dead")) {
-      status = "dead";
+    if (statusLower.includes('up')) {
+      status = 'running';
+    } else if (statusLower.includes('paused')) {
+      status = 'paused';
+    } else if (statusLower.includes('restarting')) {
+      status = 'restarting';
+    } else if (statusLower.includes('created')) {
+      status = 'created';
+    } else if (statusLower.includes('dead')) {
+      status = 'dead';
     }
 
     // Extract uptime from status string
@@ -134,7 +134,7 @@ export function getContainerInfo(containerName: string = "gitlab-mcp"): Containe
       name,
       image,
       status,
-      ports: ports ? ports.split(",").map(p => p.trim()) : [],
+      ports: ports ? ports.split(',').map((p) => p.trim()) : [],
       created,
       uptime,
     };
@@ -146,7 +146,7 @@ export function getContainerInfo(containerName: string = "gitlab-mcp"): Containe
 /**
  * Get Docker status
  */
-export function getDockerStatus(containerName: string = "gitlab-mcp"): DockerStatusResult {
+export function getDockerStatus(containerName: string = 'gitlab-mcp'): DockerStatusResult {
   const runtime = getContainerRuntime();
 
   const result: DockerStatusResult = {
@@ -172,44 +172,44 @@ export function getDockerStatus(containerName: string = "gitlab-mcp"): DockerSta
  */
 export function generateDockerCompose(config: DockerConfig): string {
   const compose: DockerComposeFile = {
-    version: "3.8",
+    version: '3.8',
     services: {
-      "gitlab-mcp": {
+      'gitlab-mcp': {
         image: config.image,
         container_name: config.containerName,
         ports: [`\${PORT:-${config.port}}:3333`],
         environment: [
-          "TRANSPORT=sse",
-          "HOST=0.0.0.0",
-          "PORT=3333",
+          'TRANSPORT=sse',
+          'HOST=0.0.0.0',
+          'PORT=3333',
           `OAUTH_ENABLED=${config.oauthEnabled}`,
         ],
-        volumes: ["gitlab-mcp-data:/data"],
-        restart: "unless-stopped",
+        volumes: ['gitlab-mcp-data:/data'],
+        restart: 'unless-stopped',
       },
     },
     volumes: {
-      "gitlab-mcp-data": {},
+      'gitlab-mcp-data': {},
     },
   };
 
   // Add compose-bundle postgres service (only when OAuth needs a database)
-  if (config.deploymentType === "compose-bundle" && config.oauthEnabled) {
+  if (config.deploymentType === 'compose-bundle' && config.oauthEnabled) {
     compose.services.postgres = {
-      image: "postgres:16-alpine",
+      image: 'postgres:16-alpine',
       container_name: `${config.containerName}-db`,
       ports: [],
       environment: [
-        "POSTGRES_USER=gitlab_mcp",
-        "POSTGRES_PASSWORD=${POSTGRES_PASSWORD}",
-        "POSTGRES_DB=gitlab_mcp",
+        'POSTGRES_USER=gitlab_mcp',
+        'POSTGRES_PASSWORD=${POSTGRES_PASSWORD}',
+        'POSTGRES_DB=gitlab_mcp',
       ],
-      volumes: ["postgres-data:/var/lib/postgresql/data"],
-      restart: "unless-stopped",
+      volumes: ['postgres-data:/var/lib/postgresql/data'],
+      restart: 'unless-stopped',
     };
-    compose.services["gitlab-mcp"].depends_on = ["postgres"];
+    compose.services['gitlab-mcp'].depends_on = ['postgres'];
     if (compose.volumes) {
-      compose.volumes["postgres-data"] = {};
+      compose.volumes['postgres-data'] = {};
     }
   }
 
@@ -217,23 +217,23 @@ export function generateDockerCompose(config: DockerConfig): string {
   if (config.oauthEnabled) {
     // Determine DATABASE_URL based on deployment type
     let databaseUrl: string;
-    if (config.deploymentType === "compose-bundle") {
-      databaseUrl = "postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp";
+    if (config.deploymentType === 'compose-bundle') {
+      databaseUrl = 'postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp';
     } else {
-      databaseUrl = config.databaseUrl ?? "file:/data/sessions.db";
+      databaseUrl = config.databaseUrl ?? 'file:/data/sessions.db';
     }
     // Reference secret via env var — actual value stored in .env file
-    compose.services["gitlab-mcp"].environment.push(
-      "OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}",
-      `DATABASE_URL=${databaseUrl}`
+    compose.services['gitlab-mcp'].environment.push(
+      'OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}',
+      `DATABASE_URL=${databaseUrl}`,
     );
-    compose.services["gitlab-mcp"].volumes.push("./instances.yml:/app/config/instances.yml:ro");
+    compose.services['gitlab-mcp'].volumes.push('./instances.yml:/app/config/instances.yml:ro');
   }
 
   // Add tool configuration environment variables
   if (config.environment) {
     for (const [key, value] of Object.entries(config.environment)) {
-      compose.services["gitlab-mcp"].environment.push(`${key}=${value}`);
+      compose.services['gitlab-mcp'].environment.push(`${key}=${value}`);
     }
   }
 
@@ -273,14 +273,14 @@ export function generateInstancesYaml(instances: GitLabInstance[]): string {
  */
 export function loadInstances(): GitLabInstance[] {
   const configDir = getExpandedConfigDir();
-  const instancesPath = join(configDir, "instances.yml");
+  const instancesPath = join(configDir, 'instances.yml');
 
   if (!existsSync(instancesPath)) {
     return [];
   }
 
   try {
-    const content = readFileSync(instancesPath, "utf8");
+    const content = readFileSync(instancesPath, 'utf8');
     const yaml = YAML.parse(content) as InstancesYaml;
 
     return Object.entries(yaml.instances).map(([host, config]) => ({
@@ -309,9 +309,9 @@ export function saveInstances(instances: GitLabInstance[]): void {
     mkdirSync(configDir, { recursive: true });
   }
 
-  const instancesPath = join(configDir, "instances.yml");
+  const instancesPath = join(configDir, 'instances.yml');
   const content = generateInstancesYaml(instances);
-  writeFileSync(instancesPath, content, "utf8");
+  writeFileSync(instancesPath, content, 'utf8');
 }
 
 /**
@@ -324,9 +324,9 @@ export function saveDockerCompose(config: DockerConfig): void {
     mkdirSync(configDir, { recursive: true });
   }
 
-  const composePath = join(configDir, "docker-compose.yml");
+  const composePath = join(configDir, 'docker-compose.yml');
   const content = generateDockerCompose(config);
-  writeFileSync(composePath, content, "utf8");
+  writeFileSync(composePath, content, 'utf8');
 }
 
 /**
@@ -336,7 +336,7 @@ export function runComposeCommand(args: string[], configDir?: string): DockerCom
   const cwd = configDir ?? getExpandedConfigDir();
 
   // Check if docker-compose.yml exists
-  const composePath = join(cwd, "docker-compose.yml");
+  const composePath = join(cwd, 'docker-compose.yml');
   if (!existsSync(composePath)) {
     return {
       success: false,
@@ -348,7 +348,7 @@ export function runComposeCommand(args: string[], configDir?: string): DockerCom
   if (!runtime.composeCmd) {
     return {
       success: false,
-      error: "No compose tool available. Install docker-compose or podman-compose.",
+      error: 'No compose tool available. Install docker-compose or podman-compose.',
     };
   }
 
@@ -359,8 +359,8 @@ export function runComposeCommand(args: string[], configDir?: string): DockerCom
 
     const result = spawnSync(composeExe, fullArgs, {
       cwd,
-      stdio: "pipe",
-      encoding: "utf8",
+      stdio: 'pipe',
+      encoding: 'utf8',
     });
 
     if (result.status === 0) {
@@ -371,7 +371,7 @@ export function runComposeCommand(args: string[], configDir?: string): DockerCom
     } else {
       return {
         success: false,
-        error: result.stderr || result.stdout || "Unknown error",
+        error: result.stderr || result.stdout || 'Unknown error',
       };
     }
   } catch (error) {
@@ -386,33 +386,33 @@ export function runComposeCommand(args: string[], configDir?: string): DockerCom
  * Start container
  */
 export function startContainer(): DockerCommandResult {
-  return runComposeCommand(["up", "-d"]);
+  return runComposeCommand(['up', '-d']);
 }
 
 /**
  * Stop container
  */
 export function stopContainer(): DockerCommandResult {
-  return runComposeCommand(["down"]);
+  return runComposeCommand(['down']);
 }
 
 /**
  * Restart container
  */
 export function restartContainer(): DockerCommandResult {
-  return runComposeCommand(["restart"]);
+  return runComposeCommand(['restart']);
 }
 
 /**
  * Pull latest image and restart
  */
 export function upgradeContainer(): DockerCommandResult {
-  const pullResult = runComposeCommand(["pull"]);
+  const pullResult = runComposeCommand(['pull']);
   if (!pullResult.success) {
     return pullResult;
   }
 
-  return runComposeCommand(["up", "-d"]);
+  return runComposeCommand(['up', '-d']);
 }
 
 /**
@@ -423,21 +423,21 @@ export function tailLogs(follow: boolean = true, lines: number = 100): ChildProc
   const runtime = getContainerRuntime();
 
   if (!runtime.composeCmd) {
-    throw new Error("No compose tool available. Install Docker Compose or podman-compose.");
+    throw new Error('No compose tool available. Install Docker Compose or podman-compose.');
   }
   const [composeExe, ...composePrefix] = runtime.composeCmd;
 
-  const args = [...composePrefix, "logs"];
+  const args = [...composePrefix, 'logs'];
 
   if (follow) {
-    args.push("-f");
+    args.push('-f');
   }
 
-  args.push("--tail", String(lines));
+  args.push('--tail', String(lines));
 
   return spawn(composeExe, args, {
     cwd: configDir,
-    stdio: "inherit",
+    stdio: 'inherit',
   });
 }
 
@@ -445,7 +445,7 @@ export function tailLogs(follow: boolean = true, lines: number = 100): ChildProc
  * Get container logs (non-streaming)
  */
 export function getLogs(lines: number = 100): DockerCommandResult {
-  return runComposeCommand(["logs", "--tail", String(lines)]);
+  return runComposeCommand(['logs', '--tail', String(lines)]);
 }
 
 /**
@@ -455,7 +455,7 @@ export function addInstance(instance: GitLabInstance): void {
   const instances = loadInstances();
 
   // Check if already exists
-  const existingIndex = instances.findIndex(i => i.host === instance.host);
+  const existingIndex = instances.findIndex((i) => i.host === instance.host);
   if (existingIndex >= 0) {
     instances[existingIndex] = instance;
   } else {
@@ -470,7 +470,7 @@ export function addInstance(instance: GitLabInstance): void {
  */
 export function removeInstance(host: string): boolean {
   const instances = loadInstances();
-  const filteredInstances = instances.filter(i => i.host !== host);
+  const filteredInstances = instances.filter((i) => i.host !== host);
 
   if (filteredInstances.length === instances.length) {
     return false; // Instance not found
@@ -520,14 +520,14 @@ export function saveEnvFile(config: DockerConfig): void {
     lines.push(`OAUTH_SESSION_SECRET=${config.oauthSessionSecret}`);
   }
 
-  if (config.deploymentType === "compose-bundle" && config.oauthEnabled) {
+  if (config.deploymentType === 'compose-bundle' && config.oauthEnabled) {
     // Generate a strong random postgres password for the bundled database
-    const pgPassword = randomBytes(24).toString("base64url");
+    const pgPassword = randomBytes(24).toString('base64url');
     lines.push(`POSTGRES_PASSWORD=${pgPassword}`);
   }
 
   if (lines.length > 0) {
-    const envPath = join(configDir, ".env");
-    writeFileSync(envPath, lines.join("\n") + "\n", { encoding: "utf8", mode: 0o600 });
+    const envPath = join(configDir, '.env');
+    writeFileSync(envPath, lines.join('\n') + '\n', { encoding: 'utf8', mode: 0o600 });
   }
 }

@@ -3,11 +3,11 @@ import {
   getSnippetsReadOnlyToolNames,
   getSnippetsToolDefinitions,
   getFilteredSnippetsTools,
-} from "../../../../src/entities/snippets/registry";
-import { enhancedFetch } from "../../../../src/utils/fetch";
+} from '../../../../src/entities/snippets/registry';
+import { enhancedFetch } from '../../../../src/utils/fetch';
 
 // Mock enhancedFetch to avoid actual API calls
-jest.mock("../../../../src/utils/fetch", () => ({
+jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
 }));
 
@@ -19,8 +19,8 @@ const originalEnv = process.env;
 beforeAll(() => {
   process.env = {
     ...originalEnv,
-    GITLAB_API_URL: "https://gitlab.example.com",
-    GITLAB_TOKEN: "test-token-12345",
+    GITLAB_API_URL: 'https://gitlab.example.com',
+    GITLAB_TOKEN: 'test-token-12345',
   };
 });
 
@@ -33,177 +33,177 @@ beforeEach(() => {
   jest.resetAllMocks();
 });
 
-describe("Snippets Registry", () => {
-  describe("Registry Structure", () => {
-    it("should be a Map instance", () => {
+describe('Snippets Registry', () => {
+  describe('Registry Structure', () => {
+    it('should be a Map instance', () => {
       expect(snippetsToolRegistry instanceof Map).toBe(true);
     });
 
-    it("should contain expected snippet tools", () => {
+    it('should contain expected snippet tools', () => {
       const toolNames = Array.from(snippetsToolRegistry.keys());
 
       // Check for read-only tools (CQRS Query)
-      expect(toolNames).toContain("browse_snippets");
+      expect(toolNames).toContain('browse_snippets');
 
       // Check for write tools (CQRS Command)
-      expect(toolNames).toContain("manage_snippet");
+      expect(toolNames).toContain('manage_snippet');
 
       // Should have exactly 2 tools
       expect(toolNames).toHaveLength(2);
     });
 
-    it("should have valid tool definitions", () => {
+    it('should have valid tool definitions', () => {
       for (const [name, tool] of snippetsToolRegistry) {
-        expect(tool).toHaveProperty("name", name);
-        expect(tool).toHaveProperty("description");
-        expect(tool).toHaveProperty("inputSchema");
-        expect(tool).toHaveProperty("handler");
-        expect(typeof tool.handler).toBe("function");
+        expect(tool).toHaveProperty('name', name);
+        expect(tool).toHaveProperty('description');
+        expect(tool).toHaveProperty('inputSchema');
+        expect(tool).toHaveProperty('handler');
+        expect(typeof tool.handler).toBe('function');
       }
     });
   });
 
-  describe("getSnippetsReadOnlyToolNames", () => {
-    it("should return read-only tool names", () => {
+  describe('getSnippetsReadOnlyToolNames', () => {
+    it('should return read-only tool names', () => {
       const readOnlyNames = getSnippetsReadOnlyToolNames();
-      expect(readOnlyNames).toEqual(["browse_snippets"]);
+      expect(readOnlyNames).toEqual(['browse_snippets']);
     });
   });
 
-  describe("getSnippetsToolDefinitions", () => {
-    it("should return all tool definitions", () => {
+  describe('getSnippetsToolDefinitions', () => {
+    it('should return all tool definitions', () => {
       const definitions = getSnippetsToolDefinitions();
       expect(definitions).toHaveLength(2);
-      expect(definitions.map(d => d.name)).toContain("browse_snippets");
-      expect(definitions.map(d => d.name)).toContain("manage_snippet");
+      expect(definitions.map((d) => d.name)).toContain('browse_snippets');
+      expect(definitions.map((d) => d.name)).toContain('manage_snippet');
     });
   });
 
-  describe("getFilteredSnippetsTools", () => {
-    it("should return all tools when not in read-only mode", () => {
+  describe('getFilteredSnippetsTools', () => {
+    it('should return all tools when not in read-only mode', () => {
       const tools = getFilteredSnippetsTools(false);
       expect(tools).toHaveLength(2);
     });
 
-    it("should return only read-only tools in read-only mode", () => {
+    it('should return only read-only tools in read-only mode', () => {
       const tools = getFilteredSnippetsTools(true);
       expect(tools).toHaveLength(1);
-      expect(tools[0].name).toBe("browse_snippets");
+      expect(tools[0].name).toBe('browse_snippets');
     });
   });
 
-  describe("browse_snippets handler", () => {
-    const browseSnippetsTool = snippetsToolRegistry.get("browse_snippets");
+  describe('browse_snippets handler', () => {
+    const browseSnippetsTool = snippetsToolRegistry.get('browse_snippets');
 
-    describe("list action", () => {
-      it("should list personal snippets", async () => {
+    describe('list action', () => {
+      it('should list personal snippets', async () => {
         const mockResponse = {
           ok: true,
           status: 200,
           json: async () => [
             {
               id: 1,
-              title: "Test Snippet",
-              visibility: "private",
+              title: 'Test Snippet',
+              visibility: 'private',
             },
           ],
         };
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         const result = await browseSnippetsTool?.handler({
-          action: "list",
-          scope: "personal",
+          action: 'list',
+          scope: 'personal',
           per_page: 20,
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v4/snippets?per_page=20")
+          expect.stringContaining('/api/v4/snippets?per_page=20'),
         );
         expect(result).toEqual([
           {
             id: 1,
-            title: "Test Snippet",
-            visibility: "private",
+            title: 'Test Snippet',
+            visibility: 'private',
           },
         ]);
       });
 
-      it("should list public snippets", async () => {
+      it('should list public snippets', async () => {
         const mockResponse = {
           ok: true,
           status: 200,
           json: async () => [
             {
               id: 2,
-              title: "Public Snippet",
-              visibility: "public",
+              title: 'Public Snippet',
+              visibility: 'public',
             },
           ],
         };
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         const result = await browseSnippetsTool?.handler({
-          action: "list",
-          scope: "public",
+          action: 'list',
+          scope: 'public',
           per_page: 20,
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v4/snippets/public?per_page=20")
+          expect.stringContaining('/api/v4/snippets/public?per_page=20'),
         );
         expect(result).toEqual([
           {
             id: 2,
-            title: "Public Snippet",
-            visibility: "public",
+            title: 'Public Snippet',
+            visibility: 'public',
           },
         ]);
       });
 
-      it("should list project snippets", async () => {
+      it('should list project snippets', async () => {
         const mockResponse = {
           ok: true,
           status: 200,
           json: async () => [
             {
               id: 3,
-              title: "Project Snippet",
-              visibility: "internal",
+              title: 'Project Snippet',
+              visibility: 'internal',
             },
           ],
         };
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         const result = await browseSnippetsTool?.handler({
-          action: "list",
-          scope: "project",
-          projectId: "123",
+          action: 'list',
+          scope: 'project',
+          projectId: '123',
           per_page: 20,
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v4/projects/123/snippets?per_page=20")
+          expect.stringContaining('/api/v4/projects/123/snippets?per_page=20'),
         );
         expect(result).toEqual([
           {
             id: 3,
-            title: "Project Snippet",
-            visibility: "internal",
+            title: 'Project Snippet',
+            visibility: 'internal',
           },
         ]);
       });
 
-      it("should fail when projectId is missing for project scope", async () => {
+      it('should fail when projectId is missing for project scope', async () => {
         await expect(
           browseSnippetsTool?.handler({
-            action: "list",
-            scope: "project",
+            action: 'list',
+            scope: 'project',
             per_page: 20,
-          })
+          }),
         ).rejects.toThrow();
       });
 
-      it("should support visibility filtering", async () => {
+      it('should support visibility filtering', async () => {
         const mockResponse = {
           ok: true,
           status: 200,
@@ -212,18 +212,18 @@ describe("Snippets Registry", () => {
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         await browseSnippetsTool?.handler({
-          action: "list",
-          scope: "personal",
-          visibility: "public",
+          action: 'list',
+          scope: 'personal',
+          visibility: 'public',
           per_page: 20,
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("visibility=public")
+          expect.stringContaining('visibility=public'),
         );
       });
 
-      it("should support date filtering", async () => {
+      it('should support date filtering', async () => {
         const mockResponse = {
           ok: true,
           status: 200,
@@ -232,75 +232,75 @@ describe("Snippets Registry", () => {
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         await browseSnippetsTool?.handler({
-          action: "list",
-          scope: "personal",
-          created_after: "2024-01-01T00:00:00Z",
-          created_before: "2024-12-31T23:59:59Z",
+          action: 'list',
+          scope: 'personal',
+          created_after: '2024-01-01T00:00:00Z',
+          created_before: '2024-12-31T23:59:59Z',
           per_page: 20,
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("created_after=2024-01-01T00%3A00%3A00Z")
+          expect.stringContaining('created_after=2024-01-01T00%3A00%3A00Z'),
         );
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("created_before=2024-12-31T23%3A59%3A59Z")
+          expect.stringContaining('created_before=2024-12-31T23%3A59%3A59Z'),
         );
       });
     });
 
-    describe("get action", () => {
-      it("should get a personal snippet", async () => {
+    describe('get action', () => {
+      it('should get a personal snippet', async () => {
         const mockResponse = {
           ok: true,
           status: 200,
           json: async () => ({
             id: 1,
-            title: "Test Snippet",
-            description: "Test description",
-            visibility: "private",
+            title: 'Test Snippet',
+            description: 'Test description',
+            visibility: 'private',
           }),
         };
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         const result = await browseSnippetsTool?.handler({
-          action: "get",
+          action: 'get',
           id: 1,
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v4/snippets/1")
+          expect.stringContaining('/api/v4/snippets/1'),
         );
         expect(result).toEqual({
           id: 1,
-          title: "Test Snippet",
-          description: "Test description",
-          visibility: "private",
+          title: 'Test Snippet',
+          description: 'Test description',
+          visibility: 'private',
         });
       });
 
-      it("should get a project snippet", async () => {
+      it('should get a project snippet', async () => {
         const mockResponse = {
           ok: true,
           status: 200,
           json: async () => ({
             id: 2,
-            title: "Project Snippet",
+            title: 'Project Snippet',
           }),
         };
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         await browseSnippetsTool?.handler({
-          action: "get",
+          action: 'get',
           id: 2,
-          projectId: "456",
+          projectId: '456',
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v4/projects/456/snippets/2")
+          expect.stringContaining('/api/v4/projects/456/snippets/2'),
         );
       });
 
-      it("should get raw snippet content", async () => {
+      it('should get raw snippet content', async () => {
         const mockResponse = {
           ok: true,
           status: 200,
@@ -309,91 +309,91 @@ describe("Snippets Registry", () => {
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         await browseSnippetsTool?.handler({
-          action: "get",
+          action: 'get',
           id: 3,
           raw: true,
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v4/snippets/3/raw")
+          expect.stringContaining('/api/v4/snippets/3/raw'),
         );
       });
     });
   });
 
-  describe("manage_snippet handler", () => {
-    const manageSnippetTool = snippetsToolRegistry.get("manage_snippet");
+  describe('manage_snippet handler', () => {
+    const manageSnippetTool = snippetsToolRegistry.get('manage_snippet');
 
-    describe("create action", () => {
-      it("should create a personal snippet", async () => {
+    describe('create action', () => {
+      it('should create a personal snippet', async () => {
         const mockResponse = {
           ok: true,
           status: 201,
           json: async () => ({
             id: 10,
-            title: "New Snippet",
+            title: 'New Snippet',
           }),
         };
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         const result = await manageSnippetTool?.handler({
-          action: "create",
-          title: "New Snippet",
-          visibility: "private",
+          action: 'create',
+          title: 'New Snippet',
+          visibility: 'private',
           files: [
             {
-              file_path: "example.js",
+              file_path: 'example.js',
               content: "console.log('hello');",
             },
           ],
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v4/snippets"),
+          expect.stringContaining('/api/v4/snippets'),
           expect.objectContaining({
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-          })
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+          }),
         );
         expect(result).toEqual({
           id: 10,
-          title: "New Snippet",
+          title: 'New Snippet',
         });
       });
 
-      it("should create a project snippet", async () => {
+      it('should create a project snippet', async () => {
         const mockResponse = {
           ok: true,
           status: 201,
           json: async () => ({
             id: 11,
-            title: "Project Snippet",
+            title: 'Project Snippet',
           }),
         };
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         await manageSnippetTool?.handler({
-          action: "create",
-          projectId: "789",
-          title: "Project Snippet",
-          visibility: "public",
+          action: 'create',
+          projectId: '789',
+          title: 'Project Snippet',
+          visibility: 'public',
           files: [
             {
-              file_path: "test.py",
+              file_path: 'test.py',
               content: "print('test')",
             },
           ],
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v4/projects/789/snippets"),
+          expect.stringContaining('/api/v4/projects/789/snippets'),
           expect.objectContaining({
-            method: "POST",
-          })
+            method: 'POST',
+          }),
         );
       });
 
-      it("should create a multi-file snippet", async () => {
+      it('should create a multi-file snippet', async () => {
         const mockResponse = {
           ok: true,
           status: 201,
@@ -402,52 +402,52 @@ describe("Snippets Registry", () => {
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         await manageSnippetTool?.handler({
-          action: "create",
-          title: "Multi-file Snippet",
-          visibility: "private",
+          action: 'create',
+          title: 'Multi-file Snippet',
+          visibility: 'private',
           files: [
-            { file_path: "file1.js", content: "// file 1" },
-            { file_path: "file2.js", content: "// file 2" },
+            { file_path: 'file1.js', content: '// file 1' },
+            { file_path: 'file2.js', content: '// file 2' },
           ],
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
           expect.any(String),
           expect.objectContaining({
-            method: "POST",
+            method: 'POST',
             body: expect.stringContaining('"files"'),
-          })
+          }),
         );
       });
     });
 
-    describe("update action", () => {
-      it("should update snippet title", async () => {
+    describe('update action', () => {
+      it('should update snippet title', async () => {
         const mockResponse = {
           ok: true,
           status: 200,
           json: async () => ({
             id: 5,
-            title: "Updated Title",
+            title: 'Updated Title',
           }),
         };
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         await manageSnippetTool?.handler({
-          action: "update",
+          action: 'update',
           id: 5,
-          title: "Updated Title",
+          title: 'Updated Title',
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v4/snippets/5"),
+          expect.stringContaining('/api/v4/snippets/5'),
           expect.objectContaining({
-            method: "PUT",
-          })
+            method: 'PUT',
+          }),
         );
       });
 
-      it("should update snippet files with actions", async () => {
+      it('should update snippet files with actions', async () => {
         const mockResponse = {
           ok: true,
           status: 200,
@@ -456,22 +456,22 @@ describe("Snippets Registry", () => {
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         await manageSnippetTool?.handler({
-          action: "update",
+          action: 'update',
           id: 6,
           files: [
             {
-              file_path: "new_file.js",
-              content: "// new",
-              action: "create",
+              file_path: 'new_file.js',
+              content: '// new',
+              action: 'create',
             },
             {
-              file_path: "existing.js",
-              content: "// updated",
-              action: "update",
+              file_path: 'existing.js',
+              content: '// updated',
+              action: 'update',
             },
             {
-              file_path: "old_file.js",
-              action: "delete",
+              file_path: 'old_file.js',
+              action: 'delete',
             },
           ],
         });
@@ -479,15 +479,15 @@ describe("Snippets Registry", () => {
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
           expect.any(String),
           expect.objectContaining({
-            method: "PUT",
+            method: 'PUT',
             body: expect.stringContaining('"action"'),
-          })
+          }),
         );
       });
     });
 
-    describe("delete action", () => {
-      it("should delete a personal snippet", async () => {
+    describe('delete action', () => {
+      it('should delete a personal snippet', async () => {
         const mockResponse = {
           ok: true,
           status: 204,
@@ -496,21 +496,21 @@ describe("Snippets Registry", () => {
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         const result = await manageSnippetTool?.handler({
-          action: "delete",
+          action: 'delete',
           id: 8,
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v4/snippets/8"),
+          expect.stringContaining('/api/v4/snippets/8'),
           expect.objectContaining({
-            method: "DELETE",
-          })
+            method: 'DELETE',
+          }),
         );
         // id is coerced to string by requiredId schema
-        expect(result).toEqual({ deleted: true, id: "8" });
+        expect(result).toEqual({ deleted: true, id: '8' });
       });
 
-      it("should delete a project snippet", async () => {
+      it('should delete a project snippet', async () => {
         const mockResponse = {
           ok: true,
           status: 204,
@@ -519,16 +519,16 @@ describe("Snippets Registry", () => {
         mockEnhancedFetch.mockResolvedValue(mockResponse as Response);
 
         await manageSnippetTool?.handler({
-          action: "delete",
+          action: 'delete',
           id: 9,
-          projectId: "999",
+          projectId: '999',
         });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          expect.stringContaining("/api/v4/projects/999/snippets/9"),
+          expect.stringContaining('/api/v4/projects/999/snippets/9'),
           expect.objectContaining({
-            method: "DELETE",
-          })
+            method: 'DELETE',
+          }),
         );
       });
     });

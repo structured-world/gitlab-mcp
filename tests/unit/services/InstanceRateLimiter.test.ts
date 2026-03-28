@@ -6,11 +6,11 @@
 import {
   InstanceRateLimiter,
   DEFAULT_RATE_LIMIT_CONFIG,
-} from "../../../src/services/InstanceRateLimiter";
+} from '../../../src/services/InstanceRateLimiter';
 
-describe("InstanceRateLimiter", () => {
-  describe("constructor", () => {
-    it("should use default config when no config provided", () => {
+describe('InstanceRateLimiter', () => {
+  describe('constructor', () => {
+    it('should use default config when no config provided', () => {
       const limiter = new InstanceRateLimiter();
       const config = limiter.getConfig();
 
@@ -19,7 +19,7 @@ describe("InstanceRateLimiter", () => {
       expect(config.queueTimeout).toBe(DEFAULT_RATE_LIMIT_CONFIG.queueTimeout);
     });
 
-    it("should use provided config", () => {
+    it('should use provided config', () => {
       const customConfig = {
         maxConcurrent: 10,
         queueSize: 50,
@@ -33,7 +33,7 @@ describe("InstanceRateLimiter", () => {
       expect(config.queueTimeout).toBe(5000);
     });
 
-    it("should merge partial config with defaults", () => {
+    it('should merge partial config with defaults', () => {
       const limiter = new InstanceRateLimiter({ maxConcurrent: 5 });
       const config = limiter.getConfig();
 
@@ -43,8 +43,8 @@ describe("InstanceRateLimiter", () => {
     });
   });
 
-  describe("acquire", () => {
-    it("should acquire slot immediately when under limit", async () => {
+  describe('acquire', () => {
+    it('should acquire slot immediately when under limit', async () => {
       const limiter = new InstanceRateLimiter({ maxConcurrent: 2 });
 
       const release1 = await limiter.acquire();
@@ -58,7 +58,7 @@ describe("InstanceRateLimiter", () => {
       release2();
     });
 
-    it("should track total requests", async () => {
+    it('should track total requests', async () => {
       const limiter = new InstanceRateLimiter({ maxConcurrent: 5 });
 
       const release1 = await limiter.acquire();
@@ -73,7 +73,7 @@ describe("InstanceRateLimiter", () => {
       release3();
     });
 
-    it("should release slot when release function is called", async () => {
+    it('should release slot when release function is called', async () => {
       const limiter = new InstanceRateLimiter({ maxConcurrent: 1 });
 
       const release = await limiter.acquire();
@@ -84,8 +84,8 @@ describe("InstanceRateLimiter", () => {
     });
   });
 
-  describe("queuing", () => {
-    it("should queue requests when at capacity", async () => {
+  describe('queuing', () => {
+    it('should queue requests when at capacity', async () => {
       const limiter = new InstanceRateLimiter({
         maxConcurrent: 1,
         queueSize: 10,
@@ -99,7 +99,7 @@ describe("InstanceRateLimiter", () => {
       const acquirePromise = limiter.acquire();
 
       // Give it a tick to queue
-      await new Promise(resolve => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
 
       const metrics = limiter.getMetrics();
       expect(metrics.activeRequests).toBe(1);
@@ -116,7 +116,7 @@ describe("InstanceRateLimiter", () => {
       release2();
     });
 
-    it("should reject when queue is full", async () => {
+    it('should reject when queue is full', async () => {
       const limiter = new InstanceRateLimiter({
         maxConcurrent: 1,
         queueSize: 1,
@@ -128,7 +128,7 @@ describe("InstanceRateLimiter", () => {
 
       // Queue one request
       const queuedPromise = limiter.acquire();
-      await new Promise(resolve => setTimeout(resolve));
+      await new Promise((resolve) => setTimeout(resolve));
 
       // Third request should be rejected (queue is full)
       await expect(limiter.acquire()).rejects.toThrow(/Rate limit exceeded/);
@@ -142,7 +142,7 @@ describe("InstanceRateLimiter", () => {
       release2();
     });
 
-    it("should timeout queued request after queueTimeout", async () => {
+    it('should timeout queued request after queueTimeout', async () => {
       // Tests that requests waiting in queue are rejected after timeout expires
       const limiter = new InstanceRateLimiter({
         maxConcurrent: 1,
@@ -164,8 +164,8 @@ describe("InstanceRateLimiter", () => {
     });
   });
 
-  describe("getMetrics", () => {
-    it("should return correct initial metrics", () => {
+  describe('getMetrics', () => {
+    it('should return correct initial metrics', () => {
       const limiter = new InstanceRateLimiter({
         maxConcurrent: 50,
         queueSize: 100,
@@ -184,8 +184,8 @@ describe("InstanceRateLimiter", () => {
     });
   });
 
-  describe("isAtCapacity", () => {
-    it("should return false when under capacity", async () => {
+  describe('isAtCapacity', () => {
+    it('should return false when under capacity', async () => {
       const limiter = new InstanceRateLimiter({ maxConcurrent: 2 });
 
       expect(limiter.isAtCapacity()).toBe(false);
@@ -196,7 +196,7 @@ describe("InstanceRateLimiter", () => {
       release();
     });
 
-    it("should return true when at capacity", async () => {
+    it('should return true when at capacity', async () => {
       const limiter = new InstanceRateLimiter({ maxConcurrent: 1 });
 
       const release = await limiter.acquire();
@@ -207,8 +207,8 @@ describe("InstanceRateLimiter", () => {
     });
   });
 
-  describe("isQueueFull", () => {
-    it("should return false when queue is not full", async () => {
+  describe('isQueueFull', () => {
+    it('should return false when queue is not full', async () => {
       const limiter = new InstanceRateLimiter({
         maxConcurrent: 1,
         queueSize: 2,
@@ -220,7 +220,7 @@ describe("InstanceRateLimiter", () => {
       release();
     });
 
-    it("should return true when queue is full", async () => {
+    it('should return true when queue is full', async () => {
       const limiter = new InstanceRateLimiter({
         maxConcurrent: 1,
         queueSize: 1,
@@ -229,7 +229,7 @@ describe("InstanceRateLimiter", () => {
 
       const release = await limiter.acquire();
       const queuedPromise = limiter.acquire();
-      await new Promise(resolve => setTimeout(resolve));
+      await new Promise((resolve) => setTimeout(resolve));
 
       expect(limiter.isQueueFull()).toBe(true);
 
@@ -239,8 +239,8 @@ describe("InstanceRateLimiter", () => {
     });
   });
 
-  describe("resetMetrics", () => {
-    it("should reset all counter metrics", async () => {
+  describe('resetMetrics', () => {
+    it('should reset all counter metrics', async () => {
       const limiter = new InstanceRateLimiter({ maxConcurrent: 5 });
 
       // Generate some metrics
@@ -259,8 +259,8 @@ describe("InstanceRateLimiter", () => {
     });
   });
 
-  describe("idempotent release", () => {
-    it("should ignore multiple release() calls", async () => {
+  describe('idempotent release', () => {
+    it('should ignore multiple release() calls', async () => {
       const limiter = new InstanceRateLimiter({ maxConcurrent: 2 });
 
       const release = await limiter.acquire();
@@ -279,7 +279,7 @@ describe("InstanceRateLimiter", () => {
       expect(limiter.getMetrics().activeRequests).toBe(0);
     });
 
-    it("should handle double release on queued requests", async () => {
+    it('should handle double release on queued requests', async () => {
       const limiter = new InstanceRateLimiter({ maxConcurrent: 1 });
 
       // Fill the slot

@@ -5,7 +5,7 @@
  */
 
 // Handler
-export { dashboardHandler, getMetrics } from "./handler.js";
+export { dashboardHandler, getMetrics } from './handler.js';
 
 // Metrics
 export {
@@ -14,8 +14,8 @@ export {
   determineInstanceStatus,
   DashboardMetricsSchema,
   InstanceStatusSchema,
-} from "./metrics.js";
-export type { DashboardMetrics, InstanceStatus } from "./metrics.js";
+} from './metrics.js';
+export type { DashboardMetrics, InstanceStatus } from './metrics.js';
 
 // HTML Template
-export { renderDashboard } from "./html-template.js";
+export { renderDashboard } from './html-template.js';

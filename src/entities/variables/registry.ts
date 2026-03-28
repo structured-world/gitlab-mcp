@@ -1,10 +1,10 @@
-import * as z from "zod";
-import { BrowseVariablesSchema } from "./schema-readonly";
-import { ManageVariableSchema } from "./schema";
-import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { resolveNamespaceForAPI } from "../../utils/namespace";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { isActionDenied } from "../../config";
+import * as z from 'zod';
+import { BrowseVariablesSchema } from './schema-readonly';
+import { ManageVariableSchema } from './schema';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { resolveNamespaceForAPI } from '../../utils/namespace';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { isActionDenied } from '../../config';
 
 /**
  * Variables tools registry - 2 CQRS tools replacing 5 individual tools
@@ -18,25 +18,25 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_variables",
+    'browse_variables',
     {
-      name: "browse_variables",
+      name: 'browse_variables',
       description:
-        "List and inspect CI/CD variables for projects or groups. Actions: list (all variables with pagination), get (single variable by key with environment scope filter). Related: manage_variable to create/update/delete.",
+        'List and inspect CI/CD variables for projects or groups. Actions: list (all variables with pagination), get (single variable by key with environment scope filter). Related: manage_variable to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseVariablesSchema),
-      gate: { envVar: "USE_VARIABLES", defaultValue: true },
+      gate: { envVar: 'USE_VARIABLES', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseVariablesSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_variables", input.action)) {
+        if (isActionDenied('browse_variables', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_variables tool`);
         }
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             // TypeScript knows: input has per_page, page (optional)
             const { action: _action, namespace: _namespace, ...rest } = input;
             const query = toQuery(rest, []);
@@ -44,16 +44,16 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             return gitlab.get(`${entityType}/${encodedPath}/variables`, { query });
           }
 
-          case "get": {
+          case 'get': {
             // TypeScript knows: input has key (required), filter (optional)
             const query: Record<string, string | undefined> = {};
             if (input.filter?.environment_scope) {
-              query["filter[environment_scope]"] = input.filter.environment_scope;
+              query['filter[environment_scope]'] = input.filter.environment_scope;
             }
 
             return gitlab.get(
               `${entityType}/${encodedPath}/variables/${encodeURIComponent(input.key)}`,
-              { query }
+              { query },
             );
           }
 
@@ -70,60 +70,60 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_variable",
+    'manage_variable',
     {
-      name: "manage_variable",
+      name: 'manage_variable',
       description:
-        "Create, update, or delete CI/CD variables with environment scoping. Actions: create (key + value, set scope/protection/masking), update (modify value or settings), delete (remove permanently). Related: browse_variables for discovery.",
+        'Create, update, or delete CI/CD variables with environment scoping. Actions: create (key + value, set scope/protection/masking), update (modify value or settings), delete (remove permanently). Related: browse_variables for discovery.',
       inputSchema: z.toJSONSchema(ManageVariableSchema),
-      gate: { envVar: "USE_VARIABLES", defaultValue: true },
+      gate: { envVar: 'USE_VARIABLES', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageVariableSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_variable", input.action)) {
+        if (isActionDenied('manage_variable', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_variable tool`);
         }
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
         switch (input.action) {
-          case "create": {
+          case 'create': {
             // TypeScript knows: input has key, value (required), variable_type, environment_scope, etc. (optional)
             const { action: _action, namespace: _namespace, ...body } = input;
 
             return gitlab.post(`${entityType}/${encodedPath}/variables`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "update": {
+          case 'update': {
             // TypeScript knows: input has key (required), value, filter, etc. (optional)
             const { action: _action, namespace: _namespace, key, filter, ...body } = input;
 
             const query: Record<string, string | undefined> = {};
             if (filter?.environment_scope) {
-              query["filter[environment_scope]"] = filter.environment_scope;
+              query['filter[environment_scope]'] = filter.environment_scope;
             }
 
             return gitlab.put(`${entityType}/${encodedPath}/variables/${encodeURIComponent(key)}`, {
               query,
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "delete": {
+          case 'delete': {
             // TypeScript knows: input has key (required), filter (optional)
             const query: Record<string, string | undefined> = {};
             if (input.filter?.environment_scope) {
-              query["filter[environment_scope]"] = input.filter.environment_scope;
+              query['filter[environment_scope]'] = input.filter.environment_scope;
             }
 
             await gitlab.delete(
               `${entityType}/${encodedPath}/variables/${encodeURIComponent(input.key)}`,
-              { query }
+              { query },
             );
             return { deleted: true };
           }
@@ -141,7 +141,7 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
  * Get read-only tool names from the registry
  */
 export function getVariablesReadOnlyToolNames(): string[] {
-  return ["browse_variables"];
+  return ['browse_variables'];
 }
 
 /**
@@ -157,8 +157,8 @@ export function getVariablesToolDefinitions(): EnhancedToolDefinition[] {
 export function getFilteredVariablesTools(readOnlyMode: boolean = false): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getVariablesReadOnlyToolNames();
-    return Array.from(variablesToolRegistry.values()).filter(tool =>
-      readOnlyNames.includes(tool.name)
+    return Array.from(variablesToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
     );
   }
   return getVariablesToolDefinitions();

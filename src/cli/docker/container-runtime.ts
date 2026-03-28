@@ -3,8 +3,8 @@
  * Detects Docker or Podman and their compose variants, caching the result per process.
  */
 
-import { spawnSync } from "child_process";
-import { ContainerRuntime, ContainerRuntimeInfo } from "./types";
+import { spawnSync } from 'child_process';
+import { ContainerRuntime, ContainerRuntimeInfo } from './types';
 
 /** Module-level cached runtime info */
 let cachedRuntime: ContainerRuntimeInfo | null = null;
@@ -15,8 +15,8 @@ let cachedRuntime: ContainerRuntimeInfo | null = null;
 function commandSucceeds(cmd: string, args: string[]): boolean {
   try {
     const result = spawnSync(cmd, args, {
-      stdio: "pipe",
-      encoding: "utf8",
+      stdio: 'pipe',
+      encoding: 'utf8',
     });
     return result.status === 0;
   } catch {
@@ -30,8 +30,8 @@ function commandSucceeds(cmd: string, args: string[]): boolean {
 function commandOutput(cmd: string, args: string[]): string | undefined {
   try {
     const result = spawnSync(cmd, args, {
-      stdio: "pipe",
-      encoding: "utf8",
+      stdio: 'pipe',
+      encoding: 'utf8',
     });
     if (result.status === 0 && result.stdout) {
       return result.stdout.trim();
@@ -61,19 +61,19 @@ function detectComposeCmd(runtime: ContainerRuntime): string[] | null {
   const runtimeCmd = runtime;
 
   // Try "<runtime> compose version" (compose v2 plugin)
-  if (commandSucceeds(runtimeCmd, ["compose", "version"])) {
-    return [runtimeCmd, "compose"];
+  if (commandSucceeds(runtimeCmd, ['compose', 'version'])) {
+    return [runtimeCmd, 'compose'];
   }
 
   // Try "<runtime>-compose --version" (standalone compose)
   const standaloneCompose = `${runtimeCmd}-compose`;
-  if (commandSucceeds(standaloneCompose, ["--version"])) {
+  if (commandSucceeds(standaloneCompose, ['--version'])) {
     return [standaloneCompose];
   }
 
   // Cross-runtime fallback: try docker-compose as last resort
-  if (commandSucceeds("docker-compose", ["--version"])) {
-    return ["docker-compose"];
+  if (commandSucceeds('docker-compose', ['--version'])) {
+    return ['docker-compose'];
   }
 
   return null;
@@ -85,13 +85,13 @@ function detectComposeCmd(runtime: ContainerRuntime): string[] | null {
  * Checks runtime availability, daemon status, and compose command.
  */
 export function detectContainerRuntime(): ContainerRuntimeInfo {
-  const runtimes: ContainerRuntime[] = ["docker", "podman"];
+  const runtimes: ContainerRuntime[] = ['docker', 'podman'];
 
   for (const runtime of runtimes) {
-    const versionOutput = commandOutput(runtime, ["--version"]);
+    const versionOutput = commandOutput(runtime, ['--version']);
     if (versionOutput) {
       // Runtime binary exists, check if daemon is accessible
-      const runtimeAvailable = commandSucceeds(runtime, ["info"]);
+      const runtimeAvailable = commandSucceeds(runtime, ['info']);
       const composeCmd = detectComposeCmd(runtime);
       const runtimeVersion = parseVersion(versionOutput);
 
@@ -107,8 +107,8 @@ export function detectContainerRuntime(): ContainerRuntimeInfo {
 
   // No runtime found at all
   return {
-    runtime: "docker",
-    runtimeCmd: "docker",
+    runtime: 'docker',
+    runtimeCmd: 'docker',
     runtimeAvailable: false,
     composeCmd: null,
     runtimeVersion: undefined,

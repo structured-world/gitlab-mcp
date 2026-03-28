@@ -16,15 +16,15 @@
  * without restarting the MCP server.
  */
 
-import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from "../../config";
-import { logInfo, logDebug } from "../../logger";
-import { isOAuthEnabled } from "../../oauth/index.js";
-import { ConnectionManager } from "../../services/ConnectionManager";
-import { getTokenCreationUrl } from "../../services/TokenScopeDetector";
-import { RegistryManager } from "../../registry-manager";
-import { sendToolsListChangedNotification } from "../../server";
-import { enhancedFetch } from "../../utils/fetch";
-import { getContextManager } from "./context-manager";
+import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from '../../config';
+import { logInfo, logDebug } from '../../logger';
+import { isOAuthEnabled } from '../../oauth/index.js';
+import { ConnectionManager } from '../../services/ConnectionManager';
+import { getTokenCreationUrl } from '../../services/TokenScopeDetector';
+import { RegistryManager } from '../../registry-manager';
+import { sendToolsListChangedNotification } from '../../server';
+import { enhancedFetch } from '../../utils/fetch';
+import { getContextManager } from './context-manager';
 import {
   WhoamiResult,
   WhoamiUserInfo,
@@ -33,7 +33,7 @@ import {
   WhoamiCapabilities,
   WhoamiContextInfo,
   WhoamiRecommendation,
-} from "./types";
+} from './types';
 
 /**
  * Get GitLab host from API URL
@@ -58,7 +58,7 @@ async function fetchCurrentUser(): Promise<WhoamiUserInfo | null> {
     });
 
     if (!response.ok) {
-      logDebug("Failed to fetch current user", { status: response.status });
+      logDebug('Failed to fetch current user', { status: response.status });
       return null;
     }
 
@@ -79,10 +79,10 @@ async function fetchCurrentUser(): Promise<WhoamiUserInfo | null> {
       email: data.email,
       avatarUrl: data.avatar_url,
       isAdmin: data.is_admin,
-      state: data.state as "active" | "blocked" | "deactivated",
+      state: data.state as 'active' | 'blocked' | 'deactivated',
     };
   } catch (error) {
-    logDebug("Error fetching current user", {
+    logDebug('Error fetching current user', {
       error: error instanceof Error ? error.message : String(error),
     });
     return null;
@@ -101,7 +101,7 @@ function buildTokenInfo(): WhoamiTokenInfo | null {
       // In OAuth mode or when token detection failed
       if (isOAuthEnabled()) {
         return {
-          type: "oauth",
+          type: 'oauth',
           name: null,
           scopes: [],
           expiresAt: null,
@@ -133,12 +133,12 @@ function buildTokenInfo(): WhoamiTokenInfo | null {
  * Build server info from ConnectionManager and config
  */
 function buildServerInfo(): WhoamiServerInfo {
-  let version = "unknown";
-  let tier: "free" | "premium" | "ultimate" | "unknown" = "unknown";
+  let version = 'unknown';
+  let tier: 'free' | 'premium' | 'ultimate' | 'unknown' = 'unknown';
   // Edition cannot be reliably determined from tier alone.
   // Both CE and EE can have "free" tier (EE without license behaves like CE).
   // Premium/Ultimate tiers indicate EE, but we set to "unknown" for consistency.
-  const edition: "EE" | "CE" | "unknown" = "unknown";
+  const edition: 'EE' | 'CE' | 'unknown' = 'unknown';
 
   try {
     const connectionManager = ConnectionManager.getInstance();
@@ -170,7 +170,7 @@ function buildCapabilities(tokenInfo: WhoamiTokenInfo | null): WhoamiCapabilitie
   const canBrowse =
     tokenInfo === null ||
     tokenInfo.scopes.length === 0 ||
-    tokenInfo.scopes.some(s => ["api", "read_api", "read_user"].includes(s));
+    tokenInfo.scopes.some((s) => ['api', 'read_api', 'read_user'].includes(s));
 
   const canManage = tokenInfo?.hasWriteAccess ?? false;
   const canAccessGraphQL = tokenInfo?.hasGraphQLAccess ?? false;
@@ -208,7 +208,7 @@ function buildContextInfo(): WhoamiContextInfo {
  */
 function generateWarnings(
   tokenInfo: WhoamiTokenInfo | null,
-  capabilities: WhoamiCapabilities
+  capabilities: WhoamiCapabilities,
 ): string[] {
   const warnings: string[] = [];
 
@@ -218,7 +218,7 @@ function generateWarnings(
     if (days < 0) {
       warnings.push(`Token has expired (${Math.abs(days)} days ago)`);
     } else if (days === 0) {
-      warnings.push("Token expires today!");
+      warnings.push('Token expires today!');
     } else if (days <= 7) {
       warnings.push(`Token expires in ${days} day(s)`);
     }
@@ -226,42 +226,42 @@ function generateWarnings(
 
   // Token validity warning
   if (tokenInfo && !tokenInfo.isValid) {
-    warnings.push("Token is invalid or revoked - authentication may fail");
+    warnings.push('Token is invalid or revoked - authentication may fail');
   }
 
   // Scope limitation warnings
   if (capabilities.filteredByScopes > 0) {
     const pct = Math.round((capabilities.filteredByScopes / capabilities.totalToolCount) * 100);
     warnings.push(
-      `Limited token scopes: ${capabilities.availableToolCount} of ${capabilities.totalToolCount} tools available (${pct}% filtered)`
+      `Limited token scopes: ${capabilities.availableToolCount} of ${capabilities.totalToolCount} tools available (${pct}% filtered)`,
     );
 
     if (!capabilities.canAccessGraphQL) {
-      warnings.push("No GraphQL access - project/MR/issue operations unavailable");
+      warnings.push('No GraphQL access - project/MR/issue operations unavailable');
     }
     if (!capabilities.canManage) {
-      warnings.push("No write access - all manage_* operations blocked");
+      warnings.push('No write access - all manage_* operations blocked');
     }
   }
 
   // Read-only mode warning
   if (capabilities.filteredByReadOnly > 0) {
     warnings.push(
-      `Read-only mode enabled: ${capabilities.filteredByReadOnly} write tools disabled`
+      `Read-only mode enabled: ${capabilities.filteredByReadOnly} write tools disabled`,
     );
   }
 
   // Tier restriction warning
   if (capabilities.filteredByTier > 0) {
     warnings.push(
-      `GitLab tier restrictions: ${capabilities.filteredByTier} tools unavailable for current tier`
+      `GitLab tier restrictions: ${capabilities.filteredByTier} tools unavailable for current tier`,
     );
   }
 
   // Denied tools regex warning
   if (capabilities.filteredByDeniedRegex > 0) {
     warnings.push(
-      `Tool access restrictions: ${capabilities.filteredByDeniedRegex} tools blocked by configuration`
+      `Tool access restrictions: ${capabilities.filteredByDeniedRegex} tools blocked by configuration`,
     );
   }
 
@@ -274,17 +274,17 @@ function generateWarnings(
 function generateRecommendations(
   tokenInfo: WhoamiTokenInfo | null,
   capabilities: WhoamiCapabilities,
-  serverInfo: WhoamiServerInfo
+  serverInfo: WhoamiServerInfo,
 ): WhoamiRecommendation[] {
   const recommendations: WhoamiRecommendation[] = [];
 
   // Token expired - high priority renewal
   if (tokenInfo && tokenInfo.daysUntilExpiry !== null && tokenInfo.daysUntilExpiry < 0) {
     recommendations.push({
-      action: "renew_token",
-      message: "Your token has expired. Create a new token to restore access.",
-      url: getTokenCreationUrl(GITLAB_BASE_URL, ["api", "read_user"]),
-      priority: "high",
+      action: 'renew_token',
+      message: 'Your token has expired. Create a new token to restore access.',
+      url: getTokenCreationUrl(GITLAB_BASE_URL, ['api', 'read_user']),
+      priority: 'high',
     });
   }
 
@@ -296,10 +296,10 @@ function generateRecommendations(
     tokenInfo.daysUntilExpiry <= 7
   ) {
     recommendations.push({
-      action: "renew_token",
+      action: 'renew_token',
       message: `Your token expires in ${tokenInfo.daysUntilExpiry} day(s). Renew soon to avoid service interruption.`,
-      url: getTokenCreationUrl(GITLAB_BASE_URL, ["api", "read_user"]),
-      priority: "medium",
+      url: getTokenCreationUrl(GITLAB_BASE_URL, ['api', 'read_user']),
+      priority: 'medium',
     });
   }
 
@@ -308,10 +308,10 @@ function generateRecommendations(
   const needsNewToken = capabilities.filteredByScopes > 0 && !capabilities.canManage;
   if (needsNewToken) {
     recommendations.push({
-      action: "create_new_token",
+      action: 'create_new_token',
       message: "Create a token with 'api' scope for full GitLab functionality",
-      url: getTokenCreationUrl(GITLAB_BASE_URL, ["api", "read_user"]),
-      priority: "high",
+      url: getTokenCreationUrl(GITLAB_BASE_URL, ['api', 'read_user']),
+      priority: 'high',
     });
   }
 
@@ -324,20 +324,20 @@ function generateRecommendations(
     tokenInfo.scopes.length > 0
   ) {
     recommendations.push({
-      action: "add_scope",
+      action: 'add_scope',
       message: "Add 'api' or 'read_api' scope to enable project, issue, and MR operations",
-      url: getTokenCreationUrl(GITLAB_BASE_URL, ["api", "read_user"]),
-      priority: "high",
+      url: getTokenCreationUrl(GITLAB_BASE_URL, ['api', 'read_user']),
+      priority: 'high',
     });
   }
 
   // Tier restrictions
-  if (capabilities.filteredByTier > 0 && serverInfo.tier === "free") {
+  if (capabilities.filteredByTier > 0 && serverInfo.tier === 'free') {
     recommendations.push({
-      action: "contact_admin",
+      action: 'contact_admin',
       message:
-        "Some features require GitLab Premium or Ultimate. Contact your administrator for tier upgrade.",
-      priority: "low",
+        'Some features require GitLab Premium or Ultimate. Contact your administrator for tier upgrade.',
+      priority: 'low',
     });
   }
 
@@ -365,12 +365,12 @@ export async function executeWhoami(): Promise<WhoamiResult> {
 
     if (scopesRefreshed) {
       // Token scopes changed - refresh the tool registry and notify clients
-      logInfo("Token scopes changed - refreshing tool registry");
+      logInfo('Token scopes changed - refreshing tool registry');
       RegistryManager.getInstance().refreshCache();
       await sendToolsListChangedNotification();
     }
   } catch (error) {
-    logDebug("Failed to refresh token scopes", {
+    logDebug('Failed to refresh token scopes', {
       error: error instanceof Error ? error.message : String(error),
     });
   }
@@ -387,7 +387,7 @@ export async function executeWhoami(): Promise<WhoamiResult> {
   const warnings = generateWarnings(tokenInfo, capabilities);
   const recommendations = generateRecommendations(tokenInfo, capabilities, serverInfo);
 
-  logDebug("Whoami executed", {
+  logDebug('Whoami executed', {
     hasUser: userInfo !== null,
     hasToken: tokenInfo !== null,
     availableTools: capabilities.availableToolCount,

@@ -5,21 +5,21 @@
  * Auto-refreshes every 30 seconds.
  */
 
-import { DashboardMetrics, InstanceStatus, formatUptime } from "./metrics.js";
+import { DashboardMetrics, InstanceStatus, formatUptime } from './metrics.js';
 
 /**
  * Get status indicator symbol and color class
  */
 function getStatusIndicator(status: string): { symbol: string; colorClass: string } {
   switch (status) {
-    case "healthy":
-      return { symbol: "●", colorClass: "status-healthy" };
-    case "degraded":
-      return { symbol: "○", colorClass: "status-degraded" };
-    case "offline":
-      return { symbol: "○", colorClass: "status-offline" };
+    case 'healthy':
+      return { symbol: '●', colorClass: 'status-healthy' };
+    case 'degraded':
+      return { symbol: '○', colorClass: 'status-degraded' };
+    case 'offline':
+      return { symbol: '○', colorClass: 'status-offline' };
     default:
-      return { symbol: "?", colorClass: "status-unknown" };
+      return { symbol: '?', colorClass: 'status-unknown' };
   }
 }
 
@@ -27,7 +27,7 @@ function getStatusIndicator(status: string): { symbol: string; colorClass: strin
  * Format number with thousand separators
  */
 function formatNumber(num: number): string {
-  return num.toLocaleString("en-US");
+  return num.toLocaleString('en-US');
 }
 
 /**
@@ -47,10 +47,10 @@ function renderInstanceCard(instance: InstanceStatus): string {
 
   const warnings: string[] = [];
   if (instance.latency.avgMs > 2000) {
-    warnings.push("High latency detected");
+    warnings.push('High latency detected');
   }
   if (instance.rateLimit.queuedRequests > instance.rateLimit.queueSize * 0.5) {
-    warnings.push("Queue filling up");
+    warnings.push('Queue filling up');
   }
 
   return `
@@ -70,14 +70,14 @@ function renderInstanceCard(instance: InstanceStatus): string {
             ? `
         <div class="detail-row">
           <span class="detail-label">Version:</span>
-          <span class="detail-value">${escapeHtml(instance.version)}${instance.tier ? ` | Tier: ${escapeHtml(instance.tier.charAt(0).toUpperCase() + instance.tier.slice(1))}` : ""}</span>
+          <span class="detail-value">${escapeHtml(instance.version)}${instance.tier ? ` | Tier: ${escapeHtml(instance.tier.charAt(0).toUpperCase() + instance.tier.slice(1))}` : ''}</span>
         </div>
         `
-            : ""
+            : ''
         }
         <div class="detail-row">
           <span class="detail-label">Introspected:</span>
-          <span class="detail-value">${instance.introspected ? "✓" : "✗"}</span>
+          <span class="detail-value">${instance.introspected ? '✓' : '✗'}</span>
         </div>
         <div class="detail-row">
           <span class="detail-label">Requests:</span>
@@ -85,21 +85,21 @@ function renderInstanceCard(instance: InstanceStatus): string {
         </div>
         <div class="detail-row">
           <span class="detail-label">Avg latency:</span>
-          <span class="detail-value">${formatNumber(instance.latency.avgMs)}ms${instance.lastHealthCheck ? ` | Last check: ${formatRelativeTime(instance.lastHealthCheck)}` : ""}</span>
+          <span class="detail-value">${formatNumber(instance.latency.avgMs)}ms${instance.lastHealthCheck ? ` | Last check: ${formatRelativeTime(instance.lastHealthCheck)}` : ''}</span>
         </div>
         ${
           warnings.length > 0
             ? warnings
                 .map(
-                  w => `
+                  (w) => `
         <div class="detail-row warning">
           <span class="warning-icon">⚠</span>
           <span class="warning-text">${escapeHtml(w)}</span>
         </div>
-        `
+        `,
                 )
-                .join("")
-            : ""
+                .join('')
+            : ''
         }
       </div>
     </div>
@@ -115,12 +115,12 @@ function formatRelativeTime(isoString: string): string {
   const diffMs = now.getTime() - date.getTime();
   const diffMinutes = Math.floor(diffMs / 60000);
 
-  if (diffMinutes < 1) return "just now";
-  if (diffMinutes === 1) return "1m ago";
+  if (diffMinutes < 1) return 'just now';
+  if (diffMinutes === 1) return '1m ago';
   if (diffMinutes < 60) return `${diffMinutes}m ago`;
 
   const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours === 1) return "1h ago";
+  if (diffHours === 1) return '1h ago';
   if (diffHours < 24) return `${diffHours}h ago`;
 
   const diffDays = Math.floor(diffHours / 24);
@@ -132,23 +132,23 @@ function formatRelativeTime(isoString: string): string {
  */
 function escapeHtml(str: string): string {
   return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#039;");
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
 }
 
 /**
  * Get overall server status based on instances
  */
-function getOverallStatus(instances: InstanceStatus[]): "healthy" | "degraded" | "offline" {
-  if (instances.length === 0) return "healthy";
+function getOverallStatus(instances: InstanceStatus[]): 'healthy' | 'degraded' | 'offline' {
+  if (instances.length === 0) return 'healthy';
 
-  const statuses = instances.map(i => i.status);
-  if (statuses.every(s => s === "offline")) return "offline";
-  if (statuses.some(s => s === "offline" || s === "degraded")) return "degraded";
-  return "healthy";
+  const statuses = instances.map((i) => i.status);
+  if (statuses.every((s) => s === 'offline')) return 'offline';
+  if (statuses.some((s) => s === 'offline' || s === 'degraded')) return 'degraded';
+  return 'healthy';
 }
 
 /**
@@ -160,13 +160,13 @@ export function renderDashboard(metrics: DashboardMetrics): string {
   const statusLabel = overallStatus.charAt(0).toUpperCase() + overallStatus.slice(1);
 
   const authModeDisplay =
-    metrics.server.mode === "oauth"
-      ? "OAuth 2.1"
-      : metrics.server.mode === "token"
-        ? "Static Token"
-        : "None";
+    metrics.server.mode === 'oauth'
+      ? 'OAuth 2.1'
+      : metrics.server.mode === 'token'
+        ? 'Static Token'
+        : 'None';
 
-  const currentTime = new Date().toLocaleTimeString("en-US", { hour12: false });
+  const currentTime = new Date().toLocaleTimeString('en-US', { hour12: false });
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -403,7 +403,7 @@ export function renderDashboard(metrics: DashboardMetrics): string {
         <div class="section-title">Registered Instances</div>
         ${
           metrics.instances.length > 0
-            ? metrics.instances.map(renderInstanceCard).join("")
+            ? metrics.instances.map(renderInstanceCard).join('')
             : `
         <div class="instance-card">
           <div class="instance-header">
@@ -429,7 +429,7 @@ export function renderDashboard(metrics: DashboardMetrics): string {
           </div>
           <div class="config-item">
             <span class="config-key">Read-only:</span>
-            <span>${metrics.server.readOnly ? "Yes" : "No"}</span>
+            <span>${metrics.server.readOnly ? 'Yes' : 'No'}</span>
           </div>
           <div class="config-item">
             <span class="config-key">Tools enabled:</span>
@@ -437,7 +437,7 @@ export function renderDashboard(metrics: DashboardMetrics): string {
           </div>
           <div class="config-item">
             <span class="config-key">Config source:</span>
-            <span>${escapeHtml(metrics.config.source)}${metrics.config.sourceDetails ? ` (${escapeHtml(metrics.config.sourceDetails)})` : ""}</span>
+            <span>${escapeHtml(metrics.config.source)}${metrics.config.sourceDetails ? ` (${escapeHtml(metrics.config.sourceDetails)})` : ''}</span>
           </div>
         </div>
       </div>
@@ -449,7 +449,7 @@ export function renderDashboard(metrics: DashboardMetrics): string {
             metrics.sessions.total > 0
               ? `
           <div class="session-item">
-            <span>Total: ${metrics.sessions.total} session${metrics.sessions.total === 1 ? "" : "s"}</span>
+            <span>Total: ${metrics.sessions.total} session${metrics.sessions.total === 1 ? '' : 's'}</span>
           </div>
           ${Object.entries(metrics.sessions.byInstance)
             .map(([url, count]) => {
@@ -461,11 +461,11 @@ export function renderDashboard(metrics: DashboardMetrics): string {
               }
               return `
           <div class="session-item">
-            <span>${escapeHtml(hostname)}: ${count} session${count === 1 ? "" : "s"}</span>
+            <span>${escapeHtml(hostname)}: ${count} session${count === 1 ? '' : 's'}</span>
           </div>
           `;
             })
-            .join("")}
+            .join('')}
           `
               : `
           <div class="session-item">

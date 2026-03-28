@@ -2,17 +2,17 @@
  * Interactive install wizard for MCP clients
  */
 
-import * as p from "@clack/prompts";
+import * as p from '@clack/prompts';
 import {
   InstallableClient,
   InstallResult,
   CLIENT_METADATA,
   INSTALLABLE_CLIENTS,
   ClientDetectionResult,
-} from "./types";
-import { detectAllClients, getDetectedClients } from "./detector";
-import { installToClients, generateConfigPreview } from "./installers";
-import { McpServerConfig } from "../init/types";
+} from './types';
+import { detectAllClients, getDetectedClients } from './detector';
+import { installToClients, generateConfigPreview } from './installers';
+import { McpServerConfig } from '../init/types';
 
 /**
  * CLI flags for install command
@@ -38,34 +38,34 @@ export function parseInstallFlags(args: string[]): InstallFlags {
 
   for (const arg of args) {
     switch (arg) {
-      case "--claude-desktop":
+      case '--claude-desktop':
         flags.claudeDesktop = true;
         break;
-      case "--claude-code":
+      case '--claude-code':
         flags.claudeCode = true;
         break;
-      case "--cursor":
+      case '--cursor':
         flags.cursor = true;
         break;
-      case "--vscode":
+      case '--vscode':
         flags.vscode = true;
         break;
-      case "--cline":
+      case '--cline':
         flags.cline = true;
         break;
-      case "--roo-code":
+      case '--roo-code':
         flags.rooCode = true;
         break;
-      case "--windsurf":
+      case '--windsurf':
         flags.windsurf = true;
         break;
-      case "--all":
+      case '--all':
         flags.all = true;
         break;
-      case "--show":
+      case '--show':
         flags.show = true;
         break;
-      case "--force":
+      case '--force':
         flags.force = true;
         break;
     }
@@ -80,13 +80,13 @@ export function parseInstallFlags(args: string[]): InstallFlags {
 export function getClientsFromFlags(flags: InstallFlags): InstallableClient[] {
   const clients: InstallableClient[] = [];
 
-  if (flags.claudeDesktop) clients.push("claude-desktop");
-  if (flags.claudeCode) clients.push("claude-code");
-  if (flags.cursor) clients.push("cursor");
-  if (flags.vscode) clients.push("vscode-copilot");
-  if (flags.cline) clients.push("cline");
-  if (flags.rooCode) clients.push("roo-code");
-  if (flags.windsurf) clients.push("windsurf");
+  if (flags.claudeDesktop) clients.push('claude-desktop');
+  if (flags.claudeCode) clients.push('claude-code');
+  if (flags.cursor) clients.push('cursor');
+  if (flags.vscode) clients.push('vscode-copilot');
+  if (flags.cline) clients.push('cline');
+  if (flags.rooCode) clients.push('roo-code');
+  if (flags.windsurf) clients.push('windsurf');
 
   return clients;
 }
@@ -96,19 +96,19 @@ export function getClientsFromFlags(flags: InstallFlags): InstallableClient[] {
  */
 function formatDetectionResult(result: ClientDetectionResult): string {
   const metadata = CLIENT_METADATA[result.client];
-  let status = result.detected ? "✓" : "✗";
+  let status = result.detected ? '✓' : '✗';
 
   if (result.alreadyConfigured) {
-    status = "⚙"; // Already configured
+    status = '⚙'; // Already configured
   }
 
-  let hint = "";
+  let hint = '';
   if (result.alreadyConfigured) {
-    hint = " (already configured)";
+    hint = ' (already configured)';
   } else if (result.detected && result.configExists) {
-    hint = " (config exists)";
+    hint = ' (config exists)';
   } else if (result.detected) {
-    hint = " (detected)";
+    hint = ' (detected)';
   }
 
   return `${status} ${metadata.name}${hint}`;
@@ -119,47 +119,47 @@ function formatDetectionResult(result: ClientDetectionResult): string {
  */
 export async function runInstallWizard(
   serverConfig: McpServerConfig,
-  flags: InstallFlags = {}
+  flags: InstallFlags = {},
 ): Promise<InstallResult[]> {
   // If --show flag is set, just display config
   if (flags.show) {
-    p.intro("GitLab MCP Configuration Preview");
+    p.intro('GitLab MCP Configuration Preview');
 
     // Show config for first specified client or claude-desktop
     const specifiedClients = getClientsFromFlags(flags);
-    const targetClient = specifiedClients[0] ?? "claude-desktop";
+    const targetClient = specifiedClients[0] ?? 'claude-desktop';
 
     const preview = generateConfigPreview(targetClient, serverConfig);
     p.note(preview, `Configuration for ${CLIENT_METADATA[targetClient].name}`);
 
-    p.outro("Use these settings to configure your MCP client manually.");
+    p.outro('Use these settings to configure your MCP client manually.');
     return [];
   }
 
-  p.intro("Install GitLab MCP to your AI coding assistants");
+  p.intro('Install GitLab MCP to your AI coding assistants');
 
   // Detect installed clients
   const spinner = p.spinner();
-  spinner.start("Detecting installed MCP clients...");
+  spinner.start('Detecting installed MCP clients...');
 
   const detectionResults = detectAllClients();
-  const detectedClients = detectionResults.filter(r => r.detected);
+  const detectedClients = detectionResults.filter((r) => r.detected);
 
   spinner.stop(`Found ${detectedClients.length} MCP clients`);
 
   if (detectedClients.length === 0) {
-    p.log.warn("No MCP clients detected on this system.");
+    p.log.warn('No MCP clients detected on this system.');
     p.note(
-      "Supported clients:\n" +
-        INSTALLABLE_CLIENTS.map(c => `  - ${CLIENT_METADATA[c].name}`).join("\n"),
-      "Install one of these clients first:"
+      'Supported clients:\n' +
+        INSTALLABLE_CLIENTS.map((c) => `  - ${CLIENT_METADATA[c].name}`).join('\n'),
+      'Install one of these clients first:',
     );
-    p.outro("Setup cancelled.");
+    p.outro('Setup cancelled.');
     return [];
   }
 
   // Show detection results
-  p.log.info("Detected clients:");
+  p.log.info('Detected clients:');
   for (const result of detectionResults) {
     if (result.detected) {
       console.log(`  ${formatDetectionResult(result)}`);
@@ -172,43 +172,43 @@ export async function runInstallWizard(
 
   if (flags.all) {
     // Install to all detected clients
-    targetClients = detectedClients.map(r => r.client);
+    targetClients = detectedClients.map((r) => r.client);
   } else if (specifiedClients.length > 0) {
     // Use specified clients (filter to only detected ones)
-    targetClients = specifiedClients.filter(c => detectedClients.some(d => d.client === c));
+    targetClients = specifiedClients.filter((c) => detectedClients.some((d) => d.client === c));
 
     // Warn about undetected clients
-    const undetected = specifiedClients.filter(c => !detectedClients.some(d => d.client === c));
+    const undetected = specifiedClients.filter((c) => !detectedClients.some((d) => d.client === c));
     if (undetected.length > 0) {
       p.log.warn(
-        `Skipping undetected clients: ${undetected.map(c => CLIENT_METADATA[c].name).join(", ")}`
+        `Skipping undetected clients: ${undetected.map((c) => CLIENT_METADATA[c].name).join(', ')}`,
       );
     }
   } else {
     // Interactive selection
     const selectedClients = await p.multiselect({
-      message: "Select clients to install to:",
-      options: detectedClients.map(result => ({
+      message: 'Select clients to install to:',
+      options: detectedClients.map((result) => ({
         value: result.client,
         label: CLIENT_METADATA[result.client].name,
-        hint: result.alreadyConfigured ? "already configured" : undefined,
+        hint: result.alreadyConfigured ? 'already configured' : undefined,
       })),
       required: true,
     });
 
     if (p.isCancel(selectedClients)) {
-      p.cancel("Installation cancelled");
+      p.cancel('Installation cancelled');
       return [];
     }
 
     // Validate selected clients at runtime
     const isInstallableClient = (value: unknown): value is InstallableClient =>
-      typeof value === "string" && INSTALLABLE_CLIENTS.includes(value as InstallableClient);
+      typeof value === 'string' && INSTALLABLE_CLIENTS.includes(value as InstallableClient);
 
     const validatedClients = (selectedClients as unknown[]).filter(isInstallableClient);
     if (validatedClients.length !== (selectedClients as unknown[]).length) {
-      p.log.error("Invalid client selection received.");
-      p.cancel("Installation cancelled");
+      p.log.error('Invalid client selection received.');
+      p.cancel('Installation cancelled');
       return [];
     }
 
@@ -216,14 +216,14 @@ export async function runInstallWizard(
   }
 
   if (targetClients.length === 0) {
-    p.log.warn("No clients selected for installation.");
-    p.outro("Setup cancelled.");
+    p.log.warn('No clients selected for installation.');
+    p.outro('Setup cancelled.');
     return [];
   }
 
   // Check for already configured clients
   const alreadyConfigured = targetClients.filter(
-    c => detectionResults.find(r => r.client === c)?.alreadyConfigured
+    (c) => detectionResults.find((r) => r.client === c)?.alreadyConfigured,
   );
 
   // Track if user confirmed overwrite
@@ -231,16 +231,16 @@ export async function runInstallWizard(
 
   if (alreadyConfigured.length > 0 && !flags.force) {
     p.log.warn(
-      `Some clients already have gitlab-mcp configured: ${alreadyConfigured.map(c => CLIENT_METADATA[c].name).join(", ")}`
+      `Some clients already have gitlab-mcp configured: ${alreadyConfigured.map((c) => CLIENT_METADATA[c].name).join(', ')}`,
     );
 
     const overwrite = await p.confirm({
-      message: "Overwrite existing configurations?",
+      message: 'Overwrite existing configurations?',
       initialValue: false,
     });
 
     if (p.isCancel(overwrite)) {
-      p.cancel("Installation cancelled");
+      p.cancel('Installation cancelled');
       return [];
     }
 
@@ -248,29 +248,29 @@ export async function runInstallWizard(
       userConfirmedOverwrite = true;
     } else {
       // Remove already configured clients from target list
-      targetClients = targetClients.filter(c => !alreadyConfigured.includes(c));
+      targetClients = targetClients.filter((c) => !alreadyConfigured.includes(c));
 
       if (targetClients.length === 0) {
-        p.log.info("No new clients to configure.");
-        p.outro("Configuration unchanged.");
+        p.log.info('No new clients to configure.');
+        p.outro('Configuration unchanged.');
         return [];
       }
     }
   }
 
   // Install to selected clients
-  spinner.start("Installing configuration...");
+  spinner.start('Installing configuration...');
 
   // Force install only if explicitly requested OR if user confirmed overwrite
   const forceInstall = flags.force === true || userConfirmedOverwrite;
 
   const results = installToClients(targetClients, serverConfig, forceInstall);
 
-  spinner.stop("Installation complete!");
+  spinner.stop('Installation complete!');
 
   // Display results
-  const successful = results.filter(r => r.success);
-  const failed = results.filter(r => !r.success);
+  const successful = results.filter((r) => r.success);
+  const failed = results.filter((r) => !r.success);
 
   if (successful.length > 0) {
     p.log.success(`Installed to ${successful.length} clients:`);
@@ -297,8 +297,8 @@ export async function runInstallWizard(
 
   p.outro(
     successful.length > 0
-      ? "Installation complete! Restart your MCP clients to apply changes."
-      : "Installation failed."
+      ? 'Installation complete! Restart your MCP clients to apply changes.'
+      : 'Installation failed.',
   );
 
   return results;
@@ -309,13 +309,13 @@ export async function runInstallWizard(
  */
 export async function runInstallCommand(
   serverConfig: McpServerConfig,
-  flags: InstallFlags
+  flags: InstallFlags,
 ): Promise<InstallResult[]> {
   const specifiedClients = getClientsFromFlags(flags);
 
   // If --show mode, display config and exit
   if (flags.show) {
-    const targetClient = specifiedClients[0] ?? "claude-desktop";
+    const targetClient = specifiedClients[0] ?? 'claude-desktop';
     const preview = generateConfigPreview(targetClient, serverConfig);
     console.log(`Configuration for ${CLIENT_METADATA[targetClient].name}:\n`);
     console.log(preview);
@@ -328,13 +328,13 @@ export async function runInstallCommand(
     let targetClients: InstallableClient[];
 
     if (flags.all) {
-      targetClients = detected.map(r => r.client);
+      targetClients = detected.map((r) => r.client);
     } else {
-      targetClients = specifiedClients.filter(c => detected.some(d => d.client === c));
+      targetClients = specifiedClients.filter((c) => detected.some((d) => d.client === c));
     }
 
     if (targetClients.length === 0) {
-      console.error("No supported MCP clients detected.");
+      console.error('No supported MCP clients detected.');
       return [];
     }
 
@@ -364,8 +364,8 @@ export async function runInstallCommand(
  * Build server config from environment/defaults
  */
 export function buildServerConfigFromEnv(): McpServerConfig {
-  const instanceUrl = process.env.GITLAB_URL ?? "https://gitlab.com";
-  const token = process.env.GITLAB_TOKEN ?? "";
+  const instanceUrl = process.env.GITLAB_URL ?? 'https://gitlab.com';
+  const token = process.env.GITLAB_TOKEN ?? '';
   const preset = process.env.GITLAB_MCP_PRESET;
 
   const env: Record<string, string> = {
@@ -378,8 +378,8 @@ export function buildServerConfigFromEnv(): McpServerConfig {
   }
 
   return {
-    command: "npx",
-    args: ["-y", "@structured-world/gitlab-mcp"],
+    command: 'npx',
+    args: ['-y', '@structured-world/gitlab-mcp'],
     env,
   };
 }

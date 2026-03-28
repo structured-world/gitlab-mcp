@@ -12,13 +12,13 @@
  * - detectNamespaceType for auto-detection
  */
 
-import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from "../../config";
-import { logInfo, logError, logDebug } from "../../logger";
-import { ProfileLoader } from "../../profiles/loader";
-import { ScopeEnforcer } from "../../profiles/scope-enforcer";
-import { Preset, ProfileInfo, ScopeConfig } from "../../profiles/types";
-import { sendToolsListChangedNotification } from "../../server";
-import { detectNamespaceType } from "../../utils/namespace";
+import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from '../../config';
+import { logInfo, logError, logDebug } from '../../logger';
+import { ProfileLoader } from '../../profiles/loader';
+import { ScopeEnforcer } from '../../profiles/scope-enforcer';
+import { Preset, ProfileInfo, ScopeConfig } from '../../profiles/types';
+import { sendToolsListChangedNotification } from '../../server';
+import { detectNamespaceType } from '../../utils/namespace';
 import {
   PresetInfo,
   ResetResult,
@@ -26,13 +26,13 @@ import {
   SessionContext,
   SetScopeResult,
   SwitchResult,
-} from "./types";
+} from './types';
 
 /**
  * Check if OAuth mode is enabled
  */
 function isOAuthMode(): boolean {
-  return process.env.OAUTH_ENABLED === "true";
+  return process.env.OAUTH_ENABLED === 'true';
 }
 
 /**
@@ -100,7 +100,7 @@ export class ContextManager {
         : undefined,
     };
 
-    logDebug("Captured initial context", { initialContext: this.initialContext });
+    logDebug('Captured initial context', { initialContext: this.initialContext });
   }
 
   /**
@@ -110,7 +110,7 @@ export class ContextManager {
     // Determine the primary scope type and path
     if (scope.project) {
       return {
-        type: "project",
+        type: 'project',
         path: scope.project,
         includeSubgroups: false,
         detected,
@@ -119,7 +119,7 @@ export class ContextManager {
 
     if (scope.group) {
       return {
-        type: "group",
+        type: 'group',
         path: scope.group,
         includeSubgroups: scope.includeSubgroups !== false,
         detected,
@@ -129,7 +129,7 @@ export class ContextManager {
     if (scope.namespace) {
       // Namespace is treated as group by default
       return {
-        type: "group",
+        type: 'group',
         path: scope.namespace,
         includeSubgroups: scope.includeSubgroups !== false,
         detected,
@@ -139,7 +139,7 @@ export class ContextManager {
     // Multiple projects - first one as primary, rest as additional
     if (scope.projects && scope.projects.length > 0) {
       return {
-        type: "project",
+        type: 'project',
         path: scope.projects[0],
         additionalPaths: scope.projects.length > 1 ? scope.projects.slice(1) : undefined,
         includeSubgroups: false,
@@ -150,7 +150,7 @@ export class ContextManager {
     // Multiple groups - first one as primary, rest as additional
     if (scope.groups && scope.groups.length > 0) {
       return {
-        type: "group",
+        type: 'group',
         path: scope.groups[0],
         additionalPaths: scope.groups.length > 1 ? scope.groups.slice(1) : undefined,
         includeSubgroups: scope.includeSubgroups !== false,
@@ -159,9 +159,9 @@ export class ContextManager {
     }
 
     // Invalid scope - should not happen with valid ScopeConfig (validated by Zod)
-    logError("Invalid scope configuration: no usable scope fields found", { scope });
+    logError('Invalid scope configuration: no usable scope fields found', { scope });
     throw new Error(
-      "Invalid scope configuration: expected project, group, namespace, projects, or groups to be defined"
+      'Invalid scope configuration: expected project, group, namespace, projects, or groups to be defined',
     );
   }
 
@@ -193,8 +193,8 @@ export class ContextManager {
 
     // Filter to only presets (built-in profiles without host/auth)
     const presets: PresetInfo[] = profiles
-      .filter(p => p.isPreset)
-      .map(p => ({
+      .filter((p) => p.isPreset)
+      .map((p) => ({
         name: p.name,
         description: p.description,
         readOnly: p.readOnly,
@@ -203,7 +203,7 @@ export class ContextManager {
 
     // Add current preset if not in list
     if (this.currentPresetName && this.currentPreset) {
-      const exists = presets.some(p => p.name === this.currentPresetName);
+      const exists = presets.some((p) => p.name === this.currentPresetName);
       if (!exists) {
         presets.unshift({
           name: this.currentPresetName,
@@ -222,13 +222,13 @@ export class ContextManager {
    */
   async listProfiles(): Promise<ProfileInfo[]> {
     if (!isOAuthMode()) {
-      throw new Error("list_profiles is only available in OAuth mode");
+      throw new Error('list_profiles is only available in OAuth mode');
     }
 
     const profiles = await this.profileLoader.listProfiles();
 
     // Filter to only full profiles (with host/auth)
-    return profiles.filter(p => !p.isPreset);
+    return profiles.filter((p) => !p.isPreset);
   }
 
   /**
@@ -256,7 +256,7 @@ export class ContextManager {
         this.currentScopeEnforcer = null;
       }
 
-      logInfo("Switched preset", { previous: previousPreset, current: presetName });
+      logInfo('Switched preset', { previous: previousPreset, current: presetName });
 
       // Notify clients that tool list may have changed
       // (e.g., read-only presets disable write tools)
@@ -270,7 +270,7 @@ export class ContextManager {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logError("Failed to switch preset", { error: message, preset: presetName });
+      logError('Failed to switch preset', { error: message, preset: presetName });
       throw new Error(`Failed to switch to preset '${presetName}': ${message}`, { cause: error });
     }
   }
@@ -280,7 +280,7 @@ export class ContextManager {
    */
   async switchProfile(profileName: string): Promise<SwitchResult> {
     if (!isOAuthMode()) {
-      throw new Error("switch_profile is only available in OAuth mode");
+      throw new Error('switch_profile is only available in OAuth mode');
     }
 
     const previousProfile = this.currentProfileName;
@@ -291,7 +291,7 @@ export class ContextManager {
 
       this.currentProfileName = profileName;
 
-      logInfo("Switched profile", { previous: previousProfile, current: profileName });
+      logInfo('Switched profile', { previous: previousProfile, current: profileName });
 
       return {
         success: true,
@@ -301,7 +301,7 @@ export class ContextManager {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logError("Failed to switch profile", { error: message, profile: profileName });
+      logError('Failed to switch profile', { error: message, profile: profileName });
       throw new Error(`Failed to switch to profile '${profileName}': ${message}`, { cause: error });
     }
   }
@@ -316,7 +316,7 @@ export class ContextManager {
 
       // Build scope config based on detected type
       let scopeConfig: ScopeConfig;
-      if (namespaceType === "project") {
+      if (namespaceType === 'project') {
         scopeConfig = {
           project: namespace,
           includeSubgroups: false,
@@ -335,11 +335,11 @@ export class ContextManager {
       const runtimeScope: RuntimeScope = {
         type: namespaceType,
         path: namespace,
-        includeSubgroups: namespaceType === "group" ? includeSubgroups : false,
+        includeSubgroups: namespaceType === 'group' ? includeSubgroups : false,
         detected: true,
       };
 
-      logInfo("Scope set with auto-detection", {
+      logInfo('Scope set with auto-detection', {
         namespace,
         type: namespaceType,
         includeSubgroups,
@@ -349,12 +349,12 @@ export class ContextManager {
         success: true,
         scope: runtimeScope,
         message: `Scope set to ${namespaceType} '${namespace}'${
-          namespaceType === "group" && includeSubgroups ? " (including subgroups)" : ""
+          namespaceType === 'group' && includeSubgroups ? ' (including subgroups)' : ''
         }`,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logError("Failed to set scope", { error: message, namespace });
+      logError('Failed to set scope', { error: message, namespace });
       throw new Error(`Failed to set scope for '${namespace}': ${message}`, { cause: error });
     }
   }
@@ -364,7 +364,7 @@ export class ContextManager {
    */
   reset(): ResetResult {
     if (!this.initialContext) {
-      throw new Error("No initial context captured - cannot reset");
+      throw new Error('No initial context captured - cannot reset');
     }
 
     // Clear runtime state
@@ -377,11 +377,11 @@ export class ContextManager {
     // Recapture initial context
     this.captureInitialContext();
 
-    logInfo("Context reset to initial state");
+    logInfo('Context reset to initial state');
 
     return {
       success: true,
-      message: "Context reset to initial state",
+      message: 'Context reset to initial state',
       context: this.getContext(),
     };
   }
@@ -430,15 +430,15 @@ export class ContextManager {
     // Block instance switching in OAuth mode
     if (isOAuthMode()) {
       throw new Error(
-        "Cannot switch instances in OAuth mode. " +
-          "Please re-authenticate with the desired GitLab instance."
+        'Cannot switch instances in OAuth mode. ' +
+          'Please re-authenticate with the desired GitLab instance.',
       );
     }
 
     // Import dynamically to avoid circular dependencies
-    const { InstanceRegistry } = await import("../../services/InstanceRegistry.js");
-    const { clearNamespaceTierCache } = await import("../../services/NamespaceTierDetector.js");
-    const { ConnectionManager } = await import("../../services/ConnectionManager.js");
+    const { InstanceRegistry } = await import('../../services/InstanceRegistry.js');
+    const { clearNamespaceTierCache } = await import('../../services/NamespaceTierDetector.js');
+    const { ConnectionManager } = await import('../../services/ConnectionManager.js');
 
     const registry = InstanceRegistry.getInstance();
 
@@ -452,7 +452,7 @@ export class ContextManager {
     if (!instance) {
       throw new Error(
         `Instance not configured: ${instanceUrl}. ` +
-          "Use 'instances list' to see configured instances."
+          "Use 'instances list' to see configured instances.",
       );
     }
 
@@ -474,7 +474,7 @@ export class ContextManager {
       this.currentScope = null;
       this.currentScopeEnforcer = null;
 
-      logInfo("Switched GitLab instance", {
+      logInfo('Switched GitLab instance', {
         previous: previousUrl,
         current: instanceUrl,
         label: instance.config.label,
@@ -491,7 +491,7 @@ export class ContextManager {
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logError("Failed to switch instance", { error: message, instanceUrl });
+      logError('Failed to switch instance', { error: message, instanceUrl });
       throw new Error(`Failed to switch to instance '${instanceUrl}': ${message}`, {
         cause: error,
       });

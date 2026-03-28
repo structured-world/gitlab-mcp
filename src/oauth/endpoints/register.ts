@@ -5,9 +5,9 @@
  * Allows MCP clients to dynamically register themselves.
  */
 
-import { Request, Response } from "express";
-import { randomUUID } from "crypto";
-import { logInfo, logError } from "../../logger";
+import { Request, Response } from 'express';
+import { randomUUID } from 'crypto';
+import { logInfo, logError } from '../../logger';
 
 /** Client registration request body */
 interface ClientRegistrationRequest {
@@ -47,16 +47,16 @@ export async function registerHandler(req: Request, res: Response): Promise<void
     const {
       redirect_uris,
       client_name,
-      token_endpoint_auth_method = "none",
-      grant_types = ["authorization_code", "refresh_token"],
-      response_types = ["code"],
+      token_endpoint_auth_method = 'none',
+      grant_types = ['authorization_code', 'refresh_token'],
+      response_types = ['code'],
     } = body;
 
     // Validate required fields
     if (!redirect_uris || !Array.isArray(redirect_uris) || redirect_uris.length === 0) {
       res.status(400).json({
-        error: "invalid_client_metadata",
-        error_description: "redirect_uris is required and must be a non-empty array",
+        error: 'invalid_client_metadata',
+        error_description: 'redirect_uris is required and must be a non-empty array',
       });
       return;
     }
@@ -67,7 +67,7 @@ export async function registerHandler(req: Request, res: Response): Promise<void
         new URL(uri);
       } catch {
         res.status(400).json({
-          error: "invalid_redirect_uri",
+          error: 'invalid_redirect_uri',
           error_description: `Invalid redirect URI: ${uri}`,
         });
         return;
@@ -80,7 +80,7 @@ export async function registerHandler(req: Request, res: Response): Promise<void
     // For public clients (token_endpoint_auth_method: "none"), no secret is issued
     // For confidential clients, generate a secret
     let client_secret: string | undefined;
-    if (token_endpoint_auth_method !== "none") {
+    if (token_endpoint_auth_method !== 'none') {
       client_secret = randomUUID() + randomUUID(); // Long random secret
     }
 
@@ -98,7 +98,7 @@ export async function registerHandler(req: Request, res: Response): Promise<void
 
     registeredClients.set(client_id, clientData);
 
-    logInfo("New OAuth client registered via DCR", {
+    logInfo('New OAuth client registered via DCR', {
       client_id,
       client_name,
       redirect_uris,
@@ -122,10 +122,10 @@ export async function registerHandler(req: Request, res: Response): Promise<void
 
     res.status(201).json(response);
   } catch (error: unknown) {
-    logError("Error in dynamic client registration", { err: error as Error });
+    logError('Error in dynamic client registration', { err: error as Error });
     res.status(500).json({
-      error: "server_error",
-      error_description: "Failed to register client",
+      error: 'server_error',
+      error_description: 'Failed to register client',
     });
   }
 }

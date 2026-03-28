@@ -1,8 +1,8 @@
-import { WorkItemWidgetType, WorkItemWidgetTypes } from "../graphql/workItems";
-import { ConnectionManager } from "./ConnectionManager";
-import { GitLabTier } from "./GitLabVersionDetector";
-import { parseVersion } from "../utils/version";
-import { logDebug } from "../logger";
+import { WorkItemWidgetType, WorkItemWidgetTypes } from '../graphql/workItems';
+import { ConnectionManager } from './ConnectionManager';
+import { GitLabTier } from './GitLabVersionDetector';
+import { parseVersion } from '../utils/version';
+import { logDebug } from '../logger';
 
 interface WidgetRequirement {
   tier: GitLabTier;
@@ -67,44 +67,44 @@ const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
 export class WidgetAvailability {
   private static widgetRequirements: Record<WorkItemWidgetType, WidgetRequirement> = {
     // Free tier widgets (available to all)
-    [WorkItemWidgetTypes.ASSIGNEES]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.DESCRIPTION]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.HIERARCHY]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.LABELS]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.MILESTONE]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.NOTES]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.START_AND_DUE_DATE]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.STATUS]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.NOTIFICATIONS]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.CURRENT_USER_TODOS]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.AWARD_EMOJI]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.PARTICIPANTS]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.DESIGNS]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.DEVELOPMENT]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.TIME_TRACKING]: { tier: "free", minVersion: "15.0" },
-    [WorkItemWidgetTypes.ERROR_TRACKING]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.ASSIGNEES]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.DESCRIPTION]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.HIERARCHY]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.LABELS]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.MILESTONE]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.NOTES]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.START_AND_DUE_DATE]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.STATUS]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.NOTIFICATIONS]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.CURRENT_USER_TODOS]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.AWARD_EMOJI]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.PARTICIPANTS]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.DESIGNS]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.DEVELOPMENT]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.TIME_TRACKING]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.ERROR_TRACKING]: { tier: 'free', minVersion: '15.0' },
 
     // Free tier widgets (linked items available on CE)
-    [WorkItemWidgetTypes.LINKED_ITEMS]: { tier: "free", minVersion: "15.0" },
+    [WorkItemWidgetTypes.LINKED_ITEMS]: { tier: 'free', minVersion: '15.0' },
 
     // Premium tier widgets
-    [WorkItemWidgetTypes.WEIGHT]: { tier: "premium", minVersion: "15.0" },
-    [WorkItemWidgetTypes.ITERATION]: { tier: "premium", minVersion: "15.0" },
-    [WorkItemWidgetTypes.PROGRESS]: { tier: "premium", minVersion: "15.0" },
-    [WorkItemWidgetTypes.CRM_CONTACTS]: { tier: "premium", minVersion: "16.0" },
-    [WorkItemWidgetTypes.EMAIL_PARTICIPANTS]: { tier: "premium", minVersion: "16.0" },
-    [WorkItemWidgetTypes.LINKED_RESOURCES]: { tier: "premium", minVersion: "16.5" },
+    [WorkItemWidgetTypes.WEIGHT]: { tier: 'premium', minVersion: '15.0' },
+    [WorkItemWidgetTypes.ITERATION]: { tier: 'premium', minVersion: '15.0' },
+    [WorkItemWidgetTypes.PROGRESS]: { tier: 'premium', minVersion: '15.0' },
+    [WorkItemWidgetTypes.CRM_CONTACTS]: { tier: 'premium', minVersion: '16.0' },
+    [WorkItemWidgetTypes.EMAIL_PARTICIPANTS]: { tier: 'premium', minVersion: '16.0' },
+    [WorkItemWidgetTypes.LINKED_RESOURCES]: { tier: 'premium', minVersion: '16.5' },
 
     // Ultimate tier widgets
-    [WorkItemWidgetTypes.HEALTH_STATUS]: { tier: "ultimate", minVersion: "15.0" },
-    [WorkItemWidgetTypes.COLOR]: { tier: "ultimate", minVersion: "15.0" },
-    [WorkItemWidgetTypes.CUSTOM_FIELDS]: { tier: "ultimate", minVersion: "17.0" },
-    [WorkItemWidgetTypes.VULNERABILITIES]: { tier: "ultimate", minVersion: "15.0" },
+    [WorkItemWidgetTypes.HEALTH_STATUS]: { tier: 'ultimate', minVersion: '15.0' },
+    [WorkItemWidgetTypes.COLOR]: { tier: 'ultimate', minVersion: '15.0' },
+    [WorkItemWidgetTypes.CUSTOM_FIELDS]: { tier: 'ultimate', minVersion: '17.0' },
+    [WorkItemWidgetTypes.VULNERABILITIES]: { tier: 'ultimate', minVersion: '15.0' },
 
     // Legacy widgets (may not be available)
-    [WorkItemWidgetTypes.REQUIREMENT_LEGACY]: { tier: "ultimate", minVersion: "13.1" },
-    [WorkItemWidgetTypes.TEST_REPORTS]: { tier: "ultimate", minVersion: "13.6" },
-    [WorkItemWidgetTypes.VERIFICATION_STATUS]: { tier: "ultimate", minVersion: "13.1" },
+    [WorkItemWidgetTypes.REQUIREMENT_LEGACY]: { tier: 'ultimate', minVersion: '13.1' },
+    [WorkItemWidgetTypes.TEST_REPORTS]: { tier: 'ultimate', minVersion: '13.6' },
+    [WorkItemWidgetTypes.VERIFICATION_STATUS]: { tier: 'ultimate', minVersion: '13.1' },
   };
 
   public static isWidgetAvailable(widget: WorkItemWidgetType): boolean {
@@ -127,7 +127,7 @@ export class WidgetAvailability {
       }
 
       // Check tier requirement
-      if (requirement.tier === "free") {
+      if (requirement.tier === 'free') {
         return true; // Available to all tiers
       }
 
@@ -144,7 +144,7 @@ export class WidgetAvailability {
   public static getAvailableWidgets(): WorkItemWidgetType[] {
     return Object.values(WorkItemWidgetTypes).filter(
       (widget): widget is WorkItemWidgetType =>
-        typeof widget === "string" && this.isWidgetAvailable(widget as WorkItemWidgetType)
+        typeof widget === 'string' && this.isWidgetAvailable(widget as WorkItemWidgetType),
     );
   }
 
@@ -160,7 +160,7 @@ export class WidgetAvailability {
    * @returns WidgetValidationFailure for the first unavailable parameter, or null if all valid
    */
   public static validateWidgetParams(
-    params: Record<string, unknown>
+    params: Record<string, unknown>,
   ): WidgetValidationFailure | null {
     const connectionManager = ConnectionManager.getInstance();
 
@@ -178,7 +178,7 @@ export class WidgetAvailability {
 
     const parsedVersion = parseVersion(instanceVersion);
     if (parsedVersion === 0) {
-      logDebug("Widget param validation skipped: version could not be parsed", { instanceVersion });
+      logDebug('Widget param validation skipped: version could not be parsed', { instanceVersion });
       return null;
     }
 
@@ -206,7 +206,7 @@ export class WidgetAvailability {
       }
 
       // Check tier requirement
-      if (requirement.tier !== "free") {
+      if (requirement.tier !== 'free') {
         const requiredTierLevel = TIER_HIERARCHY[requirement.tier];
         const actualTierLevel = TIER_HIERARCHY[instanceTier];
 

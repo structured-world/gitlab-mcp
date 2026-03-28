@@ -3,11 +3,11 @@
  * Tests CLI argument parsing and project config display
  */
 
-import { parseCliArgs, displayProjectConfig } from "../../src/cli-utils";
-import { ProjectConfig } from "../../src/profiles";
+import { parseCliArgs, displayProjectConfig } from '../../src/cli-utils';
+import { ProjectConfig } from '../../src/profiles';
 
 // Mock logger
-jest.mock("../../src/logger", () => ({
+jest.mock('../../src/logger', () => ({
   logger: {
     error: jest.fn(),
     warn: jest.fn(),
@@ -21,28 +21,28 @@ jest.mock("../../src/logger", () => ({
 }));
 
 // Mock profiles module for getProjectConfigSummary
-jest.mock("../../src/profiles", () => ({
+jest.mock('../../src/profiles', () => ({
   getProjectConfigSummary: jest.fn((config: ProjectConfig) => ({
-    presetSummary: config.preset?.description || (config.preset ? "custom restrictions" : null),
-    profileSummary: config.profile?.description || (config.profile ? "custom profile" : null),
+    presetSummary: config.preset?.description || (config.preset ? 'custom restrictions' : null),
+    profileSummary: config.profile?.description || (config.profile ? 'custom profile' : null),
   })),
   // Re-export types for type checking
   ProjectConfig: {},
 }));
 
-import { logWarn, logError } from "../../src/logger";
+import { logWarn, logError } from '../../src/logger';
 
 const mockLogWarn = logWarn as jest.MockedFunction<typeof logWarn>;
 const mockLogError = logError as jest.MockedFunction<typeof logError>;
 
-describe("cli-utils", () => {
+describe('cli-utils', () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  describe("parseCliArgs", () => {
-    it("should return default values when no args provided", () => {
-      const result = parseCliArgs(["node", "main.js"]);
+  describe('parseCliArgs', () => {
+    it('should return default values when no args provided', () => {
+      const result = parseCliArgs(['node', 'main.js']);
 
       expect(result).toEqual({
         profileName: undefined,
@@ -62,62 +62,62 @@ describe("cli-utils", () => {
       });
     });
 
-    it("should parse --profile flag", () => {
-      const result = parseCliArgs(["node", "main.js", "--profile", "work"]);
+    it('should parse --profile flag', () => {
+      const result = parseCliArgs(['node', 'main.js', '--profile', 'work']);
 
-      expect(result.profileName).toBe("work");
+      expect(result.profileName).toBe('work');
     });
 
-    it("should parse --no-project-config flag", () => {
-      const result = parseCliArgs(["node", "main.js", "--no-project-config"]);
+    it('should parse --no-project-config flag', () => {
+      const result = parseCliArgs(['node', 'main.js', '--no-project-config']);
 
       expect(result.noProjectConfig).toBe(true);
     });
 
-    it("should parse --show-project-config flag", () => {
-      const result = parseCliArgs(["node", "main.js", "--show-project-config"]);
+    it('should parse --show-project-config flag', () => {
+      const result = parseCliArgs(['node', 'main.js', '--show-project-config']);
 
       expect(result.showProjectConfig).toBe(true);
     });
 
-    it("should parse multiple flags together", () => {
+    it('should parse multiple flags together', () => {
       const result = parseCliArgs([
-        "node",
-        "main.js",
-        "--profile",
-        "production",
-        "--no-project-config",
+        'node',
+        'main.js',
+        '--profile',
+        'production',
+        '--no-project-config',
       ]);
 
-      expect(result.profileName).toBe("production");
+      expect(result.profileName).toBe('production');
       expect(result.noProjectConfig).toBe(true);
     });
 
-    it("should throw error when --profile has no value", () => {
-      expect(() => parseCliArgs(["node", "main.js", "--profile"])).toThrow(
-        "--profile requires a profile name"
+    it('should throw error when --profile has no value', () => {
+      expect(() => parseCliArgs(['node', 'main.js', '--profile'])).toThrow(
+        '--profile requires a profile name',
       );
       expect(mockLogError).toHaveBeenCalled();
     });
 
-    it("should throw error when --profile is followed by another flag", () => {
-      expect(() => parseCliArgs(["node", "main.js", "--profile", "--no-project-config"])).toThrow(
-        "--profile requires a profile name"
+    it('should throw error when --profile is followed by another flag', () => {
+      expect(() => parseCliArgs(['node', 'main.js', '--profile', '--no-project-config'])).toThrow(
+        '--profile requires a profile name',
       );
     });
 
-    it("should use first value when multiple --profile flags provided", () => {
-      const result = parseCliArgs(["node", "main.js", "--profile", "first", "--profile", "second"]);
+    it('should use first value when multiple --profile flags provided', () => {
+      const result = parseCliArgs(['node', 'main.js', '--profile', 'first', '--profile', 'second']);
 
-      expect(result.profileName).toBe("first");
+      expect(result.profileName).toBe('first');
       expect(mockLogWarn).toHaveBeenCalledWith(
-        "Multiple --profile flags detected, using first value",
-        { count: 2 }
+        'Multiple --profile flags detected, using first value',
+        { count: 2 },
       );
     });
 
-    it("should ignore unknown flags", () => {
-      const result = parseCliArgs(["node", "main.js", "--unknown-flag", "value"]);
+    it('should ignore unknown flags', () => {
+      const result = parseCliArgs(['node', 'main.js', '--unknown-flag', 'value']);
 
       expect(result).toEqual({
         profileName: undefined,
@@ -138,215 +138,215 @@ describe("cli-utils", () => {
     });
 
     // Auto-discovery flags tests
-    it("should parse --auto flag", () => {
-      const result = parseCliArgs(["node", "main.js", "--auto"]);
+    it('should parse --auto flag', () => {
+      const result = parseCliArgs(['node', 'main.js', '--auto']);
 
       expect(result.auto).toBe(true);
     });
 
-    it("should parse --cwd flag", () => {
-      const result = parseCliArgs(["node", "main.js", "--cwd", "/path/to/repo"]);
+    it('should parse --cwd flag', () => {
+      const result = parseCliArgs(['node', 'main.js', '--cwd', '/path/to/repo']);
 
-      expect(result.cwd).toBe("/path/to/repo");
+      expect(result.cwd).toBe('/path/to/repo');
     });
 
-    it("should throw error when --cwd has no value", () => {
-      expect(() => parseCliArgs(["node", "main.js", "--cwd"])).toThrow(
-        "--cwd requires a directory path"
+    it('should throw error when --cwd has no value', () => {
+      expect(() => parseCliArgs(['node', 'main.js', '--cwd'])).toThrow(
+        '--cwd requires a directory path',
       );
       expect(mockLogError).toHaveBeenCalled();
     });
 
-    it("should throw error when --cwd is followed by another flag", () => {
-      expect(() => parseCliArgs(["node", "main.js", "--cwd", "--auto"])).toThrow(
-        "--cwd requires a directory path"
+    it('should throw error when --cwd is followed by another flag', () => {
+      expect(() => parseCliArgs(['node', 'main.js', '--cwd', '--auto'])).toThrow(
+        '--cwd requires a directory path',
       );
     });
 
-    it("should parse --dry-run flag", () => {
-      const result = parseCliArgs(["node", "main.js", "--dry-run"]);
+    it('should parse --dry-run flag', () => {
+      const result = parseCliArgs(['node', 'main.js', '--dry-run']);
 
       expect(result.dryRun).toBe(true);
     });
 
-    it("should parse --remote flag", () => {
-      const result = parseCliArgs(["node", "main.js", "--remote", "upstream"]);
+    it('should parse --remote flag', () => {
+      const result = parseCliArgs(['node', 'main.js', '--remote', 'upstream']);
 
-      expect(result.remoteName).toBe("upstream");
+      expect(result.remoteName).toBe('upstream');
     });
 
-    it("should throw error when --remote has no value", () => {
-      expect(() => parseCliArgs(["node", "main.js", "--remote"])).toThrow(
-        "--remote requires a remote name"
+    it('should throw error when --remote has no value', () => {
+      expect(() => parseCliArgs(['node', 'main.js', '--remote'])).toThrow(
+        '--remote requires a remote name',
       );
       expect(mockLogError).toHaveBeenCalled();
     });
 
-    it("should throw error when --remote is followed by another flag", () => {
-      expect(() => parseCliArgs(["node", "main.js", "--remote", "--auto"])).toThrow(
-        "--remote requires a remote name"
+    it('should throw error when --remote is followed by another flag', () => {
+      expect(() => parseCliArgs(['node', 'main.js', '--remote', '--auto'])).toThrow(
+        '--remote requires a remote name',
       );
     });
 
-    it("should parse all auto-discovery flags together", () => {
+    it('should parse all auto-discovery flags together', () => {
       const result = parseCliArgs([
-        "node",
-        "main.js",
-        "--auto",
-        "--cwd",
-        "/my/repo",
-        "--dry-run",
-        "--remote",
-        "upstream",
+        'node',
+        'main.js',
+        '--auto',
+        '--cwd',
+        '/my/repo',
+        '--dry-run',
+        '--remote',
+        'upstream',
       ]);
 
       expect(result.auto).toBe(true);
-      expect(result.cwd).toBe("/my/repo");
+      expect(result.cwd).toBe('/my/repo');
       expect(result.dryRun).toBe(true);
-      expect(result.remoteName).toBe("upstream");
+      expect(result.remoteName).toBe('upstream');
     });
 
-    it("should parse auto-discovery flags with existing flags", () => {
+    it('should parse auto-discovery flags with existing flags', () => {
       const result = parseCliArgs([
-        "node",
-        "main.js",
-        "--auto",
-        "--profile",
-        "work",
-        "--no-project-config",
+        'node',
+        'main.js',
+        '--auto',
+        '--profile',
+        'work',
+        '--no-project-config',
       ]);
 
       expect(result.auto).toBe(true);
-      expect(result.profileName).toBe("work");
+      expect(result.profileName).toBe('work');
       expect(result.noProjectConfig).toBe(true);
     });
 
     // Init subcommand tests
-    it("should parse init subcommand", () => {
-      const result = parseCliArgs(["node", "main.js", "init"]);
+    it('should parse init subcommand', () => {
+      const result = parseCliArgs(['node', 'main.js', 'init']);
 
       expect(result.init).toBe(true);
       // When init is detected, other args should be ignored
       expect(result.auto).toBe(false);
     });
 
-    it("should not set init for other subcommands", () => {
-      const result = parseCliArgs(["node", "main.js", "stdio"]);
+    it('should not set init for other subcommands', () => {
+      const result = parseCliArgs(['node', 'main.js', 'stdio']);
 
       expect(result.init).toBe(false);
     });
 
     // Install subcommand tests
-    it("should parse install subcommand", () => {
-      const result = parseCliArgs(["node", "main.js", "install"]);
+    it('should parse install subcommand', () => {
+      const result = parseCliArgs(['node', 'main.js', 'install']);
 
       expect(result.install).toBe(true);
       expect(result.installArgs).toEqual([]);
     });
 
-    it("should parse install subcommand with flags", () => {
-      const result = parseCliArgs(["node", "main.js", "install", "--claude-desktop", "--force"]);
+    it('should parse install subcommand with flags', () => {
+      const result = parseCliArgs(['node', 'main.js', 'install', '--claude-desktop', '--force']);
 
       expect(result.install).toBe(true);
-      expect(result.installArgs).toEqual(["--claude-desktop", "--force"]);
+      expect(result.installArgs).toEqual(['--claude-desktop', '--force']);
     });
 
-    it("should parse install subcommand with --all flag", () => {
-      const result = parseCliArgs(["node", "main.js", "install", "--all"]);
+    it('should parse install subcommand with --all flag', () => {
+      const result = parseCliArgs(['node', 'main.js', 'install', '--all']);
 
       expect(result.install).toBe(true);
-      expect(result.installArgs).toContain("--all");
+      expect(result.installArgs).toContain('--all');
     });
 
-    it("should parse install subcommand with --show flag", () => {
-      const result = parseCliArgs(["node", "main.js", "install", "--show"]);
+    it('should parse install subcommand with --show flag', () => {
+      const result = parseCliArgs(['node', 'main.js', 'install', '--show']);
 
       expect(result.install).toBe(true);
-      expect(result.installArgs).toContain("--show");
+      expect(result.installArgs).toContain('--show');
     });
 
     // Docker subcommand tests
-    it("should parse docker subcommand", () => {
-      const result = parseCliArgs(["node", "main.js", "docker"]);
+    it('should parse docker subcommand', () => {
+      const result = parseCliArgs(['node', 'main.js', 'docker']);
 
       expect(result.docker).toBe(true);
       expect(result.dockerArgs).toEqual([]);
     });
 
-    it("should parse docker subcommand with status", () => {
-      const result = parseCliArgs(["node", "main.js", "docker", "status"]);
+    it('should parse docker subcommand with status', () => {
+      const result = parseCliArgs(['node', 'main.js', 'docker', 'status']);
 
       expect(result.docker).toBe(true);
-      expect(result.dockerArgs).toEqual(["status"]);
+      expect(result.dockerArgs).toEqual(['status']);
     });
 
-    it("should parse docker subcommand with logs -f", () => {
-      const result = parseCliArgs(["node", "main.js", "docker", "logs", "-f"]);
+    it('should parse docker subcommand with logs -f', () => {
+      const result = parseCliArgs(['node', 'main.js', 'docker', 'logs', '-f']);
 
       expect(result.docker).toBe(true);
-      expect(result.dockerArgs).toEqual(["logs", "-f"]);
+      expect(result.dockerArgs).toEqual(['logs', '-f']);
     });
 
-    it("should parse docker subcommand with add-instance", () => {
+    it('should parse docker subcommand with add-instance', () => {
       const result = parseCliArgs([
-        "node",
-        "main.js",
-        "docker",
-        "add-instance",
-        "gitlab.example.com",
+        'node',
+        'main.js',
+        'docker',
+        'add-instance',
+        'gitlab.example.com',
       ]);
 
       expect(result.docker).toBe(true);
-      expect(result.dockerArgs).toEqual(["add-instance", "gitlab.example.com"]);
+      expect(result.dockerArgs).toEqual(['add-instance', 'gitlab.example.com']);
     });
 
     // Setup subcommand tests
-    it("should parse setup subcommand without mode", () => {
-      const result = parseCliArgs(["node", "main.js", "setup"]);
+    it('should parse setup subcommand without mode', () => {
+      const result = parseCliArgs(['node', 'main.js', 'setup']);
 
       expect(result.setup).toBe(true);
       expect(result.setupMode).toBeUndefined();
     });
 
-    it("should parse setup subcommand with --mode=local", () => {
-      const result = parseCliArgs(["node", "main.js", "setup", "--mode=local"]);
+    it('should parse setup subcommand with --mode=local', () => {
+      const result = parseCliArgs(['node', 'main.js', 'setup', '--mode=local']);
 
       expect(result.setup).toBe(true);
-      expect(result.setupMode).toBe("local");
+      expect(result.setupMode).toBe('local');
     });
 
-    it("should parse setup subcommand with --mode=server", () => {
-      const result = parseCliArgs(["node", "main.js", "setup", "--mode=server"]);
+    it('should parse setup subcommand with --mode=server', () => {
+      const result = parseCliArgs(['node', 'main.js', 'setup', '--mode=server']);
 
       expect(result.setup).toBe(true);
-      expect(result.setupMode).toBe("server");
+      expect(result.setupMode).toBe('server');
     });
 
-    it("should parse setup subcommand with --mode=configure-existing", () => {
-      const result = parseCliArgs(["node", "main.js", "setup", "--mode=configure-existing"]);
+    it('should parse setup subcommand with --mode=configure-existing', () => {
+      const result = parseCliArgs(['node', 'main.js', 'setup', '--mode=configure-existing']);
 
       expect(result.setup).toBe(true);
-      expect(result.setupMode).toBe("configure-existing");
+      expect(result.setupMode).toBe('configure-existing');
     });
 
-    it("should ignore unknown setup flags", () => {
-      const result = parseCliArgs(["node", "main.js", "setup", "--unknown-flag"]);
+    it('should ignore unknown setup flags', () => {
+      const result = parseCliArgs(['node', 'main.js', 'setup', '--unknown-flag']);
 
       expect(result.setup).toBe(true);
       expect(result.setupMode).toBeUndefined();
     });
 
-    it("should not parse remaining flags after setup subcommand", () => {
-      const result = parseCliArgs(["node", "main.js", "setup", "--mode=local", "--auto"]);
+    it('should not parse remaining flags after setup subcommand', () => {
+      const result = parseCliArgs(['node', 'main.js', 'setup', '--mode=local', '--auto']);
 
       expect(result.setup).toBe(true);
-      expect(result.setupMode).toBe("local");
+      expect(result.setupMode).toBe('local');
       // --auto is not parsed when setup subcommand is active (early return)
       expect(result.auto).toBe(false);
     });
   });
 
-  describe("displayProjectConfig", () => {
+  describe('displayProjectConfig', () => {
     let outputLines: string[];
     let mockOutput: jest.Mock;
 
@@ -355,80 +355,80 @@ describe("cli-utils", () => {
       mockOutput = jest.fn((msg: string) => outputLines.push(msg));
     });
 
-    it("should display message when no config found", () => {
+    it('should display message when no config found', () => {
       displayProjectConfig(null, mockOutput);
 
-      expect(outputLines[0]).toContain("No project configuration found");
-      expect(outputLines.some(l => l.includes("preset.yaml"))).toBe(true);
-      expect(outputLines.some(l => l.includes("profile.yaml"))).toBe(true);
+      expect(outputLines[0]).toContain('No project configuration found');
+      expect(outputLines.some((l) => l.includes('preset.yaml'))).toBe(true);
+      expect(outputLines.some((l) => l.includes('profile.yaml'))).toBe(true);
     });
 
-    it("should display config path", () => {
+    it('should display config path', () => {
       const config: ProjectConfig = {
-        configPath: "/test/project/.gitlab-mcp",
+        configPath: '/test/project/.gitlab-mcp',
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("/test/project/.gitlab-mcp"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('/test/project/.gitlab-mcp'))).toBe(true);
     });
 
-    it("should display preset with description", () => {
+    it('should display preset with description', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         preset: {
-          description: "Backend API restrictions",
+          description: 'Backend API restrictions',
         },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("Backend API restrictions"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('Backend API restrictions'))).toBe(true);
     });
 
-    it("should display preset with project scope", () => {
+    it('should display preset with project scope', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         preset: {
-          scope: { project: "myteam/backend" },
+          scope: { project: 'myteam/backend' },
         },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes('project "myteam/backend"'))).toBe(true);
+      expect(outputLines.some((l) => l.includes('project "myteam/backend"'))).toBe(true);
     });
 
-    it("should display preset with namespace scope", () => {
+    it('should display preset with namespace scope', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         preset: {
-          scope: { namespace: "myteam" },
+          scope: { namespace: 'myteam' },
         },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes('namespace "myteam/*"'))).toBe(true);
+      expect(outputLines.some((l) => l.includes('namespace "myteam/*"'))).toBe(true);
     });
 
-    it("should display preset with projects list scope", () => {
+    it('should display preset with projects list scope', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         preset: {
-          scope: { projects: ["proj1", "proj2", "proj3"] },
+          scope: { projects: ['proj1', 'proj2', 'proj3'] },
         },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("3 projects"))).toBe(true);
-      expect(outputLines.some(l => l.includes("- proj1"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('3 projects'))).toBe(true);
+      expect(outputLines.some((l) => l.includes('- proj1'))).toBe(true);
     });
 
-    it("should display preset with read_only flag", () => {
+    it('should display preset with read_only flag', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         preset: {
           read_only: true,
         },
@@ -436,40 +436,40 @@ describe("cli-utils", () => {
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("Read-only: yes"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('Read-only: yes'))).toBe(true);
     });
 
-    it("should display preset with denied_actions", () => {
+    it('should display preset with denied_actions', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         preset: {
-          denied_actions: ["manage_files:delete", "manage_variable:delete"],
+          denied_actions: ['manage_files:delete', 'manage_variable:delete'],
         },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("manage_files:delete, manage_variable:delete"))).toBe(
-        true
-      );
+      expect(
+        outputLines.some((l) => l.includes('manage_files:delete, manage_variable:delete')),
+      ).toBe(true);
     });
 
-    it("should display preset with denied_tools", () => {
+    it('should display preset with denied_tools', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         preset: {
-          denied_tools: ["browse_wiki", "manage_webhook"],
+          denied_tools: ['browse_wiki', 'manage_webhook'],
         },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("browse_wiki, manage_webhook"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('browse_wiki, manage_webhook'))).toBe(true);
     });
 
-    it("should display preset with features", () => {
+    it('should display preset with features', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         preset: {
           features: {
             wiki: false,
@@ -480,65 +480,65 @@ describe("cli-utils", () => {
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("wiki=false"))).toBe(true);
-      expect(outputLines.some(l => l.includes("pipelines=true"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('wiki=false'))).toBe(true);
+      expect(outputLines.some((l) => l.includes('pipelines=true'))).toBe(true);
     });
 
-    it("should display profile with description", () => {
+    it('should display profile with description', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         profile: {
-          description: "MR focused workflow",
+          description: 'MR focused workflow',
         },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("MR focused workflow"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('MR focused workflow'))).toBe(true);
     });
 
-    it("should display profile with extends", () => {
+    it('should display profile with extends', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         profile: {
-          extends: "senior-dev",
+          extends: 'senior-dev',
         },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("Extends: senior-dev"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('Extends: senior-dev'))).toBe(true);
     });
 
-    it("should display profile with additional_tools", () => {
+    it('should display profile with additional_tools', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         profile: {
-          additional_tools: ["manage_pipeline", "browse_commits"],
+          additional_tools: ['manage_pipeline', 'browse_commits'],
         },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("manage_pipeline, browse_commits"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('manage_pipeline, browse_commits'))).toBe(true);
     });
 
-    it("should display profile with denied_tools", () => {
+    it('should display profile with denied_tools', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         profile: {
-          denied_tools: ["browse_wiki"],
+          denied_tools: ['browse_wiki'],
         },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("Denied tools: browse_wiki"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('Denied tools: browse_wiki'))).toBe(true);
     });
 
-    it("should display profile with features", () => {
+    it('should display profile with features', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         profile: {
           features: {
             webhooks: true,
@@ -548,40 +548,40 @@ describe("cli-utils", () => {
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("webhooks=true"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('webhooks=true'))).toBe(true);
     });
 
-    it("should display summary section", () => {
+    it('should display summary section', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
-        preset: { description: "Test preset" },
-        profile: { description: "Test profile" },
+        configPath: '/test',
+        preset: { description: 'Test preset' },
+        profile: { description: 'Test profile' },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("Summary:"))).toBe(true);
-      expect(outputLines.some(l => l.includes("Preset:"))).toBe(true);
-      expect(outputLines.some(l => l.includes("Profile:"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('Summary:'))).toBe(true);
+      expect(outputLines.some((l) => l.includes('Preset:'))).toBe(true);
+      expect(outputLines.some((l) => l.includes('Profile:'))).toBe(true);
     });
 
-    it("should display both preset and profile when both present", () => {
+    it('should display both preset and profile when both present', () => {
       const config: ProjectConfig = {
-        configPath: "/test",
+        configPath: '/test',
         preset: {
-          description: "Restrictions",
+          description: 'Restrictions',
           read_only: true,
         },
         profile: {
-          description: "Tools",
-          extends: "pm",
+          description: 'Tools',
+          extends: 'pm',
         },
       };
 
       displayProjectConfig(config, mockOutput);
 
-      expect(outputLines.some(l => l.includes("Preset (restrictions):"))).toBe(true);
-      expect(outputLines.some(l => l.includes("Profile (tool selection):"))).toBe(true);
+      expect(outputLines.some((l) => l.includes('Preset (restrictions):'))).toBe(true);
+      expect(outputLines.some((l) => l.includes('Profile (tool selection):'))).toBe(true);
     });
   });
 });

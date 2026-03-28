@@ -148,6 +148,7 @@ jest.mock("../../src/session-manager", () => ({
 
 import type { Server as _Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { startServer, sendToolsListChangedNotification } from "../../src/server";
+import { STDIO_SESSION_ID } from "../../src/session-manager";
 import { sessionStore as mockSessionStore } from "../../src/oauth/index";
 
 describe("server", () => {
@@ -564,7 +565,10 @@ describe("server", () => {
 
       expect(mockLogInfo).toHaveBeenCalledWith("Selected stdio mode (explicit argument)");
       // In stdio mode, session manager creates a session for the single transport
-      expect(mockSessionManager.createSession).toHaveBeenCalledWith("stdio", mockTransport);
+      expect(mockSessionManager.createSession).toHaveBeenCalledWith(
+        STDIO_SESSION_ID,
+        mockTransport
+      );
     });
 
     it("should select dual mode when PORT is set without stdio arg", async () => {
@@ -2354,7 +2358,10 @@ describe("server", () => {
       const { startServer: newStartServer } = await import("../../src/server");
       await newStartServer();
 
-      expect(mockSessionManager.createSession).toHaveBeenCalledWith("stdio", mockTransport);
+      expect(mockSessionManager.createSession).toHaveBeenCalledWith(
+        STDIO_SESSION_ID,
+        mockTransport
+      );
     });
 
     it("should not set up any HTTP endpoints in stdio mode", async () => {

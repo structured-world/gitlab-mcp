@@ -76,7 +76,7 @@ Closes #5
 ## Code Standards
 
 - **TypeScript strict mode** - No `any` types
-- **ESM imports** - Do NOT use `.js` extensions in import paths (TypeScript resolves `.ts` files directly)
+- **ESM imports** - Do NOT use `.js` extensions in import paths (some legacy files still have `.js` — new code must use extensionless imports)
 - **Zod schemas** - All external data validated
 - **CQRS pattern** - `browse_*` for queries, `manage_*` for commands
 - **Jest tests** - All features must have tests

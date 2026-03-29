@@ -42,6 +42,7 @@ const mockRegistryManager = {
   getAllToolDefinitions: jest.fn(),
   hasToolHandler: jest.fn(),
   executeTool: jest.fn(),
+  refreshCache: jest.fn(),
 };
 
 jest.mock('../../src/registry-manager', () => ({
@@ -54,6 +55,27 @@ jest.mock('../../src/registry-manager', () => ({
 jest.mock('../../src/config', () => ({
   LOG_FORMAT: 'condensed',
   HANDLER_TIMEOUT_MS: 100,
+  GITLAB_BASE_URL: 'https://gitlab.example.com',
+}));
+
+// Mock HealthMonitor
+const mockHealthMonitor = {
+  initialize: jest.fn().mockResolvedValue(undefined),
+  onStateChange: jest.fn(),
+  getState: jest.fn().mockReturnValue('healthy'),
+  isAnyInstanceHealthy: jest.fn().mockReturnValue(true),
+  isInstanceReachable: jest.fn().mockReturnValue(true),
+  reportSuccess: jest.fn(),
+  reportError: jest.fn(),
+  getMonitoredInstances: jest.fn().mockReturnValue(['https://gitlab.example.com']),
+  shutdown: jest.fn(),
+};
+
+jest.mock('../../src/services/HealthMonitor', () => ({
+  HealthMonitor: {
+    getInstance: jest.fn(() => mockHealthMonitor),
+    resetInstance: jest.fn(),
+  },
 }));
 
 // Mock OAuth module for authentication checks
@@ -100,11 +122,12 @@ describe('handlers', () => {
   });
 
   describe('setupHandlers', () => {
-    it('should initialize connection manager and set up request handlers', async () => {
+    it('should initialize health monitor and set up request handlers', async () => {
       await setupHandlers(mockServer);
 
-      // Should initialize connection manager
-      expect(mockConnectionManager.initialize).toHaveBeenCalledTimes(1);
+      // Should initialize health monitor (which internally calls connectionManager.initialize)
+      expect(mockHealthMonitor.initialize).toHaveBeenCalledTimes(1);
+      expect(mockHealthMonitor.onStateChange).toHaveBeenCalledTimes(1);
 
       // Should set up both handlers
       expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
@@ -284,7 +307,6 @@ describe('handlers', () => {
 
       expect(mockConnectionManager.getClient).toHaveBeenCalled();
       expect(mockConnectionManager.getInstanceInfo).toHaveBeenCalled();
-      expect(mockConnectionManager.initialize).toHaveBeenCalledTimes(1); // Only from setupHandlers
     });
 
     it('should initialize connection if not already initialized', async () => {
@@ -303,7 +325,8 @@ describe('handlers', () => {
 
       await callToolHandler(mockRequest);
 
-      expect(mockConnectionManager.initialize).toHaveBeenCalledTimes(2); // Once from setup, once from handler
+      // Connection manager initialize called from the fallback path in handler
+      expect(mockConnectionManager.initialize).toHaveBeenCalled();
     });
 
     it('should return error if connection initialization fails', async () => {

@@ -1,17 +1,19 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { ConnectionManager } from './services/ConnectionManager';
+import { HealthMonitor } from './services/HealthMonitor';
 import { logInfo, logWarn, logError, logDebug } from './logger';
 import {
   handleGitLabError,
   GitLabStructuredError,
   isStructuredToolError,
   createTimeoutError,
+  createConnectionFailedError,
   parseTimeoutError,
   parseGitLabApiError,
 } from './utils/error-handler';
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './logging/index';
-import { LOG_FORMAT, HANDLER_TIMEOUT_MS } from './config';
+import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL } from './config';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -125,16 +127,48 @@ export async function setupHandlers(server: Server): Promise<void> {
   const { isAuthenticationConfigured } = await import('./oauth/index');
 
   if (isAuthenticationConfigured()) {
-    // Initialize connection and detect GitLab instance on startup
-    const connectionManager = ConnectionManager.getInstance();
-    try {
-      await connectionManager.initialize();
-      logInfo('Connection initialized during server setup');
-    } catch (error) {
-      logWarn(
-        `Initial connection failed during setup, will retry on first tool call: ${error instanceof Error ? error.message : String(error)}`,
-      );
-      // Continue without initialization - tools will handle gracefully on first call
+    // Initialize connection via HealthMonitor — bounded startup time.
+    // HealthMonitor wraps connectionManager.initialize() with INIT_TIMEOUT_MS.
+    // On timeout: server starts in DISCONNECTED state, reconnects in background.
+    // On success: server starts in HEALTHY or DEGRADED state.
+    const healthMonitor = HealthMonitor.getInstance();
+
+    // Register state change callback to broadcast tools/list_changed
+    healthMonitor.onStateChange((_instanceUrl, from, to) => {
+      // Only broadcast when transitioning to/from disconnected (tool list changes)
+      const wasDisconnected = from === 'disconnected' || from === 'connecting';
+      const isDisconnected = to === 'disconnected';
+
+      if (wasDisconnected !== isDisconnected) {
+        // Fire-and-forget: async broadcast doesn't block state transition
+        void (async () => {
+          try {
+            // Refresh registry cache to apply/remove connection health filter
+            const { RegistryManager } = await import('./registry-manager');
+            RegistryManager.getInstance().refreshCache();
+
+            // Notify all connected MCP clients that tool list has changed
+            const { getSessionManager } = await import('./session-manager');
+            await getSessionManager().broadcastToolsListChanged();
+
+            logInfo('Tool list updated after connection state change', { from, to });
+          } catch (error) {
+            logWarn('Failed to broadcast tools/list_changed after state change', {
+              err: error as Error,
+            });
+          }
+        })();
+      }
+    });
+
+    await healthMonitor.initialize();
+    const state = healthMonitor.getState();
+    logInfo('Connection health monitor initialized', { state });
+
+    // If we connected, rebuild registry cache with tier/version info
+    if (state === 'healthy' || state === 'degraded') {
+      const { RegistryManager } = await import('./registry-manager');
+      RegistryManager.getInstance().refreshCache();
     }
   } else {
     // No authentication configured - server will respond to tools/list but tool calls will fail
@@ -278,6 +312,27 @@ export async function setupHandlers(server: Server): Promise<void> {
         );
       }
 
+      // Check connection health — if disconnected, return structured error immediately
+      // (context tools are still allowed through registry filtering)
+      const healthMonitor = HealthMonitor.getInstance();
+      if (!healthMonitor.isInstanceReachable()) {
+        const toolName = request.params.name;
+        const action =
+          request.params.arguments && typeof request.params.arguments.action === 'string'
+            ? request.params.arguments.action
+            : 'unknown';
+        const connError = createConnectionFailedError(
+          toolName,
+          action,
+          GITLAB_BASE_URL,
+          healthMonitor.getState() === 'connecting',
+        );
+        return {
+          content: [{ type: 'text', text: JSON.stringify(connError, null, 2) }],
+          isError: true,
+        };
+      }
+
       // Check if connection is initialized - try to initialize if needed
       const connectionManager = ConnectionManager.getInstance();
       const oauthMode = isOAuthEnabled();
@@ -383,6 +438,9 @@ export async function setupHandlers(server: Server): Promise<void> {
         // Execute the tool using the registry manager
         const result = await registryManager.executeTool(toolName, request.params.arguments);
 
+        // Report success to health monitor
+        healthMonitor.reportSuccess();
+
         return {
           content: [
             {
@@ -392,6 +450,11 @@ export async function setupHandlers(server: Server): Promise<void> {
           ],
         };
       } catch (error) {
+        // Report error to health monitor for connection health tracking
+        if (error instanceof Error) {
+          healthMonitor.reportError(undefined, error);
+        }
+
         const errorMessage = error instanceof Error ? error.message : String(error);
         // Preserve original error as cause to allow action extraction and structured error detection
         throw new Error(`Failed to execute tool '${toolName}': ${errorMessage}`, { cause: error });

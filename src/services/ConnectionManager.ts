@@ -436,6 +436,14 @@ export class ConnectionManager {
     return this.currentInstanceUrl;
   }
 
+  /**
+   * Check if the connection manager has been initialized successfully.
+   * Used by HealthMonitor to decide if a full initialization is needed.
+   */
+  public isConnected(): boolean {
+    return this.isInitialized;
+  }
+
   public isFeatureAvailable(feature: keyof GitLabInstanceInfo['features']): boolean {
     if (!this.instanceInfo) {
       return false;

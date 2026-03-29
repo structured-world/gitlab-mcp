@@ -56,6 +56,8 @@ jobs:
     name: Post-Release Publish
     runs-on: ubuntu-latest
     needs: release-please
+    # Note: GitHub Actions supports hyphens in job IDs and output names with dot notation.
+    # Bracket notation (needs['release-please']) is NOT required here.
     if: needs.release-please.outputs.release-created == 'true'
 
     permissions:
@@ -173,8 +175,9 @@ jobs:
 
       # Publish to MCP Registry
       - name: Install mcp-publisher
-        # Pinned to specific version. No checksums published by upstream yet.
-        # Update MCP_PUBLISHER_VERSION when upgrading.
+        # Pinned to specific version. SHA256 verification not possible — upstream
+        # (modelcontextprotocol/registry) does not publish checksums for binary releases.
+        # HTTPS + pinned version is the current trust model. Update MCP_PUBLISHER_VERSION when upgrading.
         env:
           MCP_PUBLISHER_VERSION: v1.5.0
         run: |

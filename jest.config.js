@@ -25,6 +25,7 @@ module.exports = {
       'ts-jest',
       {
         tsconfig: {
+          // ts-jest requires node resolution (bundler not supported by ts-jest)
           ignoreDeprecations: '6.0',
           module: 'commonjs',
           moduleResolution: 'node',

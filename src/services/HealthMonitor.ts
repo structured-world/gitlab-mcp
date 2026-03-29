@@ -97,11 +97,11 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
   async ({ input }) => {
     const connectionManager = ConnectionManager.getInstance();
 
-    // If already initialized, verify with a health check and derive degraded from instance info.
-    // Note: isConnected()/getInstanceInfo() are process-global (singleton ConnectionManager).
-    // In multi-instance OAuth mode, per-instance state is tracked via InstanceRegistry;
-    // this path is primarily used for single-instance static-token mode.
-    if (connectionManager.isConnected()) {
+    // Fast-path: if already initialized for the SAME instance, verify with health check.
+    // Skip fast-path when the singleton is connected to a different instance URL
+    // (multi-instance OAuth mode) — fall through to full initialization instead.
+    const currentUrl = connectionManager.getCurrentInstanceUrl();
+    if (connectionManager.isConnected() && (!currentUrl || currentUrl === input.instanceUrl)) {
       const healthy = await quickHealthCheck(input.instanceUrl);
       if (!healthy) {
         throw new Error(`Health check failed for ${input.instanceUrl}`);

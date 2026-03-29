@@ -17,12 +17,14 @@ const mockInitialize = jest.fn();
 const mockIsConnected = jest.fn();
 const mockGetInstanceInfo = jest.fn();
 const mockGetClient = jest.fn();
+const mockGetCurrentInstanceUrl = jest.fn();
 jest.mock('../../../src/services/ConnectionManager', () => ({
   ConnectionManager: {
     getInstance: () => ({
       initialize: mockInitialize,
       isConnected: mockIsConnected,
       getInstanceInfo: mockGetInstanceInfo,
+      getCurrentInstanceUrl: mockGetCurrentInstanceUrl,
       getClient: mockGetClient,
     }),
   },
@@ -65,6 +67,7 @@ describe('HealthMonitor', () => {
     jest.clearAllMocks();
     HealthMonitor.resetInstance();
     mockIsConnected.mockReturnValue(false);
+    mockGetCurrentInstanceUrl.mockReturnValue(null);
     mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
     mockFetch.mockResolvedValue({ status: 200, ok: true });
   });

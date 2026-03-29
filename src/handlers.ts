@@ -145,7 +145,7 @@ export async function setupHandlers(server: Server): Promise<void> {
       // Register state change callback to broadcast tools/list_changed
       healthMonitor.onStateChange((_instanceUrl, from, to) => {
         // Only broadcast when transitioning between disconnected-like and connected-like states
-        const isDisconnectedLike = (state: string): boolean =>
+        const isDisconnectedLike = (state: typeof from): boolean =>
           state === 'disconnected' || state === 'connecting';
 
         if (isDisconnectedLike(from) !== isDisconnectedLike(to)) {

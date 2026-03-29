@@ -1,3 +1,9 @@
+## [6.62.2](https://github.com/structured-world/gitlab-mcp/compare/v6.62.1...v6.62.2) (2026-03-29)
+
+### Bug Fixes
+
+* exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
+
 ## [6.62.1](https://github.com/structured-world/gitlab-mcp/compare/v6.62.0...v6.62.1) (2026-03-01)
 
 ### Bug Fixes

@@ -91,6 +91,18 @@ jest.mock('../../src/services/TokenScopeDetector', () => ({
   getToolScopeRequirements: jest.fn().mockReturnValue({}),
 }));
 
+// Mock HealthMonitor for disconnected mode testing
+const mockHealthMonitorInstance = {
+  getMonitoredInstances: jest.fn().mockReturnValue([]),
+  isAnyInstanceHealthy: jest.fn().mockReturnValue(true),
+};
+
+jest.mock('../../src/services/HealthMonitor', () => ({
+  HealthMonitor: {
+    getInstance: jest.fn(() => mockHealthMonitorInstance),
+  },
+}));
+
 jest.mock('../../src/logger', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
   logInfo: jest.fn(),
@@ -1186,6 +1198,49 @@ describe('RegistryManager', () => {
           expect(schema.oneOf.length).toBeGreaterThan(0);
         }
       }
+    });
+  });
+
+  describe('disconnected mode filtering', () => {
+    it('should only expose context tools when all instances are disconnected', () => {
+      // Simulate all instances disconnected
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
+        'https://gitlab.example.com',
+      ]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(false);
+
+      // Reset RegistryManager to trigger cache rebuild
+      (RegistryManager as any).instance = null;
+      registryManager = RegistryManager.getInstance();
+
+      const tools = registryManager.getAllToolDefinitions();
+      const toolNames = tools.map((t) => t.name);
+
+      // Should only have context tools (manage_context from context registry)
+      expect(toolNames).toContain('manage_context');
+      // Should NOT have non-context tools
+      expect(toolNames).not.toContain('core_tool_1');
+      expect(toolNames).not.toContain('core_readonly');
+
+      // Restore
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+    });
+
+    it('should expose all tools when health monitor not yet initialized', () => {
+      // No monitored instances = HealthMonitor not initialized yet
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+
+      (RegistryManager as any).instance = null;
+      registryManager = RegistryManager.getInstance();
+
+      const tools = registryManager.getAllToolDefinitions();
+      const toolNames = tools.map((t) => t.name);
+
+      // Should have all tools (no filtering)
+      expect(toolNames).toContain('core_tool_1');
+      expect(toolNames).toContain('manage_context');
     });
   });
 });

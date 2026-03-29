@@ -535,6 +535,77 @@ describe('handlers', () => {
       expect(mockHealthMonitor.onStateChange).toHaveBeenCalledWith(expect.any(Function));
     });
 
+    it('should allow manage_context through when disconnected', async () => {
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
+
+      // manage_context should NOT be blocked by health gate
+      mockRegistryManager.executeTool.mockResolvedValue({ context: 'info' });
+
+      const result = await callToolHandler({
+        params: {
+          name: 'manage_context',
+          arguments: { action: 'whoami' },
+        },
+      });
+
+      // Should get through to tool execution, not CONNECTION_FAILED
+      expect(result.isError).toBeUndefined();
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.context).toBe('info');
+
+      // Restore
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+    });
+
+    it('should report bootstrap init error to health monitor', async () => {
+      // Simulate: getClient throws, then initialize also fails
+      mockConnectionManager.getClient.mockImplementation(() => {
+        throw new Error('Not initialized');
+      });
+      mockConnectionManager.initialize.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const result = await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      // Health monitor should have been notified of bootstrap failure
+      expect(mockHealthMonitor.reportError).toHaveBeenCalled();
+
+      // Restore
+      mockConnectionManager.getClient.mockReturnValue({});
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+    });
+
+    it('should invoke state change callback for tool list updates', async () => {
+      // Capture the callback registered via onStateChange
+      const stateChangeCallback = mockHealthMonitor.onStateChange.mock.calls[0]?.[0];
+      expect(stateChangeCallback).toBeDefined();
+
+      // Mock session manager for broadcast
+      const mockBroadcast = jest.fn().mockResolvedValue(undefined);
+      jest.mock('../../src/session-manager', () => ({
+        getSessionManager: () => ({
+          broadcastToolsListChanged: mockBroadcast,
+        }),
+      }));
+
+      // Simulate disconnected → healthy transition (should trigger broadcast)
+      if (stateChangeCallback) {
+        stateChangeCallback('https://gitlab.example.com', 'disconnected', 'healthy');
+        // Allow async fire-and-forget to execute
+        await new Promise((r) => setTimeout(r, 50));
+      }
+
+      // refreshCache should have been called
+      expect(mockRegistryManager.refreshCache).toHaveBeenCalled();
+    });
+
     it('should handle CONNECTION_FAILED with missing action field', async () => {
       mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
       mockHealthMonitor.getState.mockReturnValue('disconnected');

@@ -445,6 +445,105 @@ describe('handlers', () => {
     });
   });
 
+  describe('connection health integration', () => {
+    beforeEach(async () => {
+      await setupHandlers(mockServer);
+      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1];
+    });
+
+    it('should return CONNECTION_FAILED error when instance is unreachable', async () => {
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
+
+      const result = await callToolHandler({
+        params: {
+          name: 'browse_projects',
+          arguments: { action: 'list' },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      expect(parsed.tool).toBe('browse_projects');
+      expect(parsed.action).toBe('list');
+      expect(parsed.reconnecting).toBe(false);
+
+      // Restore
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+    });
+
+    it('should indicate reconnecting when state is connecting', async () => {
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.getState.mockReturnValue('connecting');
+
+      const result = await callToolHandler({
+        params: {
+          name: 'browse_projects',
+          arguments: { action: 'list' },
+        },
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.reconnecting).toBe(true);
+
+      // Restore
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+    });
+
+    it('should report success to health monitor after successful tool execution', async () => {
+      mockRegistryManager.executeTool.mockResolvedValue({ ok: true });
+
+      await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      expect(mockHealthMonitor.reportSuccess).toHaveBeenCalled();
+    });
+
+    it('should report error to health monitor after tool execution failure', async () => {
+      mockRegistryManager.executeTool.mockRejectedValue(new Error('API timeout'));
+
+      await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      expect(mockHealthMonitor.reportError).toHaveBeenCalled();
+    });
+
+    it('should register state change callback during setup', async () => {
+      // onStateChange was called during setupHandlers
+      expect(mockHealthMonitor.onStateChange).toHaveBeenCalledWith(expect.any(Function));
+    });
+
+    it('should handle CONNECTION_FAILED with missing action field', async () => {
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
+
+      const result = await callToolHandler({
+        params: {
+          name: 'browse_projects',
+          arguments: { project_id: '123' },
+        },
+      });
+
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.action).toBe('unknown');
+
+      // Restore
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+    });
+  });
+
   describe('edge cases', () => {
     it('should handle empty arguments in tool call', async () => {
       await setupHandlers(mockServer);

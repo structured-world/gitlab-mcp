@@ -9,7 +9,7 @@
  */
 
 import { HealthMonitor, calculateBackoffDelay } from '../../../src/services/HealthMonitor';
-import { classifyError } from '../../../src/utils/error-handler';
+import { classifyError, createConnectionFailedError } from '../../../src/utils/error-handler';
 
 // Mock ConnectionManager
 const mockInitialize = jest.fn();
@@ -321,6 +321,138 @@ describe('HealthMonitor', () => {
     });
   });
 
+  describe('forceReconnect', () => {
+    it('should trigger reconnect on disconnected instance', async () => {
+      mockInitialize.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+      expect(monitor.getState('https://gitlab.example.com')).toBe('disconnected');
+
+      // Set up for successful reconnect
+      mockInitialize.mockResolvedValueOnce(undefined);
+      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+
+      monitor.forceReconnect('https://gitlab.example.com');
+
+      // Wait for the reconnect to complete
+      await new Promise((r) => setTimeout(r, 300));
+
+      expect(monitor.getState('https://gitlab.example.com')).toBe('healthy');
+    });
+
+    it('should be no-op for unknown instance', () => {
+      const monitor = HealthMonitor.getInstance();
+      // Should not throw
+      monitor.forceReconnect('https://unknown.example.com');
+    });
+  });
+
+  describe('reconnect after disconnect', () => {
+    it('should auto-reconnect after backoff delay when disconnected', async () => {
+      // First init fails
+      mockInitialize.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+      expect(monitor.getState('https://gitlab.example.com')).toBe('disconnected');
+
+      // Next init succeeds (auto-reconnect)
+      mockInitialize.mockResolvedValueOnce(undefined);
+      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+
+      // Wait for backoff delay (100ms base in test config + processing time)
+      await new Promise((r) => setTimeout(r, 500));
+
+      expect(monitor.getState('https://gitlab.example.com')).toBe('healthy');
+    });
+
+    it('should increment reconnect attempt on repeated failures', async () => {
+      // All inits fail
+      mockInitialize.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+
+      const snap1 = monitor.getSnapshot('https://gitlab.example.com');
+      expect(snap1.reconnectAttempt).toBeGreaterThanOrEqual(1);
+
+      // Wait for one reconnect cycle
+      await new Promise((r) => setTimeout(r, 300));
+
+      const snap2 = monitor.getSnapshot('https://gitlab.example.com');
+      expect(snap2.reconnectAttempt).toBeGreaterThan(snap1.reconnectAttempt);
+    });
+  });
+
+  describe('already connected path', () => {
+    it('should verify with health check when already connected', async () => {
+      mockIsConnected.mockReturnValue(true);
+      mockFetch.mockResolvedValue({ status: 200, ok: true });
+      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+
+      // Should be healthy (connected + health check passed)
+      expect(monitor.getState('https://gitlab.example.com')).toBe('healthy');
+      // Fetch should have been called for health check
+      expect(mockFetch).toHaveBeenCalled();
+    });
+
+    it('should disconnect when already connected but health check fails', async () => {
+      mockIsConnected.mockReturnValue(true);
+      mockFetch.mockResolvedValue({ status: 502, ok: false });
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+
+      expect(monitor.getState('https://gitlab.example.com')).toBe('disconnected');
+    });
+  });
+
+  describe('health check fetch failures', () => {
+    it('should return false when fetch throws (network error)', async () => {
+      // This tests quickHealthCheck returning false on network error
+      mockIsConnected.mockReturnValue(true);
+      mockFetch.mockRejectedValue(new Error('fetch failed'));
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+
+      // Health check failed → connection attempt fails → disconnected
+      expect(monitor.getState('https://gitlab.example.com')).toBe('disconnected');
+    });
+  });
+
+  describe('default instance URL', () => {
+    it('should use GITLAB_BASE_URL when no instanceUrl provided', async () => {
+      mockInitialize.mockResolvedValue(undefined);
+      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+
+      const monitor = HealthMonitor.getInstance();
+      // Call without URL - should use default
+      await monitor.initialize();
+
+      expect(monitor.getState()).toBe('healthy');
+      expect(monitor.isInstanceReachable()).toBe(true);
+    });
+
+    it('should use default URL for reportSuccess/reportError', async () => {
+      mockInitialize.mockResolvedValue(undefined);
+      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize();
+
+      // Should not throw when called without URL
+      monitor.reportSuccess();
+      monitor.reportError(undefined, new Error('test'));
+
+      expect(monitor.getState()).toBe('healthy');
+    });
+  });
+
   describe('isInstanceReachable', () => {
     it('should return true for healthy instance', async () => {
       mockInitialize.mockResolvedValue(undefined);
@@ -378,6 +510,101 @@ describe('calculateBackoffDelay', () => {
     const delay = calculateBackoffDelay(20);
     expect(delay).toBeLessThanOrEqual(1100); // 1000 + 10% jitter
     expect(delay).toBeGreaterThanOrEqual(900); // 1000 - 10% jitter
+  });
+});
+
+describe('classifyError — additional coverage', () => {
+  it('should classify 429 rate limit as transient', () => {
+    const error = new Error('GitLab API error: 429 Too Many Requests');
+    expect(classifyError(error)).toBe('transient');
+  });
+
+  it('should classify 502 bad gateway as transient', () => {
+    const error = new Error('GitLab API error: 502 Bad Gateway');
+    expect(classifyError(error)).toBe('transient');
+  });
+
+  it('should classify 503 service unavailable as transient', () => {
+    const error = new Error('GitLab API error: 503 Service Unavailable');
+    expect(classifyError(error)).toBe('transient');
+  });
+
+  it('should classify 422 as permanent', () => {
+    const error = new Error('GitLab API error: 422 Unprocessable Entity');
+    expect(classifyError(error)).toBe('permanent');
+  });
+
+  it('should classify 400 as permanent', () => {
+    const error = new Error('GitLab API error: 400 Bad Request');
+    expect(classifyError(error)).toBe('permanent');
+  });
+
+  it('should classify ETIMEDOUT error code as transient', () => {
+    const error = new Error('connection timed out');
+    (error as any).code = 'ETIMEDOUT';
+    expect(classifyError(error)).toBe('transient');
+  });
+
+  it('should classify ENOTFOUND error code as transient', () => {
+    const error = new Error('getaddrinfo ENOTFOUND gitlab.example.com');
+    (error as any).code = 'ENOTFOUND';
+    expect(classifyError(error)).toBe('transient');
+  });
+
+  it('should classify UND_ERR_CONNECT_TIMEOUT as transient', () => {
+    const error = new Error('connect timeout');
+    (error as any).code = 'UND_ERR_CONNECT_TIMEOUT';
+    expect(classifyError(error)).toBe('transient');
+  });
+
+  it('should classify econnreset in message as transient', () => {
+    const error = new Error('read econnreset');
+    expect(classifyError(error)).toBe('transient');
+  });
+
+  it('should classify enotfound in message as transient', () => {
+    const error = new Error('getaddrinfo enotfound gitlab.example.com');
+    expect(classifyError(error)).toBe('transient');
+  });
+
+  it('should classify network error message as transient', () => {
+    const error = new Error('network error occurred');
+    expect(classifyError(error)).toBe('transient');
+  });
+
+  it('should classify unknown error without code as transient (safe default)', () => {
+    const error = new Error('something completely unexpected happened');
+    expect(classifyError(error)).toBe('transient');
+  });
+});
+
+describe('createConnectionFailedError', () => {
+  it('should create error with reconnecting=true', () => {
+    const error = createConnectionFailedError(
+      'browse_projects',
+      'list',
+      'https://gitlab.example.com',
+      true,
+    );
+    expect(error.error_code).toBe('CONNECTION_FAILED');
+    expect(error.tool).toBe('browse_projects');
+    expect(error.action).toBe('list');
+    expect(error.instance_url).toBe('https://gitlab.example.com');
+    expect(error.reconnecting).toBe(true);
+    expect(error.message).toContain('Automatic reconnection is in progress');
+  });
+
+  it('should create error with reconnecting=false', () => {
+    const error = createConnectionFailedError(
+      'manage_project',
+      'update',
+      'https://gitlab.example.com',
+      false,
+    );
+    expect(error.error_code).toBe('CONNECTION_FAILED');
+    expect(error.reconnecting).toBe(false);
+    expect(error.message).toContain('Connection will be retried');
+    expect(error.suggested_fix).toContain('whoami');
   });
 });
 

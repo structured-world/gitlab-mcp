@@ -276,12 +276,13 @@ const connectionMachine = setup({
     },
 
     healthy: {
-      after: {
-        healthCheckInterval: '.checking',
-      },
       initial: 'idle',
       states: {
         idle: {
+          // after on idle substate reschedules after each check cycle (idle → checking → idle)
+          after: {
+            healthCheckInterval: 'checking',
+          },
           on: {
             TOOL_SUCCESS: {
               actions: 'recordSuccess',
@@ -338,12 +339,12 @@ const connectionMachine = setup({
     },
 
     degraded: {
-      after: {
-        degradedCheckInterval: '.checking',
-      },
       initial: 'idle',
       states: {
         idle: {
+          after: {
+            degradedCheckInterval: 'checking',
+          },
           on: {
             TOOL_SUCCESS: {
               actions: 'recordSuccess',
@@ -469,9 +470,14 @@ export class HealthMonitor {
   public async initialize(instanceUrl?: string): Promise<void> {
     const url = instanceUrl ?? GITLAB_BASE_URL;
 
-    // Don't create duplicate actors for the same instance
-    if (this.actors.has(url)) {
+    // Don't create duplicate actors for the same instance.
+    // If the existing actor is still connecting, wait for the initial outcome.
+    const existingActor = this.actors.get(url);
+    if (existingActor) {
       logDebug('HealthMonitor: actor already exists for instance', { url });
+      if (this.getActorState(existingActor) === 'connecting') {
+        await this.waitForInitialState(existingActor);
+      }
       return;
     }
 

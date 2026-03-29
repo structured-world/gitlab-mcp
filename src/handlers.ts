@@ -356,6 +356,8 @@ export async function setupHandlers(server: Server): Promise<void> {
       // on getClient()/initialize() during cold disconnected start.
       // No reportSuccess/reportError here: context tools don't hit GitLab API,
       // so their outcome doesn't indicate GitLab health.
+      // When healthy, manage_context goes through the normal path (e.g., whoami calls
+      // GitLab API for user info), which is correct — reportSuccess is valid there.
       if (
         toolName === 'manage_context' &&
         !healthMonitor.isInstanceReachable(effectiveInstanceUrl)

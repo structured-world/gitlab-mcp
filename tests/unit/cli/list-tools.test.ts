@@ -2145,4 +2145,232 @@ describe('list-tools script', () => {
       expect(mockProcessExit).not.toHaveBeenCalledWith(1);
     });
   });
+
+  describe('additional coverage tests', () => {
+    it('should display mixed tier badge with asterisk', async () => {
+      process.argv = ['node', 'list-tools.ts', '--verbose'];
+
+      mockManager.getAllToolDefinitionsTierless.mockReturnValue([
+        {
+          name: 'mixed_tier_tool',
+          description: 'Tool with mixed tiers',
+          inputSchema: { type: 'object' },
+        },
+      ]);
+
+      // Tool has premium as highest tier but free as default
+      mockGetHighestTier.mockReturnValue('premium');
+      mockGetActionRequirement.mockReturnValue({ tier: 'free', minVersion: '8.0' });
+      mockGetToolRequirement.mockReturnValue(null);
+
+      const { main } = await import('../../../src/cli/list-tools');
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('[tier: Premium*]'));
+    });
+
+    it('should display allowed_tools in preset markdown output', async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: 'browse_projects',
+          description: 'Browse projects',
+          inputSchema: { type: 'object' },
+        },
+        { name: 'manage_files', description: 'Manage files', inputSchema: { type: 'object' } },
+      ]);
+
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: 'Restricted preset',
+        read_only: false,
+        allowed_tools: ['browse_projects'],
+      });
+
+      process.argv = ['node', 'list-tools.ts', '--preset', 'restricted'];
+
+      const { main } = await import('../../../src/cli/list-tools');
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('**Allowed tools (whitelist):** 1 tools'),
+      );
+    });
+
+    it('should display denied_tools_regex in preset markdown output', async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: 'browse_projects',
+          description: 'Browse projects',
+          inputSchema: { type: 'object' },
+        },
+        { name: 'manage_files', description: 'Manage files', inputSchema: { type: 'object' } },
+      ]);
+
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: 'Regex preset',
+        read_only: false,
+        denied_tools_regex: '^manage_',
+      });
+
+      process.argv = ['node', 'list-tools.ts', '--preset', 'regex-preset'];
+
+      const { main } = await import('../../../src/cli/list-tools');
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(
+        expect.stringContaining('**Denied tools regex:**'),
+      );
+    });
+
+    it('should display denied_actions in preset markdown output', async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: 'browse_projects',
+          description: 'Browse projects',
+          inputSchema: { type: 'object' },
+        },
+      ]);
+
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: 'Actions preset',
+        read_only: false,
+        denied_actions: ['delete', 'archive'],
+      });
+
+      process.argv = ['node', 'list-tools.ts', '--preset', 'actions-preset'];
+
+      const { main } = await import('../../../src/cli/list-tools');
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith('**Denied actions:** delete, archive\n');
+    });
+
+    it('should show preset JSON output with validation', async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: 'browse_projects',
+          description: 'Browse projects',
+          inputSchema: { type: 'object' },
+        },
+      ]);
+
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: 'Test preset',
+        read_only: false,
+      });
+      mockProfileLoader.validatePreset.mockResolvedValue({
+        valid: true,
+        errors: [],
+        warnings: [],
+      });
+
+      process.argv = ['node', 'list-tools.ts', '--preset', 'test', '--json', '--validate'];
+
+      const { main } = await import('../../../src/cli/list-tools');
+      await main();
+
+      const jsonCall = mockConsoleLog.mock.calls.find((call) => {
+        try {
+          const parsed = JSON.parse(call[0] as string);
+          return parsed.validation !== undefined;
+        } catch {
+          return false;
+        }
+      });
+
+      expect(jsonCall).toBeDefined();
+    });
+
+    it('should show validation warnings when preset is invalid with both errors and warnings', async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: 'browse_projects',
+          description: 'Browse projects',
+          inputSchema: { type: 'object' },
+        },
+      ]);
+
+      mockProfileLoader.loadPreset.mockResolvedValue({
+        description: 'Bad preset',
+        read_only: false,
+      });
+      mockProfileLoader.validatePreset.mockResolvedValue({
+        valid: false,
+        errors: ['Missing required field'],
+        warnings: ['Deprecated feature used'],
+      });
+
+      process.argv = ['node', 'list-tools.ts', '--preset', 'bad', '--validate'];
+
+      const { main } = await import('../../../src/cli/list-tools');
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('INVALID'));
+      expect(mockConsoleLog).toHaveBeenCalledWith('- Missing required field');
+      expect(mockConsoleLog).toHaveBeenCalledWith('\n### Warnings\n');
+      expect(mockConsoleLog).toHaveBeenCalledWith('- Deprecated feature used');
+    });
+
+    it('should compare presets showing onlyInA tools', async () => {
+      mockManager.getAllToolDefinitionsUnfiltered.mockReturnValue([
+        {
+          name: 'browse_projects',
+          description: 'Browse projects',
+          inputSchema: { type: 'object' },
+        },
+        { name: 'browse_wiki', description: 'Browse wiki', inputSchema: { type: 'object' } },
+        { name: 'manage_wiki', description: 'Manage wiki', inputSchema: { type: 'object' } },
+      ]);
+
+      mockProfileLoader.loadPreset.mockImplementation(async (name: string) => {
+        if (name === 'full') {
+          return { description: 'Full access', read_only: false }; // all tools enabled
+        }
+        if (name === 'limited') {
+          return {
+            description: 'Limited access',
+            read_only: false,
+            features: { wiki: false }, // wiki tools disabled
+          };
+        }
+        throw new Error('Not found');
+      });
+
+      process.argv = ['node', 'list-tools.ts', '--preset', 'full', '--compare', 'limited'];
+
+      const { main } = await import('../../../src/cli/list-tools');
+      await main();
+
+      // full has wiki tools that limited doesn't = onlyInA
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('## Only in full'));
+    });
+
+    it('should handle schema with refinement checks', async () => {
+      process.argv = ['node', 'list-tools.ts', '--tool', 'refinement_tool'];
+
+      mockManager.getAllToolDefinitionsTierless.mockReturnValue([
+        {
+          name: 'refinement_tool',
+          description: 'Tool with schema refinements',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              path: { type: 'string', description: 'Path parameter' },
+            },
+            _def: {
+              schema: {
+                _def: {
+                  checks: [{ message: 'Exactly one of groupPath or projectPath must be provided' }],
+                },
+              },
+            },
+          },
+        },
+      ]);
+
+      const { main } = await import('../../../src/cli/list-tools');
+      await main();
+
+      expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('**Validation**'));
+    });
+  });
 });

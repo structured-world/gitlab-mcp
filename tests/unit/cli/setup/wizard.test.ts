@@ -194,5 +194,80 @@ describe('setup/wizard', () => {
 
       expect(p.outro).toHaveBeenCalledWith('Setup cancelled.');
     });
+
+    it('should return cancelled when selectMode returns null (user cancels mode selection)', async () => {
+      // When isCancel returns true for the select, selectMode returns null
+      (p.isCancel as jest.MockedFunction<typeof p.isCancel>).mockReturnValueOnce(true);
+      mockSelect.mockResolvedValueOnce(Symbol('cancel'));
+
+      const result = await runSetupWizard();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Cancelled');
+      expect(p.outro).toHaveBeenCalledWith('Setup cancelled.');
+    });
+
+    it('should include docker config info in success message', async () => {
+      (runServerSetupFlow as jest.Mock).mockResolvedValue({
+        success: true,
+        mode: 'server',
+        dockerConfig: { port: 8080 },
+      });
+
+      await runSetupWizard({ mode: 'server' });
+
+      expect(p.outro).toHaveBeenCalledWith(
+        expect.stringContaining('Docker container on port 8080'),
+      );
+    });
+
+    it('should display failure with unknown error when error is undefined', async () => {
+      (runLocalSetupFlow as jest.Mock).mockResolvedValue({
+        success: false,
+        mode: 'local',
+        error: undefined,
+      });
+
+      await runSetupWizard({ mode: 'local' });
+
+      expect(p.outro).toHaveBeenCalledWith('Setup failed: Unknown error');
+    });
+
+    it('should show containerExists hint in mode selection', async () => {
+      mockRunDiscovery.mockReturnValue({
+        clients: {
+          detected: [],
+          configured: [],
+          unconfigured: [],
+        },
+        docker: {
+          dockerInstalled: true,
+          dockerRunning: true,
+          composeInstalled: true,
+          instances: [{ name: 'gitlab.com', host: 'gitlab.com' }],
+        },
+        summary: {
+          hasExistingSetup: true,
+          clientCount: 0,
+          configuredCount: 0,
+          dockerRunning: true,
+          containerExists: true,
+        },
+      });
+
+      mockSelect.mockResolvedValue('local');
+
+      await runSetupWizard();
+
+      // Verify select was called with configure-existing option including docker hint
+      const selectCall = mockSelect.mock.calls[0][0] as {
+        options: { value: string; hint?: string }[];
+      };
+      const configureOption = selectCall.options.find(
+        (o: { value: string }) => o.value === 'configure-existing',
+      );
+      expect(configureOption).toBeDefined();
+      expect(configureOption?.hint).toContain('1 docker service');
+    });
   });
 });

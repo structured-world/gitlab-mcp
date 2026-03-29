@@ -753,5 +753,178 @@ describe('wizard', () => {
       // Should not have called open with deep link
       expect(mockOpenUrl).not.toHaveBeenCalledWith('claude://test-deep-link');
     });
+
+    it('should handle browser open failure for PAT creation', async () => {
+      mockOpenUrl.mockResolvedValueOnce(false); // browser open fails
+
+      (p.select as jest.Mock)
+        .mockResolvedValueOnce('saas')
+        .mockResolvedValueOnce('developer')
+        .mockResolvedValueOnce('cursor');
+
+      (p.confirm as jest.Mock)
+        .mockResolvedValueOnce(false) // doesn't have token
+        .mockResolvedValueOnce(true) // open browser (but fails)
+        .mockResolvedValueOnce(true); // enable write
+
+      (p.password as jest.Mock).mockResolvedValueOnce('glpat-new-token');
+
+      (connection.testConnection as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        username: 'testuser',
+      });
+
+      await runWizard();
+
+      // Should show fallback warning and URL when browser open fails
+      expect(p.log.warn).toHaveBeenCalledWith('Could not open browser automatically');
+      expect(p.note).toHaveBeenCalledWith(expect.any(String), 'Open this URL manually:');
+    });
+
+    it('should handle cancel on runNow confirm for CLI config', async () => {
+      const cancelSymbol = Symbol.for('cancel');
+
+      (configGenerator.generateClientConfig as jest.Mock).mockReturnValueOnce({
+        type: 'cli',
+        content: '{}',
+        cliCommand: 'claude mcp add gitlab npx ...',
+      });
+
+      (p.select as jest.Mock)
+        .mockResolvedValueOnce('saas')
+        .mockResolvedValueOnce('developer')
+        .mockResolvedValueOnce('claude-code');
+
+      (p.confirm as jest.Mock)
+        .mockResolvedValueOnce(true) // has token
+        .mockResolvedValueOnce(true) // enable write
+        .mockResolvedValueOnce(cancelSymbol); // cancel on run now
+
+      (p.password as jest.Mock).mockResolvedValueOnce('glpat-token');
+
+      (connection.testConnection as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        username: 'dev',
+      });
+
+      (p.isCancel as unknown as jest.Mock)
+        .mockReturnValueOnce(false) // instance type
+        .mockReturnValueOnce(false) // hasToken
+        .mockReturnValueOnce(false) // token
+        .mockReturnValueOnce(false) // role
+        .mockReturnValueOnce(false) // confirmReadWrite
+        .mockReturnValueOnce(false) // client
+        .mockReturnValueOnce(true) // runNow cancelled
+        .mockReturnValue(false);
+
+      await runWizard();
+
+      expect(p.cancel).toHaveBeenCalledWith('Setup cancelled');
+      expect(mockExit).toHaveBeenCalledWith(0);
+    });
+
+    it('should handle spawnSync failure with non-zero exit code', async () => {
+      mockSpawnSync.mockReturnValueOnce({ status: 1 });
+
+      (configGenerator.generateClientConfig as jest.Mock).mockReturnValueOnce({
+        type: 'cli',
+        content: '{}',
+        cliCommand: 'claude mcp add gitlab npx ...',
+      });
+
+      (p.select as jest.Mock)
+        .mockResolvedValueOnce('saas')
+        .mockResolvedValueOnce('developer')
+        .mockResolvedValueOnce('claude-code');
+
+      (p.confirm as jest.Mock)
+        .mockResolvedValueOnce(true) // has token
+        .mockResolvedValueOnce(true) // enable write
+        .mockResolvedValueOnce(true); // run now
+
+      (p.password as jest.Mock).mockResolvedValueOnce('glpat-token');
+
+      (connection.testConnection as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        username: 'dev',
+      });
+
+      await runWizard();
+
+      expect(p.log.error).toHaveBeenCalledWith('Failed to run command. You can run it manually.');
+    });
+
+    it('should handle spawnSync throwing an exception', async () => {
+      mockSpawnSync.mockImplementationOnce(() => {
+        throw new Error('Command not found');
+      });
+
+      (configGenerator.generateClientConfig as jest.Mock).mockReturnValueOnce({
+        type: 'cli',
+        content: '{}',
+        cliCommand: 'claude mcp add gitlab npx ...',
+      });
+
+      (p.select as jest.Mock)
+        .mockResolvedValueOnce('saas')
+        .mockResolvedValueOnce('developer')
+        .mockResolvedValueOnce('claude-code');
+
+      (p.confirm as jest.Mock)
+        .mockResolvedValueOnce(true) // has token
+        .mockResolvedValueOnce(true) // enable write
+        .mockResolvedValueOnce(true); // run now
+
+      (p.password as jest.Mock).mockResolvedValueOnce('glpat-token');
+
+      (connection.testConnection as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        username: 'dev',
+      });
+
+      await runWizard();
+
+      expect(p.log.error).toHaveBeenCalledWith('Failed to run command. You can run it manually.');
+    });
+
+    it('should handle cancel on useDeepLink confirm', async () => {
+      const cancelSymbol = Symbol.for('cancel');
+
+      (configGenerator.generateClaudeDeepLink as jest.Mock).mockReturnValueOnce(
+        'claude://test-deep-link',
+      );
+
+      (p.select as jest.Mock)
+        .mockResolvedValueOnce('saas')
+        .mockResolvedValueOnce('developer')
+        .mockResolvedValueOnce('claude-desktop');
+
+      (p.confirm as jest.Mock)
+        .mockResolvedValueOnce(true) // has token
+        .mockResolvedValueOnce(true) // enable write
+        .mockResolvedValueOnce(cancelSymbol); // cancel on use deep link
+
+      (p.password as jest.Mock).mockResolvedValueOnce('glpat-token');
+
+      (connection.testConnection as jest.Mock).mockResolvedValueOnce({
+        success: true,
+        username: 'user',
+      });
+
+      (p.isCancel as unknown as jest.Mock)
+        .mockReturnValueOnce(false) // instance type
+        .mockReturnValueOnce(false) // hasToken
+        .mockReturnValueOnce(false) // token
+        .mockReturnValueOnce(false) // role
+        .mockReturnValueOnce(false) // confirmReadWrite
+        .mockReturnValueOnce(false) // client
+        .mockReturnValueOnce(true) // useDeepLink cancelled
+        .mockReturnValue(false);
+
+      await runWizard();
+
+      expect(p.cancel).toHaveBeenCalledWith('Setup cancelled');
+      expect(mockExit).toHaveBeenCalledWith(0);
+    });
   });
 });

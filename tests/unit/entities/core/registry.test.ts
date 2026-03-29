@@ -2052,5 +2052,52 @@ describe('Core Registry', () => {
         );
       });
     });
+
+    describe('isActionDenied - additional tools', () => {
+      it('should throw when browse_projects action is denied', async () => {
+        mockIsActionDenied.mockReturnValueOnce(true);
+
+        const tool = coreToolRegistry.get('browse_projects')!;
+        await expect(tool.handler({ action: 'search', q: 'test' })).rejects.toThrow(
+          "Action 'search' is not allowed for browse_projects tool",
+        );
+      });
+
+      it('should throw when browse_namespaces action is denied', async () => {
+        mockIsActionDenied.mockReturnValueOnce(true);
+
+        const tool = coreToolRegistry.get('browse_namespaces')!;
+        await expect(tool.handler({ action: 'list' })).rejects.toThrow(
+          "Action 'list' is not allowed for browse_namespaces tool",
+        );
+      });
+
+      it('should throw when browse_commits action is denied', async () => {
+        mockIsActionDenied.mockReturnValueOnce(true);
+
+        const tool = coreToolRegistry.get('browse_commits')!;
+        await expect(tool.handler({ action: 'list', project_id: 'test/project' })).rejects.toThrow(
+          "Action 'list' is not allowed for browse_commits tool",
+        );
+      });
+
+      it('should throw when browse_events action is denied', async () => {
+        mockIsActionDenied.mockReturnValueOnce(true);
+
+        const tool = coreToolRegistry.get('browse_events')!;
+        await expect(tool.handler({ action: 'user' })).rejects.toThrow(
+          "Action 'user' is not allowed for browse_events tool",
+        );
+      });
+
+      it('should throw when manage_project action is denied', async () => {
+        mockIsActionDenied.mockReturnValueOnce(true);
+
+        const tool = coreToolRegistry.get('manage_project')!;
+        await expect(tool.handler({ action: 'create', name: 'test' })).rejects.toThrow(
+          "Action 'create' is not allowed for manage_project tool",
+        );
+      });
+    });
   });
 });

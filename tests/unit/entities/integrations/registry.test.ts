@@ -10,13 +10,24 @@ import {
   getFilteredIntegrationsTools,
 } from '../../../../src/entities/integrations/registry';
 import { enhancedFetch } from '../../../../src/utils/fetch';
+import { isActionDenied, getEffectiveProjectId } from '../../../../src/config';
 
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
 }));
 
+// Mock config module
+jest.mock('../../../../src/config', () => ({
+  isActionDenied: jest.fn(() => false),
+  getEffectiveProjectId: jest.fn((id: string) => id),
+}));
+
 const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
+const mockIsActionDenied = isActionDenied as jest.MockedFunction<typeof isActionDenied>;
+const mockGetEffectiveProjectId = getEffectiveProjectId as jest.MockedFunction<
+  typeof getEffectiveProjectId
+>;
 
 // Mock environment variables
 const originalEnv = process.env;
@@ -37,6 +48,9 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.resetAllMocks();
   mockEnhancedFetch.mockReset();
+  // Restore config mocks after resetAllMocks clears implementations
+  mockIsActionDenied.mockReturnValue(false);
+  mockGetEffectiveProjectId.mockImplementation((id: string) => id);
 });
 
 describe('Integrations Registry', () => {
@@ -405,6 +419,33 @@ describe('Integrations Registry', () => {
           integration: 'slack',
         }),
       ).rejects.toThrow();
+    });
+  });
+
+  describe('isActionDenied checks', () => {
+    it('should throw when browse_integrations action is denied', async () => {
+      mockIsActionDenied.mockReturnValueOnce(true);
+
+      const tool = integrationsToolRegistry.get('browse_integrations')!;
+      await expect(
+        tool.handler({
+          action: 'list',
+          project_id: 'test-project',
+        }),
+      ).rejects.toThrow("Action 'list' is not allowed for browse_integrations tool");
+    });
+
+    it('should throw when manage_integration action is denied', async () => {
+      mockIsActionDenied.mockReturnValueOnce(true);
+
+      const tool = integrationsToolRegistry.get('manage_integration')!;
+      await expect(
+        tool.handler({
+          action: 'disable',
+          project_id: 'test-project',
+          integration: 'slack',
+        }),
+      ).rejects.toThrow("Action 'disable' is not allowed for manage_integration tool");
     });
   });
 });

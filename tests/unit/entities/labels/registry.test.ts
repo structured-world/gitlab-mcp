@@ -5,13 +5,20 @@ import {
   getFilteredLabelsTools,
 } from '../../../../src/entities/labels/registry';
 import { enhancedFetch } from '../../../../src/utils/fetch';
+import { isActionDenied } from '../../../../src/config';
 
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
 }));
 
+// Mock config module
+jest.mock('../../../../src/config', () => ({
+  isActionDenied: jest.fn(() => false),
+}));
+
 const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
+const mockIsActionDenied = isActionDenied as jest.MockedFunction<typeof isActionDenied>;
 
 // Mock environment variables
 const originalEnv = process.env;
@@ -32,6 +39,8 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.resetAllMocks();
   mockEnhancedFetch.mockReset();
+  // Restore config mock after resetAllMocks clears implementations
+  mockIsActionDenied.mockReturnValue(false);
 });
 
 describe('Labels Registry - CQRS Tools', () => {
@@ -716,6 +725,34 @@ describe('Labels Registry - CQRS Tools', () => {
             color: '#00ff00',
           }),
         ).rejects.toThrow('GitLab API error: 500 Error');
+      });
+    });
+
+    describe('isActionDenied checks', () => {
+      it('should throw when browse_labels action is denied', async () => {
+        mockIsActionDenied.mockReturnValueOnce(true);
+
+        const tool = labelsToolRegistry.get('browse_labels')!;
+        await expect(
+          tool.handler({
+            action: 'list',
+            namespace: 'test/project',
+          }),
+        ).rejects.toThrow("Action 'list' is not allowed for browse_labels tool");
+      });
+
+      it('should throw when manage_label action is denied', async () => {
+        mockIsActionDenied.mockReturnValueOnce(true);
+
+        const tool = labelsToolRegistry.get('manage_label')!;
+        await expect(
+          tool.handler({
+            action: 'create',
+            namespace: 'test/project',
+            name: 'test-label',
+            color: '#ff0000',
+          }),
+        ).rejects.toThrow("Action 'create' is not allowed for manage_label tool");
       });
     });
   });

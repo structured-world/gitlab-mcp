@@ -961,8 +961,10 @@ describe('Enhanced Fetch Utilities', () => {
       const callerController = new AbortController();
 
       // Mock fetch to check the signal and throw AbortError when aborted
-      mockFetch.mockImplementation(async (_url: string, opts: RequestInit) => {
-        const signal = opts.signal as AbortSignal;
+      mockFetch.mockImplementation(async (_url: string | URL | Request, opts?: RequestInit) => {
+        expect(opts).toBeDefined();
+        expect(opts!.signal).toBeDefined();
+        const signal = opts!.signal as AbortSignal;
         // Abort the caller's controller to trigger AbortError
         callerController.abort('Caller requested abort');
         // Check that signal is aborted (merged signal from AbortSignal.any)

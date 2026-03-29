@@ -374,14 +374,15 @@ describe('HealthMonitor', () => {
       const monitor = HealthMonitor.getInstance();
       await monitor.initialize('https://gitlab.example.com');
 
+      // reconnectAttempt starts at 0 in disconnected (increments on exit)
       const snap1 = monitor.getSnapshot('https://gitlab.example.com');
-      expect(snap1.reconnectAttempt).toBeGreaterThanOrEqual(1);
+      expect(snap1.reconnectAttempt).toBe(0);
 
-      // Wait for one reconnect cycle
-      await new Promise((r) => setTimeout(r, 300));
+      // Wait for one reconnect cycle (exit disconnected → connecting → fail → disconnected)
+      await new Promise((r) => setTimeout(r, 500));
 
       const snap2 = monitor.getSnapshot('https://gitlab.example.com');
-      expect(snap2.reconnectAttempt).toBeGreaterThan(snap1.reconnectAttempt);
+      expect(snap2.reconnectAttempt).toBeGreaterThan(0);
     });
   });
 
@@ -572,9 +573,9 @@ describe('classifyError — additional coverage', () => {
     expect(classifyError(error)).toBe('transient');
   });
 
-  it('should classify unknown error without code as transient (safe default)', () => {
+  it('should classify unknown error without code as permanent (programming bugs)', () => {
     const error = new Error('something completely unexpected happened');
-    expect(classifyError(error)).toBe('transient');
+    expect(classifyError(error)).toBe('permanent');
   });
 });
 

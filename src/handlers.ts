@@ -122,53 +122,63 @@ function toStructuredError(
   );
 }
 
+/** Guard: health monitor initialization runs once, not per session */
+let healthMonitorInitialized = false;
+
+/** Reset guard for testing */
+export function resetHandlersState(): void {
+  healthMonitorInitialized = false;
+}
+
 export async function setupHandlers(server: Server): Promise<void> {
   // Check if authentication is configured before trying to initialize connection
   const { isAuthenticationConfigured } = await import('./oauth/index');
 
   if (isAuthenticationConfigured()) {
-    // Initialize connection via HealthMonitor — bounded startup time.
-    // HealthMonitor wraps connectionManager.initialize() with INIT_TIMEOUT_MS.
-    // On timeout: server starts in DISCONNECTED state, reconnects in background.
-    // On success: server starts in HEALTHY or DEGRADED state.
-    const healthMonitor = HealthMonitor.getInstance();
+    // Initialize health monitor ONCE (setupHandlers is called per session,
+    // but the broadcast callback affects all sessions — avoid duplicate registrations)
+    if (!healthMonitorInitialized) {
+      healthMonitorInitialized = true;
 
-    // Register state change callback to broadcast tools/list_changed
-    healthMonitor.onStateChange((_instanceUrl, from, to) => {
-      // Only broadcast when transitioning to/from disconnected (tool list changes)
-      const wasDisconnected = from === 'disconnected' || from === 'connecting';
-      const isDisconnected = to === 'disconnected';
+      const healthMonitor = HealthMonitor.getInstance();
 
-      if (wasDisconnected !== isDisconnected) {
-        // Fire-and-forget: async broadcast doesn't block state transition
-        void (async () => {
-          try {
-            // Refresh registry cache to apply/remove connection health filter
-            const { RegistryManager } = await import('./registry-manager');
-            RegistryManager.getInstance().refreshCache();
+      // Register state change callback to broadcast tools/list_changed
+      healthMonitor.onStateChange((_instanceUrl, from, to) => {
+        // Only broadcast when transitioning between disconnected-like and connected-like states
+        const isDisconnectedLike = (state: string): boolean =>
+          state === 'disconnected' || state === 'connecting';
 
-            // Notify all connected MCP clients that tool list has changed
-            const { getSessionManager } = await import('./session-manager');
-            await getSessionManager().broadcastToolsListChanged();
+        if (isDisconnectedLike(from) !== isDisconnectedLike(to)) {
+          // Fire-and-forget: async broadcast doesn't block state transition
+          void (async () => {
+            try {
+              // Refresh registry cache to apply/remove connection health filter
+              const { RegistryManager } = await import('./registry-manager');
+              RegistryManager.getInstance().refreshCache();
 
-            logInfo('Tool list updated after connection state change', { from, to });
-          } catch (error) {
-            logWarn('Failed to broadcast tools/list_changed after state change', {
-              err: error as Error,
-            });
-          }
-        })();
+              // Notify all connected MCP clients that tool list has changed
+              const { getSessionManager } = await import('./session-manager');
+              await getSessionManager().broadcastToolsListChanged();
+
+              logInfo('Tool list updated after connection state change', { from, to });
+            } catch (error) {
+              logWarn('Failed to broadcast tools/list_changed after state change', {
+                err: error as Error,
+              });
+            }
+          })();
+        }
+      });
+
+      await healthMonitor.initialize();
+      const state = healthMonitor.getState();
+      logInfo('Connection health monitor initialized', { state });
+
+      // If we connected, rebuild registry cache with tier/version info
+      if (state === 'healthy' || state === 'degraded') {
+        const { RegistryManager } = await import('./registry-manager');
+        RegistryManager.getInstance().refreshCache();
       }
-    });
-
-    await healthMonitor.initialize();
-    const state = healthMonitor.getState();
-    logInfo('Connection health monitor initialized', { state });
-
-    // If we connected, rebuild registry cache with tier/version info
-    if (state === 'healthy' || state === 'degraded') {
-      const { RegistryManager } = await import('./registry-manager');
-      RegistryManager.getInstance().refreshCache();
     }
   } else {
     // No authentication configured - server will respond to tools/list but tool calls will fail
@@ -312,11 +322,18 @@ export async function setupHandlers(server: Server): Promise<void> {
         );
       }
 
-      // Check connection health — if disconnected, return structured error immediately
-      // (context tools are still allowed through registry filtering)
+      // Resolve effective instance URL (OAuth multi-instance uses per-request context)
+      const { getGitLabApiUrlFromContext } = await import('./oauth/index');
+      const effectiveInstanceUrl = getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL;
+
+      // Check connection health — if disconnected, return structured error for non-context tools.
+      // Context tools (manage_context) are allowed through for diagnostics (whoami, switch_instance).
       const healthMonitor = HealthMonitor.getInstance();
-      if (!healthMonitor.isInstanceReachable()) {
-        const toolName = request.params.name;
+      const toolName = request.params.name;
+      if (
+        !healthMonitor.isInstanceReachable(effectiveInstanceUrl) &&
+        toolName !== 'manage_context'
+      ) {
         const action =
           request.params.arguments && typeof request.params.arguments.action === 'string'
             ? request.params.arguments.action
@@ -324,8 +341,8 @@ export async function setupHandlers(server: Server): Promise<void> {
         const connError = createConnectionFailedError(
           toolName,
           action,
-          GITLAB_BASE_URL,
-          healthMonitor.getState() === 'connecting',
+          effectiveInstanceUrl,
+          healthMonitor.getState(effectiveInstanceUrl) === 'connecting',
         );
         return {
           content: [{ type: 'text', text: JSON.stringify(connError, null, 2) }],
@@ -380,7 +397,6 @@ export async function setupHandlers(server: Server): Promise<void> {
       }
 
       // Dynamic tool dispatch using the new registry manager
-      const toolName = request.params.name;
       const toolArgs = request.params.arguments;
       const action = toolArgs && typeof toolArgs.action === 'string' ? toolArgs.action : undefined;
 
@@ -439,7 +455,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         const result = await registryManager.executeTool(toolName, request.params.arguments);
 
         // Report success to health monitor
-        healthMonitor.reportSuccess();
+        healthMonitor.reportSuccess(effectiveInstanceUrl);
 
         return {
           content: [
@@ -452,7 +468,7 @@ export async function setupHandlers(server: Server): Promise<void> {
       } catch (error) {
         // Report error to health monitor for connection health tracking
         if (error instanceof Error) {
-          healthMonitor.reportError(undefined, error);
+          healthMonitor.reportError(effectiveInstanceUrl, error);
         }
 
         const errorMessage = error instanceof Error ? error.message : String(error);

@@ -5,7 +5,7 @@
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
-import { setupHandlers } from '../../src/handlers';
+import { setupHandlers, resetHandlersState } from '../../src/handlers';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 
 // Mock ConnectionManager
@@ -83,6 +83,7 @@ jest.mock('../../src/oauth/index', () => ({
   isOAuthEnabled: jest.fn().mockReturnValue(false),
   isAuthenticationConfigured: jest.fn().mockReturnValue(true),
   getTokenContext: jest.fn().mockReturnValue(null),
+  getGitLabApiUrlFromContext: jest.fn().mockReturnValue(null),
 }));
 
 describe('handlers', () => {
@@ -92,6 +93,7 @@ describe('handlers', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
+    resetHandlersState();
 
     // Create mock server
     mockServer = {

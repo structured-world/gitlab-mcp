@@ -97,13 +97,19 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
   async ({ input }) => {
     const connectionManager = ConnectionManager.getInstance();
 
-    // If already initialized, just verify with a health check
+    // If already initialized, verify with a health check and derive degraded from instance info
     if (connectionManager.isConnected()) {
       const healthy = await quickHealthCheck(input.instanceUrl);
       if (!healthy) {
         throw new Error(`Health check failed for ${input.instanceUrl}`);
       }
-      return { degraded: false };
+      try {
+        const info = connectionManager.getInstanceInfo();
+        return { degraded: info.version === 'unknown' };
+      } catch {
+        // Instance info unavailable despite isConnected — treat as degraded
+        return { degraded: true };
+      }
     }
 
     // Try full initialization with timeout
@@ -146,20 +152,21 @@ const performHealthCheck = fromPromise<{ degraded: boolean }, { instanceUrl: str
  * Lightweight health check: HEAD request to /api/v4/version with short timeout.
  */
 async function quickHealthCheck(instanceUrl: string): Promise<boolean> {
-  try {
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 5000);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 5000);
 
+  try {
     const response = await fetch(`${instanceUrl}/api/v4/version`, {
       method: 'HEAD',
       signal: controller.signal,
     });
 
-    clearTimeout(timeoutId);
     // Any response (even 401) means GitLab is reachable
     return response.status < 500;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timeoutId);
   }
 }
 
@@ -372,7 +379,7 @@ const connectionMachine = setup({
       after: {
         reconnectDelay: 'connecting',
       },
-      entry: ['incrementReconnectAttempt'],
+      exit: ['incrementReconnectAttempt'],
       on: {
         RECONNECT: {
           target: 'connecting',

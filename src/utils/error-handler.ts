@@ -1150,8 +1150,9 @@ export function classifyError(error: unknown): ErrorCategory {
     return 'permanent';
   }
 
-  // Default: treat unknown errors as transient (safer — triggers retry)
-  return 'transient';
+  // Default: treat unknown errors as permanent — programming bugs (TypeError, RangeError)
+  // should not trigger connection health transitions
+  return 'permanent';
 }
 
 /**

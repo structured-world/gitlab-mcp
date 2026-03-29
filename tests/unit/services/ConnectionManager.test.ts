@@ -290,6 +290,9 @@ describe('ConnectionManager Unit', () => {
       jest
         .spyOn(manager as any, 'doIntrospection')
         .mockImplementation(async (...args: unknown[]) => {
+          // Enforce doIntrospection(url: string) contract despite variadic mock signature
+          expect(args).toHaveLength(1);
+          expect(typeof args[0]).toBe('string');
           const url = args[0] as string;
           introspectionCallCount++;
           // Simulate async introspection delay
@@ -326,6 +329,9 @@ describe('ConnectionManager Unit', () => {
       jest
         .spyOn(manager as any, 'doIntrospection')
         .mockImplementation(async (...args: unknown[]) => {
+          // Enforce doIntrospection(url: string) contract despite variadic mock signature
+          expect(args).toHaveLength(1);
+          expect(typeof args[0]).toBe('string');
           const url = args[0] as string;
           (manager as any).instanceInfo = { version: '17.0.0', tier: 'free' };
           (manager as any).schemaInfo = { workItemWidgetTypes: [] };

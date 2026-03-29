@@ -359,4 +359,4 @@ jobs:
           fi
 
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "ℹ️ Release and publishing handled by [Release workflow](../actions/workflows/release-please.yml)" >> $GITHUB_STEP_SUMMARY
+          echo "ℹ️ Release and publishing handled by [Release workflow](${{ github.server_url }}/${{ github.repository }}/actions/workflows/release-please.yml)" >> $GITHUB_STEP_SUMMARY

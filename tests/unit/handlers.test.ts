@@ -610,13 +610,8 @@ describe('handlers', () => {
       const stateChangeCallback = mockHealthMonitor.onStateChange.mock.calls[0]?.[0];
       expect(stateChangeCallback).toBeDefined();
 
-      // Mock session manager for broadcast
-      const mockBroadcast = jest.fn().mockResolvedValue(undefined);
-      jest.mock('../../src/session-manager', () => ({
-        getSessionManager: () => ({
-          broadcastToolsListChanged: mockBroadcast,
-        }),
-      }));
+      // Clear refreshCache call count from setup
+      mockRegistryManager.refreshCache.mockClear();
 
       // Simulate disconnected → healthy transition (should trigger broadcast)
       if (stateChangeCallback) {
@@ -625,7 +620,7 @@ describe('handlers', () => {
         await new Promise((r) => setTimeout(r, 50));
       }
 
-      // refreshCache should have been called
+      // refreshCache should have been called by the state change callback
       expect(mockRegistryManager.refreshCache).toHaveBeenCalled();
     });
 

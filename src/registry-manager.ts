@@ -290,8 +290,11 @@ class RegistryManager {
   private buildToolLookupCache(): void {
     this.toolLookupCache.clear();
 
-    // Connection health filter: when all instances are disconnected,
-    // only expose context tools (manage_context for diagnostics like whoami)
+    // Connection health filter: when all MONITORED instances are disconnected,
+    // only expose context tools (manage_context for diagnostics like whoami).
+    // Note: this is a global cache filter. In multi-instance OAuth mode, untracked
+    // instances are assumed reachable at the handler level (isInstanceReachable),
+    // so per-request tool calls still go through for healthy unmonitored instances.
     let disconnectedMode = false;
     try {
       const healthMonitor = HealthMonitor.getInstance();

@@ -165,7 +165,7 @@ const performHealthCheck = fromPromise<{ degraded: boolean }, { instanceUrl: str
  */
 async function quickHealthCheck(instanceUrl: string): Promise<boolean> {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 5000);
+  const timeoutId = setTimeout(() => controller.abort(), INIT_TIMEOUT_MS);
 
   try {
     const response = await fetch(`${instanceUrl}/api/v4/version`, {

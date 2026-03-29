@@ -354,6 +354,8 @@ export async function setupHandlers(server: Server): Promise<void> {
       // Context tools (manage_context) can run without a GitLab connection —
       // skip connection bootstrap when disconnected/failed to avoid throwing
       // on getClient()/initialize() during cold disconnected start.
+      // No reportSuccess/reportError here: context tools don't hit GitLab API,
+      // so their outcome doesn't indicate GitLab health.
       if (
         toolName === 'manage_context' &&
         !healthMonitor.isInstanceReachable(effectiveInstanceUrl)

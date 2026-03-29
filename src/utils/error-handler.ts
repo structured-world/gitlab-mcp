@@ -1180,7 +1180,7 @@ export function createConnectionFailedError(
   toolName: string,
   action: string,
   instanceUrl: string,
-  connectionState: string,
+  connectionState: 'connecting' | 'disconnected' | 'failed' | (string & {}),
 ): ConnectionFailedError {
   const reconnecting = connectionState === 'connecting';
   const message =

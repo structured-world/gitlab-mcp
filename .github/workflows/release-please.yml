@@ -83,7 +83,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
-          node-version: '22'
+          node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
       - name: Enable Corepack
@@ -105,24 +105,19 @@ jobs:
       - name: Run prepare-release script
         run: ./scripts/prepare-release.sh "${{ needs.release-please.outputs.release-version }}"
 
-      - name: Commit release artifacts
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add server.json README.md package.json
-          if git diff --cached --quiet; then
-            echo "No artifact changes to commit"
-          else
-            git commit -m "chore(release): update release artifacts for v${{ needs.release-please.outputs.release-version }} [skip ci]"
-            git push origin HEAD:main
-            # Update the release tag to include artifact changes
-            git tag -f "${{ needs.release-please.outputs.release-tag }}"
-            git push origin "${{ needs.release-please.outputs.release-tag }}" --force
-          fi
+      # Note: server.json version is updated by release-please extra-files.
+      # Dynamic counts (README.md, package.json manifest) are updated by prepare-release.sh
+      # locally for the build but NOT committed back — they'll be current in the next release PR.
 
-      # Publish to npm
+      # Publish to npm (idempotent — safe to rerun if later steps fail)
       - name: Publish to npm
-        run: yarn npm publish --access public
+        run: |
+          VERSION="${{ needs.release-please.outputs.release-version }}"
+          if npm view "@structured-world/gitlab-mcp@${VERSION}" version >/dev/null 2>&1; then
+            echo "Version ${VERSION} already published to npm; skipping."
+            exit 0
+          fi
+          yarn npm publish --access public
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_CONFIG_PROVENANCE: true
@@ -177,8 +172,12 @@ jobs:
 
       # Publish to MCP Registry
       - name: Install mcp-publisher
+        # Pinned to specific version. No checksums published by upstream yet.
+        # Update MCP_PUBLISHER_VERSION when upgrading.
+        env:
+          MCP_PUBLISHER_VERSION: v1.5.0
         run: |
-          curl -fL -o mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz"
+          curl -fL -o mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
           tar xzf mcp-publisher.tar.gz mcp-publisher
           test -x ./mcp-publisher || { echo "Error: mcp-publisher not found after extraction"; exit 1; }
           rm -f mcp-publisher.tar.gz

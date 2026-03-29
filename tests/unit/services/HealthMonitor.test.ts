@@ -333,6 +333,9 @@ describe('HealthMonitor', () => {
       // Report success — should reset counter
       monitor.reportSuccess('https://gitlab.example.com');
 
+      // Allow XState to process the event
+      await new Promise((r) => process.nextTick(r));
+
       const snapshot = monitor.getSnapshot('https://gitlab.example.com');
       expect(snapshot.consecutiveFailures).toBe(0);
       expect(snapshot.state).toBe('healthy');
@@ -379,6 +382,30 @@ describe('HealthMonitor', () => {
       await monitor.initialize('https://gitlab.example.com');
 
       expect(monitor.getMonitoredInstances()).toHaveLength(1);
+    });
+
+    it('should handle concurrent initialize calls for same instance', async () => {
+      // Keep initialize pending so second call arrives while first is still connecting
+      let resolveInit: () => void;
+      mockInitialize.mockImplementation(
+        () =>
+          new Promise<void>((r) => {
+            resolveInit = r;
+          }),
+      );
+      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+
+      const monitor = HealthMonitor.getInstance();
+      const p1 = monitor.initialize('https://gitlab.example.com');
+      const p2 = monitor.initialize('https://gitlab.example.com');
+
+      // Resolve the pending init
+      resolveInit!();
+      await Promise.all([p1, p2]);
+
+      // Only one actor created, both callers resolved
+      expect(monitor.getMonitoredInstances()).toHaveLength(1);
+      expect(monitor.getState('https://gitlab.example.com')).toBe('healthy');
     });
   });
 
@@ -502,6 +529,27 @@ describe('HealthMonitor', () => {
       await monitor.initialize('https://gitlab.example.com');
 
       expect(monitor.getState('https://gitlab.example.com')).toBe('disconnected');
+    });
+  });
+
+  describe('different-instance fast-path guard', () => {
+    it('should skip fast-path when connected to a different instance URL', async () => {
+      // ConnectionManager is connected to instance-a, but we initialize for instance-b
+      mockIsConnected.mockReturnValue(true);
+      mockGetCurrentInstanceUrl.mockReturnValue('https://gitlab-a.example.com');
+      mockInitialize.mockResolvedValue(undefined);
+      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab-b.example.com');
+
+      // Should have called initialize (not the fast-path health check)
+      // because getCurrentInstanceUrl !== requested instanceUrl
+      expect(mockInitialize).toHaveBeenCalled();
+      expect(monitor.getState('https://gitlab-b.example.com')).toBe('healthy');
+
+      // Restore
+      mockGetCurrentInstanceUrl.mockReturnValue(null);
     });
   });
 
@@ -844,7 +892,7 @@ describe('createConnectionFailedError', () => {
     expect(error.reconnecting).toBe(false);
     expect(error.message).toContain('authentication or configuration error');
     expect(error.message).toContain('Automatic reconnection is disabled');
-    expect(error.suggested_fix).toContain('GITLAB_TOKEN');
+    expect(error.suggested_fix).toContain('authentication credentials');
   });
 });
 

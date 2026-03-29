@@ -1192,7 +1192,7 @@ export function createConnectionFailedError(
 
   const suggestedFix =
     connectionState === 'failed'
-      ? 'Check GITLAB_TOKEN validity and GITLAB_API_URL configuration. ' +
+      ? 'Check authentication credentials (token or OAuth) and GITLAB_API_URL configuration. ' +
         "Use manage_context with action 'whoami' to check connection status."
       : 'Check network connectivity, VPN status, or GitLab instance availability. ' +
         "Use manage_context with action 'whoami' to check connection status.";

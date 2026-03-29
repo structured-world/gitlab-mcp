@@ -520,7 +520,7 @@ describe('handlers', () => {
       expect(parsed.error_code).toBe('CONNECTION_FAILED');
       expect(parsed.reconnecting).toBe(false);
       expect(parsed.message).toContain('authentication or configuration error');
-      expect(parsed.suggested_fix).toContain('GITLAB_TOKEN');
+      expect(parsed.suggested_fix).toContain('authentication credentials');
 
       // Restore
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);

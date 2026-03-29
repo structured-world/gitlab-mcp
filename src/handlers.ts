@@ -389,6 +389,10 @@ export async function setupHandlers(server: Server): Promise<void> {
           const { RegistryManager } = await import('./registry-manager');
           RegistryManager.getInstance().refreshCache();
         } catch (initError) {
+          // Report bootstrap failure to health monitor
+          if (initError instanceof Error) {
+            healthMonitor.reportError(effectiveInstanceUrl, initError);
+          }
           logError(
             `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`,
           );

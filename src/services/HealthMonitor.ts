@@ -38,7 +38,7 @@ import {
 // Types
 // ============================================================================
 
-export type ConnectionState = 'connecting' | 'healthy' | 'degraded' | 'disconnected';
+export type ConnectionState = 'connecting' | 'healthy' | 'degraded' | 'disconnected' | 'failed';
 
 export interface InstanceHealthSnapshot {
   state: ConnectionState;
@@ -112,7 +112,9 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
       }
     }
 
-    // Try full initialization with timeout
+    // Try full initialization with timeout.
+    // Note: timed-out initialize() continues in background — ConnectionManager.initialize()
+    // guards with isInitialized flag so concurrent calls are safe (idempotent).
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(
@@ -127,7 +129,9 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
       clearTimeout(timeoutId);
     }
 
-    // Check if we got full introspection or just REST
+    // Derive degraded state. In single-instance mode, getInstanceInfo() is reliable.
+    // In multi-instance OAuth mode, per-instance state comes from InstanceRegistry
+    // (populated by ConnectionManager.doIntrospection).
     const info = connectionManager.getInstanceInfo();
     const degraded = info.version === 'unknown';
 
@@ -198,6 +202,11 @@ const connectionMachine = setup({
     isTransient: (_, params: { category: ErrorCategory }) => params.category === 'transient',
     thresholdReached: ({ context }) => context.consecutiveFailures >= FAILURE_THRESHOLD,
     belowThreshold: ({ context }) => context.consecutiveFailures < FAILURE_THRESHOLD,
+    // Classify connect/health-check errors: only transient → reconnect
+    connectErrorIsTransient: ({ event }) => {
+      const error = (event as { error?: unknown }).error;
+      return classifyError(error) === 'transient';
+    },
   },
   actions: {
     recordSuccess: assign({
@@ -238,15 +247,28 @@ const connectionMachine = setup({
             actions: 'recordSuccess',
           },
         ],
-        onError: {
-          target: 'disconnected',
-          actions: assign({
-            consecutiveFailures: ({ context }) => context.consecutiveFailures + 1,
-            lastFailureAt: () => Date.now(),
-            lastError: ({ event }) =>
-              event.error instanceof Error ? event.error.message : String(event.error),
-          }),
-        },
+        onError: [
+          {
+            // Transient errors (network, timeout, 5xx) → disconnected → auto-reconnect
+            guard: 'connectErrorIsTransient',
+            target: 'disconnected',
+            actions: assign({
+              consecutiveFailures: ({ context }) => context.consecutiveFailures + 1,
+              lastFailureAt: () => Date.now(),
+              lastError: ({ event }) =>
+                event.error instanceof Error ? event.error.message : String(event.error),
+            }),
+          },
+          {
+            // Auth/permanent errors (401, config) → failed, no auto-reconnect
+            target: 'failed',
+            actions: assign({
+              lastFailureAt: () => Date.now(),
+              lastError: ({ event }) =>
+                event.error instanceof Error ? event.error.message : String(event.error),
+            }),
+          },
+        ],
       },
     },
 
@@ -291,6 +313,7 @@ const connectionMachine = setup({
               {
                 guard: ({ event }) => event.output.degraded,
                 target: '#connection.degraded',
+                actions: 'recordSuccess',
               },
               {
                 target: 'idle',
@@ -377,6 +400,16 @@ const connectionMachine = setup({
         reconnectDelay: 'connecting',
       },
       exit: ['incrementReconnectAttempt'],
+      on: {
+        RECONNECT: {
+          target: 'connecting',
+        },
+      },
+    },
+
+    // Terminal state: auth/config errors that won't fix themselves.
+    // No auto-reconnect. Only RECONNECT event (manual forceReconnect) can retry.
+    failed: {
       on: {
         RECONNECT: {
           target: 'connecting',
@@ -601,12 +634,12 @@ export class HealthMonitor {
    * Used by registry-manager to decide tool filtering.
    */
   public isAnyInstanceHealthy(): boolean {
-    if (this.actors.size === 0) return false;
+    // No actors = HealthMonitor not yet initialized, don't restrict tools
+    if (this.actors.size === 0) return true;
 
     for (const actor of this.actors.values()) {
       const state = this.getActorState(actor);
-      // connecting = still trying, don't restrict tools yet
-      if (state === 'healthy' || state === 'degraded' || state === 'connecting') {
+      if (state === 'healthy' || state === 'degraded') {
         return true;
       }
     }
@@ -615,9 +648,14 @@ export class HealthMonitor {
 
   /**
    * Check if a specific instance is reachable (healthy or degraded).
+   * Untracked instances (no actor) are assumed reachable — we don't block
+   * tool calls for instances the monitor hasn't seen yet (e.g., OAuth context switch).
    */
   public isInstanceReachable(instanceUrl?: string): boolean {
-    const state = this.getState(instanceUrl);
+    const url = instanceUrl ?? GITLAB_BASE_URL;
+    const actor = this.actors.get(url);
+    if (!actor) return true; // Untracked = assume reachable
+    const state = this.getActorState(actor);
     return state === 'healthy' || state === 'degraded';
   }
 

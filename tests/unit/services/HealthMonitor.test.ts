@@ -135,6 +135,50 @@ describe('HealthMonitor', () => {
 
       expect(monitor.getState('https://gitlab.example.com')).toBe('disconnected');
     });
+
+    it('should transition to failed on auth error (no auto-reconnect)', async () => {
+      // Auth errors (401) are classified as permanent → failed state, not disconnected
+      mockInitialize.mockRejectedValue(new Error('GitLab API error: 401 Unauthorized'));
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+
+      expect(monitor.getState('https://gitlab.example.com')).toBe('failed');
+      expect(monitor.isAnyInstanceHealthy()).toBe(false);
+
+      // Wait to verify no auto-reconnect happens (unlike disconnected)
+      await new Promise((r) => setTimeout(r, 300));
+      // Still failed — no reconnect attempt
+      expect(monitor.getState('https://gitlab.example.com')).toBe('failed');
+    });
+
+    it('should transition to failed on config error (no auto-reconnect)', async () => {
+      mockInitialize.mockRejectedValue(
+        new Error('GITLAB_TOKEN is required in static authentication mode'),
+      );
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+
+      expect(monitor.getState('https://gitlab.example.com')).toBe('failed');
+    });
+
+    it('should allow manual reconnect from failed state via forceReconnect', async () => {
+      // First: fail with auth error → failed
+      mockInitialize.mockRejectedValueOnce(new Error('GitLab API error: 401 Unauthorized'));
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+      expect(monitor.getState('https://gitlab.example.com')).toBe('failed');
+
+      // Fix the auth issue, then force reconnect
+      mockInitialize.mockResolvedValueOnce(undefined);
+      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+      monitor.forceReconnect('https://gitlab.example.com');
+
+      await new Promise((r) => setTimeout(r, 300));
+      expect(monitor.getState('https://gitlab.example.com')).toBe('healthy');
+    });
   });
 
   describe('state change callbacks', () => {
@@ -483,6 +527,46 @@ describe('HealthMonitor', () => {
 
       expect(monitor.isInstanceReachable('https://gitlab.example.com')).toBe(false);
     });
+
+    it('should return true for untracked instance (assume reachable)', async () => {
+      const monitor = HealthMonitor.getInstance();
+      // No actor for this URL — should assume reachable
+      expect(monitor.isInstanceReachable('https://unknown.example.com')).toBe(true);
+    });
+
+    it('should return false for failed instance', async () => {
+      mockInitialize.mockRejectedValue(new Error('GitLab API error: 401 Unauthorized'));
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+
+      expect(monitor.isInstanceReachable('https://gitlab.example.com')).toBe(false);
+    });
+  });
+
+  describe('isAnyInstanceHealthy', () => {
+    it('should return true when no actors exist (not yet initialized)', () => {
+      const monitor = HealthMonitor.getInstance();
+      expect(monitor.isAnyInstanceHealthy()).toBe(true);
+    });
+
+    it('should return false when all instances disconnected', async () => {
+      mockInitialize.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+
+      expect(monitor.isAnyInstanceHealthy()).toBe(false);
+    });
+
+    it('should return false when all instances failed', async () => {
+      mockInitialize.mockRejectedValue(new Error('GitLab API error: 401 Unauthorized'));
+
+      const monitor = HealthMonitor.getInstance();
+      await monitor.initialize('https://gitlab.example.com');
+
+      expect(monitor.isAnyInstanceHealthy()).toBe(false);
+    });
   });
 });
 
@@ -576,6 +660,16 @@ describe('classifyError — additional coverage', () => {
   it('should classify unknown error without code as permanent (programming bugs)', () => {
     const error = new Error('something completely unexpected happened');
     expect(classifyError(error)).toBe('permanent');
+  });
+
+  it('should classify health check failed as transient', () => {
+    const error = new Error('Health check failed for https://gitlab.example.com');
+    expect(classifyError(error)).toBe('transient');
+  });
+
+  it('should classify initialization timeout as transient', () => {
+    const error = new Error('Initialization timeout after 5000ms');
+    expect(classifyError(error)).toBe('transient');
   });
 });
 

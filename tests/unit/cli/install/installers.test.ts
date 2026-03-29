@@ -606,6 +606,74 @@ describe('install installers', () => {
       expect(result.error).toContain('Cannot create directory');
     });
 
+    it('should handle claude-desktop write error in catch block', () => {
+      // Covers line 137: catch block in installClaudeDesktop
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => {
+        throw new Error('Disk full');
+      });
+
+      const result = installToClient('claude-desktop', mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Disk full');
+    });
+
+    it('should handle claude-code spawnSync throwing error', () => {
+      // Covers line 225: catch block in installClaudeCode
+      mockChildProcess.spawnSync.mockImplementation(() => {
+        throw new Error('Command not found');
+      });
+
+      const result = installToClient('claude-code', mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Command not found');
+    });
+
+    it('should handle cline write error in catch block', () => {
+      // Covers line 507: catch block in installCline
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => {
+        throw new Error('No space left');
+      });
+
+      const result = installToClient('cline', mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('No space left');
+    });
+
+    it('should handle roo-code write error in catch block', () => {
+      // Covers line 578: catch block in installRooCode
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => {
+        throw new Error('Access denied');
+      });
+
+      const result = installToClient('roo-code', mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Access denied');
+    });
+
+    it('should handle vscode-copilot write error in catch block', () => {
+      // Covers line 368: catch block in installVscodeCopilot
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => {
+        throw new Error('Read-only filesystem');
+      });
+
+      const result = installToClient('vscode-copilot', mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Read-only filesystem');
+    });
+
     it('should handle invalid JSON in existing config', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue('invalid json {{{');

@@ -343,6 +343,46 @@ describe('install detector', () => {
     });
   });
 
+  describe('appBundleExists (via detectClient)', () => {
+    const originalPlatform = process.platform;
+
+    afterEach(() => {
+      Object.defineProperty(process, 'platform', { value: originalPlatform });
+    });
+
+    it('should return false for app-bundle detection on non-darwin platform', () => {
+      // Covers line 60: process.platform !== 'darwin' returns false
+      Object.defineProperty(process, 'platform', { value: 'linux' });
+      mockChildProcess.spawnSync.mockReturnValue({
+        status: 1,
+        stdout: '',
+        stderr: '',
+        pid: 1234,
+        output: [],
+        signal: null,
+      });
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = detectClient('claude-desktop');
+      // appBundleExists returns false on non-darwin, so detected stays false
+      // (no config dir fallback since existsSync is false)
+      expect(result.detected).toBe(false);
+      expect(result.method).toBe('app-bundle');
+    });
+
+    it('should return false when mdfind throws an error', () => {
+      // Covers line 75: catch block in appBundleExists
+      Object.defineProperty(process, 'platform', { value: 'darwin' });
+      mockChildProcess.spawnSync.mockImplementation(() => {
+        throw new Error('mdfind not available');
+      });
+      mockFs.existsSync.mockReturnValue(false);
+
+      const result = detectClient('claude-desktop');
+      expect(result.detected).toBe(false);
+    });
+  });
+
   describe('isValidBundleId', () => {
     it('should accept valid reverse-domain bundle IDs', () => {
       expect(isValidBundleId('com.example')).toBe(true);

@@ -229,6 +229,31 @@ describe('connection', () => {
       expect(result.error).toContain('Network error');
     });
 
+    it('should return timeout error for AbortError', async () => {
+      // Covers line 86: AbortError handling
+      const abortError = new Error('The operation was aborted');
+      abortError.name = 'AbortError';
+      mockFetch.mockRejectedValueOnce(abortError);
+
+      const result = await testConnection('https://gitlab.example.com', 'glpat-xxx');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Connection timeout');
+      expect(result.error).toContain('gitlab.example.com');
+    });
+
+    it('should return network error for TypeError with fetch message', async () => {
+      // Covers line 93: TypeError with 'fetch' in message
+      const fetchError = new TypeError('fetch failed');
+      mockFetch.mockRejectedValueOnce(fetchError);
+
+      const result = await testConnection('https://gitlab.example.com', 'glpat-xxx');
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Cannot connect to');
+      expect(result.error).toContain('gitlab.example.com');
+    });
+
     it('should handle missing version endpoint gracefully', async () => {
       mockFetch.mockResolvedValueOnce({
         ok: true,

@@ -5,11 +5,22 @@ import {
   getFilteredWebhooksTools,
 } from '../../../../src/entities/webhooks/registry';
 import { enhancedFetch } from '../../../../src/utils/fetch';
+import * as config from '../../../../src/config';
 
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
 }));
+
+// Mock isActionDenied for testing denied action paths
+jest.mock('../../../../src/config', () => ({
+  ...jest.requireActual('../../../../src/config'),
+  isActionDenied: jest.fn().mockReturnValue(false),
+}));
+
+const mockIsActionDenied = config.isActionDenied as jest.MockedFunction<
+  typeof config.isActionDenied
+>;
 
 const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
 
@@ -381,6 +392,66 @@ describe('Webhooks Registry', () => {
           // Missing trigger
         }),
       ).rejects.toThrow();
+    });
+
+    it('should handle create action with group scope', async () => {
+      // Covers lines 99-102: group scope path in manage_webhook handler
+      const tool = webhooksToolRegistry.get('manage_webhook');
+      expect(tool).toBeDefined();
+
+      mockEnhancedFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 1, url: 'https://example.com/hook' }),
+      } as Response);
+
+      const result = await tool!.handler({
+        action: 'create',
+        scope: 'group',
+        groupId: 'test-group',
+        url: 'https://example.com/hook',
+        push_events: true,
+      });
+
+      expect(mockEnhancedFetch).toHaveBeenCalledWith(
+        expect.stringContaining('groups/test-group/hooks'),
+        expect.objectContaining({
+          method: 'POST',
+        }),
+      );
+      expect(result).toBeDefined();
+    });
+
+    it('should throw error when browse_webhooks action is denied', async () => {
+      // Covers line 32: isActionDenied check in browse_webhooks handler
+      const tool = webhooksToolRegistry.get('browse_webhooks');
+      expect(tool).toBeDefined();
+
+      mockIsActionDenied.mockReturnValueOnce(true);
+
+      await expect(
+        tool!.handler({
+          action: 'list',
+          scope: 'project',
+          projectId: 'test-project',
+        }),
+      ).rejects.toThrow("Action 'list' is not allowed for browse_webhooks tool");
+    });
+
+    it('should throw error when manage_webhook action is denied', async () => {
+      // Covers line 92: isActionDenied check in manage_webhook handler
+      const tool = webhooksToolRegistry.get('manage_webhook');
+      expect(tool).toBeDefined();
+
+      mockIsActionDenied.mockReturnValueOnce(true);
+
+      await expect(
+        tool!.handler({
+          action: 'create',
+          scope: 'project',
+          projectId: 'test-project',
+          url: 'https://example.com/hook',
+        }),
+      ).rejects.toThrow("Action 'create' is not allowed for manage_webhook tool");
     });
   });
 });

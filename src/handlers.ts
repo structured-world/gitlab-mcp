@@ -338,11 +338,12 @@ export async function setupHandlers(server: Server): Promise<void> {
           request.params.arguments && typeof request.params.arguments.action === 'string'
             ? request.params.arguments.action
             : 'unknown';
+        const instanceState = healthMonitor.getState(effectiveInstanceUrl);
         const connError = createConnectionFailedError(
           toolName,
           action,
           effectiveInstanceUrl,
-          healthMonitor.getState(effectiveInstanceUrl) === 'connecting',
+          instanceState,
         );
         return {
           content: [{ type: 'text', text: JSON.stringify(connError, null, 2) }],

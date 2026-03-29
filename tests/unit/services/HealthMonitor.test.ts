@@ -125,12 +125,10 @@ describe('HealthMonitor', () => {
     });
 
     it('should transition to disconnected on timeout', async () => {
-      // Simulate a long-running initialize that never resolves within INIT_TIMEOUT_MS
-      mockInitialize.mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 5000)));
+      // Never-resolving promise — INIT_TIMEOUT_MS (200ms) will fire first
+      mockInitialize.mockImplementation(() => new Promise(() => {}));
 
       const monitor = HealthMonitor.getInstance();
-      // initialize() internally uses Promise.race with INIT_TIMEOUT_MS=200ms
-      // The timeout will reject before the 5000ms initialize resolves
       await monitor.initialize('https://gitlab.example.com');
 
       expect(monitor.getState('https://gitlab.example.com')).toBe('disconnected');
@@ -793,12 +791,12 @@ describe('classifyError — additional coverage', () => {
 });
 
 describe('createConnectionFailedError', () => {
-  it('should create error with reconnecting=true', () => {
+  it('should create error for connecting state (reconnecting)', () => {
     const error = createConnectionFailedError(
       'browse_projects',
       'list',
       'https://gitlab.example.com',
-      true,
+      'connecting',
     );
     expect(error.error_code).toBe('CONNECTION_FAILED');
     expect(error.tool).toBe('browse_projects');
@@ -808,17 +806,31 @@ describe('createConnectionFailedError', () => {
     expect(error.message).toContain('Automatic reconnection is in progress');
   });
 
-  it('should create error with reconnecting=false', () => {
+  it('should create error for disconnected state (will retry)', () => {
     const error = createConnectionFailedError(
       'manage_project',
       'update',
       'https://gitlab.example.com',
-      false,
+      'disconnected',
     );
     expect(error.error_code).toBe('CONNECTION_FAILED');
     expect(error.reconnecting).toBe(false);
-    expect(error.message).toContain('Connection will be retried');
-    expect(error.suggested_fix).toContain('whoami');
+    expect(error.message).toContain('Connection will be retried automatically');
+    expect(error.suggested_fix).toContain('network connectivity');
+  });
+
+  it('should create error for failed state (no auto-reconnect)', () => {
+    const error = createConnectionFailedError(
+      'browse_projects',
+      'list',
+      'https://gitlab.example.com',
+      'failed',
+    );
+    expect(error.error_code).toBe('CONNECTION_FAILED');
+    expect(error.reconnecting).toBe(false);
+    expect(error.message).toContain('authentication or configuration error');
+    expect(error.message).toContain('Automatic reconnection is disabled');
+    expect(error.suggested_fix).toContain('GITLAB_TOKEN');
   });
 });
 

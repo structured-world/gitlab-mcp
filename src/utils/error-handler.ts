@@ -1170,23 +1170,40 @@ export interface ConnectionFailedError extends StructuredError {
 }
 
 /**
- * Create a ConnectionFailedError for tool calls during disconnected state.
+ * Create a ConnectionFailedError for tool calls during disconnected/failed state.
+ *
+ * @param connectionState - The current health monitor state for this instance.
+ *   'connecting' → reconnect in progress; 'disconnected' → will auto-retry;
+ *   'failed' → auth/config error, requires manual intervention.
  */
 export function createConnectionFailedError(
   toolName: string,
   action: string,
   instanceUrl: string,
-  reconnecting: boolean,
+  connectionState: string,
 ): ConnectionFailedError {
+  const reconnecting = connectionState === 'connecting';
+  const message =
+    connectionState === 'failed'
+      ? `GitLab instance ${instanceUrl} connection failed (authentication or configuration error). Automatic reconnection is disabled.`
+      : connectionState === 'connecting'
+        ? `GitLab instance ${instanceUrl} is currently unreachable. Automatic reconnection is in progress.`
+        : `GitLab instance ${instanceUrl} is currently unreachable. Connection will be retried automatically.`;
+
+  const suggestedFix =
+    connectionState === 'failed'
+      ? 'Check GITLAB_TOKEN validity and GITLAB_API_URL configuration. ' +
+        "Use manage_context with action 'whoami' to check connection status."
+      : 'Check network connectivity, VPN status, or GitLab instance availability. ' +
+        "Use manage_context with action 'whoami' to check connection status.";
+
   return {
     error_code: 'CONNECTION_FAILED',
     tool: toolName,
     action,
     instance_url: instanceUrl,
     reconnecting,
-    message: `GitLab instance ${instanceUrl} is currently unreachable. ${reconnecting ? 'Automatic reconnection is in progress.' : 'Connection will be retried.'}`,
-    suggested_fix:
-      'Check network connectivity, VPN status, or GitLab instance availability. ' +
-      "Use manage_context with action 'whoami' to check connection status.",
+    message,
+    suggested_fix: suggestedFix,
   };
 }

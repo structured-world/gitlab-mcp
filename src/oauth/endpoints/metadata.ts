@@ -7,14 +7,14 @@
  * This endpoint allows OAuth clients to discover server capabilities.
  */
 
-import { Request, Response } from "express";
-import { HOST, PORT } from "../../config";
+import { Request, Response } from 'express';
+import { HOST, PORT } from '../../config';
 
 /**
  * MCP Protocol version supported by this server
  * @see https://modelcontextprotocol.io/spec
  */
-export const MCP_PROTOCOL_VERSION = "2025-03-26";
+export const MCP_PROTOCOL_VERSION = '2025-03-26';
 
 /**
  * Get the base URL from the request
@@ -26,12 +26,12 @@ export const MCP_PROTOCOL_VERSION = "2025-03-26";
  */
 export function getBaseUrl(req: Request): string {
   // Check for forwarded protocol (from reverse proxy)
-  const forwardedProto = req.get("x-forwarded-proto");
-  const protocol = forwardedProto ?? req.protocol ?? "http";
+  const forwardedProto = req.get('x-forwarded-proto');
+  const protocol = forwardedProto ?? req.protocol ?? 'http';
 
   // Check for forwarded host (from reverse proxy)
-  const forwardedHost = req.get("x-forwarded-host");
-  const host = forwardedHost ?? req.get("host") ?? `${HOST}:${PORT}`;
+  const forwardedHost = req.get('x-forwarded-host');
+  const host = forwardedHost ?? req.get('host') ?? `${HOST}:${PORT}`;
 
   return `${protocol}://${host}`;
 }
@@ -62,20 +62,20 @@ export function metadataHandler(req: Request, res: Response): void {
     token_endpoint: `${baseUrl}/token`,
 
     // OPTIONAL: Supported response types
-    response_types_supported: ["code"],
+    response_types_supported: ['code'],
 
     // OPTIONAL: Supported grant types
-    grant_types_supported: ["authorization_code", "refresh_token"],
+    grant_types_supported: ['authorization_code', 'refresh_token'],
 
     // OPTIONAL: Supported PKCE code challenge methods (S256 required for OAuth 2.1)
-    code_challenge_methods_supported: ["S256"],
+    code_challenge_methods_supported: ['S256'],
 
     // OPTIONAL: Token endpoint authentication methods
     // "none" for public clients (device flow with non-confidential apps)
-    token_endpoint_auth_methods_supported: ["none"],
+    token_endpoint_auth_methods_supported: ['none'],
 
     // OPTIONAL: Supported scopes
-    scopes_supported: ["mcp:tools", "mcp:resources"],
+    scopes_supported: ['mcp:tools', 'mcp:resources'],
 
     // REQUIRED for Claude.ai: Dynamic Client Registration endpoint (RFC 7591)
     registration_endpoint: `${baseUrl}/register`,
@@ -108,10 +108,10 @@ export function protectedResourceHandler(req: Request, res: Response): void {
     authorization_servers: [baseUrl],
 
     // OPTIONAL: Scopes required for this resource
-    scopes_supported: ["mcp:tools", "mcp:resources"],
+    scopes_supported: ['mcp:tools', 'mcp:resources'],
 
     // OPTIONAL: Bearer token methods supported
-    bearer_methods_supported: ["header"],
+    bearer_methods_supported: ['header'],
   };
 
   res.json(metadata);

@@ -1,5 +1,5 @@
-import { RegistryManager } from "../../../src/registry-manager";
-import { ConnectionManager } from "../../../src/services/ConnectionManager";
+import { RegistryManager } from '../../../src/registry-manager';
+import { ConnectionManager } from '../../../src/services/ConnectionManager';
 
 /**
  * Integration Test Helper for RegistryManager
@@ -44,7 +44,7 @@ export class IntegrationTestHelper {
 
     const instanceInfo = this.connectionManager.getInstanceInfo();
     console.log(
-      `🔗 Integration test helper connected: ${instanceInfo.version} ${instanceInfo.tier}`
+      `🔗 Integration test helper connected: ${instanceInfo.version} ${instanceInfo.tier}`,
     );
   }
 
@@ -53,7 +53,7 @@ export class IntegrationTestHelper {
    */
   async executeTool(toolName: string, args: unknown): Promise<unknown> {
     if (!this.initialized) {
-      throw new Error("IntegrationTestHelper must be initialized before use");
+      throw new Error('IntegrationTestHelper must be initialized before use');
     }
 
     return await this.registryManager.executeTool(toolName, args);
@@ -78,44 +78,44 @@ export class IntegrationTestHelper {
       owned?: boolean;
       starred?: boolean;
       archived?: boolean;
-      visibility?: "public" | "internal" | "private";
+      visibility?: 'public' | 'internal' | 'private';
       order_by?:
-        | "id"
-        | "name"
-        | "path"
-        | "created_at"
-        | "updated_at"
-        | "last_activity_at"
-        | "similarity";
-      sort?: "asc" | "desc";
+        | 'id'
+        | 'name'
+        | 'path'
+        | 'created_at'
+        | 'updated_at'
+        | 'last_activity_at'
+        | 'similarity';
+      sort?: 'asc' | 'desc';
       search?: string;
       simple?: boolean;
       per_page?: number;
       page?: number;
-    } = {}
+    } = {},
   ): Promise<unknown> {
-    return this.executeTool("browse_projects", { action: "list", ...args });
+    return this.executeTool('browse_projects', { action: 'list', ...args });
   }
 
   async searchProjects(
     args: {
       q?: string;
       with_programming_language?: string;
-      visibility?: "public" | "internal" | "private";
+      visibility?: 'public' | 'internal' | 'private';
       order_by?:
-        | "id"
-        | "name"
-        | "path"
-        | "created_at"
-        | "updated_at"
-        | "last_activity_at"
-        | "similarity";
-      sort?: "asc" | "desc";
+        | 'id'
+        | 'name'
+        | 'path'
+        | 'created_at'
+        | 'updated_at'
+        | 'last_activity_at'
+        | 'similarity';
+      sort?: 'asc' | 'desc';
       per_page?: number;
       page?: number;
-    } = {}
+    } = {},
   ): Promise<unknown> {
-    return this.executeTool("browse_projects", { action: "search", ...args });
+    return this.executeTool('browse_projects', { action: 'search', ...args });
   }
 
   async getProject(args: {
@@ -123,7 +123,7 @@ export class IntegrationTestHelper {
     statistics?: boolean;
     license?: boolean;
   }): Promise<unknown> {
-    return this.executeTool("browse_projects", { action: "get", ...args });
+    return this.executeTool('browse_projects', { action: 'get', ...args });
   }
 
   async getUsers(
@@ -138,9 +138,9 @@ export class IntegrationTestHelper {
       without_project_bots?: boolean;
       per_page?: number;
       page?: number;
-    } = {}
+    } = {},
   ): Promise<unknown> {
-    return this.executeTool("browse_users", { action: "search", ...args });
+    return this.executeTool('browse_users', { action: 'search', ...args });
   }
 
   // browse_namespaces: Consolidated CQRS tool (Issue #16)
@@ -153,17 +153,17 @@ export class IntegrationTestHelper {
       min_access_level?: number;
       per_page?: number;
       page?: number;
-    } = {}
+    } = {},
   ): Promise<unknown> {
-    return this.executeTool("browse_namespaces", { action: "list", ...args });
+    return this.executeTool('browse_namespaces', { action: 'list', ...args });
   }
 
   async getNamespace(args: { namespace_id: string }): Promise<unknown> {
-    return this.executeTool("browse_namespaces", { action: "get", ...args });
+    return this.executeTool('browse_namespaces', { action: 'get', ...args });
   }
 
   async verifyNamespace(args: { namespace_id: string }): Promise<unknown> {
-    return this.executeTool("browse_namespaces", { action: "verify", ...args });
+    return this.executeTool('browse_namespaces', { action: 'verify', ...args });
   }
 
   // ========================================
@@ -179,14 +179,14 @@ export class IntegrationTestHelper {
     labelIds?: string[];
     milestoneId?: string;
   }): Promise<unknown> {
-    return this.executeTool("manage_work_item", { action: "create", ...args });
+    return this.executeTool('manage_work_item', { action: 'create', ...args });
   }
 
   async updateWorkItem(args: {
     id: string;
     title?: string;
     description?: string;
-    state?: "OPEN" | "CLOSE" | "REOPEN";
+    state?: 'OPEN' | 'CLOSE' | 'REOPEN';
     assigneeIds?: string[];
     labelIds?: string[];
     milestoneId?: string;
@@ -195,27 +195,27 @@ export class IntegrationTestHelper {
     timeSpentAt?: string;
     timeSpentSummary?: string;
   }): Promise<unknown> {
-    return this.executeTool("manage_work_item", { action: "update", ...args });
+    return this.executeTool('manage_work_item', { action: 'update', ...args });
   }
 
   async deleteWorkItem(args: { id: string }): Promise<unknown> {
-    return this.executeTool("manage_work_item", { action: "delete", ...args });
+    return this.executeTool('manage_work_item', { action: 'delete', ...args });
   }
 
   async getWorkItem(args: { id: string }): Promise<unknown> {
-    return this.executeTool("browse_work_items", { action: "get", ...args });
+    return this.executeTool('browse_work_items', { action: 'get', ...args });
   }
 
   async listWorkItems(args: {
     namespace: string;
     types?: string[];
-    state?: ("OPEN" | "CLOSED")[];
+    state?: ('OPEN' | 'CLOSED')[];
     first?: number;
     after?: string;
     simple?: boolean;
     active?: boolean;
   }): Promise<unknown> {
-    return this.executeTool("browse_work_items", { action: "list", ...args });
+    return this.executeTool('browse_work_items', { action: 'list', ...args });
   }
 
   // ========================================
@@ -231,7 +231,7 @@ export class IntegrationTestHelper {
     per_page?: number;
     page?: number;
   }): Promise<unknown> {
-    return this.executeTool("list_labels", args);
+    return this.executeTool('list_labels', args);
   }
 
   async getLabel(args: {
@@ -239,7 +239,7 @@ export class IntegrationTestHelper {
     group_id?: string;
     label_id: string;
   }): Promise<unknown> {
-    return this.executeTool("get_label", args);
+    return this.executeTool('get_label', args);
   }
 
   async createLabel(args: {
@@ -250,7 +250,7 @@ export class IntegrationTestHelper {
     description?: string;
     priority?: number;
   }): Promise<unknown> {
-    return this.executeTool("create_label", args);
+    return this.executeTool('create_label', args);
   }
 
   async updateLabel(args: {
@@ -262,7 +262,7 @@ export class IntegrationTestHelper {
     description?: string;
     priority?: number;
   }): Promise<unknown> {
-    return this.executeTool("update_label", args);
+    return this.executeTool('update_label', args);
   }
 
   async deleteLabel(args: {
@@ -270,7 +270,7 @@ export class IntegrationTestHelper {
     group_id?: string;
     label_id: string;
   }): Promise<unknown> {
-    return this.executeTool("delete_label", args);
+    return this.executeTool('delete_label', args);
   }
 
   // ========================================
@@ -280,18 +280,18 @@ export class IntegrationTestHelper {
   async listMergeRequests(args: {
     project_id?: string;
     group_id?: string;
-    state?: "opened" | "closed" | "locked" | "merged";
+    state?: 'opened' | 'closed' | 'locked' | 'merged';
     order_by?:
-      | "created_at"
-      | "updated_at"
-      | "priority"
-      | "label_priority"
-      | "milestone_due"
-      | "popularity"
-      | "weight";
-    sort?: "asc" | "desc";
+      | 'created_at'
+      | 'updated_at'
+      | 'priority'
+      | 'label_priority'
+      | 'milestone_due'
+      | 'popularity'
+      | 'weight';
+    sort?: 'asc' | 'desc';
     milestone?: string;
-    view?: "simple" | "minimal";
+    view?: 'simple' | 'minimal';
     labels?: string;
     with_labels_details?: boolean;
     with_merge_status_recheck?: boolean;
@@ -299,7 +299,7 @@ export class IntegrationTestHelper {
     created_before?: string;
     updated_after?: string;
     updated_before?: string;
-    scope?: "created_by_me" | "assigned_to_me" | "all";
+    scope?: 'created_by_me' | 'assigned_to_me' | 'all';
     author_id?: number;
     author_username?: string;
     assignee_id?: number;
@@ -310,7 +310,7 @@ export class IntegrationTestHelper {
     search?: string;
     in?: string;
     draft?: boolean;
-    wip?: "yes" | "no";
+    wip?: 'yes' | 'no';
     not?: string;
     environment?: string;
     deployed_before?: string;
@@ -318,7 +318,7 @@ export class IntegrationTestHelper {
     per_page?: number;
     page?: number;
   }): Promise<unknown> {
-    return this.executeTool("list_merge_requests", args);
+    return this.executeTool('list_merge_requests', args);
   }
 
   async getMergeRequest(args: {
@@ -328,7 +328,7 @@ export class IntegrationTestHelper {
     include_diverged_commits_count?: boolean;
     include_rebase_in_progress?: boolean;
   }): Promise<unknown> {
-    return this.executeTool("get_merge_request", args);
+    return this.executeTool('get_merge_request', args);
   }
 
   async createMergeRequest(args: {
@@ -348,12 +348,12 @@ export class IntegrationTestHelper {
     allow_maintainer_to_push?: boolean;
     squash?: boolean;
   }): Promise<unknown> {
-    return this.executeTool("create_merge_request", args);
+    return this.executeTool('create_merge_request', args);
   }
 
   // browse_merge_requests CQRS Tool
   async browseMergeRequests(args: {
-    action: "list" | "get" | "diffs" | "compare";
+    action: 'list' | 'get' | 'diffs' | 'compare';
     project_id?: string;
     merge_request_iid?: string;
     branch_name?: string;
@@ -364,31 +364,31 @@ export class IntegrationTestHelper {
     page?: number;
     [key: string]: unknown;
   }): Promise<unknown> {
-    return this.executeTool("browse_merge_requests", args);
+    return this.executeTool('browse_merge_requests', args);
   }
 
   // manage_merge_request CQRS Tool (includes approve, unapprove, get_approval_state)
   async manageMergeRequest(args: {
-    action: "create" | "update" | "merge" | "approve" | "unapprove" | "get_approval_state";
+    action: 'create' | 'update' | 'merge' | 'approve' | 'unapprove' | 'get_approval_state';
     project_id: string;
     merge_request_iid?: string;
     sha?: string;
     [key: string]: unknown;
   }): Promise<unknown> {
-    return this.executeTool("manage_merge_request", args);
+    return this.executeTool('manage_merge_request', args);
   }
 
   // manage_mr_discussion CQRS Tool (includes resolve, suggest)
   async manageMrDiscussion(args: {
     action:
-      | "comment"
-      | "thread"
-      | "reply"
-      | "update"
-      | "apply_suggestion"
-      | "apply_suggestions"
-      | "resolve"
-      | "suggest";
+      | 'comment'
+      | 'thread'
+      | 'reply'
+      | 'update'
+      | 'apply_suggestion'
+      | 'apply_suggestions'
+      | 'resolve'
+      | 'suggest';
     project_id: string;
     merge_request_iid?: string;
     discussion_id?: string;
@@ -401,19 +401,19 @@ export class IntegrationTestHelper {
     lines_below?: number;
     [key: string]: unknown;
   }): Promise<unknown> {
-    return this.executeTool("manage_mr_discussion", args);
+    return this.executeTool('manage_mr_discussion', args);
   }
 
   // browse_mr_discussions CQRS Tool
   async browseMrDiscussions(args: {
-    action: "list" | "drafts" | "draft";
+    action: 'list' | 'drafts' | 'draft';
     project_id: string;
     merge_request_iid: string;
     draft_note_id?: string;
     per_page?: number;
     page?: number;
   }): Promise<unknown> {
-    return this.executeTool("browse_mr_discussions", args);
+    return this.executeTool('browse_mr_discussions', args);
   }
 
   // ========================================
@@ -423,13 +423,13 @@ export class IntegrationTestHelper {
   async listMilestones(args: {
     project_id?: string;
     group_id?: string;
-    state?: "active" | "closed";
+    state?: 'active' | 'closed';
     search?: string;
     include_parent_milestones?: boolean;
     per_page?: number;
     page?: number;
   }): Promise<unknown> {
-    return this.executeTool("list_milestones", args);
+    return this.executeTool('list_milestones', args);
   }
 
   async getMilestone(args: {
@@ -437,7 +437,7 @@ export class IntegrationTestHelper {
     group_id?: string;
     milestone_id: string;
   }): Promise<unknown> {
-    return this.executeTool("get_milestone", args);
+    return this.executeTool('get_milestone', args);
   }
 
   // ========================================
@@ -446,50 +446,50 @@ export class IntegrationTestHelper {
 
   async listPipelines(args: {
     project_id: string;
-    scope?: "running" | "pending" | "finished" | "branches" | "tags";
+    scope?: 'running' | 'pending' | 'finished' | 'branches' | 'tags';
     status?:
-      | "created"
-      | "waiting_for_resource"
-      | "preparing"
-      | "pending"
-      | "running"
-      | "success"
-      | "failed"
-      | "canceled"
-      | "skipped"
-      | "manual"
-      | "scheduled";
+      | 'created'
+      | 'waiting_for_resource'
+      | 'preparing'
+      | 'pending'
+      | 'running'
+      | 'success'
+      | 'failed'
+      | 'canceled'
+      | 'skipped'
+      | 'manual'
+      | 'scheduled';
     source?:
-      | "push"
-      | "web"
-      | "trigger"
-      | "schedule"
-      | "api"
-      | "external"
-      | "pipeline"
-      | "chat"
-      | "webide"
-      | "merge_request_event"
-      | "external_pull_request_event"
-      | "parent_pipeline"
-      | "ondemand_dast_scan"
-      | "ondemand_dast_validation";
+      | 'push'
+      | 'web'
+      | 'trigger'
+      | 'schedule'
+      | 'api'
+      | 'external'
+      | 'pipeline'
+      | 'chat'
+      | 'webide'
+      | 'merge_request_event'
+      | 'external_pull_request_event'
+      | 'parent_pipeline'
+      | 'ondemand_dast_scan'
+      | 'ondemand_dast_validation';
     ref?: string;
     sha?: string;
     yaml_errors?: boolean;
     username?: string;
     updated_after?: string;
     updated_before?: string;
-    order_by?: "id" | "status" | "ref" | "updated_at" | "user_id";
-    sort?: "asc" | "desc";
+    order_by?: 'id' | 'status' | 'ref' | 'updated_at' | 'user_id';
+    sort?: 'asc' | 'desc';
     per_page?: number;
     page?: number;
   }): Promise<unknown> {
-    return this.executeTool("list_pipelines", args);
+    return this.executeTool('list_pipelines', args);
   }
 
   async getPipeline(args: { project_id: string; pipeline_id: number }): Promise<unknown> {
-    return this.executeTool("get_pipeline", args);
+    return this.executeTool('get_pipeline', args);
   }
 
   // ========================================
@@ -502,7 +502,7 @@ export class IntegrationTestHelper {
     per_page?: number;
     page?: number;
   }): Promise<unknown> {
-    return this.executeTool("list_wiki_pages", args);
+    return this.executeTool('list_wiki_pages', args);
   }
 
   async getWikiPage(args: {
@@ -511,17 +511,17 @@ export class IntegrationTestHelper {
     version?: string;
     render_html?: boolean;
   }): Promise<unknown> {
-    return this.executeTool("get_wiki_page", args);
+    return this.executeTool('get_wiki_page', args);
   }
 
   async createWikiPage(args: {
     project_id: string;
     title: string;
     content: string;
-    encoding?: "text" | "base64";
-    format?: "markdown" | "rdoc" | "asciidoc" | "org";
+    encoding?: 'text' | 'base64';
+    format?: 'markdown' | 'rdoc' | 'asciidoc' | 'org';
   }): Promise<unknown> {
-    return this.executeTool("create_wiki_page", args);
+    return this.executeTool('create_wiki_page', args);
   }
 
   // ========================================
@@ -530,40 +530,40 @@ export class IntegrationTestHelper {
 
   async listTodos(args: {
     todo_action?:
-      | "assigned"
-      | "mentioned"
-      | "build_failed"
-      | "marked"
-      | "approval_required"
-      | "unmergeable"
-      | "directly_addressed"
-      | "review_requested";
-    state?: "pending" | "done";
+      | 'assigned'
+      | 'mentioned'
+      | 'build_failed'
+      | 'marked'
+      | 'approval_required'
+      | 'unmergeable'
+      | 'directly_addressed'
+      | 'review_requested';
+    state?: 'pending' | 'done';
     type?:
-      | "Issue"
-      | "MergeRequest"
-      | "Epic"
-      | "DesignManagement::Design"
-      | "AlertManagement::Alert";
+      | 'Issue'
+      | 'MergeRequest'
+      | 'Epic'
+      | 'DesignManagement::Design'
+      | 'AlertManagement::Alert';
     project_id?: number;
     group_id?: number;
     author_id?: number;
     per_page?: number;
     page?: number;
   }): Promise<unknown> {
-    return this.executeTool("browse_todos", { action: "list", ...args });
+    return this.executeTool('browse_todos', { action: 'list', ...args });
   }
 
   async markTodoDone(id: number): Promise<unknown> {
-    return this.executeTool("manage_todos", { action: "mark_done", id });
+    return this.executeTool('manage_todos', { action: 'mark_done', id });
   }
 
   async markAllTodosDone(): Promise<unknown> {
-    return this.executeTool("manage_todos", { action: "mark_all_done" });
+    return this.executeTool('manage_todos', { action: 'mark_all_done' });
   }
 
   async restoreTodo(id: number): Promise<unknown> {
-    return this.executeTool("manage_todos", { action: "restore", id });
+    return this.executeTool('manage_todos', { action: 'restore', id });
   }
 
   // ========================================
@@ -572,42 +572,42 @@ export class IntegrationTestHelper {
 
   async manageContext(args: {
     action:
-      | "show"
-      | "list_presets"
-      | "list_profiles"
-      | "switch_preset"
-      | "switch_profile"
-      | "set_scope"
-      | "reset";
+      | 'show'
+      | 'list_presets'
+      | 'list_profiles'
+      | 'switch_preset'
+      | 'switch_profile'
+      | 'set_scope'
+      | 'reset';
     preset?: string;
     profile?: string;
     namespace?: string;
     includeSubgroups?: boolean;
   }): Promise<unknown> {
-    return this.executeTool("manage_context", args);
+    return this.executeTool('manage_context', args);
   }
 
   async getContext(): Promise<unknown> {
-    return this.executeTool("manage_context", { action: "show" });
+    return this.executeTool('manage_context', { action: 'show' });
   }
 
   async listPresets(): Promise<unknown> {
-    return this.executeTool("manage_context", { action: "list_presets" });
+    return this.executeTool('manage_context', { action: 'list_presets' });
   }
 
   async switchPreset(preset: string): Promise<unknown> {
-    return this.executeTool("manage_context", { action: "switch_preset", preset });
+    return this.executeTool('manage_context', { action: 'switch_preset', preset });
   }
 
   async setScope(namespace: string, includeSubgroups: boolean = true): Promise<unknown> {
-    return this.executeTool("manage_context", {
-      action: "set_scope",
+    return this.executeTool('manage_context', {
+      action: 'set_scope',
       namespace,
       includeSubgroups,
     });
   }
 
   async resetContext(): Promise<unknown> {
-    return this.executeTool("manage_context", { action: "reset" });
+    return this.executeTool('manage_context', { action: 'reset' });
   }
 }

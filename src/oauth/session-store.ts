@@ -10,9 +10,9 @@
  * - OAUTH_STORAGE_POSTGRESQL_URL: PostgreSQL connection string
  */
 
-import { OAuthSession, DeviceFlowState, AuthorizationCode, AuthCodeFlowState } from "./types";
-import { SessionStorageBackend, createStorageBackend } from "./storage";
-import { logInfo, logWarn, logError, logDebug, truncateId } from "../logger";
+import { OAuthSession, DeviceFlowState, AuthorizationCode, AuthCodeFlowState } from './types';
+import { SessionStorageBackend, createStorageBackend } from './storage';
+import { logInfo, logWarn, logError, logDebug, truncateId } from '../logger';
 
 /**
  * Session store with pluggable storage backends
@@ -49,7 +49,7 @@ export class SessionStore {
     await this.backend.initialize();
 
     // Load existing sessions into cache if backend supports it
-    if (this.backend.type !== "memory") {
+    if (this.backend.type !== 'memory') {
       const sessions = await this.backend.getAllSessions();
       for (const session of sessions) {
         this.sessions.set(session.id, session);
@@ -60,14 +60,14 @@ export class SessionStore {
           this.refreshTokenToSession.set(session.mcpRefreshToken, session.id);
         }
       }
-      logInfo("Loaded sessions from storage backend", { loadedSessions: sessions.length });
+      logInfo('Loaded sessions from storage backend', { loadedSessions: sessions.length });
     }
 
     // Start cleanup interval
     this.startCleanupInterval();
 
     this.initialized = true;
-    logInfo("Session store initialized", { backendType: this.backend.type });
+    logInfo('Session store initialized', { backendType: this.backend.type });
   }
 
   /**
@@ -95,11 +95,11 @@ export class SessionStore {
     }
 
     // Async sync to backend (fire and forget for sync API)
-    this.backend.createSession(session).catch(err => {
-      logError("Failed to persist session to backend", { err, sessionId: session.id });
+    this.backend.createSession(session).catch((err) => {
+      logError('Failed to persist session to backend', { err, sessionId: session.id });
     });
 
-    logDebug("Session created", { sessionId: session.id, userId: session.gitlabUserId });
+    logDebug('Session created', { sessionId: session.id, userId: session.gitlabUserId });
   }
 
   /**
@@ -131,7 +131,7 @@ export class SessionStore {
   updateSession(sessionId: string, updates: Partial<OAuthSession>): boolean {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      logWarn("Attempted to update non-existent session", { sessionId });
+      logWarn('Attempted to update non-existent session', { sessionId });
       return false;
     }
 
@@ -149,11 +149,11 @@ export class SessionStore {
     Object.assign(session, updates, { updatedAt: Date.now() });
 
     // Async sync to backend
-    this.backend.updateSession(sessionId, updates).catch(err => {
-      logError("Failed to update session in backend", { err, sessionId });
+    this.backend.updateSession(sessionId, updates).catch((err) => {
+      logError('Failed to update session in backend', { err, sessionId });
     });
 
-    logDebug("Session updated", { sessionId });
+    logDebug('Session updated', { sessionId });
     return true;
   }
 
@@ -176,11 +176,11 @@ export class SessionStore {
     this.sessions.delete(sessionId);
 
     // Async sync to backend
-    this.backend.deleteSession(sessionId).catch(err => {
-      logError("Failed to delete session from backend", { err, sessionId });
+    this.backend.deleteSession(sessionId).catch((err) => {
+      logError('Failed to delete session from backend', { err, sessionId });
     });
 
-    logDebug("Session deleted", { sessionId });
+    logDebug('Session deleted', { sessionId });
     return true;
   }
 
@@ -208,11 +208,11 @@ export class SessionStore {
   storeDeviceFlow(state: string, flow: DeviceFlowState): void {
     this.deviceFlows.set(state, flow);
 
-    this.backend.storeDeviceFlow(state, flow).catch(err => {
-      logError("Failed to persist device flow to backend", { err, state });
+    this.backend.storeDeviceFlow(state, flow).catch((err) => {
+      logError('Failed to persist device flow to backend', { err, state });
     });
 
-    logDebug("Device flow stored", { state, userCode: flow.userCode });
+    logDebug('Device flow stored', { state, userCode: flow.userCode });
   }
 
   /**
@@ -241,10 +241,10 @@ export class SessionStore {
     const deleted = this.deviceFlows.delete(state);
 
     if (deleted) {
-      this.backend.deleteDeviceFlow(state).catch(err => {
-        logError("Failed to delete device flow from backend", { err, state });
+      this.backend.deleteDeviceFlow(state).catch((err) => {
+        logError('Failed to delete device flow from backend', { err, state });
       });
-      logDebug("Device flow deleted", { state });
+      logDebug('Device flow deleted', { state });
     }
 
     return deleted;
@@ -267,14 +267,14 @@ export class SessionStore {
   storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): void {
     this.authCodeFlows.set(internalState, flow);
 
-    this.backend.storeAuthCodeFlow(internalState, flow).catch(err => {
-      logError("Failed to persist auth code flow", {
+    this.backend.storeAuthCodeFlow(internalState, flow).catch((err) => {
+      logError('Failed to persist auth code flow', {
         err,
         internalState: truncateId(internalState),
       });
     });
 
-    logDebug("Auth code flow stored", { internalState: truncateId(internalState) });
+    logDebug('Auth code flow stored', { internalState: truncateId(internalState) });
   }
 
   /**
@@ -291,13 +291,13 @@ export class SessionStore {
     const deleted = this.authCodeFlows.delete(internalState);
 
     if (deleted) {
-      this.backend.deleteAuthCodeFlow(internalState).catch(err => {
-        logError("Failed to delete auth code flow", {
+      this.backend.deleteAuthCodeFlow(internalState).catch((err) => {
+        logError('Failed to delete auth code flow', {
           err,
           internalState: truncateId(internalState),
         });
       });
-      logDebug("Auth code flow deleted", { internalState: truncateId(internalState) });
+      logDebug('Auth code flow deleted', { internalState: truncateId(internalState) });
     }
 
     return deleted;
@@ -320,11 +320,11 @@ export class SessionStore {
   storeAuthCode(code: AuthorizationCode): void {
     this.authCodes.set(code.code, code);
 
-    this.backend.storeAuthCode(code).catch(err => {
-      logError("Failed to persist auth code", { err, code: truncateId(code.code) });
+    this.backend.storeAuthCode(code).catch((err) => {
+      logError('Failed to persist auth code', { err, code: truncateId(code.code) });
     });
 
-    logDebug("Auth code stored", { code: truncateId(code.code) });
+    logDebug('Auth code stored', { code: truncateId(code.code) });
   }
 
   /**
@@ -341,10 +341,10 @@ export class SessionStore {
     const deleted = this.authCodes.delete(code);
 
     if (deleted) {
-      this.backend.deleteAuthCode(code).catch(err => {
-        logError("Failed to delete auth code", { err, code: truncateId(code) });
+      this.backend.deleteAuthCode(code).catch((err) => {
+        logError('Failed to delete auth code', { err, code: truncateId(code) });
       });
-      logDebug("Auth code deleted", { code: truncateId(code) });
+      logDebug('Auth code deleted', { code: truncateId(code) });
     }
 
     return deleted;
@@ -367,11 +367,11 @@ export class SessionStore {
   associateMcpSession(mcpSessionId: string, oauthSessionId: string): void {
     this.mcpSessionToOAuthSession.set(mcpSessionId, oauthSessionId);
 
-    this.backend.associateMcpSession(mcpSessionId, oauthSessionId).catch(err => {
-      logError("Failed to persist MCP session association", { err, mcpSessionId });
+    this.backend.associateMcpSession(mcpSessionId, oauthSessionId).catch((err) => {
+      logError('Failed to persist MCP session association', { err, mcpSessionId });
     });
 
-    logDebug("MCP session associated with OAuth session", {
+    logDebug('MCP session associated with OAuth session', {
       mcpSessionId,
       oauthSessionId: truncateId(oauthSessionId),
     });
@@ -403,10 +403,10 @@ export class SessionStore {
     const deleted = this.mcpSessionToOAuthSession.delete(mcpSessionId);
 
     if (deleted) {
-      this.backend.removeMcpSessionAssociation(mcpSessionId).catch(err => {
-        logError("Failed to remove MCP session association from backend", { err, mcpSessionId });
+      this.backend.removeMcpSessionAssociation(mcpSessionId).catch((err) => {
+        logError('Failed to remove MCP session association from backend', { err, mcpSessionId });
       });
-      logDebug("MCP session association removed", { mcpSessionId });
+      logDebug('MCP session association removed', { mcpSessionId });
     }
 
     return deleted;
@@ -465,7 +465,7 @@ export class SessionStore {
       expiredAuthCodeFlows > 0 ||
       expiredAuthCodes > 0
     ) {
-      logDebug("Session store cleanup completed", {
+      logDebug('Session store cleanup completed', {
         expiredSessions,
         expiredDeviceFlows,
         expiredAuthCodeFlows,
@@ -483,7 +483,7 @@ export class SessionStore {
       () => {
         this.cleanup();
       },
-      5 * 60 * 1000
+      5 * 60 * 1000,
     );
 
     if (this.cleanupIntervalId.unref) {
@@ -512,7 +512,7 @@ export class SessionStore {
     this.tokenToSession.clear();
     this.refreshTokenToSession.clear();
     this.mcpSessionToOAuthSession.clear();
-    logDebug("Session store cleared");
+    logDebug('Session store cleared');
   }
 
   /**
@@ -521,7 +521,7 @@ export class SessionStore {
   async close(): Promise<void> {
     this.stopCleanupInterval();
     await this.backend.close();
-    logInfo("Session store closed");
+    logInfo('Session store closed');
   }
 
   /**

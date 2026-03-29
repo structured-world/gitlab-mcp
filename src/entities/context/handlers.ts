@@ -4,7 +4,7 @@
  * Each handler corresponds to an action in ManageContextSchema.
  */
 
-import { getContextManager } from "./context-manager";
+import { getContextManager } from './context-manager';
 import {
   ListPresetsInput,
   ListProfilesInput,
@@ -15,7 +15,7 @@ import {
   SwitchPresetInput,
   SwitchProfileInput,
   WhoamiInput,
-} from "./schema";
+} from './schema';
 import {
   PresetInfo,
   ProfileInfo,
@@ -24,8 +24,8 @@ import {
   SetScopeResult,
   SwitchResult,
   WhoamiResult,
-} from "./types";
-import { executeWhoami } from "./whoami";
+} from './types';
+import { executeWhoami } from './whoami';
 
 /**
  * Handle show action - return current context
@@ -94,7 +94,7 @@ export async function handleWhoami(_input: WhoamiInput): Promise<WhoamiResult> {
  * Main handler dispatcher for manage_context tool
  */
 export async function handleManageContext(
-  input: ManageContextInput
+  input: ManageContextInput,
 ): Promise<
   | SessionContext
   | PresetInfo[]
@@ -105,21 +105,21 @@ export async function handleManageContext(
   | WhoamiResult
 > {
   switch (input.action) {
-    case "show":
+    case 'show':
       return handleShowContext(input);
-    case "list_presets":
+    case 'list_presets':
       return handleListPresets(input);
-    case "list_profiles":
+    case 'list_profiles':
       return handleListProfiles(input);
-    case "switch_preset":
+    case 'switch_preset':
       return handleSwitchPreset(input);
-    case "switch_profile":
+    case 'switch_profile':
       return handleSwitchProfile(input);
-    case "set_scope":
+    case 'set_scope':
       return handleSetScope(input);
-    case "reset":
+    case 'reset':
       return handleResetContext(input);
-    case "whoami":
+    case 'whoami':
       return handleWhoami(input);
     /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
     default:

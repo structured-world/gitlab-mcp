@@ -14,30 +14,30 @@
  * The mapping is defined in ROLE_PRESETS below.
  */
 export type UserRole =
-  | "developer"
-  | "senior-developer"
-  | "tech-lead"
-  | "devops"
-  | "reviewer" // Maps to "code-reviewer" preset
-  | "readonly";
+  | 'developer'
+  | 'senior-developer'
+  | 'tech-lead'
+  | 'devops'
+  | 'reviewer' // Maps to "code-reviewer" preset
+  | 'readonly';
 
 /**
  * GitLab instance type
  */
-export type InstanceType = "saas" | "self-hosted";
+export type InstanceType = 'saas' | 'self-hosted';
 
 /**
  * MCP client type for configuration generation
  */
 export type McpClient =
-  | "claude-desktop"
-  | "claude-code"
-  | "cursor"
-  | "vscode-copilot"
-  | "windsurf"
-  | "cline"
-  | "roo-code"
-  | "generic";
+  | 'claude-desktop'
+  | 'claude-code'
+  | 'cursor'
+  | 'vscode-copilot'
+  | 'windsurf'
+  | 'cline'
+  | 'roo-code'
+  | 'generic';
 
 /**
  * Configuration gathered during wizard
@@ -90,24 +90,24 @@ export interface McpServerConfig {
  * simpler labels in the wizard UI while using correct preset identifiers.
  */
 export const ROLE_PRESETS: Record<UserRole, string> = {
-  developer: "developer",
-  "senior-developer": "senior-dev",
-  "tech-lead": "full-access",
-  devops: "devops",
-  reviewer: "code-reviewer", // Wizard uses "reviewer", preset is "code-reviewer"
-  readonly: "readonly",
+  developer: 'developer',
+  'senior-developer': 'senior-dev',
+  'tech-lead': 'full-access',
+  devops: 'devops',
+  reviewer: 'code-reviewer', // Wizard uses "reviewer", preset is "code-reviewer"
+  readonly: 'readonly',
 };
 
 /**
  * Role descriptions for wizard selection
  */
 export const ROLE_DESCRIPTIONS: Record<UserRole, string> = {
-  developer: "Standard development workflow (issues, MRs, pipelines)",
-  "senior-developer": "Extended access with wiki, snippets, variables",
-  "tech-lead": "Full access to all features including admin tools",
-  devops: "CI/CD focused (pipelines, variables, deployments)",
-  reviewer: "Code review workflow (MRs, discussions, approvals)",
-  readonly: "Read-only access for monitoring and viewing",
+  developer: 'Standard development workflow (issues, MRs, pipelines)',
+  'senior-developer': 'Extended access with wiki, snippets, variables',
+  'tech-lead': 'Full access to all features including admin tools',
+  devops: 'CI/CD focused (pipelines, variables, deployments)',
+  reviewer: 'Code review workflow (MRs, discussions, approvals)',
+  readonly: 'Read-only access for monitoring and viewing',
 };
 
 /**
@@ -121,50 +121,50 @@ export const MCP_CLIENT_INFO: Record<
     supportsCliInstall: boolean;
   }
 > = {
-  "claude-desktop": {
-    name: "Claude Desktop",
+  'claude-desktop': {
+    name: 'Claude Desktop',
     configPath:
-      process.platform === "darwin"
-        ? "~/Library/Application Support/Claude/claude_desktop_config.json"
-        : process.platform === "win32"
-          ? "%APPDATA%/Claude/claude_desktop_config.json"
-          : "",
+      process.platform === 'darwin'
+        ? '~/Library/Application Support/Claude/claude_desktop_config.json'
+        : process.platform === 'win32'
+          ? '%APPDATA%/Claude/claude_desktop_config.json'
+          : '',
     supportsCliInstall: false,
   },
-  "claude-code": {
-    name: "Claude Code",
-    configPath: "~/.claude.json",
+  'claude-code': {
+    name: 'Claude Code',
+    configPath: '~/.claude.json',
     supportsCliInstall: true,
   },
   cursor: {
-    name: "Cursor",
-    configPath: "~/.cursor/mcp.json",
+    name: 'Cursor',
+    configPath: '~/.cursor/mcp.json',
     supportsCliInstall: false,
   },
-  "vscode-copilot": {
-    name: "VS Code (GitHub Copilot)",
-    configPath: ".vscode/mcp.json",
+  'vscode-copilot': {
+    name: 'VS Code (GitHub Copilot)',
+    configPath: '.vscode/mcp.json',
     supportsCliInstall: false,
   },
   windsurf: {
-    name: "Windsurf",
-    configPath: "~/.codeium/windsurf/mcp_config.json",
+    name: 'Windsurf',
+    configPath: '~/.codeium/windsurf/mcp_config.json',
     supportsCliInstall: false,
   },
   cline: {
-    name: "Cline",
+    name: 'Cline',
     configPath:
-      "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
+      '~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json',
     supportsCliInstall: false,
   },
-  "roo-code": {
-    name: "Roo Code",
-    configPath: "~/.roo/mcp.json",
+  'roo-code': {
+    name: 'Roo Code',
+    configPath: '~/.roo/mcp.json',
     supportsCliInstall: false,
   },
   generic: {
-    name: "Other / Generic",
-    configPath: "",
+    name: 'Other / Generic',
+    configPath: '',
     supportsCliInstall: false,
   },
 };

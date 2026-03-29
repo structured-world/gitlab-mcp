@@ -1,12 +1,15 @@
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
-import { packageName, packageVersion } from "./config";
-import { setupHandlers } from "./handlers";
-import { setDetectedSchemaMode } from "./utils/schema-utils";
-import { logInfo, logWarn, logError, logDebug } from "./logger";
+import { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
+import { packageName, packageVersion } from './config';
+import { setupHandlers } from './handlers';
+import { setDetectedSchemaMode } from './utils/schema-utils';
+import { logInfo, logWarn, logError, logDebug } from './logger';
 
 /** Default session idle timeout: 30 minutes */
 const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
+
+/** Well-known session ID for stdio transport — exempt from idle timeout */
+export const STDIO_SESSION_ID = 'stdio';
 
 interface ManagedSession {
   server: Server;
@@ -45,7 +48,7 @@ export class SessionManager {
     // Don't keep the process alive just for cleanup
     this.cleanupInterval.unref();
 
-    logInfo("Session manager started", { sessionTimeoutMs: this.sessionTimeoutMs });
+    logInfo('Session manager started', { sessionTimeoutMs: this.sessionTimeoutMs });
   }
 
   /**
@@ -55,13 +58,13 @@ export class SessionManager {
   async createSession(sessionId: string, transport: Transport): Promise<Server> {
     // Guard against duplicate session IDs — close existing before allocating new resources
     if (this.sessions.has(sessionId)) {
-      logWarn("Duplicate sessionId detected — closing existing session", { sessionId });
+      logWarn('Duplicate sessionId detected — closing existing session', { sessionId });
       await this.removeSession(sessionId);
     }
 
     const server = new Server(
       { name: packageName, version: packageVersion },
-      { capabilities: { tools: { listChanged: true } } }
+      { capabilities: { tools: { listChanged: true } } },
     );
 
     // Auto-detect schema mode from the first client to initialize.
@@ -87,7 +90,7 @@ export class SessionManager {
       lastActivityAt: now,
     });
 
-    logInfo("Session created", { sessionId, activeSessions: this.sessions.size });
+    logInfo('Session created', { sessionId, activeSessions: this.sessions.size });
 
     return server;
   }
@@ -114,10 +117,10 @@ export class SessionManager {
     try {
       await session.server.close();
     } catch (error) {
-      logDebug("Error closing session server (may already be closed)", { err: error, sessionId });
+      logDebug('Error closing session server (may already be closed)', { err: error, sessionId });
     }
 
-    logInfo("Session removed", { sessionId, activeSessions: this.sessions.size });
+    logInfo('Session removed', { sessionId, activeSessions: this.sessions.size });
   }
 
   /**
@@ -129,19 +132,19 @@ export class SessionManager {
     for (const [sessionId, session] of this.sessions) {
       promises.push(
         session.server
-          .notification({ method: "notifications/tools/list_changed" })
+          .notification({ method: 'notifications/tools/list_changed' })
           .then(() => {
-            logDebug("Sent tools/list_changed to session", { sessionId });
+            logDebug('Sent tools/list_changed to session', { sessionId });
           })
           .catch((error: unknown) => {
-            logDebug("Failed to send tools/list_changed to session", { err: error, sessionId });
-          })
+            logDebug('Failed to send tools/list_changed to session', { err: error, sessionId });
+          }),
       );
     }
 
     await Promise.allSettled(promises);
 
-    logInfo("Broadcast tools/list_changed to all sessions", { sessionCount: this.sessions.size });
+    logInfo('Broadcast tools/list_changed to all sessions', { sessionCount: this.sessions.size });
   }
 
   /**
@@ -159,6 +162,10 @@ export class SessionManager {
     const stale: string[] = [];
 
     for (const [sessionId, session] of this.sessions) {
+      // stdio is a single-client, single-process transport whose lifetime
+      // is owned by the client — it must never be evicted by idle timeout.
+      if (sessionId === STDIO_SESSION_ID) continue;
+
       if (now - session.lastActivityAt > this.sessionTimeoutMs) {
         stale.push(sessionId);
       }
@@ -166,7 +173,7 @@ export class SessionManager {
 
     if (stale.length === 0) return;
 
-    logInfo("Cleaning up stale sessions", {
+    logInfo('Cleaning up stale sessions', {
       staleCount: stale.length,
       activeSessions: this.sessions.size,
     });
@@ -174,7 +181,7 @@ export class SessionManager {
     for (const sessionId of stale) {
       // Fire-and-forget cleanup
       this.removeSession(sessionId).catch((error: unknown) => {
-        logError("Error during stale session cleanup", { err: error, sessionId });
+        logError('Error during stale session cleanup', { err: error, sessionId });
       });
     }
   }
@@ -189,9 +196,9 @@ export class SessionManager {
     }
 
     const sessionIds = [...this.sessions.keys()];
-    await Promise.allSettled(sessionIds.map(id => this.removeSession(id)));
+    await Promise.allSettled(sessionIds.map((id) => this.removeSession(id)));
 
-    logInfo("Session manager shut down");
+    logInfo('Session manager shut down');
   }
 }
 

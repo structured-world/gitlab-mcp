@@ -90,13 +90,13 @@ export function normalizeProjectId(projectId: string): string {
  * Returns error message if invalid, null if valid
  */
 export function validateProjectIdentifier(input: string): string | null {
-  if (!input || typeof input !== "string") {
-    return "Project identifier is required and must be a string";
+  if (!input || typeof input !== 'string') {
+    return 'Project identifier is required and must be a string';
   }
 
   const trimmed = input.trim();
   if (trimmed.length === 0) {
-    return "Project identifier cannot be empty";
+    return 'Project identifier cannot be empty';
   }
 
   // Check if it's numeric ID
@@ -109,7 +109,7 @@ export function validateProjectIdentifier(input: string): string | null {
 
   // Basic validation for namespace/project format
   if (!/^[a-zA-Z0-9\-_./]+$/.test(decoded)) {
-    return "Invalid project identifier format. Use numeric ID or namespace/project path.";
+    return 'Invalid project identifier format. Use numeric ID or namespace/project path.';
   }
 
   return null; // Valid

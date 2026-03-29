@@ -8,38 +8,38 @@
  * - Show clean, actionable messages instead of error stack traces
  */
 
-import { z } from "zod";
-import { logInfo, logWarn, logDebug } from "../logger";
-import { GITLAB_BASE_URL, GITLAB_TOKEN } from "../config";
-import { enhancedFetch } from "../utils/fetch";
+import { z } from 'zod';
+import { logInfo, logWarn, logDebug } from '../logger';
+import { GITLAB_BASE_URL, GITLAB_TOKEN } from '../config';
+import { enhancedFetch } from '../utils/fetch';
 
 /**
  * GitLab token types that can be detected
  */
 export type GitLabTokenType =
-  | "personal_access_token"
-  | "project_access_token"
-  | "group_access_token"
-  | "oauth"
-  | "unknown";
+  | 'personal_access_token'
+  | 'project_access_token'
+  | 'group_access_token'
+  | 'oauth'
+  | 'unknown';
 
 /**
  * Known GitLab token scopes
  */
 const GITLAB_SCOPES = [
-  "api",
-  "read_api",
-  "read_user",
-  "read_repository",
-  "write_repository",
-  "read_registry",
-  "write_registry",
-  "sudo",
-  "admin_mode",
-  "create_runner",
-  "manage_runner",
-  "ai_features",
-  "k8s_proxy",
+  'api',
+  'read_api',
+  'read_user',
+  'read_repository',
+  'write_repository',
+  'read_registry',
+  'write_registry',
+  'sudo',
+  'admin_mode',
+  'create_runner',
+  'manage_runner',
+  'ai_features',
+  'k8s_proxy',
 ] as const;
 
 const GitLabScopeSchema = z.enum(GITLAB_SCOPES);
@@ -54,7 +54,9 @@ const TokenSelfResponseSchema = z.object({
   name: z.string(),
   scopes: z
     .array(z.string())
-    .transform(arr => arr.filter((s): s is GitLabScope => GitLabScopeSchema.safeParse(s).success)),
+    .transform((arr) =>
+      arr.filter((s): s is GitLabScope => GitLabScopeSchema.safeParse(s).success),
+    ),
   expires_at: z.string().nullable(),
   active: z.boolean(),
   revoked: z.boolean(),
@@ -88,83 +90,83 @@ export interface TokenScopeInfo {
  */
 const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   // Core tools - require api or read_api for most, read_user for user-related
-  browse_projects: ["api", "read_api"],
-  browse_namespaces: ["api", "read_api"],
-  browse_commits: ["api", "read_api"],
-  browse_events: ["api", "read_api", "read_user"],
-  browse_users: ["api", "read_api", "read_user"],
-  browse_todos: ["api", "read_api"],
-  manage_project: ["api"],
-  manage_namespace: ["api"],
-  manage_todos: ["api"],
+  browse_projects: ['api', 'read_api'],
+  browse_namespaces: ['api', 'read_api'],
+  browse_commits: ['api', 'read_api'],
+  browse_events: ['api', 'read_api', 'read_user'],
+  browse_users: ['api', 'read_api', 'read_user'],
+  browse_todos: ['api', 'read_api'],
+  manage_project: ['api'],
+  manage_namespace: ['api'],
+  manage_todos: ['api'],
   // manage_context is intentionally excluded — it manages local session state
   // and never calls GitLab API, so it's available with any token scope.
 
   // Labels
-  browse_labels: ["api", "read_api"],
-  manage_label: ["api"],
+  browse_labels: ['api', 'read_api'],
+  manage_label: ['api'],
 
   // Merge requests
-  browse_merge_requests: ["api", "read_api"],
-  browse_mr_discussions: ["api", "read_api"],
-  manage_merge_request: ["api"],
-  manage_mr_discussion: ["api"],
-  manage_draft_notes: ["api"],
+  browse_merge_requests: ['api', 'read_api'],
+  browse_mr_discussions: ['api', 'read_api'],
+  manage_merge_request: ['api'],
+  manage_mr_discussion: ['api'],
+  manage_draft_notes: ['api'],
 
   // Files - also works with repository scopes
-  browse_files: ["api", "read_api", "read_repository"],
-  manage_files: ["api", "write_repository"],
+  browse_files: ['api', 'read_api', 'read_repository'],
+  manage_files: ['api', 'write_repository'],
 
   // Milestones
-  browse_milestones: ["api", "read_api"],
-  manage_milestone: ["api"],
+  browse_milestones: ['api', 'read_api'],
+  manage_milestone: ['api'],
 
   // Pipelines
-  browse_pipelines: ["api", "read_api"],
-  manage_pipeline: ["api"],
-  manage_pipeline_job: ["api"],
+  browse_pipelines: ['api', 'read_api'],
+  manage_pipeline: ['api'],
+  manage_pipeline_job: ['api'],
 
   // Variables
-  browse_variables: ["api", "read_api"],
-  manage_variable: ["api"],
+  browse_variables: ['api', 'read_api'],
+  manage_variable: ['api'],
 
   // Wiki
-  browse_wiki: ["api", "read_api"],
-  manage_wiki: ["api"],
+  browse_wiki: ['api', 'read_api'],
+  manage_wiki: ['api'],
 
   // Work items
-  browse_work_items: ["api", "read_api"],
-  manage_work_item: ["api"],
+  browse_work_items: ['api', 'read_api'],
+  manage_work_item: ['api'],
 
   // Snippets
-  browse_snippets: ["api", "read_api"],
-  manage_snippet: ["api"],
+  browse_snippets: ['api', 'read_api'],
+  manage_snippet: ['api'],
 
   // Webhooks
-  browse_webhooks: ["api", "read_api"],
-  manage_webhook: ["api"],
+  browse_webhooks: ['api', 'read_api'],
+  manage_webhook: ['api'],
 
   // Integrations
-  browse_integrations: ["api", "read_api"],
-  manage_integration: ["api"],
+  browse_integrations: ['api', 'read_api'],
+  manage_integration: ['api'],
 
   // Releases
-  browse_releases: ["api", "read_api"],
-  manage_release: ["api"],
+  browse_releases: ['api', 'read_api'],
+  manage_release: ['api'],
 
   // Refs (branches, tags)
-  browse_refs: ["api", "read_api"],
-  manage_ref: ["api"],
+  browse_refs: ['api', 'read_api'],
+  manage_ref: ['api'],
 
   // Members
-  browse_members: ["api", "read_api"],
-  manage_member: ["api"],
+  browse_members: ['api', 'read_api'],
+  manage_member: ['api'],
 
   // Search
-  browse_search: ["api", "read_api"],
+  browse_search: ['api', 'read_api'],
 
   // Iterations
-  browse_iterations: ["api", "read_api"],
+  browse_iterations: ['api', 'read_api'],
 };
 
 /**
@@ -188,8 +190,8 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
   try {
     const response = await enhancedFetch(`${GITLAB_BASE_URL}/api/v4/personal_access_tokens/self`, {
       headers: {
-        "PRIVATE-TOKEN": GITLAB_TOKEN,
-        Accept: "application/json",
+        'PRIVATE-TOKEN': GITLAB_TOKEN,
+        Accept: 'application/json',
       },
       retry: false, // Don't retry scope detection - it runs at startup
     });
@@ -197,26 +199,26 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
     if (!response.ok) {
       // 401 = invalid token, 403 = insufficient permissions, 404 = endpoint not available
       if (response.status === 404) {
-        logDebug("Token self-introspection endpoint not available (older GitLab version)");
+        logDebug('Token self-introspection endpoint not available (older GitLab version)');
         return null;
       }
       if (response.status === 401) {
-        logInfo("Token is invalid or expired");
+        logInfo('Token is invalid or expired');
         return null;
       }
       if (response.status === 403) {
         // Some token types (e.g. deploy tokens) can't self-introspect
-        logDebug("Token self-introspection not permitted for this token type");
+        logDebug('Token self-introspection not permitted for this token type');
         return null;
       }
-      logDebug("Unexpected response from token self-introspection", { status: response.status });
+      logDebug('Unexpected response from token self-introspection', { status: response.status });
       return null;
     }
 
     const raw: unknown = await response.json();
     const parsed = TokenSelfResponseSchema.safeParse(raw);
     if (!parsed.success) {
-      logDebug("Token self-introspection response validation failed", {
+      logDebug('Token self-introspection response validation failed', {
         error: parsed.error.message,
       });
       return null;
@@ -224,14 +226,14 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
     const data = parsed.data;
 
     const scopes = data.scopes;
-    const hasGraphQLAccess = scopes.some(s => s === "api" || s === "read_api");
-    const hasWriteAccess = scopes.includes("api");
+    const hasGraphQLAccess = scopes.some((s) => s === 'api' || s === 'read_api');
+    const hasWriteAccess = scopes.includes('api');
 
     // Calculate days until expiry using UTC dates to avoid timezone off-by-one errors.
     // expires_at is a date-only string (YYYY-MM-DD) — parse as UTC midnight.
     let daysUntilExpiry: number | null = null;
     if (data.expires_at) {
-      const [yearStr, monthStr, dayStr] = data.expires_at.split("-");
+      const [yearStr, monthStr, dayStr] = data.expires_at.split('-');
       const year = Number(yearStr);
       const month = Number(monthStr);
       const day = Number(dayStr);
@@ -246,7 +248,7 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
 
     // /personal_access_tokens/self works for PAT, project, and group tokens,
     // but the type cannot be reliably inferred from user-controlled fields.
-    const tokenType: GitLabTokenType = "unknown";
+    const tokenType: GitLabTokenType = 'unknown';
 
     return {
       name: data.name,
@@ -260,7 +262,7 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
     };
   } catch (error) {
     // Network errors, DNS failures, etc. - don't block startup
-    logDebug("Token scope detection failed (network error)", {
+    logDebug('Token scope detection failed (network error)', {
       error: error instanceof Error ? error.message : String(error),
     });
     return null;
@@ -279,15 +281,15 @@ export function isToolAvailableForScopes(toolName: string, scopes: GitLabScope[]
   }
 
   // Tool is available if the token has ANY of the required scopes
-  return requiredScopes.some(required => scopes.includes(required));
+  return requiredScopes.some((required) => scopes.includes(required));
 }
 
 /**
  * Get the list of tools available for given scopes
  */
 export function getToolsForScopes(scopes: GitLabScope[]): string[] {
-  return Object.keys(TOOL_SCOPE_REQUIREMENTS).filter(toolName =>
-    isToolAvailableForScopes(toolName, scopes)
+  return Object.keys(TOOL_SCOPE_REQUIREMENTS).filter((toolName) =>
+    isToolAvailableForScopes(toolName, scopes),
   );
 }
 
@@ -298,7 +300,7 @@ export function getToolsForScopes(scopes: GitLabScope[]): string[] {
  */
 export function getToolScopeRequirements(): Record<string, GitLabScope[]> {
   return Object.fromEntries(
-    Object.entries(TOOL_SCOPE_REQUIREMENTS).map(([toolName, scopes]) => [toolName, [...scopes]])
+    Object.entries(TOOL_SCOPE_REQUIREMENTS).map(([toolName, scopes]) => [toolName, [...scopes]]),
   );
 }
 
@@ -307,22 +309,22 @@ export function getToolScopeRequirements(): Record<string, GitLabScope[]> {
  */
 export function getTokenCreationUrl(
   baseUrl: string,
-  scopes: string[] = ["api", "read_user"]
+  scopes: string[] = ['api', 'read_user'],
 ): string {
   try {
     const url = new URL(baseUrl);
     // Preserve any existing subpath (e.g. https://host/gitlab) and append PAT settings path
-    const basePath = url.pathname === "/" ? "" : url.pathname.replace(/\/$/, "");
+    const basePath = url.pathname === '/' ? '' : url.pathname.replace(/\/$/, '');
     url.pathname = `${basePath}/-/user_settings/personal_access_tokens`;
-    url.searchParams.set("name", "gitlab-mcp");
-    url.searchParams.set("scopes", scopes.join(","));
+    url.searchParams.set('name', 'gitlab-mcp');
+    url.searchParams.set('scopes', scopes.join(','));
     return url.toString();
   } catch {
     // baseUrl lacks a scheme or is otherwise unparseable — fall back to string concat
-    const base = baseUrl.replace(/\/$/, "");
+    const base = baseUrl.replace(/\/$/, '');
     const params = new URLSearchParams({
-      name: "gitlab-mcp",
-      scopes: scopes.join(","),
+      name: 'gitlab-mcp',
+      scopes: scopes.join(','),
     });
     return `${base}/-/user_settings/personal_access_tokens?${params.toString()}`;
   }
@@ -333,7 +335,7 @@ export function getTokenCreationUrl(
  */
 export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): void {
   const availableTools = getToolsForScopes(info.scopes);
-  const scopeList = info.scopes.join(", ");
+  const scopeList = info.scopes.join(', ');
 
   // Token expiry warning (< 7 days)
   if (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 7) {
@@ -361,7 +363,7 @@ export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): voi
     logInfo(`Token "${info.name}" detected`, {
       tokenName: info.name,
       scopes: scopeList,
-      expiresAt: info.expiresAt ?? "never",
+      expiresAt: info.expiresAt ?? 'never',
     });
   } else {
     // Limited access - explain what's available and how to fix
@@ -372,7 +374,7 @@ export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): voi
         scopes: scopeList,
         availableTools: availableTools.length,
         totalTools,
-      }
+      },
     );
 
     if (!info.hasGraphQLAccess) {

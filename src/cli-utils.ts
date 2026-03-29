@@ -3,8 +3,8 @@
  * Extracted for testability
  */
 
-import { logWarn, logError } from "./logger";
-import { getProjectConfigSummary, ProjectConfig } from "./profiles";
+import { logWarn, logError } from './logger';
+import { getProjectConfigSummary, ProjectConfig } from './profiles';
 
 /**
  * CLI arguments parsed from command line
@@ -24,7 +24,7 @@ export interface CliArgs {
   /** Run unified setup wizard */
   setup: boolean;
   /** Setup wizard mode override */
-  setupMode?: "local" | "server" | "configure-existing";
+  setupMode?: 'local' | 'server' | 'configure-existing';
   /** Run init wizard (alias for setup --mode=local) */
   init: boolean;
   /** Run install command */
@@ -60,23 +60,23 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
   // Check for subcommands (first positional arg)
   if (args.length > 0) {
     switch (args[0]) {
-      case "setup":
+      case 'setup':
         result.setup = true;
         // Parse setup-specific flags
         for (const arg of args.slice(1)) {
-          if (arg === "--mode=local") result.setupMode = "local";
-          else if (arg === "--mode=server") result.setupMode = "server";
-          else if (arg === "--mode=configure-existing") result.setupMode = "configure-existing";
+          if (arg === '--mode=local') result.setupMode = 'local';
+          else if (arg === '--mode=server') result.setupMode = 'server';
+          else if (arg === '--mode=configure-existing') result.setupMode = 'configure-existing';
         }
         return result;
-      case "init":
+      case 'init':
         result.init = true;
         return result;
-      case "install":
+      case 'install':
         result.install = true;
         result.installArgs = args.slice(1);
         return result;
-      case "docker":
+      case 'docker':
         result.docker = true;
         result.dockerArgs = args.slice(1);
         return result;
@@ -88,39 +88,39 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
 
-    if (arg === "--profile") {
+    if (arg === '--profile') {
       const value = args[i + 1];
       // Validate that value exists and is not another flag
-      if (!value || value.startsWith("--")) {
-        logError("--profile requires a profile name (e.g., --profile work)");
-        throw new Error("--profile requires a profile name");
+      if (!value || value.startsWith('--')) {
+        logError('--profile requires a profile name (e.g., --profile work)');
+        throw new Error('--profile requires a profile name');
       }
       profileCount++;
       if (profileCount === 1) {
         result.profileName = value;
       }
       i++; // Skip value
-    } else if (arg === "--no-project-config") {
+    } else if (arg === '--no-project-config') {
       result.noProjectConfig = true;
-    } else if (arg === "--show-project-config") {
+    } else if (arg === '--show-project-config') {
       result.showProjectConfig = true;
-    } else if (arg === "--auto") {
+    } else if (arg === '--auto') {
       result.auto = true;
-    } else if (arg === "--cwd") {
+    } else if (arg === '--cwd') {
       const value = args[i + 1];
-      if (!value || value.startsWith("--")) {
-        logError("--cwd requires a directory path (e.g., --cwd /path/to/repo)");
-        throw new Error("--cwd requires a directory path");
+      if (!value || value.startsWith('--')) {
+        logError('--cwd requires a directory path (e.g., --cwd /path/to/repo)');
+        throw new Error('--cwd requires a directory path');
       }
       result.cwd = value;
       i++; // Skip value
-    } else if (arg === "--dry-run") {
+    } else if (arg === '--dry-run') {
       result.dryRun = true;
-    } else if (arg === "--remote") {
+    } else if (arg === '--remote') {
       const value = args[i + 1];
-      if (!value || value.startsWith("--")) {
-        logError("--remote requires a remote name (e.g., --remote upstream)");
-        throw new Error("--remote requires a remote name");
+      if (!value || value.startsWith('--')) {
+        logError('--remote requires a remote name (e.g., --remote upstream)');
+        throw new Error('--remote requires a remote name');
       }
       result.remoteName = value;
       i++; // Skip value
@@ -128,7 +128,7 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
   }
 
   if (profileCount > 1) {
-    logWarn("Multiple --profile flags detected, using first value", { count: profileCount });
+    logWarn('Multiple --profile flags detected, using first value', { count: profileCount });
   }
 
   return result;
@@ -141,25 +141,25 @@ export function parseCliArgs(argv: string[] = process.argv): CliArgs {
  */
 export function displayProjectConfig(
   config: ProjectConfig | null,
-  output: (msg: string) => void = console.log
+  output: (msg: string) => void = console.log,
 ): void {
   if (!config) {
-    output("No project configuration found in current directory or parent directories.");
-    output("\nTo create a project config, add .gitlab-mcp/ directory with:");
-    output("  - preset.yaml  (restrictions: scope, denied_actions, features)");
-    output("  - profile.yaml (tool selection: extends, additional_tools)");
+    output('No project configuration found in current directory or parent directories.');
+    output('\nTo create a project config, add .gitlab-mcp/ directory with:');
+    output('  - preset.yaml  (restrictions: scope, denied_actions, features)');
+    output('  - profile.yaml (tool selection: extends, additional_tools)');
     return;
   }
 
   const summary = getProjectConfigSummary(config);
 
-  output("Project Configuration");
-  output("=====================");
+  output('Project Configuration');
+  output('=====================');
   output(`Path: ${config.configPath}`);
-  output("");
+  output('');
 
   if (config.preset) {
-    output("Preset (restrictions):");
+    output('Preset (restrictions):');
     if (config.preset.description) {
       output(`  Description: ${config.preset.description}`);
     }
@@ -176,28 +176,28 @@ export function displayProjectConfig(
       }
     }
     if (config.preset.read_only) {
-      output("  Read-only: yes");
+      output('  Read-only: yes');
     }
     if (config.preset.denied_actions?.length) {
-      output(`  Denied actions: ${config.preset.denied_actions.join(", ")}`);
+      output(`  Denied actions: ${config.preset.denied_actions.join(', ')}`);
     }
     if (config.preset.denied_tools?.length) {
-      output(`  Denied tools: ${config.preset.denied_tools.join(", ")}`);
+      output(`  Denied tools: ${config.preset.denied_tools.join(', ')}`);
     }
     if (config.preset.features) {
       const features = Object.entries(config.preset.features)
         .filter(([, v]) => v !== undefined)
         .map(([k, v]) => `${k}=${v}`)
-        .join(", ");
+        .join(', ');
       if (features) {
         output(`  Features: ${features}`);
       }
     }
-    output("");
+    output('');
   }
 
   if (config.profile) {
-    output("Profile (tool selection):");
+    output('Profile (tool selection):');
     if (config.profile.description) {
       output(`  Description: ${config.profile.description}`);
     }
@@ -205,24 +205,24 @@ export function displayProjectConfig(
       output(`  Extends: ${config.profile.extends}`);
     }
     if (config.profile.additional_tools?.length) {
-      output(`  Additional tools: ${config.profile.additional_tools.join(", ")}`);
+      output(`  Additional tools: ${config.profile.additional_tools.join(', ')}`);
     }
     if (config.profile.denied_tools?.length) {
-      output(`  Denied tools: ${config.profile.denied_tools.join(", ")}`);
+      output(`  Denied tools: ${config.profile.denied_tools.join(', ')}`);
     }
     if (config.profile.features) {
       const features = Object.entries(config.profile.features)
         .filter(([, v]) => v !== undefined)
         .map(([k, v]) => `${k}=${v}`)
-        .join(", ");
+        .join(', ');
       if (features) {
         output(`  Features: ${features}`);
       }
     }
-    output("");
+    output('');
   }
 
-  output("Summary:");
+  output('Summary:');
   if (summary.presetSummary) {
     output(`  Preset: ${summary.presetSummary}`);
   }

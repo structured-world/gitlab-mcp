@@ -19,8 +19,8 @@ const testConfigurations = [
       USE_WORKITEMS: 'false',
       USE_MILESTONE: 'false',
       USE_PIPELINE: 'false',
-      USE_GITLAB_WIKI: 'false'
-    }
+      USE_GITLAB_WIKI: 'false',
+    },
   },
   {
     name: 'GitLab with Work Items',
@@ -28,8 +28,8 @@ const testConfigurations = [
       USE_WORKITEMS: 'true',
       USE_MILESTONE: 'false',
       USE_PIPELINE: 'false',
-      USE_GITLAB_WIKI: 'false'
-    }
+      USE_GITLAB_WIKI: 'false',
+    },
   },
   {
     name: 'GitLab with Work Items + Milestones',
@@ -37,8 +37,8 @@ const testConfigurations = [
       USE_WORKITEMS: 'true',
       USE_MILESTONE: 'true',
       USE_PIPELINE: 'false',
-      USE_GITLAB_WIKI: 'false'
-    }
+      USE_GITLAB_WIKI: 'false',
+    },
   },
   {
     name: 'GitLab with Work Items + Milestones + Pipelines',
@@ -46,8 +46,8 @@ const testConfigurations = [
       USE_WORKITEMS: 'true',
       USE_MILESTONE: 'true',
       USE_PIPELINE: 'true',
-      USE_GITLAB_WIKI: 'false'
-    }
+      USE_GITLAB_WIKI: 'false',
+    },
   },
   {
     name: 'Full GitLab (All features)',
@@ -55,9 +55,9 @@ const testConfigurations = [
       USE_WORKITEMS: 'true',
       USE_MILESTONE: 'true',
       USE_PIPELINE: 'true',
-      USE_GITLAB_WIKI: 'true'
-    }
-  }
+      USE_GITLAB_WIKI: 'true',
+    },
+  },
 ];
 
 async function backupOriginalEnv() {
@@ -77,7 +77,9 @@ async function restoreOriginalEnv() {
 
 function createEnvFileWithFlags(flags) {
   if (!fs.existsSync(BACKUP_ENV_FILE)) {
-    throw new Error('No backup .env.test file found. Please run this script from the project root with .env.test present.');
+    throw new Error(
+      'No backup .env.test file found. Please run this script from the project root with .env.test present.',
+    );
   }
 
   // Read the backup file
@@ -99,13 +101,13 @@ function createEnvFileWithFlags(flags) {
 
 function runTests(configName) {
   console.log(`\\n🧪 Running tests for: ${configName}`);
-  console.log('=' .repeat(50));
+  console.log('='.repeat(50));
 
   try {
     // Run integration tests
     execSync('yarn test:integration', {
       stdio: 'inherit',
-      cwd: path.resolve(__dirname, '../..')
+      cwd: path.resolve(__dirname, '../..'),
     });
     console.log(`✅ ${configName}: PASSED`);
     return true;
@@ -134,7 +136,12 @@ async function main() {
     // Run tests for each configuration
     for (const config of testConfigurations) {
       console.log(`\\n📝 Setting up environment for: ${config.name}`);
-      console.log('Feature flags:', Object.entries(config.flags).map(([k, v]) => `${k}=${v}`).join(', '));
+      console.log(
+        'Feature flags:',
+        Object.entries(config.flags)
+          .map(([k, v]) => `${k}=${v}`)
+          .join(', '),
+      );
 
       // Create environment file with specific flags
       createEnvFileWithFlags(config.flags);
@@ -144,9 +151,8 @@ async function main() {
       results.push({ name: config.name, passed });
 
       // Wait a bit between test runs
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      await new Promise((resolve) => setTimeout(resolve, 1000));
     }
-
   } catch (error) {
     console.error('❌ Test runner failed:', error.message);
     process.exit(1);
@@ -160,12 +166,12 @@ async function main() {
   console.log('📊 ENVIRONMENT GATING TEST SUMMARY');
   console.log('='.repeat(60));
 
-  results.forEach(result => {
+  results.forEach((result) => {
     const status = result.passed ? '✅ PASSED' : '❌ FAILED';
     console.log(`${status} - ${result.name}`);
   });
 
-  const passedCount = results.filter(r => r.passed).length;
+  const passedCount = results.filter((r) => r.passed).length;
   const totalCount = results.length;
 
   console.log(`\\n🎯 Overall: ${passedCount}/${totalCount} configurations passed`);

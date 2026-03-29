@@ -1,11 +1,11 @@
-import { SSEServerTransport } from "@modelcontextprotocol/sdk/server/sse.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import express, { Express } from "express";
-import * as crypto from "crypto";
-import * as http from "http";
-import * as https from "https";
-import * as fs from "fs";
+import { SSEServerTransport } from '@modelcontextprotocol/sdk/server/sse.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import express, { Express } from 'express';
+import * as crypto from 'crypto';
+import * as http from 'http';
+import * as https from 'https';
+import * as fs from 'fs';
 import {
   HOST,
   PORT,
@@ -21,10 +21,10 @@ import {
   DASHBOARD_ENABLED,
   LOG_FILTER,
   shouldSkipAccessLogRequest,
-} from "./config";
-import { TransportMode } from "./types";
-import { logInfo, logError, logDebug, logWarn } from "./logger";
-import { getSessionManager } from "./session-manager";
+} from './config';
+import { TransportMode } from './types';
+import { logInfo, logError, logDebug, logWarn } from './logger';
+import { getSessionManager, STDIO_SESSION_ID } from './session-manager';
 
 // OAuth imports
 import {
@@ -40,22 +40,22 @@ import {
   registerHandler,
   sessionStore,
   runWithTokenContext,
-} from "./oauth/index";
+} from './oauth/index';
 // Middleware imports
-import { oauthAuthMiddleware, rateLimiterMiddleware } from "./middleware/index";
+import { oauthAuthMiddleware, rateLimiterMiddleware } from './middleware/index';
 
 // Dashboard imports
-import { dashboardHandler } from "./dashboard/index.js";
+import { dashboardHandler } from './dashboard/index.js';
 
 // Request logging utilities
-import { getRequestContext, getIpAddress } from "./utils/request-logger";
+import { getRequestContext, getIpAddress } from './utils/request-logger';
 
 // Condensed access logging
 import {
   getRequestTracker,
   getConnectionTracker,
   runWithRequestContextAsync,
-} from "./logging/index";
+} from './logging/index';
 
 /**
  * Send a tools/list_changed notification to ALL connected clients.
@@ -70,7 +70,7 @@ export async function sendToolsListChangedNotification(): Promise<void> {
     const sessionManager = getSessionManager();
     await sessionManager.broadcastToolsListChanged();
   } catch (error: unknown) {
-    logError("Failed to broadcast tools/list_changed notification", { err: error });
+    logError('Failed to broadcast tools/list_changed notification', { err: error });
   }
 }
 
@@ -97,29 +97,29 @@ function registerOAuthEndpoints(app: Express): void {
   // All routes registered here are protected by the global rate limiter middleware.
 
   // OAuth discovery metadata (no auth required)
-  app.get("/.well-known/oauth-authorization-server", metadataHandler);
+  app.get('/.well-known/oauth-authorization-server', metadataHandler);
 
   // Protected Resource Metadata (RFC 9470) - required by Claude.ai custom connectors
-  app.get("/.well-known/oauth-protected-resource", protectedResourceHandler);
+  app.get('/.well-known/oauth-protected-resource', protectedResourceHandler);
 
   // Authorization endpoint - supports both flows:
   // - Device Flow (no redirect_uri) - returns HTML page
   // - Authorization Code Flow (with redirect_uri) - redirects to GitLab
-  app.get("/authorize", authorizeHandler);
+  app.get('/authorize', authorizeHandler);
 
   // Device flow polling endpoint (no auth required)
-  app.get("/oauth/poll", pollHandler);
+  app.get('/oauth/poll', pollHandler);
 
   // Authorization Code Flow callback from GitLab
   // GitLab redirects here after user authorizes, then we redirect to client
-  app.get("/oauth/callback", callbackHandler);
+  app.get('/oauth/callback', callbackHandler);
 
   // Token endpoint - exchange code for tokens (no auth required)
   // Uses URL-encoded body as per OAuth spec
-  app.post("/token", express.urlencoded({ extended: true }), tokenHandler);
+  app.post('/token', express.urlencoded({ extended: true }), tokenHandler);
 
   // Dynamic Client Registration endpoint (RFC 7591) - required by Claude.ai
-  app.post("/register", express.json(), registerHandler);
+  app.post('/register', express.json(), registerHandler);
 
   // NOTE: /health endpoint is registered globally in startServer() BEFORE OAuth endpoints
   // to avoid access log spam from load balancer health checks. The simple handler there
@@ -127,7 +127,7 @@ function registerOAuthEndpoints(app: Express): void {
   // For structured MCP metadata (version, tools, auth mode, instances), use GET /
   // with Accept: application/json header (dashboard endpoint).
 
-  logInfo("OAuth endpoints registered");
+  logInfo('OAuth endpoints registered');
 }
 
 /**
@@ -153,17 +153,17 @@ function loadTLSOptions(): https.ServerOptions | undefined {
 
     if (SSL_CA_PATH) {
       options.ca = fs.readFileSync(SSL_CA_PATH);
-      logInfo("CA certificate loaded", { path: SSL_CA_PATH });
+      logInfo('CA certificate loaded', { path: SSL_CA_PATH });
     }
 
     if (SSL_PASSPHRASE) {
       options.passphrase = SSL_PASSPHRASE;
     }
 
-    logInfo("TLS certificates loaded", { path: SSL_CERT_PATH });
+    logInfo('TLS certificates loaded', { path: SSL_CERT_PATH });
     return options;
   } catch (error: unknown) {
-    logError("Failed to load TLS certificates", { err: error });
+    logError('Failed to load TLS certificates', { err: error });
     throw new Error(`Failed to load TLS certificates: ${String(error)}`, { cause: error });
   }
 }
@@ -178,16 +178,16 @@ function configureTrustProxy(app: Express): void {
 
   // Parse trust proxy value
   let trustValue: boolean | string | number = TRUST_PROXY;
-  if (TRUST_PROXY === "true" || TRUST_PROXY === "1") {
+  if (TRUST_PROXY === 'true' || TRUST_PROXY === '1') {
     trustValue = true;
-  } else if (TRUST_PROXY === "false" || TRUST_PROXY === "0") {
+  } else if (TRUST_PROXY === 'false' || TRUST_PROXY === '0') {
     trustValue = false;
   } else if (!isNaN(Number(TRUST_PROXY))) {
     trustValue = Number(TRUST_PROXY);
   }
 
-  app.set("trust proxy", trustValue);
-  logInfo("Trust proxy configured", { trustValue: String(trustValue) });
+  app.set('trust proxy', trustValue);
+  logInfo('Trust proxy configured', { trustValue: String(trustValue) });
 }
 
 /**
@@ -206,12 +206,12 @@ function configureServerTimeouts(server: http.Server | https.Server): void {
   // Enable TCP keepalive on every incoming socket to detect dead connections
   // (proxy/client silently disconnected). Without this, half-open sockets
   // remain alive indefinitely since server.timeout is disabled for SSE.
-  server.on("connection", (socket: import("net").Socket) => {
+  server.on('connection', (socket: import('net').Socket) => {
     socket.setKeepAlive(true, 30000); // First TCP probe 30s after last data; OS controls subsequent interval
     socket.setNoDelay(true); // Disable Nagle for SSE chunk flushing
   });
 
-  logInfo("HTTP server timeouts configured for SSE streaming", {
+  logInfo('HTTP server timeouts configured for SSE streaming', {
     keepAliveTimeout: server.keepAliveTimeout,
     headersTimeout: server.headersTimeout,
     timeout: server.timeout,
@@ -239,7 +239,7 @@ function startHttpServer(app: Express, callback: () => void): void {
  * Get the protocol prefix for URLs
  */
 function getProtocol(): string {
-  return isTLSEnabled() ? "https" : "http";
+  return isTLSEnabled() ? 'https' : 'http';
 }
 
 /** How long to wait for TCP buffer drain before declaring connection dead */
@@ -270,7 +270,7 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
       pendingDrainTimeout = undefined;
     }
     waitingForDrain = false;
-    logDebug("SSE heartbeat drain recovered", { sessionId });
+    logDebug('SSE heartbeat drain recovered', { sessionId });
   };
 
   const interval = setInterval(() => {
@@ -285,11 +285,11 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
           clearTimeout(pendingDrainTimeout);
           pendingDrainTimeout = undefined;
         }
-        res.removeListener("drain", drainListener);
+        res.removeListener('drain', drainListener);
         return;
       }
 
-      const ok = res.write(": ping\n\n");
+      const ok = res.write(': ping\n\n');
       if (!ok) {
         // Backpressure — TCP send buffer is full.
         // This often indicates the peer is gone but TCP hasn't detected it yet.
@@ -298,11 +298,11 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
         pendingDrainTimeout = setTimeout(() => {
           pendingDrainTimeout = undefined;
           waitingForDrain = false;
-          res.removeListener("drain", drainListener);
-          logWarn("SSE heartbeat drain timeout — destroying dead connection", {
+          res.removeListener('drain', drainListener);
+          logWarn('SSE heartbeat drain timeout — destroying dead connection', {
             sessionId,
             drainTimeoutMs: HEARTBEAT_DRAIN_TIMEOUT_MS,
-            reason: "heartbeat_drain_timeout",
+            reason: 'heartbeat_drain_timeout',
           });
           clearInterval(interval);
           // Mark response so close handler can use "heartbeat_failed" reason
@@ -314,14 +314,14 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
           }
         }, HEARTBEAT_DRAIN_TIMEOUT_MS);
 
-        res.once("drain", drainListener);
+        res.once('drain', drainListener);
       }
     } catch (err: unknown) {
       const errMsg = err instanceof Error ? err.message : String(err);
-      logWarn("SSE heartbeat write error — connection likely dead", {
+      logWarn('SSE heartbeat write error — connection likely dead', {
         sessionId,
         error: errMsg,
-        reason: "heartbeat_write_error",
+        reason: 'heartbeat_write_error',
       });
       clearInterval(interval);
       // Clean up any pending drain state
@@ -329,11 +329,11 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
         clearTimeout(pendingDrainTimeout);
         pendingDrainTimeout = undefined;
       }
-      res.removeListener("drain", drainListener);
+      res.removeListener('drain', drainListener);
     }
   }, SSE_HEARTBEAT_MS);
 
-  logDebug("SSE heartbeat started", { sessionId, intervalMs: SSE_HEARTBEAT_MS });
+  logDebug('SSE heartbeat started', { sessionId, intervalMs: SSE_HEARTBEAT_MS });
 
   return () => {
     clearInterval(interval);
@@ -341,53 +341,53 @@ function startSseHeartbeat(res: express.Response, sessionId: string): () => void
       clearTimeout(pendingDrainTimeout);
       pendingDrainTimeout = undefined;
     }
-    res.removeListener("drain", drainListener);
-    logDebug("SSE heartbeat stopped", { sessionId });
+    res.removeListener('drain', drainListener);
+    logDebug('SSE heartbeat stopped', { sessionId });
   };
 }
 
 function determineTransportMode(): TransportMode {
   const args = process.argv.slice(2);
 
-  logInfo("Transport mode detection", { args, PORT });
+  logInfo('Transport mode detection', { args, PORT });
 
   // Check for explicit stdio mode first
-  if (args.includes("stdio")) {
-    logInfo("Selected stdio mode (explicit argument)");
-    return "stdio" as TransportMode;
+  if (args.includes('stdio')) {
+    logInfo('Selected stdio mode (explicit argument)');
+    return 'stdio' as TransportMode;
   }
 
   // If PORT environment variable is present, start in dual transport mode (SSE + StreamableHTTP)
   if (process.env.PORT) {
     logInfo(
-      "Selected dual transport mode (SSE + StreamableHTTP) - PORT environment variable detected"
+      'Selected dual transport mode (SSE + StreamableHTTP) - PORT environment variable detected',
     );
-    return "dual" as TransportMode;
+    return 'dual' as TransportMode;
   }
 
   // Default to stdio mode when no PORT is specified
-  logInfo("Selected stdio mode (no PORT environment variable)");
-  return "stdio" as TransportMode;
+  logInfo('Selected stdio mode (no PORT environment variable)');
+  return 'stdio' as TransportMode;
 }
 
 export async function startServer(): Promise<void> {
   // Detect configuration based on auth mode
   const oauthConfig = loadOAuthConfig();
   if (oauthConfig) {
-    logInfo("Starting in OAuth mode (per-user authentication)");
-    logInfo("OAuth client ID configured", { clientId: oauthConfig.gitlabClientId });
+    logInfo('Starting in OAuth mode (per-user authentication)');
+    logInfo('OAuth client ID configured', { clientId: oauthConfig.gitlabClientId });
   } else if (process.env.GITLAB_TOKEN) {
     // Static token mode with token configured
-    logInfo("Starting in static token mode (shared GITLAB_TOKEN)");
+    logInfo('Starting in static token mode (shared GITLAB_TOKEN)');
   } else {
     // Graceful startup without token - server will accept tools/list requests
     // but tool calls will return clear errors until token is configured
     logInfo(
-      "Starting without authentication - tools/list will work, but tool calls require GITLAB_TOKEN"
+      'Starting without authentication - tools/list will work, but tool calls require GITLAB_TOKEN',
     );
   }
 
-  logInfo("Authentication mode", { mode: getAuthModeDescription() });
+  logInfo('Authentication mode', { mode: getAuthModeDescription() });
 
   // Initialize session store (required for file-based and PostgreSQL persistence)
   if (oauthConfig) {
@@ -401,26 +401,26 @@ export async function startServer(): Promise<void> {
   // Initialize access logging based on LOG_FORMAT
   const requestTracker = getRequestTracker();
   const connectionTracker = getConnectionTracker();
-  const useCondensedLogging = LOG_FORMAT === "condensed";
+  const useCondensedLogging = LOG_FORMAT === 'condensed';
   requestTracker.setEnabled(useCondensedLogging);
   connectionTracker.setEnabled(useCondensedLogging);
-  logInfo("Access log format", { logFormat: LOG_FORMAT });
+  logInfo('Access log format', { logFormat: LOG_FORMAT });
   if (LOG_FILTER.length > 0) {
-    logInfo("Access log filter rules active", { count: LOG_FILTER.length });
+    logInfo('Access log filter rules active', { count: LOG_FILTER.length });
   }
 
   const transportMode = determineTransportMode();
 
   switch (transportMode) {
-    case "stdio": {
+    case 'stdio': {
       const transport = new StdioServerTransport();
-      await sessionManager.createSession("stdio", transport);
-      logInfo("GitLab MCP Server running on stdio");
+      await sessionManager.createSession(STDIO_SESSION_ID, transport);
+      logInfo('GitLab MCP Server running on stdio');
       break;
     }
 
-    case "dual": {
-      logInfo("Setting up dual transport mode (SSE + StreamableHTTP)...");
+    case 'dual': {
+      logInfo('Setting up dual transport mode (SSE + StreamableHTTP)...');
       const app = express();
       app.use(express.json());
 
@@ -430,8 +430,8 @@ export async function startServer(): Promise<void> {
       // Health check endpoint for load balancers (Envoy, nginx, etc.)
       // Registered BEFORE access logging middleware to avoid log spam
       // Does not require authentication or rate limiting
-      app.get("/health", (_req, res) => {
-        res.status(200).json({ status: "ok" });
+      app.get('/health', (_req, res) => {
+        res.status(200).json({ status: 'ok' });
       });
 
       // Access logging middleware - tracks request lifecycle for condensed logs
@@ -451,7 +451,7 @@ export async function startServer(): Promise<void> {
 
         const requestId = crypto.randomUUID();
         const clientIp = getIpAddress(req);
-        const sessionId = req.headers["mcp-session-id"] as string | undefined;
+        const sessionId = req.headers['mcp-session-id'] as string | undefined;
 
         // Store requestId on response for later use
         res.locals.accessLogRequestId = requestId;
@@ -467,7 +467,7 @@ export async function startServer(): Promise<void> {
         requestTracker.openStack(requestId, clientIp, req.method, req.path, sessionId);
 
         // Close stack when response finishes
-        res.on("finish", () => {
+        res.on('finish', () => {
           requestTracker.closeStack(requestId, res.statusCode);
         });
 
@@ -476,7 +476,7 @@ export async function startServer(): Promise<void> {
         // the stack is removed from the map, so any subsequent close handling
         // becomes a no-op. This is safe - RequestTracker.closeStack removes
         // the stack immediately to prevent duplicate processing.
-        res.on("close", () => {
+        res.on('close', () => {
           if (res.writableFinished) {
             // Response has already finished and been logged.
             return;
@@ -484,7 +484,7 @@ export async function startServer(): Promise<void> {
 
           if (!res.headersSent) {
             // Connection closed before we could send any headers: treat as abort.
-            requestTracker.closeStackWithError(requestId, "connection_closed");
+            requestTracker.closeStackWithError(requestId, 'connection_closed');
             return;
           }
 
@@ -510,21 +510,21 @@ export async function startServer(): Promise<void> {
       // Only handles GET requests; POST requests fall through to MCP transport
       // Can be disabled via DASHBOARD_ENABLED=false
       if (DASHBOARD_ENABLED) {
-        app.get("/", dashboardHandler);
-        logInfo("Dashboard enabled at GET /");
+        app.get('/', dashboardHandler);
+        logInfo('Dashboard enabled at GET /');
       }
 
       // Middleware to ensure Accept header includes text/event-stream for MCP endpoints
       // This fixes compatibility with clients that don't send the full Accept header
       // as required by MCP spec (e.g., when headers are modified by reverse proxies)
-      app.use(["/", "/mcp"], (req, res, next) => {
-        const accept = req.headers.accept ?? "";
-        if (req.method === "POST" && !accept.includes("text/event-stream")) {
+      app.use(['/', '/mcp'], (req, res, next) => {
+        const accept = req.headers.accept ?? '';
+        if (req.method === 'POST' && !accept.includes('text/event-stream')) {
           // Add text/event-stream to Accept header for POST requests
           req.headers.accept = accept
             ? `${accept}, text/event-stream`
-            : "application/json, text/event-stream";
-          logDebug("Modified Accept header for MCP compatibility", {
+            : 'application/json, text/event-stream';
+          logDebug('Modified Accept header for MCP compatibility', {
             originalAccept: accept,
             newAccept: req.headers.accept,
           });
@@ -535,7 +535,7 @@ export async function startServer(): Promise<void> {
       // OAuth authentication middleware for MCP endpoints (when OAuth mode is enabled)
       // Returns 401 with WWW-Authenticate header if no valid token, triggering OAuth flow
       if (isOAuthEnabled()) {
-        app.use(["/", "/mcp"], oauthAuthMiddleware);
+        app.use(['/', '/mcp'], oauthAuthMiddleware);
       }
 
       // Transport storage for both SSE and StreamableHTTP
@@ -543,9 +543,9 @@ export async function startServer(): Promise<void> {
       const streamableTransports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
 
       // SSE Transport Endpoints (backwards compatibility)
-      app.get("/sse", async (req, res) => {
-        logDebug("SSE endpoint hit!");
-        const transport = new SSEServerTransport("/messages", res);
+      app.get('/sse', async (req, res) => {
+        logDebug('SSE endpoint hit!');
+        const transport = new SSEServerTransport('/messages', res);
         const sessionId = transport.sessionId;
         const clientIp = getIpAddress(req);
 
@@ -559,14 +559,14 @@ export async function startServer(): Promise<void> {
           // Each SSE session gets its own Server instance
           await sessionManager.createSession(sessionId, transport);
           sseTransports[sessionId] = transport;
-          logDebug("SSE transport created with session", { sessionId });
+          logDebug('SSE transport created with session', { sessionId });
 
           // Track connection for access logging
           connectionTracker.openConnection(sessionId, clientIp);
           // Count the initial GET /sse request that established this connection
           connectionTracker.incrementRequests(sessionId);
         } catch (error: unknown) {
-          logError("Failed to create SSE session", { err: error, sessionId });
+          logError('Failed to create SSE session', { err: error, sessionId });
           if (!res.headersSent) {
             res.status(500).end();
           }
@@ -581,48 +581,48 @@ export async function startServer(): Promise<void> {
         let socketError: string | undefined;
         const socket = res.socket;
         if (socket) {
-          socket.on("error", (err: NodeJS.ErrnoException) => {
+          socket.on('error', (err: NodeJS.ErrnoException) => {
             socketError = err.code ?? err.message;
-            logWarn("SSE socket error", {
+            logWarn('SSE socket error', {
               sessionId,
               error: err.message,
               code: err.code,
-              reason: "socket_error",
+              reason: 'socket_error',
             });
           });
         }
 
         // Clean up session when client disconnects
-        res.on("close", () => {
+        res.on('close', () => {
           stopHeartbeat();
           delete sseTransports[sessionId];
 
           // Determine disconnect reason
-          const reason: import("./logging/types.js").ConnectionCloseReason = socketError
+          const reason: import('./logging/types.js').ConnectionCloseReason = socketError
             ? `peer_reset:${socketError}` // ECONNRESET, EPIPE, etc.
             : res.writableFinished
-              ? "normal_close"
+              ? 'normal_close'
               : res.locals?.heartbeatFailed
-                ? "heartbeat_failed" // Heartbeat drain timeout destroyed the socket
+                ? 'heartbeat_failed' // Heartbeat drain timeout destroyed the socket
                 : res.destroyed
-                  ? "destroyed" // Other code destroyed the socket
-                  : "client_disconnect"; // Client closed connection cleanly
+                  ? 'destroyed' // Other code destroyed the socket
+                  : 'client_disconnect'; // Client closed connection cleanly
 
-          logInfo("SSE session disconnected", { sessionId, reason });
+          logInfo('SSE session disconnected', { sessionId, reason });
           connectionTracker.closeConnection(sessionId, reason);
 
           sessionManager.removeSession(sessionId).catch((error: unknown) => {
-            logDebug("Error removing SSE session on disconnect", { err: error, sessionId });
+            logDebug('Error removing SSE session on disconnect', { err: error, sessionId });
           });
         });
       });
 
-      app.post("/messages", async (req, res): Promise<void> => {
-        logDebug("SSE messages endpoint hit!");
+      app.post('/messages', async (req, res): Promise<void> => {
+        logDebug('SSE messages endpoint hit!');
         const sessionId = req.query.sessionId as string;
 
         if (!sessionId || !sseTransports[sessionId]) {
-          res.status(404).json({ error: "Session not found" });
+          res.status(404).json({ error: 'Session not found' });
           return;
         }
 
@@ -652,17 +652,17 @@ export async function startServer(): Promise<void> {
             await doHandle();
           }
         } catch (error: unknown) {
-          logError("Error handling SSE message", { err: error });
+          logError('Error handling SSE message', { err: error });
           if (!res.headersSent) {
-            res.status(500).json({ error: "Internal server error" });
+            res.status(500).json({ error: 'Internal server error' });
           }
         }
       });
 
       // StreamableHTTP Transport Endpoint (modern, supports both GET SSE and POST JSON-RPC)
       // Also mounted at "/" for Claude.ai custom connector compatibility
-      app.all(["/", "/mcp"], async (req, res) => {
-        const sessionId = req.headers["mcp-session-id"] as string;
+      app.all(['/', '/mcp'], async (req, res) => {
+        const sessionId = req.headers['mcp-session-id'] as string;
         const accessLogRequestId = res.locals.accessLogRequestId as string | undefined;
         const clientIp = getIpAddress(req);
 
@@ -677,8 +677,8 @@ export async function startServer(): Promise<void> {
         // Get full request context for logging (verbose mode)
         if (!useCondensedLogging) {
           const requestContext = getRequestContext(req, res);
-          logInfo("MCP endpoint request received", {
-            event: "mcp_request",
+          logInfo('MCP endpoint request received', {
+            event: 'mcp_request',
             ...requestContext,
             hasToken: !!gitlabToken,
           });
@@ -686,7 +686,7 @@ export async function startServer(): Promise<void> {
 
         // Helper to handle request with proper token and request contexts
         const handleWithContext = async (
-          transport: StreamableHTTPServerTransport
+          transport: StreamableHTTPServerTransport,
         ): Promise<void> => {
           // Wrap in request context for access logging
           const doHandle = async () => {
@@ -703,7 +703,7 @@ export async function startServer(): Promise<void> {
                 },
                 async () => {
                   await transport.handleRequest(req, res, req.body);
-                }
+                },
               );
             } else {
               // No OAuth token - direct handling (static token mode or unauthenticated)
@@ -738,8 +738,8 @@ export async function startServer(): Promise<void> {
             // Check if client sent invalid session ID
             if (sessionId) {
               res.status(404).json({
-                error: "Session not found",
-                message: "Your session has expired. Please reconnect.",
+                error: 'Session not found',
+                message: 'Your session has expired. Please reconnect.',
               });
               return;
             }
@@ -752,7 +752,7 @@ export async function startServer(): Promise<void> {
               sessionIdGenerator: () => newSessionId,
               onsessioninitialized: (initializedSessionId: string) => {
                 streamableTransports[initializedSessionId] = transport;
-                logInfo("MCP session initialized", {
+                logInfo('MCP session initialized', {
                   sessionId: initializedSessionId,
                   method: req.method,
                 });
@@ -775,14 +775,14 @@ export async function startServer(): Promise<void> {
                 delete streamableTransports[closedSessionId];
                 sessionStore.removeMcpSessionAssociation(closedSessionId);
 
-                connectionTracker.closeConnection(closedSessionId, "session_closed");
+                connectionTracker.closeConnection(closedSessionId, 'session_closed');
 
                 sessionManager.removeSession(closedSessionId).catch((err: unknown) => {
-                  logDebug("Error removing closed session", { err, sessionId: closedSessionId });
+                  logDebug('Error removing closed session', { err, sessionId: closedSessionId });
                 });
-                logInfo("StreamableHTTP session closed", {
+                logInfo('StreamableHTTP session closed', {
                   sessionId: closedSessionId,
-                  reason: "session_closed",
+                  reason: 'session_closed',
                 });
               },
             });
@@ -795,7 +795,7 @@ export async function startServer(): Promise<void> {
           }
 
           // Start SSE heartbeat for GET requests (long-lived SSE streams)
-          if (req.method === "GET" && !res.writableEnded) {
+          if (req.method === 'GET' && !res.writableEnded) {
             const stopHeartbeat = startSseHeartbeat(res, effectiveSessionId);
 
             // Track socket errors for disconnect reason logging.
@@ -803,67 +803,67 @@ export async function startServer(): Promise<void> {
             let socketError: string | undefined;
             const socket = res.socket;
             if (socket) {
-              socket.on("error", (err: NodeJS.ErrnoException) => {
+              socket.on('error', (err: NodeJS.ErrnoException) => {
                 socketError = err.code ?? err.message;
-                logWarn("StreamableHTTP GET socket error", {
+                logWarn('StreamableHTTP GET socket error', {
                   sessionId: effectiveSessionId,
                   error: err.message,
                   code: err.code,
-                  reason: "socket_error",
+                  reason: 'socket_error',
                 });
               });
             }
 
-            res.on("close", () => {
+            res.on('close', () => {
               stopHeartbeat();
 
-              const reason: import("./logging/types.js").ConnectionCloseReason = socketError
+              const reason: import('./logging/types.js').ConnectionCloseReason = socketError
                 ? `peer_reset:${socketError}` // ECONNRESET, EPIPE, etc.
                 : res.writableFinished
-                  ? "normal_close"
+                  ? 'normal_close'
                   : res.locals?.heartbeatFailed
-                    ? "heartbeat_failed" // Heartbeat drain timeout destroyed the socket
+                    ? 'heartbeat_failed' // Heartbeat drain timeout destroyed the socket
                     : res.destroyed
-                      ? "destroyed" // Other code destroyed the socket
-                      : "client_disconnect"; // Client closed connection cleanly
+                      ? 'destroyed' // Other code destroyed the socket
+                      : 'client_disconnect'; // Client closed connection cleanly
 
-              logInfo("StreamableHTTP GET stream disconnected", {
+              logInfo('StreamableHTTP GET stream disconnected', {
                 sessionId: effectiveSessionId,
                 reason,
               });
             });
           }
         } catch (error: unknown) {
-          logError("Error in StreamableHTTP transport", { err: error });
+          logError('Error in StreamableHTTP transport', { err: error });
           if (!res.headersSent) {
-            res.status(500).json({ error: "Internal server error" });
+            res.status(500).json({ error: 'Internal server error' });
           }
         }
       });
 
       startHttpServer(app, () => {
         const url = `${getProtocol()}://${HOST}:${PORT}`;
-        logInfo("GitLab MCP Server running", { url });
+        logInfo('GitLab MCP Server running', { url });
         if (isTLSEnabled()) {
-          logInfo("TLS/HTTPS enabled");
+          logInfo('TLS/HTTPS enabled');
         }
-        logInfo("Dual Transport Mode Active");
-        logInfo("SSE endpoint", { endpoint: `${url}/sse`, note: "backwards compatibility" });
-        logInfo("StreamableHTTP endpoint", {
+        logInfo('Dual Transport Mode Active');
+        logInfo('SSE endpoint', { endpoint: `${url}/sse`, note: 'backwards compatibility' });
+        logInfo('StreamableHTTP endpoint', {
           endpoint: `${url}/mcp`,
-          note: "modern, supports SSE + JSON-RPC",
+          note: 'modern, supports SSE + JSON-RPC',
         });
         if (isOAuthEnabled()) {
-          logInfo("OAuth Mode Active");
-          logInfo("OAuth metadata", { endpoint: `${url}/.well-known/oauth-authorization-server` });
-          logInfo("Authorization endpoint", { endpoint: `${url}/authorize` });
-          logInfo("Token exchange endpoint", { endpoint: `${url}/token` });
+          logInfo('OAuth Mode Active');
+          logInfo('OAuth metadata', { endpoint: `${url}/.well-known/oauth-authorization-server` });
+          logInfo('Authorization endpoint', { endpoint: `${url}/authorize` });
+          logInfo('Token exchange endpoint', { endpoint: `${url}/token` });
         }
-        logInfo("SSE keepalive configured for proxy chain compatibility", {
+        logInfo('SSE keepalive configured for proxy chain compatibility', {
           heartbeatMs: SSE_HEARTBEAT_MS,
           keepAliveTimeoutMs: HTTP_KEEPALIVE_TIMEOUT_MS,
         });
-        logInfo("Clients can use either transport as needed");
+        logInfo('Clients can use either transport as needed');
       });
       break;
     }
@@ -872,47 +872,47 @@ export async function startServer(): Promise<void> {
 
 // Graceful shutdown - close all sessions and save to storage backend before exit
 async function gracefulShutdown(signal: string): Promise<void> {
-  logInfo("Shutting down GitLab MCP Server...", { signal });
+  logInfo('Shutting down GitLab MCP Server...', { signal });
 
   // Close all tracked connections with server_shutdown reason
   try {
     const connTracker = getConnectionTracker();
-    connTracker.closeAllConnections("server_shutdown");
-    logInfo("All connections closed for shutdown");
+    connTracker.closeAllConnections('server_shutdown');
+    logInfo('All connections closed for shutdown');
   } catch (error) {
-    logError("Error closing connections", { err: error as Error });
+    logError('Error closing connections', { err: error as Error });
   }
 
   try {
     // Shut down session manager (closes all per-session Server instances)
     const sm = getSessionManager();
     await sm.shutdown();
-    logInfo("Session manager shut down successfully");
+    logInfo('Session manager shut down successfully');
   } catch (error) {
-    logError("Error shutting down session manager", { err: error as Error });
+    logError('Error shutting down session manager', { err: error as Error });
   }
 
   try {
     // Close session store (saves file-based sessions, disconnects PostgreSQL)
     await sessionStore.close();
-    logInfo("Session store closed successfully");
+    logInfo('Session store closed successfully');
   } catch (error) {
-    logError("Error closing session store", { err: error as Error });
+    logError('Error closing session store', { err: error as Error });
   }
 
   process.exit(0);
 }
 
-process.on("SIGINT", () => {
-  gracefulShutdown("SIGINT").catch(err => {
-    logError("Error during graceful shutdown", { err });
+process.on('SIGINT', () => {
+  gracefulShutdown('SIGINT').catch((err) => {
+    logError('Error during graceful shutdown', { err });
     process.exit(1);
   });
 });
 
-process.on("SIGTERM", () => {
-  gracefulShutdown("SIGTERM").catch(err => {
-    logError("Error during graceful shutdown", { err });
+process.on('SIGTERM', () => {
+  gracefulShutdown('SIGTERM').catch((err) => {
+    logError('Error during graceful shutdown', { err });
     process.exit(1);
   });
 });

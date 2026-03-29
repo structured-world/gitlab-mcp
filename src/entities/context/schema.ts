@@ -12,7 +12,7 @@
  * - reset: Restore initial context (Command)
  */
 
-import { z } from "zod";
+import { z } from 'zod';
 
 // ============================================================================
 // Action Schemas
@@ -23,15 +23,15 @@ import { z } from "zod";
  */
 const ShowContextSchema = z.object({
   action: z
-    .literal("show")
-    .describe("Display current context including host, preset, scope, and mode"),
+    .literal('show')
+    .describe('Display current context including host, preset, scope, and mode'),
 });
 
 /**
  * List available presets (built-in + user-defined)
  */
 const ListPresetsSchema = z.object({
-  action: z.literal("list_presets").describe("List all available presets with descriptions"),
+  action: z.literal('list_presets').describe('List all available presets with descriptions'),
 });
 
 /**
@@ -39,16 +39,16 @@ const ListPresetsSchema = z.object({
  */
 const ListProfilesSchema = z.object({
   action: z
-    .literal("list_profiles")
-    .describe("List available OAuth profiles - only works in OAuth mode"),
+    .literal('list_profiles')
+    .describe('List available OAuth profiles - only works in OAuth mode'),
 });
 
 /**
  * Switch to a different preset
  */
 const SwitchPresetSchema = z.object({
-  action: z.literal("switch_preset").describe("Switch to a different preset configuration"),
-  preset: z.string().min(1).describe("Name of the preset to activate"),
+  action: z.literal('switch_preset').describe('Switch to a different preset configuration'),
+  preset: z.string().min(1).describe('Name of the preset to activate'),
 });
 
 /**
@@ -56,16 +56,16 @@ const SwitchPresetSchema = z.object({
  */
 const SwitchProfileSchema = z.object({
   action: z
-    .literal("switch_profile")
-    .describe("Switch to a different OAuth profile - OAuth mode only"),
-  profile: z.string().min(1).describe("Name of the profile to activate"),
+    .literal('switch_profile')
+    .describe('Switch to a different OAuth profile - OAuth mode only'),
+  profile: z.string().min(1).describe('Name of the profile to activate'),
 });
 
 /**
  * Set namespace scope with auto-detection
  */
 const SetScopeSchema = z.object({
-  action: z.literal("set_scope").describe("Set scope to restrict operations to a namespace"),
+  action: z.literal('set_scope').describe('Set scope to restrict operations to a namespace'),
   namespace: z
     .string()
     .min(1)
@@ -74,14 +74,14 @@ const SetScopeSchema = z.object({
     .boolean()
     .optional()
     .default(true)
-    .describe("Include subgroups when scope is a group (default: true)"),
+    .describe('Include subgroups when scope is a group (default: true)'),
 });
 
 /**
  * Reset context to initial state
  */
 const ResetContextSchema = z.object({
-  action: z.literal("reset").describe("Reset context to initial state from session start"),
+  action: z.literal('reset').describe('Reset context to initial state from session start'),
 });
 
 /**
@@ -92,12 +92,12 @@ const ResetContextSchema = z.object({
  */
 const WhoamiSchema = z.object({
   action: z
-    .literal("whoami")
+    .literal('whoami')
     .describe(
-      "Get authentication status, token capabilities, and server configuration. " +
-        "Re-introspects token to detect permission changes - if scopes changed, " +
-        "automatically refreshes available tools (scopesRefreshed=true in response). " +
-        "Use to diagnose access issues or verify new token permissions are active."
+      'Get authentication status, token capabilities, and server configuration. ' +
+        'Re-introspects token to detect permission changes - if scopes changed, ' +
+        'automatically refreshes available tools (scopesRefreshed=true in response). ' +
+        'Use to diagnose access issues or verify new token permissions are active.',
     ),
 });
 
@@ -108,7 +108,7 @@ const WhoamiSchema = z.object({
 /**
  * ManageContextSchema - discriminated union of all context management actions
  */
-export const ManageContextSchema = z.discriminatedUnion("action", [
+export const ManageContextSchema = z.discriminatedUnion('action', [
   ShowContextSchema,
   ListPresetsSchema,
   ListProfilesSchema,

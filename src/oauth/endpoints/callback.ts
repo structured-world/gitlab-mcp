@@ -14,13 +14,13 @@
  * 6. We redirect to client's redirect_uri with MCP code
  */
 
-import { Request, Response } from "express";
-import { loadOAuthConfig } from "../config";
-import { sessionStore } from "../session-store";
-import { exchangeGitLabAuthCode, getGitLabUser } from "../gitlab-device-flow";
-import { generateSessionId, generateAuthorizationCode, calculateTokenExpiry } from "../token-utils";
-import { logInfo, logWarn, logError, logDebug, truncateId } from "../../logger";
-import { GITLAB_BASE_URL } from "../../config";
+import { Request, Response } from 'express';
+import { loadOAuthConfig } from '../config';
+import { sessionStore } from '../session-store';
+import { exchangeGitLabAuthCode, getGitLabUser } from '../gitlab-device-flow';
+import { generateSessionId, generateAuthorizationCode, calculateTokenExpiry } from '../token-utils';
+import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
+import { GITLAB_BASE_URL } from '../../config';
 
 /**
  * OAuth callback handler
@@ -39,8 +39,8 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
   const config = loadOAuthConfig();
   if (!config) {
     res.status(500).json({
-      error: "server_error",
-      error_description: "OAuth not configured",
+      error: 'server_error',
+      error_description: 'OAuth not configured',
     });
     return;
   }
@@ -49,19 +49,19 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
 
   // Handle GitLab error responses
   if (error) {
-    logWarn("GitLab authorization error", { error, error_description });
+    logWarn('GitLab authorization error', { error, error_description });
     // Redirect to client with error if we can find the flow state
     if (state) {
       const flow = sessionStore.getAuthCodeFlow(state);
       if (flow) {
         sessionStore.deleteAuthCodeFlow(state);
         const redirectUrl = new URL(flow.clientRedirectUri);
-        redirectUrl.searchParams.set("error", error);
+        redirectUrl.searchParams.set('error', error);
         if (error_description) {
-          redirectUrl.searchParams.set("error_description", error_description);
+          redirectUrl.searchParams.set('error_description', error_description);
         }
         if (flow.clientState) {
-          redirectUrl.searchParams.set("state", flow.clientState);
+          redirectUrl.searchParams.set('state', flow.clientState);
         }
         res.redirect(redirectUrl.toString());
         return;
@@ -69,7 +69,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     }
     res.status(400).json({
       error: error,
-      error_description: error_description ?? "GitLab authorization failed",
+      error_description: error_description ?? 'GitLab authorization failed',
     });
     return;
   }
@@ -77,16 +77,16 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
   // Validate required parameters
   if (!code) {
     res.status(400).json({
-      error: "invalid_request",
-      error_description: "Missing authorization code from GitLab",
+      error: 'invalid_request',
+      error_description: 'Missing authorization code from GitLab',
     });
     return;
   }
 
   if (!state) {
     res.status(400).json({
-      error: "invalid_request",
-      error_description: "Missing state parameter",
+      error: 'invalid_request',
+      error_description: 'Missing state parameter',
     });
     return;
   }
@@ -95,8 +95,8 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
   const flow = sessionStore.getAuthCodeFlow(state);
   if (!flow) {
     res.status(400).json({
-      error: "invalid_request",
-      error_description: "Invalid or expired state. Please start authorization again.",
+      error: 'invalid_request',
+      error_description: 'Invalid or expired state. Please start authorization again.',
     });
     return;
   }
@@ -105,8 +105,8 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
   if (Date.now() > flow.expiresAt) {
     sessionStore.deleteAuthCodeFlow(state);
     res.status(400).json({
-      error: "invalid_request",
-      error_description: "Authorization flow expired. Please start again.",
+      error: 'invalid_request',
+      error_description: 'Authorization flow expired. Please start again.',
     });
     return;
   }
@@ -140,8 +140,8 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     // MCP tokens will be set when the authorization code is exchanged via /token
     sessionStore.createSession({
       id: sessionId,
-      mcpAccessToken: "", // Set on /token
-      mcpRefreshToken: "", // Set on /token
+      mcpAccessToken: '', // Set on /token
+      mcpRefreshToken: '', // Set on /token
       mcpTokenExpiry: 0, // Set on /token
       gitlabAccessToken: gitlabTokens.access_token,
       gitlabRefreshToken: gitlabTokens.refresh_token,
@@ -151,7 +151,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,
       instanceLabel: flow.selectedInstanceLabel,
       clientId: flow.clientId,
-      scopes: ["mcp:tools", "mcp:resources"],
+      scopes: ['mcp:tools', 'mcp:resources'],
       createdAt: now,
       updatedAt: now,
     });
@@ -159,7 +159,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     // Clean up the auth code flow state
     sessionStore.deleteAuthCodeFlow(state);
 
-    logInfo("Authorization Code Flow completed successfully", {
+    logInfo('Authorization Code Flow completed successfully', {
       sessionId: truncateId(sessionId),
       userId: userInfo.id,
       username: userInfo.username,
@@ -167,31 +167,31 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
 
     // Redirect to client with MCP authorization code
     const redirectUrl = new URL(flow.clientRedirectUri);
-    redirectUrl.searchParams.set("code", mcpAuthCode);
+    redirectUrl.searchParams.set('code', mcpAuthCode);
     if (flow.clientState) {
-      redirectUrl.searchParams.set("state", flow.clientState);
+      redirectUrl.searchParams.set('state', flow.clientState);
     }
 
-    logDebug("Redirecting to client with authorization code", {
+    logDebug('Redirecting to client with authorization code', {
       redirectUri: flow.clientRedirectUri,
     });
 
     res.redirect(redirectUrl.toString());
   } catch (error: unknown) {
-    logError("Failed to complete authorization code flow", { err: error as Error });
+    logError('Failed to complete authorization code flow', { err: error as Error });
 
     // Clean up the flow state on error
     sessionStore.deleteAuthCodeFlow(state);
 
     // Try to redirect to client with error
     const redirectUrl = new URL(flow.clientRedirectUri);
-    redirectUrl.searchParams.set("error", "server_error");
+    redirectUrl.searchParams.set('error', 'server_error');
     redirectUrl.searchParams.set(
-      "error_description",
-      error instanceof Error ? error.message : "Failed to complete authorization"
+      'error_description',
+      error instanceof Error ? error.message : 'Failed to complete authorization',
     );
     if (flow.clientState) {
-      redirectUrl.searchParams.set("state", flow.clientState);
+      redirectUrl.searchParams.set('state', flow.clientState);
     }
 
     res.redirect(redirectUrl.toString());

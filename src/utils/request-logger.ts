@@ -6,8 +6,8 @@
  * for debugging and production monitoring.
  */
 
-import { Request, Response } from "express";
-import { randomUUID } from "crypto";
+import { Request, Response } from 'express';
+import { randomUUID } from 'crypto';
 
 /**
  * Structured request context for logging
@@ -41,7 +41,7 @@ export interface RequestContext {
  */
 export interface RateLimitInfo {
   /** Type of rate limit (ip or session) */
-  type: "ip" | "session";
+  type: 'ip' | 'session';
   /** The key being rate limited (IP address or session ID) */
   key: string;
   /** Number of requests used in current window */
@@ -66,12 +66,12 @@ function generateRequestId(): string {
  * Handles various proxy configurations and fallback cases.
  */
 export function getIpAddress(req: Request): string {
-  return req.ip ?? req.socket?.remoteAddress ?? "unknown";
+  return req.ip ?? req.socket?.remoteAddress ?? 'unknown';
 }
 
 // Re-export truncateId from logger for backward compatibility
 // This module used to have its own implementation, now uses centralized version
-import { truncateId as baseTruncateId } from "../logger";
+import { truncateId as baseTruncateId } from '../logger';
 
 /**
  * Truncate a session ID for safe logging
@@ -98,7 +98,7 @@ export function truncateId(id: string | undefined): string | undefined {
  */
 export function getRequestContext(req: Request, res: Response): RequestContext {
   // Get MCP session ID from header
-  const mcpSessionId = req.headers["mcp-session-id"] as string | undefined;
+  const mcpSessionId = req.headers['mcp-session-id'] as string | undefined;
 
   // Get OAuth session ID from res.locals (set by auth middleware)
   const oauthSessionId = res.locals.oauthSessionId as string | undefined;
@@ -108,7 +108,7 @@ export function getRequestContext(req: Request, res: Response): RequestContext {
     ip: getIpAddress(req),
     method: req.method,
     path: req.path,
-    userAgent: req.headers["user-agent"],
+    userAgent: req.headers['user-agent'],
     hasOAuthSession: !!oauthSessionId,
     hasMcpSessionHeader: !!mcpSessionId,
     oauthSessionId: truncateId(oauthSessionId),
@@ -125,14 +125,14 @@ export function getRequestContext(req: Request, res: Response): RequestContext {
  * @returns Minimal request context
  */
 export function getMinimalRequestContext(
-  req: Request
-): Pick<RequestContext, "requestId" | "ip" | "method" | "path" | "userAgent"> {
+  req: Request,
+): Pick<RequestContext, 'requestId' | 'ip' | 'method' | 'path' | 'userAgent'> {
   return {
     requestId: generateRequestId(),
     ip: getIpAddress(req),
     method: req.method,
     path: req.path,
-    userAgent: req.headers["user-agent"],
+    userAgent: req.headers['user-agent'],
   };
 }
 
@@ -149,17 +149,17 @@ export function getMinimalRequestContext(
  * @returns Rate limit info for logging
  */
 export function buildRateLimitInfo(
-  type: "ip" | "session",
+  type: 'ip' | 'session',
   key: string,
   used: number,
   limit: number,
-  resetAt: number
+  resetAt: number,
 ): RateLimitInfo {
   const resetInSec = Math.max(0, Math.ceil((resetAt - Date.now()) / 1000));
 
   return {
     type,
-    key: type === "session" ? (truncateId(key) ?? key) : key,
+    key: type === 'session' ? (truncateId(key) ?? key) : key,
     used,
     limit,
     resetInSec,

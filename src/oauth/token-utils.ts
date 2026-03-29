@@ -5,8 +5,8 @@
  * Uses Node.js crypto module for all cryptographic operations.
  */
 
-import * as crypto from "crypto";
-import { MCPTokenPayload } from "./types";
+import * as crypto from 'crypto';
+import { MCPTokenPayload } from './types';
 
 // ============================================================
 // JWT Functions
@@ -25,9 +25,9 @@ import { MCPTokenPayload } from "./types";
 export function createJWT(
   payload: Record<string, unknown>,
   secret: string,
-  expiresIn: number
+  expiresIn: number,
 ): string {
-  const header = { alg: "HS256", typ: "JWT" };
+  const header = { alg: 'HS256', typ: 'JWT' };
   const now = Math.floor(Date.now() / 1000);
 
   const fullPayload = {
@@ -40,9 +40,9 @@ export function createJWT(
   const payloadB64 = base64UrlEncode(JSON.stringify(fullPayload));
 
   const signature = crypto
-    .createHmac("sha256", secret)
+    .createHmac('sha256', secret)
     .update(`${headerB64}.${payloadB64}`)
-    .digest("base64url");
+    .digest('base64url');
 
   return `${headerB64}.${payloadB64}.${signature}`;
 }
@@ -58,7 +58,7 @@ export function createJWT(
  */
 export function verifyJWT(token: string, secret: string): Record<string, unknown> | null {
   try {
-    const parts = token.split(".");
+    const parts = token.split('.');
     if (parts.length !== 3) {
       return null;
     }
@@ -67,9 +67,9 @@ export function verifyJWT(token: string, secret: string): Record<string, unknown
 
     // Verify signature
     const expectedSig = crypto
-      .createHmac("sha256", secret)
+      .createHmac('sha256', secret)
       .update(`${headerB64}.${payloadB64}`)
-      .digest("base64url");
+      .digest('base64url');
 
     if (signature !== expectedSig) {
       return null;
@@ -105,14 +105,14 @@ export function verifyMCPToken(token: string, secret: string): MCPTokenPayload |
 
   // Validate required fields
   if (
-    typeof payload.iss !== "string" ||
-    typeof payload.sub !== "string" ||
-    typeof payload.aud !== "string" ||
-    typeof payload.sid !== "string" ||
-    typeof payload.scope !== "string" ||
-    typeof payload.gitlab_user !== "string" ||
-    typeof payload.iat !== "number" ||
-    typeof payload.exp !== "number"
+    typeof payload.iss !== 'string' ||
+    typeof payload.sub !== 'string' ||
+    typeof payload.aud !== 'string' ||
+    typeof payload.sid !== 'string' ||
+    typeof payload.scope !== 'string' ||
+    typeof payload.gitlab_user !== 'string' ||
+    typeof payload.iat !== 'number' ||
+    typeof payload.exp !== 'number'
   ) {
     return null;
   }
@@ -130,7 +130,7 @@ export function verifyMCPToken(token: string, secret: string): MCPTokenPayload |
  * @returns Base64URL-encoded random string (43-128 characters)
  */
 export function generateCodeVerifier(): string {
-  return crypto.randomBytes(32).toString("base64url");
+  return crypto.randomBytes(32).toString('base64url');
 }
 
 /**
@@ -140,7 +140,7 @@ export function generateCodeVerifier(): string {
  * @returns Base64URL-encoded SHA256 hash of the verifier
  */
 export function generateCodeChallenge(verifier: string): string {
-  return crypto.createHash("sha256").update(verifier).digest("base64url");
+  return crypto.createHash('sha256').update(verifier).digest('base64url');
 }
 
 /**
@@ -152,7 +152,7 @@ export function generateCodeChallenge(verifier: string): string {
  * @returns true if the verifier matches the challenge
  */
 export function verifyCodeChallenge(verifier: string, challenge: string, method: string): boolean {
-  if (method !== "S256") {
+  if (method !== 'S256') {
     // Only S256 is supported per OAuth 2.1
     return false;
   }
@@ -172,7 +172,7 @@ export function verifyCodeChallenge(verifier: string, challenge: string, method:
 export function generateRandomString(length: number = 32): string {
   // Generate enough bytes to produce the desired length after base64url encoding
   const byteLength = Math.ceil((length * 3) / 4);
-  return crypto.randomBytes(byteLength).toString("base64url").slice(0, length);
+  return crypto.randomBytes(byteLength).toString('base64url').slice(0, length);
 }
 
 /**
@@ -219,14 +219,14 @@ export function generateRefreshToken(): string {
  * Encode a string to Base64URL format
  */
 function base64UrlEncode(str: string): string {
-  return Buffer.from(str, "utf-8").toString("base64url");
+  return Buffer.from(str, 'utf-8').toString('base64url');
 }
 
 /**
  * Decode a Base64URL string
  */
 function base64UrlDecode(str: string): string {
-  return Buffer.from(str, "base64url").toString("utf-8");
+  return Buffer.from(str, 'base64url').toString('utf-8');
 }
 
 // ============================================================

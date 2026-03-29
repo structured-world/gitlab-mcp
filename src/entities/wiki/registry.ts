@@ -1,10 +1,10 @@
-import * as z from "zod";
-import { BrowseWikiSchema } from "./schema-readonly";
-import { ManageWikiSchema } from "./schema";
-import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { resolveNamespaceForAPI } from "../../utils/namespace";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { isActionDenied } from "../../config";
+import * as z from 'zod';
+import { BrowseWikiSchema } from './schema-readonly';
+import { ManageWikiSchema } from './schema';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { resolveNamespaceForAPI } from '../../utils/namespace';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { isActionDenied } from '../../config';
 
 /**
  * Wiki tools registry - 2 CQRS tools replacing 5 individual tools
@@ -18,25 +18,25 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_wiki",
+    'browse_wiki',
     {
-      name: "browse_wiki",
+      name: 'browse_wiki',
       description:
-        "Read wiki pages in projects or groups. Actions: list (all pages with metadata), get (page content by slug). Related: manage_wiki to create/update/delete.",
+        'Read wiki pages in projects or groups. Actions: list (all pages with metadata), get (page content by slug). Related: manage_wiki to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseWikiSchema),
-      gate: { envVar: "USE_GITLAB_WIKI", defaultValue: true },
+      gate: { envVar: 'USE_GITLAB_WIKI', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseWikiSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_wiki", input.action)) {
+        if (isActionDenied('browse_wiki', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_wiki tool`);
         }
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             // TypeScript knows: input has with_content, per_page, page (optional)
             const { action: _action, namespace: _namespace, ...rest } = input;
             const query = toQuery(rest, []);
@@ -44,10 +44,10 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             return gitlab.get(`${entityType}/${encodedPath}/wikis`, { query });
           }
 
-          case "get": {
+          case 'get': {
             // TypeScript knows: input has slug (required)
             return gitlab.get(
-              `${entityType}/${encodedPath}/wikis/${encodeURIComponent(input.slug)}`
+              `${entityType}/${encodedPath}/wikis/${encodeURIComponent(input.slug)}`,
             );
           }
 
@@ -64,48 +64,48 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_wiki",
+    'manage_wiki',
     {
-      name: "manage_wiki",
+      name: 'manage_wiki',
       description:
-        "Create, update, or delete wiki pages. Actions: create (new page with title/content/format), update (modify content or title), delete (remove permanently). Related: browse_wiki to read pages.",
+        'Create, update, or delete wiki pages. Actions: create (new page with title/content/format), update (modify content or title), delete (remove permanently). Related: browse_wiki to read pages.',
       inputSchema: z.toJSONSchema(ManageWikiSchema),
-      gate: { envVar: "USE_GITLAB_WIKI", defaultValue: true },
+      gate: { envVar: 'USE_GITLAB_WIKI', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageWikiSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_wiki", input.action)) {
+        if (isActionDenied('manage_wiki', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_wiki tool`);
         }
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
         switch (input.action) {
-          case "create": {
+          case 'create': {
             // TypeScript knows: input has title, content (required), format (optional)
             const { action: _action, namespace: _namespace, ...body } = input;
 
             return gitlab.post(`${entityType}/${encodedPath}/wikis`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "update": {
+          case 'update': {
             // TypeScript knows: input has slug (required), title, content, format (optional)
             const { action: _action, namespace: _namespace, slug, ...body } = input;
 
             return gitlab.put(`${entityType}/${encodedPath}/wikis/${encodeURIComponent(slug)}`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "delete": {
+          case 'delete': {
             // TypeScript knows: input has slug (required)
             await gitlab.delete(
-              `${entityType}/${encodedPath}/wikis/${encodeURIComponent(input.slug)}`
+              `${entityType}/${encodedPath}/wikis/${encodeURIComponent(input.slug)}`,
             );
             return { deleted: true };
           }
@@ -123,7 +123,7 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
  * Get read-only tool names from the registry
  */
 export function getWikiReadOnlyToolNames(): string[] {
-  return ["browse_wiki"];
+  return ['browse_wiki'];
 }
 
 /**
@@ -139,7 +139,9 @@ export function getWikiToolDefinitions(): EnhancedToolDefinition[] {
 export function getFilteredWikiTools(readOnlyMode: boolean = false): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getWikiReadOnlyToolNames();
-    return Array.from(wikiToolRegistry.values()).filter(tool => readOnlyNames.includes(tool.name));
+    return Array.from(wikiToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
+    );
   }
   return getWikiToolDefinitions();
 }

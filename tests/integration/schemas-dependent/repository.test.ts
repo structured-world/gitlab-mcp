@@ -16,10 +16,10 @@ import {
   GITLAB_PROJECT_ID,
   requireTestData,
   getTestProject,
-} from "../../setup/testConfig";
-import { BrowseFilesSchema } from "../../../src/entities/files/schema-readonly";
+} from '../../setup/testConfig';
+import { BrowseFilesSchema } from '../../../src/entities/files/schema-readonly';
 
-describe("Repository Schema - Using Lifecycle Data", () => {
+describe('Repository Schema - Using Lifecycle Data', () => {
   let testData: any;
   let testProject: any;
 
@@ -29,17 +29,17 @@ describe("Repository Schema - Using Lifecycle Data", () => {
     testProject = getTestProject();
 
     console.log(
-      `Using lifecycle data: Project ${testProject.id}, Files: ${testData.repository?.files?.length}, Tags: ${testData.repository?.tags?.length}`
+      `Using lifecycle data: Project ${testProject.id}, Files: ${testData.repository?.files?.length}, Tags: ${testData.repository?.tags?.length}`,
     );
   });
 
-  describe("BrowseFilesSchema (tree action)", () => {
-    it("should validate basic repository tree parameters", async () => {
+  describe('BrowseFilesSchema (tree action)', () => {
+    it('should validate basic repository tree parameters', async () => {
       const validParams = {
-        action: "tree" as const,
+        action: 'tree' as const,
         project_id: testProject.id.toString(),
-        ref: "main",
-        path: "",
+        ref: 'main',
+        path: '',
         recursive: false,
         per_page: 20,
       };
@@ -47,24 +47,24 @@ describe("Repository Schema - Using Lifecycle Data", () => {
       const result = BrowseFilesSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "tree") {
-        expect(result.data.action).toBe("tree");
+      if (result.success && result.data.action === 'tree') {
+        expect(result.data.action).toBe('tree');
         expect(result.data.project_id).toBe(testProject.id.toString());
-        expect(result.data.ref).toBe("main");
-        expect(result.data.path).toBe("");
+        expect(result.data.ref).toBe('main');
+        expect(result.data.path).toBe('');
         expect(result.data.recursive).toBe(false);
         expect(result.data.per_page).toBe(20);
       }
 
-      console.log("BrowseFilesSchema validates basic tree parameters correctly");
+      console.log('BrowseFilesSchema validates basic tree parameters correctly');
     });
 
-    it("should make successful API request with lifecycle data", async () => {
+    it('should make successful API request with lifecycle data', async () => {
       const params = {
-        action: "tree" as const,
+        action: 'tree' as const,
         project_id: testProject.id.toString(),
-        ref: "main",
-        path: "",
+        ref: 'main',
+        path: '',
         per_page: 20,
       };
 
@@ -76,7 +76,7 @@ describe("Repository Schema - Using Lifecycle Data", () => {
       // Build query string from validated parameters
       const queryParams = new URLSearchParams();
       Object.entries(paramResult.data).forEach(([key, value]) => {
-        if (value !== undefined && key !== "project_id" && key !== "action") {
+        if (value !== undefined && key !== 'project_id' && key !== 'action') {
           queryParams.set(key, String(value));
         }
       });
@@ -87,7 +87,7 @@ describe("Repository Schema - Using Lifecycle Data", () => {
           headers: {
             Authorization: `Bearer ${GITLAB_TOKEN}`,
           },
-        }
+        },
       );
 
       expect(response.ok).toBe(true);
@@ -99,31 +99,31 @@ describe("Repository Schema - Using Lifecycle Data", () => {
 
       // Validate tree structure with expected files from lifecycle
       const itemNames = treeItems.map((item: any) => item.name);
-      expect(itemNames).toContain("README.md");
-      expect(itemNames).toContain("src");
-      expect(itemNames).toContain("docs");
-      expect(itemNames).toContain(".gitignore");
+      expect(itemNames).toContain('README.md');
+      expect(itemNames).toContain('src');
+      expect(itemNames).toContain('docs');
+      expect(itemNames).toContain('.gitignore');
 
       // Validate tree item structure
       for (const item of treeItems.slice(0, 3)) {
-        expect(item).toHaveProperty("id");
-        expect(item).toHaveProperty("name");
-        expect(item).toHaveProperty("type");
-        expect(item).toHaveProperty("path");
-        expect(item).toHaveProperty("mode");
-        expect(["tree", "blob"]).toContain(item.type);
+        expect(item).toHaveProperty('id');
+        expect(item).toHaveProperty('name');
+        expect(item).toHaveProperty('type');
+        expect(item).toHaveProperty('path');
+        expect(item).toHaveProperty('mode');
+        expect(['tree', 'blob']).toContain(item.type);
       }
 
       console.log(
-        `BrowseFilesSchema API request successful with ${treeItems.length} tree items from lifecycle data`
+        `BrowseFilesSchema API request successful with ${treeItems.length} tree items from lifecycle data`,
       );
     });
 
-    it("should validate recursive tree parameters", async () => {
+    it('should validate recursive tree parameters', async () => {
       const recursiveParams = {
-        action: "tree" as const,
+        action: 'tree' as const,
         project_id: testProject.id.toString(),
-        ref: "main",
+        ref: 'main',
         recursive: true,
         per_page: 100,
       };
@@ -131,34 +131,34 @@ describe("Repository Schema - Using Lifecycle Data", () => {
       const result = BrowseFilesSchema.safeParse(recursiveParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "tree") {
+      if (result.success && result.data.action === 'tree') {
         expect(result.data.recursive).toBe(true);
         expect(result.data.per_page).toBe(100);
       }
 
-      console.log("BrowseFilesSchema validates recursive parameters correctly");
+      console.log('BrowseFilesSchema validates recursive parameters correctly');
     });
 
-    it("should validate path-specific tree parameters", async () => {
+    it('should validate path-specific tree parameters', async () => {
       const pathParams = {
-        action: "tree" as const,
+        action: 'tree' as const,
         project_id: testProject.id.toString(),
-        ref: "main",
-        path: "src",
+        ref: 'main',
+        path: 'src',
         per_page: 10,
       };
 
       const result = BrowseFilesSchema.safeParse(pathParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "tree") {
-        expect(result.data.path).toBe("src");
+      if (result.success && result.data.action === 'tree') {
+        expect(result.data.path).toBe('src');
       }
 
-      console.log("BrowseFilesSchema validates path-specific parameters correctly");
+      console.log('BrowseFilesSchema validates path-specific parameters correctly');
     });
 
-    it("should test DEFAULT_PROJECT soft fail scenario", async () => {
+    it('should test DEFAULT_PROJECT soft fail scenario', async () => {
       // This is the soft fail test for DEFAULT_PROJECT
       if (!GITLAB_PROJECT_ID) {
         console.log(`Skipping DEFAULT_PROJECT test - GITLAB_PROJECT_ID not configured`);
@@ -171,7 +171,7 @@ describe("Repository Schema - Using Lifecycle Data", () => {
           headers: {
             Authorization: `Bearer ${GITLAB_TOKEN}`,
           },
-        }
+        },
       );
 
       if (!projectCheckResponse.ok) {
@@ -181,41 +181,41 @@ describe("Repository Schema - Using Lifecycle Data", () => {
 
       // If we get here, the default project exists, so test with it
       const params = {
-        action: "tree" as const,
+        action: 'tree' as const,
         project_id: GITLAB_PROJECT_ID,
-        ref: "main",
-        path: "",
+        ref: 'main',
+        path: '',
         per_page: 10,
       };
 
       const paramResult = BrowseFilesSchema.safeParse(params);
       expect(paramResult.success).toBe(true);
 
-      console.log("DEFAULT_PROJECT test completed (project exists)");
+      console.log('DEFAULT_PROJECT test completed (project exists)');
     });
   });
 
-  describe("BrowseFilesSchema (content action)", () => {
-    it("should validate content action parameters", async () => {
+  describe('BrowseFilesSchema (content action)', () => {
+    it('should validate content action parameters', async () => {
       const params = {
-        action: "content" as const,
+        action: 'content' as const,
         project_id: testProject.id.toString(),
-        file_path: "README.md",
-        ref: "main",
+        file_path: 'README.md',
+        ref: 'main',
       };
 
       const result = BrowseFilesSchema.safeParse(params);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "content") {
-        expect(result.data.action).toBe("content");
-        expect(result.data.file_path).toBe("README.md");
+      if (result.success && result.data.action === 'content') {
+        expect(result.data.action).toBe('content');
+        expect(result.data.file_path).toBe('README.md');
       }
     });
 
-    it("should require file_path for content action", async () => {
+    it('should require file_path for content action', async () => {
       const params = {
-        action: "content" as const,
+        action: 'content' as const,
         project_id: testProject.id.toString(),
         // file_path missing
       };
@@ -224,41 +224,41 @@ describe("Repository Schema - Using Lifecycle Data", () => {
       expect(result.success).toBe(false);
 
       if (!result.success) {
-        const filePathError = result.error.issues.find(issue => issue.path.includes("file_path"));
+        const filePathError = result.error.issues.find((issue) => issue.path.includes('file_path'));
         expect(filePathError).toBeDefined();
       }
     });
   });
 
-  describe("File Content Operations", () => {
-    it("should successfully test file operations with lifecycle data", async () => {
+  describe('File Content Operations', () => {
+    it('should successfully test file operations with lifecycle data', async () => {
       // Test file content fetching using files created by lifecycle
       expect(testData.repository?.files?.length).toBeGreaterThan(0);
 
-      const fileName = "README.md";
+      const fileName = 'README.md';
       const response = await fetch(
         `${GITLAB_API_URL}/api/v4/projects/${testProject.id}/repository/files/${encodeURIComponent(fileName)}?ref=main`,
         {
           headers: {
             Authorization: `Bearer ${GITLAB_TOKEN}`,
           },
-        }
+        },
       );
 
       expect(response.ok).toBe(true);
       const fileData = await response.json();
 
-      expect(fileData).toHaveProperty("file_name", fileName);
-      expect(fileData).toHaveProperty("file_path", fileName);
-      expect(fileData).toHaveProperty("content");
-      expect(fileData).toHaveProperty("encoding");
+      expect(fileData).toHaveProperty('file_name', fileName);
+      expect(fileData).toHaveProperty('file_path', fileName);
+      expect(fileData).toHaveProperty('content');
+      expect(fileData).toHaveProperty('encoding');
 
       console.log(`File content operations successful with lifecycle file: ${fileName}`);
     });
   });
 
-  describe("Repository References", () => {
-    it("should successfully test branches with lifecycle data", async () => {
+  describe('Repository References', () => {
+    it('should successfully test branches with lifecycle data', async () => {
       // Test branch listing using branches created by lifecycle
       expect(testData.repository?.branches?.length).toBeGreaterThan(0);
 
@@ -268,7 +268,7 @@ describe("Repository Schema - Using Lifecycle Data", () => {
           headers: {
             Authorization: `Bearer ${GITLAB_TOKEN}`,
           },
-        }
+        },
       );
 
       expect(response.ok).toBe(true);
@@ -278,14 +278,14 @@ describe("Repository Schema - Using Lifecycle Data", () => {
 
       // Should include main branch plus feature branches from lifecycle
       const branchNames = branches.map((b: any) => b.name);
-      expect(branchNames).toContain("main");
+      expect(branchNames).toContain('main');
 
       console.log(
-        `Repository branches successful with ${branches.length} branches from lifecycle data`
+        `Repository branches successful with ${branches.length} branches from lifecycle data`,
       );
     });
 
-    it("should successfully test tags with lifecycle data", async () => {
+    it('should successfully test tags with lifecycle data', async () => {
       // Test tag listing using tags created by lifecycle
       expect(testData.repository?.tags?.length).toBeGreaterThan(0);
 
@@ -295,7 +295,7 @@ describe("Repository Schema - Using Lifecycle Data", () => {
           headers: {
             Authorization: `Bearer ${GITLAB_TOKEN}`,
           },
-        }
+        },
       );
 
       expect(response.ok).toBe(true);
@@ -305,9 +305,9 @@ describe("Repository Schema - Using Lifecycle Data", () => {
 
       // Validate tag structure
       for (const tag of tags.slice(0, 2)) {
-        expect(tag).toHaveProperty("name");
-        expect(tag).toHaveProperty("message");
-        expect(tag).toHaveProperty("commit");
+        expect(tag).toHaveProperty('name');
+        expect(tag).toHaveProperty('message');
+        expect(tag).toHaveProperty('commit');
       }
 
       console.log(`Repository tags successful with ${tags.length} tags from lifecycle data`);

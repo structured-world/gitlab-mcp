@@ -13,9 +13,9 @@
  * Logs a single line when connection closes with reason and stats.
  */
 
-import type { ConnectionStats, ConnectionCloseReason } from "./types.js";
-import { formatConnectionClose, createConnectionCloseEntry } from "./access-log.js";
-import { logInfo, logDebug, LOG_JSON } from "../logger.js";
+import type { ConnectionStats, ConnectionCloseReason } from './types.js';
+import { formatConnectionClose, createConnectionCloseEntry } from './access-log.js';
+import { logInfo, logDebug, LOG_JSON } from '../logger.js';
 
 /**
  * Connection tracker manages statistics for persistent connections.
@@ -64,7 +64,7 @@ export class ConnectionTracker {
 
     this.connections.set(sessionId, stats);
 
-    logDebug("Connection opened for tracking", { sessionId, clientIp });
+    logDebug('Connection opened for tracking', { sessionId, clientIp });
   }
 
   /**
@@ -117,7 +117,7 @@ export class ConnectionTracker {
     if (!stats) {
       // Only log debug when enabled to avoid noise in verbose mode
       if (this.enabled) {
-        logDebug("Connection not found on close", { sessionId });
+        logDebug('Connection not found on close', { sessionId });
       }
       return undefined;
     }
@@ -172,7 +172,7 @@ export class ConnectionTracker {
    *
    * @param reason - Reason for closing all connections
    */
-  closeAllConnections(reason: ConnectionCloseReason = "server_shutdown"): void {
+  closeAllConnections(reason: ConnectionCloseReason = 'server_shutdown'): void {
     const sessionIds = this.getAllSessionIds();
     for (const sessionId of sessionIds) {
       this.closeConnection(sessionId, reason);

@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { flexibleBoolean, requiredId } from "../utils";
+import { z } from 'zod';
+import { flexibleBoolean, requiredId } from '../utils';
 
 // ============================================================================
 // manage_files - CQRS Command Tool (discriminated union schema)
@@ -9,64 +9,64 @@ import { flexibleBoolean, requiredId } from "../utils";
 // ============================================================================
 
 // --- Shared fields ---
-const projectIdField = requiredId.describe("Project ID or URL-encoded path");
+const projectIdField = requiredId.describe('Project ID or URL-encoded path');
 
 // --- Helper schema for batch file actions ---
 const BatchFileActionSchema = z.object({
-  file_path: z.string().describe("Path to the file"),
-  content: z.string().describe("File content"),
-  encoding: z.enum(["text", "base64"]).optional().describe("Content encoding"),
-  execute_filemode: flexibleBoolean.optional().describe("Set executable permission"),
+  file_path: z.string().describe('Path to the file'),
+  content: z.string().describe('File content'),
+  encoding: z.enum(['text', 'base64']).optional().describe('Content encoding'),
+  execute_filemode: flexibleBoolean.optional().describe('Set executable permission'),
 });
 
 // --- Action: single ---
 const SingleActionSchema = z.object({
-  action: z.literal("single").describe("Create or update a single file"),
+  action: z.literal('single').describe('Create or update a single file'),
   project_id: projectIdField,
-  file_path: z.string().describe("Path to the file"),
-  content: z.string().describe("File content (text or base64 encoded)"),
-  commit_message: z.string().describe("Commit message"),
-  branch: z.string().describe("Target branch name"),
+  file_path: z.string().describe('Path to the file'),
+  content: z.string().describe('File content (text or base64 encoded)'),
+  commit_message: z.string().describe('Commit message'),
+  branch: z.string().describe('Target branch name'),
   overwrite: flexibleBoolean
     .optional()
     .describe(
-      "If true, automatically update existing file or create new one (requires pre-check via GET request). If false or omitted, only create new file (fails if file exists). Use true when unsure if file exists. Note: Non-404 errors (403, 500, etc.) during pre-check will fail the operation."
+      'If true, automatically update existing file or create new one (requires pre-check via GET request). If false or omitted, only create new file (fails if file exists). Use true when unsure if file exists. Note: Non-404 errors (403, 500, etc.) during pre-check will fail the operation.',
     ),
-  start_branch: z.string().optional().describe("Base branch to start from"),
-  encoding: z.enum(["text", "base64"]).optional().describe("Content encoding (default: text)"),
-  author_email: z.string().optional().describe("Commit author email"),
-  author_name: z.string().optional().describe("Commit author name"),
-  last_commit_id: z.string().optional().describe("Last known commit ID for conflict detection"),
-  execute_filemode: flexibleBoolean.optional().describe("Set executable permission"),
+  start_branch: z.string().optional().describe('Base branch to start from'),
+  encoding: z.enum(['text', 'base64']).optional().describe('Content encoding (default: text)'),
+  author_email: z.string().optional().describe('Commit author email'),
+  author_name: z.string().optional().describe('Commit author name'),
+  last_commit_id: z.string().optional().describe('Last known commit ID for conflict detection'),
+  execute_filemode: flexibleBoolean.optional().describe('Set executable permission'),
 });
 
 // --- Action: batch ---
 const BatchActionSchema = z.object({
-  action: z.literal("batch").describe("Commit multiple files atomically"),
+  action: z.literal('batch').describe('Commit multiple files atomically'),
   project_id: projectIdField,
-  branch: z.string().describe("Target branch name"),
-  commit_message: z.string().describe("Commit message"),
-  files: z.array(BatchFileActionSchema).min(1).describe("Files to commit (at least one required)"),
+  branch: z.string().describe('Target branch name'),
+  commit_message: z.string().describe('Commit message'),
+  files: z.array(BatchFileActionSchema).min(1).describe('Files to commit (at least one required)'),
   overwrite: flexibleBoolean
     .optional()
     .describe(
-      "If true, automatically detect which files exist and update them, create others (requires pre-check for each file via GET requests). If false or omitted, only create new files (fails if any file exists). Use true when batch includes mix of new and existing files. Note: Non-404 errors during any pre-check will fail the entire batch."
+      'If true, automatically detect which files exist and update them, create others (requires pre-check for each file via GET requests). If false or omitted, only create new files (fails if any file exists). Use true when batch includes mix of new and existing files. Note: Non-404 errors during any pre-check will fail the entire batch.',
     ),
-  start_branch: z.string().optional().describe("Base branch to start from"),
-  author_email: z.string().optional().describe("Commit author email"),
-  author_name: z.string().optional().describe("Commit author name"),
+  start_branch: z.string().optional().describe('Base branch to start from'),
+  author_email: z.string().optional().describe('Commit author email'),
+  author_name: z.string().optional().describe('Commit author name'),
 });
 
 // --- Action: upload ---
 const UploadActionSchema = z.object({
-  action: z.literal("upload").describe("Upload a file as markdown attachment"),
+  action: z.literal('upload').describe('Upload a file as markdown attachment'),
   project_id: projectIdField,
-  file: z.string().describe("Base64 encoded file content"),
-  filename: z.string().describe("Name of the file"),
+  file: z.string().describe('Base64 encoded file content'),
+  filename: z.string().describe('Name of the file'),
 });
 
 // --- Discriminated union combining all actions ---
-export const ManageFilesSchema = z.discriminatedUnion("action", [
+export const ManageFilesSchema = z.discriminatedUnion('action', [
   SingleActionSchema,
   BatchActionSchema,
   UploadActionSchema,

@@ -8,32 +8,32 @@
  * - Tool restrictions
  */
 
-import { z } from "zod";
+import { z } from 'zod';
 
 // ============================================================================
 // Authentication Schemas
 // ============================================================================
 
 const PatAuthSchema = z.object({
-  type: z.literal("pat"),
-  token_env: z.string().describe("Environment variable containing the PAT token"),
+  type: z.literal('pat'),
+  token_env: z.string().describe('Environment variable containing the PAT token'),
 });
 
 const OAuthAuthSchema = z.object({
-  type: z.literal("oauth"),
-  client_id_env: z.string().describe("Environment variable containing OAuth client ID"),
+  type: z.literal('oauth'),
+  client_id_env: z.string().describe('Environment variable containing OAuth client ID'),
   client_secret_env: z
     .string()
     .optional()
-    .describe("Environment variable containing OAuth client secret"),
+    .describe('Environment variable containing OAuth client secret'),
 });
 
 const CookieAuthSchema = z.object({
-  type: z.literal("cookie"),
-  cookie_path: z.string().describe("Path to cookie file for authentication"),
+  type: z.literal('cookie'),
+  cookie_path: z.string().describe('Path to cookie file for authentication'),
 });
 
-const AuthConfigSchema = z.discriminatedUnion("type", [
+const AuthConfigSchema = z.discriminatedUnion('type', [
   PatAuthSchema,
   OAuthAuthSchema,
   CookieAuthSchema,
@@ -73,24 +73,24 @@ const FeatureFlagsSchema = z
  */
 export const ProfileSchema = z.object({
   // Connection (required for user profiles)
-  host: z.string().describe("GitLab hostname (e.g., gitlab.company.com)"),
-  api_url: z.string().url().optional().describe("Override API URL (default: https://{host})"),
+  host: z.string().describe('GitLab hostname (e.g., gitlab.company.com)'),
+  api_url: z.string().url().optional().describe('Override API URL (default: https://{host})'),
 
   // Authentication (required for user profiles)
   auth: AuthConfigSchema,
 
   // Access Control
-  read_only: z.boolean().optional().describe("Enable read-only mode"),
+  read_only: z.boolean().optional().describe('Enable read-only mode'),
   allowed_projects: z
     .array(z.string())
     .optional()
-    .describe("Project whitelist (empty = all allowed)"),
-  allowed_groups: z.array(z.string()).optional().describe("Group whitelist (empty = all allowed)"),
-  denied_tools_regex: z.string().optional().describe("Regex pattern to exclude tools"),
+    .describe('Project whitelist (empty = all allowed)'),
+  allowed_groups: z.array(z.string()).optional().describe('Group whitelist (empty = all allowed)'),
+  denied_tools_regex: z.string().optional().describe('Regex pattern to exclude tools'),
   allowed_tools: z
     .array(z.string())
     .optional()
-    .describe("Explicit tool whitelist (overrides denied_tools_regex)"),
+    .describe('Explicit tool whitelist (overrides denied_tools_regex)'),
   denied_actions: z.array(z.string()).optional().describe("Denied actions in format 'tool:action'"),
 
   // Feature Flags
@@ -102,15 +102,15 @@ export const ProfileSchema = z.object({
     .int()
     .positive()
     .optional()
-    .describe("API headers timeout in milliseconds (maps to GITLAB_API_HEADERS_TIMEOUT_MS)"),
-  default_project: z.string().optional().describe("Auto-set project context"),
-  default_namespace: z.string().optional().describe("Auto-set namespace context"),
+    .describe('API headers timeout in milliseconds (maps to GITLAB_API_HEADERS_TIMEOUT_MS)'),
+  default_project: z.string().optional().describe('Auto-set project context'),
+  default_namespace: z.string().optional().describe('Auto-set namespace context'),
 
   // TLS Configuration
-  skip_tls_verify: z.boolean().optional().describe("Skip TLS certificate verification"),
-  ssl_cert_path: z.string().optional().describe("Path to SSL certificate"),
-  ssl_key_path: z.string().optional().describe("Path to SSL key"),
-  ca_cert_path: z.string().optional().describe("Path to CA certificate"),
+  skip_tls_verify: z.boolean().optional().describe('Skip TLS certificate verification'),
+  ssl_cert_path: z.string().optional().describe('Path to SSL certificate'),
+  ssl_key_path: z.string().optional().describe('Path to SSL key'),
+  ca_cert_path: z.string().optional().describe('Path to CA certificate'),
 });
 
 // ============================================================================
@@ -124,23 +124,23 @@ export const ProfileSchema = z.object({
 export const ScopeConfigSchema = z
   .object({
     /** Single project restriction */
-    project: z.string().optional().describe("Single project path (e.g., group/project)"),
+    project: z.string().optional().describe('Single project path (e.g., group/project)'),
     /** Single group restriction */
-    group: z.string().optional().describe("Single group path (e.g., my-group or parent/child)"),
+    group: z.string().optional().describe('Single group path (e.g., my-group or parent/child)'),
     /** Namespace restriction (all projects in group) */
-    namespace: z.string().optional().describe("Namespace/group path"),
+    namespace: z.string().optional().describe('Namespace/group path'),
     /** Explicit list of allowed projects */
-    projects: z.array(z.string()).optional().describe("List of allowed project paths"),
+    projects: z.array(z.string()).optional().describe('List of allowed project paths'),
     /** Explicit list of allowed groups */
-    groups: z.array(z.string()).optional().describe("List of allowed group paths"),
+    groups: z.array(z.string()).optional().describe('List of allowed group paths'),
     /** Include subgroups in group scope (default: true when undefined) */
     includeSubgroups: z
       .boolean()
       .optional()
-      .describe("Include subgroups when group scope is set (default: true)"),
+      .describe('Include subgroups when group scope is set (default: true)'),
   })
   .refine(
-    data => {
+    (data) => {
       // At least one scope field must be set
       const hasProject = data.project !== undefined;
       const hasGroup = data.group !== undefined;
@@ -149,27 +149,29 @@ export const ScopeConfigSchema = z
       const hasGroups = data.groups !== undefined && data.groups.length > 0;
       return hasProject || hasGroup || hasNamespace || hasProjects || hasGroups;
     },
-    { message: "Scope must define at least one of: project, group, namespace, projects, or groups" }
+    {
+      message: 'Scope must define at least one of: project, group, namespace, projects, or groups',
+    },
   )
   .refine(
-    data => {
+    (data) => {
       // Cannot combine project with projects
       if (data.project && data.projects && data.projects.length > 0) {
         return false;
       }
       return true;
     },
-    { message: "Cannot combine 'project' with 'projects' - use one or the other" }
+    { message: "Cannot combine 'project' with 'projects' - use one or the other" },
   )
   .refine(
-    data => {
+    (data) => {
       // Cannot combine group with groups
       if (data.group && data.groups && data.groups.length > 0) {
         return false;
       }
       return true;
     },
-    { message: "Cannot combine 'group' with 'groups' - use one or the other" }
+    { message: "Cannot combine 'group' with 'groups' - use one or the other" },
   );
 
 // ============================================================================
@@ -184,19 +186,19 @@ export const ScopeConfigSchema = z
 export const PresetSchema = z
   .object({
     // Description for documentation
-    description: z.string().optional().describe("Human-readable description of the preset"),
+    description: z.string().optional().describe('Human-readable description of the preset'),
 
     // Access Control
-    read_only: z.boolean().optional().describe("Enable read-only mode"),
-    denied_tools_regex: z.string().optional().describe("Regex pattern to exclude tools"),
-    allowed_tools: z.array(z.string()).optional().describe("Explicit tool whitelist"),
+    read_only: z.boolean().optional().describe('Enable read-only mode'),
+    denied_tools_regex: z.string().optional().describe('Regex pattern to exclude tools'),
+    allowed_tools: z.array(z.string()).optional().describe('Explicit tool whitelist'),
     denied_actions: z
       .array(z.string())
       .optional()
       .describe("Denied actions in format 'tool:action'"),
 
     // Scope restrictions (can be set at runtime via manage_context)
-    scope: ScopeConfigSchema.optional().describe("Runtime scope restrictions for projects/groups"),
+    scope: ScopeConfigSchema.optional().describe('Runtime scope restrictions for projects/groups'),
 
     // Feature Flags
     features: FeatureFlagsSchema,
@@ -207,7 +209,7 @@ export const PresetSchema = z
       .int()
       .positive()
       .optional()
-      .describe("API headers timeout in milliseconds (maps to GITLAB_API_HEADERS_TIMEOUT_MS)"),
+      .describe('API headers timeout in milliseconds (maps to GITLAB_API_HEADERS_TIMEOUT_MS)'),
   })
   .strict(); // Reject unknown fields like host/auth for security
 
@@ -216,8 +218,8 @@ export const PresetSchema = z
 // ============================================================================
 
 export const ProfilesConfigSchema = z.object({
-  profiles: z.record(z.string(), ProfileSchema).describe("Named profiles"),
-  default_profile: z.string().optional().describe("Default profile when none specified"),
+  profiles: z.record(z.string(), ProfileSchema).describe('Named profiles'),
+  default_profile: z.string().optional().describe('Default profile when none specified'),
 });
 
 // ============================================================================
@@ -232,10 +234,10 @@ export const ProfilesConfigSchema = z.object({
 export const ProjectPresetSchema = z
   .object({
     /** Human-readable description */
-    description: z.string().optional().describe("Description of project restrictions"),
+    description: z.string().optional().describe('Description of project restrictions'),
 
     /** Scope restriction - limits operations to specific projects/namespaces */
-    scope: ScopeConfigSchema.optional().describe("Project/namespace scope restrictions"),
+    scope: ScopeConfigSchema.optional().describe('Project/namespace scope restrictions'),
 
     /** Feature restrictions */
     features: FeatureFlagsSchema,
@@ -247,10 +249,10 @@ export const ProjectPresetSchema = z
       .describe("Denied actions in format 'tool:action'"),
 
     /** Denied tools (by name) */
-    denied_tools: z.array(z.string()).optional().describe("List of denied tool names"),
+    denied_tools: z.array(z.string()).optional().describe('List of denied tool names'),
 
     /** Enable read-only mode for this project */
-    read_only: z.boolean().optional().describe("Enable read-only mode"),
+    read_only: z.boolean().optional().describe('Enable read-only mode'),
   })
   .strict();
 
@@ -262,19 +264,19 @@ export const ProjectPresetSchema = z
 export const ProjectProfileSchema = z
   .object({
     /** Human-readable description */
-    description: z.string().optional().describe("Description of project configuration"),
+    description: z.string().optional().describe('Description of project configuration'),
 
     /** Inherit from a built-in preset */
-    extends: z.string().optional().describe("Built-in preset name to inherit from"),
+    extends: z.string().optional().describe('Built-in preset name to inherit from'),
 
     /** Feature overrides (applied after extends) */
     features: FeatureFlagsSchema,
 
     /** Additional tools beyond base preset */
-    additional_tools: z.array(z.string()).optional().describe("Additional tools to enable"),
+    additional_tools: z.array(z.string()).optional().describe('Additional tools to enable'),
 
     /** Tools to remove from base preset */
-    denied_tools: z.array(z.string()).optional().describe("Tools to disable"),
+    denied_tools: z.array(z.string()).optional().describe('Tools to disable'),
   })
   .strict();
 
@@ -315,7 +317,7 @@ export type ProjectProfile = z.infer<typeof ProjectProfileSchema>;
 export interface ProfileInfo {
   name: string;
   host?: string; // Optional - presets don't have host
-  authType?: "pat" | "oauth" | "cookie"; // Optional - presets don't have auth
+  authType?: 'pat' | 'oauth' | 'cookie'; // Optional - presets don't have auth
   readOnly: boolean;
   isBuiltIn: boolean;
   isPreset: boolean; // true for built-in presets, false for full profiles

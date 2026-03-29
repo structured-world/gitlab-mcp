@@ -3,13 +3,13 @@
  * Implements installation logic for each supported MCP client
  */
 
-import { existsSync, readFileSync, writeFileSync, mkdirSync } from "fs";
-import { dirname } from "path";
-import { spawnSync } from "child_process";
-import { InstallableClient, InstallResult, CLIENT_METADATA } from "./types";
-import { McpServerConfig } from "../init/types";
-import { expandPath, getConfigPath } from "./detector";
-import { createBackup } from "./backup";
+import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs';
+import { dirname } from 'path';
+import { spawnSync } from 'child_process';
+import { InstallableClient, InstallResult, CLIENT_METADATA } from './types';
+import { McpServerConfig } from '../init/types';
+import { expandPath, getConfigPath } from './detector';
+import { createBackup } from './backup';
 
 /**
  * Server entry for JSON config files
@@ -51,7 +51,7 @@ function buildServerEntry(serverConfig: McpServerConfig): McpServerEntry {
 function readJsonConfig(configPath: string): McpJsonConfig {
   try {
     if (existsSync(configPath)) {
-      const content = readFileSync(configPath, "utf8");
+      const content = readFileSync(configPath, 'utf8');
       return JSON.parse(content) as McpJsonConfig;
     }
   } catch {
@@ -68,7 +68,7 @@ function writeJsonConfig(configPath: string, config: McpJsonConfig): void {
   if (!existsSync(dir)) {
     mkdirSync(dir, { recursive: true });
   }
-  writeFileSync(configPath, JSON.stringify(config, null, 2) + "\n", "utf8");
+  writeFileSync(configPath, JSON.stringify(config, null, 2) + '\n', 'utf8');
 }
 
 /**
@@ -76,16 +76,16 @@ function writeJsonConfig(configPath: string, config: McpJsonConfig): void {
  */
 export function installClaudeDesktop(
   serverConfig: McpServerConfig,
-  force: boolean = false
+  force: boolean = false,
 ): InstallResult {
-  const client: InstallableClient = "claude-desktop";
+  const client: InstallableClient = 'claude-desktop';
   const configPath = getConfigPath(client);
 
   if (!configPath) {
     return {
       client,
       success: false,
-      error: "Claude Desktop config path not available for this platform",
+      error: 'Claude Desktop config path not available for this platform',
     };
   }
 
@@ -104,13 +104,13 @@ export function installClaudeDesktop(
     // Read existing config
     const config = readJsonConfig(expandedPath);
     const wasAlreadyConfigured =
-      config.mcpServers?.gitlab !== undefined || config.mcpServers?.["gitlab-mcp"] !== undefined;
+      config.mcpServers?.gitlab !== undefined || config.mcpServers?.['gitlab-mcp'] !== undefined;
 
     if (wasAlreadyConfigured && !force) {
       return {
         client,
         success: false,
-        error: "gitlab-mcp is already configured. Use --force to overwrite.",
+        error: 'gitlab-mcp is already configured. Use --force to overwrite.',
         wasAlreadyConfigured: true,
         configPath: expandedPath,
       };
@@ -121,7 +121,7 @@ export function installClaudeDesktop(
     config.mcpServers.gitlab = buildServerEntry(serverConfig);
 
     // Remove old name if exists
-    delete config.mcpServers["gitlab-mcp"];
+    delete config.mcpServers['gitlab-mcp'];
 
     // Write config
     writeJsonConfig(expandedPath, config);
@@ -147,47 +147,47 @@ export function installClaudeDesktop(
  */
 export function installClaudeCode(
   serverConfig: McpServerConfig,
-  force: boolean = false
+  force: boolean = false,
 ): InstallResult {
-  const client: InstallableClient = "claude-code";
+  const client: InstallableClient = 'claude-code';
   const metadata = CLIENT_METADATA[client];
 
   if (!metadata.cliCommand) {
     return {
       client,
       success: false,
-      error: "Claude Code CLI command not configured",
+      error: 'Claude Code CLI command not configured',
     };
   }
 
   try {
     // Build command arguments
-    const args = ["mcp", "add", "gitlab", serverConfig.command, ...serverConfig.args];
+    const args = ['mcp', 'add', 'gitlab', serverConfig.command, ...serverConfig.args];
 
     // Add environment variables
     for (const [key, value] of Object.entries(serverConfig.env)) {
-      args.push("--env", `${key}=${value}`);
+      args.push('--env', `${key}=${value}`);
     }
 
     // Add force flag if needed
     if (force) {
       // Check if gitlab is already configured by running claude mcp list
-      const listResult = spawnSync(metadata.cliCommand, ["mcp", "list"], {
-        stdio: "pipe",
-        encoding: "utf8",
+      const listResult = spawnSync(metadata.cliCommand, ['mcp', 'list'], {
+        stdio: 'pipe',
+        encoding: 'utf8',
       });
 
-      if (listResult.status === 0 && listResult.stdout.includes("gitlab")) {
+      if (listResult.status === 0 && listResult.stdout.includes('gitlab')) {
         // Remove existing config first
-        const removeResult = spawnSync(metadata.cliCommand, ["mcp", "remove", "gitlab"], {
-          stdio: "pipe",
-          encoding: "utf8",
+        const removeResult = spawnSync(metadata.cliCommand, ['mcp', 'remove', 'gitlab'], {
+          stdio: 'pipe',
+          encoding: 'utf8',
         });
         if (removeResult.status !== 0) {
           return {
             client,
             success: false,
-            error: `Failed to remove existing gitlab config: ${removeResult.stderr || removeResult.stdout || "Unknown error"}`,
+            error: `Failed to remove existing gitlab config: ${removeResult.stderr || removeResult.stdout || 'Unknown error'}`,
           };
         }
       }
@@ -195,8 +195,8 @@ export function installClaudeCode(
 
     // Run claude mcp add
     const result = spawnSync(metadata.cliCommand, args, {
-      stdio: "pipe",
-      encoding: "utf8",
+      stdio: 'pipe',
+      encoding: 'utf8',
     });
 
     if (result.status === 0) {
@@ -205,13 +205,13 @@ export function installClaudeCode(
         success: true,
       };
     } else {
-      const errorOutput = result.stderr || result.stdout || "Unknown error";
+      const errorOutput = result.stderr || result.stdout || 'Unknown error';
       // Check if already configured
-      if (errorOutput.includes("already exists") || errorOutput.includes("already configured")) {
+      if (errorOutput.includes('already exists') || errorOutput.includes('already configured')) {
         return {
           client,
           success: false,
-          error: "gitlab-mcp is already configured. Use --force to overwrite.",
+          error: 'gitlab-mcp is already configured. Use --force to overwrite.',
           wasAlreadyConfigured: true,
         };
       }
@@ -235,16 +235,16 @@ export function installClaudeCode(
  */
 export function installCursor(
   serverConfig: McpServerConfig,
-  force: boolean = false
+  force: boolean = false,
 ): InstallResult {
-  const client: InstallableClient = "cursor";
+  const client: InstallableClient = 'cursor';
   const configPath = getConfigPath(client);
 
   if (!configPath) {
     return {
       client,
       success: false,
-      error: "Cursor config path not available for this platform",
+      error: 'Cursor config path not available for this platform',
     };
   }
 
@@ -263,13 +263,13 @@ export function installCursor(
     // Read existing config
     const config = readJsonConfig(expandedPath);
     const wasAlreadyConfigured =
-      config.mcpServers?.gitlab !== undefined || config.mcpServers?.["gitlab-mcp"] !== undefined;
+      config.mcpServers?.gitlab !== undefined || config.mcpServers?.['gitlab-mcp'] !== undefined;
 
     if (wasAlreadyConfigured && !force) {
       return {
         client,
         success: false,
-        error: "gitlab-mcp is already configured. Use --force to overwrite.",
+        error: 'gitlab-mcp is already configured. Use --force to overwrite.',
         wasAlreadyConfigured: true,
         configPath: expandedPath,
       };
@@ -280,7 +280,7 @@ export function installCursor(
     config.mcpServers.gitlab = buildServerEntry(serverConfig);
 
     // Remove old name if exists
-    delete config.mcpServers["gitlab-mcp"];
+    delete config.mcpServers['gitlab-mcp'];
 
     // Write config
     writeJsonConfig(expandedPath, config);
@@ -306,16 +306,16 @@ export function installCursor(
  */
 export function installVSCodeCopilot(
   serverConfig: McpServerConfig,
-  force: boolean = false
+  force: boolean = false,
 ): InstallResult {
-  const client: InstallableClient = "vscode-copilot";
+  const client: InstallableClient = 'vscode-copilot';
   const configPath = getConfigPath(client);
 
   if (!configPath) {
     return {
       client,
       success: false,
-      error: "VS Code config path not available",
+      error: 'VS Code config path not available',
     };
   }
 
@@ -335,13 +335,13 @@ export function installVSCodeCopilot(
     // Read existing config
     const config = readJsonConfig(expandedPath);
     const wasAlreadyConfigured =
-      config.servers?.gitlab !== undefined || config.servers?.["gitlab-mcp"] !== undefined;
+      config.servers?.gitlab !== undefined || config.servers?.['gitlab-mcp'] !== undefined;
 
     if (wasAlreadyConfigured && !force) {
       return {
         client,
         success: false,
-        error: "gitlab-mcp is already configured. Use --force to overwrite.",
+        error: 'gitlab-mcp is already configured. Use --force to overwrite.',
         wasAlreadyConfigured: true,
         configPath: expandedPath,
       };
@@ -352,7 +352,7 @@ export function installVSCodeCopilot(
     config.servers.gitlab = buildServerEntry(serverConfig);
 
     // Remove old name if exists
-    delete config.servers["gitlab-mcp"];
+    delete config.servers['gitlab-mcp'];
 
     // Write config
     writeJsonConfig(expandedPath, config);
@@ -378,16 +378,16 @@ export function installVSCodeCopilot(
  */
 export function installWindsurf(
   serverConfig: McpServerConfig,
-  force: boolean = false
+  force: boolean = false,
 ): InstallResult {
-  const client: InstallableClient = "windsurf";
+  const client: InstallableClient = 'windsurf';
   const configPath = getConfigPath(client);
 
   if (!configPath) {
     return {
       client,
       success: false,
-      error: "Windsurf config path not available for this platform",
+      error: 'Windsurf config path not available for this platform',
     };
   }
 
@@ -406,13 +406,13 @@ export function installWindsurf(
     // Read existing config
     const config = readJsonConfig(expandedPath);
     const wasAlreadyConfigured =
-      config.mcpServers?.gitlab !== undefined || config.mcpServers?.["gitlab-mcp"] !== undefined;
+      config.mcpServers?.gitlab !== undefined || config.mcpServers?.['gitlab-mcp'] !== undefined;
 
     if (wasAlreadyConfigured && !force) {
       return {
         client,
         success: false,
-        error: "gitlab-mcp is already configured. Use --force to overwrite.",
+        error: 'gitlab-mcp is already configured. Use --force to overwrite.',
         wasAlreadyConfigured: true,
         configPath: expandedPath,
       };
@@ -423,7 +423,7 @@ export function installWindsurf(
     config.mcpServers.gitlab = buildServerEntry(serverConfig);
 
     // Remove old name if exists
-    delete config.mcpServers["gitlab-mcp"];
+    delete config.mcpServers['gitlab-mcp'];
 
     // Write config
     writeJsonConfig(expandedPath, config);
@@ -448,14 +448,14 @@ export function installWindsurf(
  * Install to Cline (JSON config)
  */
 export function installCline(serverConfig: McpServerConfig, force: boolean = false): InstallResult {
-  const client: InstallableClient = "cline";
+  const client: InstallableClient = 'cline';
   const configPath = getConfigPath(client);
 
   if (!configPath) {
     return {
       client,
       success: false,
-      error: "Cline config path not available for this platform",
+      error: 'Cline config path not available for this platform',
     };
   }
 
@@ -474,13 +474,13 @@ export function installCline(serverConfig: McpServerConfig, force: boolean = fal
     // Read existing config
     const config = readJsonConfig(expandedPath);
     const wasAlreadyConfigured =
-      config.mcpServers?.gitlab !== undefined || config.mcpServers?.["gitlab-mcp"] !== undefined;
+      config.mcpServers?.gitlab !== undefined || config.mcpServers?.['gitlab-mcp'] !== undefined;
 
     if (wasAlreadyConfigured && !force) {
       return {
         client,
         success: false,
-        error: "gitlab-mcp is already configured. Use --force to overwrite.",
+        error: 'gitlab-mcp is already configured. Use --force to overwrite.',
         wasAlreadyConfigured: true,
         configPath: expandedPath,
       };
@@ -491,7 +491,7 @@ export function installCline(serverConfig: McpServerConfig, force: boolean = fal
     config.mcpServers.gitlab = buildServerEntry(serverConfig);
 
     // Remove old name if exists
-    delete config.mcpServers["gitlab-mcp"];
+    delete config.mcpServers['gitlab-mcp'];
 
     // Write config
     writeJsonConfig(expandedPath, config);
@@ -517,16 +517,16 @@ export function installCline(serverConfig: McpServerConfig, force: boolean = fal
  */
 export function installRooCode(
   serverConfig: McpServerConfig,
-  force: boolean = false
+  force: boolean = false,
 ): InstallResult {
-  const client: InstallableClient = "roo-code";
+  const client: InstallableClient = 'roo-code';
   const configPath = getConfigPath(client);
 
   if (!configPath) {
     return {
       client,
       success: false,
-      error: "Roo Code config path not available for this platform",
+      error: 'Roo Code config path not available for this platform',
     };
   }
 
@@ -545,13 +545,13 @@ export function installRooCode(
     // Read existing config
     const config = readJsonConfig(expandedPath);
     const wasAlreadyConfigured =
-      config.mcpServers?.gitlab !== undefined || config.mcpServers?.["gitlab-mcp"] !== undefined;
+      config.mcpServers?.gitlab !== undefined || config.mcpServers?.['gitlab-mcp'] !== undefined;
 
     if (wasAlreadyConfigured && !force) {
       return {
         client,
         success: false,
-        error: "gitlab-mcp is already configured. Use --force to overwrite.",
+        error: 'gitlab-mcp is already configured. Use --force to overwrite.',
         wasAlreadyConfigured: true,
         configPath: expandedPath,
       };
@@ -562,7 +562,7 @@ export function installRooCode(
     config.mcpServers.gitlab = buildServerEntry(serverConfig);
 
     // Remove old name if exists
-    delete config.mcpServers["gitlab-mcp"];
+    delete config.mcpServers['gitlab-mcp'];
 
     // Write config
     writeJsonConfig(expandedPath, config);
@@ -590,13 +590,13 @@ const INSTALLERS: Record<
   InstallableClient,
   (serverConfig: McpServerConfig, force: boolean) => InstallResult
 > = {
-  "claude-desktop": installClaudeDesktop,
-  "claude-code": installClaudeCode,
+  'claude-desktop': installClaudeDesktop,
+  'claude-code': installClaudeCode,
   cursor: installCursor,
-  "vscode-copilot": installVSCodeCopilot,
+  'vscode-copilot': installVSCodeCopilot,
   windsurf: installWindsurf,
   cline: installCline,
-  "roo-code": installRooCode,
+  'roo-code': installRooCode,
 };
 
 /**
@@ -605,7 +605,7 @@ const INSTALLERS: Record<
 export function installToClient(
   client: InstallableClient,
   serverConfig: McpServerConfig,
-  force: boolean = false
+  force: boolean = false,
 ): InstallResult {
   const installer = INSTALLERS[client];
   return installer(serverConfig, force);
@@ -617,9 +617,9 @@ export function installToClient(
 export function installToClients(
   clients: InstallableClient[],
   serverConfig: McpServerConfig,
-  force: boolean = false
+  force: boolean = false,
 ): InstallResult[] {
-  return clients.map(client => installToClient(client, serverConfig, force));
+  return clients.map((client) => installToClient(client, serverConfig, force));
 }
 
 /**
@@ -627,12 +627,12 @@ export function installToClients(
  */
 export function generateConfigPreview(
   client: InstallableClient,
-  serverConfig: McpServerConfig
+  serverConfig: McpServerConfig,
 ): string {
   const entry = buildServerEntry(serverConfig);
 
   // VS Code uses different key
-  if (client === "vscode-copilot") {
+  if (client === 'vscode-copilot') {
     return JSON.stringify({ servers: { gitlab: entry } }, null, 2);
   }
 

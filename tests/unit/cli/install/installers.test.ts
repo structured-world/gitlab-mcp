@@ -7,31 +7,31 @@ import {
   installToClient,
   installToClients,
   generateConfigPreview,
-} from "../../../../src/cli/install/installers";
-import { McpServerConfig } from "../../../../src/cli/init/types";
-import * as fs from "fs";
-import * as childProcess from "child_process";
+} from '../../../../src/cli/install/installers';
+import { McpServerConfig } from '../../../../src/cli/init/types';
+import * as fs from 'fs';
+import * as childProcess from 'child_process';
 
 // Mock modules
-jest.mock("fs");
-jest.mock("child_process");
-jest.mock("../../../../src/cli/install/backup", () => ({
-  createBackup: jest.fn(() => ({ created: true, backupPath: "/backup/path" })),
+jest.mock('fs');
+jest.mock('child_process');
+jest.mock('../../../../src/cli/install/backup', () => ({
+  createBackup: jest.fn(() => ({ created: true, backupPath: '/backup/path' })),
 }));
-import { getConfigPath } from "../../../../src/cli/install/detector";
+import { getConfigPath } from '../../../../src/cli/install/detector';
 
-jest.mock("../../../../src/cli/install/detector", () => ({
-  expandPath: jest.fn((p: string) => p.replace("~", "/home/user")),
+jest.mock('../../../../src/cli/install/detector', () => ({
+  expandPath: jest.fn((p: string) => p.replace('~', '/home/user')),
   getConfigPath: jest.fn((client: string) => {
     const paths: Record<string, string> = {
-      "claude-desktop": "~/Library/Application Support/Claude/claude_desktop_config.json",
-      "claude-code": "~/.claude.json",
-      cursor: "~/.cursor/mcp.json",
-      "vscode-copilot": ".vscode/mcp.json",
-      windsurf: "~/.codeium/windsurf/mcp_config.json",
+      'claude-desktop': '~/Library/Application Support/Claude/claude_desktop_config.json',
+      'claude-code': '~/.claude.json',
+      cursor: '~/.cursor/mcp.json',
+      'vscode-copilot': '.vscode/mcp.json',
+      windsurf: '~/.codeium/windsurf/mcp_config.json',
       cline:
-        "~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json",
-      "roo-code": "~/.roo/mcp.json",
+        '~/Library/Application Support/Code/User/globalStorage/saoudrizwan.claude-dev/settings/cline_mcp_settings.json',
+      'roo-code': '~/.roo/mcp.json',
     };
     return paths[client];
   }),
@@ -41,36 +41,36 @@ const mockFs = fs as jest.Mocked<typeof fs>;
 const mockChildProcess = childProcess as jest.Mocked<typeof childProcess>;
 const mockGetConfigPath = getConfigPath as jest.MockedFunction<typeof getConfigPath>;
 
-describe("install installers", () => {
+describe('install installers', () => {
   const mockServerConfig: McpServerConfig = {
-    command: "npx",
-    args: ["-y", "@structured-world/gitlab-mcp"],
+    command: 'npx',
+    args: ['-y', '@structured-world/gitlab-mcp'],
     env: {
-      GITLAB_URL: "https://gitlab.com",
-      GITLAB_TOKEN: "test-token",
+      GITLAB_URL: 'https://gitlab.com',
+      GITLAB_TOKEN: 'test-token',
     },
   };
 
   beforeEach(() => {
     jest.clearAllMocks();
     mockFs.existsSync.mockReturnValue(false);
-    mockFs.readFileSync.mockReturnValue("{}");
+    mockFs.readFileSync.mockReturnValue('{}');
   });
 
-  describe("generateConfigPreview", () => {
-    it("should generate mcpServers format for most clients", () => {
-      const result = generateConfigPreview("claude-desktop", mockServerConfig);
+  describe('generateConfigPreview', () => {
+    it('should generate mcpServers format for most clients', () => {
+      const result = generateConfigPreview('claude-desktop', mockServerConfig);
       const parsed = JSON.parse(result);
 
       expect(parsed.mcpServers).toBeDefined();
       expect(parsed.mcpServers.gitlab).toBeDefined();
-      expect(parsed.mcpServers.gitlab.command).toBe("npx");
-      expect(parsed.mcpServers.gitlab.args).toEqual(["-y", "@structured-world/gitlab-mcp"]);
+      expect(parsed.mcpServers.gitlab.command).toBe('npx');
+      expect(parsed.mcpServers.gitlab.args).toEqual(['-y', '@structured-world/gitlab-mcp']);
       expect(parsed.mcpServers.gitlab.env).toEqual(mockServerConfig.env);
     });
 
-    it("should generate servers format for vscode-copilot", () => {
-      const result = generateConfigPreview("vscode-copilot", mockServerConfig);
+    it('should generate servers format for vscode-copilot', () => {
+      const result = generateConfigPreview('vscode-copilot', mockServerConfig);
       const parsed = JSON.parse(result);
 
       expect(parsed.servers).toBeDefined();
@@ -78,79 +78,79 @@ describe("install installers", () => {
       expect(parsed.mcpServers).toBeUndefined();
     });
 
-    it("should include env only if present", () => {
+    it('should include env only if present', () => {
       const configWithoutEnv: McpServerConfig = {
-        command: "npx",
+        command: 'npx',
         args: [],
         env: {},
       };
 
-      const result = generateConfigPreview("claude-desktop", configWithoutEnv);
+      const result = generateConfigPreview('claude-desktop', configWithoutEnv);
       const parsed = JSON.parse(result);
 
       expect(parsed.mcpServers.gitlab.env).toBeUndefined();
     });
   });
 
-  describe("installToClient - JSON config clients", () => {
-    it("should install to claude-desktop successfully", () => {
+  describe('installToClient - JSON config clients', () => {
+    it('should install to claude-desktop successfully', () => {
       mockFs.existsSync.mockReturnValue(false);
       mockFs.writeFileSync.mockImplementation(() => undefined);
       mockFs.mkdirSync.mockImplementation(() => undefined);
 
-      const result = installToClient("claude-desktop", mockServerConfig);
+      const result = installToClient('claude-desktop', mockServerConfig);
 
       expect(result.success).toBe(true);
-      expect(result.client).toBe("claude-desktop");
+      expect(result.client).toBe('claude-desktop');
       expect(mockFs.writeFileSync).toHaveBeenCalled();
     });
 
-    it("should fail if already configured without force", () => {
+    it('should fail if already configured without force', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           mcpServers: {
-            gitlab: { command: "old" },
+            gitlab: { command: 'old' },
           },
-        })
+        }),
       );
 
-      const result = installToClient("claude-desktop", mockServerConfig, false);
+      const result = installToClient('claude-desktop', mockServerConfig, false);
 
       expect(result.success).toBe(false);
       expect(result.wasAlreadyConfigured).toBe(true);
-      expect(result.error).toContain("already configured");
+      expect(result.error).toContain('already configured');
     });
 
-    it("should overwrite if already configured with force", () => {
+    it('should overwrite if already configured with force', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           mcpServers: {
-            gitlab: { command: "old" },
+            gitlab: { command: 'old' },
           },
-        })
+        }),
       );
       mockFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = installToClient("claude-desktop", mockServerConfig, true);
+      const result = installToClient('claude-desktop', mockServerConfig, true);
 
       expect(result.success).toBe(true);
       expect(mockFs.writeFileSync).toHaveBeenCalled();
     });
 
-    it("should preserve existing config when adding gitlab", () => {
+    it('should preserve existing config when adding gitlab', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           mcpServers: {
-            github: { command: "other" },
+            github: { command: 'other' },
           },
-        })
+        }),
       );
       mockFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = installToClient("cursor", mockServerConfig);
+      const result = installToClient('cursor', mockServerConfig);
 
       expect(result.success).toBe(true);
 
@@ -161,83 +161,83 @@ describe("install installers", () => {
       expect(writtenContent.mcpServers.gitlab).toBeDefined();
     });
 
-    it("should create backup when config exists", () => {
+    it('should create backup when config exists', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           mcpServers: {
-            github: { command: "other" },
+            github: { command: 'other' },
           },
-        })
+        }),
       );
       mockFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = installToClient("cursor", mockServerConfig);
+      const result = installToClient('cursor', mockServerConfig);
 
       expect(result.success).toBe(true);
-      expect(result.backupPath).toBe("/backup/path");
+      expect(result.backupPath).toBe('/backup/path');
     });
   });
 
-  describe("installToClient - claude-code (CLI)", () => {
-    it("should use claude mcp add command", () => {
+  describe('installToClient - claude-code (CLI)', () => {
+    it('should use claude mcp add command', () => {
       mockChildProcess.spawnSync.mockReturnValue({
         status: 0,
-        stdout: "Success",
-        stderr: "",
+        stdout: 'Success',
+        stderr: '',
         pid: 1234,
         output: [],
         signal: null,
       });
 
-      const result = installToClient("claude-code", mockServerConfig);
+      const result = installToClient('claude-code', mockServerConfig);
 
       expect(result.success).toBe(true);
       expect(mockChildProcess.spawnSync).toHaveBeenCalledWith(
-        "claude",
-        expect.arrayContaining(["mcp", "add", "gitlab"]),
-        expect.any(Object)
+        'claude',
+        expect.arrayContaining(['mcp', 'add', 'gitlab']),
+        expect.any(Object),
       );
     });
 
-    it("should fail if claude command fails", () => {
+    it('should fail if claude command fails', () => {
       mockChildProcess.spawnSync.mockReturnValue({
         status: 1,
-        stdout: "",
-        stderr: "Error: command failed",
+        stdout: '',
+        stderr: 'Error: command failed',
         pid: 1234,
         output: [],
         signal: null,
       });
 
-      const result = installToClient("claude-code", mockServerConfig);
+      const result = installToClient('claude-code', mockServerConfig);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("command failed");
+      expect(result.error).toContain('command failed');
     });
 
-    it("should detect already configured error", () => {
+    it('should detect already configured error', () => {
       mockChildProcess.spawnSync.mockReturnValue({
         status: 1,
-        stdout: "",
-        stderr: "Server already exists",
+        stdout: '',
+        stderr: 'Server already exists',
         pid: 1234,
         output: [],
         signal: null,
       });
 
-      const result = installToClient("claude-code", mockServerConfig);
+      const result = installToClient('claude-code', mockServerConfig);
 
       expect(result.success).toBe(false);
       expect(result.wasAlreadyConfigured).toBe(true);
     });
 
-    it("should remove existing config with force", () => {
+    it('should remove existing config with force', () => {
       // First call for mcp list
       mockChildProcess.spawnSync.mockReturnValueOnce({
         status: 0,
-        stdout: "gitlab - configured",
-        stderr: "",
+        stdout: 'gitlab - configured',
+        stderr: '',
         pid: 1234,
         output: [],
         signal: null,
@@ -245,8 +245,8 @@ describe("install installers", () => {
       // Second call for mcp remove
       mockChildProcess.spawnSync.mockReturnValueOnce({
         status: 0,
-        stdout: "Removed",
-        stderr: "",
+        stdout: 'Removed',
+        stderr: '',
         pid: 1234,
         output: [],
         signal: null,
@@ -254,25 +254,25 @@ describe("install installers", () => {
       // Third call for mcp add
       mockChildProcess.spawnSync.mockReturnValueOnce({
         status: 0,
-        stdout: "Added",
-        stderr: "",
+        stdout: 'Added',
+        stderr: '',
         pid: 1234,
         output: [],
         signal: null,
       });
 
-      const result = installToClient("claude-code", mockServerConfig, true);
+      const result = installToClient('claude-code', mockServerConfig, true);
 
       expect(result.success).toBe(true);
       expect(mockChildProcess.spawnSync).toHaveBeenCalledTimes(3);
     });
 
-    it("should return error if mcp remove fails with force", () => {
+    it('should return error if mcp remove fails with force', () => {
       // First call for mcp list
       mockChildProcess.spawnSync.mockReturnValueOnce({
         status: 0,
-        stdout: "gitlab - configured",
-        stderr: "",
+        stdout: 'gitlab - configured',
+        stderr: '',
         pid: 1234,
         output: [],
         signal: null,
@@ -280,25 +280,25 @@ describe("install installers", () => {
       // Second call for mcp remove fails
       mockChildProcess.spawnSync.mockReturnValueOnce({
         status: 1,
-        stdout: "",
-        stderr: "Failed to remove gitlab config",
+        stdout: '',
+        stderr: 'Failed to remove gitlab config',
         pid: 1234,
         output: [],
         signal: null,
       });
 
-      const result = installToClient("claude-code", mockServerConfig, true);
+      const result = installToClient('claude-code', mockServerConfig, true);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Failed to remove existing gitlab config");
+      expect(result.error).toContain('Failed to remove existing gitlab config');
     });
 
-    it("should not call mcp remove if gitlab not in list with force", () => {
+    it('should not call mcp remove if gitlab not in list with force', () => {
       // First call for mcp list (no gitlab)
       mockChildProcess.spawnSync.mockReturnValueOnce({
         status: 0,
-        stdout: "github - configured",
-        stderr: "",
+        stdout: 'github - configured',
+        stderr: '',
         pid: 1234,
         output: [],
         signal: null,
@@ -306,77 +306,77 @@ describe("install installers", () => {
       // Second call for mcp add
       mockChildProcess.spawnSync.mockReturnValueOnce({
         status: 0,
-        stdout: "Added",
-        stderr: "",
+        stdout: 'Added',
+        stderr: '',
         pid: 1234,
         output: [],
         signal: null,
       });
 
-      const result = installToClient("claude-code", mockServerConfig, true);
+      const result = installToClient('claude-code', mockServerConfig, true);
 
       expect(result.success).toBe(true);
       expect(mockChildProcess.spawnSync).toHaveBeenCalledTimes(2);
     });
 
-    it("should include env args in mcp add command", () => {
+    it('should include env args in mcp add command', () => {
       mockChildProcess.spawnSync.mockReturnValue({
         status: 0,
-        stdout: "Success",
-        stderr: "",
+        stdout: 'Success',
+        stderr: '',
         pid: 1234,
         output: [],
         signal: null,
       });
 
-      installToClient("claude-code", mockServerConfig);
+      installToClient('claude-code', mockServerConfig);
 
       expect(mockChildProcess.spawnSync).toHaveBeenCalledWith(
-        "claude",
-        expect.arrayContaining(["--env", "GITLAB_URL=https://gitlab.com"]),
-        expect.any(Object)
+        'claude',
+        expect.arrayContaining(['--env', 'GITLAB_URL=https://gitlab.com']),
+        expect.any(Object),
       );
     });
   });
 
-  describe("installToClients", () => {
-    it("should install to multiple clients", () => {
+  describe('installToClients', () => {
+    it('should install to multiple clients', () => {
       mockFs.existsSync.mockReturnValue(false);
       mockFs.writeFileSync.mockImplementation(() => undefined);
       mockFs.mkdirSync.mockImplementation(() => undefined);
 
-      const results = installToClients(["cursor", "windsurf"], mockServerConfig);
+      const results = installToClients(['cursor', 'windsurf'], mockServerConfig);
 
       expect(results).toHaveLength(2);
-      expect(results[0].client).toBe("cursor");
-      expect(results[1].client).toBe("windsurf");
+      expect(results[0].client).toBe('cursor');
+      expect(results[1].client).toBe('windsurf');
     });
 
-    it("should return results for all clients even if some fail", () => {
+    it('should return results for all clients even if some fail', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           mcpServers: { gitlab: {} },
-        })
+        }),
       );
 
-      const results = installToClients(["cursor", "windsurf"], mockServerConfig, false);
+      const results = installToClients(['cursor', 'windsurf'], mockServerConfig, false);
 
       expect(results).toHaveLength(2);
-      expect(results.every(r => !r.success)).toBe(true);
+      expect(results.every((r) => !r.success)).toBe(true);
     });
   });
 
-  describe("installToClient - vscode-copilot", () => {
-    it("should install to vscode-copilot with servers format", () => {
+  describe('installToClient - vscode-copilot', () => {
+    it('should install to vscode-copilot with servers format', () => {
       mockFs.existsSync.mockReturnValue(false);
       mockFs.writeFileSync.mockImplementation(() => undefined);
       mockFs.mkdirSync.mockImplementation(() => undefined);
 
-      const result = installToClient("vscode-copilot", mockServerConfig);
+      const result = installToClient('vscode-copilot', mockServerConfig);
 
       expect(result.success).toBe(true);
-      expect(result.client).toBe("vscode-copilot");
+      expect(result.client).toBe('vscode-copilot');
 
       const writeCall = mockFs.writeFileSync.mock.calls[0];
       const writtenContent = JSON.parse(writeCall[1] as string);
@@ -385,191 +385,191 @@ describe("install installers", () => {
       expect(writtenContent.mcpServers).toBeUndefined();
     });
 
-    it("should fail if already configured without force", () => {
+    it('should fail if already configured without force', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           servers: {
-            gitlab: { command: "old" },
+            gitlab: { command: 'old' },
           },
-        })
+        }),
       );
 
-      const result = installToClient("vscode-copilot", mockServerConfig, false);
+      const result = installToClient('vscode-copilot', mockServerConfig, false);
 
       expect(result.success).toBe(false);
       expect(result.wasAlreadyConfigured).toBe(true);
     });
 
-    it("should overwrite with force if already configured", () => {
+    it('should overwrite with force if already configured', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           servers: {
-            gitlab: { command: "old" },
+            gitlab: { command: 'old' },
           },
-        })
+        }),
       );
       mockFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = installToClient("vscode-copilot", mockServerConfig, true);
+      const result = installToClient('vscode-copilot', mockServerConfig, true);
 
       expect(result.success).toBe(true);
     });
 
-    it("should remove old gitlab-mcp name if exists", () => {
+    it('should remove old gitlab-mcp name if exists', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           servers: {
-            "gitlab-mcp": { command: "old" },
+            'gitlab-mcp': { command: 'old' },
           },
-        })
+        }),
       );
       mockFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = installToClient("vscode-copilot", mockServerConfig, true);
+      const result = installToClient('vscode-copilot', mockServerConfig, true);
 
       expect(result.success).toBe(true);
       const writeCall = mockFs.writeFileSync.mock.calls[0];
       const writtenContent = JSON.parse(writeCall[1] as string);
-      expect(writtenContent.servers["gitlab-mcp"]).toBeUndefined();
+      expect(writtenContent.servers['gitlab-mcp']).toBeUndefined();
       expect(writtenContent.servers.gitlab).toBeDefined();
     });
   });
 
-  describe("installToClient - windsurf", () => {
-    it("should install to windsurf successfully", () => {
+  describe('installToClient - windsurf', () => {
+    it('should install to windsurf successfully', () => {
       mockFs.existsSync.mockReturnValue(false);
       mockFs.writeFileSync.mockImplementation(() => undefined);
       mockFs.mkdirSync.mockImplementation(() => undefined);
 
-      const result = installToClient("windsurf", mockServerConfig);
+      const result = installToClient('windsurf', mockServerConfig);
 
       expect(result.success).toBe(true);
-      expect(result.client).toBe("windsurf");
+      expect(result.client).toBe('windsurf');
     });
 
-    it("should fail if already configured without force", () => {
+    it('should fail if already configured without force', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           mcpServers: {
-            gitlab: { command: "old" },
+            gitlab: { command: 'old' },
           },
-        })
+        }),
       );
 
-      const result = installToClient("windsurf", mockServerConfig, false);
+      const result = installToClient('windsurf', mockServerConfig, false);
 
       expect(result.success).toBe(false);
       expect(result.wasAlreadyConfigured).toBe(true);
     });
 
-    it("should overwrite with force if already configured", () => {
+    it('should overwrite with force if already configured', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           mcpServers: {
-            gitlab: { command: "old" },
+            gitlab: { command: 'old' },
           },
-        })
+        }),
       );
       mockFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = installToClient("windsurf", mockServerConfig, true);
+      const result = installToClient('windsurf', mockServerConfig, true);
 
       expect(result.success).toBe(true);
     });
   });
 
-  describe("installToClient - cline", () => {
-    it("should install to cline successfully", () => {
+  describe('installToClient - cline', () => {
+    it('should install to cline successfully', () => {
       mockFs.existsSync.mockReturnValue(false);
       mockFs.writeFileSync.mockImplementation(() => undefined);
       mockFs.mkdirSync.mockImplementation(() => undefined);
 
-      const result = installToClient("cline", mockServerConfig);
+      const result = installToClient('cline', mockServerConfig);
 
       expect(result.success).toBe(true);
-      expect(result.client).toBe("cline");
+      expect(result.client).toBe('cline');
     });
 
-    it("should fail if already configured without force", () => {
+    it('should fail if already configured without force', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           mcpServers: {
-            gitlab: { command: "old" },
+            gitlab: { command: 'old' },
           },
-        })
+        }),
       );
 
-      const result = installToClient("cline", mockServerConfig, false);
+      const result = installToClient('cline', mockServerConfig, false);
 
       expect(result.success).toBe(false);
       expect(result.wasAlreadyConfigured).toBe(true);
     });
 
-    it("should create backup when config exists", () => {
+    it('should create backup when config exists', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           mcpServers: {
-            github: { command: "other" },
+            github: { command: 'other' },
           },
-        })
+        }),
       );
       mockFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = installToClient("cline", mockServerConfig);
+      const result = installToClient('cline', mockServerConfig);
 
       expect(result.success).toBe(true);
-      expect(result.backupPath).toBe("/backup/path");
+      expect(result.backupPath).toBe('/backup/path');
     });
   });
 
-  describe("installToClient - roo-code", () => {
-    it("should install to roo-code successfully", () => {
+  describe('installToClient - roo-code', () => {
+    it('should install to roo-code successfully', () => {
       mockFs.existsSync.mockReturnValue(false);
       mockFs.writeFileSync.mockImplementation(() => undefined);
       mockFs.mkdirSync.mockImplementation(() => undefined);
 
-      const result = installToClient("roo-code", mockServerConfig);
+      const result = installToClient('roo-code', mockServerConfig);
 
       expect(result.success).toBe(true);
-      expect(result.client).toBe("roo-code");
+      expect(result.client).toBe('roo-code');
     });
 
-    it("should fail if already configured without force", () => {
+    it('should fail if already configured without force', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           mcpServers: {
-            gitlab: { command: "old" },
+            gitlab: { command: 'old' },
           },
-        })
+        }),
       );
 
-      const result = installToClient("roo-code", mockServerConfig, false);
+      const result = installToClient('roo-code', mockServerConfig, false);
 
       expect(result.success).toBe(false);
       expect(result.wasAlreadyConfigured).toBe(true);
     });
 
-    it("should preserve other servers when installing", () => {
+    it('should preserve other servers when installing', () => {
       mockFs.existsSync.mockReturnValue(true);
       mockFs.readFileSync.mockReturnValue(
         JSON.stringify({
           mcpServers: {
-            github: { command: "other" },
-            jira: { command: "jira-cmd" },
+            github: { command: 'other' },
+            jira: { command: 'jira-cmd' },
           },
-        })
+        }),
       );
       mockFs.writeFileSync.mockImplementation(() => undefined);
 
-      const result = installToClient("roo-code", mockServerConfig);
+      const result = installToClient('roo-code', mockServerConfig);
 
       expect(result.success).toBe(true);
       const writeCall = mockFs.writeFileSync.mock.calls[0];
@@ -580,98 +580,166 @@ describe("install installers", () => {
     });
   });
 
-  describe("installToClient - error handling", () => {
-    it("should handle writeFileSync error gracefully", () => {
+  describe('installToClient - error handling', () => {
+    it('should handle writeFileSync error gracefully', () => {
       mockFs.existsSync.mockReturnValue(false);
       mockFs.mkdirSync.mockImplementation(() => undefined);
       mockFs.writeFileSync.mockImplementation(() => {
-        throw new Error("Permission denied");
+        throw new Error('Permission denied');
       });
 
-      const result = installToClient("cursor", mockServerConfig);
+      const result = installToClient('cursor', mockServerConfig);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Permission denied");
+      expect(result.error).toContain('Permission denied');
     });
 
-    it("should handle mkdirSync error gracefully", () => {
+    it('should handle mkdirSync error gracefully', () => {
       mockFs.existsSync.mockReturnValue(false);
       mockFs.mkdirSync.mockImplementation(() => {
-        throw new Error("Cannot create directory");
+        throw new Error('Cannot create directory');
       });
 
-      const result = installToClient("windsurf", mockServerConfig);
+      const result = installToClient('windsurf', mockServerConfig);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("Cannot create directory");
+      expect(result.error).toContain('Cannot create directory');
     });
 
-    it("should handle invalid JSON in existing config", () => {
+    it('should handle claude-desktop write error in catch block', () => {
+      // Covers line 137: catch block in installClaudeDesktop
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => {
+        throw new Error('Disk full');
+      });
+
+      const result = installToClient('claude-desktop', mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Disk full');
+    });
+
+    it('should handle claude-code spawnSync throwing error', () => {
+      // Covers line 225: catch block in installClaudeCode
+      mockChildProcess.spawnSync.mockImplementation(() => {
+        throw new Error('Command not found');
+      });
+
+      const result = installToClient('claude-code', mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Command not found');
+    });
+
+    it('should handle cline write error in catch block', () => {
+      // Covers line 507: catch block in installCline
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => {
+        throw new Error('No space left');
+      });
+
+      const result = installToClient('cline', mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('No space left');
+    });
+
+    it('should handle roo-code write error in catch block', () => {
+      // Covers line 578: catch block in installRooCode
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => {
+        throw new Error('Access denied');
+      });
+
+      const result = installToClient('roo-code', mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Access denied');
+    });
+
+    it('should handle vscode-copilot write error in catch block', () => {
+      // Covers line 368: catch block in installVscodeCopilot
+      mockFs.existsSync.mockReturnValue(false);
+      mockFs.mkdirSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => {
+        throw new Error('Read-only filesystem');
+      });
+
+      const result = installToClient('vscode-copilot', mockServerConfig);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Read-only filesystem');
+    });
+
+    it('should handle invalid JSON in existing config', () => {
       mockFs.existsSync.mockReturnValue(true);
-      mockFs.readFileSync.mockReturnValue("invalid json {{{");
+      mockFs.readFileSync.mockReturnValue('invalid json {{{');
       mockFs.writeFileSync.mockImplementation(() => undefined);
       mockFs.mkdirSync.mockImplementation(() => undefined);
 
       // Should not throw and should treat as empty config
-      const result = installToClient("cline", mockServerConfig);
+      const result = installToClient('cline', mockServerConfig);
 
       expect(result.success).toBe(true);
     });
   });
 
-  describe("installToClient - config path unavailable", () => {
-    it("should return error when claude-desktop config path unavailable", () => {
+  describe('installToClient - config path unavailable', () => {
+    it('should return error when claude-desktop config path unavailable', () => {
       mockGetConfigPath.mockReturnValueOnce(undefined);
 
-      const result = installToClient("claude-desktop", mockServerConfig);
+      const result = installToClient('claude-desktop', mockServerConfig);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("config path not available");
+      expect(result.error).toContain('config path not available');
     });
 
-    it("should return error when cursor config path unavailable", () => {
+    it('should return error when cursor config path unavailable', () => {
       mockGetConfigPath.mockReturnValueOnce(undefined);
 
-      const result = installToClient("cursor", mockServerConfig);
+      const result = installToClient('cursor', mockServerConfig);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("config path not available");
+      expect(result.error).toContain('config path not available');
     });
 
-    it("should return error when vscode-copilot config path unavailable", () => {
+    it('should return error when vscode-copilot config path unavailable', () => {
       mockGetConfigPath.mockReturnValueOnce(undefined);
 
-      const result = installToClient("vscode-copilot", mockServerConfig);
+      const result = installToClient('vscode-copilot', mockServerConfig);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("config path not available");
+      expect(result.error).toContain('config path not available');
     });
 
-    it("should return error when windsurf config path unavailable", () => {
+    it('should return error when windsurf config path unavailable', () => {
       mockGetConfigPath.mockReturnValueOnce(undefined);
 
-      const result = installToClient("windsurf", mockServerConfig);
+      const result = installToClient('windsurf', mockServerConfig);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("config path not available");
+      expect(result.error).toContain('config path not available');
     });
 
-    it("should return error when cline config path unavailable", () => {
+    it('should return error when cline config path unavailable', () => {
       mockGetConfigPath.mockReturnValueOnce(undefined);
 
-      const result = installToClient("cline", mockServerConfig);
+      const result = installToClient('cline', mockServerConfig);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("config path not available");
+      expect(result.error).toContain('config path not available');
     });
 
-    it("should return error when roo-code config path unavailable", () => {
+    it('should return error when roo-code config path unavailable', () => {
       mockGetConfigPath.mockReturnValueOnce(undefined);
 
-      const result = installToClient("roo-code", mockServerConfig);
+      const result = installToClient('roo-code', mockServerConfig);
 
       expect(result.success).toBe(false);
-      expect(result.error).toContain("config path not available");
+      expect(result.error).toContain('config path not available');
     });
   });
 });

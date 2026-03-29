@@ -1,6 +1,6 @@
-import { z } from "zod";
-import { GitLabMilestoneSchema } from "../shared";
-import { flexibleBoolean, requiredId, paginationFields } from "../utils";
+import { z } from 'zod';
+import { GitLabMilestoneSchema } from '../shared';
+import { flexibleBoolean, requiredId, paginationFields } from '../utils';
 
 // Re-export shared schema
 export { GitLabMilestoneSchema };
@@ -29,7 +29,7 @@ export const GitLabMilestonesSchema = z.object({
 // ============================================================================
 
 // --- Shared fields ---
-const namespaceField = z.string().describe("Namespace path (group or project)");
+const namespaceField = z.string().describe('Namespace path (group or project)');
 
 // NOTE on milestone_id:
 // GitLab Milestones REST API uses the global ID in URL paths, NOT the IID.
@@ -37,48 +37,48 @@ const namespaceField = z.string().describe("Namespace path (group or project)");
 // The API response contains both 'id' (global unique) and 'iid' (project-scoped).
 // Unlike issues/MRs which use IID in URLs, milestones use the global ID.
 const milestoneIdField = requiredId.describe(
-  "The ID of a project or group milestone. Required for 'get', 'issues', 'merge_requests', 'burndown' action(s)."
+  "The ID of a project or group milestone. Required for 'get', 'issues', 'merge_requests', 'burndown' action(s).",
 );
 
 // --- Action: list ---
 const ListMilestonesSchema = z.object({
-  action: z.literal("list").describe("List milestones with optional filtering"),
+  action: z.literal('list').describe('List milestones with optional filtering'),
   namespace: namespaceField,
-  iids: z.array(z.string()).optional().describe("Return only the milestones having the given iid"),
+  iids: z.array(z.string()).optional().describe('Return only the milestones having the given iid'),
   state: z
-    .enum(["active", "closed"])
+    .enum(['active', 'closed'])
     .optional()
-    .describe("Return only active or closed milestones"),
+    .describe('Return only active or closed milestones'),
   title: z
     .string()
     .optional()
-    .describe("Return only milestones with a title matching the provided string"),
+    .describe('Return only milestones with a title matching the provided string'),
   search: z
     .string()
     .optional()
-    .describe("Return only milestones with a title or description matching the provided string"),
-  include_ancestors: flexibleBoolean.optional().describe("Include ancestor groups"),
+    .describe('Return only milestones with a title or description matching the provided string'),
+  include_ancestors: flexibleBoolean.optional().describe('Include ancestor groups'),
   updated_before: z
     .string()
     .optional()
-    .describe("Return milestones updated before the specified date (ISO 8601 format)"),
+    .describe('Return milestones updated before the specified date (ISO 8601 format)'),
   updated_after: z
     .string()
     .optional()
-    .describe("Return milestones updated after the specified date (ISO 8601 format)"),
+    .describe('Return milestones updated after the specified date (ISO 8601 format)'),
   ...paginationFields(),
 });
 
 // --- Action: get ---
 const GetMilestoneSchema = z.object({
-  action: z.literal("get").describe("Get a single milestone by ID"),
+  action: z.literal('get').describe('Get a single milestone by ID'),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
 });
 
 // --- Action: issues ---
 const MilestoneIssuesSchema = z.object({
-  action: z.literal("issues").describe("List issues assigned to a milestone"),
+  action: z.literal('issues').describe('List issues assigned to a milestone'),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
   ...paginationFields(),
@@ -86,7 +86,7 @@ const MilestoneIssuesSchema = z.object({
 
 // --- Action: merge_requests ---
 const MilestoneMergeRequestsSchema = z.object({
-  action: z.literal("merge_requests").describe("List merge requests assigned to a milestone"),
+  action: z.literal('merge_requests').describe('List merge requests assigned to a milestone'),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
   ...paginationFields(),
@@ -94,14 +94,14 @@ const MilestoneMergeRequestsSchema = z.object({
 
 // --- Action: burndown ---
 const MilestoneBurndownSchema = z.object({
-  action: z.literal("burndown").describe("Get burndown chart data for a milestone"),
+  action: z.literal('burndown').describe('Get burndown chart data for a milestone'),
   namespace: namespaceField,
   milestone_id: milestoneIdField,
   ...paginationFields(),
 });
 
 // --- Discriminated union combining all actions ---
-export const BrowseMilestonesSchema = z.discriminatedUnion("action", [
+export const BrowseMilestonesSchema = z.discriminatedUnion('action', [
   ListMilestonesSchema,
   GetMilestoneSchema,
   MilestoneIssuesSchema,

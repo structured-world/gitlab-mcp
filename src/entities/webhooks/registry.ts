@@ -1,9 +1,9 @@
-import * as z from "zod";
-import { BrowseWebhooksSchema } from "./schema-readonly";
-import { ManageWebhookSchema } from "./schema";
-import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { isActionDenied } from "../../config";
+import * as z from 'zod';
+import { BrowseWebhooksSchema } from './schema-readonly';
+import { ManageWebhookSchema } from './schema';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { isActionDenied } from '../../config';
 
 /**
  * Webhooks tools registry - 2 CQRS tools (discriminated union schema)
@@ -17,33 +17,33 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_webhooks",
+    'browse_webhooks',
     {
-      name: "browse_webhooks",
+      name: 'browse_webhooks',
       description:
-        "List and inspect webhook configurations for projects or groups. Actions: list (all webhooks with event types and status), get (webhook details by ID). Related: manage_webhook to create/update/delete/test.",
+        'List and inspect webhook configurations for projects or groups. Actions: list (all webhooks with event types and status), get (webhook details by ID). Related: manage_webhook to create/update/delete/test.',
       inputSchema: z.toJSONSchema(BrowseWebhooksSchema),
-      gate: { envVar: "USE_WEBHOOKS", defaultValue: true },
+      gate: { envVar: 'USE_WEBHOOKS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseWebhooksSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_webhooks", input.action)) {
+        if (isActionDenied('browse_webhooks', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_webhooks tool`);
         }
 
         // Helper to determine base API path from scope
-        const getBasePath = (scope: "project" | "group", projectId?: string, groupId?: string) => {
-          if (scope === "project" && projectId) {
+        const getBasePath = (scope: 'project' | 'group', projectId?: string, groupId?: string) => {
+          if (scope === 'project' && projectId) {
             return `projects/${encodeURIComponent(projectId)}/hooks`;
-          } else if (scope === "group" && groupId) {
+          } else if (scope === 'group' && groupId) {
             return `groups/${encodeURIComponent(groupId)}/hooks`;
           }
-          throw new Error("Invalid scope or missing project/group ID");
+          throw new Error('Invalid scope or missing project/group ID');
         };
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             // TypeScript knows: input has scope, projectId/groupId, per_page, page
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
             const {
@@ -58,7 +58,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
             });
           }
 
-          case "get": {
+          case 'get': {
             // TypeScript knows: input has scope, projectId/groupId, hookId
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
             return gitlab.get(`${basePath}/${input.hookId}`);
@@ -77,29 +77,29 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_webhook",
+    'manage_webhook',
     {
-      name: "manage_webhook",
+      name: 'manage_webhook',
       description:
-        "Create, update, delete, or test webhooks for event-driven automation. Actions: create (URL + event types + optional secret), update (modify settings), delete (remove), test (trigger delivery for specific event). Related: browse_webhooks for inspection.",
+        'Create, update, delete, or test webhooks for event-driven automation. Actions: create (URL + event types + optional secret), update (modify settings), delete (remove), test (trigger delivery for specific event). Related: browse_webhooks for inspection.',
       inputSchema: z.toJSONSchema(ManageWebhookSchema),
-      gate: { envVar: "USE_WEBHOOKS", defaultValue: true },
+      gate: { envVar: 'USE_WEBHOOKS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageWebhookSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_webhook", input.action)) {
+        if (isActionDenied('manage_webhook', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_webhook tool`);
         }
 
         // Determine base path from scope and IDs
-        const getBasePath = (scope: "project" | "group", projectId?: string, groupId?: string) => {
-          if (scope === "project" && projectId) {
+        const getBasePath = (scope: 'project' | 'group', projectId?: string, groupId?: string) => {
+          if (scope === 'project' && projectId) {
             return `projects/${encodeURIComponent(projectId)}/hooks`;
-          } else if (scope === "group" && groupId) {
+          } else if (scope === 'group' && groupId) {
             return `groups/${encodeURIComponent(groupId)}/hooks`;
           }
-          throw new Error("Invalid scope or missing project/group ID");
+          throw new Error('Invalid scope or missing project/group ID');
         };
 
         // Helper to filter webhook data for API requests
@@ -108,7 +108,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
           for (const [key, value] of Object.entries(data)) {
             if (
               value !== undefined &&
-              !["action", "scope", "projectId", "groupId", "hookId", "trigger"].includes(key)
+              !['action', 'scope', 'projectId', 'groupId', 'hookId', 'trigger'].includes(key)
             ) {
               body[key] = value;
             }
@@ -117,40 +117,40 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
         };
 
         switch (input.action) {
-          case "create": {
+          case 'create': {
             // TypeScript knows: input has url (required), scope, projectId/groupId, event fields
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
 
             return gitlab.post(basePath, {
               body: buildRequestBody(input),
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "update": {
+          case 'update': {
             // TypeScript knows: input has hookId (required), scope, projectId/groupId, optional fields
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
 
             return gitlab.put(`${basePath}/${input.hookId}`, {
               body: buildRequestBody(input),
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "delete": {
+          case 'delete': {
             // TypeScript knows: input has hookId (required), scope, projectId/groupId
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
 
             await gitlab.delete(`${basePath}/${input.hookId}`);
-            return { success: true, message: "Webhook deleted successfully" };
+            return { success: true, message: 'Webhook deleted successfully' };
           }
 
-          case "test": {
+          case 'test': {
             // TypeScript knows: input has hookId (required), trigger (required), scope, projectId/groupId
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
 
             return gitlab.post(`${basePath}/${input.hookId}/test/${input.trigger}`, {
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
@@ -168,7 +168,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
  * Only browse_webhooks is read-only. manage_webhook is purely write operations.
  */
 export function getWebhooksReadOnlyToolNames(): string[] {
-  return ["browse_webhooks"];
+  return ['browse_webhooks'];
 }
 
 /**
@@ -184,8 +184,8 @@ export function getWebhooksToolDefinitions(): EnhancedToolDefinition[] {
 export function getFilteredWebhooksTools(readOnlyMode: boolean = false): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getWebhooksReadOnlyToolNames();
-    return Array.from(webhooksToolRegistry.values()).filter(tool =>
-      readOnlyNames.includes(tool.name)
+    return Array.from(webhooksToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
     );
   }
   return getWebhooksToolDefinitions();

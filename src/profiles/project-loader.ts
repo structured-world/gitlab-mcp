@@ -13,9 +13,9 @@
  * - Ignored in OAuth mode (server-side)
  */
 
-import * as fs from "fs/promises";
-import * as path from "path";
-import * as yaml from "yaml";
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import * as yaml from 'yaml';
 import {
   ProjectConfig,
   ProjectPreset,
@@ -23,21 +23,21 @@ import {
   ProjectPresetSchema,
   ProjectProfileSchema,
   ProfileValidationResult,
-} from "./types";
-import { logInfo, logWarn, logError, logDebug } from "../logger";
+} from './types';
+import { logInfo, logWarn, logError, logDebug } from '../logger';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
 /** Directory name for project-level configs */
-export const PROJECT_CONFIG_DIR = ".gitlab-mcp";
+export const PROJECT_CONFIG_DIR = '.gitlab-mcp';
 
 /** Preset file name (restrictions) */
-export const PROJECT_PRESET_FILE = "preset.yaml";
+export const PROJECT_PRESET_FILE = 'preset.yaml';
 
 /** Profile file name (tool selection) */
-export const PROJECT_PROFILE_FILE = "profile.yaml";
+export const PROJECT_PROFILE_FILE = 'profile.yaml';
 
 // ============================================================================
 // Project Config Loader
@@ -56,11 +56,11 @@ export async function loadProjectConfig(repoPath: string): Promise<ProjectConfig
   try {
     const stat = await fs.stat(configDir);
     if (!stat.isDirectory()) {
-      logWarn("Project config path exists but is not a directory", { path: configDir });
+      logWarn('Project config path exists but is not a directory', { path: configDir });
       return null;
     }
   } catch {
-    logDebug("No project config directory found", { path: configDir });
+    logDebug('No project config directory found', { path: configDir });
     return null;
   }
 
@@ -71,15 +71,15 @@ export async function loadProjectConfig(repoPath: string): Promise<ProjectConfig
   // Load preset.yaml (restrictions)
   const presetPath = path.join(configDir, PROJECT_PRESET_FILE);
   try {
-    const content = await fs.readFile(presetPath, "utf8");
+    const content = await fs.readFile(presetPath, 'utf8');
     const parsed = yaml.parse(content) as unknown;
     config.preset = ProjectPresetSchema.parse(parsed);
-    logDebug("Loaded project preset", { path: presetPath });
+    logDebug('Loaded project preset', { path: presetPath });
   } catch (error) {
     // File doesn't exist - that's OK
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       const message = error instanceof Error ? error.message : String(error);
-      logError("Failed to parse project preset", { error: message, path: presetPath });
+      logError('Failed to parse project preset', { error: message, path: presetPath });
       throw new Error(`Invalid project preset at ${presetPath}: ${message}`, { cause: error });
     }
   }
@@ -87,26 +87,26 @@ export async function loadProjectConfig(repoPath: string): Promise<ProjectConfig
   // Load profile.yaml (tool selection)
   const profilePath = path.join(configDir, PROJECT_PROFILE_FILE);
   try {
-    const content = await fs.readFile(profilePath, "utf8");
+    const content = await fs.readFile(profilePath, 'utf8');
     const parsed = yaml.parse(content) as unknown;
     config.profile = ProjectProfileSchema.parse(parsed);
-    logDebug("Loaded project profile", { path: profilePath });
+    logDebug('Loaded project profile', { path: profilePath });
   } catch (error) {
     // File doesn't exist - that's OK
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       const message = error instanceof Error ? error.message : String(error);
-      logError("Failed to parse project profile", { error: message, path: profilePath });
+      logError('Failed to parse project profile', { error: message, path: profilePath });
       throw new Error(`Invalid project profile at ${profilePath}: ${message}`, { cause: error });
     }
   }
 
   // Return null if neither file exists
   if (!config.preset && !config.profile) {
-    logDebug("Project config directory exists but contains no config files", { path: configDir });
+    logDebug('Project config directory exists but contains no config files', { path: configDir });
     return null;
   }
 
-  logInfo("Loaded project configuration", {
+  logInfo('Loaded project configuration', {
     path: configDir,
     hasPreset: !!config.preset,
     hasProfile: !!config.profile,
@@ -139,10 +139,10 @@ export async function findProjectConfig(startPath: string): Promise<ProjectConfi
     }
 
     // Stop if we hit a .git directory without finding .gitlab-mcp
-    const gitDir = path.join(currentPath, ".git");
+    const gitDir = path.join(currentPath, '.git');
     try {
       await fs.access(gitDir);
-      logDebug("Found .git without .gitlab-mcp, stopping search", { path: currentPath });
+      logDebug('Found .git without .gitlab-mcp, stopping search', { path: currentPath });
       return null;
     } catch {
       // .git doesn't exist, continue up the tree
@@ -170,7 +170,7 @@ export function validateProjectPreset(preset: ProjectPreset): ProfileValidationR
     // Warn about broad namespace scope
     if (namespace && !project && !projects?.length) {
       warnings.push(
-        `Scope restricts to namespace '${namespace}' - all projects in this group are allowed`
+        `Scope restricts to namespace '${namespace}' - all projects in this group are allowed`,
       );
     }
   }
@@ -178,7 +178,7 @@ export function validateProjectPreset(preset: ProjectPreset): ProfileValidationR
   // Validate denied_actions format
   if (preset.denied_actions) {
     for (const action of preset.denied_actions) {
-      const colonIndex = action.indexOf(":");
+      const colonIndex = action.indexOf(':');
       if (colonIndex === -1) {
         errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
       }
@@ -197,7 +197,7 @@ export function validateProjectPreset(preset: ProjectPreset): ProfileValidationR
  */
 export function validateProjectProfile(
   profile: ProjectProfile,
-  availablePresets: string[]
+  availablePresets: string[],
 ): ProfileValidationResult {
   const errors: string[] = [];
   const warnings: string[] = [];
@@ -211,10 +211,10 @@ export function validateProjectProfile(
 
   // Warn about conflicting tool settings
   if (profile.additional_tools && profile.denied_tools) {
-    const overlap = profile.additional_tools.filter(t => profile.denied_tools?.includes(t));
+    const overlap = profile.additional_tools.filter((t) => profile.denied_tools?.includes(t));
     if (overlap.length > 0) {
       warnings.push(
-        `Tools appear in both additional_tools and denied_tools: ${overlap.join(", ")}`
+        `Tools appear in both additional_tools and denied_tools: ${overlap.join(', ')}`,
       );
     }
   }
@@ -249,12 +249,12 @@ export function getProjectConfigSummary(config: ProjectConfig): {
       parts.push(`scope: ${config.preset.scope.projects.length} projects`);
     }
     if (config.preset.read_only) {
-      parts.push("read-only");
+      parts.push('read-only');
     }
     if (config.preset.denied_actions?.length) {
       parts.push(`${config.preset.denied_actions.length} denied actions`);
     }
-    presetSummary = parts.join(", ") || "custom restrictions";
+    presetSummary = parts.join(', ') || 'custom restrictions';
   }
 
   if (config.profile) {
@@ -271,7 +271,7 @@ export function getProjectConfigSummary(config: ProjectConfig): {
     if (config.profile.denied_tools?.length) {
       parts.push(`-${config.profile.denied_tools.length} tools`);
     }
-    profileSummary = parts.join(", ") || "custom tool selection";
+    profileSummary = parts.join(', ') || 'custom tool selection';
   }
 
   return { presetSummary, profileSummary };

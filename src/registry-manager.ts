@@ -1,40 +1,40 @@
-import { ToolRegistry, EnhancedToolDefinition, ToolDefinition } from "./types";
-import { coreToolRegistry, getCoreReadOnlyToolNames } from "./entities/core/registry";
-import { labelsToolRegistry, getLabelsReadOnlyToolNames } from "./entities/labels/registry";
-import { mrsToolRegistry, getMrsReadOnlyToolNames } from "./entities/mrs/registry";
-import { filesToolRegistry, getFilesReadOnlyToolNames } from "./entities/files/registry";
+import { ToolRegistry, EnhancedToolDefinition, ToolDefinition } from './types';
+import { coreToolRegistry, getCoreReadOnlyToolNames } from './entities/core/registry';
+import { labelsToolRegistry, getLabelsReadOnlyToolNames } from './entities/labels/registry';
+import { mrsToolRegistry, getMrsReadOnlyToolNames } from './entities/mrs/registry';
+import { filesToolRegistry, getFilesReadOnlyToolNames } from './entities/files/registry';
 import {
   milestonesToolRegistry,
   getMilestonesReadOnlyToolNames,
-} from "./entities/milestones/registry";
+} from './entities/milestones/registry';
 import {
   pipelinesToolRegistry,
   getPipelinesReadOnlyToolNames,
-} from "./entities/pipelines/registry";
+} from './entities/pipelines/registry';
 import {
   variablesToolRegistry,
   getVariablesReadOnlyToolNames,
-} from "./entities/variables/registry";
-import { wikiToolRegistry, getWikiReadOnlyToolNames } from "./entities/wiki/registry";
+} from './entities/variables/registry';
+import { wikiToolRegistry, getWikiReadOnlyToolNames } from './entities/wiki/registry';
 import {
   workitemsToolRegistry,
   getWorkitemsReadOnlyToolNames,
-} from "./entities/workitems/registry";
-import { webhooksToolRegistry, getWebhooksReadOnlyToolNames } from "./entities/webhooks/registry";
-import { snippetsToolRegistry, getSnippetsReadOnlyToolNames } from "./entities/snippets/registry";
+} from './entities/workitems/registry';
+import { webhooksToolRegistry, getWebhooksReadOnlyToolNames } from './entities/webhooks/registry';
+import { snippetsToolRegistry, getSnippetsReadOnlyToolNames } from './entities/snippets/registry';
 import {
   integrationsToolRegistry,
   getIntegrationsReadOnlyToolNames,
-} from "./entities/integrations/registry";
-import { releasesToolRegistry, getReleasesReadOnlyToolNames } from "./entities/releases/registry";
-import { refsToolRegistry, getRefsReadOnlyToolNames } from "./entities/refs/registry";
-import { membersToolRegistry, getMembersReadOnlyToolNames } from "./entities/members/registry";
-import { searchToolRegistry, getSearchReadOnlyToolNames } from "./entities/search/registry";
-import { contextToolRegistry, getContextReadOnlyToolNames } from "./entities/context/registry";
+} from './entities/integrations/registry';
+import { releasesToolRegistry, getReleasesReadOnlyToolNames } from './entities/releases/registry';
+import { refsToolRegistry, getRefsReadOnlyToolNames } from './entities/refs/registry';
+import { membersToolRegistry, getMembersReadOnlyToolNames } from './entities/members/registry';
+import { searchToolRegistry, getSearchReadOnlyToolNames } from './entities/search/registry';
+import { contextToolRegistry, getContextReadOnlyToolNames } from './entities/context/registry';
 import {
   iterationsToolRegistry,
   getIterationsReadOnlyToolNames,
-} from "./entities/iterations/registry";
+} from './entities/iterations/registry';
 import {
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
@@ -56,20 +56,20 @@ import {
   USE_SEARCH,
   USE_ITERATIONS,
   getToolDescriptionOverrides,
-} from "./config";
-import { ToolAvailability } from "./services/ToolAvailability";
-import { ConnectionManager } from "./services/ConnectionManager";
-import { isToolAvailableForScopes } from "./services/TokenScopeDetector";
-import type { GitLabScope } from "./services/TokenScopeDetector";
-import type { GitLabTier } from "./services/GitLabVersionDetector";
-import { logDebug } from "./logger";
+} from './config';
+import { ToolAvailability } from './services/ToolAvailability';
+import { ConnectionManager } from './services/ConnectionManager';
+import { isToolAvailableForScopes } from './services/TokenScopeDetector';
+import type { GitLabScope } from './services/TokenScopeDetector';
+import type { GitLabTier } from './services/GitLabVersionDetector';
+import { logDebug } from './logger';
 import {
   transformToolSchema,
   stripTierRestrictedParameters,
   shouldRemoveTool,
   extractActionsFromSchema,
-} from "./utils/schema-utils";
-import { resolveRelatedReferences, stripRelatedSection } from "./utils/description-utils";
+} from './utils/schema-utils';
+import { resolveRelatedReferences, stripRelatedSection } from './utils/description-utils';
 
 /**
  * Central registry manager that aggregates tools from all entity registries
@@ -108,74 +108,74 @@ class RegistryManager {
    */
   private initializeRegistries(): void {
     // Always add core tools
-    this.registries.set("core", coreToolRegistry);
+    this.registries.set('core', coreToolRegistry);
 
     // Always add context tools (runtime context management)
-    this.registries.set("context", contextToolRegistry);
+    this.registries.set('context', contextToolRegistry);
 
     // Add tools based on feature flags
     if (USE_LABELS) {
-      this.registries.set("labels", labelsToolRegistry);
+      this.registries.set('labels', labelsToolRegistry);
     }
 
     if (USE_MRS) {
-      this.registries.set("mrs", mrsToolRegistry);
+      this.registries.set('mrs', mrsToolRegistry);
     }
 
     if (USE_FILES) {
-      this.registries.set("files", filesToolRegistry);
+      this.registries.set('files', filesToolRegistry);
     }
 
     if (USE_MILESTONE) {
-      this.registries.set("milestones", milestonesToolRegistry);
+      this.registries.set('milestones', milestonesToolRegistry);
     }
 
     if (USE_PIPELINE) {
-      this.registries.set("pipelines", pipelinesToolRegistry);
+      this.registries.set('pipelines', pipelinesToolRegistry);
     }
 
     if (USE_VARIABLES) {
-      this.registries.set("variables", variablesToolRegistry);
+      this.registries.set('variables', variablesToolRegistry);
     }
 
     if (USE_GITLAB_WIKI) {
-      this.registries.set("wiki", wikiToolRegistry);
+      this.registries.set('wiki', wikiToolRegistry);
     }
 
     if (USE_WORKITEMS) {
-      this.registries.set("workitems", workitemsToolRegistry);
+      this.registries.set('workitems', workitemsToolRegistry);
     }
 
     if (USE_SNIPPETS) {
-      this.registries.set("snippets", snippetsToolRegistry);
+      this.registries.set('snippets', snippetsToolRegistry);
     }
 
     if (USE_WEBHOOKS) {
-      this.registries.set("webhooks", webhooksToolRegistry);
+      this.registries.set('webhooks', webhooksToolRegistry);
     }
 
     if (USE_INTEGRATIONS) {
-      this.registries.set("integrations", integrationsToolRegistry);
+      this.registries.set('integrations', integrationsToolRegistry);
     }
 
     if (USE_RELEASES) {
-      this.registries.set("releases", releasesToolRegistry);
+      this.registries.set('releases', releasesToolRegistry);
     }
 
     if (USE_REFS) {
-      this.registries.set("refs", refsToolRegistry);
+      this.registries.set('refs', refsToolRegistry);
     }
 
     if (USE_MEMBERS) {
-      this.registries.set("members", membersToolRegistry);
+      this.registries.set('members', membersToolRegistry);
     }
 
     if (USE_SEARCH) {
-      this.registries.set("search", searchToolRegistry);
+      this.registries.set('search', searchToolRegistry);
     }
 
     if (USE_ITERATIONS) {
-      this.registries.set("iterations", iterationsToolRegistry);
+      this.registries.set('iterations', iterationsToolRegistry);
     }
 
     // All entity registries have been migrated to the new pattern!
@@ -188,9 +188,9 @@ class RegistryManager {
     this.descriptionOverrides = getToolDescriptionOverrides();
 
     if (this.descriptionOverrides.size > 0) {
-      logDebug("Loaded tool description overrides", { count: this.descriptionOverrides.size });
+      logDebug('Loaded tool description overrides', { count: this.descriptionOverrides.size });
       for (const [toolName, description] of this.descriptionOverrides) {
-        logDebug("Tool description override", { toolName, description });
+        logDebug('Tool description override', { toolName, description });
       }
     }
   }
@@ -313,33 +313,33 @@ class RegistryManager {
       for (const [toolName, tool] of registry) {
         // Apply GITLAB_READ_ONLY_MODE filtering at registry level
         if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) {
-          logDebug("Tool filtered out: read-only mode", { toolName });
+          logDebug('Tool filtered out: read-only mode', { toolName });
           continue;
         }
 
         // Apply GITLAB_DENIED_TOOLS_REGEX filtering at registry level
         if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) {
-          logDebug("Tool filtered out: matches denied regex", { toolName });
+          logDebug('Tool filtered out: matches denied regex', { toolName });
           continue;
         }
 
         // Apply token scope filtering - skip tools the token can't access
         if (tokenScopes && !isToolAvailableForScopes(toolName, tokenScopes)) {
-          logDebug("Tool filtered out: insufficient token scopes", { toolName });
+          logDebug('Tool filtered out: insufficient token scopes', { toolName });
           continue;
         }
 
         // Apply GitLab version/tier filtering at registry level
         if (!ToolAvailability.isToolAvailable(toolName)) {
           const reason = ToolAvailability.getUnavailableReason(toolName);
-          logDebug("Tool filtered out", { toolName, reason });
+          logDebug('Tool filtered out', { toolName, reason });
           continue;
         }
 
         // Check if all actions are denied for this CQRS tool
         const allActions = extractActionsFromSchema(tool.inputSchema);
         if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) {
-          logDebug("Tool filtered out: all actions denied", { toolName });
+          logDebug('Tool filtered out: all actions denied', { toolName });
           continue;
         }
 
@@ -365,7 +365,7 @@ class RegistryManager {
         };
 
         if (customDescription) {
-          logDebug("Applied description override", { toolName, customDescription });
+          logDebug('Applied description override', { toolName, customDescription });
         }
 
         // Add to cache
@@ -398,7 +398,7 @@ class RegistryManager {
       }
     }
 
-    logDebug("Registry manager built cache after filtering", {
+    logDebug('Registry manager built cache after filtering', {
       toolCount: this.toolLookupCache.size,
     });
   }
@@ -468,55 +468,55 @@ class RegistryManager {
     const allTools: EnhancedToolDefinition[] = [];
 
     // Dynamically check environment variables at runtime
-    const isReadOnly = process.env.GITLAB_READ_ONLY_MODE === "true";
+    const isReadOnly = process.env.GITLAB_READ_ONLY_MODE === 'true';
     const deniedRegex = process.env.GITLAB_DENIED_TOOLS_REGEX
       ? new RegExp(process.env.GITLAB_DENIED_TOOLS_REGEX)
       : undefined;
 
     // Dynamically check USE_* flags at runtime
-    const useLabels = process.env.USE_LABELS !== "false";
-    const useMrs = process.env.USE_MRS !== "false";
-    const useFiles = process.env.USE_FILES !== "false";
-    const useMilestone = process.env.USE_MILESTONE !== "false";
-    const usePipeline = process.env.USE_PIPELINE !== "false";
-    const useVariables = process.env.USE_VARIABLES !== "false";
-    const useWiki = process.env.USE_GITLAB_WIKI !== "false";
-    const useWorkitems = process.env.USE_WORKITEMS !== "false";
-    const useSnippets = process.env.USE_SNIPPETS !== "false";
-    const useWebhooks = process.env.USE_WEBHOOKS !== "false";
-    const useIntegrations = process.env.USE_INTEGRATIONS !== "false";
-    const useReleases = process.env.USE_RELEASES !== "false";
-    const useRefs = process.env.USE_REFS !== "false";
-    const useMembers = process.env.USE_MEMBERS !== "false";
-    const useSearch = process.env.USE_SEARCH !== "false";
-    const useIterations = process.env.USE_ITERATIONS !== "false";
+    const useLabels = process.env.USE_LABELS !== 'false';
+    const useMrs = process.env.USE_MRS !== 'false';
+    const useFiles = process.env.USE_FILES !== 'false';
+    const useMilestone = process.env.USE_MILESTONE !== 'false';
+    const usePipeline = process.env.USE_PIPELINE !== 'false';
+    const useVariables = process.env.USE_VARIABLES !== 'false';
+    const useWiki = process.env.USE_GITLAB_WIKI !== 'false';
+    const useWorkitems = process.env.USE_WORKITEMS !== 'false';
+    const useSnippets = process.env.USE_SNIPPETS !== 'false';
+    const useWebhooks = process.env.USE_WEBHOOKS !== 'false';
+    const useIntegrations = process.env.USE_INTEGRATIONS !== 'false';
+    const useReleases = process.env.USE_RELEASES !== 'false';
+    const useRefs = process.env.USE_REFS !== 'false';
+    const useMembers = process.env.USE_MEMBERS !== 'false';
+    const useSearch = process.env.USE_SEARCH !== 'false';
+    const useIterations = process.env.USE_ITERATIONS !== 'false';
 
     // Build registries map based on dynamic feature flags
     const registriesToUse = new Map<string, ToolRegistry>();
 
     // Always add core tools
-    registriesToUse.set("core", coreToolRegistry);
+    registriesToUse.set('core', coreToolRegistry);
 
     // Always add context tools
-    registriesToUse.set("context", contextToolRegistry);
+    registriesToUse.set('context', contextToolRegistry);
 
     // Add tools based on dynamically checked feature flags
-    if (useLabels) registriesToUse.set("labels", labelsToolRegistry);
-    if (useMrs) registriesToUse.set("mrs", mrsToolRegistry);
-    if (useFiles) registriesToUse.set("files", filesToolRegistry);
-    if (useMilestone) registriesToUse.set("milestones", milestonesToolRegistry);
-    if (usePipeline) registriesToUse.set("pipelines", pipelinesToolRegistry);
-    if (useVariables) registriesToUse.set("variables", variablesToolRegistry);
-    if (useWiki) registriesToUse.set("wiki", wikiToolRegistry);
-    if (useWorkitems) registriesToUse.set("workitems", workitemsToolRegistry);
-    if (useSnippets) registriesToUse.set("snippets", snippetsToolRegistry);
-    if (useWebhooks) registriesToUse.set("webhooks", webhooksToolRegistry);
-    if (useIntegrations) registriesToUse.set("integrations", integrationsToolRegistry);
-    if (useReleases) registriesToUse.set("releases", releasesToolRegistry);
-    if (useRefs) registriesToUse.set("refs", refsToolRegistry);
-    if (useMembers) registriesToUse.set("members", membersToolRegistry);
-    if (useSearch) registriesToUse.set("search", searchToolRegistry);
-    if (useIterations) registriesToUse.set("iterations", iterationsToolRegistry);
+    if (useLabels) registriesToUse.set('labels', labelsToolRegistry);
+    if (useMrs) registriesToUse.set('mrs', mrsToolRegistry);
+    if (useFiles) registriesToUse.set('files', filesToolRegistry);
+    if (useMilestone) registriesToUse.set('milestones', milestonesToolRegistry);
+    if (usePipeline) registriesToUse.set('pipelines', pipelinesToolRegistry);
+    if (useVariables) registriesToUse.set('variables', variablesToolRegistry);
+    if (useWiki) registriesToUse.set('wiki', wikiToolRegistry);
+    if (useWorkitems) registriesToUse.set('workitems', workitemsToolRegistry);
+    if (useSnippets) registriesToUse.set('snippets', snippetsToolRegistry);
+    if (useWebhooks) registriesToUse.set('webhooks', webhooksToolRegistry);
+    if (useIntegrations) registriesToUse.set('integrations', integrationsToolRegistry);
+    if (useReleases) registriesToUse.set('releases', releasesToolRegistry);
+    if (useRefs) registriesToUse.set('refs', refsToolRegistry);
+    if (useMembers) registriesToUse.set('members', membersToolRegistry);
+    if (useSearch) registriesToUse.set('search', searchToolRegistry);
+    if (useIterations) registriesToUse.set('iterations', iterationsToolRegistry);
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -556,10 +556,10 @@ class RegistryManager {
     }
 
     // Second pass: handle Related references based on GITLAB_CROSS_REFS setting
-    const crossRefsEnabled = process.env.GITLAB_CROSS_REFS !== "false";
+    const crossRefsEnabled = process.env.GITLAB_CROSS_REFS !== 'false';
     if (crossRefsEnabled) {
       // Resolve Related references against available tools
-      const availableToolNames = new Set(allTools.map(t => t.name));
+      const availableToolNames = new Set(allTools.map((t) => t.name));
       for (let i = 0; i < allTools.length; i++) {
         const tool = allTools[i];
         // Skip tools with custom description overrides

@@ -1,43 +1,43 @@
-import { ManageMemberSchema } from "../../../../src/entities/members/schema";
+import { ManageMemberSchema } from '../../../../src/entities/members/schema';
 
-describe("ManageMemberSchema - Discriminated Union", () => {
-  describe("add_to_project action", () => {
-    describe("Valid inputs", () => {
-      it("should accept minimal valid input", () => {
+describe('ManageMemberSchema - Discriminated Union', () => {
+  describe('add_to_project action', () => {
+    describe('Valid inputs', () => {
+      it('should accept minimal valid input', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "add_to_project",
-          project_id: "my-group/my-project",
-          user_id: "123",
+          action: 'add_to_project',
+          project_id: 'my-group/my-project',
+          user_id: '123',
           access_level: 30,
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "add_to_project") {
-          expect(result.data.user_id).toBe("123");
+        if (result.success && result.data.action === 'add_to_project') {
+          expect(result.data.user_id).toBe('123');
           expect(result.data.access_level).toBe(30);
         }
       });
 
-      it("should accept expires_at option", () => {
+      it('should accept expires_at option', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "add_to_project",
-          project_id: "test-project",
-          user_id: "456",
+          action: 'add_to_project',
+          project_id: 'test-project',
+          user_id: '456',
           access_level: 40,
-          expires_at: "2025-12-31",
+          expires_at: '2025-12-31',
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "add_to_project") {
-          expect(result.data.expires_at).toBe("2025-12-31");
+        if (result.success && result.data.action === 'add_to_project') {
+          expect(result.data.expires_at).toBe('2025-12-31');
         }
       });
 
-      it("should accept all valid access levels", () => {
+      it('should accept all valid access levels', () => {
         const accessLevels = [0, 5, 10, 20, 30, 40, 50];
         for (const level of accessLevels) {
           const result = ManageMemberSchema.safeParse({
-            action: "add_to_project",
-            project_id: "test",
-            user_id: "1",
+            action: 'add_to_project',
+            project_id: 'test',
+            user_id: '1',
             access_level: level,
           });
           expect(result.success).toBe(true);
@@ -45,30 +45,30 @@ describe("ManageMemberSchema - Discriminated Union", () => {
       });
     });
 
-    describe("Invalid inputs", () => {
-      it("should reject missing user_id", () => {
+    describe('Invalid inputs', () => {
+      it('should reject missing user_id', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "add_to_project",
-          project_id: "test-project",
+          action: 'add_to_project',
+          project_id: 'test-project',
           access_level: 30,
         });
         expect(result.success).toBe(false);
       });
 
-      it("should reject missing access_level", () => {
+      it('should reject missing access_level', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "add_to_project",
-          project_id: "test-project",
-          user_id: "123",
+          action: 'add_to_project',
+          project_id: 'test-project',
+          user_id: '123',
         });
         expect(result.success).toBe(false);
       });
 
-      it("should reject invalid access_level", () => {
+      it('should reject invalid access_level', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "add_to_project",
-          project_id: "test-project",
-          user_id: "123",
+          action: 'add_to_project',
+          project_id: 'test-project',
+          user_id: '123',
           access_level: 25, // Invalid level
         });
         expect(result.success).toBe(false);
@@ -76,42 +76,42 @@ describe("ManageMemberSchema - Discriminated Union", () => {
     });
   });
 
-  describe("add_to_group action", () => {
-    describe("Valid inputs", () => {
-      it("should accept minimal valid input", () => {
+  describe('add_to_group action', () => {
+    describe('Valid inputs', () => {
+      it('should accept minimal valid input', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "add_to_group",
-          group_id: "my-group",
-          user_id: "123",
+          action: 'add_to_group',
+          group_id: 'my-group',
+          user_id: '123',
           access_level: 20,
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "add_to_group") {
-          expect(result.data.group_id).toBe("my-group");
+        if (result.success && result.data.action === 'add_to_group') {
+          expect(result.data.group_id).toBe('my-group');
           expect(result.data.access_level).toBe(20);
         }
       });
 
-      it("should accept expires_at option", () => {
+      it('should accept expires_at option', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "add_to_group",
-          group_id: "test-group",
-          user_id: "456",
+          action: 'add_to_group',
+          group_id: 'test-group',
+          user_id: '456',
           access_level: 30,
-          expires_at: "2026-06-30",
+          expires_at: '2026-06-30',
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "add_to_group") {
-          expect(result.data.expires_at).toBe("2026-06-30");
+        if (result.success && result.data.action === 'add_to_group') {
+          expect(result.data.expires_at).toBe('2026-06-30');
         }
       });
     });
 
-    describe("Invalid inputs", () => {
-      it("should reject missing group_id", () => {
+    describe('Invalid inputs', () => {
+      it('should reject missing group_id', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "add_to_group",
-          user_id: "123",
+          action: 'add_to_group',
+          user_id: '123',
           access_level: 30,
         });
         expect(result.success).toBe(false);
@@ -119,190 +119,190 @@ describe("ManageMemberSchema - Discriminated Union", () => {
     });
   });
 
-  describe("remove_from_project action", () => {
-    describe("Valid inputs", () => {
-      it("should accept minimal valid input", () => {
+  describe('remove_from_project action', () => {
+    describe('Valid inputs', () => {
+      it('should accept minimal valid input', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "remove_from_project",
-          project_id: "my-project",
-          user_id: "123",
+          action: 'remove_from_project',
+          project_id: 'my-project',
+          user_id: '123',
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "remove_from_project") {
-          expect(result.data.user_id).toBe("123");
+        if (result.success && result.data.action === 'remove_from_project') {
+          expect(result.data.user_id).toBe('123');
         }
       });
 
-      it("should accept skip_subresources option", () => {
+      it('should accept skip_subresources option', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "remove_from_project",
-          project_id: "my-project",
-          user_id: "123",
+          action: 'remove_from_project',
+          project_id: 'my-project',
+          user_id: '123',
           skip_subresources: true,
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "remove_from_project") {
+        if (result.success && result.data.action === 'remove_from_project') {
           expect(result.data.skip_subresources).toBe(true);
         }
       });
 
-      it("should accept unassign_issuables option", () => {
+      it('should accept unassign_issuables option', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "remove_from_project",
-          project_id: "my-project",
-          user_id: "123",
+          action: 'remove_from_project',
+          project_id: 'my-project',
+          user_id: '123',
           unassign_issuables: true,
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "remove_from_project") {
+        if (result.success && result.data.action === 'remove_from_project') {
           expect(result.data.unassign_issuables).toBe(true);
         }
       });
     });
 
-    describe("Invalid inputs", () => {
-      it("should reject missing user_id", () => {
+    describe('Invalid inputs', () => {
+      it('should reject missing user_id', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "remove_from_project",
-          project_id: "my-project",
+          action: 'remove_from_project',
+          project_id: 'my-project',
         });
         expect(result.success).toBe(false);
       });
     });
   });
 
-  describe("remove_from_group action", () => {
-    describe("Valid inputs", () => {
-      it("should accept minimal valid input", () => {
+  describe('remove_from_group action', () => {
+    describe('Valid inputs', () => {
+      it('should accept minimal valid input', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "remove_from_group",
-          group_id: "my-group",
-          user_id: "456",
+          action: 'remove_from_group',
+          group_id: 'my-group',
+          user_id: '456',
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "remove_from_group") {
-          expect(result.data.user_id).toBe("456");
+        if (result.success && result.data.action === 'remove_from_group') {
+          expect(result.data.user_id).toBe('456');
         }
       });
 
-      it("should accept both optional flags", () => {
+      it('should accept both optional flags', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "remove_from_group",
-          group_id: "my-group",
-          user_id: "456",
+          action: 'remove_from_group',
+          group_id: 'my-group',
+          user_id: '456',
           skip_subresources: false,
           unassign_issuables: true,
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "remove_from_group") {
+        if (result.success && result.data.action === 'remove_from_group') {
           expect(result.data.skip_subresources).toBe(false);
           expect(result.data.unassign_issuables).toBe(true);
         }
       });
     });
 
-    describe("Invalid inputs", () => {
-      it("should reject missing group_id", () => {
+    describe('Invalid inputs', () => {
+      it('should reject missing group_id', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "remove_from_group",
-          user_id: "456",
+          action: 'remove_from_group',
+          user_id: '456',
         });
         expect(result.success).toBe(false);
       });
     });
   });
 
-  describe("update_project action", () => {
-    describe("Valid inputs", () => {
-      it("should accept minimal valid input", () => {
+  describe('update_project action', () => {
+    describe('Valid inputs', () => {
+      it('should accept minimal valid input', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "update_project",
-          project_id: "my-project",
-          user_id: "123",
+          action: 'update_project',
+          project_id: 'my-project',
+          user_id: '123',
           access_level: 40,
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "update_project") {
+        if (result.success && result.data.action === 'update_project') {
           expect(result.data.access_level).toBe(40);
         }
       });
 
-      it("should accept expires_at option", () => {
+      it('should accept expires_at option', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "update_project",
-          project_id: "my-project",
-          user_id: "123",
+          action: 'update_project',
+          project_id: 'my-project',
+          user_id: '123',
           access_level: 50,
-          expires_at: "2027-01-01",
+          expires_at: '2027-01-01',
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "update_project") {
-          expect(result.data.expires_at).toBe("2027-01-01");
+        if (result.success && result.data.action === 'update_project') {
+          expect(result.data.expires_at).toBe('2027-01-01');
         }
       });
     });
 
-    describe("Invalid inputs", () => {
-      it("should reject missing access_level", () => {
+    describe('Invalid inputs', () => {
+      it('should reject missing access_level', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "update_project",
-          project_id: "my-project",
-          user_id: "123",
+          action: 'update_project',
+          project_id: 'my-project',
+          user_id: '123',
         });
         expect(result.success).toBe(false);
       });
     });
   });
 
-  describe("update_group action", () => {
-    describe("Valid inputs", () => {
-      it("should accept minimal valid input", () => {
+  describe('update_group action', () => {
+    describe('Valid inputs', () => {
+      it('should accept minimal valid input', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "update_group",
-          group_id: "my-group",
-          user_id: "456",
+          action: 'update_group',
+          group_id: 'my-group',
+          user_id: '456',
           access_level: 30,
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "update_group") {
+        if (result.success && result.data.action === 'update_group') {
           expect(result.data.access_level).toBe(30);
         }
       });
 
-      it("should accept member_role_id option (Ultimate)", () => {
+      it('should accept member_role_id option (Ultimate)', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "update_group",
-          group_id: "my-group",
-          user_id: "456",
+          action: 'update_group',
+          group_id: 'my-group',
+          user_id: '456',
           access_level: 30,
           member_role_id: 5,
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "update_group") {
+        if (result.success && result.data.action === 'update_group') {
           expect(result.data.member_role_id).toBe(5);
         }
       });
 
-      it("should accept expires_at option", () => {
+      it('should accept expires_at option', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "update_group",
-          group_id: "my-group",
-          user_id: "456",
+          action: 'update_group',
+          group_id: 'my-group',
+          user_id: '456',
           access_level: 40,
-          expires_at: "2028-12-31",
+          expires_at: '2028-12-31',
         });
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "update_group") {
-          expect(result.data.expires_at).toBe("2028-12-31");
+        if (result.success && result.data.action === 'update_group') {
+          expect(result.data.expires_at).toBe('2028-12-31');
         }
       });
     });
 
-    describe("Invalid inputs", () => {
-      it("should reject missing group_id", () => {
+    describe('Invalid inputs', () => {
+      it('should reject missing group_id', () => {
         const result = ManageMemberSchema.safeParse({
-          action: "update_group",
-          user_id: "456",
+          action: 'update_group',
+          user_id: '456',
           access_level: 30,
         });
         expect(result.success).toBe(false);
@@ -310,40 +310,40 @@ describe("ManageMemberSchema - Discriminated Union", () => {
     });
   });
 
-  describe("Discriminated Union behavior", () => {
-    it("should correctly narrow types based on action", () => {
+  describe('Discriminated Union behavior', () => {
+    it('should correctly narrow types based on action', () => {
       const addProjectResult = ManageMemberSchema.safeParse({
-        action: "add_to_project",
-        project_id: "test",
-        user_id: "1",
+        action: 'add_to_project',
+        project_id: 'test',
+        user_id: '1',
         access_level: 30,
       });
       const addGroupResult = ManageMemberSchema.safeParse({
-        action: "add_to_group",
-        group_id: "test",
-        user_id: "1",
+        action: 'add_to_group',
+        group_id: 'test',
+        user_id: '1',
         access_level: 30,
       });
       const removeProjectResult = ManageMemberSchema.safeParse({
-        action: "remove_from_project",
-        project_id: "test",
-        user_id: "1",
+        action: 'remove_from_project',
+        project_id: 'test',
+        user_id: '1',
       });
       const removeGroupResult = ManageMemberSchema.safeParse({
-        action: "remove_from_group",
-        group_id: "test",
-        user_id: "1",
+        action: 'remove_from_group',
+        group_id: 'test',
+        user_id: '1',
       });
       const updateProjectResult = ManageMemberSchema.safeParse({
-        action: "update_project",
-        project_id: "test",
-        user_id: "1",
+        action: 'update_project',
+        project_id: 'test',
+        user_id: '1',
         access_level: 40,
       });
       const updateGroupResult = ManageMemberSchema.safeParse({
-        action: "update_group",
-        group_id: "test",
-        user_id: "1",
+        action: 'update_group',
+        group_id: 'test',
+        user_id: '1',
         access_level: 40,
       });
 
@@ -354,30 +354,30 @@ describe("ManageMemberSchema - Discriminated Union", () => {
       expect(updateProjectResult.success).toBe(true);
       expect(updateGroupResult.success).toBe(true);
 
-      if (addProjectResult.success) expect(addProjectResult.data.action).toBe("add_to_project");
-      if (addGroupResult.success) expect(addGroupResult.data.action).toBe("add_to_group");
+      if (addProjectResult.success) expect(addProjectResult.data.action).toBe('add_to_project');
+      if (addGroupResult.success) expect(addGroupResult.data.action).toBe('add_to_group');
       if (removeProjectResult.success)
-        expect(removeProjectResult.data.action).toBe("remove_from_project");
+        expect(removeProjectResult.data.action).toBe('remove_from_project');
       if (removeGroupResult.success)
-        expect(removeGroupResult.data.action).toBe("remove_from_group");
+        expect(removeGroupResult.data.action).toBe('remove_from_group');
       if (updateProjectResult.success)
-        expect(updateProjectResult.data.action).toBe("update_project");
-      if (updateGroupResult.success) expect(updateGroupResult.data.action).toBe("update_group");
+        expect(updateProjectResult.data.action).toBe('update_project');
+      if (updateGroupResult.success) expect(updateGroupResult.data.action).toBe('update_group');
     });
 
-    it("should reject unknown action values", () => {
+    it('should reject unknown action values', () => {
       const result = ManageMemberSchema.safeParse({
-        action: "unknown",
-        project_id: "test",
-        user_id: "1",
+        action: 'unknown',
+        project_id: 'test',
+        user_id: '1',
       });
       expect(result.success).toBe(false);
     });
 
-    it("should reject missing action", () => {
+    it('should reject missing action', () => {
       const result = ManageMemberSchema.safeParse({
-        project_id: "test",
-        user_id: "1",
+        project_id: 'test',
+        user_id: '1',
         access_level: 30,
       });
       expect(result.success).toBe(false);

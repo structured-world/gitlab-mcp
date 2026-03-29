@@ -16,10 +16,10 @@
  * This allows setTool/setGitLabResponse/addDetail to work without explicit requestId.
  */
 
-import { AsyncLocalStorage } from "async_hooks";
-import type { RequestStack } from "./types.js";
-import { formatAccessLog, createAccessLogEntry } from "./access-log.js";
-import { logger, LOG_JSON, logDebug } from "../logger.js";
+import { AsyncLocalStorage } from 'async_hooks';
+import type { RequestStack } from './types.js';
+import { formatAccessLog, createAccessLogEntry } from './access-log.js';
+import { logger, LOG_JSON, logDebug } from '../logger.js';
 
 /**
  * Request context stored in AsyncLocalStorage
@@ -53,7 +53,7 @@ export function runWithRequestContext<T>(requestId: string, fn: () => T): T {
  */
 export async function runWithRequestContextAsync<T>(
   requestId: string,
-  fn: () => Promise<T>
+  fn: () => Promise<T>,
 ): Promise<T> {
   return requestContext.run({ requestId }, fn);
 }
@@ -100,7 +100,7 @@ export class RequestTracker {
     clientIp: string,
     method: string,
     path: string,
-    sessionId?: string
+    sessionId?: string,
   ): void {
     if (!this.enabled) return;
 
@@ -115,7 +115,7 @@ export class RequestTracker {
 
     this.stacks.set(requestId, stack);
 
-    logDebug("Request stack opened", { requestId, clientIp, method, path });
+    logDebug('Request stack opened', { requestId, clientIp, method, path });
   }
 
   /**
@@ -137,7 +137,7 @@ export class RequestTracker {
       stack.action = action;
     }
 
-    logDebug("Tool set on request stack", { requestId, tool, action });
+    logDebug('Tool set on request stack', { requestId, tool, action });
   }
 
   /**
@@ -145,8 +145,8 @@ export class RequestTracker {
    */
   setGitLabResponse(
     requestId: string,
-    status: number | "timeout" | "error",
-    durationMs?: number
+    status: number | 'timeout' | 'error',
+    durationMs?: number,
   ): void {
     const stack = this.stacks.get(requestId);
     if (!stack) return;
@@ -156,7 +156,7 @@ export class RequestTracker {
       stack.gitlabDuration = durationMs;
     }
 
-    logDebug("GitLab response set on request stack", {
+    logDebug('GitLab response set on request stack', {
       requestId,
       gitlabStatus: status,
       gitlabDuration: durationMs,
@@ -235,7 +235,7 @@ export class RequestTracker {
   closeStack(requestId: string, status: number): string | undefined {
     const stack = this.stacks.get(requestId);
     if (!stack) {
-      logDebug("Request stack not found on close", { requestId });
+      logDebug('Request stack not found on close', { requestId });
       return undefined;
     }
 
@@ -319,8 +319,8 @@ export class RequestTracker {
    * Set GitLab response for current request (context-aware)
    */
   setGitLabResponseForCurrentRequest(
-    status: number | "timeout" | "error",
-    durationMs?: number
+    status: number | 'timeout' | 'error',
+    durationMs?: number,
   ): void {
     const requestId = getCurrentRequestId();
     if (requestId) {

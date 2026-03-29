@@ -5,14 +5,14 @@
  * the current session context at runtime.
  */
 
-import { ProfileInfo, Preset, ScopeConfig } from "../../profiles/types";
+import { ProfileInfo, Preset, ScopeConfig } from '../../profiles/types';
 
 /**
  * Runtime scope information with detection metadata
  */
 export interface RuntimeScope {
   /** Detected type of the namespace */
-  type: "project" | "group";
+  type: 'project' | 'group';
   /** The primary namespace path (for single scope) */
   path: string;
   /** Additional paths when multiple projects/groups are configured */
@@ -45,7 +45,7 @@ export interface SessionContext {
   /** OAuth mode indicator */
   oauthMode: boolean;
   /** Initial context snapshot (for reset) */
-  initialContext?: Omit<SessionContext, "initialContext">;
+  initialContext?: Omit<SessionContext, 'initialContext'>;
 }
 
 /**
@@ -125,11 +125,11 @@ export type { ProfileInfo };
  * Token type classification
  */
 export type WhoamiTokenType =
-  | "personal_access_token"
-  | "project_access_token"
-  | "group_access_token"
-  | "oauth"
-  | "unknown";
+  | 'personal_access_token'
+  | 'project_access_token'
+  | 'group_access_token'
+  | 'oauth'
+  | 'unknown';
 
 /**
  * User identity information
@@ -148,7 +148,7 @@ export interface WhoamiUserInfo {
   /** Whether user has admin privileges */
   isAdmin?: boolean;
   /** User account state */
-  state: "active" | "blocked" | "deactivated";
+  state: 'active' | 'blocked' | 'deactivated';
 }
 
 /**
@@ -184,9 +184,9 @@ export interface WhoamiServerInfo {
   /** GitLab version string */
   version: string;
   /** GitLab tier (free/premium/ultimate) */
-  tier: "free" | "premium" | "ultimate" | "unknown";
+  tier: 'free' | 'premium' | 'ultimate' | 'unknown';
   /** GitLab edition (EE/CE) */
-  edition: "EE" | "CE" | "unknown";
+  edition: 'EE' | 'CE' | 'unknown';
   /** Whether server is in read-only mode */
   readOnlyMode: boolean;
   /** Whether OAuth is enabled for this server */
@@ -223,11 +223,11 @@ export interface WhoamiCapabilities {
  * Recommendation action type
  */
 export type WhoamiRecommendationAction =
-  | "create_new_token"
-  | "add_scope"
-  | "enable_oauth"
-  | "contact_admin"
-  | "renew_token";
+  | 'create_new_token'
+  | 'add_scope'
+  | 'enable_oauth'
+  | 'contact_admin'
+  | 'renew_token';
 
 /**
  * Actionable recommendation for improving access
@@ -240,7 +240,7 @@ export interface WhoamiRecommendation {
   /** URL to take action (e.g., token creation page) */
   url?: string;
   /** Priority of this recommendation */
-  priority: "high" | "medium" | "low";
+  priority: 'high' | 'medium' | 'low';
 }
 
 /**

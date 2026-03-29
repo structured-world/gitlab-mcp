@@ -1,5 +1,5 @@
-import { z } from "zod";
-import { paginationFields } from "../utils";
+import { z } from 'zod';
+import { paginationFields } from '../utils';
 
 // ============================================================================
 // browse_variables - CQRS Query Tool (discriminated union schema)
@@ -9,40 +9,40 @@ import { paginationFields } from "../utils";
 // ============================================================================
 
 // --- Shared fields ---
-const namespaceField = z.string().describe("Namespace path (group or project)");
+const namespaceField = z.string().describe('Namespace path (group or project)');
 const filterField = z
   .object({
     environment_scope: z
       .string()
       .optional()
       .describe(
-        'The environment scope filter. Use "*" for all environments or specific environment name like "production".'
+        'The environment scope filter. Use "*" for all environments or specific environment name like "production".',
       ),
   })
   .optional()
-  .describe("Filter parameters for variable lookup");
+  .describe('Filter parameters for variable lookup');
 
 // --- Action: list ---
 const ListVariablesSchema = z.object({
-  action: z.literal("list").describe("List all CI/CD variables"),
+  action: z.literal('list').describe('List all CI/CD variables'),
   namespace: namespaceField,
   ...paginationFields(),
 });
 
 // --- Action: get ---
 const GetVariableSchema = z.object({
-  action: z.literal("get").describe("Get a single CI/CD variable by key"),
+  action: z.literal('get').describe('Get a single CI/CD variable by key'),
   namespace: namespaceField,
   key: z
     .string()
     .describe(
-      "The key of the CI/CD variable. Maximum 255 characters, alphanumeric and underscore only."
+      'The key of the CI/CD variable. Maximum 255 characters, alphanumeric and underscore only.',
     ),
   filter: filterField,
 });
 
 // --- Discriminated union combining all actions ---
-export const BrowseVariablesSchema = z.discriminatedUnion("action", [
+export const BrowseVariablesSchema = z.discriminatedUnion('action', [
   ListVariablesSchema,
   GetVariableSchema,
 ]);

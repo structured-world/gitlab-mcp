@@ -5,8 +5,8 @@
  * Uses Zod for runtime validation per CLAUDE.md standards.
  */
 
-import { z } from "zod";
-import { logDebug, logInfo } from "../logger";
+import { z } from 'zod';
+import { logDebug, logInfo } from '../logger';
 
 /**
  * Zod schema for OAuth configuration
@@ -16,13 +16,13 @@ const OAuthConfigSchema = z.object({
   /** Whether OAuth mode is enabled */
   enabled: z.literal(true),
   /** Secret for signing MCP JWT tokens (minimum 32 characters) */
-  sessionSecret: z.string().min(32, "OAUTH_SESSION_SECRET must be at least 32 characters"),
+  sessionSecret: z.string().min(32, 'OAUTH_SESSION_SECRET must be at least 32 characters'),
   /** GitLab OAuth application client ID */
-  gitlabClientId: z.string().min(1, "GITLAB_OAUTH_CLIENT_ID is required"),
+  gitlabClientId: z.string().min(1, 'GITLAB_OAUTH_CLIENT_ID is required'),
   /** GitLab OAuth application client secret (optional, for confidential apps) */
   gitlabClientSecret: z.string().optional(),
   /** OAuth scopes to request from GitLab */
-  gitlabScopes: z.string().default("api,read_user"),
+  gitlabScopes: z.string().default('api,read_user'),
   /** MCP access token TTL in seconds */
   tokenTtl: z.number().positive().default(3600),
   /** MCP refresh token TTL in seconds */
@@ -58,7 +58,7 @@ export function loadOAuthConfig(): OAuthConfig | null {
   }
 
   // Check if OAuth mode is enabled
-  if (process.env.OAUTH_ENABLED !== "true") {
+  if (process.env.OAUTH_ENABLED !== 'true') {
     cachedOAuthConfig = null;
     logDebug("OAuth mode disabled (OAUTH_ENABLED !== 'true')");
     return null;
@@ -70,22 +70,22 @@ export function loadOAuthConfig(): OAuthConfig | null {
     sessionSecret: process.env.OAUTH_SESSION_SECRET,
     gitlabClientId: process.env.GITLAB_OAUTH_CLIENT_ID,
     gitlabClientSecret: process.env.GITLAB_OAUTH_CLIENT_SECRET,
-    gitlabScopes: process.env.GITLAB_OAUTH_SCOPES ?? "api,read_user",
-    tokenTtl: parseInt(process.env.OAUTH_TOKEN_TTL ?? "3600", 10),
-    refreshTokenTtl: parseInt(process.env.OAUTH_REFRESH_TOKEN_TTL ?? "604800", 10),
-    devicePollInterval: parseInt(process.env.OAUTH_DEVICE_POLL_INTERVAL ?? "5", 10),
-    deviceTimeout: parseInt(process.env.OAUTH_DEVICE_TIMEOUT ?? "300", 10),
+    gitlabScopes: process.env.GITLAB_OAUTH_SCOPES ?? 'api,read_user',
+    tokenTtl: parseInt(process.env.OAUTH_TOKEN_TTL ?? '3600', 10),
+    refreshTokenTtl: parseInt(process.env.OAUTH_REFRESH_TOKEN_TTL ?? '604800', 10),
+    devicePollInterval: parseInt(process.env.OAUTH_DEVICE_POLL_INTERVAL ?? '5', 10),
+    deviceTimeout: parseInt(process.env.OAUTH_DEVICE_TIMEOUT ?? '300', 10),
   });
 
   if (!result.success) {
     const errorMessages = result.error.issues
-      .map(e => `${e.path.join(".")}: ${e.message}`)
-      .join(", ");
+      .map((e) => `${e.path.join('.')}: ${e.message}`)
+      .join(', ');
     throw new Error(`Invalid OAuth configuration: ${errorMessages}`);
   }
 
   cachedOAuthConfig = result.data;
-  logInfo("OAuth mode enabled with valid configuration");
+  logInfo('OAuth mode enabled with valid configuration');
   return result.data;
 }
 
@@ -98,8 +98,8 @@ export class ConfigurationError extends Error {
   public readonly guidance: string;
 
   constructor(guidance: string) {
-    super("Missing required configuration");
-    this.name = "ConfigurationError";
+    super('Missing required configuration');
+    this.name = 'ConfigurationError';
     this.guidance = guidance;
   }
 }
@@ -134,7 +134,7 @@ export function validateStaticConfig(): void {
   if (!process.env.GITLAB_TOKEN) {
     throw new ConfigurationError(MISSING_TOKEN_GUIDANCE);
   }
-  logDebug("Static token mode: GITLAB_TOKEN configured");
+  logDebug('Static token mode: GITLAB_TOKEN configured');
 }
 
 /**
@@ -160,12 +160,12 @@ export function resetOAuthConfigCache(): void {
  */
 export function getAuthModeDescription(): string {
   if (isOAuthEnabled()) {
-    return "OAuth mode (per-user authentication via GitLab Device Flow)";
+    return 'OAuth mode (per-user authentication via GitLab Device Flow)';
   }
   if (process.env.GITLAB_TOKEN) {
-    return "Static token mode (shared GITLAB_TOKEN)";
+    return 'Static token mode (shared GITLAB_TOKEN)';
   }
-  return "Unauthenticated mode (tools/list only, tool calls require GITLAB_TOKEN)";
+  return 'Unauthenticated mode (tools/list only, tool calls require GITLAB_TOKEN)';
 }
 
 /**

@@ -6,10 +6,10 @@
  * - JSON metrics when Accept header is application/json
  */
 
-import { Request, Response } from "express";
-import { collectMetrics, DashboardMetrics } from "./metrics.js";
-import { renderDashboard } from "./html-template.js";
-import { logDebug, logError } from "../logger.js";
+import { Request, Response } from 'express';
+import { collectMetrics, DashboardMetrics } from './metrics.js';
+import { renderDashboard } from './html-template.js';
+import { logDebug, logError } from '../logger.js';
 
 // Determine if request prefers HTML response
 //
@@ -21,15 +21,15 @@ import { logDebug, logError } from "../logger.js";
 // Returns false for:
 // - Accept: application/json
 function prefersHtml(req: Request): boolean {
-  const accept = req.headers.accept ?? "*/*";
+  const accept = req.headers.accept ?? '*/*';
 
   // Explicit JSON request
-  if (accept.includes("application/json") && !accept.includes("text/html")) {
+  if (accept.includes('application/json') && !accept.includes('text/html')) {
     return false;
   }
 
   // HTML or wildcard (browser default)
-  return accept.includes("text/html") || accept.includes("*/*");
+  return accept.includes('text/html') || accept.includes('*/*');
 }
 
 /**
@@ -45,19 +45,19 @@ export function dashboardHandler(req: Request, res: Response): void {
   try {
     const metrics = collectMetrics();
 
-    logDebug("Dashboard request", {
+    logDebug('Dashboard request', {
       accept: req.headers.accept,
       prefersHtml: prefersHtml(req),
     });
 
     if (prefersHtml(req)) {
-      res.type("text/html").send(renderDashboard(metrics));
+      res.type('text/html').send(renderDashboard(metrics));
     } else {
       res.json(metrics);
     }
   } catch (error) {
-    logError("Dashboard error", { err: error });
-    res.status(500).json({ error: "Failed to generate dashboard" });
+    logError('Dashboard error', { err: error });
+    res.status(500).json({ error: 'Failed to generate dashboard' });
   }
 }
 

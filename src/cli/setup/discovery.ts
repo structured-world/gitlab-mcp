@@ -3,11 +3,11 @@
  * Discovers installed MCP clients, Docker environment, and existing configurations.
  */
 
-import { detectAllClients } from "../install/detector";
-import { DiscoveryResult } from "./types";
-import { DockerStatusResult } from "../docker/types";
-import { getContainerRuntime } from "../docker/container-runtime";
-import { getContainerInfo } from "../docker/docker-utils";
+import { detectAllClients } from '../install/detector';
+import { DiscoveryResult } from './types';
+import { DockerStatusResult } from '../docker/types';
+import { getContainerRuntime } from '../docker/container-runtime';
+import { getContainerInfo } from '../docker/docker-utils';
 
 /**
  * Detect container runtime environment status.
@@ -33,9 +33,9 @@ function detectDocker(): DockerStatusResult {
 export function runDiscovery(): DiscoveryResult {
   // Detect MCP clients
   const allClients = detectAllClients();
-  const detected = allClients.filter(r => r.detected);
-  const configured = allClients.filter(r => r.alreadyConfigured);
-  const unconfigured = detected.filter(r => !r.alreadyConfigured);
+  const detected = allClients.filter((r) => r.detected);
+  const configured = allClients.filter((r) => r.alreadyConfigured);
+  const unconfigured = detected.filter((r) => !r.alreadyConfigured);
 
   // Detect Docker environment
   const docker = detectDocker();
@@ -68,14 +68,14 @@ export function formatDiscoverySummary(result: DiscoveryResult): string {
 
   if (result.summary.clientCount > 0) {
     const clientNames = result.clients.detected
-      .map(c => {
-        const configured = result.clients.configured.some(cc => cc.client === c.client);
+      .map((c) => {
+        const configured = result.clients.configured.some((cc) => cc.client === c.client);
         return configured ? `${c.client} ✓` : c.client;
       })
-      .join(", ");
+      .join(', ');
     parts.push(`Clients: ${clientNames}`);
   } else {
-    parts.push("No MCP clients detected");
+    parts.push('No MCP clients detected');
   }
 
   if (result.summary.configuredCount > 0) {
@@ -83,14 +83,14 @@ export function formatDiscoverySummary(result: DiscoveryResult): string {
   }
 
   if (result.docker.dockerInstalled) {
-    const runtimeLabel = result.docker.runtime?.runtime === "podman" ? "Podman" : "Docker";
+    const runtimeLabel = result.docker.runtime?.runtime === 'podman' ? 'Podman' : 'Docker';
     if (result.docker.container) {
-      const status = result.docker.container.status === "running" ? "running" : "stopped";
+      const status = result.docker.container.status === 'running' ? 'running' : 'stopped';
       parts.push(`${runtimeLabel}: container ${status}`);
     } else {
       parts.push(`${runtimeLabel}: installed, no container`);
     }
   }
 
-  return parts.join(" | ");
+  return parts.join(' | ');
 }

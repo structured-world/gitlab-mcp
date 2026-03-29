@@ -12,26 +12,26 @@
  * 5. Server returns authorization code for token exchange
  */
 
-import { Request, Response } from "express";
-import { loadOAuthConfig } from "../config";
-import { sessionStore } from "../session-store";
+import { Request, Response } from 'express';
+import { loadOAuthConfig } from '../config';
+import { sessionStore } from '../session-store';
 import {
   initiateDeviceFlow,
   pollDeviceFlowOnce,
   getGitLabUser,
   buildGitLabAuthUrl,
-} from "../gitlab-device-flow";
+} from '../gitlab-device-flow';
 import {
   generateRandomString,
   generateSessionId,
   generateAuthorizationCode,
   calculateTokenExpiry,
-} from "../token-utils";
-import { getBaseUrl } from "./metadata";
-import { GITLAB_BASE_URL } from "../../config";
-import { logInfo, logWarn, logError, truncateId } from "../../logger";
-import { DeviceFlowPollResponse, OAuthErrorResponse } from "../types";
-import { getIpAddress } from "../../utils/request-logger";
+} from '../token-utils';
+import { getBaseUrl } from './metadata';
+import { GITLAB_BASE_URL } from '../../config';
+import { logInfo, logWarn, logError, truncateId } from '../../logger';
+import { DeviceFlowPollResponse, OAuthErrorResponse } from '../types';
+import { getIpAddress } from '../../utils/request-logger';
 
 /**
  * Authorization endpoint handler
@@ -65,7 +65,7 @@ import { getIpAddress } from "../../utils/request-logger";
 export async function authorizeHandler(req: Request, res: Response): Promise<void> {
   const config = loadOAuthConfig();
   if (!config) {
-    sendError(req, res, 500, "server_error", "OAuth not configured");
+    sendError(req, res, 500, 'server_error', 'OAuth not configured');
     return;
   }
 
@@ -74,24 +74,24 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     req.query as Record<string, string | undefined>;
 
   // Validate required parameters
-  if (response_type !== "code") {
-    sendError(req, res, 400, "unsupported_response_type", 'Only "code" response type is supported');
+  if (response_type !== 'code') {
+    sendError(req, res, 400, 'unsupported_response_type', 'Only "code" response type is supported');
     return;
   }
 
   if (!client_id) {
-    sendError(req, res, 400, "invalid_request", "client_id is required");
+    sendError(req, res, 400, 'invalid_request', 'client_id is required');
     return;
   }
 
   // PKCE is required for OAuth 2.1
   if (!code_challenge) {
-    sendError(req, res, 400, "invalid_request", "code_challenge is required (PKCE)");
+    sendError(req, res, 400, 'invalid_request', 'code_challenge is required (PKCE)');
     return;
   }
 
-  if (code_challenge_method !== "S256") {
-    sendError(req, res, 400, "invalid_request", 'code_challenge_method must be "S256"');
+  if (code_challenge_method !== 'S256') {
+    sendError(req, res, 400, 'invalid_request', 'code_challenge_method must be "S256"');
     return;
   }
 
@@ -101,7 +101,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     await handleAuthorizationCodeFlow(req, res, config, {
       clientId: client_id,
       redirectUri: redirect_uri,
-      state: state ?? "",
+      state: state ?? '',
       codeChallenge: code_challenge,
       codeChallengeMethod: code_challenge_method,
     });
@@ -109,7 +109,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     // Device Flow - show HTML page
     await handleDeviceFlow(req, res, config, {
       clientId: client_id,
-      state: state ?? "",
+      state: state ?? '',
       codeChallenge: code_challenge,
       codeChallengeMethod: code_challenge_method,
     });
@@ -132,7 +132,7 @@ async function handleAuthorizationCodeFlow(
     state: string;
     codeChallenge: string;
     codeChallengeMethod: string;
-  }
+  },
 ): Promise<void> {
   const baseUrl = getBaseUrl(req);
   const callbackUri = `${baseUrl}/oauth/callback`;
@@ -155,7 +155,7 @@ async function handleAuthorizationCodeFlow(
   // Build GitLab authorization URL
   const gitlabAuthUrl = buildGitLabAuthUrl(config, callbackUri, internalState);
 
-  logInfo("Authorization Code Flow initiated, redirecting to GitLab", {
+  logInfo('Authorization Code Flow initiated, redirecting to GitLab', {
     internalState: truncateId(internalState),
     clientRedirectUri: params.redirectUri,
   });
@@ -178,7 +178,7 @@ async function handleDeviceFlow(
     state: string;
     codeChallenge: string;
     codeChallengeMethod: string;
-  }
+  },
 ): Promise<void> {
   try {
     // Initiate GitLab device flow
@@ -202,7 +202,7 @@ async function handleDeviceFlow(
       redirectUri: undefined,
     });
 
-    logInfo("Device flow initiated for authorization", {
+    logInfo('Device flow initiated for authorization', {
       flowState: truncateId(flowState),
       userCode: deviceResponse.user_code,
     });
@@ -218,11 +218,11 @@ async function handleDeviceFlow(
       expiresIn: deviceResponse.expires_in,
     });
 
-    res.setHeader("Content-Type", "text/html");
+    res.setHeader('Content-Type', 'text/html');
     res.send(html);
   } catch (error: unknown) {
-    logError("Failed to initiate device flow", { err: error as Error });
-    sendError(req, res, 500, "server_error", "Failed to initiate authentication");
+    logError('Failed to initiate device flow', { err: error as Error });
+    sendError(req, res, 500, 'server_error', 'Failed to initiate authentication');
   }
 }
 
@@ -238,7 +238,7 @@ async function handleDeviceFlow(
 export async function pollHandler(req: Request, res: Response): Promise<void> {
   const config = loadOAuthConfig();
   if (!config) {
-    res.status(500).json({ error: "server_error" } as DeviceFlowPollResponse);
+    res.status(500).json({ error: 'server_error' } as DeviceFlowPollResponse);
     return;
   }
 
@@ -247,14 +247,14 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
   if (!flow_state) {
     res
       .status(400)
-      .json({ status: "failed", error: "Missing flow_state" } as DeviceFlowPollResponse);
+      .json({ status: 'failed', error: 'Missing flow_state' } as DeviceFlowPollResponse);
     return;
   }
 
   const flow = sessionStore.getDeviceFlow(flow_state);
 
   if (!flow) {
-    res.status(400).json({ status: "expired", error: "Flow not found" } as DeviceFlowPollResponse);
+    res.status(400).json({ status: 'expired', error: 'Flow not found' } as DeviceFlowPollResponse);
     return;
   }
 
@@ -263,7 +263,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
     sessionStore.deleteDeviceFlow(flow_state);
     res
       .status(400)
-      .json({ status: "expired", error: "Device code expired" } as DeviceFlowPollResponse);
+      .json({ status: 'expired', error: 'Device code expired' } as DeviceFlowPollResponse);
     return;
   }
 
@@ -296,8 +296,8 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
       // MCP tokens will be set when the authorization code is exchanged
       sessionStore.createSession({
         id: sessionId,
-        mcpAccessToken: "", // Set on /token
-        mcpRefreshToken: "", // Set on /token
+        mcpAccessToken: '', // Set on /token
+        mcpRefreshToken: '', // Set on /token
         mcpTokenExpiry: 0, // Set on /token
         gitlabAccessToken: tokenResponse.access_token,
         gitlabRefreshToken: tokenResponse.refresh_token,
@@ -307,7 +307,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
         gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,
         instanceLabel: flow.selectedInstanceLabel,
         clientId: flow.clientId,
-        scopes: ["mcp:tools", "mcp:resources"],
+        scopes: ['mcp:tools', 'mcp:resources'],
         createdAt: now,
         updatedAt: now,
       });
@@ -315,7 +315,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
       // Clean up device flow
       sessionStore.deleteDeviceFlow(flow_state);
 
-      logInfo("Device flow authorization completed", {
+      logInfo('Device flow authorization completed', {
         sessionId: truncateId(sessionId),
         userId: userInfo.id,
         username: userInfo.username,
@@ -323,7 +323,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
 
       // Return success with redirect info
       const response: DeviceFlowPollResponse = {
-        status: "complete",
+        status: 'complete',
         redirect_uri: flow.redirectUri,
         code: authCode,
         state: flow.state ? flow.state : undefined,
@@ -332,19 +332,19 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
       res.json(response);
     } else {
       // Still pending
-      res.json({ status: "pending" } as DeviceFlowPollResponse);
+      res.json({ status: 'pending' } as DeviceFlowPollResponse);
     }
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Unknown error";
+    const message = error instanceof Error ? error.message : 'Unknown error';
 
     // Check for terminal errors
-    if (message.includes("expired") || message.includes("denied") || message.includes("invalid")) {
+    if (message.includes('expired') || message.includes('denied') || message.includes('invalid')) {
       sessionStore.deleteDeviceFlow(flow_state);
-      res.json({ status: "failed", error: message } as DeviceFlowPollResponse);
+      res.json({ status: 'failed', error: message } as DeviceFlowPollResponse);
     } else {
       // Transient error - report as pending
-      logWarn("Device flow poll error", { err: error as Error });
-      res.json({ status: "pending" } as DeviceFlowPollResponse);
+      logWarn('Device flow poll error', { err: error as Error });
+      res.json({ status: 'pending' } as DeviceFlowPollResponse);
     }
   }
 }
@@ -371,12 +371,12 @@ function sendError(
   res: Response,
   status: number,
   error: string,
-  description: string
+  description: string,
 ): void {
   // Log OAuth error with structured context
-  logWarn("OAuth authorize request failed", {
-    event: "oauth_error",
-    endpoint: "/authorize",
+  logWarn('OAuth authorize request failed', {
+    event: 'oauth_error',
+    endpoint: '/authorize',
     ip: getIpAddress(req),
     error,
     description,

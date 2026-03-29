@@ -15,7 +15,7 @@ export {
   parseInstanceUrlString,
   validateInstancesConfig,
   applyInstanceDefaults,
-} from "./instances-schema.js";
+} from './instances-schema.js';
 export type {
   InstanceOAuthConfig,
   InstanceRateLimitConfig,
@@ -25,7 +25,7 @@ export type {
   ConnectionStatus,
   GitLabInstanceState,
   CachedIntrospection,
-} from "./instances-schema.js";
+} from './instances-schema.js';
 
 // Instance configuration loader
 export {
@@ -33,5 +33,5 @@ export {
   getInstanceByUrl,
   isKnownInstance,
   generateSampleConfig,
-} from "./instances-loader.js";
-export type { LoadedInstancesConfig } from "./instances-loader.js";
+} from './instances-loader.js';
+export type { LoadedInstancesConfig } from './instances-loader.js';

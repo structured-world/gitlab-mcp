@@ -11,8 +11,8 @@
  * - Configurable timeout handling
  */
 
-import * as fs from "fs";
-import { logInfo, logWarn, logDebug } from "../logger";
+import * as fs from 'fs';
+import { logInfo, logWarn, logDebug } from '../logger';
 import {
   SKIP_TLS_VERIFY,
   GITLAB_AUTH_COOKIE_PATH,
@@ -29,13 +29,13 @@ import {
   API_RETRY_MAX_ATTEMPTS,
   API_RETRY_BASE_DELAY_MS,
   API_RETRY_MAX_DELAY_MS,
-} from "../config";
-import { isOAuthEnabled, getTokenContext, getGitLabApiUrlFromContext } from "../oauth/index";
-import { getRequestTracker } from "../logging/index";
-import { InstanceRegistry } from "../services/InstanceRegistry.js";
+} from '../config';
+import { isOAuthEnabled, getTokenContext, getGitLabApiUrlFromContext } from '../oauth/index';
+import { getRequestTracker } from '../logging/index';
+import { InstanceRegistry } from '../services/InstanceRegistry.js';
 
 // Dynamic require to avoid TypeScript analyzing complex undici types at compile time
-const undici = require("undici") as {
+const undici = require('undici') as {
   Agent: new (opts?: Record<string, unknown>) => unknown;
   ProxyAgent: new (opts: string | Record<string, unknown>) => unknown;
 };
@@ -49,13 +49,13 @@ function loadCookieHeader(): string | null {
   }
 
   try {
-    const cookieString = fs.readFileSync(GITLAB_AUTH_COOKIE_PATH, "utf-8");
+    const cookieString = fs.readFileSync(GITLAB_AUTH_COOKIE_PATH, 'utf-8');
     const cookies: string[] = [];
 
-    cookieString.split("\n").forEach(line => {
+    cookieString.split('\n').forEach((line) => {
       const trimmed = line.trim();
-      if (trimmed && !trimmed.startsWith("#")) {
-        const parts = trimmed.split("\t");
+      if (trimmed && !trimmed.startsWith('#')) {
+        const parts = trimmed.split('\t');
         if (parts.length >= 7) {
           const name = parts[5];
           const value = parts[6];
@@ -64,9 +64,9 @@ function loadCookieHeader(): string | null {
       }
     });
 
-    return cookies.length > 0 ? cookies.join("; ") : null;
+    return cookies.length > 0 ? cookies.join('; ') : null;
   } catch (error: unknown) {
-    logWarn("Failed to load GitLab authentication cookies", { err: error });
+    logWarn('Failed to load GitLab authentication cookies', { err: error });
     return null;
   }
 }
@@ -93,7 +93,7 @@ function loadCACertificate(): Buffer | undefined {
  * Check if URL is a SOCKS proxy
  */
 function isSocksProxy(url: string): boolean {
-  return url.startsWith("socks4://") || url.startsWith("socks5://") || url.startsWith("socks://");
+  return url.startsWith('socks4://') || url.startsWith('socks5://') || url.startsWith('socks://');
 }
 
 /**
@@ -124,13 +124,13 @@ function createDispatcher(): unknown {
   // This is controlled by explicit environment variables (SKIP_TLS_VERIFY or
   // NODE_TLS_REJECT_UNAUTHORIZED=0) and is NOT enabled by default.
   // Users must consciously configure this for their private infrastructure.
-  if (SKIP_TLS_VERIFY || NODE_TLS_REJECT_UNAUTHORIZED === "0") {
+  if (SKIP_TLS_VERIFY || NODE_TLS_REJECT_UNAUTHORIZED === '0') {
     tlsOptions.rejectUnauthorized = false;
     if (SKIP_TLS_VERIFY) {
-      logWarn("TLS certificate verification disabled via SKIP_TLS_VERIFY");
+      logWarn('TLS certificate verification disabled via SKIP_TLS_VERIFY');
     }
-    if (NODE_TLS_REJECT_UNAUTHORIZED === "0") {
-      logWarn("TLS certificate verification disabled via NODE_TLS_REJECT_UNAUTHORIZED");
+    if (NODE_TLS_REJECT_UNAUTHORIZED === '0') {
+      logWarn('TLS certificate verification disabled via NODE_TLS_REJECT_UNAUTHORIZED');
     }
   }
 
@@ -144,7 +144,7 @@ function createDispatcher(): unknown {
   // SOCKS proxy not supported with native fetch
   if (proxyUrl && isSocksProxy(proxyUrl)) {
     logInfo(`Using SOCKS proxy: ${proxyUrl}`);
-    logWarn("SOCKS proxy not supported with native fetch. Consider HTTP/HTTPS proxy.");
+    logWarn('SOCKS proxy not supported with native fetch. Consider HTTP/HTTPS proxy.');
     return undefined;
   }
 
@@ -193,20 +193,20 @@ function getDispatcher(): unknown {
  * Base HTTP headers
  */
 export const DEFAULT_HEADERS: Record<string, string> = {
-  "User-Agent": "GitLab MCP Server",
-  "Content-Type": "application/json",
-  Accept: "application/json",
+  'User-Agent': 'GitLab MCP Server',
+  'Content-Type': 'application/json',
+  Accept: 'application/json',
 };
 
 function getGitLabToken(): string | undefined {
   if (isOAuthEnabled()) {
     const context = getTokenContext();
     if (!context) {
-      logWarn("OAuth mode: no token context available - API call will fail with 401");
+      logWarn('OAuth mode: no token context available - API call will fail with 401');
     } else if (!context.gitlabToken) {
-      logWarn("OAuth mode: token context exists but no gitlabToken set");
+      logWarn('OAuth mode: token context exists but no gitlabToken set');
     } else {
-      logDebug("OAuth mode: using token from context", { userId: context.gitlabUserId });
+      logDebug('OAuth mode: using token from context', { userId: context.gitlabUserId });
     }
     return context?.gitlabToken;
   }
@@ -226,9 +226,9 @@ export function getGitLabBaseUrl(): string {
     if (apiUrl) {
       return apiUrl;
     }
-    logWarn("OAuth mode: no API URL in context, falling back to global config");
+    logWarn('OAuth mode: no API URL in context, falling back to global config');
   }
-  return GITLAB_BASE_URL ?? "https://gitlab.com";
+  return GITLAB_BASE_URL ?? 'https://gitlab.com';
 }
 
 /**
@@ -245,7 +245,7 @@ export function getAuthHeaders(): Record<string, string> {
   }
 
   // PAT mode: use GitLab's canonical PRIVATE-TOKEN header
-  return { "PRIVATE-TOKEN": token };
+  return { 'PRIVATE-TOKEN': token };
 }
 
 /** @deprecated Use enhancedFetch() directly */
@@ -286,15 +286,15 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
 
       // If reason is already an Error, ensure it's identifiable as AbortError
       if (reason instanceof Error) {
-        if (reason.name !== "AbortError") {
-          reason.name = "AbortError";
+        if (reason.name !== 'AbortError') {
+          reason.name = 'AbortError';
         }
         return reason;
       }
 
       // For non-Error reasons, create DOMException with AbortError name
-      const message = reason !== undefined ? String(reason) : "Aborted";
-      return new DOMException(message, "AbortError");
+      const message = reason !== undefined ? String(reason) : 'Aborted';
+      return new DOMException(message, 'AbortError');
     };
 
     if (signal?.aborted) {
@@ -307,7 +307,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
     const timeoutId = setTimeout(() => {
       // Clean up abort listener on normal completion
       if (abortHandler) {
-        signal?.removeEventListener("abort", abortHandler);
+        signal?.removeEventListener('abort', abortHandler);
       }
       resolve();
     }, ms);
@@ -317,7 +317,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
         clearTimeout(timeoutId);
         reject(getAbortError());
       };
-      signal.addEventListener("abort", abortHandler, { once: true });
+      signal.addEventListener('abort', abortHandler, { once: true });
     }
   });
 }
@@ -331,31 +331,31 @@ function redactUrlForLogging(url: string): string {
     const parsed = new URL(url);
 
     // Redact URL userinfo (user:pass@host)
-    if (parsed.username) parsed.username = "[REDACTED]";
-    if (parsed.password) parsed.password = "[REDACTED]";
+    if (parsed.username) parsed.username = '[REDACTED]';
+    if (parsed.password) parsed.password = '[REDACTED]';
 
     // Redact upload secrets in path: /uploads/<secret>/<filename> -> /uploads/[REDACTED]/<filename>
     // Secret can be any string (not just hex), so match any path segment after /uploads/
-    parsed.pathname = parsed.pathname.replace(/\/uploads\/([^/]+)\//gi, "/uploads/[REDACTED]/");
+    parsed.pathname = parsed.pathname.replace(/\/uploads\/([^/]+)\//gi, '/uploads/[REDACTED]/');
 
     // Redact any path segment that looks like a secret/token (32+ hex chars)
     // Match both mid-path (/token/) and end-of-path (/token) tokens
-    parsed.pathname = parsed.pathname.replace(/\/([a-f0-9]{32,})(\/|$)/gi, "/[REDACTED]$2");
+    parsed.pathname = parsed.pathname.replace(/\/([a-f0-9]{32,})(\/|$)/gi, '/[REDACTED]$2');
 
     // Redact sensitive query parameters
     const sensitiveParams = [
-      "private_token",
-      "access_token",
-      "oauth_token",
-      "token",
-      "secret",
-      "key",
-      "password",
-      "auth",
+      'private_token',
+      'access_token',
+      'oauth_token',
+      'token',
+      'secret',
+      'key',
+      'password',
+      'auth',
     ];
     for (const param of sensitiveParams) {
       if (parsed.searchParams.has(param)) {
-        parsed.searchParams.set(param, "[REDACTED]");
+        parsed.searchParams.set(param, '[REDACTED]');
       }
     }
 
@@ -364,15 +364,15 @@ function redactUrlForLogging(url: string): string {
     // If URL parsing fails, return a safe fallback
     // Extract only scheme and host, excluding any userinfo (user:pass@)
     const schemeMatch = url.match(/^(https?):\/\//);
-    if (!schemeMatch) return "[INVALID_URL]";
+    if (!schemeMatch) return '[INVALID_URL]';
 
     // Remove userinfo if present and extract host
     const afterScheme = url.slice(schemeMatch[0].length);
-    const atIndex = afterScheme.indexOf("@");
+    const atIndex = afterScheme.indexOf('@');
     const hostPart = atIndex >= 0 ? afterScheme.slice(atIndex + 1) : afterScheme;
     const hostMatch = hostPart.match(/^([^/:]+)/);
 
-    return hostMatch ? `${schemeMatch[1]}://[REDACTED_HOST]/[URL_PARSE_ERROR]` : "[INVALID_URL]";
+    return hostMatch ? `${schemeMatch[1]}://[REDACTED_HOST]/[URL_PARSE_ERROR]` : '[INVALID_URL]';
   }
 }
 
@@ -388,22 +388,22 @@ function isRetryableError(error: unknown): boolean {
 
   // Caller-initiated AbortErrors are NOT retryable
   // (doFetch converts internal timeouts to "GitLab API timeout" message)
-  if (error.name === "AbortError") {
+  if (error.name === 'AbortError') {
     return false;
   }
 
   // Internal timeout errors (converted by doFetch) are retryable
-  if (message.includes("gitlab api timeout")) {
+  if (message.includes('gitlab api timeout')) {
     return true;
   }
 
   // Network errors (fetch failures) are retryable
   if (
-    message.includes("econnrefused") ||
-    message.includes("econnreset") ||
-    message.includes("etimedout") ||
-    message.includes("enotfound") ||
-    message.includes("network")
+    message.includes('econnrefused') ||
+    message.includes('econnreset') ||
+    message.includes('etimedout') ||
+    message.includes('enotfound') ||
+    message.includes('network')
   ) {
     return true;
   }
@@ -466,7 +466,7 @@ function parseRetryAfter(retryAfter: string): number | null {
 async function doFetch(
   url: string,
   options: RequestInit = {},
-  instanceDispatcher?: unknown
+  instanceDispatcher?: unknown,
 ): Promise<Response> {
   // Use per-instance dispatcher if provided, otherwise fall back to global
   const dispatcher = instanceDispatcher ?? getDispatcher();
@@ -475,7 +475,7 @@ async function doFetch(
   // For FormData, don't set Content-Type - let fetch set it with proper boundary
   const isFormData = options.body instanceof FormData;
   const baseHeaders = isFormData
-    ? { "User-Agent": DEFAULT_HEADERS["User-Agent"], Accept: DEFAULT_HEADERS.Accept }
+    ? { 'User-Agent': DEFAULT_HEADERS['User-Agent'], Accept: DEFAULT_HEADERS.Accept }
     : { ...DEFAULT_HEADERS };
 
   const headers: Record<string, string> = { ...baseHeaders, ...getAuthHeaders() };
@@ -498,11 +498,11 @@ async function doFetch(
     headers.Cookie = cookieHeader;
   }
 
-  const method = (options.method ?? "GET").toUpperCase();
+  const method = (options.method ?? 'GET').toUpperCase();
 
   // Debug log at request start (redact sensitive URL parts)
   const safeUrl = redactUrlForLogging(url);
-  logDebug("Starting GitLab API request", { url: safeUrl, method });
+  logDebug('Starting GitLab API request', { url: safeUrl, method });
 
   // No manual AbortController timeout — Undici handles connect/headers/body timeouts natively.
   // Only pass through caller-provided signal for external abort support.
@@ -523,7 +523,7 @@ async function doFetch(
     const response = await fetch(url, fetchOptions as RequestInit);
 
     const duration = Date.now() - startTime;
-    logDebug("GitLab API request completed", {
+    logDebug('GitLab API request completed', {
       url: safeUrl,
       method,
       status: response.status,
@@ -538,8 +538,8 @@ async function doFetch(
     const duration = Date.now() - startTime;
 
     // Caller-initiated AbortError — re-throw as-is
-    if (error instanceof Error && error.name === "AbortError") {
-      logDebug("GitLab API request aborted by caller", {
+    if (error instanceof Error && error.name === 'AbortError') {
+      logDebug('GitLab API request aborted by caller', {
         url: safeUrl,
         method,
         duration,
@@ -551,41 +551,41 @@ async function doFetch(
     // Undici throws HeadersTimeoutError, BodyTimeoutError, ConnectTimeoutError
     // with corresponding class names and messages.
     if (error instanceof Error) {
-      const errName = error.constructor?.name ?? "";
+      const errName = error.constructor?.name ?? '';
       const msg = error.message.toLowerCase();
 
-      if (errName === "HeadersTimeoutError" || msg.includes("headers timeout")) {
-        logWarn("GitLab API headers timeout", {
+      if (errName === 'HeadersTimeoutError' || msg.includes('headers timeout')) {
+        logWarn('GitLab API headers timeout', {
           url: safeUrl,
           method,
           timeout: HEADERS_TIMEOUT_MS,
           duration,
         });
-        requestTracker.setGitLabResponseForCurrentRequest("timeout", duration);
+        requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
         throw new Error(`GitLab API timeout after ${HEADERS_TIMEOUT_MS}ms (headers phase)`, {
           cause: error,
         });
       }
-      if (errName === "BodyTimeoutError" || msg.includes("body timeout")) {
-        logWarn("GitLab API body timeout", {
+      if (errName === 'BodyTimeoutError' || msg.includes('body timeout')) {
+        logWarn('GitLab API body timeout', {
           url: safeUrl,
           method,
           timeout: BODY_TIMEOUT_MS,
           duration,
         });
-        requestTracker.setGitLabResponseForCurrentRequest("timeout", duration);
+        requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
         throw new Error(`GitLab API timeout after ${BODY_TIMEOUT_MS}ms (body phase)`, {
           cause: error,
         });
       }
-      if (errName === "ConnectTimeoutError" || msg.includes("connect timeout")) {
-        logWarn("GitLab API connect timeout", {
+      if (errName === 'ConnectTimeoutError' || msg.includes('connect timeout')) {
+        logWarn('GitLab API connect timeout', {
           url: safeUrl,
           method,
           timeout: CONNECT_TIMEOUT_MS,
           duration,
         });
-        requestTracker.setGitLabResponseForCurrentRequest("timeout", duration);
+        requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
         throw new Error(`GitLab API timeout after ${CONNECT_TIMEOUT_MS}ms (connect phase)`, {
           cause: error,
         });
@@ -593,7 +593,7 @@ async function doFetch(
     }
 
     // Log other errors with full error object for stack trace
-    logWarn("GitLab API request failed", {
+    logWarn('GitLab API request failed', {
       url: safeUrl,
       method,
       err: error instanceof Error ? error : new Error(String(error)),
@@ -601,7 +601,7 @@ async function doFetch(
     });
 
     // Capture error for access logging
-    requestTracker.setGitLabResponseForCurrentRequest("error", duration);
+    requestTracker.setGitLabResponseForCurrentRequest('error', duration);
 
     throw error;
   }
@@ -621,7 +621,7 @@ export function extractBaseUrl(url: string): string | undefined {
   try {
     const parsed = new URL(url);
 
-    let basePath = parsed.pathname || "/";
+    let basePath = parsed.pathname || '/';
 
     // Strip known GitLab API suffixes while preserving any leading subpath.
     // Handles suffix in MIDDLE of path (e.g., /gitlab/api/v4/projects → /gitlab).
@@ -632,7 +632,7 @@ export function extractBaseUrl(url: string): string | undefined {
     //
     // Performance: O(n*m) where n=path length, m=2 suffixes. Acceptable for
     // short paths (~100 chars), runs once per request. Correctness > speed.
-    const apiSuffixes = ["/api/v4", "/api/graphql"];
+    const apiSuffixes = ['/api/v4', '/api/graphql'];
     outerLoop: for (const suffix of apiSuffixes) {
       let searchPos = 0;
       while (searchPos < basePath.length) {
@@ -641,10 +641,10 @@ export function extractBaseUrl(url: string): string | undefined {
 
         // Verify the match is a complete segment (not partial like /api/v4foo)
         const afterSuffix = basePath.charAt(suffixIndex + suffix.length);
-        if (afterSuffix === "" || afterSuffix === "/") {
+        if (afterSuffix === '' || afterSuffix === '/') {
           // Found complete API suffix — immediately exit both loops via labeled break.
           // Inner while only continues for PARTIAL matches (e.g., /api/v4foo).
-          basePath = suffixIndex === 0 ? "/" : basePath.slice(0, suffixIndex);
+          basePath = suffixIndex === 0 ? '/' : basePath.slice(0, suffixIndex);
           break outerLoop;
         }
         // Continue searching after this partial match
@@ -653,15 +653,15 @@ export function extractBaseUrl(url: string): string | undefined {
     }
 
     // Normalize path: ensure leading slash and remove trailing slash (except root).
-    if (!basePath.startsWith("/")) {
+    if (!basePath.startsWith('/')) {
       basePath = `/${basePath}`;
     }
-    if (basePath.length > 1 && basePath.endsWith("/")) {
+    if (basePath.length > 1 && basePath.endsWith('/')) {
       basePath = basePath.slice(0, -1);
     }
 
     const origin = `${parsed.protocol}//${parsed.host}`;
-    return basePath === "/" ? origin : `${origin}${basePath}`;
+    return basePath === '/' ? origin : `${origin}${basePath}`;
   } catch {
     return undefined;
   }
@@ -699,10 +699,10 @@ export function extractBaseUrl(url: string): string | undefined {
  */
 export async function enhancedFetch(
   url: string,
-  options: FetchWithRetryOptions = {}
+  options: FetchWithRetryOptions = {},
 ): Promise<Response> {
-  const method = (options.method ?? "GET").toUpperCase();
-  const isIdempotent = method === "GET" || method === "HEAD" || method === "OPTIONS";
+  const method = (options.method ?? 'GET').toUpperCase();
+  const isIdempotent = method === 'GET' || method === 'HEAD' || method === 'OPTIONS';
   const safeUrl = redactUrlForLogging(url);
 
   // Determine if retry is enabled for this request
@@ -743,14 +743,14 @@ export async function enhancedFetch(
     // Log pool pressure when requests are queuing inside Undici
     if (
       instanceDispatcher &&
-      typeof instanceDispatcher === "object" &&
-      "stats" in instanceDispatcher
+      typeof instanceDispatcher === 'object' &&
+      'stats' in instanceDispatcher
     ) {
       const stats = (
         instanceDispatcher as { stats: { queued: number; running: number; size: number } }
       ).stats;
       if (stats.queued > 0) {
-        logWarn("Connection pool pressure: requests queuing", {
+        logWarn('Connection pool pressure: requests queuing', {
           queued: stats.queued,
           running: stats.running,
           size: stats.size,
@@ -788,7 +788,7 @@ export async function enhancedFetch(
         if (isRetryableStatus(response.status) && attempt < maxRetries) {
           // For 429, check Retry-After header (supports delta-seconds and HTTP-date)
           let retryDelay = calculateBackoffDelay(attempt);
-          const retryAfter = response.headers.get("Retry-After");
+          const retryAfter = response.headers.get('Retry-After');
           if (retryAfter && response.status === 429) {
             const parsedDelay = parseRetryAfter(retryAfter);
             if (parsedDelay !== null) {
@@ -797,7 +797,7 @@ export async function enhancedFetch(
             }
           }
 
-          logWarn("Retrying request after server error", {
+          logWarn('Retrying request after server error', {
             url: safeUrl,
             method,
             status: response.status,
@@ -826,7 +826,7 @@ export async function enhancedFetch(
         if (isRetryableError(error) && attempt < maxRetries) {
           const retryDelay = calculateBackoffDelay(attempt);
 
-          logWarn("Retrying request after error", {
+          logWarn('Retrying request after error', {
             url: safeUrl,
             method,
             error: lastError.message,
@@ -845,7 +845,7 @@ export async function enhancedFetch(
     }
 
     /* istanbul ignore next -- unreachable: loop always exits via return or throw */
-    throw lastError ?? new Error("Unexpected: retry loop exited without result");
+    throw lastError ?? new Error('Unexpected: retry loop exited without result');
   } finally {
     // Always release rate limit slot
     if (releaseSlot) {

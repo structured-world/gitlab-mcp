@@ -2,10 +2,10 @@
  * Unit tests for the unified setup wizard
  */
 
-import * as p from "@clack/prompts";
+import * as p from '@clack/prompts';
 
 // Mock @clack/prompts
-jest.mock("@clack/prompts", () => ({
+jest.mock('@clack/prompts', () => ({
   intro: jest.fn(),
   outro: jest.fn(),
   cancel: jest.fn(),
@@ -30,7 +30,7 @@ jest.mock("@clack/prompts", () => ({
 }));
 
 // Mock discovery
-jest.mock("../../../../src/cli/setup/discovery", () => ({
+jest.mock('../../../../src/cli/setup/discovery', () => ({
   runDiscovery: jest.fn().mockReturnValue({
     clients: { detected: [], configured: [], unconfigured: [] },
     docker: {
@@ -47,72 +47,72 @@ jest.mock("../../../../src/cli/setup/discovery", () => ({
       containerExists: false,
     },
   }),
-  formatDiscoverySummary: jest.fn().mockReturnValue("No MCP clients detected"),
+  formatDiscoverySummary: jest.fn().mockReturnValue('No MCP clients detected'),
 }));
 
 // Mock flows
-jest.mock("../../../../src/cli/setup/flows/local-setup", () => ({
-  runLocalSetupFlow: jest.fn().mockResolvedValue({ success: true, mode: "local" }),
+jest.mock('../../../../src/cli/setup/flows/local-setup', () => ({
+  runLocalSetupFlow: jest.fn().mockResolvedValue({ success: true, mode: 'local' }),
 }));
 
-jest.mock("../../../../src/cli/setup/flows/server-setup", () => ({
-  runServerSetupFlow: jest.fn().mockResolvedValue({ success: true, mode: "server" }),
+jest.mock('../../../../src/cli/setup/flows/server-setup', () => ({
+  runServerSetupFlow: jest.fn().mockResolvedValue({ success: true, mode: 'server' }),
 }));
 
-jest.mock("../../../../src/cli/setup/flows/configure-existing", () => ({
+jest.mock('../../../../src/cli/setup/flows/configure-existing', () => ({
   runConfigureExistingFlow: jest
     .fn()
-    .mockResolvedValue({ success: true, mode: "configure-existing" }),
+    .mockResolvedValue({ success: true, mode: 'configure-existing' }),
 }));
 
-import { runSetupWizard } from "../../../../src/cli/setup/wizard";
-import { runDiscovery } from "../../../../src/cli/setup/discovery";
-import { runLocalSetupFlow } from "../../../../src/cli/setup/flows/local-setup";
-import { runServerSetupFlow } from "../../../../src/cli/setup/flows/server-setup";
-import { runConfigureExistingFlow } from "../../../../src/cli/setup/flows/configure-existing";
+import { runSetupWizard } from '../../../../src/cli/setup/wizard';
+import { runDiscovery } from '../../../../src/cli/setup/discovery';
+import { runLocalSetupFlow } from '../../../../src/cli/setup/flows/local-setup';
+import { runServerSetupFlow } from '../../../../src/cli/setup/flows/server-setup';
+import { runConfigureExistingFlow } from '../../../../src/cli/setup/flows/configure-existing';
 
 const mockSelect = p.select as jest.MockedFunction<typeof p.select>;
 const mockRunDiscovery = runDiscovery as jest.MockedFunction<typeof runDiscovery>;
 
-describe("setup/wizard", () => {
+describe('setup/wizard', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     // Default: no existing setup, user selects "local"
-    mockSelect.mockResolvedValue("local");
+    mockSelect.mockResolvedValue('local');
   });
 
-  describe("runSetupWizard", () => {
-    it("should run discovery phase and display summary", async () => {
-      await runSetupWizard({ mode: "local" });
+  describe('runSetupWizard', () => {
+    it('should run discovery phase and display summary', async () => {
+      await runSetupWizard({ mode: 'local' });
 
       expect(runDiscovery).toHaveBeenCalled();
-      expect(p.intro).toHaveBeenCalledWith("GitLab MCP Setup Wizard");
+      expect(p.intro).toHaveBeenCalledWith('GitLab MCP Setup Wizard');
     });
 
-    it("should run local setup flow when mode is local", async () => {
-      await runSetupWizard({ mode: "local" });
+    it('should run local setup flow when mode is local', async () => {
+      await runSetupWizard({ mode: 'local' });
 
       expect(runLocalSetupFlow).toHaveBeenCalled();
       expect(runServerSetupFlow).not.toHaveBeenCalled();
       expect(runConfigureExistingFlow).not.toHaveBeenCalled();
     });
 
-    it("should run server setup flow when mode is server", async () => {
-      await runSetupWizard({ mode: "server" });
+    it('should run server setup flow when mode is server', async () => {
+      await runSetupWizard({ mode: 'server' });
 
       expect(runServerSetupFlow).toHaveBeenCalled();
       expect(runLocalSetupFlow).not.toHaveBeenCalled();
     });
 
-    it("should run configure-existing flow when mode is configure-existing", async () => {
-      await runSetupWizard({ mode: "configure-existing" });
+    it('should run configure-existing flow when mode is configure-existing', async () => {
+      await runSetupWizard({ mode: 'configure-existing' });
 
       expect(runConfigureExistingFlow).toHaveBeenCalled();
       expect(runLocalSetupFlow).not.toHaveBeenCalled();
     });
 
-    it("should present mode selection when no mode specified", async () => {
-      mockSelect.mockResolvedValue("local");
+    it('should present mode selection when no mode specified', async () => {
+      mockSelect.mockResolvedValue('local');
 
       await runSetupWizard();
 
@@ -121,14 +121,14 @@ describe("setup/wizard", () => {
       expect(runLocalSetupFlow).toHaveBeenCalled();
     });
 
-    it("should show configure-existing option when existing setup found", async () => {
+    it('should show configure-existing option when existing setup found', async () => {
       mockRunDiscovery.mockReturnValue({
         clients: {
           detected: [
-            { client: "cursor", detected: true, method: "config-file", alreadyConfigured: true },
+            { client: 'cursor', detected: true, method: 'config-file', alreadyConfigured: true },
           ],
           configured: [
-            { client: "cursor", detected: true, method: "config-file", alreadyConfigured: true },
+            { client: 'cursor', detected: true, method: 'config-file', alreadyConfigured: true },
           ],
           unconfigured: [],
         },
@@ -147,52 +147,127 @@ describe("setup/wizard", () => {
         },
       });
 
-      mockSelect.mockResolvedValue("configure-existing");
+      mockSelect.mockResolvedValue('configure-existing');
 
       await runSetupWizard();
 
       // Verify select was called with configure-existing option
       const selectCall = mockSelect.mock.calls[0][0] as { options: { value: string }[] };
       const hasConfigureOption = selectCall.options.some(
-        (o: { value: string }) => o.value === "configure-existing"
+        (o: { value: string }) => o.value === 'configure-existing',
       );
       expect(hasConfigureOption).toBe(true);
     });
 
-    it("should display success message on completion", async () => {
+    it('should display success message on completion', async () => {
       (runLocalSetupFlow as jest.Mock).mockResolvedValue({
         success: true,
-        mode: "local",
-        configuredClients: ["cursor"],
+        mode: 'local',
+        configuredClients: ['cursor'],
       });
 
-      await runSetupWizard({ mode: "local" });
+      await runSetupWizard({ mode: 'local' });
 
-      expect(p.outro).toHaveBeenCalledWith(expect.stringContaining("Setup complete!"));
+      expect(p.outro).toHaveBeenCalledWith(expect.stringContaining('Setup complete!'));
     });
 
-    it("should display failure message on error", async () => {
+    it('should display failure message on error', async () => {
       (runLocalSetupFlow as jest.Mock).mockResolvedValue({
         success: false,
-        mode: "local",
-        error: "Connection failed",
+        mode: 'local',
+        error: 'Connection failed',
       });
 
-      await runSetupWizard({ mode: "local" });
+      await runSetupWizard({ mode: 'local' });
 
-      expect(p.outro).toHaveBeenCalledWith(expect.stringContaining("Setup failed"));
+      expect(p.outro).toHaveBeenCalledWith(expect.stringContaining('Setup failed'));
     });
 
-    it("should display cancelled message when user cancels", async () => {
+    it('should display cancelled message when user cancels', async () => {
       (runLocalSetupFlow as jest.Mock).mockResolvedValue({
         success: false,
-        mode: "local",
-        error: "Cancelled",
+        mode: 'local',
+        error: 'Cancelled',
       });
 
-      await runSetupWizard({ mode: "local" });
+      await runSetupWizard({ mode: 'local' });
 
-      expect(p.outro).toHaveBeenCalledWith("Setup cancelled.");
+      expect(p.outro).toHaveBeenCalledWith('Setup cancelled.');
+    });
+
+    it('should return cancelled when selectMode returns null (user cancels mode selection)', async () => {
+      // When isCancel returns true for the select, selectMode returns null
+      (p.isCancel as jest.MockedFunction<typeof p.isCancel>).mockReturnValueOnce(true);
+      mockSelect.mockResolvedValueOnce(Symbol('cancel'));
+
+      const result = await runSetupWizard();
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe('Cancelled');
+      expect(p.outro).toHaveBeenCalledWith('Setup cancelled.');
+    });
+
+    it('should include docker config info in success message', async () => {
+      (runServerSetupFlow as jest.Mock).mockResolvedValue({
+        success: true,
+        mode: 'server',
+        dockerConfig: { port: 8080 },
+      });
+
+      await runSetupWizard({ mode: 'server' });
+
+      expect(p.outro).toHaveBeenCalledWith(
+        expect.stringContaining('Docker container on port 8080'),
+      );
+    });
+
+    it('should display failure with unknown error when error is undefined', async () => {
+      (runLocalSetupFlow as jest.Mock).mockResolvedValue({
+        success: false,
+        mode: 'local',
+        error: undefined,
+      });
+
+      await runSetupWizard({ mode: 'local' });
+
+      expect(p.outro).toHaveBeenCalledWith('Setup failed: Unknown error');
+    });
+
+    it('should show containerExists hint in mode selection', async () => {
+      mockRunDiscovery.mockReturnValue({
+        clients: {
+          detected: [],
+          configured: [],
+          unconfigured: [],
+        },
+        docker: {
+          dockerInstalled: true,
+          dockerRunning: true,
+          composeInstalled: true,
+          instances: [{ name: 'gitlab.com', host: 'gitlab.com' }],
+        },
+        summary: {
+          hasExistingSetup: true,
+          clientCount: 0,
+          configuredCount: 0,
+          dockerRunning: true,
+          containerExists: true,
+        },
+      });
+
+      mockSelect.mockResolvedValue('local');
+
+      await runSetupWizard();
+
+      // Verify select was called with configure-existing option including docker hint
+      const selectCall = mockSelect.mock.calls[0][0] as {
+        options: { value: string; hint?: string }[];
+      };
+      const configureOption = selectCall.options.find(
+        (o: { value: string }) => o.value === 'configure-existing',
+      );
+      expect(configureOption).toBeDefined();
+      expect(configureOption?.hint).toContain('1 docker service');
     });
   });
 });

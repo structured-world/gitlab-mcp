@@ -1,10 +1,10 @@
-import { getWorkItemTypes } from "../../../src/utils/workItemTypes";
-import { ConnectionManager } from "../../../src/services/ConnectionManager";
+import { getWorkItemTypes } from '../../../src/utils/workItemTypes';
+import { ConnectionManager } from '../../../src/services/ConnectionManager';
 
 // Mock ConnectionManager and GraphQL client
-jest.mock("../../../src/services/ConnectionManager");
-jest.mock("../../../src/graphql/workItems", () => ({
-  GET_WORK_ITEM_TYPES: "GET_WORK_ITEM_TYPES_QUERY",
+jest.mock('../../../src/services/ConnectionManager');
+jest.mock('../../../src/graphql/workItems', () => ({
+  GET_WORK_ITEM_TYPES: 'GET_WORK_ITEM_TYPES_QUERY',
 }));
 
 const mockClient = {
@@ -15,7 +15,7 @@ const mockClient = {
 const mockGetInstance = jest.fn();
 ConnectionManager.getInstance = mockGetInstance;
 
-describe("workItemTypes utils", () => {
+describe('workItemTypes utils', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.resetAllMocks();
@@ -26,12 +26,12 @@ describe("workItemTypes utils", () => {
     });
   });
 
-  describe("getWorkItemTypes", () => {
-    it("should return work item types from GraphQL response", async () => {
+  describe('getWorkItemTypes', () => {
+    it('should return work item types from GraphQL response', async () => {
       const mockWorkItemTypes = [
-        { id: "gid://gitlab/WorkItems::Type/1", name: "Epic" },
-        { id: "gid://gitlab/WorkItems::Type/2", name: "Issue" },
-        { id: "gid://gitlab/WorkItems::Type/3", name: "Task" },
+        { id: 'gid://gitlab/WorkItems::Type/1', name: 'Epic' },
+        { id: 'gid://gitlab/WorkItems::Type/2', name: 'Issue' },
+        { id: 'gid://gitlab/WorkItems::Type/3', name: 'Task' },
       ];
 
       mockClient.request.mockResolvedValue({
@@ -42,37 +42,37 @@ describe("workItemTypes utils", () => {
         },
       });
 
-      const result = await getWorkItemTypes("test-namespace");
+      const result = await getWorkItemTypes('test-namespace');
 
-      expect(mockClient.request).toHaveBeenCalledWith("GET_WORK_ITEM_TYPES_QUERY", {
-        namespacePath: "test-namespace",
+      expect(mockClient.request).toHaveBeenCalledWith('GET_WORK_ITEM_TYPES_QUERY', {
+        namespacePath: 'test-namespace',
       });
       expect(result).toEqual(mockWorkItemTypes);
     });
 
-    it("should return empty array when namespace is null", async () => {
+    it('should return empty array when namespace is null', async () => {
       mockClient.request.mockResolvedValue({
         namespace: null,
       });
 
-      const result = await getWorkItemTypes("non-existent-namespace");
+      const result = await getWorkItemTypes('non-existent-namespace');
 
       expect(result).toEqual([]);
     });
 
-    it("should return empty array when workItemTypes is null", async () => {
+    it('should return empty array when workItemTypes is null', async () => {
       mockClient.request.mockResolvedValue({
         namespace: {
           workItemTypes: null,
         },
       });
 
-      const result = await getWorkItemTypes("test-namespace");
+      const result = await getWorkItemTypes('test-namespace');
 
       expect(result).toEqual([]);
     });
 
-    it("should return empty array when nodes is null", async () => {
+    it('should return empty array when nodes is null', async () => {
       mockClient.request.mockResolvedValue({
         namespace: {
           workItemTypes: {
@@ -81,16 +81,16 @@ describe("workItemTypes utils", () => {
         },
       });
 
-      const result = await getWorkItemTypes("test-namespace");
+      const result = await getWorkItemTypes('test-namespace');
 
       expect(result).toEqual([]);
     });
 
-    it("should handle GraphQL client errors", async () => {
-      const error = new Error("GraphQL request failed");
+    it('should handle GraphQL client errors', async () => {
+      const error = new Error('GraphQL request failed');
       mockClient.request.mockRejectedValue(error);
 
-      await expect(getWorkItemTypes("test-namespace")).rejects.toThrow("GraphQL request failed");
+      await expect(getWorkItemTypes('test-namespace')).rejects.toThrow('GraphQL request failed');
     });
   });
 });

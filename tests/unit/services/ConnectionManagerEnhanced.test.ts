@@ -1,17 +1,17 @@
-import { ConnectionManager } from "../../../src/services/ConnectionManager";
-import { GraphQLClient } from "../../../src/graphql/client";
-import { GitLabVersionDetector } from "../../../src/services/GitLabVersionDetector";
-import { SchemaIntrospector } from "../../../src/services/SchemaIntrospector";
+import { ConnectionManager } from '../../../src/services/ConnectionManager';
+import { GraphQLClient } from '../../../src/graphql/client';
+import { GitLabVersionDetector } from '../../../src/services/GitLabVersionDetector';
+import { SchemaIntrospector } from '../../../src/services/SchemaIntrospector';
 
 // Mock dependencies
-jest.mock("../../../src/graphql/client");
-jest.mock("../../../src/services/GitLabVersionDetector");
-jest.mock("../../../src/services/SchemaIntrospector");
-jest.mock("../../../src/config", () => ({
-  GITLAB_BASE_URL: "https://test-gitlab.com",
-  GITLAB_TOKEN: "test-token-123",
+jest.mock('../../../src/graphql/client');
+jest.mock('../../../src/services/GitLabVersionDetector');
+jest.mock('../../../src/services/SchemaIntrospector');
+jest.mock('../../../src/config', () => ({
+  GITLAB_BASE_URL: 'https://test-gitlab.com',
+  GITLAB_TOKEN: 'test-token-123',
 }));
-jest.mock("../../../src/logger", () => ({
+jest.mock('../../../src/logger', () => ({
   logger: {
     info: jest.fn(),
     debug: jest.fn(),
@@ -23,16 +23,16 @@ jest.mock("../../../src/logger", () => ({
   logError: jest.fn(),
   logDebug: jest.fn(),
 }));
-jest.mock("../../../src/services/TokenScopeDetector");
-jest.mock("../../../src/utils/fetch");
+jest.mock('../../../src/services/TokenScopeDetector');
+jest.mock('../../../src/utils/fetch');
 
 import {
   detectTokenScopes,
   logTokenScopeInfo,
   getToolScopeRequirements,
   GitLabScope,
-} from "../../../src/services/TokenScopeDetector";
-import { enhancedFetch } from "../../../src/utils/fetch";
+} from '../../../src/services/TokenScopeDetector';
+import { enhancedFetch } from '../../../src/utils/fetch';
 
 const mockedDetectTokenScopes = detectTokenScopes as jest.MockedFunction<typeof detectTokenScopes>;
 const mockedLogTokenScopeInfo = logTokenScopeInfo as jest.MockedFunction<typeof logTokenScopeInfo>;
@@ -47,15 +47,15 @@ const MockedGitLabVersionDetector = GitLabVersionDetector as jest.MockedClass<
 >;
 const MockedSchemaIntrospector = SchemaIntrospector as jest.MockedClass<typeof SchemaIntrospector>;
 
-describe("ConnectionManager Enhanced Tests", () => {
+describe('ConnectionManager Enhanced Tests', () => {
   let connectionManager: ConnectionManager;
   let mockVersionDetector: jest.Mocked<GitLabVersionDetector>;
   let mockSchemaIntrospector: jest.Mocked<SchemaIntrospector>;
   let mockClient: jest.Mocked<GraphQLClient>;
 
   const mockInstanceInfo = {
-    version: "16.5.0",
-    tier: "premium" as const,
+    version: '16.5.0',
+    tier: 'premium' as const,
     features: {
       workItems: true,
       epics: true,
@@ -63,13 +63,13 @@ describe("ConnectionManager Enhanced Tests", () => {
       advancedSearch: false,
       codeReview: true,
     },
-    detectedAt: new Date("2024-01-15T10:00:00Z"),
+    detectedAt: new Date('2024-01-15T10:00:00Z'),
   };
 
   const mockSchemaInfo = {
-    workItemWidgetTypes: ["ASSIGNEES", "LABELS", "MILESTONE"],
-    typeDefinitions: new Map([["WorkItem", { name: "WorkItem", fields: [], enumValues: null }]]),
-    availableFeatures: new Set(["workItems", "epics"]),
+    workItemWidgetTypes: ['ASSIGNEES', 'LABELS', 'MILESTONE'],
+    typeDefinitions: new Map([['WorkItem', { name: 'WorkItem', fields: [], enumValues: null }]]),
+    availableFeatures: new Set(['workItems', 'epics']),
   };
 
   beforeEach(() => {
@@ -87,15 +87,15 @@ describe("ConnectionManager Enhanced Tests", () => {
     // Setup mocks
     mockClient = {
       request: jest.fn(),
-      endpoint: "https://test-gitlab.com/api/graphql",
+      endpoint: 'https://test-gitlab.com/api/graphql',
       setEndpoint: jest.fn(),
     } as any;
     MockedGraphQLClient.mockImplementation(() => mockClient);
 
     mockVersionDetector = {
       detectInstance: jest.fn().mockResolvedValue(mockInstanceInfo),
-      getTier: jest.fn().mockReturnValue("premium"),
-      getVersion: jest.fn().mockReturnValue("16.5.0"),
+      getTier: jest.fn().mockReturnValue('premium'),
+      getVersion: jest.fn().mockReturnValue('16.5.0'),
       isFeatureAvailable: jest.fn().mockReturnValue(true),
       getCachedInfo: jest.fn().mockReturnValue(mockInstanceInfo),
     } as any;
@@ -104,7 +104,7 @@ describe("ConnectionManager Enhanced Tests", () => {
     mockSchemaIntrospector = {
       introspectSchema: jest.fn().mockResolvedValue(mockSchemaInfo),
       isWidgetTypeAvailable: jest.fn().mockReturnValue(true),
-      getAvailableWidgetTypes: jest.fn().mockReturnValue(["ASSIGNEES", "LABELS"]),
+      getAvailableWidgetTypes: jest.fn().mockReturnValue(['ASSIGNEES', 'LABELS']),
       getCachedSchema: jest.fn().mockReturnValue(mockSchemaInfo),
       getFieldsForType: jest.fn().mockReturnValue([]),
     } as any;
@@ -119,14 +119,14 @@ describe("ConnectionManager Enhanced Tests", () => {
     (ConnectionManager as any).instance = null;
   });
 
-  describe("Singleton Pattern", () => {
-    it("should return the same instance on multiple calls", () => {
+  describe('Singleton Pattern', () => {
+    it('should return the same instance on multiple calls', () => {
       const instance1 = ConnectionManager.getInstance();
       const instance2 = ConnectionManager.getInstance();
       expect(instance1).toBe(instance2);
     });
 
-    it("should maintain singleton instance across calls", () => {
+    it('should maintain singleton instance across calls', () => {
       const instance1 = ConnectionManager.getInstance();
       const instance2 = ConnectionManager.getInstance();
       const instance3 = ConnectionManager.getInstance();
@@ -135,44 +135,44 @@ describe("ConnectionManager Enhanced Tests", () => {
     });
   });
 
-  describe("Initialization", () => {
-    it("should initialize successfully with valid config", async () => {
+  describe('Initialization', () => {
+    it('should initialize successfully with valid config', async () => {
       await connectionManager.initialize();
 
-      expect(MockedGraphQLClient).toHaveBeenCalledWith("https://test-gitlab.com/api/graphql", {
+      expect(MockedGraphQLClient).toHaveBeenCalledWith('https://test-gitlab.com/api/graphql', {
         headers: {
-          "PRIVATE-TOKEN": "test-token-123",
+          'PRIVATE-TOKEN': 'test-token-123',
         },
       });
       expect(mockVersionDetector.detectInstance).toHaveBeenCalled();
       expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalled();
     });
 
-    it("should initialize with empty headers in OAuth mode", async () => {
+    it('should initialize with empty headers in OAuth mode', async () => {
       // OAuth mode: auth is handled per-request via enhancedFetch, not via static headers
       jest.resetModules();
-      jest.doMock("../../../src/config", () => ({
-        GITLAB_BASE_URL: "https://test-gitlab.com",
-        GITLAB_TOKEN: "test-token-123",
+      jest.doMock('../../../src/config', () => ({
+        GITLAB_BASE_URL: 'https://test-gitlab.com',
+        GITLAB_TOKEN: 'test-token-123',
       }));
-      jest.doMock("../../../src/oauth/index", () => ({
+      jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: () => true,
       }));
-      jest.doMock("../../../src/logger", () => ({
+      jest.doMock('../../../src/logger', () => ({
         logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
         logInfo: jest.fn(),
         logWarn: jest.fn(),
         logError: jest.fn(),
         logDebug: jest.fn(),
       }));
-      jest.doMock("../../../src/graphql/client");
-      jest.doMock("../../../src/services/GitLabVersionDetector");
-      jest.doMock("../../../src/services/SchemaIntrospector");
+      jest.doMock('../../../src/graphql/client');
+      jest.doMock('../../../src/services/GitLabVersionDetector');
+      jest.doMock('../../../src/services/SchemaIntrospector');
 
       const {
         ConnectionManager: OAuthConnectionManager,
-      } = require("../../../src/services/ConnectionManager");
-      const { GraphQLClient: OAuthGraphQLClient } = require("../../../src/graphql/client");
+      } = require('../../../src/services/ConnectionManager');
+      const { GraphQLClient: OAuthGraphQLClient } = require('../../../src/graphql/client');
 
       // Mock global fetch for version detection attempt
       global.fetch = jest.fn().mockResolvedValue({
@@ -184,13 +184,13 @@ describe("ConnectionManager Enhanced Tests", () => {
       await manager.initialize();
 
       // In OAuth mode, GraphQLClient should receive empty headers
-      expect(OAuthGraphQLClient).toHaveBeenCalledWith("https://test-gitlab.com/api/graphql", {});
+      expect(OAuthGraphQLClient).toHaveBeenCalledWith('https://test-gitlab.com/api/graphql', {});
 
       manager.reset();
       jest.resetModules();
     });
 
-    it("should handle multiple initialization calls gracefully", async () => {
+    it('should handle multiple initialization calls gracefully', async () => {
       await connectionManager.initialize();
       await connectionManager.initialize();
       await connectionManager.initialize();
@@ -200,70 +200,70 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalledTimes(1);
     });
 
-    it("should throw error when GITLAB_BASE_URL is missing", async () => {
+    it('should throw error when GITLAB_BASE_URL is missing', async () => {
       // Mock missing config by temporarily changing the environment
-      const originalConfig = require("../../../src/config");
+      const originalConfig = require('../../../src/config');
       jest.resetModules();
-      jest.doMock("../../../src/config", () => ({
+      jest.doMock('../../../src/config', () => ({
         GITLAB_BASE_URL: null,
-        GITLAB_TOKEN: "test-token-123",
+        GITLAB_TOKEN: 'test-token-123',
       }));
       // Mock OAuth as disabled (static mode)
-      jest.doMock("../../../src/oauth/index", () => ({
+      jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: () => false,
       }));
 
       // Import fresh ConnectionManager with mocked config
       const {
         ConnectionManager: TestConnectionManager,
-      } = require("../../../src/services/ConnectionManager");
+      } = require('../../../src/services/ConnectionManager');
       const newManager = new TestConnectionManager();
 
-      await expect(newManager.initialize()).rejects.toThrow("GitLab base URL is required");
+      await expect(newManager.initialize()).rejects.toThrow('GitLab base URL is required');
 
       // Restore original config
       jest.resetModules();
-      jest.doMock("../../../src/config", () => originalConfig);
+      jest.doMock('../../../src/config', () => originalConfig);
     });
 
-    it("should throw descriptive error when GITLAB_TOKEN is missing in static mode", async () => {
+    it('should throw descriptive error when GITLAB_TOKEN is missing in static mode', async () => {
       // Mock missing config by temporarily changing the environment
-      const originalConfig = require("../../../src/config");
+      const originalConfig = require('../../../src/config');
       jest.resetModules();
-      jest.doMock("../../../src/config", () => ({
-        GITLAB_BASE_URL: "https://test-gitlab.com",
+      jest.doMock('../../../src/config', () => ({
+        GITLAB_BASE_URL: 'https://test-gitlab.com',
         GITLAB_TOKEN: null,
       }));
       // Mock OAuth as disabled (static mode)
-      jest.doMock("../../../src/oauth/index", () => ({
+      jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: () => false,
       }));
 
       // Import fresh ConnectionManager with mocked config
       const {
         ConnectionManager: TestConnectionManager,
-      } = require("../../../src/services/ConnectionManager");
+      } = require('../../../src/services/ConnectionManager');
       const newManager = new TestConnectionManager();
 
       // Verify descriptive error is thrown (caller handles graceful exit)
       await expect(newManager.initialize()).rejects.toThrow(
-        "GITLAB_TOKEN is required in static authentication mode"
+        'GITLAB_TOKEN is required in static authentication mode',
       );
 
       // Restore original config
       jest.resetModules();
-      jest.doMock("../../../src/config", () => originalConfig);
+      jest.doMock('../../../src/config', () => originalConfig);
     });
 
-    it("should handle initialization errors and re-throw them", async () => {
-      mockVersionDetector.detectInstance.mockRejectedValueOnce(new Error("Network error"));
+    it('should handle initialization errors and re-throw them', async () => {
+      mockVersionDetector.detectInstance.mockRejectedValueOnce(new Error('Network error'));
 
-      await expect(connectionManager.initialize()).rejects.toThrow("Network error");
+      await expect(connectionManager.initialize()).rejects.toThrow('Network error');
     });
   });
 
-  describe("Caching Mechanism", () => {
-    it("should use cached data when available and not expired", async () => {
+  describe('Caching Mechanism', () => {
+    it('should use cached data when available and not expired', async () => {
       // First initialization
       await connectionManager.initialize();
       connectionManager.reset();
@@ -276,7 +276,7 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(mockVersionDetector.detectInstance).toHaveBeenCalledTimes(1);
     });
 
-    it("should fetch fresh data when cache is expired", async () => {
+    it('should fetch fresh data when cache is expired', async () => {
       // Mock Date.now to control cache expiration
       const originalDateNow = Date.now;
       let currentTime = 1000000;
@@ -300,147 +300,147 @@ describe("ConnectionManager Enhanced Tests", () => {
       }
     });
 
-    it("should cache different endpoints separately", async () => {
+    it('should cache different endpoints separately', async () => {
       // This test would need more complex setup to test different endpoints
       // For now, just verify cache is used correctly
       await connectionManager.initialize();
 
       const cache = (ConnectionManager as any).introspectionCache;
       expect(cache.size).toBeGreaterThan(0);
-      expect(cache.has("https://test-gitlab.com/api/graphql")).toBe(true);
+      expect(cache.has('https://test-gitlab.com/api/graphql')).toBe(true);
     });
   });
 
-  describe("Getter Methods Before Initialization", () => {
-    it("should throw error when getting client before initialization", () => {
+  describe('Getter Methods Before Initialization', () => {
+    it('should throw error when getting client before initialization', () => {
       expect(() => connectionManager.getClient()).toThrow(
-        "Connection not initialized. Call initialize() first."
+        'Connection not initialized. Call initialize() first.',
       );
     });
 
-    it("should throw error when getting version detector before initialization", () => {
+    it('should throw error when getting version detector before initialization', () => {
       expect(() => connectionManager.getVersionDetector()).toThrow(
-        "Connection not initialized. Call initialize() first."
+        'Connection not initialized. Call initialize() first.',
       );
     });
 
-    it("should throw error when getting schema introspector before initialization", () => {
+    it('should throw error when getting schema introspector before initialization', () => {
       expect(() => connectionManager.getSchemaIntrospector()).toThrow(
-        "Connection not initialized. Call initialize() first."
+        'Connection not initialized. Call initialize() first.',
       );
     });
 
-    it("should throw error when getting instance info before initialization", () => {
+    it('should throw error when getting instance info before initialization', () => {
       expect(() => connectionManager.getInstanceInfo()).toThrow(
-        "Connection not initialized. Call initialize() first."
+        'Connection not initialized. Call initialize() first.',
       );
     });
 
-    it("should throw error when getting schema info before initialization", () => {
+    it('should throw error when getting schema info before initialization', () => {
       expect(() => connectionManager.getSchemaInfo()).toThrow(
-        "Connection not initialized. Call initialize() first."
+        'Connection not initialized. Call initialize() first.',
       );
     });
   });
 
-  describe("Getter Methods After Initialization", () => {
+  describe('Getter Methods After Initialization', () => {
     beforeEach(async () => {
       await connectionManager.initialize();
     });
 
-    it("should return GraphQL client after initialization", () => {
+    it('should return GraphQL client after initialization', () => {
       const client = connectionManager.getClient();
       expect(client).toBe(mockClient);
     });
 
-    it("should return version detector after initialization", () => {
+    it('should return version detector after initialization', () => {
       const detector = connectionManager.getVersionDetector();
       expect(detector).toBe(mockVersionDetector);
     });
 
-    it("should return schema introspector after initialization", () => {
+    it('should return schema introspector after initialization', () => {
       const introspector = connectionManager.getSchemaIntrospector();
       expect(introspector).toBe(mockSchemaIntrospector);
     });
 
-    it("should return instance info after initialization", () => {
+    it('should return instance info after initialization', () => {
       const info = connectionManager.getInstanceInfo();
       expect(info).toBe(mockInstanceInfo);
     });
 
-    it("should return schema info after initialization", () => {
+    it('should return schema info after initialization', () => {
       const info = connectionManager.getSchemaInfo();
       expect(info).toBe(mockSchemaInfo);
     });
   });
 
-  describe("Feature Availability Methods", () => {
+  describe('Feature Availability Methods', () => {
     beforeEach(async () => {
       await connectionManager.initialize();
     });
 
-    it("should check feature availability correctly", () => {
-      expect(connectionManager.isFeatureAvailable("workItems")).toBe(true);
-      expect(connectionManager.isFeatureAvailable("epics")).toBe(true);
-      expect(connectionManager.isFeatureAvailable("advancedSearch")).toBe(false);
+    it('should check feature availability correctly', () => {
+      expect(connectionManager.isFeatureAvailable('workItems')).toBe(true);
+      expect(connectionManager.isFeatureAvailable('epics')).toBe(true);
+      expect(connectionManager.isFeatureAvailable('advancedSearch')).toBe(false);
     });
 
-    it("should return false for feature availability before initialization", () => {
+    it('should return false for feature availability before initialization', () => {
       connectionManager.reset();
-      expect(connectionManager.isFeatureAvailable("workItems")).toBe(false);
+      expect(connectionManager.isFeatureAvailable('workItems')).toBe(false);
     });
 
-    it("should return correct tier", () => {
-      expect(connectionManager.getTier()).toBe("premium");
+    it('should return correct tier', () => {
+      expect(connectionManager.getTier()).toBe('premium');
     });
 
-    it("should return unknown tier before initialization", () => {
+    it('should return unknown tier before initialization', () => {
       connectionManager.reset();
-      expect(connectionManager.getTier()).toBe("unknown");
+      expect(connectionManager.getTier()).toBe('unknown');
     });
 
-    it("should return correct version", () => {
-      expect(connectionManager.getVersion()).toBe("16.5.0");
+    it('should return correct version', () => {
+      expect(connectionManager.getVersion()).toBe('16.5.0');
     });
 
-    it("should return unknown version before initialization", () => {
+    it('should return unknown version before initialization', () => {
       connectionManager.reset();
-      expect(connectionManager.getVersion()).toBe("unknown");
+      expect(connectionManager.getVersion()).toBe('unknown');
     });
   });
 
-  describe("Widget Availability Methods", () => {
+  describe('Widget Availability Methods', () => {
     beforeEach(async () => {
       await connectionManager.initialize();
     });
 
-    it("should check widget availability correctly", () => {
-      expect(connectionManager.isWidgetAvailable("ASSIGNEES")).toBe(true);
-      expect(mockSchemaIntrospector.isWidgetTypeAvailable).toHaveBeenCalledWith("ASSIGNEES");
+    it('should check widget availability correctly', () => {
+      expect(connectionManager.isWidgetAvailable('ASSIGNEES')).toBe(true);
+      expect(mockSchemaIntrospector.isWidgetTypeAvailable).toHaveBeenCalledWith('ASSIGNEES');
     });
 
-    it("should return false for widget availability before initialization", () => {
+    it('should return false for widget availability before initialization', () => {
       connectionManager.reset();
-      expect(connectionManager.isWidgetAvailable("ASSIGNEES")).toBe(false);
+      expect(connectionManager.isWidgetAvailable('ASSIGNEES')).toBe(false);
     });
   });
 
-  describe("Reset Functionality", () => {
+  describe('Reset Functionality', () => {
     beforeEach(async () => {
       await connectionManager.initialize();
     });
 
-    it("should reset all properties to null", () => {
+    it('should reset all properties to null', () => {
       connectionManager.reset();
 
-      expect(() => connectionManager.getClient()).toThrow("Connection not initialized");
-      expect(() => connectionManager.getVersionDetector()).toThrow("Connection not initialized");
-      expect(() => connectionManager.getSchemaIntrospector()).toThrow("Connection not initialized");
-      expect(() => connectionManager.getInstanceInfo()).toThrow("Connection not initialized");
-      expect(() => connectionManager.getSchemaInfo()).toThrow("Connection not initialized");
+      expect(() => connectionManager.getClient()).toThrow('Connection not initialized');
+      expect(() => connectionManager.getVersionDetector()).toThrow('Connection not initialized');
+      expect(() => connectionManager.getSchemaIntrospector()).toThrow('Connection not initialized');
+      expect(() => connectionManager.getInstanceInfo()).toThrow('Connection not initialized');
+      expect(() => connectionManager.getSchemaInfo()).toThrow('Connection not initialized');
     });
 
-    it("should allow re-initialization after reset", async () => {
+    it('should allow re-initialization after reset', async () => {
       connectionManager.reset();
 
       await connectionManager.initialize();
@@ -450,41 +450,41 @@ describe("ConnectionManager Enhanced Tests", () => {
     });
   });
 
-  describe("Error Handling", () => {
-    it("should handle version detector failure gracefully", async () => {
+  describe('Error Handling', () => {
+    it('should handle version detector failure gracefully', async () => {
       mockVersionDetector.detectInstance.mockRejectedValueOnce(
-        new Error("Version detection failed")
+        new Error('Version detection failed'),
       );
 
-      await expect(connectionManager.initialize()).rejects.toThrow("Version detection failed");
+      await expect(connectionManager.initialize()).rejects.toThrow('Version detection failed');
     });
 
-    it("should handle schema introspector failure gracefully", async () => {
+    it('should handle schema introspector failure gracefully', async () => {
       mockSchemaIntrospector.introspectSchema.mockRejectedValueOnce(
-        new Error("Schema introspection failed")
+        new Error('Schema introspection failed'),
       );
 
-      await expect(connectionManager.initialize()).rejects.toThrow("Schema introspection failed");
+      await expect(connectionManager.initialize()).rejects.toThrow('Schema introspection failed');
     });
 
-    it("should handle GraphQL client creation failure", async () => {
+    it('should handle GraphQL client creation failure', async () => {
       MockedGraphQLClient.mockImplementationOnce(() => {
-        throw new Error("Client creation failed");
+        throw new Error('Client creation failed');
       });
 
-      await expect(connectionManager.initialize()).rejects.toThrow("Client creation failed");
+      await expect(connectionManager.initialize()).rejects.toThrow('Client creation failed');
     });
   });
 
-  describe("Token Scope Detection", () => {
-    it("should skip GraphQL introspection when token lacks GraphQL access", async () => {
+  describe('Token Scope Detection', () => {
+    it('should skip GraphQL introspection when token lacks GraphQL access', async () => {
       // Token with only read_user scope - no GraphQL access
       mockedDetectTokenScopes.mockResolvedValueOnce({
-        name: "limited-token",
-        scopes: ["read_user"],
+        name: 'limited-token',
+        scopes: ['read_user'],
         expiresAt: null,
         active: true,
-        tokenType: "personal_access_token",
+        tokenType: 'personal_access_token',
         hasGraphQLAccess: false,
         hasWriteAccess: false,
         daysUntilExpiry: null,
@@ -494,8 +494,8 @@ describe("ConnectionManager Enhanced Tests", () => {
       mockedEnhancedFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          version: "16.8.0",
-          revision: "abc123",
+          version: '16.8.0',
+          revision: 'abc123',
           enterprise: true,
         }),
       } as unknown as Response);
@@ -507,17 +507,17 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(mockSchemaIntrospector.introspectSchema).not.toHaveBeenCalled();
 
       // Version should be detected via REST
-      expect(connectionManager.getVersion()).toBe("16.8.0");
-      expect(connectionManager.getTier()).toBe("premium");
+      expect(connectionManager.getVersion()).toBe('16.8.0');
+      expect(connectionManager.getTier()).toBe('premium');
     });
 
-    it("should detect non-enterprise GitLab as free tier via REST", async () => {
+    it('should detect non-enterprise GitLab as free tier via REST', async () => {
       mockedDetectTokenScopes.mockResolvedValueOnce({
-        name: "limited-token",
-        scopes: ["read_user"],
+        name: 'limited-token',
+        scopes: ['read_user'],
         expiresAt: null,
         active: true,
-        tokenType: "personal_access_token",
+        tokenType: 'personal_access_token',
         hasGraphQLAccess: false,
         hasWriteAccess: false,
         daysUntilExpiry: null,
@@ -526,26 +526,26 @@ describe("ConnectionManager Enhanced Tests", () => {
       mockedEnhancedFetch.mockResolvedValueOnce({
         ok: true,
         json: async () => ({
-          version: "17.0.0",
-          revision: "def456",
+          version: '17.0.0',
+          revision: 'def456',
           enterprise: false,
         }),
       } as unknown as Response);
 
       await connectionManager.initialize();
 
-      expect(connectionManager.getVersion()).toBe("17.0.0");
-      expect(connectionManager.getTier()).toBe("free");
+      expect(connectionManager.getVersion()).toBe('17.0.0');
+      expect(connectionManager.getTier()).toBe('free');
     });
 
-    it("should proceed with GraphQL introspection when token has api scope", async () => {
+    it('should proceed with GraphQL introspection when token has api scope', async () => {
       // Token with api scope - full GraphQL access
       mockedDetectTokenScopes.mockResolvedValueOnce({
-        name: "full-token",
-        scopes: ["api", "read_user"],
+        name: 'full-token',
+        scopes: ['api', 'read_user'],
         expiresAt: null,
         active: true,
-        tokenType: "personal_access_token",
+        tokenType: 'personal_access_token',
         hasGraphQLAccess: true,
         hasWriteAccess: true,
         daysUntilExpiry: null,
@@ -558,7 +558,7 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalled();
     });
 
-    it("should proceed with GraphQL if token scope detection fails", async () => {
+    it('should proceed with GraphQL if token scope detection fails', async () => {
       // Scope detection returns null (failed) — already default mock value
       await connectionManager.initialize();
 
@@ -567,13 +567,13 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalled();
     });
 
-    it("should return token scope info via getTokenScopeInfo()", async () => {
+    it('should return token scope info via getTokenScopeInfo()', async () => {
       const scopeInfo = {
-        name: "my-token",
-        scopes: ["api"] as GitLabScope[],
-        expiresAt: "2027-01-01",
+        name: 'my-token',
+        scopes: ['api'] as GitLabScope[],
+        expiresAt: '2027-01-01',
         active: true,
-        tokenType: "personal_access_token" as const,
+        tokenType: 'personal_access_token' as const,
         hasGraphQLAccess: true,
         hasWriteAccess: true,
         daysUntilExpiry: 365,
@@ -585,22 +585,22 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(connectionManager.getTokenScopeInfo()).toEqual(scopeInfo);
     });
 
-    it("should call logTokenScopeInfo with dynamic tool count", async () => {
+    it('should call logTokenScopeInfo with dynamic tool count', async () => {
       const scopeInfo = {
-        name: "my-token",
-        scopes: ["api"] as GitLabScope[],
+        name: 'my-token',
+        scopes: ['api'] as GitLabScope[],
         expiresAt: null,
         active: true,
-        tokenType: "personal_access_token" as const,
+        tokenType: 'personal_access_token' as const,
         hasGraphQLAccess: true,
         hasWriteAccess: true,
         daysUntilExpiry: null,
       };
       mockedDetectTokenScopes.mockResolvedValueOnce(scopeInfo);
       mockedGetToolScopeRequirements.mockReturnValueOnce({
-        browse_projects: ["api"],
-        manage_project: ["api"],
-        browse_files: ["api", "read_repository"],
+        browse_projects: ['api'],
+        manage_project: ['api'],
+        browse_files: ['api', 'read_repository'],
       });
 
       await connectionManager.initialize();
@@ -609,13 +609,13 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(mockedLogTokenScopeInfo).toHaveBeenCalledWith(scopeInfo, 3);
     });
 
-    it("should use REST fallback with defaults when /api/v4/version fails", async () => {
+    it('should use REST fallback with defaults when /api/v4/version fails', async () => {
       mockedDetectTokenScopes.mockResolvedValueOnce({
-        name: "no-graphql-token",
-        scopes: ["read_user"],
+        name: 'no-graphql-token',
+        scopes: ['read_user'],
         expiresAt: null,
         active: true,
-        tokenType: "personal_access_token",
+        tokenType: 'personal_access_token',
         hasGraphQLAccess: false,
         hasWriteAccess: false,
         daysUntilExpiry: null,
@@ -626,38 +626,38 @@ describe("ConnectionManager Enhanced Tests", () => {
       await connectionManager.initialize();
 
       // Should fall back to "unknown" version
-      expect(connectionManager.getVersion()).toBe("unknown");
-      expect(connectionManager.getTier()).toBe("free");
+      expect(connectionManager.getVersion()).toBe('unknown');
+      expect(connectionManager.getTier()).toBe('free');
     });
 
-    it("should handle REST version detection network error gracefully", async () => {
+    it('should handle REST version detection network error gracefully', async () => {
       mockedDetectTokenScopes.mockResolvedValueOnce({
-        name: "no-graphql-token",
-        scopes: ["read_repository"],
+        name: 'no-graphql-token',
+        scopes: ['read_repository'],
         expiresAt: null,
         active: true,
-        tokenType: "personal_access_token",
+        tokenType: 'personal_access_token',
         hasGraphQLAccess: false,
         hasWriteAccess: false,
         daysUntilExpiry: null,
       });
 
       // Network error during REST version detection
-      mockedEnhancedFetch.mockRejectedValueOnce(new Error("ECONNREFUSED"));
+      mockedEnhancedFetch.mockRejectedValueOnce(new Error('ECONNREFUSED'));
 
       await connectionManager.initialize();
 
       // Should fall back to defaults without throwing
-      expect(connectionManager.getVersion()).toBe("unknown");
+      expect(connectionManager.getVersion()).toBe('unknown');
     });
 
-    it("should clear tokenScopeInfo on reset", async () => {
+    it('should clear tokenScopeInfo on reset', async () => {
       mockedDetectTokenScopes.mockResolvedValueOnce({
-        name: "test-token",
-        scopes: ["api"],
+        name: 'test-token',
+        scopes: ['api'],
         expiresAt: null,
         active: true,
-        tokenType: "personal_access_token",
+        tokenType: 'personal_access_token',
         hasGraphQLAccess: true,
         hasWriteAccess: true,
         daysUntilExpiry: null,
@@ -671,31 +671,31 @@ describe("ConnectionManager Enhanced Tests", () => {
     });
   });
 
-  describe("Edge Cases and Complex Scenarios", () => {
-    it("should handle undefined feature keys gracefully", async () => {
+  describe('Edge Cases and Complex Scenarios', () => {
+    it('should handle undefined feature keys gracefully', async () => {
       await connectionManager.initialize();
 
       // Test with undefined feature (should not throw)
       expect(connectionManager.isFeatureAvailable(undefined as any)).toBe(undefined);
     });
 
-    it("should handle instance info with missing features", async () => {
+    it('should handle instance info with missing features', async () => {
       const infoWithoutFeatures = {
-        version: "16.5.0",
-        tier: "premium" as const,
+        version: '16.5.0',
+        tier: 'premium' as const,
         features: {} as any, // Empty object instead of undefined
-        detectedAt: new Date("2024-01-15T10:00:00Z"),
+        detectedAt: new Date('2024-01-15T10:00:00Z'),
       };
       mockVersionDetector.detectInstance.mockResolvedValueOnce(infoWithoutFeatures);
 
       await connectionManager.initialize();
 
       // Should handle gracefully without throwing
-      expect(() => connectionManager.isFeatureAvailable("workItems")).not.toThrow();
-      expect(connectionManager.isFeatureAvailable("workItems")).toBe(undefined);
+      expect(() => connectionManager.isFeatureAvailable('workItems')).not.toThrow();
+      expect(connectionManager.isFeatureAvailable('workItems')).toBe(undefined);
     });
 
-    it("should handle parallel initialization attempts", async () => {
+    it('should handle parallel initialization attempts', async () => {
       // This tests the current implementation - it doesn't prevent parallel calls
       // but it does have the early return if already initialized
       const promises = [
@@ -713,23 +713,23 @@ describe("ConnectionManager Enhanced Tests", () => {
     });
   });
 
-  describe("OAuth Mode Initialization", () => {
+  describe('OAuth Mode Initialization', () => {
     /**
      * Tests OAuth mode unauthenticated version detection (lines 93-111)
      * When OAuth is enabled, ConnectionManager attempts to detect GitLab version
      * without authentication first, as many GitLab instances expose /api/v4/version publicly.
      */
-    it("should detect version via unauthenticated fetch in OAuth mode (enterprise instance)", async () => {
+    it('should detect version via unauthenticated fetch in OAuth mode (enterprise instance)', async () => {
       jest.resetModules();
-      jest.doMock("../../../src/config", () => ({
-        GITLAB_BASE_URL: "https://oauth-gitlab.example.com",
+      jest.doMock('../../../src/config', () => ({
+        GITLAB_BASE_URL: 'https://oauth-gitlab.example.com',
         GITLAB_TOKEN: null, // No static token in OAuth mode
       }));
-      jest.doMock("../../../src/oauth/index", () => ({
+      jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: () => true,
         getGitLabApiUrlFromContext: () => undefined,
       }));
-      jest.doMock("../../../src/logger", () => ({
+      jest.doMock('../../../src/logger', () => ({
         logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
         logInfo: jest.fn(),
         logWarn: jest.fn(),
@@ -741,38 +741,38 @@ describe("ConnectionManager Enhanced Tests", () => {
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
-          version: "17.3.0",
+          version: '17.3.0',
           enterprise: true,
         }),
       }) as unknown as typeof fetch;
 
       const {
         ConnectionManager: OAuthConnectionManager,
-      } = require("../../../src/services/ConnectionManager");
+      } = require('../../../src/services/ConnectionManager');
 
       const manager = OAuthConnectionManager.getInstance();
       await manager.initialize();
 
       // Should have detected version and tier from unauthenticated response
-      expect(manager.getVersion()).toBe("17.3.0");
+      expect(manager.getVersion()).toBe('17.3.0');
       // Enterprise instances default to premium tier
-      expect(manager.getTier()).toBe("premium");
+      expect(manager.getTier()).toBe('premium');
 
       manager.reset();
       jest.resetModules();
     });
 
-    it("should detect version via unauthenticated fetch in OAuth mode (free instance)", async () => {
+    it('should detect version via unauthenticated fetch in OAuth mode (free instance)', async () => {
       jest.resetModules();
-      jest.doMock("../../../src/config", () => ({
-        GITLAB_BASE_URL: "https://free-gitlab.example.com",
+      jest.doMock('../../../src/config', () => ({
+        GITLAB_BASE_URL: 'https://free-gitlab.example.com',
         GITLAB_TOKEN: null,
       }));
-      jest.doMock("../../../src/oauth/index", () => ({
+      jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: () => true,
         getGitLabApiUrlFromContext: () => undefined,
       }));
-      jest.doMock("../../../src/logger", () => ({
+      jest.doMock('../../../src/logger', () => ({
         logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
         logInfo: jest.fn(),
         logWarn: jest.fn(),
@@ -784,21 +784,21 @@ describe("ConnectionManager Enhanced Tests", () => {
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
         json: async () => ({
-          version: "16.9.0",
+          version: '16.9.0',
           enterprise: false,
         }),
       }) as unknown as typeof fetch;
 
       const {
         ConnectionManager: OAuthConnectionManager,
-      } = require("../../../src/services/ConnectionManager");
+      } = require('../../../src/services/ConnectionManager');
 
       const manager = OAuthConnectionManager.getInstance();
       await manager.initialize();
 
       // Should have detected version and free tier
-      expect(manager.getVersion()).toBe("16.9.0");
-      expect(manager.getTier()).toBe("free");
+      expect(manager.getVersion()).toBe('16.9.0');
+      expect(manager.getTier()).toBe('free');
 
       manager.reset();
       jest.resetModules();
@@ -808,17 +808,17 @@ describe("ConnectionManager Enhanced Tests", () => {
      * Tests OAuth mode when unauthenticated version detection fails (line 123)
      * Should handle network errors gracefully and defer full introspection
      */
-    it("should handle network error during OAuth unauthenticated version detection", async () => {
+    it('should handle network error during OAuth unauthenticated version detection', async () => {
       jest.resetModules();
-      jest.doMock("../../../src/config", () => ({
-        GITLAB_BASE_URL: "https://unreachable-gitlab.example.com",
+      jest.doMock('../../../src/config', () => ({
+        GITLAB_BASE_URL: 'https://unreachable-gitlab.example.com',
         GITLAB_TOKEN: null,
       }));
-      jest.doMock("../../../src/oauth/index", () => ({
+      jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: () => true,
         getGitLabApiUrlFromContext: () => undefined,
       }));
-      jest.doMock("../../../src/logger", () => ({
+      jest.doMock('../../../src/logger', () => ({
         logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
         logInfo: jest.fn(),
         logWarn: jest.fn(),
@@ -829,11 +829,11 @@ describe("ConnectionManager Enhanced Tests", () => {
       // Mock network error during version detection
       global.fetch = jest
         .fn()
-        .mockRejectedValue(new Error("ECONNREFUSED")) as unknown as typeof fetch;
+        .mockRejectedValue(new Error('ECONNREFUSED')) as unknown as typeof fetch;
 
       const {
         ConnectionManager: OAuthConnectionManager,
-      } = require("../../../src/services/ConnectionManager");
+      } = require('../../../src/services/ConnectionManager');
 
       const manager = OAuthConnectionManager.getInstance();
       // Should initialize without throwing - defers introspection
@@ -844,11 +844,11 @@ describe("ConnectionManager Enhanced Tests", () => {
     });
   });
 
-  describe("ensureIntrospected with caching", () => {
+  describe('ensureIntrospected with caching', () => {
     /**
      * Tests ensureIntrospected() caching paths (lines 223-284)
      */
-    it("should use legacy cache when local state is cleared", async () => {
+    it('should use legacy cache when local state is cleared', async () => {
       // Initialize connection first - this populates the legacy cache
       await connectionManager.initialize();
 
@@ -860,10 +860,10 @@ describe("ConnectionManager Enhanced Tests", () => {
       await connectionManager.ensureIntrospected();
 
       // Should have restored data from legacy cache
-      expect(connectionManager.getVersion()).toBe("16.5.0");
+      expect(connectionManager.getVersion()).toBe('16.5.0');
     });
 
-    it("should perform fresh introspection when all caches are cleared", async () => {
+    it('should perform fresh introspection when all caches are cleared', async () => {
       // Initialize connection first
       await connectionManager.initialize();
 
@@ -883,15 +883,15 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalled();
     });
 
-    it("should use InstanceRegistry cache when available (lines 262-270)", async () => {
+    it('should use InstanceRegistry cache when available (lines 262-270)', async () => {
       // This test covers the InstanceRegistry cache path
       // Requires mocking InstanceRegistry with cached introspection data
       jest.resetModules();
 
       // Mock InstanceRegistry to return cached introspection
       const mockCachedIntrospection = {
-        version: "17.0.0",
-        tier: "ultimate",
+        version: '17.0.0',
+        tier: 'ultimate',
         features: {
           workItems: true,
           epics: true,
@@ -899,15 +899,15 @@ describe("ConnectionManager Enhanced Tests", () => {
           advancedSearch: true,
           codeReview: true,
         },
-        cachedAt: new Date("2024-02-01T10:00:00Z"),
+        cachedAt: new Date('2024-02-01T10:00:00Z'),
         schemaInfo: {
-          workItemWidgetTypes: ["ASSIGNEES", "LABELS", "MILESTONE"],
+          workItemWidgetTypes: ['ASSIGNEES', 'LABELS', 'MILESTONE'],
           typeDefinitions: new Map(),
-          availableFeatures: new Set(["workItems", "epics"]),
+          availableFeatures: new Set(['workItems', 'epics']),
         },
       };
 
-      jest.doMock("../../../src/services/InstanceRegistry", () => ({
+      jest.doMock('../../../src/services/InstanceRegistry', () => ({
         InstanceRegistry: {
           getInstance: () => ({
             isInitialized: () => true,
@@ -915,29 +915,29 @@ describe("ConnectionManager Enhanced Tests", () => {
           }),
         },
       }));
-      jest.doMock("../../../src/config", () => ({
-        GITLAB_BASE_URL: "https://cached-gitlab.example.com",
-        GITLAB_TOKEN: "test-token",
+      jest.doMock('../../../src/config', () => ({
+        GITLAB_BASE_URL: 'https://cached-gitlab.example.com',
+        GITLAB_TOKEN: 'test-token',
       }));
-      jest.doMock("../../../src/logger", () => ({
+      jest.doMock('../../../src/logger', () => ({
         logger: { info: jest.fn(), debug: jest.fn(), error: jest.fn(), warn: jest.fn() },
         logInfo: jest.fn(),
         logWarn: jest.fn(),
         logError: jest.fn(),
         logDebug: jest.fn(),
       }));
-      jest.doMock("../../../src/graphql/client", () => ({
+      jest.doMock('../../../src/graphql/client', () => ({
         GraphQLClient: jest.fn().mockImplementation(() => ({
           request: jest.fn(),
-          endpoint: "https://cached-gitlab.example.com/api/graphql",
+          endpoint: 'https://cached-gitlab.example.com/api/graphql',
           setEndpoint: jest.fn(),
         })),
       }));
-      jest.doMock("../../../src/services/GitLabVersionDetector", () => ({
+      jest.doMock('../../../src/services/GitLabVersionDetector', () => ({
         GitLabVersionDetector: jest.fn().mockImplementation(() => ({
           detectInstance: jest.fn().mockResolvedValue({
-            version: "17.0.0",
-            tier: "ultimate",
+            version: '17.0.0',
+            tier: 'ultimate',
             features: {
               workItems: true,
               epics: true,
@@ -949,10 +949,10 @@ describe("ConnectionManager Enhanced Tests", () => {
           }),
         })),
       }));
-      jest.doMock("../../../src/services/SchemaIntrospector", () => ({
+      jest.doMock('../../../src/services/SchemaIntrospector', () => ({
         SchemaIntrospector: jest.fn().mockImplementation(() => ({
           introspectSchema: jest.fn().mockResolvedValue({
-            workItemWidgetTypes: ["ASSIGNEES"],
+            workItemWidgetTypes: ['ASSIGNEES'],
             typeDefinitions: new Map(),
             availableFeatures: new Set(),
           }),
@@ -961,12 +961,12 @@ describe("ConnectionManager Enhanced Tests", () => {
 
       global.fetch = jest.fn().mockResolvedValue({
         ok: true,
-        json: async () => ({ version: "17.0.0", enterprise: true }),
+        json: async () => ({ version: '17.0.0', enterprise: true }),
       }) as unknown as typeof fetch;
 
       const {
         ConnectionManager: CachedConnectionManager,
-      } = require("../../../src/services/ConnectionManager");
+      } = require('../../../src/services/ConnectionManager');
 
       const manager = CachedConnectionManager.getInstance();
       await manager.initialize();
@@ -980,48 +980,48 @@ describe("ConnectionManager Enhanced Tests", () => {
       await manager.ensureIntrospected();
 
       // Should have restored data from InstanceRegistry cache
-      expect(manager.getVersion()).toBe("17.0.0");
-      expect(manager.getTier()).toBe("ultimate");
+      expect(manager.getVersion()).toBe('17.0.0');
+      expect(manager.getTier()).toBe('ultimate');
 
       manager.reset();
       jest.resetModules();
     });
   });
 
-  describe("getCurrentInstanceUrl", () => {
-    it("should return null before initialization", () => {
+  describe('getCurrentInstanceUrl', () => {
+    it('should return null before initialization', () => {
       expect(connectionManager.getCurrentInstanceUrl()).toBeNull();
     });
 
-    it("should return instance URL after initialization", async () => {
+    it('should return instance URL after initialization', async () => {
       await connectionManager.initialize();
       // After init with default config, currentInstanceUrl is set to GITLAB_BASE_URL
-      expect(connectionManager.getCurrentInstanceUrl()).toBe("https://test-gitlab.com");
+      expect(connectionManager.getCurrentInstanceUrl()).toBe('https://test-gitlab.com');
     });
 
-    it("should return null after reset", async () => {
+    it('should return null after reset', async () => {
       await connectionManager.initialize();
       connectionManager.reset();
       expect(connectionManager.getCurrentInstanceUrl()).toBeNull();
     });
   });
 
-  describe("Reinitialize Method", () => {
+  describe('Reinitialize Method', () => {
     /**
      * Tests reinitialize() method (lines 502-521)
      * Should reset state, clear cache for new instance, and re-initialize
      */
-    it("should reset state and call initialize", async () => {
+    it('should reset state and call initialize', async () => {
       // First, initialize normally
       await connectionManager.initialize();
-      expect(connectionManager.getVersion()).toBe("16.5.0");
+      expect(connectionManager.getVersion()).toBe('16.5.0');
 
       // Spy on reset method
-      const resetSpy = jest.spyOn(connectionManager, "reset");
+      const resetSpy = jest.spyOn(connectionManager, 'reset');
 
       // Reinitialize for a different instance
       // Note: reinitialize() calls initialize() which may use cached data
-      await connectionManager.reinitialize("https://new-gitlab.example.com");
+      await connectionManager.reinitialize('https://new-gitlab.example.com');
 
       // Should have called reset
       expect(resetSpy).toHaveBeenCalled();
@@ -1032,15 +1032,15 @@ describe("ConnectionManager Enhanced Tests", () => {
       resetSpy.mockRestore();
     });
 
-    it("should complete reinitialize without errors and restore working state", async () => {
+    it('should complete reinitialize without errors and restore working state', async () => {
       // Initialize first
       await connectionManager.initialize();
       const initialVersion = connectionManager.getVersion();
-      expect(initialVersion).toBe("16.5.0");
+      expect(initialVersion).toBe('16.5.0');
 
       // Reinitialize for a new instance URL - tests lines 502-521
       await expect(
-        connectionManager.reinitialize("https://new-instance.example.com")
+        connectionManager.reinitialize('https://new-instance.example.com'),
       ).resolves.not.toThrow();
 
       // After reinitialize, manager should be functional
@@ -1050,12 +1050,12 @@ describe("ConnectionManager Enhanced Tests", () => {
     });
   });
 
-  describe("getInstanceClient", () => {
+  describe('getInstanceClient', () => {
     /**
      * Tests getInstanceClient() method for per-instance GraphQL client access
      * This replaces the old endpoint mutation approach with thread-safe per-instance clients
      */
-    it("should return singleton client when registry not initialized", async () => {
+    it('should return singleton client when registry not initialized', async () => {
       await connectionManager.initialize();
 
       // getInstanceClient should return the singleton client
@@ -1064,22 +1064,22 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(client).toBe(connectionManager.getClient());
     });
 
-    it("should return singleton client for unregistered instance", async () => {
+    it('should return singleton client for unregistered instance', async () => {
       await connectionManager.initialize();
 
       // Request client for URL not in registry
-      const client = connectionManager.getInstanceClient("https://unknown.gitlab.com");
+      const client = connectionManager.getInstanceClient('https://unknown.gitlab.com');
       expect(client).toBeDefined();
       expect(client).toBe(connectionManager.getClient());
     });
   });
 
-  describe("ensureIntrospected with per-instance detectors", () => {
+  describe('ensureIntrospected with per-instance detectors', () => {
     /**
      * Tests ensureIntrospected() creating per-instance detectors when
      * instanceUrl differs from currentInstanceUrl in multi-instance OAuth
      */
-    it("should use singleton detectors when already introspected", async () => {
+    it('should use singleton detectors when already introspected', async () => {
       await connectionManager.initialize();
 
       // Instance info is already set from initialize, so ensureIntrospected should return early
@@ -1090,7 +1090,7 @@ describe("ConnectionManager Enhanced Tests", () => {
       expect(MockedSchemaIntrospector).toHaveBeenCalledTimes(1); // Only from initialize
     });
 
-    it("should complete ensureIntrospected without errors", async () => {
+    it('should complete ensureIntrospected without errors', async () => {
       await connectionManager.initialize();
 
       // ensureIntrospected should complete without errors

@@ -5,9 +5,9 @@
  * Sessions are lost on server restart.
  */
 
-import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } from "../types";
-import { SessionStorageBackend, SessionStorageStats } from "./types";
-import { logInfo, logWarn, logError, logDebug, truncateId } from "../../logger";
+import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } from '../types';
+import { SessionStorageBackend, SessionStorageStats } from './types';
+import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 
 export interface MemoryStorageOptions {
   /** Suppress initialization logging (used when wrapped by FileStorage) */
@@ -15,7 +15,7 @@ export interface MemoryStorageOptions {
 }
 
 export class MemoryStorageBackend implements SessionStorageBackend {
-  readonly type = "memory" as const;
+  readonly type = 'memory' as const;
 
   private sessions = new Map<string, OAuthSession>();
   private deviceFlows = new Map<string, DeviceFlowState>();
@@ -34,7 +34,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   async initialize(): Promise<void> {
     this.startCleanupInterval();
     if (!this.silent) {
-      logInfo("Memory storage backend initialized");
+      logInfo('Memory storage backend initialized');
     }
   }
 
@@ -47,7 +47,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     if (session.mcpRefreshToken) {
       this.refreshTokenToSession.set(session.mcpRefreshToken, session.id);
     }
-    logDebug("Session created", { sessionId: session.id, userId: session.gitlabUserId });
+    logDebug('Session created', { sessionId: session.id, userId: session.gitlabUserId });
   }
 
   async getSession(sessionId: string): Promise<OAuthSession | undefined> {
@@ -67,7 +67,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   async updateSession(sessionId: string, updates: Partial<OAuthSession>): Promise<boolean> {
     const session = this.sessions.get(sessionId);
     if (!session) {
-      logWarn("Attempted to update non-existent session", { sessionId });
+      logWarn('Attempted to update non-existent session', { sessionId });
       return false;
     }
 
@@ -82,7 +82,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     }
 
     Object.assign(session, updates, { updatedAt: Date.now() });
-    logDebug("Session updated", { sessionId });
+    logDebug('Session updated', { sessionId });
     return true;
   }
 
@@ -98,7 +98,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     }
 
     this.sessions.delete(sessionId);
-    logDebug("Session deleted", { sessionId });
+    logDebug('Session deleted', { sessionId });
     return true;
   }
 
@@ -109,7 +109,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   // Device flow operations
   async storeDeviceFlow(state: string, flow: DeviceFlowState): Promise<void> {
     this.deviceFlows.set(state, flow);
-    logDebug("Device flow stored", { state, userCode: flow.userCode });
+    logDebug('Device flow stored', { state, userCode: flow.userCode });
   }
 
   async getDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
@@ -125,14 +125,14 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
   async deleteDeviceFlow(state: string): Promise<boolean> {
     const deleted = this.deviceFlows.delete(state);
-    if (deleted) logDebug("Device flow deleted", { state });
+    if (deleted) logDebug('Device flow deleted', { state });
     return deleted;
   }
 
   // Auth code flow operations
   async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): Promise<void> {
     this.authCodeFlows.set(internalState, flow);
-    logDebug("Auth code flow stored", { internalState: truncateId(internalState) });
+    logDebug('Auth code flow stored', { internalState: truncateId(internalState) });
   }
 
   async getAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
@@ -142,7 +142,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   async deleteAuthCodeFlow(internalState: string): Promise<boolean> {
     const deleted = this.authCodeFlows.delete(internalState);
     if (deleted) {
-      logDebug("Auth code flow deleted", { internalState: truncateId(internalState) });
+      logDebug('Auth code flow deleted', { internalState: truncateId(internalState) });
     }
     return deleted;
   }
@@ -150,7 +150,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   // Authorization code operations
   async storeAuthCode(code: AuthorizationCode): Promise<void> {
     this.authCodes.set(code.code, code);
-    logDebug("Auth code stored", { code: truncateId(code.code) });
+    logDebug('Auth code stored', { code: truncateId(code.code) });
   }
 
   async getAuthCode(code: string): Promise<AuthorizationCode | undefined> {
@@ -159,14 +159,14 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
   async deleteAuthCode(code: string): Promise<boolean> {
     const deleted = this.authCodes.delete(code);
-    if (deleted) logDebug("Auth code deleted", { code: truncateId(code) });
+    if (deleted) logDebug('Auth code deleted', { code: truncateId(code) });
     return deleted;
   }
 
   // MCP session mapping
   async associateMcpSession(mcpSessionId: string, oauthSessionId: string): Promise<void> {
     this.mcpSessionToOAuthSession.set(mcpSessionId, oauthSessionId);
-    logDebug("MCP session associated with OAuth session", {
+    logDebug('MCP session associated with OAuth session', {
       mcpSessionId,
       oauthSessionId: truncateId(oauthSessionId),
     });
@@ -180,7 +180,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
 
   async removeMcpSessionAssociation(mcpSessionId: string): Promise<boolean> {
     const deleted = this.mcpSessionToOAuthSession.delete(mcpSessionId);
-    if (deleted) logDebug("MCP session association removed", { mcpSessionId });
+    if (deleted) logDebug('MCP session association removed', { mcpSessionId });
     return deleted;
   }
 
@@ -231,7 +231,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       expiredAuthCodeFlows > 0 ||
       expiredAuthCodes > 0
     ) {
-      logDebug("Memory storage cleanup completed", {
+      logDebug('Memory storage cleanup completed', {
         expiredSessions,
         expiredDeviceFlows,
         expiredAuthCodeFlows,
@@ -244,7 +244,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   async close(): Promise<void> {
     this.stopCleanupInterval();
     if (!this.silent) {
-      logInfo("Memory storage backend closed");
+      logInfo('Memory storage backend closed');
     }
   }
 
@@ -261,9 +261,9 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   private startCleanupInterval(): void {
     this.cleanupIntervalId = setInterval(
       () => {
-        this.cleanup().catch(err => logError("Cleanup error", { err }));
+        this.cleanup().catch((err) => logError('Cleanup error', { err }));
       },
-      5 * 60 * 1000
+      5 * 60 * 1000,
     );
 
     if (this.cleanupIntervalId.unref) {
@@ -295,7 +295,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       })),
       authCodes: Array.from(this.authCodes.values()),
       mcpSessionMappings: Array.from(this.mcpSessionToOAuthSession.entries()).map(
-        ([mcpSessionId, oauthSessionId]) => ({ mcpSessionId, oauthSessionId })
+        ([mcpSessionId, oauthSessionId]) => ({ mcpSessionId, oauthSessionId }),
       ),
     };
   }
@@ -358,7 +358,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       }
     }
 
-    logInfo("Data imported into memory storage", {
+    logInfo('Data imported into memory storage', {
       sessions: this.sessions.size,
       deviceFlows: this.deviceFlows.size,
       authCodeFlows: this.authCodeFlows.size,

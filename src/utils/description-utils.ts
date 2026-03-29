@@ -22,8 +22,8 @@ export function resolveRelatedReferences(description: string, availableTools: Se
   const relatedContent = relatedMatch[1];
 
   // Split by comma, keep only items whose tool is available
-  const items = relatedContent.split(",").map(s => s.trim());
-  const available = items.filter(item => {
+  const items = relatedContent.split(',').map((s) => s.trim());
+  const available = items.filter((item) => {
     const toolRef = item.match(/^((?:browse|manage)_\w+)\b/);
     return toolRef && availableTools.has(toolRef[1]);
   });
@@ -32,7 +32,7 @@ export function resolveRelatedReferences(description: string, availableTools: Se
     return baseDescription.trimEnd();
   }
 
-  return `${baseDescription.trimEnd()} Related: ${available.join(", ")}.`;
+  return `${baseDescription.trimEnd()} Related: ${available.join(', ')}.`;
 }
 
 /**
@@ -43,5 +43,5 @@ export function resolveRelatedReferences(description: string, availableTools: Se
  * Does not affect lowercase "related" in normal description text.
  */
 export function stripRelatedSection(description: string): string {
-  return description.replace(/\s*Related:\s*(.+?)\.?\s*$/, "").trimEnd();
+  return description.replace(/\s*Related:\s*(.+?)\.?\s*$/, '').trimEnd();
 }

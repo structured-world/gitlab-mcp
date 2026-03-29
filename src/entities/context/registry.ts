@@ -4,10 +4,10 @@
  * Registers the manage_context CQRS tool with the tool registry system.
  */
 
-import * as z from "zod";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { ManageContextSchema } from "./schema";
-import { handleManageContext } from "./handlers";
+import * as z from 'zod';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { ManageContextSchema } from './schema';
+import { handleManageContext } from './handlers';
 
 /**
  * Context tools registry - 1 CQRS tool with 8 actions
@@ -24,11 +24,11 @@ import { handleManageContext } from "./handlers";
  */
 export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
   [
-    "manage_context",
+    'manage_context',
     {
-      name: "manage_context",
+      name: 'manage_context',
       description:
-        "View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), list_profiles (OAuth users), whoami (token introspection with live refresh - detects permission changes and updates available tools), switch_preset (change active preset), switch_profile (change OAuth user), set_scope (restrict to namespace), reset (restore initial state). Use whoami to diagnose access issues and verify token permissions.",
+        'View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), list_profiles (OAuth users), whoami (token introspection with live refresh - detects permission changes and updates available tools), switch_preset (change active preset), switch_profile (change OAuth user), set_scope (restrict to namespace), reset (restore initial state). Use whoami to diagnose access issues and verify token permissions.',
       inputSchema: z.toJSONSchema(ManageContextSchema),
       // No gate - context management is always available
       handler: async (args: unknown) => {
@@ -46,7 +46,7 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
  * not GitLab data.
  */
 export function getContextReadOnlyToolNames(): string[] {
-  return ["manage_context"];
+  return ['manage_context'];
 }
 
 /**

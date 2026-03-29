@@ -3,47 +3,47 @@
  * Tests the BrowseUsersSchema against GitLab 18.3 API using actual handler functions
  */
 
-import { BrowseUsersSchema } from "../../../src/entities/core/schema-readonly";
-import { IntegrationTestHelper } from "../helpers/registry-helper";
+import { BrowseUsersSchema } from '../../../src/entities/core/schema-readonly';
+import { IntegrationTestHelper } from '../helpers/registry-helper';
 
-describe("GitLab Users API - BrowseUsersSchema", () => {
+describe('GitLab Users API - BrowseUsersSchema', () => {
   let helper: IntegrationTestHelper;
 
   beforeAll(async () => {
     const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
     if (!GITLAB_TOKEN) {
-      throw new Error("GITLAB_TOKEN environment variable is required");
+      throw new Error('GITLAB_TOKEN environment variable is required');
     }
 
     // Initialize integration test helper
     helper = new IntegrationTestHelper();
     await helper.initialize();
-    console.log("✅ Integration test helper initialized for users API testing");
+    console.log('✅ Integration test helper initialized for users API testing');
   });
 
-  it("should validate BrowseUsersSchema parameters against GitLab API using handler functions", async () => {
+  it('should validate BrowseUsersSchema parameters against GitLab API using handler functions', async () => {
     // Test with various parameter combinations (all with action: "search")
     const testCases = [
       // Basic query
-      { action: "search" as const },
+      { action: 'search' as const },
       // Single username search
-      { action: "search" as const, username: "root" },
+      { action: 'search' as const, username: 'root' },
       // Search with pagination
-      { action: "search" as const, search: "admin", page: 1, per_page: 5 },
+      { action: 'search' as const, search: 'admin', page: 1, per_page: 5 },
       // Filter active users
-      { action: "search" as const, active: true, per_page: 10 },
+      { action: 'search' as const, active: true, per_page: 10 },
       // Filter with multiple parameters
       {
-        action: "search" as const,
+        action: 'search' as const,
         exclude_internal: true,
         without_project_bots: true,
         per_page: 20,
       },
       // Date range filtering
       {
-        action: "search" as const,
-        created_after: "2023-01-01T00:00:00Z",
-        created_before: "2024-12-31T23:59:59Z",
+        action: 'search' as const,
+        created_after: '2023-01-01T00:00:00Z',
+        created_before: '2024-12-31T23:59:59Z',
         per_page: 5,
       },
     ];
@@ -57,7 +57,7 @@ describe("GitLab Users API - BrowseUsersSchema", () => {
 
       if (validationResult.success) {
         // Use executeTool directly
-        const rawData = (await helper.executeTool("browse_users", validationResult.data)) as any;
+        const rawData = (await helper.executeTool('browse_users', validationResult.data)) as any;
 
         // Handle both smart search result format and legacy array format
         let data: any[];
@@ -79,19 +79,19 @@ describe("GitLab Users API - BrowseUsersSchema", () => {
         if (data.length > 0) {
           const user = data[0];
           // Required fields as per GitLab 18.3 documentation
-          expect(user).toHaveProperty("id");
-          expect(user).toHaveProperty("username");
-          expect(user).toHaveProperty("name");
-          expect(user).toHaveProperty("state");
-          expect(user).toHaveProperty("avatar_url");
-          expect(user).toHaveProperty("web_url");
+          expect(user).toHaveProperty('id');
+          expect(user).toHaveProperty('username');
+          expect(user).toHaveProperty('name');
+          expect(user).toHaveProperty('state');
+          expect(user).toHaveProperty('avatar_url');
+          expect(user).toHaveProperty('web_url');
 
           // Validate types
-          expect(typeof user.id).toBe("number");
-          expect(typeof user.username).toBe("string");
-          expect(typeof user.name).toBe("string");
-          expect(typeof user.state).toBe("string");
-          expect(["active", "blocked", "deactivated"]).toContain(user.state);
+          expect(typeof user.id).toBe('number');
+          expect(typeof user.username).toBe('string');
+          expect(typeof user.name).toBe('string');
+          expect(typeof user.state).toBe('string');
+          expect(['active', 'blocked', 'deactivated']).toContain(user.state);
 
           console.log(`  ✅ User structure validated: ${user.username} (${user.state})`);
         }
@@ -104,16 +104,16 @@ describe("GitLab Users API - BrowseUsersSchema", () => {
     }
   }, 30000); // 30 second timeout for multiple API calls
 
-  it("should handle invalid parameters correctly", async () => {
+  it('should handle invalid parameters correctly', async () => {
     const invalidCases = [
       // Invalid types for pagination
-      { action: "search" as const, page: "not-a-number" },
-      { action: "search" as const, per_page: -1 },
-      { action: "search" as const, per_page: 101 }, // Exceeds max
-      { action: "search" as const, page: 0 }, // Min value violation
+      { action: 'search' as const, page: 'not-a-number' },
+      { action: 'search' as const, per_page: -1 },
+      { action: 'search' as const, per_page: 101 }, // Exceeds max
+      { action: 'search' as const, page: 0 }, // Min value violation
       // Invalid types for other fields
-      { action: "search" as const, username: 123 }, // Should be string
-      { action: "search" as const, search: [] }, // Should be string
+      { action: 'search' as const, username: 123 }, // Should be string
+      { action: 'search' as const, search: [] }, // Should be string
     ];
 
     for (const params of invalidCases) {
@@ -123,17 +123,17 @@ describe("GitLab Users API - BrowseUsersSchema", () => {
     }
   });
 
-  it("should correctly handle all filter parameters with handler function", async () => {
+  it('should correctly handle all filter parameters with handler function', async () => {
     // Test that all documented parameters are accepted
     const allParams = {
-      action: "search" as const,
-      username: "test",
-      search: "test",
+      action: 'search' as const,
+      username: 'test',
+      search: 'test',
       active: true,
       external: false,
       blocked: false,
-      created_after: "2023-01-01T00:00:00Z",
-      created_before: "2024-01-01T00:00:00Z",
+      created_after: '2023-01-01T00:00:00Z',
+      created_before: '2024-01-01T00:00:00Z',
       exclude_active: false,
       exclude_external: false,
       exclude_internal: true,
@@ -152,7 +152,7 @@ describe("GitLab Users API - BrowseUsersSchema", () => {
       expect(Object.keys(validationResult.data).length).toBe(Object.keys(allParams).length);
 
       // Test that handler accepts all parameters
-      const data = (await helper.executeTool("browse_users", validationResult.data)) as any[];
+      const data = (await helper.executeTool('browse_users', validationResult.data)) as any[];
       expect(Array.isArray(data)).toBe(true);
       console.log(`  ✅ Handler accepted all parameters, returned ${data.length} users`);
     }

@@ -11,8 +11,8 @@ type OpenModule = { default: (url: string) => Promise<unknown> };
  */
 async function dynamicImport(): Promise<OpenModule> {
   // Using indirect eval to preserve dynamic import in CommonJS output
-  const importFn = (0, eval)("m => import(m)") as (m: string) => Promise<OpenModule>;
-  return importFn("open");
+  const importFn = (0, eval)('m => import(m)') as (m: string) => Promise<OpenModule>;
+  return importFn('open');
 }
 
 /** Import function - can be replaced in tests */

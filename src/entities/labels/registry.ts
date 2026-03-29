@@ -1,10 +1,10 @@
-import * as z from "zod";
-import { BrowseLabelsSchema } from "./schema-readonly";
-import { ManageLabelSchema } from "./schema";
-import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { resolveNamespaceForAPI } from "../../utils/namespace";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { isActionDenied } from "../../config";
+import * as z from 'zod';
+import { BrowseLabelsSchema } from './schema-readonly';
+import { ManageLabelSchema } from './schema';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { resolveNamespaceForAPI } from '../../utils/namespace';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { isActionDenied } from '../../config';
 
 /**
  * Labels tools registry - 2 CQRS tools replacing 5 individual tools
@@ -18,25 +18,25 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_labels",
+    'browse_labels',
     {
-      name: "browse_labels",
+      name: 'browse_labels',
       description:
-        "List and inspect project or group labels. Actions: list (all labels with search filtering), get (single label by ID or name). Related: manage_label to create/update/delete.",
+        'List and inspect project or group labels. Actions: list (all labels with search filtering), get (single label by ID or name). Related: manage_label to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseLabelsSchema),
-      gate: { envVar: "USE_LABELS", defaultValue: true },
+      gate: { envVar: 'USE_LABELS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseLabelsSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_labels", input.action)) {
+        if (isActionDenied('browse_labels', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_labels tool`);
         }
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             // TypeScript knows: input has search, with_counts, include_ancestor_groups, per_page, page (optional)
             const { action: _action, namespace: _namespace, ...rest } = input;
             const query = toQuery(rest, []);
@@ -44,7 +44,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
             return gitlab.get(`${entityType}/${encodedPath}/labels`, { query });
           }
 
-          case "get": {
+          case 'get': {
             // TypeScript knows: input has label_id (required), include_ancestor_groups (optional)
             const query = input.include_ancestor_groups
               ? toQuery({ include_ancestor_groups: input.include_ancestor_groups }, [])
@@ -52,7 +52,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
 
             return gitlab.get(
               `${entityType}/${encodedPath}/labels/${encodeURIComponent(input.label_id)}`,
-              { query }
+              { query },
             );
           }
 
@@ -69,25 +69,25 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_label",
+    'manage_label',
     {
-      name: "manage_label",
+      name: 'manage_label',
       description:
-        "Create, update, or delete project/group labels. Actions: create (name + hex color required), update (modify properties), delete (remove permanently). Related: browse_labels for discovery.",
+        'Create, update, or delete project/group labels. Actions: create (name + hex color required), update (modify properties), delete (remove permanently). Related: browse_labels for discovery.',
       inputSchema: z.toJSONSchema(ManageLabelSchema),
-      gate: { envVar: "USE_LABELS", defaultValue: true },
+      gate: { envVar: 'USE_LABELS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageLabelSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_label", input.action)) {
+        if (isActionDenied('manage_label', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_label tool`);
         }
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
         switch (input.action) {
-          case "create": {
+          case 'create': {
             // TypeScript knows: input has name, color (required), description, priority (optional)
             return gitlab.post(`${entityType}/${encodedPath}/labels`, {
               body: {
@@ -96,11 +96,11 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
                 description: input.description,
                 priority: input.priority,
               },
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "update": {
+          case 'update': {
             // TypeScript knows: input has label_id (required), name, new_name, color, description, priority (optional)
             const {
               action: _action,
@@ -112,14 +112,14 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
 
             return gitlab.put(
               `${entityType}/${encodedPath}/labels/${encodeURIComponent(label_id)}`,
-              { body, contentType: "json" }
+              { body, contentType: 'json' },
             );
           }
 
-          case "delete": {
+          case 'delete': {
             // TypeScript knows: input has label_id (required)
             await gitlab.delete(
-              `${entityType}/${encodedPath}/labels/${encodeURIComponent(input.label_id)}`
+              `${entityType}/${encodedPath}/labels/${encodeURIComponent(input.label_id)}`,
             );
             return { deleted: true };
           }
@@ -137,7 +137,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
  * Get read-only tool names from the registry
  */
 export function getLabelsReadOnlyToolNames(): string[] {
-  return ["browse_labels"];
+  return ['browse_labels'];
 }
 
 /**
@@ -153,8 +153,8 @@ export function getLabelsToolDefinitions(): EnhancedToolDefinition[] {
 export function getFilteredLabelsTools(readOnlyMode: boolean = false): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getLabelsReadOnlyToolNames();
-    return Array.from(labelsToolRegistry.values()).filter(tool =>
-      readOnlyNames.includes(tool.name)
+    return Array.from(labelsToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
     );
   }
   return getLabelsToolDefinitions();

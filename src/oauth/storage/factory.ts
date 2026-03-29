@@ -4,11 +4,11 @@
  * Creates and configures the appropriate storage backend based on configuration.
  */
 
-import { SessionStorageBackend, StorageConfig } from "./types";
-import { MemoryStorageBackend } from "./memory";
-import { FileStorageBackend } from "./file";
-import { PostgreSQLStorageBackend } from "./postgresql";
-import { logInfo } from "../../logger";
+import { SessionStorageBackend, StorageConfig } from './types';
+import { MemoryStorageBackend } from './memory';
+import { FileStorageBackend } from './file';
+import { PostgreSQLStorageBackend } from './postgresql';
+import { logInfo } from '../../logger';
 
 /**
  * Create a storage backend based on configuration
@@ -28,37 +28,37 @@ export function createStorageBackend(config?: StorageConfig): SessionStorageBack
   const storageType = config?.type ?? getEnvStorageType();
 
   switch (storageType) {
-    case "file":
+    case 'file':
       return createFileBackend(config);
-    case "postgresql":
+    case 'postgresql':
       return createPostgreSQLBackend();
-    case "memory":
+    case 'memory':
     default:
       return createMemoryBackend();
   }
 }
 
-function getEnvStorageType(): "memory" | "file" | "postgresql" {
+function getEnvStorageType(): 'memory' | 'file' | 'postgresql' {
   const type = process.env.OAUTH_STORAGE_TYPE?.toLowerCase();
-  if (type === "file" || type === "postgresql") {
+  if (type === 'file' || type === 'postgresql') {
     return type;
   }
-  return "memory";
+  return 'memory';
 }
 
 function createMemoryBackend(): MemoryStorageBackend {
-  logInfo("Using in-memory session storage (sessions will be lost on restart)");
+  logInfo('Using in-memory session storage (sessions will be lost on restart)');
   return new MemoryStorageBackend();
 }
 
 function createFileBackend(config?: StorageConfig): FileStorageBackend {
   const filePath =
-    config?.file?.path ?? process.env.OAUTH_STORAGE_FILE_PATH ?? "./data/oauth-sessions.json";
+    config?.file?.path ?? process.env.OAUTH_STORAGE_FILE_PATH ?? './data/oauth-sessions.json';
 
   const saveInterval =
-    config?.file?.saveInterval ?? parseInt(process.env.OAUTH_STORAGE_SAVE_INTERVAL ?? "30000", 10);
+    config?.file?.saveInterval ?? parseInt(process.env.OAUTH_STORAGE_SAVE_INTERVAL ?? '30000', 10);
 
-  logInfo("Using file-based session storage", { filePath, saveInterval });
+  logInfo('Using file-based session storage', { filePath, saveInterval });
 
   return new FileStorageBackend({
     filePath,
@@ -72,12 +72,12 @@ function createPostgreSQLBackend(): PostgreSQLStorageBackend {
 
   if (!connectionString) {
     throw new Error(
-      "PostgreSQL storage requires a connection string. " +
-        "Set OAUTH_STORAGE_POSTGRESQL_URL or DATABASE_URL environment variable"
+      'PostgreSQL storage requires a connection string. ' +
+        'Set OAUTH_STORAGE_POSTGRESQL_URL or DATABASE_URL environment variable',
     );
   }
 
-  logInfo("Using PostgreSQL session storage (via Prisma)");
+  logInfo('Using PostgreSQL session storage (via Prisma)');
 
   return new PostgreSQLStorageBackend();
 }
@@ -85,7 +85,7 @@ function createPostgreSQLBackend(): PostgreSQLStorageBackend {
 /**
  * Get storage type from environment or config
  */
-export function getStorageType(config?: StorageConfig): "memory" | "file" | "postgresql" {
+export function getStorageType(config?: StorageConfig): 'memory' | 'file' | 'postgresql' {
   return config?.type ?? getEnvStorageType();
 }
 
@@ -96,23 +96,23 @@ export function validateStorageConfig(config?: StorageConfig): string[] {
   const errors: string[] = [];
   const type = getStorageType(config);
 
-  if (type === "postgresql") {
+  if (type === 'postgresql') {
     // Prisma uses OAUTH_STORAGE_POSTGRESQL_URL or DATABASE_URL
     const connectionString = process.env.OAUTH_STORAGE_POSTGRESQL_URL ?? process.env.DATABASE_URL;
 
     if (!connectionString) {
       errors.push(
-        "PostgreSQL storage requires OAUTH_STORAGE_POSTGRESQL_URL or DATABASE_URL environment variable"
+        'PostgreSQL storage requires OAUTH_STORAGE_POSTGRESQL_URL or DATABASE_URL environment variable',
       );
     }
   }
 
-  if (type === "file") {
+  if (type === 'file') {
     const filePath = config?.file?.path ?? process.env.OAUTH_STORAGE_FILE_PATH;
     // File path is optional - defaults to ./data/oauth-sessions.json
     if (filePath) {
       // Basic path validation
-      if (filePath.includes("..")) {
+      if (filePath.includes('..')) {
         errors.push("File storage path must not contain '..'");
       }
     }

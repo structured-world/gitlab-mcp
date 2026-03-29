@@ -10,11 +10,11 @@
  * - Throws clear error when operation would exceed scope
  */
 
-import { ProjectPreset, ScopeConfig } from "./types";
-import { logDebug, logWarn } from "../logger";
+import { ProjectPreset, ScopeConfig } from './types';
+import { logDebug, logWarn } from '../logger';
 
 // Re-export ScopeConfig for backward compatibility
-export type { ScopeConfig } from "./types";
+export type { ScopeConfig } from './types';
 
 /**
  * Error thrown when an operation exceeds the allowed scope
@@ -22,11 +22,11 @@ export type { ScopeConfig } from "./types";
 export class ScopeViolationError extends Error {
   constructor(
     public readonly attemptedTarget: string,
-    public readonly allowedScope: ScopeConfig
+    public readonly allowedScope: ScopeConfig,
   ) {
     const scopeDescription = getScopeDescription(allowedScope);
     super(`Operation on '${attemptedTarget}' is outside the allowed scope (${scopeDescription})`);
-    this.name = "ScopeViolationError";
+    this.name = 'ScopeViolationError';
   }
 }
 
@@ -40,7 +40,7 @@ function getScopeDescription(scope: ScopeConfig): string {
     parts.push(`project: ${scope.project}`);
   }
   if (scope.group) {
-    const subgroupSuffix = scope.includeSubgroups !== false ? "/*" : "";
+    const subgroupSuffix = scope.includeSubgroups !== false ? '/*' : '';
     parts.push(`group: ${scope.group}${subgroupSuffix}`);
   }
   if (scope.namespace) {
@@ -48,20 +48,20 @@ function getScopeDescription(scope: ScopeConfig): string {
   }
   if (scope.projects && scope.projects.length > 0) {
     if (scope.projects.length <= 3) {
-      parts.push(`projects: ${scope.projects.join(", ")}`);
+      parts.push(`projects: ${scope.projects.join(', ')}`);
     } else {
       parts.push(`${scope.projects.length} allowed projects`);
     }
   }
   if (scope.groups && scope.groups.length > 0) {
     if (scope.groups.length <= 3) {
-      parts.push(`groups: ${scope.groups.join(", ")}`);
+      parts.push(`groups: ${scope.groups.join(', ')}`);
     } else {
       parts.push(`${scope.groups.length} allowed groups`);
     }
   }
 
-  return parts.length > 0 ? parts.join("; ") : "unrestricted";
+  return parts.length > 0 ? parts.join('; ') : 'unrestricted';
 }
 
 /**
@@ -72,7 +72,7 @@ function getScopeDescription(scope: ScopeConfig): string {
  * - Handles numeric IDs (returns as-is)
  */
 function normalizeProjectPath(path: string): string {
-  const trimmed = path.trim().replace(/^\/+|\/+$/g, "");
+  const trimmed = path.trim().replace(/^\/+|\/+$/g, '');
   // If it's a numeric ID, return as-is
   if (/^\d+$/.test(trimmed)) {
     return trimmed;
@@ -96,7 +96,7 @@ export function isInNamespace(projectPath: string, namespace: string): boolean {
   // Project must start with namespace followed by /
   return (
     normalizedProject === normalizedNamespace ||
-    normalizedProject.startsWith(normalizedNamespace + "/")
+    normalizedProject.startsWith(normalizedNamespace + '/')
   );
 }
 
@@ -118,7 +118,7 @@ export class ScopeEnforcer {
     this.includeSubgroups = scope.includeSubgroups !== false; // Default true
 
     // Initialize allowed projects set
-    this.allowedProjectsSet = new Set((scope.projects ?? []).map(p => normalizeProjectPath(p)));
+    this.allowedProjectsSet = new Set((scope.projects ?? []).map((p) => normalizeProjectPath(p)));
 
     // Add single project to set if specified
     if (scope.project) {
@@ -126,14 +126,14 @@ export class ScopeEnforcer {
     }
 
     // Initialize allowed groups set
-    this.allowedGroupsSet = new Set((scope.groups ?? []).map(g => normalizeProjectPath(g)));
+    this.allowedGroupsSet = new Set((scope.groups ?? []).map((g) => normalizeProjectPath(g)));
 
     // Add single group to set if specified
     if (scope.group) {
       this.allowedGroupsSet.add(normalizeProjectPath(scope.group));
     }
 
-    logDebug("ScopeEnforcer initialized", {
+    logDebug('ScopeEnforcer initialized', {
       scope: getScopeDescription(scope),
       allowedProjectsCount: this.allowedProjectsSet.size,
       allowedGroupsCount: this.allowedGroupsSet.size,
@@ -186,9 +186,9 @@ export class ScopeEnforcer {
           }
         } else {
           // Project must be directly in group (first-level only)
-          const parts = normalized.split("/");
+          const parts = normalized.split('/');
           if (parts.length >= 2) {
-            const projectGroup = parts.slice(0, -1).join("/");
+            const projectGroup = parts.slice(0, -1).join('/');
             if (projectGroup === allowedGroup) {
               return true;
             }
@@ -200,7 +200,7 @@ export class ScopeEnforcer {
     // Check if numeric ID is in allowed projects (can't validate without API call)
     // For security, we deny numeric IDs unless they're in the explicit list
     if (/^\d+$/.test(normalized)) {
-      logWarn("Numeric project ID not in allowed scope - denying access", {
+      logWarn('Numeric project ID not in allowed scope - denying access', {
         projectId: normalized,
       });
       return false;
@@ -245,7 +245,7 @@ export class ScopeEnforcer {
     // Check if numeric ID is in allowed groups (can't validate without API call)
     // For security, we deny numeric IDs unless they're in the explicit list
     if (/^\d+$/.test(normalized)) {
-      logWarn("Numeric group ID not in allowed scope - denying access", { groupId: normalized });
+      logWarn('Numeric group ID not in allowed scope - denying access', { groupId: normalized });
       return false;
     }
 
@@ -260,7 +260,7 @@ export class ScopeEnforcer {
    */
   enforce(projectPath: string): void {
     if (!this.isAllowed(projectPath)) {
-      logWarn("Project scope violation attempted", {
+      logWarn('Project scope violation attempted', {
         attempted: projectPath,
         scope: getScopeDescription(this.scope),
       });
@@ -276,7 +276,7 @@ export class ScopeEnforcer {
    */
   enforceGroup(groupPath: string): void {
     if (!this.isGroupAllowed(groupPath)) {
-      logWarn("Group scope violation attempted", {
+      logWarn('Group scope violation attempted', {
         attempted: groupPath,
         scope: getScopeDescription(this.scope),
       });
@@ -345,17 +345,17 @@ export function extractProjectsFromArgs(args: Record<string, unknown>): string[]
 
   // Common parameter names for project identification
   const projectFields = [
-    "project_id",
-    "projectId",
-    "project",
-    "namespace",
-    "namespacePath",
-    "fullPath",
+    'project_id',
+    'projectId',
+    'project',
+    'namespace',
+    'namespacePath',
+    'fullPath',
   ];
 
   for (const field of projectFields) {
     const value = args[field];
-    if (typeof value === "string" && value.trim()) {
+    if (typeof value === 'string' && value.trim()) {
       projects.push(value.trim());
     }
   }
@@ -378,11 +378,11 @@ export function extractGroupsFromArgs(args: Record<string, unknown>): string[] {
   const groups: string[] = [];
 
   // Common parameter names for group identification
-  const groupFields = ["group_id", "groupId", "group"];
+  const groupFields = ['group_id', 'groupId', 'group'];
 
   for (const field of groupFields) {
     const value = args[field];
-    if (typeof value === "string" && value.trim()) {
+    if (typeof value === 'string' && value.trim()) {
       groups.push(value.trim());
     }
   }

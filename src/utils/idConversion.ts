@@ -55,21 +55,21 @@ export interface GitLabWidget {
 
 // Mapping of entity types to their GID prefixes
 const GID_PREFIXES = {
-  WorkItem: "gid://gitlab/WorkItem/",
-  User: "gid://gitlab/User/",
-  Project: "gid://gitlab/Project/",
-  Group: "gid://gitlab/Group/",
-  Label: "gid://gitlab/ProjectLabel/",
-  Milestone: "gid://gitlab/Milestone/",
-  Iteration: "gid://gitlab/Iteration/",
-  MergeRequest: "gid://gitlab/MergeRequest/",
-  Pipeline: "gid://gitlab/Ci::Pipeline/",
-  Job: "gid://gitlab/Ci::Build/",
-  Variable: "gid://gitlab/Ci::Variable/",
-  Wiki: "gid://gitlab/Wiki/",
-  Note: "gid://gitlab/Note/",
-  Discussion: "gid://gitlab/Discussion/",
-  Timelog: "gid://gitlab/Timelog/",
+  WorkItem: 'gid://gitlab/WorkItem/',
+  User: 'gid://gitlab/User/',
+  Project: 'gid://gitlab/Project/',
+  Group: 'gid://gitlab/Group/',
+  Label: 'gid://gitlab/ProjectLabel/',
+  Milestone: 'gid://gitlab/Milestone/',
+  Iteration: 'gid://gitlab/Iteration/',
+  MergeRequest: 'gid://gitlab/MergeRequest/',
+  Pipeline: 'gid://gitlab/Ci::Pipeline/',
+  Job: 'gid://gitlab/Ci::Build/',
+  Variable: 'gid://gitlab/Ci::Variable/',
+  Wiki: 'gid://gitlab/Wiki/',
+  Note: 'gid://gitlab/Note/',
+  Discussion: 'gid://gitlab/Discussion/',
+  Timelog: 'gid://gitlab/Timelog/',
 } as const;
 
 export type EntityType = keyof typeof GID_PREFIXES;
@@ -80,11 +80,11 @@ export type EntityType = keyof typeof GID_PREFIXES;
  * @returns Simple ID like "123"
  */
 export function extractSimpleId(gid: string): string {
-  if (!gid || typeof gid !== "string") {
+  if (!gid || typeof gid !== 'string') {
     return gid; // Return as-is if not a string
   }
-  if (gid.startsWith("gid://gitlab/")) {
-    const parts = gid.split("/");
+  if (gid.startsWith('gid://gitlab/')) {
+    const parts = gid.split('/');
     return parts[parts.length - 1];
   }
   return gid; // If it's already a simple ID, return as-is
@@ -101,17 +101,17 @@ export function extractSimpleId(gid: string): string {
  * @returns Normalized WorkItem GID (e.g., "gid://gitlab/WorkItem/5953")
  */
 export function normalizeWorkItemGid(gid: string): string {
-  if (!gid || typeof gid !== "string") {
+  if (!gid || typeof gid !== 'string') {
     return gid;
   }
 
   // Legacy work item types that should be normalized to WorkItem
-  const legacyTypes = ["Issue", "Epic", "Task", "Incident", "TestCase", "Requirement"];
+  const legacyTypes = ['Issue', 'Epic', 'Task', 'Incident', 'TestCase', 'Requirement'];
 
   for (const type of legacyTypes) {
     const prefix = `gid://gitlab/${type}/`;
     if (gid.startsWith(prefix)) {
-      return gid.replace(prefix, "gid://gitlab/WorkItem/");
+      return gid.replace(prefix, 'gid://gitlab/WorkItem/');
     }
   }
 
@@ -126,8 +126,8 @@ export function normalizeWorkItemGid(gid: string): string {
  */
 export function toGid(id: string, entityType: EntityType): string {
   // If it's already a GID, normalize for WorkItem type or return as-is
-  if (id.startsWith("gid://gitlab/")) {
-    if (entityType === "WorkItem") {
+  if (id.startsWith('gid://gitlab/')) {
+    if (entityType === 'WorkItem') {
       return normalizeWorkItemGid(id);
     }
     return id;
@@ -142,7 +142,7 @@ export function toGid(id: string, entityType: EntityType): string {
  * @returns Array of GIDs like ["gid://gitlab/User/123", "gid://gitlab/User/456"]
  */
 export function toGids(ids: string[], entityType: EntityType): string[] {
-  return ids.map(id => toGid(id, entityType));
+  return ids.map((id) => toGid(id, entityType));
 }
 
 /**
@@ -151,7 +151,7 @@ export function toGids(ids: string[], entityType: EntityType): string[] {
  * @returns Array of simple IDs like ["123", "456"]
  */
 export function extractSimpleIds(gids: string[]): string[] {
-  return gids.map(gid => extractSimpleId(gid));
+  return gids.map((gid) => extractSimpleId(gid));
 }
 
 /**
@@ -160,21 +160,21 @@ export function extractSimpleIds(gids: string[]): string[] {
  * @returns Object with GIDs converted to simple IDs
  */
 export function cleanGidsFromObject<T>(obj: T): T {
-  if (!obj || typeof obj !== "object") {
+  if (!obj || typeof obj !== 'object') {
     return obj;
   }
 
   if (Array.isArray(obj)) {
     // eslint-disable-next-line @typescript-eslint/no-unsafe-return
-    const cleanedArray: unknown[] = obj.map(item => cleanGidsFromObject(item));
+    const cleanedArray: unknown[] = obj.map((item) => cleanGidsFromObject(item));
     return cleanedArray as T;
   }
 
   const cleaned: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(obj as Record<string, unknown>)) {
-    if (typeof value === "string" && value.startsWith("gid://gitlab/")) {
+    if (typeof value === 'string' && value.startsWith('gid://gitlab/')) {
       cleaned[key] = extractSimpleId(value);
-    } else if (typeof value === "object" && value !== null) {
+    } else if (typeof value === 'object' && value !== null) {
       cleaned[key] = cleanGidsFromObject(value);
     } else {
       cleaned[key] = value;
@@ -192,13 +192,13 @@ export function cleanGidsFromObject<T>(obj: T): T {
 function normalizeLinkType(linkType: string | undefined): string | undefined {
   if (!linkType) return linkType;
   const mapping: Record<string, string> = {
-    is_blocked_by: "BLOCKED_BY",
-    blocks: "BLOCKS",
-    related: "RELATED",
+    is_blocked_by: 'BLOCKED_BY',
+    blocks: 'BLOCKS',
+    related: 'RELATED',
     // Also handle if already uppercase (in case GitLab changes behavior)
-    BLOCKED_BY: "BLOCKED_BY",
-    BLOCKS: "BLOCKS",
-    RELATED: "RELATED",
+    BLOCKED_BY: 'BLOCKED_BY',
+    BLOCKS: 'BLOCKS',
+    RELATED: 'RELATED',
   };
   return mapping[linkType] ?? linkType;
 }
@@ -218,7 +218,7 @@ export function cleanWorkItemResponse(workItem: GitLabWorkItem): GitLabWorkItem 
 
   // Handle workItemType safely - ALWAYS convert to simple string constant for agents
   if (workItem.workItemType) {
-    if (typeof workItem.workItemType === "string") {
+    if (typeof workItem.workItemType === 'string') {
       // If workItemType is already a string, keep it as-is
       result.workItemType = workItem.workItemType;
     } else if (workItem.workItemType.name) {
@@ -240,10 +240,10 @@ export function cleanWorkItemResponse(workItem: GitLabWorkItem): GitLabWorkItem 
       const cleanedWidget: GitLabWidget = { ...widget };
 
       // Clean assignee IDs in ASSIGNEES widget
-      if (widget.type === "ASSIGNEES" && widget.assignees?.nodes) {
+      if (widget.type === 'ASSIGNEES' && widget.assignees?.nodes) {
         cleanedWidget.assignees = {
           ...widget.assignees,
-          nodes: widget.assignees.nodes.map(assignee => ({
+          nodes: widget.assignees.nodes.map((assignee) => ({
             ...assignee,
             id: extractSimpleId(assignee.id),
           })),
@@ -251,10 +251,10 @@ export function cleanWorkItemResponse(workItem: GitLabWorkItem): GitLabWorkItem 
       }
 
       // Clean label IDs in LABELS widget
-      if (widget.type === "LABELS" && widget.labels?.nodes) {
+      if (widget.type === 'LABELS' && widget.labels?.nodes) {
         cleanedWidget.labels = {
           ...widget.labels,
-          nodes: widget.labels.nodes.map(label => ({
+          nodes: widget.labels.nodes.map((label) => ({
             ...label,
             id: extractSimpleId(label.id),
           })),
@@ -262,7 +262,7 @@ export function cleanWorkItemResponse(workItem: GitLabWorkItem): GitLabWorkItem 
       }
 
       // Clean milestone ID in MILESTONE widget
-      if (widget.type === "MILESTONE" && widget.milestone?.id) {
+      if (widget.type === 'MILESTONE' && widget.milestone?.id) {
         cleanedWidget.milestone = {
           ...widget.milestone,
           id: extractSimpleId(widget.milestone.id),
@@ -270,7 +270,7 @@ export function cleanWorkItemResponse(workItem: GitLabWorkItem): GitLabWorkItem 
       }
 
       // Clean parent ID in HIERARCHY widget
-      if (widget.type === "HIERARCHY" && widget.parent?.id) {
+      if (widget.type === 'HIERARCHY' && widget.parent?.id) {
         cleanedWidget.parent = {
           ...widget.parent,
           id: extractSimpleId(widget.parent.id),
@@ -278,10 +278,10 @@ export function cleanWorkItemResponse(workItem: GitLabWorkItem): GitLabWorkItem 
       }
 
       // Clean linked item GIDs in LINKED_ITEMS widget and normalize linkType
-      if (widget.type === "LINKED_ITEMS" && widget.linkedItems?.nodes) {
+      if (widget.type === 'LINKED_ITEMS' && widget.linkedItems?.nodes) {
         cleanedWidget.linkedItems = {
           ...widget.linkedItems,
-          nodes: widget.linkedItems.nodes.map(node => ({
+          nodes: widget.linkedItems.nodes.map((node) => ({
             ...node,
             // Normalize linkType: GitLab returns snake_case but we use SCREAMING_SNAKE_CASE in schema
             linkType: normalizeLinkType(node.linkType),
@@ -310,7 +310,7 @@ export async function convertTypeNamesToGids(
   typeNames: string[],
   namespacePath: string,
 
-  getWorkItemTypes: (path: string) => Promise<GitLabWorkItemType[]>
+  getWorkItemTypes: (path: string) => Promise<GitLabWorkItemType[]>,
 ): Promise<string[]> {
   if (!typeNames || typeNames.length === 0) {
     return [];
@@ -322,20 +322,20 @@ export async function convertTypeNamesToGids(
 
   for (const typeName of typeNames) {
     const workItemTypeObj = workItemTypes.find(
-      t => t.name.toUpperCase() === typeName.toUpperCase()
+      (t) => t.name.toUpperCase() === typeName.toUpperCase(),
     );
 
     if (workItemTypeObj) {
       resolvedTypes.push(workItemTypeObj.id);
     } else {
       console.warn(
-        `Work item type "${typeName}" not found in namespace "${namespacePath}". Available types: ${workItemTypes.map(t => t.name).join(", ")}`
+        `Work item type "${typeName}" not found in namespace "${namespacePath}". Available types: ${workItemTypes.map((t) => t.name).join(', ')}`,
       );
     }
   }
 
   if (resolvedTypes.length === 0) {
-    console.warn("No valid work item types found for filtering. Using no type filter.");
+    console.warn('No valid work item types found for filtering. Using no type filter.');
     return [];
   }
 

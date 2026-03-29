@@ -5,7 +5,7 @@
 /**
  * Container runtime type (docker or podman)
  */
-export type ContainerRuntime = "docker" | "podman";
+export type ContainerRuntime = 'docker' | 'podman';
 
 /**
  * Detected container runtime information
@@ -27,13 +27,13 @@ export interface ContainerRuntimeInfo {
  * Docker container status
  */
 export type ContainerStatus =
-  | "running"
-  | "stopped"
-  | "paused"
-  | "restarting"
-  | "created"
-  | "exited"
-  | "dead";
+  | 'running'
+  | 'stopped'
+  | 'paused'
+  | 'restarting'
+  | 'created'
+  | 'exited'
+  | 'dead';
 
 /**
  * Docker container info
@@ -77,7 +77,7 @@ export interface DockerConfig {
   /** SSE port (default: 3333) */
   port: number;
   /** Deployment type (standalone, external-db, compose-bundle) */
-  deploymentType?: "standalone" | "external-db" | "compose-bundle";
+  deploymentType?: 'standalone' | 'external-db' | 'compose-bundle';
   /** Enable OAuth mode */
   oauthEnabled: boolean;
   /** OAuth session secret */
@@ -101,8 +101,8 @@ export const DEFAULT_DOCKER_CONFIG: DockerConfig = {
   port: 3333,
   oauthEnabled: false,
   instances: [],
-  containerName: "gitlab-mcp",
-  image: "ghcr.io/structured-world/gitlab-mcp:latest",
+  containerName: 'gitlab-mcp',
+  image: 'ghcr.io/structured-world/gitlab-mcp:latest',
 };
 
 /**
@@ -170,15 +170,15 @@ export interface DockerStatusResult {
  * Config directory paths
  */
 export const CONFIG_PATHS = {
-  darwin: "~/.config/gitlab-mcp",
-  win32: "%APPDATA%/gitlab-mcp",
-  linux: "~/.config/gitlab-mcp",
+  darwin: '~/.config/gitlab-mcp',
+  win32: '%APPDATA%/gitlab-mcp',
+  linux: '~/.config/gitlab-mcp',
 } as const;
 
 /**
  * Get config directory for current platform
  */
 export function getConfigDir(): string {
-  const platform = process.platform as "darwin" | "win32" | "linux";
+  const platform = process.platform as 'darwin' | 'win32' | 'linux';
   return CONFIG_PATHS[platform] ?? CONFIG_PATHS.linux;
 }

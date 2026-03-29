@@ -10,7 +10,7 @@ declare interface KVNamespace {
 }
 
 declare type PagesFunction<Env = unknown> = (
-  context: EventContext<Env, string, unknown>
+  context: EventContext<Env, string, unknown>,
 ) => Promise<Response> | Response;
 
 declare interface EventContext<Env = unknown, P extends string = string, Data = unknown> {

@@ -11,17 +11,17 @@
  * - Data version migration support
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } from "../types";
+import * as fs from 'fs';
+import * as path from 'path';
+import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } from '../types';
 import {
   SessionStorageBackend,
   SessionStorageStats,
   StorageData,
   STORAGE_DATA_VERSION,
-} from "./types";
-import { MemoryStorageBackend } from "./memory";
-import { logInfo, logDebug, logError, logWarn } from "../../logger";
+} from './types';
+import { MemoryStorageBackend } from './memory';
+import { logInfo, logDebug, logError, logWarn } from '../../logger';
 
 export interface FileStorageOptions {
   /** Path to the storage file */
@@ -33,7 +33,7 @@ export interface FileStorageOptions {
 }
 
 export class FileStorageBackend implements SessionStorageBackend {
-  readonly type = "file" as const;
+  readonly type = 'file' as const;
 
   private memory: MemoryStorageBackend;
   private filePath: string;
@@ -59,21 +59,21 @@ export class FileStorageBackend implements SessionStorageBackend {
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
       dirCreated = true;
-      logInfo("Created storage directory", { dir });
+      logInfo('Created storage directory', { dir });
     }
 
     // Load existing data if file exists
     const fileExists = fs.existsSync(this.filePath);
     if (fileExists) {
       const stats = fs.statSync(this.filePath);
-      logInfo("Found existing session file", {
+      logInfo('Found existing session file', {
         filePath: this.filePath,
         size: stats.size,
         mtime: stats.mtime.toISOString(),
       });
       await this.loadFromFile();
     } else {
-      logInfo("No existing session file, will create on first save", {
+      logInfo('No existing session file, will create on first save', {
         filePath: this.filePath,
       });
     }
@@ -81,11 +81,11 @@ export class FileStorageBackend implements SessionStorageBackend {
     // Verify we can write to the file
     try {
       const testPath = `${this.filePath}.test`;
-      fs.writeFileSync(testPath, "test", "utf-8");
+      fs.writeFileSync(testPath, 'test', 'utf-8');
       fs.unlinkSync(testPath);
-      logDebug("Write access verified", { filePath: this.filePath });
+      logDebug('Write access verified', { filePath: this.filePath });
     } catch (error) {
-      logError("Cannot write to storage file path - sessions will NOT persist!", {
+      logError('Cannot write to storage file path - sessions will NOT persist!', {
         err: error as Error,
         filePath: this.filePath,
       });
@@ -99,7 +99,7 @@ export class FileStorageBackend implements SessionStorageBackend {
     this.startSaveInterval();
 
     this.initialized = true;
-    logInfo("File storage backend initialized", {
+    logInfo('File storage backend initialized', {
       filePath: this.filePath,
       dirCreated,
       fileExisted: fileExists,
@@ -108,12 +108,12 @@ export class FileStorageBackend implements SessionStorageBackend {
 
   private async loadFromFile(): Promise<void> {
     try {
-      const content = fs.readFileSync(this.filePath, "utf-8");
+      const content = fs.readFileSync(this.filePath, 'utf-8');
       const data = JSON.parse(content) as StorageData;
 
       // Validate version
       if (data.version !== STORAGE_DATA_VERSION) {
-        logWarn("Storage file version mismatch, migrating data", {
+        logWarn('Storage file version mismatch, migrating data', {
           fileVersion: data.version,
           currentVersion: STORAGE_DATA_VERSION,
         });
@@ -122,15 +122,15 @@ export class FileStorageBackend implements SessionStorageBackend {
 
       // Filter expired data before import
       const now = Date.now();
-      const validSessions = data.sessions.filter(s => {
+      const validSessions = data.sessions.filter((s) => {
         // Sessions are valid for 7 days
         const maxAge = 7 * 24 * 60 * 60 * 1000;
         return s.createdAt + maxAge > now;
       });
 
-      const validDeviceFlows = data.deviceFlows.filter(d => d.flow.expiresAt > now);
-      const validAuthCodeFlows = data.authCodeFlows.filter(a => a.flow.expiresAt > now);
-      const validAuthCodes = data.authCodes.filter(a => a.expiresAt > now);
+      const validDeviceFlows = data.deviceFlows.filter((d) => d.flow.expiresAt > now);
+      const validAuthCodeFlows = data.authCodeFlows.filter((a) => a.flow.expiresAt > now);
+      const validAuthCodes = data.authCodes.filter((a) => a.expiresAt > now);
 
       // Import into memory
       this.memory.importData({
@@ -142,14 +142,14 @@ export class FileStorageBackend implements SessionStorageBackend {
       });
 
       const stats = await this.memory.getStats();
-      logInfo("Loaded sessions from file", {
+      logInfo('Loaded sessions from file', {
         loadedSessions: stats.sessions,
         expiredSessions: data.sessions.length - validSessions.length,
         loadedDeviceFlows: stats.deviceFlows,
         loadedAuthCodes: stats.authCodes,
       });
     } catch (error) {
-      logError("Failed to load sessions from file", {
+      logError('Failed to load sessions from file', {
         err: error as Error,
         filePath: this.filePath,
       });
@@ -177,16 +177,16 @@ export class FileStorageBackend implements SessionStorageBackend {
       const tempPath = `${this.filePath}.tmp`;
       const content = JSON.stringify(data);
 
-      fs.writeFileSync(tempPath, content, "utf-8");
+      fs.writeFileSync(tempPath, content, 'utf-8');
       fs.renameSync(tempPath, this.filePath);
 
-      logDebug("Saved sessions to file", {
+      logDebug('Saved sessions to file', {
         sessions: data.sessions.length,
         deviceFlows: data.deviceFlows.length,
         authCodes: data.authCodes.length,
       });
     } catch (error) {
-      logError("Failed to save sessions to file", {
+      logError('Failed to save sessions to file', {
         err: error as Error,
         filePath: this.filePath,
       });
@@ -206,14 +206,14 @@ export class FileStorageBackend implements SessionStorageBackend {
     this.saveDebounceId = setTimeout(() => {
       if (this.pendingSave) {
         this.pendingSave = false;
-        this.saveToFile().catch(err => logError("Failed to save to file", { err }));
+        this.saveToFile().catch((err) => logError('Failed to save to file', { err }));
       }
     }, this.saveDebounce);
   }
 
   private startSaveInterval(): void {
     this.saveIntervalId = setInterval(() => {
-      this.saveToFile().catch(err => logError("Failed to save to file", { err }));
+      this.saveToFile().catch((err) => logError('Failed to save to file', { err }));
     }, this.saveInterval);
 
     if (this.saveIntervalId.unref) {
@@ -346,7 +346,7 @@ export class FileStorageBackend implements SessionStorageBackend {
     // Close memory backend
     await this.memory.close();
 
-    logInfo("File storage backend closed");
+    logInfo('File storage backend closed');
   }
 
   async getStats(): Promise<SessionStorageStats> {

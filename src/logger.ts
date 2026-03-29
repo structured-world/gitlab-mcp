@@ -1,4 +1,4 @@
-import { pino, type LoggerOptions } from "pino";
+import { pino, type LoggerOptions } from 'pino';
 
 /**
  * Truncate an ID for safe logging.
@@ -10,12 +10,12 @@ import { pino, type LoggerOptions } from "pino";
  */
 export function truncateId(id: string): string {
   // Runtime type guard for CodeQL - ensures string methods are safe
-  if (typeof id !== "string") return String(id);
+  if (typeof id !== 'string') return String(id);
   if (id.length <= 10) return id;
-  return id.substring(0, 4) + ".." + id.slice(-4);
+  return id.substring(0, 4) + '..' + id.slice(-4);
 }
 
-const isTestEnv = process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID !== undefined;
+const isTestEnv = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID !== undefined;
 
 /**
  * JSON log output mode.
@@ -23,7 +23,7 @@ const isTestEnv = process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID 
  * When true: Raw pino JSON output (NDJSON) for log aggregators (Loki, ELK, Datadog)
  * When false (default): Human-readable single-line format via pino-pretty
  */
-export const LOG_JSON = process.env.LOG_JSON === "true";
+export const LOG_JSON = process.env.LOG_JSON === 'true';
 
 /**
  * Log format pattern using nginx-style tokens.
@@ -43,7 +43,7 @@ export const LOG_JSON = process.env.LOG_JSON === "true";
  * @example LOG_FORMAT="[%time] %level (%name): %msg"
  * @example LOG_FORMAT="%level: %msg"
  */
-export const LOG_FORMAT = process.env.LOG_FORMAT ?? "%msg";
+export const LOG_FORMAT = process.env.LOG_FORMAT ?? '%msg';
 
 /**
  * Convert LOG_FORMAT tokens to pino-pretty messageFormat template.
@@ -56,23 +56,23 @@ export const LOG_FORMAT = process.env.LOG_FORMAT ?? "%msg";
  */
 function convertToPinoFormat(format: string): string {
   return format
-    .replace(/%time/g, "{time}")
-    .replace(/%level/g, "{levelLabel}")
-    .replace(/%name/g, "{name}")
-    .replace(/%msg/g, "{msg}");
+    .replace(/%time/g, '{time}')
+    .replace(/%level/g, '{levelLabel}')
+    .replace(/%name/g, '{name}')
+    .replace(/%msg/g, '{msg}');
 }
 
 /**
  * Determine which fields to include based on LOG_FORMAT tokens.
  */
 function getIgnoredFields(format: string): string {
-  const ignored: string[] = ["pid", "hostname"];
+  const ignored: string[] = ['pid', 'hostname'];
 
-  if (!format.includes("%time")) ignored.push("time");
-  if (!format.includes("%level")) ignored.push("level");
-  if (!format.includes("%name")) ignored.push("name");
+  if (!format.includes('%time')) ignored.push('time');
+  if (!format.includes('%level')) ignored.push('level');
+  if (!format.includes('%name')) ignored.push('name');
 
-  return ignored.join(",");
+  return ignored.join(',');
 }
 
 /**
@@ -83,17 +83,17 @@ function buildPrettyOptions(format: string): Record<string, unknown> {
     destination: 2, // stderr - keeps stdout clean for CLI tools (list-tools --export)
   };
 
-  const hasTime = format.includes("%time");
+  const hasTime = format.includes('%time');
   const pinoFormat = convertToPinoFormat(format);
   const ignored = getIgnoredFields(format);
 
   // Minimal format (just %msg) - no colors, pure message output
-  const isMinimal = format.trim() === "%msg";
+  const isMinimal = format.trim() === '%msg';
 
   return {
     ...baseOptions,
     colorize: !isMinimal,
-    translateTime: hasTime ? "HH:MM:ss.l" : false,
+    translateTime: hasTime ? 'HH:MM:ss.l' : false,
     ignore: ignored,
     messageFormat: pinoFormat,
     hideObject: true, // Hide the JSON object, use messageFormat only
@@ -103,7 +103,7 @@ function buildPrettyOptions(format: string): Record<string, unknown> {
 export const createLogger = (name?: string) => {
   const options: LoggerOptions = {
     name,
-    level: process.env.LOG_LEVEL ?? "info",
+    level: process.env.LOG_LEVEL ?? 'info',
   };
 
   // JSON mode: raw pino output (no pretty printing) for log aggregators
@@ -111,7 +111,7 @@ export const createLogger = (name?: string) => {
   // Test mode: skip transport to avoid Jest worker thread leak
   if (!isTestEnv && !LOG_JSON) {
     options.transport = {
-      target: "pino-pretty",
+      target: 'pino-pretty',
       options: buildPrettyOptions(LOG_FORMAT),
     };
   }
@@ -119,7 +119,7 @@ export const createLogger = (name?: string) => {
   return pino(options);
 };
 
-export const logger = createLogger("gitlab-mcp");
+export const logger = createLogger('gitlab-mcp');
 
 /**
  * Format data object as key=value pairs for plain text logging.
@@ -134,12 +134,12 @@ function formatDataPairs(data: Record<string, unknown>): string {
       if (v === null || v === undefined) {
         return `${k}=${String(v)}`;
       }
-      if (typeof v === "object") {
+      if (typeof v === 'object') {
         return `${k}=${JSON.stringify(v)}`;
       }
       return `${k}=${String(v)}`;
     })
-    .join(" ");
+    .join(' ');
 }
 
 /**

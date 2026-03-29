@@ -1,11 +1,11 @@
-import { jest } from "@jest/globals";
+import { jest } from '@jest/globals';
 
 // Mock server and logger before importing main
-jest.mock("../../src/server", () => ({
+jest.mock('../../src/server', () => ({
   startServer: jest.fn(),
 }));
 
-jest.mock("../../src/logger", () => ({
+jest.mock('../../src/logger', () => ({
   logger: {
     error: jest.fn(),
     info: jest.fn(),
@@ -19,18 +19,18 @@ jest.mock("../../src/logger", () => ({
 }));
 
 // Mock profiles module to prevent file system access during tests
-jest.mock("../../src/profiles", () => ({
+jest.mock('../../src/profiles', () => ({
   tryApplyProfileFromEnv: jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined),
 }));
 
 // Mock cli/init to prevent ESM 'open' package from being imported
 const mockRunWizard = jest.fn<() => Promise<void>>().mockResolvedValue(undefined);
-jest.mock("../../src/cli/init", () => ({
+jest.mock('../../src/cli/init', () => ({
   runWizard: mockRunWizard,
 }));
 
 // Mock cli-utils for parseCliArgs with full CliArgs shape
-jest.mock("../../src/cli-utils", () => ({
+jest.mock('../../src/cli-utils', () => ({
   parseCliArgs: jest.fn(() => ({
     init: false,
     noProjectConfig: false,
@@ -43,17 +43,17 @@ const mockStartServer = jest.fn<() => Promise<void>>();
 
 // Mock process.exit to prevent tests from actually exiting
 const mockExit = jest
-  .spyOn(process, "exit")
+  .spyOn(process, 'exit')
   .mockImplementation((_code?: number) => undefined as never);
 
-describe("main entry point", () => {
+describe('main entry point', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     jest.resetModules();
 
     // Reset mocks
-    const { startServer } = require("../../src/server");
-    const { logError: mockLogErrorFn } = require("../../src/logger");
+    const { startServer } = require('../../src/server');
+    const { logError: mockLogErrorFn } = require('../../src/logger');
 
     startServer.mockImplementation(mockStartServer);
     // Store the mocked logError for assertions
@@ -68,54 +68,54 @@ describe("main entry point", () => {
     mockExit.mockRestore();
   });
 
-  it("should call startServer successfully", async () => {
+  it('should call startServer successfully', async () => {
     mockStartServer.mockResolvedValue(undefined);
 
     // Import main after setting up mocks
-    await import("../../src/main");
+    await import('../../src/main');
 
     // Give it a moment to execute
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     const logErrorFn = (global as Record<string, unknown>).__mockLogError as jest.MockedFunction<
-      typeof import("../../src/logger").logError
+      typeof import('../../src/logger').logError
     >;
     expect(mockStartServer).toHaveBeenCalled();
     expect(logErrorFn).not.toHaveBeenCalled();
     expect(mockExit).not.toHaveBeenCalled();
   });
 
-  it("should handle startServer errors and exit with code 1", async () => {
-    const testError = new Error("Server startup failed");
+  it('should handle startServer errors and exit with code 1', async () => {
+    const testError = new Error('Server startup failed');
     mockStartServer.mockRejectedValue(testError);
 
     // Import main after setting up mocks
-    await import("../../src/main");
+    await import('../../src/main');
 
     // Give it a moment to execute the catch block
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     const logErrorFn = (global as Record<string, unknown>).__mockLogError as jest.MockedFunction<
-      typeof import("../../src/logger").logError
+      typeof import('../../src/logger').logError
     >;
     expect(mockStartServer).toHaveBeenCalled();
-    expect(logErrorFn).toHaveBeenCalledWith("Failed to start GitLab MCP Server", {
-      error: "Error: Server startup failed",
+    expect(logErrorFn).toHaveBeenCalledWith('Failed to start GitLab MCP Server', {
+      error: 'Error: Server startup failed',
     });
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("should run init wizard and exit when init subcommand is used", async () => {
+  it('should run init wizard and exit when init subcommand is used', async () => {
     // Reset modules to ensure fresh import
     jest.resetModules();
 
     // Create mocks first - init now uses runSetupWizard from cli/setup
     const mockSetupWizard = jest
       .fn<(options?: { mode?: string }) => Promise<{ success: boolean; mode: string }>>()
-      .mockResolvedValue({ success: true, mode: "local" });
+      .mockResolvedValue({ success: true, mode: 'local' });
 
     // Re-apply mocks after reset with full CliArgs shape
-    jest.doMock("../../src/cli-utils", () => ({
+    jest.doMock('../../src/cli-utils', () => ({
       parseCliArgs: jest.fn(() => ({
         init: true,
         setup: false,
@@ -124,42 +124,42 @@ describe("main entry point", () => {
         auto: false,
       })),
     }));
-    jest.doMock("../../src/server", () => ({
+    jest.doMock('../../src/server', () => ({
       startServer: jest.fn(),
     }));
-    jest.doMock("../../src/logger", () => ({
+    jest.doMock('../../src/logger', () => ({
       logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() },
       logInfo: jest.fn(),
       logWarn: jest.fn(),
       logError: jest.fn(),
       logDebug: jest.fn(),
     }));
-    jest.doMock("../../src/profiles", () => ({
+    jest.doMock('../../src/profiles', () => ({
       tryApplyProfileFromEnv: jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined),
     }));
-    jest.doMock("../../src/cli/setup", () => ({
+    jest.doMock('../../src/cli/setup', () => ({
       runSetupWizard: mockSetupWizard,
     }));
 
     // Import main after setting up mocks
-    await import("../../src/main");
+    await import('../../src/main');
 
     // Give it a moment to execute
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
     // Verify runSetupWizard was called with local mode and process.exit(0)
-    expect(mockSetupWizard).toHaveBeenCalledWith({ mode: "local" });
+    expect(mockSetupWizard).toHaveBeenCalledWith({ mode: 'local' });
     expect(mockExit).toHaveBeenCalledWith(0);
   });
 
-  it("should exit with code 1 when init wizard fails", async () => {
+  it('should exit with code 1 when init wizard fails', async () => {
     jest.resetModules();
 
     const mockSetupWizard = jest
       .fn<(options?: { mode?: string }) => Promise<{ success: boolean; mode: string }>>()
-      .mockResolvedValue({ success: false, mode: "local" });
+      .mockResolvedValue({ success: false, mode: 'local' });
 
-    jest.doMock("../../src/cli-utils", () => ({
+    jest.doMock('../../src/cli-utils', () => ({
       parseCliArgs: jest.fn(() => ({
         init: true,
         setup: false,
@@ -168,41 +168,41 @@ describe("main entry point", () => {
         auto: false,
       })),
     }));
-    jest.doMock("../../src/server", () => ({
+    jest.doMock('../../src/server', () => ({
       startServer: jest.fn(),
     }));
-    jest.doMock("../../src/logger", () => ({
+    jest.doMock('../../src/logger', () => ({
       logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() },
       logInfo: jest.fn(),
       logWarn: jest.fn(),
       logError: jest.fn(),
       logDebug: jest.fn(),
     }));
-    jest.doMock("../../src/profiles", () => ({
+    jest.doMock('../../src/profiles', () => ({
       tryApplyProfileFromEnv: jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined),
     }));
-    jest.doMock("../../src/cli/setup", () => ({
+    jest.doMock('../../src/cli/setup', () => ({
       runSetupWizard: mockSetupWizard,
     }));
 
-    await import("../../src/main");
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await import('../../src/main');
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(mockSetupWizard).toHaveBeenCalledWith({ mode: "local" });
+    expect(mockSetupWizard).toHaveBeenCalledWith({ mode: 'local' });
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 
-  it("should exit with code 0 when docker init wizard succeeds", async () => {
+  it('should exit with code 0 when docker init wizard succeeds', async () => {
     jest.resetModules();
 
     const mockSetupWizard = jest
       .fn<(options?: { mode?: string }) => Promise<{ success: boolean; mode: string }>>()
-      .mockResolvedValue({ success: true, mode: "server" });
+      .mockResolvedValue({ success: true, mode: 'server' });
 
-    jest.doMock("../../src/cli-utils", () => ({
+    jest.doMock('../../src/cli-utils', () => ({
       parseCliArgs: jest.fn(() => ({
         docker: true,
-        dockerArgs: ["init"],
+        dockerArgs: ['init'],
         init: false,
         setup: false,
         noProjectConfig: false,
@@ -210,41 +210,41 @@ describe("main entry point", () => {
         auto: false,
       })),
     }));
-    jest.doMock("../../src/server", () => ({
+    jest.doMock('../../src/server', () => ({
       startServer: jest.fn(),
     }));
-    jest.doMock("../../src/logger", () => ({
+    jest.doMock('../../src/logger', () => ({
       logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() },
       logInfo: jest.fn(),
       logWarn: jest.fn(),
       logError: jest.fn(),
       logDebug: jest.fn(),
     }));
-    jest.doMock("../../src/profiles", () => ({
+    jest.doMock('../../src/profiles', () => ({
       tryApplyProfileFromEnv: jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined),
     }));
-    jest.doMock("../../src/cli/setup", () => ({
+    jest.doMock('../../src/cli/setup', () => ({
       runSetupWizard: mockSetupWizard,
     }));
 
-    await import("../../src/main");
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await import('../../src/main');
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(mockSetupWizard).toHaveBeenCalledWith({ mode: "server" });
+    expect(mockSetupWizard).toHaveBeenCalledWith({ mode: 'server' });
     expect(mockExit).toHaveBeenCalledWith(0);
   });
 
-  it("should exit with code 1 when docker init wizard fails", async () => {
+  it('should exit with code 1 when docker init wizard fails', async () => {
     jest.resetModules();
 
     const mockSetupWizard = jest
       .fn<(options?: { mode?: string }) => Promise<{ success: boolean; mode: string }>>()
-      .mockResolvedValue({ success: false, mode: "server" });
+      .mockResolvedValue({ success: false, mode: 'server' });
 
-    jest.doMock("../../src/cli-utils", () => ({
+    jest.doMock('../../src/cli-utils', () => ({
       parseCliArgs: jest.fn(() => ({
         docker: true,
-        dockerArgs: ["init"],
+        dockerArgs: ['init'],
         init: false,
         setup: false,
         noProjectConfig: false,
@@ -252,27 +252,27 @@ describe("main entry point", () => {
         auto: false,
       })),
     }));
-    jest.doMock("../../src/server", () => ({
+    jest.doMock('../../src/server', () => ({
       startServer: jest.fn(),
     }));
-    jest.doMock("../../src/logger", () => ({
+    jest.doMock('../../src/logger', () => ({
       logger: { error: jest.fn(), info: jest.fn(), warn: jest.fn(), debug: jest.fn() },
       logInfo: jest.fn(),
       logWarn: jest.fn(),
       logError: jest.fn(),
       logDebug: jest.fn(),
     }));
-    jest.doMock("../../src/profiles", () => ({
+    jest.doMock('../../src/profiles', () => ({
       tryApplyProfileFromEnv: jest.fn<() => Promise<undefined>>().mockResolvedValue(undefined),
     }));
-    jest.doMock("../../src/cli/setup", () => ({
+    jest.doMock('../../src/cli/setup', () => ({
       runSetupWizard: mockSetupWizard,
     }));
 
-    await import("../../src/main");
-    await new Promise(resolve => setTimeout(resolve, 10));
+    await import('../../src/main');
+    await new Promise((resolve) => setTimeout(resolve, 10));
 
-    expect(mockSetupWizard).toHaveBeenCalledWith({ mode: "server" });
+    expect(mockSetupWizard).toHaveBeenCalledWith({ mode: 'server' });
     expect(mockExit).toHaveBeenCalledWith(1);
   });
 });

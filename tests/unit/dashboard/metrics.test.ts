@@ -9,28 +9,28 @@ import {
   collectMetrics,
   DashboardMetricsSchema,
   InstanceStatusSchema,
-} from "../../../src/dashboard/metrics";
-import { InstanceSummary, InstanceRegistry } from "../../../src/services/InstanceRegistry";
-import { getSessionManager } from "../../../src/session-manager";
-import { RegistryManager } from "../../../src/registry-manager";
+} from '../../../src/dashboard/metrics';
+import { InstanceSummary, InstanceRegistry } from '../../../src/services/InstanceRegistry';
+import { getSessionManager } from '../../../src/session-manager';
+import { RegistryManager } from '../../../src/registry-manager';
 
 // Mock dependencies
-jest.mock("../../../src/services/InstanceRegistry", () => ({
+jest.mock('../../../src/services/InstanceRegistry', () => ({
   InstanceRegistry: {
     getInstance: jest.fn(() => ({
       list: jest.fn(() => []),
-      getConfigSource: jest.fn(() => ({ source: "none", details: "" })),
+      getConfigSource: jest.fn(() => ({ source: 'none', details: '' })),
     })),
   },
 }));
 
-jest.mock("../../../src/session-manager", () => ({
+jest.mock('../../../src/session-manager', () => ({
   getSessionManager: jest.fn(() => ({
     activeSessionCount: 0,
   })),
 }));
 
-jest.mock("../../../src/registry-manager", () => ({
+jest.mock('../../../src/registry-manager', () => ({
   RegistryManager: {
     getInstance: jest.fn(() => ({
       getAllToolDefinitions: jest.fn(() => []),
@@ -38,25 +38,25 @@ jest.mock("../../../src/registry-manager", () => ({
   },
 }));
 
-jest.mock("../../../src/oauth/index", () => ({
+jest.mock('../../../src/oauth/index', () => ({
   isOAuthEnabled: jest.fn(() => false),
 }));
 
-jest.mock("../../../src/config", () => ({
-  packageVersion: "6.52.0",
+jest.mock('../../../src/config', () => ({
+  packageVersion: '6.52.0',
   GITLAB_READ_ONLY_MODE: false,
-  GITLAB_BASE_URL: "https://gitlab.com",
+  GITLAB_BASE_URL: 'https://gitlab.com',
   GITLAB_TOKEN: undefined,
 }));
 
-describe("Dashboard Metrics", () => {
-  describe("determineInstanceStatus", () => {
+describe('Dashboard Metrics', () => {
+  describe('determineInstanceStatus', () => {
     // Helper to create mock InstanceSummary
     function createMockInstance(overrides: Partial<InstanceSummary> = {}): InstanceSummary {
       return {
-        url: "https://gitlab.example.com",
-        label: "Example GitLab",
-        connectionStatus: "healthy",
+        url: 'https://gitlab.example.com',
+        label: 'Example GitLab',
+        connectionStatus: 'healthy',
         lastHealthCheck: new Date(),
         hasOAuth: false,
         rateLimit: {
@@ -70,8 +70,8 @@ describe("Dashboard Metrics", () => {
           avgQueueWaitMs: 50,
         },
         introspection: {
-          version: "17.2.0",
-          tier: "ultimate",
+          version: '17.2.0',
+          tier: 'ultimate',
           cachedAt: new Date(),
           isExpired: false,
         },
@@ -79,30 +79,30 @@ describe("Dashboard Metrics", () => {
       };
     }
 
-    it("should return healthy for instance with normal metrics", () => {
+    it('should return healthy for instance with normal metrics', () => {
       const instance = createMockInstance();
       const status = determineInstanceStatus(instance);
-      expect(status).toBe("healthy");
+      expect(status).toBe('healthy');
     });
 
-    it("should return healthy for instance with no health check yet", () => {
+    it('should return healthy for instance with no health check yet', () => {
       const instance = createMockInstance({
         lastHealthCheck: null,
       });
       const status = determineInstanceStatus(instance);
-      expect(status).toBe("healthy");
+      expect(status).toBe('healthy');
     });
 
-    it("should return offline for instance with old health check (>5 min)", () => {
+    it('should return offline for instance with old health check (>5 min)', () => {
       const sixMinutesAgo = new Date(Date.now() - 6 * 60 * 1000);
       const instance = createMockInstance({
         lastHealthCheck: sixMinutesAgo,
       });
       const status = determineInstanceStatus(instance);
-      expect(status).toBe("offline");
+      expect(status).toBe('offline');
     });
 
-    it("should return degraded for instance with high latency (>2000ms)", () => {
+    it('should return degraded for instance with high latency (>2000ms)', () => {
       const instance = createMockInstance({
         rateLimit: {
           ...createMockInstance().rateLimit,
@@ -110,10 +110,10 @@ describe("Dashboard Metrics", () => {
         },
       });
       const status = determineInstanceStatus(instance);
-      expect(status).toBe("degraded");
+      expect(status).toBe('degraded');
     });
 
-    it("should return degraded when queue is over 50% capacity", () => {
+    it('should return degraded when queue is over 50% capacity', () => {
       const instance = createMockInstance({
         rateLimit: {
           ...createMockInstance().rateLimit,
@@ -122,10 +122,10 @@ describe("Dashboard Metrics", () => {
         },
       });
       const status = determineInstanceStatus(instance);
-      expect(status).toBe("degraded");
+      expect(status).toBe('degraded');
     });
 
-    it("should return degraded when rejection rate is over 10%", () => {
+    it('should return degraded when rejection rate is over 10%', () => {
       const instance = createMockInstance({
         rateLimit: {
           ...createMockInstance().rateLimit,
@@ -134,10 +134,10 @@ describe("Dashboard Metrics", () => {
         },
       });
       const status = determineInstanceStatus(instance);
-      expect(status).toBe("degraded");
+      expect(status).toBe('degraded');
     });
 
-    it("should return healthy when rejection rate is under 10%", () => {
+    it('should return healthy when rejection rate is under 10%', () => {
       const instance = createMockInstance({
         rateLimit: {
           ...createMockInstance().rateLimit,
@@ -146,58 +146,58 @@ describe("Dashboard Metrics", () => {
         },
       });
       const status = determineInstanceStatus(instance);
-      expect(status).toBe("healthy");
+      expect(status).toBe('healthy');
     });
   });
 
-  describe("formatUptime", () => {
-    it("should format 0 seconds as 0m", () => {
-      expect(formatUptime(0)).toBe("0m");
+  describe('formatUptime', () => {
+    it('should format 0 seconds as 0m', () => {
+      expect(formatUptime(0)).toBe('0m');
     });
 
-    it("should format seconds less than a minute as 0m", () => {
-      expect(formatUptime(30)).toBe("0m");
+    it('should format seconds less than a minute as 0m', () => {
+      expect(formatUptime(30)).toBe('0m');
     });
 
-    it("should format minutes correctly", () => {
-      expect(formatUptime(60)).toBe("1m");
-      expect(formatUptime(120)).toBe("2m");
-      expect(formatUptime(59 * 60)).toBe("59m");
+    it('should format minutes correctly', () => {
+      expect(formatUptime(60)).toBe('1m');
+      expect(formatUptime(120)).toBe('2m');
+      expect(formatUptime(59 * 60)).toBe('59m');
     });
 
-    it("should format hours and minutes correctly", () => {
-      expect(formatUptime(3600)).toBe("1h");
-      expect(formatUptime(3660)).toBe("1h 1m");
-      expect(formatUptime(7200)).toBe("2h");
-      expect(formatUptime(7260)).toBe("2h 1m");
+    it('should format hours and minutes correctly', () => {
+      expect(formatUptime(3600)).toBe('1h');
+      expect(formatUptime(3660)).toBe('1h 1m');
+      expect(formatUptime(7200)).toBe('2h');
+      expect(formatUptime(7260)).toBe('2h 1m');
     });
 
-    it("should format days, hours, and minutes correctly", () => {
-      expect(formatUptime(86400)).toBe("1d");
-      expect(formatUptime(86400 + 3600)).toBe("1d 1h");
-      expect(formatUptime(86400 + 3600 + 60)).toBe("1d 1h 1m");
-      expect(formatUptime(2 * 86400 + 14 * 3600 + 32 * 60)).toBe("2d 14h 32m");
+    it('should format days, hours, and minutes correctly', () => {
+      expect(formatUptime(86400)).toBe('1d');
+      expect(formatUptime(86400 + 3600)).toBe('1d 1h');
+      expect(formatUptime(86400 + 3600 + 60)).toBe('1d 1h 1m');
+      expect(formatUptime(2 * 86400 + 14 * 3600 + 32 * 60)).toBe('2d 14h 32m');
     });
   });
 
-  describe("DashboardMetricsSchema", () => {
-    it("should validate a complete metrics object", () => {
+  describe('DashboardMetricsSchema', () => {
+    it('should validate a complete metrics object', () => {
       const metrics = {
         server: {
-          version: "6.52.0",
+          version: '6.52.0',
           uptime: 228720,
-          mode: "oauth" as const,
+          mode: 'oauth' as const,
           readOnly: false,
           toolsEnabled: 44,
           toolsTotal: 44,
         },
         instances: [
           {
-            url: "https://gitlab.com",
-            label: "GitLab.com",
-            status: "healthy" as const,
-            version: "17.2.0",
-            tier: "ultimate",
+            url: 'https://gitlab.com',
+            label: 'GitLab.com',
+            status: 'healthy' as const,
+            version: '17.2.0',
+            tier: 'ultimate',
             introspected: true,
             rateLimit: {
               activeRequests: 23,
@@ -210,18 +210,18 @@ describe("Dashboard Metrics", () => {
             latency: {
               avgMs: 142,
             },
-            lastHealthCheck: "2024-01-15T14:30:15Z",
+            lastHealthCheck: '2024-01-15T14:30:15Z',
           },
         ],
         sessions: {
           total: 12,
           byInstance: {
-            "https://gitlab.com": 8,
+            'https://gitlab.com': 8,
           },
         },
         config: {
-          source: "env",
-          sourceDetails: "GITLAB_API_URL",
+          source: 'env',
+          sourceDetails: 'GITLAB_API_URL',
           oauthEnabled: true,
         },
       };
@@ -230,12 +230,12 @@ describe("Dashboard Metrics", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should fail validation for invalid mode", () => {
+    it('should fail validation for invalid mode', () => {
       const metrics = {
         server: {
-          version: "6.52.0",
+          version: '6.52.0',
           uptime: 228720,
-          mode: "invalid_mode",
+          mode: 'invalid_mode',
           readOnly: false,
           toolsEnabled: 44,
           toolsTotal: 44,
@@ -246,8 +246,8 @@ describe("Dashboard Metrics", () => {
           byInstance: {},
         },
         config: {
-          source: "none",
-          sourceDetails: "",
+          source: 'none',
+          sourceDetails: '',
           oauthEnabled: false,
         },
       };
@@ -257,14 +257,14 @@ describe("Dashboard Metrics", () => {
     });
   });
 
-  describe("InstanceStatusSchema", () => {
-    it("should validate a complete instance status", () => {
+  describe('InstanceStatusSchema', () => {
+    it('should validate a complete instance status', () => {
       const instance = {
-        url: "https://gitlab.com",
-        label: "GitLab.com",
-        status: "healthy" as const,
-        version: "17.2.0",
-        tier: "ultimate",
+        url: 'https://gitlab.com',
+        label: 'GitLab.com',
+        status: 'healthy' as const,
+        version: '17.2.0',
+        tier: 'ultimate',
         introspected: true,
         rateLimit: {
           activeRequests: 23,
@@ -277,18 +277,18 @@ describe("Dashboard Metrics", () => {
         latency: {
           avgMs: 142,
         },
-        lastHealthCheck: "2024-01-15T14:30:15Z",
+        lastHealthCheck: '2024-01-15T14:30:15Z',
       };
 
       const result = InstanceStatusSchema.safeParse(instance);
       expect(result.success).toBe(true);
     });
 
-    it("should validate instance with null values", () => {
+    it('should validate instance with null values', () => {
       const instance = {
-        url: "https://gitlab.com",
+        url: 'https://gitlab.com',
         label: null,
-        status: "offline" as const,
+        status: 'offline' as const,
         version: null,
         tier: null,
         introspected: false,
@@ -310,11 +310,11 @@ describe("Dashboard Metrics", () => {
       expect(result.success).toBe(true);
     });
 
-    it("should fail validation for invalid status", () => {
+    it('should fail validation for invalid status', () => {
       const instance = {
-        url: "https://gitlab.com",
+        url: 'https://gitlab.com',
         label: null,
-        status: "unknown",
+        status: 'unknown',
         version: null,
         tier: null,
         introspected: false,
@@ -337,66 +337,66 @@ describe("Dashboard Metrics", () => {
     });
   });
 
-  describe("collectMetrics", () => {
+  describe('collectMetrics', () => {
     beforeEach(() => {
       jest.clearAllMocks();
     });
 
-    it("should return valid dashboard metrics structure", () => {
+    it('should return valid dashboard metrics structure', () => {
       const metrics = collectMetrics();
 
       // Verify structure
-      expect(metrics).toHaveProperty("server");
-      expect(metrics).toHaveProperty("instances");
-      expect(metrics).toHaveProperty("sessions");
-      expect(metrics).toHaveProperty("config");
+      expect(metrics).toHaveProperty('server');
+      expect(metrics).toHaveProperty('instances');
+      expect(metrics).toHaveProperty('sessions');
+      expect(metrics).toHaveProperty('config');
 
       // Verify server info
-      expect(metrics.server.version).toBe("6.52.0");
-      expect(typeof metrics.server.uptime).toBe("number");
+      expect(metrics.server.version).toBe('6.52.0');
+      expect(typeof metrics.server.uptime).toBe('number');
       expect(metrics.server.uptime).toBeGreaterThanOrEqual(0);
     });
 
-    it("should create default instance when no instances registered", () => {
+    it('should create default instance when no instances registered', () => {
       const metrics = collectMetrics();
 
       // Should have default gitlab.com instance
       expect(metrics.instances.length).toBe(1);
-      expect(metrics.instances[0].url).toBe("https://gitlab.com");
-      expect(metrics.instances[0].status).toBe("healthy");
+      expect(metrics.instances[0].url).toBe('https://gitlab.com');
+      expect(metrics.instances[0].status).toBe('healthy');
     });
 
-    it("should return auth mode as none when no auth configured", () => {
+    it('should return auth mode as none when no auth configured', () => {
       const metrics = collectMetrics();
-      expect(metrics.server.mode).toBe("none");
+      expect(metrics.server.mode).toBe('none');
     });
 
-    it("should return auth mode as token when GITLAB_TOKEN is set", () => {
+    it('should return auth mode as token when GITLAB_TOKEN is set', () => {
       // Re-mock config with token
       jest.resetModules();
-      jest.doMock("../../../src/config", () => ({
-        packageVersion: "6.52.0",
+      jest.doMock('../../../src/config', () => ({
+        packageVersion: '6.52.0',
         GITLAB_READ_ONLY_MODE: false,
-        GITLAB_BASE_URL: "https://gitlab.com",
-        GITLAB_TOKEN: "glpat-xxxxxxxxxxxxxxxxxxxx",
+        GITLAB_BASE_URL: 'https://gitlab.com',
+        GITLAB_TOKEN: 'glpat-xxxxxxxxxxxxxxxxxxxx',
       }));
-      jest.doMock("../../../src/oauth/index", () => ({
+      jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
       }));
-      jest.doMock("../../../src/services/InstanceRegistry", () => ({
+      jest.doMock('../../../src/services/InstanceRegistry', () => ({
         InstanceRegistry: {
           getInstance: jest.fn(() => ({
             list: jest.fn(() => []),
-            getConfigSource: jest.fn(() => ({ source: "none", details: "" })),
+            getConfigSource: jest.fn(() => ({ source: 'none', details: '' })),
           })),
         },
       }));
-      jest.doMock("../../../src/session-manager", () => ({
+      jest.doMock('../../../src/session-manager', () => ({
         getSessionManager: jest.fn(() => ({
           activeSessionCount: 0,
         })),
       }));
-      jest.doMock("../../../src/registry-manager", () => ({
+      jest.doMock('../../../src/registry-manager', () => ({
         RegistryManager: {
           getInstance: jest.fn(() => ({
             getAllToolDefinitions: jest.fn(() => []),
@@ -405,37 +405,37 @@ describe("Dashboard Metrics", () => {
       }));
 
       // Import fresh module with new mocks
-      const { collectMetrics: collectMetricsWithToken } = require("../../../src/dashboard/metrics");
+      const { collectMetrics: collectMetricsWithToken } = require('../../../src/dashboard/metrics');
       const metrics = collectMetricsWithToken();
-      expect(metrics.server.mode).toBe("token");
+      expect(metrics.server.mode).toBe('token');
     });
 
-    it("should return auth mode as oauth when OAuth is enabled", () => {
+    it('should return auth mode as oauth when OAuth is enabled', () => {
       // Re-mock with OAuth enabled
       jest.resetModules();
-      jest.doMock("../../../src/config", () => ({
-        packageVersion: "6.52.0",
+      jest.doMock('../../../src/config', () => ({
+        packageVersion: '6.52.0',
         GITLAB_READ_ONLY_MODE: false,
-        GITLAB_BASE_URL: "https://gitlab.com",
+        GITLAB_BASE_URL: 'https://gitlab.com',
         GITLAB_TOKEN: undefined,
       }));
-      jest.doMock("../../../src/oauth/index", () => ({
+      jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => true),
       }));
-      jest.doMock("../../../src/services/InstanceRegistry", () => ({
+      jest.doMock('../../../src/services/InstanceRegistry', () => ({
         InstanceRegistry: {
           getInstance: jest.fn(() => ({
             list: jest.fn(() => []),
-            getConfigSource: jest.fn(() => ({ source: "none", details: "" })),
+            getConfigSource: jest.fn(() => ({ source: 'none', details: '' })),
           })),
         },
       }));
-      jest.doMock("../../../src/session-manager", () => ({
+      jest.doMock('../../../src/session-manager', () => ({
         getSessionManager: jest.fn(() => ({
           activeSessionCount: 0,
         })),
       }));
-      jest.doMock("../../../src/registry-manager", () => ({
+      jest.doMock('../../../src/registry-manager', () => ({
         RegistryManager: {
           getInstance: jest.fn(() => ({
             getAllToolDefinitions: jest.fn(() => []),
@@ -444,14 +444,14 @@ describe("Dashboard Metrics", () => {
       }));
 
       // Import fresh module with new mocks
-      const { collectMetrics: collectMetricsWithOAuth } = require("../../../src/dashboard/metrics");
+      const { collectMetrics: collectMetricsWithOAuth } = require('../../../src/dashboard/metrics');
       const metrics = collectMetricsWithOAuth();
-      expect(metrics.server.mode).toBe("oauth");
+      expect(metrics.server.mode).toBe('oauth');
     });
 
-    it("should return zero tool counts when registry throws", () => {
+    it('should return zero tool counts when registry throws', () => {
       (RegistryManager.getInstance as jest.Mock).mockImplementationOnce(() => {
-        throw new Error("Registry not initialized");
+        throw new Error('Registry not initialized');
       });
 
       const metrics = collectMetrics();
@@ -459,21 +459,21 @@ describe("Dashboard Metrics", () => {
       expect(metrics.server.toolsTotal).toBe(0);
     });
 
-    it("should include config source from InstanceRegistry", () => {
+    it('should include config source from InstanceRegistry', () => {
       (InstanceRegistry.getInstance as jest.Mock).mockReturnValueOnce({
         list: jest.fn(() => []),
         getConfigSource: jest.fn(() => ({
-          source: "file",
-          details: "/etc/gitlab-mcp/config.yaml",
+          source: 'file',
+          details: '/etc/gitlab-mcp/config.yaml',
         })),
       });
 
       const metrics = collectMetrics();
-      expect(metrics.config.source).toBe("file");
-      expect(metrics.config.sourceDetails).toBe("/etc/gitlab-mcp/config.yaml");
+      expect(metrics.config.source).toBe('file');
+      expect(metrics.config.sourceDetails).toBe('/etc/gitlab-mcp/config.yaml');
     });
 
-    it("should include active session count", () => {
+    it('should include active session count', () => {
       (getSessionManager as jest.Mock).mockReturnValueOnce({
         activeSessionCount: 5,
       });
@@ -482,11 +482,11 @@ describe("Dashboard Metrics", () => {
       expect(metrics.sessions.total).toBe(5);
     });
 
-    it("should convert InstanceSummary to InstanceStatus correctly", () => {
+    it('should convert InstanceSummary to InstanceStatus correctly', () => {
       const mockSummary: InstanceSummary = {
-        url: "https://gitlab.example.com",
-        label: "Example GitLab",
-        connectionStatus: "healthy",
+        url: 'https://gitlab.example.com',
+        label: 'Example GitLab',
+        connectionStatus: 'healthy',
         lastHealthCheck: new Date(),
         hasOAuth: true,
         rateLimit: {
@@ -500,8 +500,8 @@ describe("Dashboard Metrics", () => {
           avgQueueWaitMs: 100,
         },
         introspection: {
-          version: "17.2.0",
-          tier: "ultimate",
+          version: '17.2.0',
+          tier: 'ultimate',
           cachedAt: new Date(),
           isExpired: false,
         },
@@ -509,28 +509,28 @@ describe("Dashboard Metrics", () => {
 
       (InstanceRegistry.getInstance as jest.Mock).mockReturnValueOnce({
         list: jest.fn(() => [mockSummary]),
-        getConfigSource: jest.fn(() => ({ source: "env", details: "" })),
+        getConfigSource: jest.fn(() => ({ source: 'env', details: '' })),
       });
 
       const metrics = collectMetrics();
 
       expect(metrics.instances.length).toBe(1);
       const instance = metrics.instances[0];
-      expect(instance.url).toBe("https://gitlab.example.com");
-      expect(instance.label).toBe("Example GitLab");
-      expect(instance.version).toBe("17.2.0");
-      expect(instance.tier).toBe("ultimate");
+      expect(instance.url).toBe('https://gitlab.example.com');
+      expect(instance.label).toBe('Example GitLab');
+      expect(instance.version).toBe('17.2.0');
+      expect(instance.tier).toBe('ultimate');
       expect(instance.introspected).toBe(true);
       expect(instance.rateLimit.activeRequests).toBe(10);
       expect(instance.rateLimit.totalRequests).toBe(1000);
       expect(instance.latency.avgMs).toBe(100);
     });
 
-    it("should mark introspected as false when version is null", () => {
+    it('should mark introspected as false when version is null', () => {
       const mockSummary: InstanceSummary = {
-        url: "https://gitlab.example.com",
+        url: 'https://gitlab.example.com',
         label: undefined,
-        connectionStatus: "healthy",
+        connectionStatus: 'healthy',
         lastHealthCheck: new Date(),
         hasOAuth: false,
         rateLimit: {
@@ -553,7 +553,7 @@ describe("Dashboard Metrics", () => {
 
       (InstanceRegistry.getInstance as jest.Mock).mockReturnValueOnce({
         list: jest.fn(() => [mockSummary]),
-        getConfigSource: jest.fn(() => ({ source: "env", details: "" })),
+        getConfigSource: jest.fn(() => ({ source: 'env', details: '' })),
       });
 
       const metrics = collectMetrics();
@@ -561,11 +561,11 @@ describe("Dashboard Metrics", () => {
       expect(metrics.instances[0].label).toBeNull();
     });
 
-    it("should mark introspected as false when cache is expired", () => {
+    it('should mark introspected as false when cache is expired', () => {
       const mockSummary: InstanceSummary = {
-        url: "https://gitlab.example.com",
+        url: 'https://gitlab.example.com',
         label: undefined,
-        connectionStatus: "healthy",
+        connectionStatus: 'healthy',
         lastHealthCheck: new Date(),
         hasOAuth: false,
         rateLimit: {
@@ -579,8 +579,8 @@ describe("Dashboard Metrics", () => {
           avgQueueWaitMs: 0,
         },
         introspection: {
-          version: "17.0.0",
-          tier: "free",
+          version: '17.0.0',
+          tier: 'free',
           cachedAt: new Date(Date.now() - 20 * 60 * 1000), // 20 minutes ago
           isExpired: true,
         },
@@ -588,7 +588,7 @@ describe("Dashboard Metrics", () => {
 
       (InstanceRegistry.getInstance as jest.Mock).mockReturnValueOnce({
         list: jest.fn(() => [mockSummary]),
-        getConfigSource: jest.fn(() => ({ source: "env", details: "" })),
+        getConfigSource: jest.fn(() => ({ source: 'env', details: '' })),
       });
 
       const metrics = collectMetrics();

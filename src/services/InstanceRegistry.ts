@@ -11,22 +11,22 @@
  * a unified interface to access GitLab instances regardless of configuration source.
  */
 
-import { logInfo, logWarn, logDebug } from "../logger.js";
+import { logInfo, logWarn, logDebug } from '../logger.js';
 import {
   InstanceRateLimiter,
   RateLimiterConfig,
   RateLimitMetrics,
   DEFAULT_RATE_LIMIT_CONFIG,
-} from "./InstanceRateLimiter.js";
+} from './InstanceRateLimiter.js';
 import {
   GitLabInstanceConfig,
   GitLabInstanceState,
   ConnectionStatus,
   CachedIntrospection,
-} from "../config/instances-schema.js";
-import { loadInstancesConfig, LoadedInstancesConfig } from "../config/instances-loader.js";
-import { InstanceConnectionPool, PoolStats } from "./InstanceConnectionPool.js";
-import { GraphQLClient } from "../graphql/client.js";
+} from '../config/instances-schema.js';
+import { loadInstancesConfig, LoadedInstancesConfig } from '../config/instances-loader.js';
+import { InstanceConnectionPool, PoolStats } from './InstanceConnectionPool.js';
+import { GraphQLClient } from '../graphql/client.js';
 
 /**
  * Instance registry entry combining config, state, and rate limiter
@@ -68,8 +68,8 @@ export class InstanceRegistry {
   private static instance: InstanceRegistry | null = null;
 
   private instances = new Map<string, RegistryEntry>();
-  private configSource: LoadedInstancesConfig["source"] = "none";
-  private configSourceDetails = "";
+  private configSource: LoadedInstancesConfig['source'] = 'none';
+  private configSourceDetails = '';
   private initialized = false;
 
   private constructor() {}
@@ -88,7 +88,7 @@ export class InstanceRegistry {
    */
   public async initialize(): Promise<void> {
     if (this.initialized) {
-      logDebug("InstanceRegistry already initialized, skipping");
+      logDebug('InstanceRegistry already initialized, skipping');
       return;
     }
 
@@ -102,7 +102,7 @@ export class InstanceRegistry {
 
     this.initialized = true;
 
-    logInfo("InstanceRegistry initialized", {
+    logInfo('InstanceRegistry initialized', {
       source: this.configSource,
       sourceDetails: this.configSourceDetails,
       instanceCount: this.instances.size,
@@ -117,7 +117,7 @@ export class InstanceRegistry {
     const normalizedUrl = this.normalizeUrl(config.url);
 
     if (this.instances.has(normalizedUrl)) {
-      logWarn("Instance already registered, updating configuration", {
+      logWarn('Instance already registered, updating configuration', {
         url: normalizedUrl,
       });
     }
@@ -131,7 +131,7 @@ export class InstanceRegistry {
     const state: GitLabInstanceState = {
       ...config,
       url: normalizedUrl,
-      connectionStatus: "healthy",
+      connectionStatus: 'healthy',
       lastHealthCheck: null,
       introspectionCache: null,
     };
@@ -142,7 +142,7 @@ export class InstanceRegistry {
       rateLimiter,
     });
 
-    logDebug("Instance registered", {
+    logDebug('Instance registered', {
       url: normalizedUrl,
       label: config.label,
       hasOAuth: !!config.oauth,
@@ -176,7 +176,7 @@ export class InstanceRegistry {
    * List all registered instances
    */
   public list(): InstanceSummary[] {
-    return Array.from(this.instances.values()).map(entry => {
+    return Array.from(this.instances.values()).map((entry) => {
       const cache = entry.state.introspectionCache;
       const isExpired =
         cache !== null && Date.now() - cache.cachedAt.getTime() > INTROSPECTION_CACHE_TTL_MS;
@@ -214,7 +214,7 @@ export class InstanceRegistry {
     const existed = this.instances.delete(normalizedUrl);
 
     if (existed) {
-      logInfo("Instance unregistered", { url: normalizedUrl });
+      logInfo('Instance unregistered', { url: normalizedUrl });
     }
 
     return existed;
@@ -246,7 +246,7 @@ export class InstanceRegistry {
       // If instance not registered, allow request without rate limiting.
       // This supports dynamic instances not in config (e.g., non-GitLab URLs via enhancedFetch).
       // Use debug level to avoid noisy logs in normal operation.
-      logDebug("Rate limit slot requested for unregistered instance, allowing", {
+      logDebug('Rate limit slot requested for unregistered instance, allowing', {
         url: baseUrl,
       });
       return () => {};
@@ -275,7 +275,7 @@ export class InstanceRegistry {
     // Check if cache is still valid
     const age = Date.now() - cache.cachedAt.getTime();
     if (age > INTROSPECTION_CACHE_TTL_MS) {
-      logDebug("Introspection cache expired", {
+      logDebug('Introspection cache expired', {
         url: baseUrl,
         ageMs: age,
         ttlMs: INTROSPECTION_CACHE_TTL_MS,
@@ -292,13 +292,13 @@ export class InstanceRegistry {
   public setIntrospection(baseUrl: string, introspection: CachedIntrospection): void {
     const entry = this.get(baseUrl);
     if (!entry) {
-      logWarn("Cannot cache introspection for unregistered instance", { url: baseUrl });
+      logWarn('Cannot cache introspection for unregistered instance', { url: baseUrl });
       return;
     }
 
     entry.state.introspectionCache = introspection;
 
-    logDebug("Introspection cached for instance", {
+    logDebug('Introspection cached for instance', {
       url: baseUrl,
       version: introspection.version,
       tier: introspection.tier,
@@ -315,7 +315,7 @@ export class InstanceRegistry {
     entry.state.connectionStatus = status;
     entry.state.lastHealthCheck = new Date();
 
-    logDebug("Instance connection status updated", {
+    logDebug('Instance connection status updated', {
       url: baseUrl,
       status,
     });
@@ -329,13 +329,13 @@ export class InstanceRegistry {
       const entry = this.get(baseUrl);
       if (entry) {
         entry.state.introspectionCache = null;
-        logDebug("Introspection cache cleared", { url: baseUrl });
+        logDebug('Introspection cache cleared', { url: baseUrl });
       }
     } else {
       for (const entry of this.instances.values()) {
         entry.state.introspectionCache = null;
       }
-      logDebug("All introspection caches cleared");
+      logDebug('All introspection caches cleared');
     }
   }
 
@@ -369,7 +369,7 @@ export class InstanceRegistry {
    */
   public getGraphQLClient(
     baseUrl: string,
-    authHeaders?: Record<string, string>
+    authHeaders?: Record<string, string>,
   ): GraphQLClient | undefined {
     const entry = this.get(baseUrl);
     if (!entry) return undefined;
@@ -428,10 +428,10 @@ export class InstanceRegistry {
    */
   public reset(): void {
     this.instances.clear();
-    this.configSource = "none";
-    this.configSourceDetails = "";
+    this.configSource = 'none';
+    this.configSourceDetails = '';
     this.initialized = false;
-    logDebug("InstanceRegistry reset");
+    logDebug('InstanceRegistry reset');
   }
 
   /**
@@ -440,7 +440,7 @@ export class InstanceRegistry {
   public async resetWithPools(): Promise<void> {
     this.reset();
     await InstanceConnectionPool.resetInstance();
-    logDebug("InstanceRegistry and connection pools reset");
+    logDebug('InstanceRegistry and connection pools reset');
   }
 
   /**
@@ -450,17 +450,17 @@ export class InstanceRegistry {
     let normalized = url;
 
     // Remove trailing slash
-    if (normalized.endsWith("/")) {
+    if (normalized.endsWith('/')) {
       normalized = normalized.slice(0, -1);
     }
 
     // Remove /api/v4 suffix
-    if (normalized.endsWith("/api/v4")) {
+    if (normalized.endsWith('/api/v4')) {
       normalized = normalized.slice(0, -7);
     }
 
     // Remove /api/graphql suffix
-    if (normalized.endsWith("/api/graphql")) {
+    if (normalized.endsWith('/api/graphql')) {
       normalized = normalized.slice(0, -12);
     }
 

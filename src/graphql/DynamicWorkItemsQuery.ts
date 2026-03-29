@@ -1,7 +1,7 @@
-import { gql } from "graphql-tag";
-import { TypedDocumentNode } from "@graphql-typed-document-node/core";
-import { SchemaIntrospector, FieldInfo } from "../services/SchemaIntrospector";
-import { logInfo } from "../logger";
+import { gql } from 'graphql-tag';
+import { TypedDocumentNode } from '@graphql-typed-document-node/core';
+import { SchemaIntrospector, FieldInfo } from '../services/SchemaIntrospector';
+import { logInfo } from '../logger';
 
 export interface DynamicWorkItem {
   id: string;
@@ -31,7 +31,7 @@ export class DynamicWorkItemsQueryBuilder {
    * Build a safe WorkItems query based on available schema
    */
   public buildWorkItemsQuery(
-    requestedWidgets?: string[]
+    requestedWidgets?: string[],
   ): TypedDocumentNode<
     { group: { workItems: { nodes: DynamicWorkItem[] } } },
     { groupPath: string; types?: string[]; first?: number; after?: string }
@@ -40,11 +40,11 @@ export class DynamicWorkItemsQueryBuilder {
     const widgets = requestedWidgets ?? this.schemaIntrospector.getAvailableWidgetTypes();
 
     // Filter to only widgets that are actually available
-    const availableWidgets = widgets.filter(widget =>
-      this.schemaIntrospector.isWidgetTypeAvailable(widget)
+    const availableWidgets = widgets.filter((widget) =>
+      this.schemaIntrospector.isWidgetTypeAvailable(widget),
     );
 
-    logInfo("Building dynamic WorkItems query", {
+    logInfo('Building dynamic WorkItems query', {
       requested: widgets.length,
       available: availableWidgets.length,
       widgetTypes: availableWidgets.slice(0, 5),
@@ -99,7 +99,7 @@ export class DynamicWorkItemsQueryBuilder {
       }
     }
 
-    return fragments.join("\n");
+    return fragments.join('\n');
   }
 
   /**
@@ -122,7 +122,7 @@ export class DynamicWorkItemsQueryBuilder {
 
     return `
       ... on ${typeName} {
-        ${safeFields.join("\n        ")}
+        ${safeFields.join('\n        ')}
       }
     `;
   }
@@ -133,9 +133,9 @@ export class DynamicWorkItemsQueryBuilder {
   private getWidgetTypeName(widgetType: string): string {
     // Convert SNAKE_CASE to PascalCase
     const pascalCase = widgetType
-      .split("_")
-      .map(part => part.charAt(0) + part.slice(1).toLowerCase())
-      .join("");
+      .split('_')
+      .map((part) => part.charAt(0) + part.slice(1).toLowerCase())
+      .join('');
 
     return `WorkItemWidget${pascalCase}`;
   }
@@ -152,12 +152,12 @@ export class DynamicWorkItemsQueryBuilder {
       LABELS: () => this.buildLabelsFields(),
       MILESTONE: () => this.buildMilestoneFields(),
       DESCRIPTION: () => this.buildDescriptionFields(),
-      START_AND_DUE_DATE: () => ["startDate", "dueDate"],
-      WEIGHT: () => ["weight"],
-      TIME_TRACKING: () => ["timeEstimate", "totalTimeSpent"],
-      HEALTH_STATUS: () => ["healthStatus"],
-      COLOR: () => ["color"],
-      NOTIFICATIONS: () => ["subscribed"],
+      START_AND_DUE_DATE: () => ['startDate', 'dueDate'],
+      WEIGHT: () => ['weight'],
+      TIME_TRACKING: () => ['timeEstimate', 'totalTimeSpent'],
+      HEALTH_STATUS: () => ['healthStatus'],
+      COLOR: () => ['color'],
+      NOTIFICATIONS: () => ['subscribed'],
     };
 
     const mapper = widgetFieldMappings[widgetType];
@@ -167,9 +167,9 @@ export class DynamicWorkItemsQueryBuilder {
 
     // Default: include only scalar/enum fields
     for (const field of fields) {
-      if (field.name === "type") continue; // Skip type field as it's already included
+      if (field.name === 'type') continue; // Skip type field as it's already included
 
-      if (field.type?.kind === "SCALAR" || field.type?.kind === "ENUM") {
+      if (field.type?.kind === 'SCALAR' || field.type?.kind === 'ENUM') {
         safeFields.push(field.name);
       }
     }
@@ -178,62 +178,62 @@ export class DynamicWorkItemsQueryBuilder {
   }
 
   private buildAssigneesFields(): string[] {
-    if (this.schemaIntrospector.hasField("WorkItemWidgetAssignees", "assignees")) {
+    if (this.schemaIntrospector.hasField('WorkItemWidgetAssignees', 'assignees')) {
       return [
-        "assignees {",
-        "  nodes {",
-        "    id",
-        "    username",
-        "    name",
-        "    avatarUrl",
-        "  }",
-        "}",
+        'assignees {',
+        '  nodes {',
+        '    id',
+        '    username',
+        '    name',
+        '    avatarUrl',
+        '  }',
+        '}',
       ];
     }
     return [];
   }
 
   private buildLabelsFields(): string[] {
-    if (this.schemaIntrospector.hasField("WorkItemWidgetLabels", "labels")) {
+    if (this.schemaIntrospector.hasField('WorkItemWidgetLabels', 'labels')) {
       return [
-        "labels {",
-        "  nodes {",
-        "    id",
-        "    title",
-        "    color",
-        "    description",
-        "  }",
-        "}",
+        'labels {',
+        '  nodes {',
+        '    id',
+        '    title',
+        '    color',
+        '    description',
+        '  }',
+        '}',
       ];
     }
     return [];
   }
 
   private buildMilestoneFields(): string[] {
-    if (this.schemaIntrospector.hasField("WorkItemWidgetMilestone", "milestone")) {
+    if (this.schemaIntrospector.hasField('WorkItemWidgetMilestone', 'milestone')) {
       return [
-        "milestone {",
-        "  id",
-        "  title",
-        "  state",
-        "  dueDate",
-        "  startDate",
-        "  webPath",
-        "}",
+        'milestone {',
+        '  id',
+        '  title',
+        '  state',
+        '  dueDate',
+        '  startDate',
+        '  webPath',
+        '}',
       ];
     }
     return [];
   }
 
   private buildDescriptionFields(): string[] {
-    const fields = ["description"];
+    const fields = ['description'];
 
-    if (this.schemaIntrospector.hasField("WorkItemWidgetDescription", "descriptionHtml")) {
-      fields.push("descriptionHtml");
+    if (this.schemaIntrospector.hasField('WorkItemWidgetDescription', 'descriptionHtml')) {
+      fields.push('descriptionHtml');
     }
 
-    if (this.schemaIntrospector.hasField("WorkItemWidgetDescription", "edited")) {
-      fields.push("edited");
+    if (this.schemaIntrospector.hasField('WorkItemWidgetDescription', 'edited')) {
+      fields.push('edited');
     }
 
     return fields;

@@ -1,22 +1,22 @@
-import * as z from "zod";
-import { BrowseWorkItemsSchema } from "./schema-readonly";
-import { ManageWorkItemSchema } from "./schema";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { ConnectionManager } from "../../services/ConnectionManager";
-import { isActionDenied } from "../../config";
-import { getWorkItemTypes } from "../../utils/workItemTypes";
+import * as z from 'zod';
+import { BrowseWorkItemsSchema } from './schema-readonly';
+import { ManageWorkItemSchema } from './schema';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { ConnectionManager } from '../../services/ConnectionManager';
+import { isActionDenied } from '../../config';
+import { getWorkItemTypes } from '../../utils/workItemTypes';
 import {
   cleanWorkItemResponse,
   toGid,
   toGids,
   type GitLabWorkItem,
-} from "../../utils/idConversion";
-import { WidgetAvailability } from "../../services/WidgetAvailability";
+} from '../../utils/idConversion';
+import { WidgetAvailability } from '../../services/WidgetAvailability';
 import {
   createVersionRestrictedError,
   normalizeTier,
   StructuredToolError,
-} from "../../utils/error-handler";
+} from '../../utils/error-handler';
 
 // Define interface for work item type objects
 interface WorkItemType {
@@ -37,7 +37,7 @@ import {
   WORK_ITEM_REMOVE_LINKED_ITEMS,
   WorkItemUpdateInput,
   WorkItem as GraphQLWorkItem,
-} from "../../graphql/workItems";
+} from '../../graphql/workItems';
 
 // Types for work item structure - flexible widget interface for runtime processing
 interface FlexibleWorkItemWidget {
@@ -133,7 +133,7 @@ interface SimplifiedWorkItem {
 // Function to simplify work item structure for agent consumption
 const simplifyWorkItem = (
   workItem: GraphQLWorkItem,
-  simple: boolean
+  simple: boolean,
 ): GraphQLWorkItem | SimplifiedWorkItem => {
   if (!simple) return workItem;
 
@@ -143,36 +143,36 @@ const simplifyWorkItem = (
     title: workItem.title,
     state: workItem.state,
     workItemType:
-      typeof workItem.workItemType === "string"
+      typeof workItem.workItemType === 'string'
         ? workItem.workItemType
-        : workItem.workItemType?.name || "Unknown",
+        : workItem.workItemType?.name || 'Unknown',
     webUrl: workItem.webUrl,
     createdAt: workItem.createdAt,
     updatedAt: workItem.updatedAt,
   };
 
   // Add description if it exists and is not too long
-  if (workItem.description && typeof workItem.description === "string") {
+  if (workItem.description && typeof workItem.description === 'string') {
     simplified.description =
       workItem.description.length > 200
-        ? workItem.description.substring(0, 200) + "..."
+        ? workItem.description.substring(0, 200) + '...'
         : workItem.description;
   }
 
   // Extract essential widgets only
   if (workItem.widgets && Array.isArray(workItem.widgets)) {
-    const essentialWidgets: SimplifiedWorkItem["widgets"] = [];
+    const essentialWidgets: SimplifiedWorkItem['widgets'] = [];
 
     for (const widget of workItem.widgets) {
       // Use type assertion to access widget properties dynamically
       const flexWidget = widget as unknown as FlexibleWorkItemWidget;
 
       switch (flexWidget.type) {
-        case "ASSIGNEES":
+        case 'ASSIGNEES':
           if (flexWidget.assignees?.nodes && flexWidget.assignees.nodes.length > 0) {
             essentialWidgets.push({
-              type: "ASSIGNEES",
-              assignees: flexWidget.assignees.nodes.map(assignee => ({
+              type: 'ASSIGNEES',
+              assignees: flexWidget.assignees.nodes.map((assignee) => ({
                 id: assignee.id,
                 username: assignee.username,
                 name: assignee.name,
@@ -180,11 +180,11 @@ const simplifyWorkItem = (
             });
           }
           break;
-        case "LABELS":
+        case 'LABELS':
           if (flexWidget.labels?.nodes && flexWidget.labels.nodes.length > 0) {
             essentialWidgets.push({
-              type: "LABELS",
-              labels: flexWidget.labels.nodes.map(label => ({
+              type: 'LABELS',
+              labels: flexWidget.labels.nodes.map((label) => ({
                 id: label.id,
                 title: label.title,
                 color: label.color,
@@ -192,10 +192,10 @@ const simplifyWorkItem = (
             });
           }
           break;
-        case "MILESTONE":
+        case 'MILESTONE':
           if (flexWidget.milestone) {
             essentialWidgets.push({
-              type: "MILESTONE",
+              type: 'MILESTONE',
               milestone: {
                 id: flexWidget.milestone.id,
                 title: flexWidget.milestone.title,
@@ -204,10 +204,10 @@ const simplifyWorkItem = (
             });
           }
           break;
-        case "HIERARCHY":
+        case 'HIERARCHY':
           if (flexWidget.parent || flexWidget.hasChildren) {
             essentialWidgets.push({
-              type: "HIERARCHY",
+              type: 'HIERARCHY',
               parent: flexWidget.parent
                 ? {
                     id: flexWidget.parent.id,
@@ -220,28 +220,28 @@ const simplifyWorkItem = (
             });
           }
           break;
-        case "TIME_TRACKING":
+        case 'TIME_TRACKING':
           if (flexWidget.timeEstimate !== undefined || flexWidget.totalTimeSpent !== undefined) {
             essentialWidgets.push({
-              type: "TIME_TRACKING",
+              type: 'TIME_TRACKING',
               timeEstimate: flexWidget.timeEstimate,
               totalTimeSpent: flexWidget.totalTimeSpent,
             });
           }
           break;
-        case "VERIFICATION_STATUS":
+        case 'VERIFICATION_STATUS':
           if (flexWidget.verificationStatus) {
             essentialWidgets.push({
-              type: "VERIFICATION_STATUS",
+              type: 'VERIFICATION_STATUS',
               verificationStatus: flexWidget.verificationStatus,
             });
           }
           break;
-        case "TEST_REPORTS":
+        case 'TEST_REPORTS':
           if (flexWidget.testReports?.nodes && flexWidget.testReports.nodes.length > 0) {
             essentialWidgets.push({
-              type: "TEST_REPORTS",
-              testReports: flexWidget.testReports.nodes.map(report => ({
+              type: 'TEST_REPORTS',
+              testReports: flexWidget.testReports.nodes.map((report) => ({
                 id: report.id,
                 state: report.state,
                 createdAt: report.createdAt,
@@ -273,23 +273,23 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_work_items",
+    'browse_work_items',
     {
-      name: "browse_work_items",
+      name: 'browse_work_items',
       description:
-        "Find and inspect issues, epics, tasks, and other work items. Actions: list (groups return epics, projects return issues/tasks, filter by type/state/labels), get (by numeric ID or namespace+iid from URL path). Related: manage_work_item to create/update/delete.",
+        'Find and inspect issues, epics, tasks, and other work items. Actions: list (groups return epics, projects return issues/tasks, filter by type/state/labels), get (by numeric ID or namespace+iid from URL path). Related: manage_work_item to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),
-      gate: { envVar: "USE_WORKITEMS", defaultValue: true },
+      gate: { envVar: 'USE_WORKITEMS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseWorkItemsSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_work_items", input.action)) {
+        if (isActionDenied('browse_work_items', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_work_items tool`);
         }
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             // TypeScript knows: input has namespace (required), types, state, first, after, simple (optional)
             const { namespace, types, state, first, after, simple } = input;
             const namespacePath = namespace;
@@ -318,7 +318,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             };
             // Apply state filtering (client-side since GitLab API doesn't support it reliably)
             const filteredItems = allItems.filter((item: GraphQLWorkItem) => {
-              return state.includes(item.state as "OPEN" | "CLOSED");
+              return state.includes(item.state as 'OPEN' | 'CLOSED');
             });
 
             // Apply simplification if requested and clean GIDs
@@ -335,7 +335,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             };
           }
 
-          case "get": {
+          case 'get': {
             // TypeScript knows: input has either (namespace + iid) or (id)
             const { namespace, iid, id } = input;
 
@@ -353,17 +353,17 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
               if (!response.namespace?.workItem) {
                 throw new Error(
-                  `Work item with IID "${iid}" not found in namespace "${namespace}"`
+                  `Work item with IID "${iid}" not found in namespace "${namespace}"`,
                 );
               }
 
               return cleanWorkItemResponse(
-                response.namespace.workItem as unknown as GitLabWorkItem
+                response.namespace.workItem as unknown as GitLabWorkItem,
               );
             } else if (id !== undefined) {
               // Lookup by global ID (backward compatible)
               // Convert simple ID to GID for API call
-              const workItemGid = toGid(id, "WorkItem");
+              const workItemGid = toGid(id, 'WorkItem');
 
               // Use GraphQL query for getting work item details
               const response = await client.request(GET_WORK_ITEM, { id: workItemGid });
@@ -376,7 +376,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             } else {
               // This should never happen due to schema validation
               throw new Error(
-                "Either 'id' (global ID) or both 'namespace' and 'iid' (from URL) must be provided"
+                "Either 'id' (global ID) or both 'namespace' and 'iid' (from URL) must be provided",
               );
             }
           }
@@ -394,23 +394,23 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_work_item",
+    'manage_work_item',
     {
-      name: "manage_work_item",
+      name: 'manage_work_item',
       description:
-        "Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), delete_timelog (remove a time tracking entry by its global ID), add_link/remove_link (BLOCKS/BLOCKED_BY/RELATED). Related: browse_work_items for discovery.",
+        'Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), delete_timelog (remove a time tracking entry by its global ID), add_link/remove_link (BLOCKS/BLOCKED_BY/RELATED). Related: browse_work_items for discovery.',
       inputSchema: z.toJSONSchema(ManageWorkItemSchema),
-      gate: { envVar: "USE_WORKITEMS", defaultValue: true },
+      gate: { envVar: 'USE_WORKITEMS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageWorkItemSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_work_item", input.action)) {
+        if (isActionDenied('manage_work_item', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_work_item tool`);
         }
 
         switch (input.action) {
-          case "create": {
+          case 'create': {
             const {
               namespace,
               title,
@@ -461,15 +461,15 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             if (validationFailure) {
               throw new StructuredToolError(
                 createVersionRestrictedError(
-                  "manage_work_item",
-                  "create",
+                  'manage_work_item',
+                  'create',
                   validationFailure.widget,
                   validationFailure.parameter,
                   validationFailure.requiredVersion,
                   validationFailure.detectedVersion,
                   normalizeTier(validationFailure.requiredTier),
-                  normalizeTier(validationFailure.currentTier)
-                )
+                  normalizeTier(validationFailure.currentTier),
+                ),
               );
             }
 
@@ -481,13 +481,13 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const workItemTypes = await getWorkItemTypes(namespacePath);
             const workItemTypeObj = workItemTypes.find(
               (t: WorkItemType) =>
-                t.name.toUpperCase().replace(/\s+/g, "_") ===
-                workItemTypeName.toUpperCase().replace(/\s+/g, "_")
+                t.name.toUpperCase().replace(/\s+/g, '_') ===
+                workItemTypeName.toUpperCase().replace(/\s+/g, '_'),
             );
 
             if (!workItemTypeObj) {
               throw new Error(
-                `Work item type "${workItemTypeName}" not found in namespace "${namespacePath}". Available types: ${workItemTypes.map(t => t.name).join(", ")}`
+                `Work item type "${workItemTypeName}" not found in namespace "${namespacePath}". Available types: ${workItemTypes.map((t) => t.name).join(', ')}`,
               );
             }
 
@@ -505,15 +505,15 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             // Add widgets only if data is provided
             if (assigneeIds !== undefined && assigneeIds.length > 0) {
-              createInput.assigneesWidget = { assigneeIds: toGids(assigneeIds, "User") };
+              createInput.assigneesWidget = { assigneeIds: toGids(assigneeIds, 'User') };
             }
 
             if (labelIds !== undefined && labelIds.length > 0) {
-              createInput.labelsWidget = { labelIds: toGids(labelIds, "Label") };
+              createInput.labelsWidget = { labelIds: toGids(labelIds, 'Label') };
             }
 
             if (milestoneId !== undefined) {
-              createInput.milestoneWidget = { milestoneId: toGid(milestoneId, "Milestone") };
+              createInput.milestoneWidget = { milestoneId: toGid(milestoneId, 'Milestone') };
             }
 
             // Start and due date widget
@@ -528,10 +528,10 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             if (parentId !== undefined || (childrenIds !== undefined && childrenIds.length > 0)) {
               createInput.hierarchyWidget = {};
               if (parentId !== undefined) {
-                createInput.hierarchyWidget.parentId = toGid(parentId, "WorkItem");
+                createInput.hierarchyWidget.parentId = toGid(parentId, 'WorkItem');
               }
               if (childrenIds !== undefined && childrenIds.length > 0) {
-                createInput.hierarchyWidget.childrenIds = toGids(childrenIds, "WorkItem");
+                createInput.hierarchyWidget.childrenIds = toGids(childrenIds, 'WorkItem');
               }
             }
 
@@ -547,7 +547,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // Iteration widget (Premium)
             if (iterationId !== undefined) {
               createInput.iterationWidget = {
-                iterationId: toGid(iterationId, "Iteration"),
+                iterationId: toGid(iterationId, 'Iteration'),
               };
             }
 
@@ -576,12 +576,12 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               response.workItemCreate.errors.length > 0
             ) {
               throw new Error(
-                `GitLab GraphQL errors: ${response.workItemCreate.errors.join(", ")}`
+                `GitLab GraphQL errors: ${response.workItemCreate.errors.join(', ')}`,
               );
             }
 
             if (!response.workItemCreate?.workItem) {
-              throw new Error("Work item creation failed - no work item returned");
+              throw new Error('Work item creation failed - no work item returned');
             }
 
             const createdWorkItem = response.workItemCreate.workItem;
@@ -606,17 +606,17 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                 ) {
                   // Update failed - return create result with warning
                   const cleanedResult = cleanWorkItemResponse(
-                    createdWorkItem as unknown as GitLabWorkItem
+                    createdWorkItem as unknown as GitLabWorkItem,
                   );
                   return {
                     ...cleanedResult,
                     _warning: {
                       message:
-                        "Work item created successfully, but some properties could not be applied",
+                        'Work item created successfully, but some properties could not be applied',
                       failedProperties: {
                         timeEstimate: {
                           requestedValue: timeEstimate,
-                          error: updateResponse.workItemUpdate.errors.join(", "),
+                          error: updateResponse.workItemUpdate.errors.join(', '),
                         },
                       },
                     },
@@ -626,23 +626,23 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                 if (updateResponse.workItemUpdate?.workItem) {
                   // Return updated work item with time estimate applied
                   return cleanWorkItemResponse(
-                    updateResponse.workItemUpdate.workItem as unknown as GitLabWorkItem
+                    updateResponse.workItemUpdate.workItem as unknown as GitLabWorkItem,
                   );
                 }
 
                 // Update returned no work item but also no errors - return create result with warning
                 const cleanedResult = cleanWorkItemResponse(
-                  createdWorkItem as unknown as GitLabWorkItem
+                  createdWorkItem as unknown as GitLabWorkItem,
                 );
                 return {
                   ...cleanedResult,
                   _warning: {
                     message:
-                      "Work item created successfully, but some properties could not be applied",
+                      'Work item created successfully, but some properties could not be applied',
                     failedProperties: {
                       timeEstimate: {
                         requestedValue: timeEstimate,
-                        error: "Time estimate update returned no work item",
+                        error: 'Time estimate update returned no work item',
                       },
                     },
                   },
@@ -650,20 +650,20 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               } catch (updateError) {
                 // Update failed with exception - return create result with warning
                 const cleanedResult = cleanWorkItemResponse(
-                  createdWorkItem as unknown as GitLabWorkItem
+                  createdWorkItem as unknown as GitLabWorkItem,
                 );
                 return {
                   ...cleanedResult,
                   _warning: {
                     message:
-                      "Work item created successfully, but some properties could not be applied",
+                      'Work item created successfully, but some properties could not be applied',
                     failedProperties: {
                       timeEstimate: {
                         requestedValue: timeEstimate,
                         error:
                           updateError instanceof Error
                             ? updateError.message
-                            : "Unknown error applying time estimate",
+                            : 'Unknown error applying time estimate',
                       },
                     },
                   },
@@ -674,7 +674,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             return cleanWorkItemResponse(createdWorkItem as unknown as GitLabWorkItem);
           }
 
-          case "update": {
+          case 'update': {
             const {
               id,
               title,
@@ -708,7 +708,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // Validate linked items params: both must be provided together
             if ((linkType !== undefined) !== (targetId !== undefined)) {
               throw new Error(
-                "Both linkType and targetId must be provided together to create a linked item relationship"
+                'Both linkType and targetId must be provided together to create a linked item relationship',
               );
             }
 
@@ -718,8 +718,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               (addLabelIds !== undefined || removeLabelIds !== undefined)
             ) {
               throw new Error(
-                "labelIds (replace all) cannot be used together with addLabelIds or removeLabelIds. " +
-                  "Use labelIds to set exact labels, or use addLabelIds/removeLabelIds for incremental changes."
+                'labelIds (replace all) cannot be used together with addLabelIds or removeLabelIds. ' +
+                  'Use labelIds to set exact labels, or use addLabelIds/removeLabelIds for incremental changes.',
               );
             }
 
@@ -752,15 +752,15 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             if (validationFailure) {
               throw new StructuredToolError(
                 createVersionRestrictedError(
-                  "manage_work_item",
-                  "update",
+                  'manage_work_item',
+                  'update',
                   validationFailure.widget,
                   validationFailure.parameter,
                   validationFailure.requiredVersion,
                   validationFailure.detectedVersion,
                   normalizeTier(validationFailure.requiredTier),
-                  normalizeTier(validationFailure.currentTier)
-                )
+                  normalizeTier(validationFailure.currentTier),
+                ),
               );
             }
 
@@ -769,7 +769,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const client = connectionManager.getClient();
 
             // Convert simple ID to GID for API call
-            const workItemGid = toGid(workItemId, "WorkItem");
+            const workItemGid = toGid(workItemId, 'WorkItem');
 
             // Build dynamic input object based on provided values
             const updateInput: WorkItemUpdateInput = { id: workItemGid };
@@ -784,7 +784,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             }
 
             if (assigneeIds !== undefined) {
-              updateInput.assigneesWidget = { assigneeIds: toGids(assigneeIds, "User") };
+              updateInput.assigneesWidget = { assigneeIds: toGids(assigneeIds, 'User') };
             }
 
             // Labels widget: labelIds replaces all, addLabelIds/removeLabelIds are incremental
@@ -802,15 +802,15 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                     labels?: { nodes?: Array<{ id: string }> };
                   }>) || []
                 )
-                  .find(w => w.type === "LABELS")
-                  ?.labels?.nodes?.map(l => l.id) ?? [];
+                  .find((w) => w.type === 'LABELS')
+                  ?.labels?.nodes?.map((l) => l.id) ?? [];
 
-              const newLabelGids = toGids(labelIds, "Label");
+              const newLabelGids = toGids(labelIds, 'Label');
 
               // Calculate diff: remove only labels NOT in new set, add only labels NOT in current set
               // This ensures no label appears in both removeLabelIds and addLabelIds
-              const labelsToRemove = currentLabels.filter(id => !newLabelGids.includes(id));
-              const labelsToAdd = newLabelGids.filter(id => !currentLabels.includes(id));
+              const labelsToRemove = currentLabels.filter((id) => !newLabelGids.includes(id));
+              const labelsToAdd = newLabelGids.filter((id) => !currentLabels.includes(id));
 
               // Build labelsWidget with calculated diff only if changes are needed
               if (labelsToRemove.length > 0 || labelsToAdd.length > 0) {
@@ -826,10 +826,10 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               // Incremental mode: add and/or remove labels
               updateInput.labelsWidget = {};
               if (addLabelIds !== undefined && addLabelIds.length > 0) {
-                updateInput.labelsWidget.addLabelIds = toGids(addLabelIds, "Label");
+                updateInput.labelsWidget.addLabelIds = toGids(addLabelIds, 'Label');
               }
               if (removeLabelIds !== undefined && removeLabelIds.length > 0) {
-                updateInput.labelsWidget.removeLabelIds = toGids(removeLabelIds, "Label");
+                updateInput.labelsWidget.removeLabelIds = toGids(removeLabelIds, 'Label');
               }
             }
 
@@ -838,17 +838,17 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             if (updateInput.labelsWidget?.addLabelIds && updateInput.labelsWidget?.removeLabelIds) {
               const addSet = new Set(updateInput.labelsWidget.addLabelIds);
               const removeSet = new Set(updateInput.labelsWidget.removeLabelIds);
-              const intersection = [...addSet].filter(id => removeSet.has(id));
+              const intersection = [...addSet].filter((id) => removeSet.has(id));
 
               if (intersection.length > 0) {
                 throw new Error(
-                  `Invalid label operation: cannot add and remove the same labels simultaneously: ${intersection.join(", ")}`
+                  `Invalid label operation: cannot add and remove the same labels simultaneously: ${intersection.join(', ')}`,
                 );
               }
             }
 
             if (milestoneId !== undefined) {
-              updateInput.milestoneWidget = { milestoneId: toGid(milestoneId, "Milestone") };
+              updateInput.milestoneWidget = { milestoneId: toGid(milestoneId, 'Milestone') };
             }
 
             // Start and due date widget
@@ -865,10 +865,10 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               if (parentId !== undefined) {
                 // null means unlink parent, string means set parent
                 updateInput.hierarchyWidget.parentId =
-                  parentId === null ? null : toGid(parentId, "WorkItem");
+                  parentId === null ? null : toGid(parentId, 'WorkItem');
               }
               if (childrenIds !== undefined && childrenIds.length > 0) {
-                updateInput.hierarchyWidget.childrenIds = toGids(childrenIds, "WorkItem");
+                updateInput.hierarchyWidget.childrenIds = toGids(childrenIds, 'WorkItem');
               }
             }
 
@@ -878,7 +878,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               timeSpent === undefined
             ) {
               throw new Error(
-                "timeSpentAt and timeSpentSummary require timeSpent to be specified (they are timelog entry properties)"
+                'timeSpentAt and timeSpentSummary require timeSpent to be specified (they are timelog entry properties)',
               );
             }
 
@@ -905,7 +905,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // Iteration widget (Premium)
             if (iterationId !== undefined) {
               updateInput.iterationWidget = {
-                iterationId: iterationId === null ? null : toGid(iterationId, "Iteration"),
+                iterationId: iterationId === null ? null : toGid(iterationId, 'Iteration'),
               };
             }
 
@@ -937,12 +937,12 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               response.workItemUpdate.errors.length > 0
             ) {
               throw new Error(
-                `GitLab GraphQL errors: ${response.workItemUpdate.errors.join(", ")}`
+                `GitLab GraphQL errors: ${response.workItemUpdate.errors.join(', ')}`,
               );
             }
 
             if (!response.workItemUpdate?.workItem) {
-              throw new Error("Work item update failed - no work item returned");
+              throw new Error('Work item update failed - no work item returned');
             }
 
             const updatedWorkItem = response.workItemUpdate.workItem;
@@ -955,7 +955,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                 const linkResponse = await client.request(WORK_ITEM_ADD_LINKED_ITEMS, {
                   input: {
                     id: workItemGid,
-                    workItemsIds: [toGid(targetId, "WorkItem")],
+                    workItemsIds: [toGid(targetId, 'WorkItem')],
                     linkType,
                   },
                 });
@@ -966,17 +966,17 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                 ) {
                   // Link failed - return update result with warning
                   const cleanedResult = cleanWorkItemResponse(
-                    updatedWorkItem as unknown as GitLabWorkItem
+                    updatedWorkItem as unknown as GitLabWorkItem,
                   );
                   return {
                     ...cleanedResult,
                     _warning: {
-                      message: "Work item updated successfully, but linked item could not be added",
+                      message: 'Work item updated successfully, but linked item could not be added',
                       failedProperties: {
                         linkedItem: {
                           targetId,
                           linkType,
-                          error: linkResponse.workItemAddLinkedItems.errors.join(", "),
+                          error: linkResponse.workItemAddLinkedItems.errors.join(', '),
                         },
                       },
                     },
@@ -986,23 +986,23 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                 if (linkResponse.workItemAddLinkedItems?.workItem) {
                   // Return work item with linked items applied
                   return cleanWorkItemResponse(
-                    linkResponse.workItemAddLinkedItems.workItem as unknown as GitLabWorkItem
+                    linkResponse.workItemAddLinkedItems.workItem as unknown as GitLabWorkItem,
                   );
                 }
 
                 // Link returned no work item but also no errors - return update result with warning
                 const cleanedResult = cleanWorkItemResponse(
-                  updatedWorkItem as unknown as GitLabWorkItem
+                  updatedWorkItem as unknown as GitLabWorkItem,
                 );
                 return {
                   ...cleanedResult,
                   _warning: {
-                    message: "Work item updated successfully, but linked item could not be added",
+                    message: 'Work item updated successfully, but linked item could not be added',
                     failedProperties: {
                       linkedItem: {
                         targetId,
                         linkType,
-                        error: "Add linked item returned no work item",
+                        error: 'Add linked item returned no work item',
                       },
                     },
                   },
@@ -1010,12 +1010,12 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               } catch (linkError) {
                 // Link failed with exception - return update result with warning
                 const cleanedResult = cleanWorkItemResponse(
-                  updatedWorkItem as unknown as GitLabWorkItem
+                  updatedWorkItem as unknown as GitLabWorkItem,
                 );
                 return {
                   ...cleanedResult,
                   _warning: {
-                    message: "Work item updated successfully, but linked item could not be added",
+                    message: 'Work item updated successfully, but linked item could not be added',
                     failedProperties: {
                       linkedItem: {
                         targetId,
@@ -1023,7 +1023,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                         error:
                           linkError instanceof Error
                             ? linkError.message
-                            : "Unknown error adding linked item",
+                            : 'Unknown error adding linked item',
                       },
                     },
                   },
@@ -1034,7 +1034,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             return cleanWorkItemResponse(updatedWorkItem as unknown as GitLabWorkItem);
           }
 
-          case "delete": {
+          case 'delete': {
             const workItemId = input.id;
 
             // Get GraphQL client from ConnectionManager
@@ -1042,7 +1042,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const client = connectionManager.getClient();
 
             // Convert simple ID to GID for API call
-            const workItemGid = toGid(workItemId, "WorkItem");
+            const workItemGid = toGid(workItemId, 'WorkItem');
 
             // Use GraphQL mutation for deleting work item
             const response = await client.request(DELETE_WORK_ITEM, { id: workItemGid });
@@ -1052,7 +1052,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               response.workItemDelete.errors.length > 0
             ) {
               throw new Error(
-                `GitLab GraphQL errors: ${response.workItemDelete.errors.join(", ")}`
+                `GitLab GraphQL errors: ${response.workItemDelete.errors.join(', ')}`,
               );
             }
 
@@ -1060,14 +1060,14 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             return { deleted: true };
           }
 
-          case "delete_timelog": {
+          case 'delete_timelog': {
             const { timelogId } = input;
 
             const connectionManager = ConnectionManager.getInstance();
             const client = connectionManager.getClient();
 
             // Ensure the timelog ID is a valid GID
-            const timelogGid = toGid(timelogId, "Timelog");
+            const timelogGid = toGid(timelogId, 'Timelog');
 
             const response = await client.request(TIMELOG_DELETE, { id: timelogGid });
 
@@ -1075,7 +1075,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               response.timelogDelete?.errors?.length &&
               response.timelogDelete.errors.length > 0
             ) {
-              throw new Error(`GitLab GraphQL errors: ${response.timelogDelete.errors.join(", ")}`);
+              throw new Error(`GitLab GraphQL errors: ${response.timelogDelete.errors.join(', ')}`);
             }
 
             return {
@@ -1084,7 +1084,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             };
           }
 
-          case "add_link": {
+          case 'add_link': {
             const { id, targetId, linkType } = input;
 
             const connectionManager = ConnectionManager.getInstance();
@@ -1092,8 +1092,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             const response = await client.request(WORK_ITEM_ADD_LINKED_ITEMS, {
               input: {
-                id: toGid(id, "WorkItem"),
-                workItemsIds: [toGid(targetId, "WorkItem")],
+                id: toGid(id, 'WorkItem'),
+                workItemsIds: [toGid(targetId, 'WorkItem')],
                 linkType,
               },
             });
@@ -1103,20 +1103,20 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               response.workItemAddLinkedItems.errors.length > 0
             ) {
               throw new Error(
-                `GitLab GraphQL errors: ${response.workItemAddLinkedItems.errors.join(", ")}`
+                `GitLab GraphQL errors: ${response.workItemAddLinkedItems.errors.join(', ')}`,
               );
             }
 
             if (!response.workItemAddLinkedItems?.workItem) {
-              throw new Error("Add linked item failed - no work item returned");
+              throw new Error('Add linked item failed - no work item returned');
             }
 
             return cleanWorkItemResponse(
-              response.workItemAddLinkedItems.workItem as unknown as GitLabWorkItem
+              response.workItemAddLinkedItems.workItem as unknown as GitLabWorkItem,
             );
           }
 
-          case "remove_link": {
+          case 'remove_link': {
             const { id, targetId } = input;
 
             const connectionManager = ConnectionManager.getInstance();
@@ -1126,8 +1126,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // Links are identified by source+target IDs only
             const response = await client.request(WORK_ITEM_REMOVE_LINKED_ITEMS, {
               input: {
-                id: toGid(id, "WorkItem"),
-                workItemsIds: [toGid(targetId, "WorkItem")],
+                id: toGid(id, 'WorkItem'),
+                workItemsIds: [toGid(targetId, 'WorkItem')],
               },
             });
 
@@ -1136,16 +1136,16 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               response.workItemRemoveLinkedItems.errors.length > 0
             ) {
               throw new Error(
-                `GitLab GraphQL errors: ${response.workItemRemoveLinkedItems.errors.join(", ")}`
+                `GitLab GraphQL errors: ${response.workItemRemoveLinkedItems.errors.join(', ')}`,
               );
             }
 
             if (!response.workItemRemoveLinkedItems?.workItem) {
-              throw new Error("Remove linked item failed - no work item returned");
+              throw new Error('Remove linked item failed - no work item returned');
             }
 
             return cleanWorkItemResponse(
-              response.workItemRemoveLinkedItems.workItem as unknown as GitLabWorkItem
+              response.workItemRemoveLinkedItems.workItem as unknown as GitLabWorkItem,
             );
           }
 
@@ -1162,7 +1162,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
  * Get read-only tool names from the registry
  */
 export function getWorkitemsReadOnlyToolNames(): string[] {
-  return ["browse_work_items"];
+  return ['browse_work_items'];
 }
 
 /**
@@ -1178,8 +1178,8 @@ export function getWorkitemsToolDefinitions(): EnhancedToolDefinition[] {
 export function getFilteredWorkitemsTools(readOnlyMode: boolean = false): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getWorkitemsReadOnlyToolNames();
-    return Array.from(workitemsToolRegistry.values()).filter(tool =>
-      readOnlyNames.includes(tool.name)
+    return Array.from(workitemsToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
     );
   }
   return getWorkitemsToolDefinitions();

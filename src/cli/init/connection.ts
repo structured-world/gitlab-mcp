@@ -2,17 +2,17 @@
  * Connection testing for init wizard
  */
 
-import { ConnectionTestResult } from "./types";
+import { ConnectionTestResult } from './types';
 
 /**
  * Test GitLab connection with provided credentials
  */
 export async function testConnection(
   instanceUrl: string,
-  token: string
+  token: string,
 ): Promise<ConnectionTestResult> {
   // Normalize URL: strip trailing slash and /api/v4 suffix if present
-  const baseUrl = instanceUrl.replace(/\/$/, "").replace(/\/api\/v4\/?$/, "");
+  const baseUrl = instanceUrl.replace(/\/$/, '').replace(/\/api\/v4\/?$/, '');
   const apiUrl = `${baseUrl}/api/v4`;
 
   // 10 second timeout for connection test
@@ -23,8 +23,8 @@ export async function testConnection(
     // Test /user endpoint to verify token
     const userResponse = await fetch(`${apiUrl}/user`, {
       headers: {
-        "PRIVATE-TOKEN": token,
-        Accept: "application/json",
+        'PRIVATE-TOKEN': token,
+        Accept: 'application/json',
       },
       signal: controller.signal,
     });
@@ -33,13 +33,13 @@ export async function testConnection(
       if (userResponse.status === 401) {
         return {
           success: false,
-          error: "Invalid token - authentication failed",
+          error: 'Invalid token - authentication failed',
         };
       }
       if (userResponse.status === 403) {
         return {
           success: false,
-          error: "Token lacks required permissions",
+          error: 'Token lacks required permissions',
         };
       }
       return {
@@ -59,8 +59,8 @@ export async function testConnection(
     try {
       const versionResponse = await fetch(`${apiUrl}/version`, {
         headers: {
-          "PRIVATE-TOKEN": token,
-          Accept: "application/json",
+          'PRIVATE-TOKEN': token,
+          Accept: 'application/json',
         },
         signal: controller.signal,
       });
@@ -82,14 +82,14 @@ export async function testConnection(
     };
   } catch (error) {
     // Handle timeout
-    if (error instanceof Error && error.name === "AbortError") {
+    if (error instanceof Error && error.name === 'AbortError') {
       return {
         success: false,
         error: `Connection timeout - ${instanceUrl} did not respond within 10 seconds`,
       };
     }
     // Handle network errors
-    if (error instanceof TypeError && error.message.includes("fetch")) {
+    if (error instanceof TypeError && error.message.includes('fetch')) {
       return {
         success: false,
         error: `Cannot connect to ${instanceUrl} - check URL and network`,
@@ -110,22 +110,22 @@ export async function testConnection(
  */
 export function validateGitLabUrl(url: string): { valid: boolean; error?: string } {
   if (!url) {
-    return { valid: false, error: "URL is required" };
+    return { valid: false, error: 'URL is required' };
   }
 
   // Must start with https:// or http://
-  if (!url.startsWith("https://") && !url.startsWith("http://")) {
-    return { valid: false, error: "URL must start with https:// or http://" };
+  if (!url.startsWith('https://') && !url.startsWith('http://')) {
+    return { valid: false, error: 'URL must start with https:// or http://' };
   }
 
   try {
     const parsed = new URL(url);
     if (!parsed.hostname) {
-      return { valid: false, error: "Invalid URL hostname" };
+      return { valid: false, error: 'Invalid URL hostname' };
     }
     return { valid: true };
   } catch {
-    return { valid: false, error: "Invalid URL format" };
+    return { valid: false, error: 'Invalid URL format' };
   }
 }
 
@@ -140,7 +140,7 @@ export function isGitLabSaas(url: string): boolean {
     const parsed = new URL(url);
     const hostname = parsed.hostname.toLowerCase();
     // Strict match: exactly gitlab.com or subdomain of gitlab.com
-    return hostname === "gitlab.com" || hostname.endsWith(".gitlab.com");
+    return hostname === 'gitlab.com' || hostname.endsWith('.gitlab.com');
   } catch {
     return false;
   }
@@ -151,8 +151,8 @@ export function isGitLabSaas(url: string): boolean {
  * Uses least-privilege scopes based on read-only mode
  */
 export function getPatCreationUrl(instanceUrl: string, readOnly = false): string {
-  const baseUrl = instanceUrl.replace(/\/$/, "");
+  const baseUrl = instanceUrl.replace(/\/$/, '');
   // Use minimal scopes for read-only mode, full api for write access
-  const scopes = readOnly ? "read_api,read_user" : "api,read_user";
+  const scopes = readOnly ? 'read_api,read_user' : 'api,read_user';
   return `${baseUrl}/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=${scopes}`;
 }

@@ -3,17 +3,17 @@
  * Tests HTML rendering and content formatting
  */
 
-import { renderDashboard } from "../../../src/dashboard/html-template";
-import { DashboardMetrics } from "../../../src/dashboard/metrics";
+import { renderDashboard } from '../../../src/dashboard/html-template';
+import { DashboardMetrics } from '../../../src/dashboard/metrics';
 
-describe("Dashboard HTML Template", () => {
+describe('Dashboard HTML Template', () => {
   // Helper to create mock metrics
   function createMockMetrics(overrides: Partial<DashboardMetrics> = {}): DashboardMetrics {
     return {
       server: {
-        version: "6.52.0",
+        version: '6.52.0',
         uptime: 3600,
-        mode: "oauth",
+        mode: 'oauth',
         readOnly: false,
         toolsEnabled: 44,
         toolsTotal: 44,
@@ -24,84 +24,84 @@ describe("Dashboard HTML Template", () => {
         byInstance: {},
       },
       config: {
-        source: "env",
-        sourceDetails: "GITLAB_API_URL",
+        source: 'env',
+        sourceDetails: 'GITLAB_API_URL',
         oauthEnabled: true,
       },
       ...overrides,
     };
   }
 
-  describe("renderDashboard", () => {
-    it("should render valid HTML document", () => {
+  describe('renderDashboard', () => {
+    it('should render valid HTML document', () => {
       const metrics = createMockMetrics();
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("<!DOCTYPE html>");
-      expect(html).toContain("<html");
-      expect(html).toContain("</html>");
-      expect(html).toContain("<head>");
-      expect(html).toContain("<body>");
+      expect(html).toContain('<!DOCTYPE html>');
+      expect(html).toContain('<html');
+      expect(html).toContain('</html>');
+      expect(html).toContain('<head>');
+      expect(html).toContain('<body>');
     });
 
-    it("should include server version in title", () => {
+    it('should include server version in title', () => {
       const metrics = createMockMetrics();
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("GitLab MCP Server");
-      expect(html).toContain("6.52.0");
+      expect(html).toContain('GitLab MCP Server');
+      expect(html).toContain('6.52.0');
     });
 
-    it("should include auto-refresh meta tag", () => {
+    it('should include auto-refresh meta tag', () => {
       const metrics = createMockMetrics();
       const html = renderDashboard(metrics);
 
       expect(html).toContain('meta http-equiv="refresh" content="30"');
     });
 
-    it("should display session count", () => {
+    it('should display session count', () => {
       const metrics = createMockMetrics({ sessions: { total: 12, byInstance: {} } });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("Sessions: 12");
+      expect(html).toContain('Sessions: 12');
     });
 
-    it("should display auth mode for OAuth", () => {
+    it('should display auth mode for OAuth', () => {
       const metrics = createMockMetrics({
-        server: { ...createMockMetrics().server, mode: "oauth" },
+        server: { ...createMockMetrics().server, mode: 'oauth' },
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("OAuth 2.1");
+      expect(html).toContain('OAuth 2.1');
     });
 
-    it("should display auth mode for Static Token", () => {
+    it('should display auth mode for Static Token', () => {
       const metrics = createMockMetrics({
-        server: { ...createMockMetrics().server, mode: "token" },
+        server: { ...createMockMetrics().server, mode: 'token' },
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("Static Token");
+      expect(html).toContain('Static Token');
     });
 
-    it("should display auth mode for None", () => {
+    it('should display auth mode for None', () => {
       const metrics = createMockMetrics({
-        server: { ...createMockMetrics().server, mode: "none" },
+        server: { ...createMockMetrics().server, mode: 'none' },
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("Mode: None");
+      expect(html).toContain('Mode: None');
     });
 
-    it("should display instance cards when instances are configured", () => {
+    it('should display instance cards when instances are configured', () => {
       const metrics = createMockMetrics({
         instances: [
           {
-            url: "https://gitlab.com",
-            label: "GitLab.com",
-            status: "healthy",
-            version: "17.2.0",
-            tier: "ultimate",
+            url: 'https://gitlab.com',
+            label: 'GitLab.com',
+            status: 'healthy',
+            version: '17.2.0',
+            tier: 'ultimate',
             introspected: true,
             rateLimit: {
               activeRequests: 23,
@@ -118,21 +118,21 @@ describe("Dashboard HTML Template", () => {
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("GitLab.com");
-      expect(html).toContain("https://gitlab.com");
-      expect(html).toContain("17.2.0");
-      expect(html).toContain("[Healthy]");
+      expect(html).toContain('GitLab.com');
+      expect(html).toContain('https://gitlab.com');
+      expect(html).toContain('17.2.0');
+      expect(html).toContain('[Healthy]');
     });
 
-    it("should display degraded status indicator", () => {
+    it('should display degraded status indicator', () => {
       const metrics = createMockMetrics({
         instances: [
           {
-            url: "https://slow.gitlab.com",
-            label: "Slow GitLab",
-            status: "degraded",
-            version: "16.0.0",
-            tier: "free",
+            url: 'https://slow.gitlab.com',
+            label: 'Slow GitLab',
+            status: 'degraded',
+            version: '16.0.0',
+            tier: 'free',
             introspected: false,
             rateLimit: {
               activeRequests: 2,
@@ -149,16 +149,16 @@ describe("Dashboard HTML Template", () => {
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("[Degraded]");
+      expect(html).toContain('[Degraded]');
     });
 
-    it("should display offline status indicator", () => {
+    it('should display offline status indicator', () => {
       const metrics = createMockMetrics({
         instances: [
           {
-            url: "https://offline.gitlab.com",
+            url: 'https://offline.gitlab.com',
             label: null,
-            status: "offline",
+            status: 'offline',
             version: null,
             tier: null,
             introspected: false,
@@ -177,18 +177,18 @@ describe("Dashboard HTML Template", () => {
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("[Offline]");
+      expect(html).toContain('[Offline]');
     });
 
-    it("should display warning for high latency", () => {
+    it('should display warning for high latency', () => {
       const metrics = createMockMetrics({
         instances: [
           {
-            url: "https://slow.gitlab.com",
-            label: "Slow",
-            status: "degraded",
-            version: "16.0.0",
-            tier: "free",
+            url: 'https://slow.gitlab.com',
+            label: 'Slow',
+            status: 'degraded',
+            version: '16.0.0',
+            tier: 'free',
             introspected: false,
             rateLimit: {
               activeRequests: 0,
@@ -205,18 +205,18 @@ describe("Dashboard HTML Template", () => {
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("High latency detected");
+      expect(html).toContain('High latency detected');
     });
 
-    it("should escape HTML in labels to prevent XSS", () => {
+    it('should escape HTML in labels to prevent XSS', () => {
       const metrics = createMockMetrics({
         instances: [
           {
-            url: "https://gitlab.com",
+            url: 'https://gitlab.com',
             label: "<script>alert('xss')</script>",
-            status: "healthy",
-            version: "17.0.0",
-            tier: "ultimate",
+            status: 'healthy',
+            version: '17.0.0',
+            tier: 'ultimate',
             introspected: true,
             rateLimit: {
               activeRequests: 0,
@@ -233,18 +233,18 @@ describe("Dashboard HTML Template", () => {
       });
       const html = renderDashboard(metrics);
 
-      expect(html).not.toContain("<script>");
-      expect(html).toContain("&lt;script&gt;");
+      expect(html).not.toContain('<script>');
+      expect(html).toContain('&lt;script&gt;');
     });
 
-    it("should display no instances message when none configured", () => {
+    it('should display no instances message when none configured', () => {
       const metrics = createMockMetrics({ instances: [] });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("No instances configured");
+      expect(html).toContain('No instances configured');
     });
 
-    it("should display configuration section", () => {
+    it('should display configuration section', () => {
       const metrics = createMockMetrics({
         server: {
           ...createMockMetrics().server,
@@ -253,38 +253,38 @@ describe("Dashboard HTML Template", () => {
           toolsTotal: 44,
         },
         config: {
-          source: "file",
-          sourceDetails: "/etc/gitlab-mcp/instances.yaml",
+          source: 'file',
+          sourceDetails: '/etc/gitlab-mcp/instances.yaml',
           oauthEnabled: true,
         },
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("Read-only:");
-      expect(html).toContain("Yes");
-      expect(html).toContain("Tools enabled:");
-      expect(html).toContain("30/44");
-      expect(html).toContain("Config source:");
-      expect(html).toContain("file");
+      expect(html).toContain('Read-only:');
+      expect(html).toContain('Yes');
+      expect(html).toContain('Tools enabled:');
+      expect(html).toContain('30/44');
+      expect(html).toContain('Config source:');
+      expect(html).toContain('file');
     });
 
-    it("should display sessions section", () => {
+    it('should display sessions section', () => {
       const metrics = createMockMetrics({
         sessions: {
           total: 12,
           byInstance: {
-            "https://gitlab.com": 8,
-            "https://git.corp.io": 4,
+            'https://gitlab.com': 8,
+            'https://git.corp.io': 4,
           },
         },
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("Active Sessions");
-      expect(html).toContain("Total: 12 sessions");
+      expect(html).toContain('Active Sessions');
+      expect(html).toContain('Total: 12 sessions');
     });
 
-    it("should display no sessions message when none active", () => {
+    it('should display no sessions message when none active', () => {
       const metrics = createMockMetrics({
         sessions: {
           total: 0,
@@ -293,37 +293,37 @@ describe("Dashboard HTML Template", () => {
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("No active sessions");
+      expect(html).toContain('No active sessions');
     });
 
-    it("should include CSS styles", () => {
+    it('should include CSS styles', () => {
       const metrics = createMockMetrics();
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("<style>");
-      expect(html).toContain("--bg-primary");
-      expect(html).toContain("--healthy");
-      expect(html).toContain("--degraded");
-      expect(html).toContain("--offline");
+      expect(html).toContain('<style>');
+      expect(html).toContain('--bg-primary');
+      expect(html).toContain('--healthy');
+      expect(html).toContain('--degraded');
+      expect(html).toContain('--offline');
     });
 
-    it("should include footer with refresh info", () => {
+    it('should include footer with refresh info', () => {
       const metrics = createMockMetrics();
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("Auto-refresh: 30s");
-      expect(html).toContain("Last updated:");
+      expect(html).toContain('Auto-refresh: 30s');
+      expect(html).toContain('Last updated:');
     });
 
-    it("should handle unknown status gracefully", () => {
+    it('should handle unknown status gracefully', () => {
       const metrics = createMockMetrics({
         instances: [
           {
-            url: "https://gitlab.com",
-            label: "Test",
-            status: "unknown" as "healthy", // Cast to bypass type check for testing
-            version: "17.0.0",
-            tier: "free",
+            url: 'https://gitlab.com',
+            label: 'Test',
+            status: 'unknown' as 'healthy', // Cast to bypass type check for testing
+            version: '17.0.0',
+            tier: 'free',
             introspected: false,
             rateLimit: {
               activeRequests: 0,
@@ -341,16 +341,16 @@ describe("Dashboard HTML Template", () => {
       const html = renderDashboard(metrics);
 
       // Should show unknown status indicator (?)
-      expect(html).toContain("status-unknown");
+      expect(html).toContain('status-unknown');
     });
 
-    it("should handle invalid URL in instance gracefully", () => {
+    it('should handle invalid URL in instance gracefully', () => {
       const metrics = createMockMetrics({
         instances: [
           {
-            url: "not-a-valid-url",
+            url: 'not-a-valid-url',
             label: null,
-            status: "healthy",
+            status: 'healthy',
             version: null,
             tier: null,
             introspected: false,
@@ -370,18 +370,18 @@ describe("Dashboard HTML Template", () => {
       const html = renderDashboard(metrics);
 
       // Should fall back to raw URL when parsing fails
-      expect(html).toContain("not-a-valid-url");
+      expect(html).toContain('not-a-valid-url');
     });
 
-    it("should display queue filling warning when queue is over 50%", () => {
+    it('should display queue filling warning when queue is over 50%', () => {
       const metrics = createMockMetrics({
         instances: [
           {
-            url: "https://busy.gitlab.com",
-            label: "Busy",
-            status: "degraded",
-            version: "17.0.0",
-            tier: "premium",
+            url: 'https://busy.gitlab.com',
+            label: 'Busy',
+            status: 'degraded',
+            version: '17.0.0',
+            tier: 'premium',
             introspected: true,
             rateLimit: {
               activeRequests: 50,
@@ -398,19 +398,19 @@ describe("Dashboard HTML Template", () => {
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("Queue filling up");
+      expect(html).toContain('Queue filling up');
     });
 
-    it("should format lastHealthCheck as hours ago", () => {
+    it('should format lastHealthCheck as hours ago', () => {
       const twoHoursAgo = new Date(Date.now() - 2 * 60 * 60 * 1000);
       const metrics = createMockMetrics({
         instances: [
           {
-            url: "https://gitlab.com",
-            label: "Test",
-            status: "healthy",
-            version: "17.0.0",
-            tier: "free",
+            url: 'https://gitlab.com',
+            label: 'Test',
+            status: 'healthy',
+            version: '17.0.0',
+            tier: 'free',
             introspected: true,
             rateLimit: {
               activeRequests: 0,
@@ -427,19 +427,19 @@ describe("Dashboard HTML Template", () => {
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("2h ago");
+      expect(html).toContain('2h ago');
     });
 
-    it("should format lastHealthCheck as days ago", () => {
+    it('should format lastHealthCheck as days ago', () => {
       const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000);
       const metrics = createMockMetrics({
         instances: [
           {
-            url: "https://gitlab.com",
-            label: "Test",
-            status: "offline",
-            version: "17.0.0",
-            tier: "free",
+            url: 'https://gitlab.com',
+            label: 'Test',
+            status: 'offline',
+            version: '17.0.0',
+            tier: 'free',
             introspected: true,
             rateLimit: {
               activeRequests: 0,
@@ -456,19 +456,19 @@ describe("Dashboard HTML Template", () => {
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("3d ago");
+      expect(html).toContain('3d ago');
     });
 
-    it("should format lastHealthCheck as 1h ago", () => {
+    it('should format lastHealthCheck as 1h ago', () => {
       const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
       const metrics = createMockMetrics({
         instances: [
           {
-            url: "https://gitlab.com",
-            label: "Test",
-            status: "healthy",
-            version: "17.0.0",
-            tier: "free",
+            url: 'https://gitlab.com',
+            label: 'Test',
+            status: 'healthy',
+            version: '17.0.0',
+            tier: 'free',
             introspected: true,
             rateLimit: {
               activeRequests: 0,
@@ -485,24 +485,24 @@ describe("Dashboard HTML Template", () => {
       });
       const html = renderDashboard(metrics);
 
-      expect(html).toContain("1h ago");
+      expect(html).toContain('1h ago');
     });
 
-    it("should handle invalid URL in sessions byInstance gracefully", () => {
+    it('should handle invalid URL in sessions byInstance gracefully', () => {
       const metrics = createMockMetrics({
         sessions: {
           total: 5,
           byInstance: {
-            "invalid-url": 3,
-            "https://gitlab.com": 2,
+            'invalid-url': 3,
+            'https://gitlab.com': 2,
           },
         },
       });
       const html = renderDashboard(metrics);
 
       // Should fall back to raw URL when parsing fails
-      expect(html).toContain("invalid-url");
-      expect(html).toContain("gitlab.com");
+      expect(html).toContain('invalid-url');
+      expect(html).toContain('gitlab.com');
     });
   });
 });

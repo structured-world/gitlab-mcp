@@ -1,9 +1,9 @@
-import * as z from "zod";
-import { BrowseIntegrationsSchema } from "./schema-readonly";
-import { ManageIntegrationSchema } from "./schema";
-import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { getEffectiveProjectId, isActionDenied } from "../../config";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
+import * as z from 'zod';
+import { BrowseIntegrationsSchema } from './schema-readonly';
+import { ManageIntegrationSchema } from './schema';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { getEffectiveProjectId, isActionDenied } from '../../config';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
  * Integrations tools registry - 2 CQRS tools for managing GitLab project integrations
@@ -18,40 +18,40 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_integrations",
+    'browse_integrations',
     {
-      name: "browse_integrations",
+      name: 'browse_integrations',
       description:
-        "Discover active project integrations and their configuration. Actions: list (all active: Slack, Jira, Discord, Teams, Jenkins, etc.), get (specific integration settings by slug). Related: manage_integration to configure/disable.",
+        'Discover active project integrations and their configuration. Actions: list (all active: Slack, Jira, Discord, Teams, Jenkins, etc.), get (specific integration settings by slug). Related: manage_integration to configure/disable.',
       inputSchema: z.toJSONSchema(BrowseIntegrationsSchema, {}),
-      gate: { envVar: "USE_INTEGRATIONS", defaultValue: true },
+      gate: { envVar: 'USE_INTEGRATIONS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseIntegrationsSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_integrations", input.action)) {
+        if (isActionDenied('browse_integrations', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_integrations tool`);
         }
 
         const projectId = getEffectiveProjectId(input.project_id);
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             // TypeScript knows: input has project_id, per_page, page
             const query = toQuery(
               {
                 per_page: input.per_page,
                 page: input.page,
               },
-              []
+              [],
             );
             return gitlab.get(`projects/${encodeURIComponent(projectId)}/integrations`, { query });
           }
 
-          case "get": {
+          case 'get': {
             // TypeScript knows: input has project_id, integration
             return gitlab.get(
-              `projects/${encodeURIComponent(projectId)}/integrations/${input.integration}`
+              `projects/${encodeURIComponent(projectId)}/integrations/${input.integration}`,
             );
           }
 
@@ -68,18 +68,18 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_integration",
+    'manage_integration',
     {
-      name: "manage_integration",
+      name: 'manage_integration',
       description:
-        "Configure or disable project integrations (50+ supported). Actions: update (enable/modify with integration-specific config), disable (deactivate integration). Note: gitlab-slack-application requires OAuth install from GitLab UI. Related: browse_integrations for discovery.",
+        'Configure or disable project integrations (50+ supported). Actions: update (enable/modify with integration-specific config), disable (deactivate integration). Note: gitlab-slack-application requires OAuth install from GitLab UI. Related: browse_integrations for discovery.',
       inputSchema: z.toJSONSchema(ManageIntegrationSchema, {}),
-      gate: { envVar: "USE_INTEGRATIONS", defaultValue: true },
+      gate: { envVar: 'USE_INTEGRATIONS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageIntegrationSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_integration", input.action)) {
+        if (isActionDenied('manage_integration', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_integration tool`);
         }
 
@@ -87,7 +87,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
         const integrationSlug = input.integration;
 
         switch (input.action) {
-          case "update": {
+          case 'update': {
             // TypeScript knows: input has project_id, integration (required), plus event fields and config (optional)
             const {
               action: _action,
@@ -107,15 +107,15 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
               `projects/${encodeURIComponent(projectId)}/integrations/${integrationSlug}`,
               {
                 body: finalBody,
-                contentType: "json",
-              }
+                contentType: 'json',
+              },
             );
           }
 
-          case "disable": {
+          case 'disable': {
             // TypeScript knows: input has project_id, integration (required)
             await gitlab.delete(
-              `projects/${encodeURIComponent(projectId)}/integrations/${integrationSlug}`
+              `projects/${encodeURIComponent(projectId)}/integrations/${integrationSlug}`,
             );
             return { deleted: true };
           }
@@ -134,7 +134,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
  * Only browse_integrations is read-only. manage_integration is purely write operations.
  */
 export function getIntegrationsReadOnlyToolNames(): string[] {
-  return ["browse_integrations"];
+  return ['browse_integrations'];
 }
 
 /**
@@ -148,12 +148,12 @@ export function getIntegrationsToolDefinitions(): EnhancedToolDefinition[] {
  * Get filtered tools based on read-only mode
  */
 export function getFilteredIntegrationsTools(
-  readOnlyMode: boolean = false
+  readOnlyMode: boolean = false,
 ): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getIntegrationsReadOnlyToolNames();
-    return Array.from(integrationsToolRegistry.values()).filter(tool =>
-      readOnlyNames.includes(tool.name)
+    return Array.from(integrationsToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
     );
   }
   return getIntegrationsToolDefinitions();

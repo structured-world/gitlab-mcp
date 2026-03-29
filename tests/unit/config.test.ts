@@ -3,13 +3,13 @@
  * Tests environment variable handling, URL normalization, and package info loading
  */
 
-import * as fs from "fs";
+import * as fs from 'fs';
 
 // Mock fs module
-jest.mock("fs");
+jest.mock('fs');
 const mockFs = fs as jest.Mocked<typeof fs>;
 
-describe("config.ts", () => {
+describe('config.ts', () => {
   const originalEnv = process.env;
   const originalCwd = process.cwd;
 
@@ -21,7 +21,7 @@ describe("config.ts", () => {
     process.env = { ...originalEnv };
 
     // Mock process.cwd
-    jest.spyOn(process, "cwd").mockReturnValue("/test/project");
+    jest.spyOn(process, 'cwd').mockReturnValue('/test/project');
 
     // Reset fs mock to default behavior
     mockFs.readFileSync.mockReset();
@@ -32,32 +32,32 @@ describe("config.ts", () => {
     process.cwd = originalCwd;
   });
 
-  describe("environment variable parsing", () => {
-    it("should parse boolean environment variables correctly", () => {
-      process.env.GITLAB_IS_OLD = "true";
-      process.env.GITLAB_READ_ONLY_MODE = "true";
-      process.env.SKIP_TLS_VERIFY = "true";
+  describe('environment variable parsing', () => {
+    it('should parse boolean environment variables correctly', () => {
+      process.env.GITLAB_IS_OLD = 'true';
+      process.env.GITLAB_READ_ONLY_MODE = 'true';
+      process.env.SKIP_TLS_VERIFY = 'true';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.IS_OLD).toBe(true);
       expect(config.GITLAB_READ_ONLY_MODE).toBe(true);
       expect(config.SKIP_TLS_VERIFY).toBe(true);
     });
 
-    it("should handle false boolean environment variables", () => {
-      process.env.GITLAB_IS_OLD = "false";
-      process.env.GITLAB_READ_ONLY_MODE = "false";
-      process.env.SKIP_TLS_VERIFY = "false";
+    it('should handle false boolean environment variables', () => {
+      process.env.GITLAB_IS_OLD = 'false';
+      process.env.GITLAB_READ_ONLY_MODE = 'false';
+      process.env.SKIP_TLS_VERIFY = 'false';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.IS_OLD).toBe(false);
       expect(config.GITLAB_READ_ONLY_MODE).toBe(false);
       expect(config.SKIP_TLS_VERIFY).toBe(false);
     });
 
-    it("should handle feature flags that default to true", () => {
+    it('should handle feature flags that default to true', () => {
       // These should default to true when not set or not 'false'
       delete process.env.USE_GITLAB_WIKI;
       delete process.env.USE_MILESTONE;
@@ -68,7 +68,7 @@ describe("config.ts", () => {
       delete process.env.USE_FILES;
       delete process.env.USE_VARIABLES;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.USE_GITLAB_WIKI).toBe(true);
       expect(config.USE_MILESTONE).toBe(true);
@@ -80,17 +80,17 @@ describe("config.ts", () => {
       expect(config.USE_VARIABLES).toBe(true);
     });
 
-    it("should disable features when explicitly set to false", () => {
-      process.env.USE_GITLAB_WIKI = "false";
-      process.env.USE_MILESTONE = "false";
-      process.env.USE_PIPELINE = "false";
-      process.env.USE_WORKITEMS = "false";
-      process.env.USE_LABELS = "false";
-      process.env.USE_MRS = "false";
-      process.env.USE_FILES = "false";
-      process.env.USE_VARIABLES = "false";
+    it('should disable features when explicitly set to false', () => {
+      process.env.USE_GITLAB_WIKI = 'false';
+      process.env.USE_MILESTONE = 'false';
+      process.env.USE_PIPELINE = 'false';
+      process.env.USE_WORKITEMS = 'false';
+      process.env.USE_LABELS = 'false';
+      process.env.USE_MRS = 'false';
+      process.env.USE_FILES = 'false';
+      process.env.USE_VARIABLES = 'false';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.USE_GITLAB_WIKI).toBe(false);
       expect(config.USE_MILESTONE).toBe(false);
@@ -102,631 +102,631 @@ describe("config.ts", () => {
       expect(config.USE_VARIABLES).toBe(false);
     });
 
-    it("should parse GITLAB_DENIED_TOOLS_REGEX as RegExp", () => {
-      process.env.GITLAB_DENIED_TOOLS_REGEX = "^list_";
+    it('should parse GITLAB_DENIED_TOOLS_REGEX as RegExp', () => {
+      process.env.GITLAB_DENIED_TOOLS_REGEX = '^list_';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.GITLAB_DENIED_TOOLS_REGEX).toBeInstanceOf(RegExp);
-      expect(config.GITLAB_DENIED_TOOLS_REGEX.source).toBe("^list_");
+      expect(config.GITLAB_DENIED_TOOLS_REGEX.source).toBe('^list_');
     });
 
-    it("should handle undefined GITLAB_DENIED_TOOLS_REGEX", () => {
+    it('should handle undefined GITLAB_DENIED_TOOLS_REGEX', () => {
       delete process.env.GITLAB_DENIED_TOOLS_REGEX;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.GITLAB_DENIED_TOOLS_REGEX).toBeUndefined();
     });
 
-    it("should parse HOST and PORT with defaults", () => {
+    it('should parse HOST and PORT with defaults', () => {
       delete process.env.HOST;
       delete process.env.PORT;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.HOST).toBe("127.0.0.1");
+      expect(config.HOST).toBe('127.0.0.1');
       expect(config.PORT).toBe(3002);
     });
 
-    it("should use custom HOST and PORT when set", () => {
-      process.env.HOST = "localhost";
-      process.env.PORT = "8080";
+    it('should use custom HOST and PORT when set', () => {
+      process.env.HOST = 'localhost';
+      process.env.PORT = '8080';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.HOST).toBe("localhost");
-      expect(config.PORT).toBe("8080");
+      expect(config.HOST).toBe('localhost');
+      expect(config.PORT).toBe('8080');
     });
 
-    it("should parse GITLAB_ALLOWED_PROJECT_IDS as array", () => {
-      process.env.GITLAB_ALLOWED_PROJECT_IDS = "123, 456 , 789";
+    it('should parse GITLAB_ALLOWED_PROJECT_IDS as array', () => {
+      process.env.GITLAB_ALLOWED_PROJECT_IDS = '123, 456 , 789';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_ALLOWED_PROJECT_IDS).toEqual(["123", "456", "789"]);
+      expect(config.GITLAB_ALLOWED_PROJECT_IDS).toEqual(['123', '456', '789']);
     });
 
-    it("should handle empty GITLAB_ALLOWED_PROJECT_IDS", () => {
+    it('should handle empty GITLAB_ALLOWED_PROJECT_IDS', () => {
       delete process.env.GITLAB_ALLOWED_PROJECT_IDS;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.GITLAB_ALLOWED_PROJECT_IDS).toEqual([]);
     });
 
-    it("should default LOG_FORMAT to condensed", () => {
+    it('should default LOG_FORMAT to condensed', () => {
       delete process.env.LOG_FORMAT;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.LOG_FORMAT).toBe("condensed");
+      expect(config.LOG_FORMAT).toBe('condensed');
     });
 
-    it("should parse LOG_FORMAT=verbose", () => {
-      process.env.LOG_FORMAT = "verbose";
+    it('should parse LOG_FORMAT=verbose', () => {
+      process.env.LOG_FORMAT = 'verbose';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.LOG_FORMAT).toBe("verbose");
+      expect(config.LOG_FORMAT).toBe('verbose');
     });
 
-    it("should parse LOG_FORMAT case-insensitively", () => {
-      process.env.LOG_FORMAT = "VERBOSE";
+    it('should parse LOG_FORMAT case-insensitively', () => {
+      process.env.LOG_FORMAT = 'VERBOSE';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.LOG_FORMAT).toBe("verbose");
+      expect(config.LOG_FORMAT).toBe('verbose');
     });
 
-    it("should default to condensed for invalid LOG_FORMAT", () => {
-      process.env.LOG_FORMAT = "invalid";
+    it('should default to condensed for invalid LOG_FORMAT', () => {
+      process.env.LOG_FORMAT = 'invalid';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.LOG_FORMAT).toBe("condensed");
+      expect(config.LOG_FORMAT).toBe('condensed');
     });
   });
 
-  describe("GitLab URL normalization", () => {
-    it("should default to gitlab.com when no URL provided", () => {
+  describe('GitLab URL normalization', () => {
+    it('should default to gitlab.com when no URL provided', () => {
       delete process.env.GITLAB_API_URL;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_BASE_URL).toBe("https://gitlab.com");
-      expect(config.GITLAB_API_URL).toBe("https://gitlab.com/api/v4");
+      expect(config.GITLAB_BASE_URL).toBe('https://gitlab.com');
+      expect(config.GITLAB_API_URL).toBe('https://gitlab.com/api/v4');
     });
 
-    it("should remove trailing slash from URL", () => {
-      process.env.GITLAB_API_URL = "https://gitlab.example.com/";
+    it('should remove trailing slash from URL', () => {
+      process.env.GITLAB_API_URL = 'https://gitlab.example.com/';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_BASE_URL).toBe("https://gitlab.example.com");
-      expect(config.GITLAB_API_URL).toBe("https://gitlab.example.com/api/v4");
+      expect(config.GITLAB_BASE_URL).toBe('https://gitlab.example.com');
+      expect(config.GITLAB_API_URL).toBe('https://gitlab.example.com/api/v4');
     });
 
-    it("should remove /api/v4 suffix if accidentally added", () => {
-      process.env.GITLAB_API_URL = "https://gitlab.example.com/api/v4";
+    it('should remove /api/v4 suffix if accidentally added', () => {
+      process.env.GITLAB_API_URL = 'https://gitlab.example.com/api/v4';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_BASE_URL).toBe("https://gitlab.example.com");
-      expect(config.GITLAB_API_URL).toBe("https://gitlab.example.com/api/v4");
+      expect(config.GITLAB_BASE_URL).toBe('https://gitlab.example.com');
+      expect(config.GITLAB_API_URL).toBe('https://gitlab.example.com/api/v4');
     });
 
-    it("should handle URL with both trailing slash and /api/v4", () => {
-      process.env.GITLAB_API_URL = "https://gitlab.example.com/api/v4/";
+    it('should handle URL with both trailing slash and /api/v4', () => {
+      process.env.GITLAB_API_URL = 'https://gitlab.example.com/api/v4/';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_BASE_URL).toBe("https://gitlab.example.com");
-      expect(config.GITLAB_API_URL).toBe("https://gitlab.example.com/api/v4");
+      expect(config.GITLAB_BASE_URL).toBe('https://gitlab.example.com');
+      expect(config.GITLAB_API_URL).toBe('https://gitlab.example.com/api/v4');
     });
 
-    it("should preserve custom URL as-is when properly formatted", () => {
-      process.env.GITLAB_API_URL = "https://gitlab.example.com";
+    it('should preserve custom URL as-is when properly formatted', () => {
+      process.env.GITLAB_API_URL = 'https://gitlab.example.com';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_BASE_URL).toBe("https://gitlab.example.com");
-      expect(config.GITLAB_API_URL).toBe("https://gitlab.example.com/api/v4");
+      expect(config.GITLAB_BASE_URL).toBe('https://gitlab.example.com');
+      expect(config.GITLAB_API_URL).toBe('https://gitlab.example.com/api/v4');
     });
   });
 
-  describe("getEffectiveProjectId", () => {
-    it("should return GITLAB_PROJECT_ID when set", () => {
-      process.env.GITLAB_PROJECT_ID = "999";
+  describe('getEffectiveProjectId', () => {
+    it('should return GITLAB_PROJECT_ID when set', () => {
+      process.env.GITLAB_PROJECT_ID = '999';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.getEffectiveProjectId("123")).toBe("999");
+      expect(config.getEffectiveProjectId('123')).toBe('999');
     });
 
-    it("should return provided project ID when no restrictions", () => {
+    it('should return provided project ID when no restrictions', () => {
       delete process.env.GITLAB_PROJECT_ID;
       delete process.env.GITLAB_ALLOWED_PROJECT_IDS;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.getEffectiveProjectId("123")).toBe("123");
+      expect(config.getEffectiveProjectId('123')).toBe('123');
     });
 
-    it("should allow project ID when in allowed list", () => {
+    it('should allow project ID when in allowed list', () => {
       delete process.env.GITLAB_PROJECT_ID;
-      process.env.GITLAB_ALLOWED_PROJECT_IDS = "123,456,789";
+      process.env.GITLAB_ALLOWED_PROJECT_IDS = '123,456,789';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.getEffectiveProjectId("456")).toBe("456");
+      expect(config.getEffectiveProjectId('456')).toBe('456');
     });
 
-    it("should throw error when project ID not in allowed list", () => {
+    it('should throw error when project ID not in allowed list', () => {
       delete process.env.GITLAB_PROJECT_ID;
-      process.env.GITLAB_ALLOWED_PROJECT_IDS = "123,456,789";
+      process.env.GITLAB_ALLOWED_PROJECT_IDS = '123,456,789';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(() => config.getEffectiveProjectId("999")).toThrow(
-        "Project ID 999 is not allowed. Allowed project IDs: 123, 456, 789"
+      expect(() => config.getEffectiveProjectId('999')).toThrow(
+        'Project ID 999 is not allowed. Allowed project IDs: 123, 456, 789',
       );
     });
 
-    it("should prioritize GITLAB_PROJECT_ID over allowed list", () => {
-      process.env.GITLAB_PROJECT_ID = "999";
-      process.env.GITLAB_ALLOWED_PROJECT_IDS = "123,456,789";
+    it('should prioritize GITLAB_PROJECT_ID over allowed list', () => {
+      process.env.GITLAB_PROJECT_ID = '999';
+      process.env.GITLAB_ALLOWED_PROJECT_IDS = '123,456,789';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.getEffectiveProjectId("456")).toBe("999");
+      expect(config.getEffectiveProjectId('456')).toBe('999');
     });
   });
 
-  describe("package info loading", () => {
-    it("should load package info from filesystem", () => {
+  describe('package info loading', () => {
+    it('should load package info from filesystem', () => {
       // Since config.ts loads at module time, we test that it doesn't crash
       // and has reasonable default values
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.packageName).toBeDefined();
       expect(config.packageVersion).toBeDefined();
-      expect(typeof config.packageName).toBe("string");
-      expect(typeof config.packageVersion).toBe("string");
+      expect(typeof config.packageName).toBe('string');
+      expect(typeof config.packageVersion).toBe('string');
     });
 
-    it("should have package name fallback", () => {
-      const config = require("../../src/config");
+    it('should have package name fallback', () => {
+      const config = require('../../src/config');
 
       // Should have either a real package name or the default
       expect(config.packageName.length).toBeGreaterThan(0);
     });
 
-    it("should have package version fallback", () => {
-      const config = require("../../src/config");
+    it('should have package version fallback', () => {
+      const config = require('../../src/config');
 
       // Should have either a real version or 'unknown'
       expect(config.packageVersion.length).toBeGreaterThan(0);
     });
   });
 
-  describe("getToolDescriptionOverrides", () => {
-    it("should parse tool description overrides from environment variables", () => {
-      process.env.GITLAB_TOOL_LIST_PROJECTS = "Custom project listing tool";
-      process.env.GITLAB_TOOL_GET_PROJECT = "Custom project details tool";
-      process.env.GITLAB_TOOL_CREATE_ISSUE = "Custom issue creation tool";
+  describe('getToolDescriptionOverrides', () => {
+    it('should parse tool description overrides from environment variables', () => {
+      process.env.GITLAB_TOOL_LIST_PROJECTS = 'Custom project listing tool';
+      process.env.GITLAB_TOOL_GET_PROJECT = 'Custom project details tool';
+      process.env.GITLAB_TOOL_CREATE_ISSUE = 'Custom issue creation tool';
       // Non-tool env var should be ignored
-      process.env.GITLAB_API_URL = "https://gitlab.example.com";
+      process.env.GITLAB_API_URL = 'https://gitlab.example.com';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getToolDescriptionOverrides();
 
-      expect(overrides.get("list_projects")).toBe("Custom project listing tool");
-      expect(overrides.get("get_project")).toBe("Custom project details tool");
-      expect(overrides.get("create_issue")).toBe("Custom issue creation tool");
-      expect(overrides.has("api_url")).toBe(false);
+      expect(overrides.get('list_projects')).toBe('Custom project listing tool');
+      expect(overrides.get('get_project')).toBe('Custom project details tool');
+      expect(overrides.get('create_issue')).toBe('Custom issue creation tool');
+      expect(overrides.has('api_url')).toBe(false);
     });
 
-    it("should handle empty tool override values", () => {
-      process.env.GITLAB_TOOL_LIST_PROJECTS = "";
-      process.env.GITLAB_TOOL_GET_PROJECT = "Valid description";
+    it('should handle empty tool override values', () => {
+      process.env.GITLAB_TOOL_LIST_PROJECTS = '';
+      process.env.GITLAB_TOOL_GET_PROJECT = 'Valid description';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getToolDescriptionOverrides();
 
-      expect(overrides.has("list_projects")).toBe(false);
-      expect(overrides.get("get_project")).toBe("Valid description");
+      expect(overrides.has('list_projects')).toBe(false);
+      expect(overrides.get('get_project')).toBe('Valid description');
     });
 
-    it("should return empty map when no tool overrides exist", () => {
+    it('should return empty map when no tool overrides exist', () => {
       // Clear all GITLAB_TOOL_ env vars
       for (const key of Object.keys(process.env)) {
-        if (key.startsWith("GITLAB_TOOL_")) {
+        if (key.startsWith('GITLAB_TOOL_')) {
           delete process.env[key];
         }
       }
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getToolDescriptionOverrides();
 
       expect(overrides.size).toBe(0);
     });
 
-    it("should convert tool names to lowercase", () => {
-      process.env.GITLAB_TOOL_LIST_PROJECTS = "List projects tool";
-      process.env.GITLAB_TOOL_GET_USER_DETAILS = "Get user details tool";
+    it('should convert tool names to lowercase', () => {
+      process.env.GITLAB_TOOL_LIST_PROJECTS = 'List projects tool';
+      process.env.GITLAB_TOOL_GET_USER_DETAILS = 'Get user details tool';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getToolDescriptionOverrides();
 
-      expect(overrides.get("list_projects")).toBe("List projects tool");
-      expect(overrides.get("get_user_details")).toBe("Get user details tool");
+      expect(overrides.get('list_projects')).toBe('List projects tool');
+      expect(overrides.get('get_user_details')).toBe('Get user details tool');
     });
 
-    it("should handle undefined process.env values", () => {
+    it('should handle undefined process.env values', () => {
       // Ensure process.env has some undefined values
-      process.env.GITLAB_TOOL_VALID = "Valid tool";
+      process.env.GITLAB_TOOL_VALID = 'Valid tool';
       process.env.GITLAB_TOOL_UNDEFINED = undefined;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getToolDescriptionOverrides();
 
-      expect(overrides.get("valid")).toBe("Valid tool");
-      expect(overrides.has("undefined")).toBe(false);
+      expect(overrides.get('valid')).toBe('Valid tool');
+      expect(overrides.has('undefined')).toBe(false);
     });
   });
 
-  describe("GITLAB_DENIED_ACTIONS parsing", () => {
-    it("should parse denied actions from environment variable", () => {
+  describe('GITLAB_DENIED_ACTIONS parsing', () => {
+    it('should parse denied actions from environment variable', () => {
       process.env.GITLAB_DENIED_ACTIONS =
-        "manage_milestone:delete,manage_milestone:promote,browse_events:user";
+        'manage_milestone:delete,manage_milestone:promote,browse_events:user';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.GITLAB_DENIED_ACTIONS).toBeInstanceOf(Map);
       expect(config.GITLAB_DENIED_ACTIONS.size).toBe(2); // Two tools: manage_milestone, browse_events
-      expect(config.GITLAB_DENIED_ACTIONS.get("manage_milestone")).toEqual(
-        new Set(["delete", "promote"])
+      expect(config.GITLAB_DENIED_ACTIONS.get('manage_milestone')).toEqual(
+        new Set(['delete', 'promote']),
       );
-      expect(config.GITLAB_DENIED_ACTIONS.get("browse_events")).toEqual(new Set(["user"]));
+      expect(config.GITLAB_DENIED_ACTIONS.get('browse_events')).toEqual(new Set(['user']));
     });
 
-    it("should handle empty GITLAB_DENIED_ACTIONS", () => {
+    it('should handle empty GITLAB_DENIED_ACTIONS', () => {
       delete process.env.GITLAB_DENIED_ACTIONS;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.GITLAB_DENIED_ACTIONS).toBeInstanceOf(Map);
       expect(config.GITLAB_DENIED_ACTIONS.size).toBe(0);
     });
 
-    it("should handle whitespace in GITLAB_DENIED_ACTIONS", () => {
-      process.env.GITLAB_DENIED_ACTIONS = " manage_milestone:delete , browse_events:user ";
+    it('should handle whitespace in GITLAB_DENIED_ACTIONS', () => {
+      process.env.GITLAB_DENIED_ACTIONS = ' manage_milestone:delete , browse_events:user ';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_DENIED_ACTIONS.get("manage_milestone")).toEqual(new Set(["delete"]));
-      expect(config.GITLAB_DENIED_ACTIONS.get("browse_events")).toEqual(new Set(["user"]));
+      expect(config.GITLAB_DENIED_ACTIONS.get('manage_milestone')).toEqual(new Set(['delete']));
+      expect(config.GITLAB_DENIED_ACTIONS.get('browse_events')).toEqual(new Set(['user']));
     });
 
-    it("should skip invalid entries without colon", () => {
+    it('should skip invalid entries without colon', () => {
       process.env.GITLAB_DENIED_ACTIONS =
-        "manage_milestone:delete,invalid_entry,browse_events:user";
+        'manage_milestone:delete,invalid_entry,browse_events:user';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.GITLAB_DENIED_ACTIONS.size).toBe(2);
-      expect(config.GITLAB_DENIED_ACTIONS.has("invalid_entry")).toBe(false);
+      expect(config.GITLAB_DENIED_ACTIONS.has('invalid_entry')).toBe(false);
     });
 
-    it("should skip entries with empty tool or action names", () => {
-      process.env.GITLAB_DENIED_ACTIONS = ":delete,manage_milestone:,valid:action";
+    it('should skip entries with empty tool or action names', () => {
+      process.env.GITLAB_DENIED_ACTIONS = ':delete,manage_milestone:,valid:action';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.GITLAB_DENIED_ACTIONS.size).toBe(1);
-      expect(config.GITLAB_DENIED_ACTIONS.get("valid")).toEqual(new Set(["action"]));
+      expect(config.GITLAB_DENIED_ACTIONS.get('valid')).toEqual(new Set(['action']));
     });
 
-    it("should handle colons in action names", () => {
-      process.env.GITLAB_DENIED_ACTIONS = "manage_milestone:delete";
+    it('should handle colons in action names', () => {
+      process.env.GITLAB_DENIED_ACTIONS = 'manage_milestone:delete';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_DENIED_ACTIONS.get("manage_milestone")).toEqual(new Set(["delete"]));
+      expect(config.GITLAB_DENIED_ACTIONS.get('manage_milestone')).toEqual(new Set(['delete']));
     });
 
-    it("should convert tool and action names to lowercase", () => {
-      process.env.GITLAB_DENIED_ACTIONS = "MANAGE_MILESTONE:DELETE,Browse_Events:User";
+    it('should convert tool and action names to lowercase', () => {
+      process.env.GITLAB_DENIED_ACTIONS = 'MANAGE_MILESTONE:DELETE,Browse_Events:User';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_DENIED_ACTIONS.get("manage_milestone")).toEqual(new Set(["delete"]));
-      expect(config.GITLAB_DENIED_ACTIONS.get("browse_events")).toEqual(new Set(["user"]));
+      expect(config.GITLAB_DENIED_ACTIONS.get('manage_milestone')).toEqual(new Set(['delete']));
+      expect(config.GITLAB_DENIED_ACTIONS.get('browse_events')).toEqual(new Set(['user']));
     });
   });
 
-  describe("getActionDescriptionOverrides", () => {
-    it("should parse action description overrides from environment variables", () => {
-      process.env.GITLAB_ACTION_MANAGE_MILESTONE_DELETE = "Remove a milestone permanently";
-      process.env.GITLAB_ACTION_MANAGE_MILESTONE_CREATE = "Create a new milestone";
-      process.env.GITLAB_ACTION_BROWSE_COMMITS_LIST = "List repository commits";
+  describe('getActionDescriptionOverrides', () => {
+    it('should parse action description overrides from environment variables', () => {
+      process.env.GITLAB_ACTION_MANAGE_MILESTONE_DELETE = 'Remove a milestone permanently';
+      process.env.GITLAB_ACTION_MANAGE_MILESTONE_CREATE = 'Create a new milestone';
+      process.env.GITLAB_ACTION_BROWSE_COMMITS_LIST = 'List repository commits';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getActionDescriptionOverrides();
 
-      expect(overrides.get("manage_milestone:delete")).toBe("Remove a milestone permanently");
-      expect(overrides.get("manage_milestone:create")).toBe("Create a new milestone");
-      expect(overrides.get("browse_commits:list")).toBe("List repository commits");
+      expect(overrides.get('manage_milestone:delete')).toBe('Remove a milestone permanently');
+      expect(overrides.get('manage_milestone:create')).toBe('Create a new milestone');
+      expect(overrides.get('browse_commits:list')).toBe('List repository commits');
     });
 
-    it("should handle empty action override values", () => {
-      process.env.GITLAB_ACTION_MANAGE_MILESTONE_DELETE = "";
-      process.env.GITLAB_ACTION_MANAGE_MILESTONE_CREATE = "Valid description";
+    it('should handle empty action override values', () => {
+      process.env.GITLAB_ACTION_MANAGE_MILESTONE_DELETE = '';
+      process.env.GITLAB_ACTION_MANAGE_MILESTONE_CREATE = 'Valid description';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getActionDescriptionOverrides();
 
-      expect(overrides.has("manage_milestone:delete")).toBe(false);
-      expect(overrides.get("manage_milestone:create")).toBe("Valid description");
+      expect(overrides.has('manage_milestone:delete')).toBe(false);
+      expect(overrides.get('manage_milestone:create')).toBe('Valid description');
     });
 
-    it("should return empty map when no action overrides exist", () => {
+    it('should return empty map when no action overrides exist', () => {
       // Clear all GITLAB_ACTION_ env vars
       for (const key of Object.keys(process.env)) {
-        if (key.startsWith("GITLAB_ACTION_")) {
+        if (key.startsWith('GITLAB_ACTION_')) {
           delete process.env[key];
         }
       }
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getActionDescriptionOverrides();
 
       expect(overrides.size).toBe(0);
     });
 
-    it("should convert tool and action names to lowercase", () => {
-      process.env.GITLAB_ACTION_MANAGE_MILESTONE_DELETE = "Delete milestone";
+    it('should convert tool and action names to lowercase', () => {
+      process.env.GITLAB_ACTION_MANAGE_MILESTONE_DELETE = 'Delete milestone';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getActionDescriptionOverrides();
 
-      expect(overrides.get("manage_milestone:delete")).toBe("Delete milestone");
+      expect(overrides.get('manage_milestone:delete')).toBe('Delete milestone');
     });
 
-    it("should skip entries without underscore separator", () => {
-      process.env.GITLAB_ACTION_INVALIDENTRY = "Invalid entry";
-      process.env.GITLAB_ACTION_MANAGE_VALID = "Valid entry";
+    it('should skip entries without underscore separator', () => {
+      process.env.GITLAB_ACTION_INVALIDENTRY = 'Invalid entry';
+      process.env.GITLAB_ACTION_MANAGE_VALID = 'Valid entry';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getActionDescriptionOverrides();
 
-      expect(overrides.has("invalidentry:")).toBe(false);
-      expect(overrides.get("manage:valid")).toBe("Valid entry");
+      expect(overrides.has('invalidentry:')).toBe(false);
+      expect(overrides.get('manage:valid')).toBe('Valid entry');
     });
 
-    it("should skip entries with empty tool or action name after split", () => {
+    it('should skip entries with empty tool or action name after split', () => {
       // Empty action name (trailing underscore)
-      process.env.GITLAB_ACTION_MANAGE_ = "Empty action";
+      process.env.GITLAB_ACTION_MANAGE_ = 'Empty action';
       // Empty tool name (leading underscore after prefix)
-      process.env.GITLAB_ACTION__DELETE = "Empty tool";
+      process.env.GITLAB_ACTION__DELETE = 'Empty tool';
       // Valid entry for comparison
-      process.env.GITLAB_ACTION_BROWSE_LIST = "Valid entry";
+      process.env.GITLAB_ACTION_BROWSE_LIST = 'Valid entry';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getActionDescriptionOverrides();
 
       // These should be skipped due to empty tool/action
-      expect(overrides.has("manage:")).toBe(false);
-      expect(overrides.has(":delete")).toBe(false);
+      expect(overrides.has('manage:')).toBe(false);
+      expect(overrides.has(':delete')).toBe(false);
       // Valid entry should be present
-      expect(overrides.get("browse:list")).toBe("Valid entry");
+      expect(overrides.get('browse:list')).toBe('Valid entry');
     });
   });
 
-  describe("getParamDescriptionOverrides", () => {
-    it("should parse param description overrides from environment variables", () => {
-      process.env.GITLAB_PARAM_MANAGE_MILESTONE_TITLE = "The milestone title (required for create)";
-      process.env.GITLAB_PARAM_MANAGE_MILESTONE_DESCRIPTION = "Optional milestone description";
-      process.env.GITLAB_PARAM_LIST_PROJECTS_SEARCH = "Search term to filter projects";
+  describe('getParamDescriptionOverrides', () => {
+    it('should parse param description overrides from environment variables', () => {
+      process.env.GITLAB_PARAM_MANAGE_MILESTONE_TITLE = 'The milestone title (required for create)';
+      process.env.GITLAB_PARAM_MANAGE_MILESTONE_DESCRIPTION = 'Optional milestone description';
+      process.env.GITLAB_PARAM_LIST_PROJECTS_SEARCH = 'Search term to filter projects';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getParamDescriptionOverrides();
 
-      expect(overrides.get("manage_milestone:title")).toBe(
-        "The milestone title (required for create)"
+      expect(overrides.get('manage_milestone:title')).toBe(
+        'The milestone title (required for create)',
       );
-      expect(overrides.get("manage_milestone:description")).toBe("Optional milestone description");
-      expect(overrides.get("list_projects:search")).toBe("Search term to filter projects");
+      expect(overrides.get('manage_milestone:description')).toBe('Optional milestone description');
+      expect(overrides.get('list_projects:search')).toBe('Search term to filter projects');
     });
 
-    it("should handle empty param override values", () => {
-      process.env.GITLAB_PARAM_MANAGE_MILESTONE_TITLE = "";
-      process.env.GITLAB_PARAM_MANAGE_MILESTONE_DESCRIPTION = "Valid description";
+    it('should handle empty param override values', () => {
+      process.env.GITLAB_PARAM_MANAGE_MILESTONE_TITLE = '';
+      process.env.GITLAB_PARAM_MANAGE_MILESTONE_DESCRIPTION = 'Valid description';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getParamDescriptionOverrides();
 
-      expect(overrides.has("manage_milestone:title")).toBe(false);
-      expect(overrides.get("manage_milestone:description")).toBe("Valid description");
+      expect(overrides.has('manage_milestone:title')).toBe(false);
+      expect(overrides.get('manage_milestone:description')).toBe('Valid description');
     });
 
-    it("should return empty map when no param overrides exist", () => {
+    it('should return empty map when no param overrides exist', () => {
       // Clear all GITLAB_PARAM_ env vars
       for (const key of Object.keys(process.env)) {
-        if (key.startsWith("GITLAB_PARAM_")) {
+        if (key.startsWith('GITLAB_PARAM_')) {
           delete process.env[key];
         }
       }
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getParamDescriptionOverrides();
 
       expect(overrides.size).toBe(0);
     });
 
-    it("should convert tool and param names to lowercase", () => {
-      process.env.GITLAB_PARAM_MANAGE_MILESTONE_TITLE = "Milestone title";
+    it('should convert tool and param names to lowercase', () => {
+      process.env.GITLAB_PARAM_MANAGE_MILESTONE_TITLE = 'Milestone title';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getParamDescriptionOverrides();
 
-      expect(overrides.get("manage_milestone:title")).toBe("Milestone title");
+      expect(overrides.get('manage_milestone:title')).toBe('Milestone title');
     });
 
-    it("should skip entries without underscore separator", () => {
-      process.env.GITLAB_PARAM_INVALIDENTRY = "Invalid entry";
-      process.env.GITLAB_PARAM_MANAGE_VALID = "Valid entry";
+    it('should skip entries without underscore separator', () => {
+      process.env.GITLAB_PARAM_INVALIDENTRY = 'Invalid entry';
+      process.env.GITLAB_PARAM_MANAGE_VALID = 'Valid entry';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getParamDescriptionOverrides();
 
-      expect(overrides.has("invalidentry:")).toBe(false);
-      expect(overrides.get("manage:valid")).toBe("Valid entry");
+      expect(overrides.has('invalidentry:')).toBe(false);
+      expect(overrides.get('manage:valid')).toBe('Valid entry');
     });
 
-    it("should skip entries with empty tool or param name after split", () => {
+    it('should skip entries with empty tool or param name after split', () => {
       // Empty param name (trailing underscore)
-      process.env.GITLAB_PARAM_MANAGE_ = "Empty param";
+      process.env.GITLAB_PARAM_MANAGE_ = 'Empty param';
       // Empty tool name (leading underscore after prefix)
-      process.env.GITLAB_PARAM__TITLE = "Empty tool";
+      process.env.GITLAB_PARAM__TITLE = 'Empty tool';
       // Valid entry for comparison
-      process.env.GITLAB_PARAM_BROWSE_QUERY = "Valid entry";
+      process.env.GITLAB_PARAM_BROWSE_QUERY = 'Valid entry';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
       const overrides = config.getParamDescriptionOverrides();
 
       // These should be skipped due to empty tool/param
-      expect(overrides.has("manage:")).toBe(false);
-      expect(overrides.has(":title")).toBe(false);
+      expect(overrides.has('manage:')).toBe(false);
+      expect(overrides.has(':title')).toBe(false);
       // Valid entry should be present
-      expect(overrides.get("browse:query")).toBe("Valid entry");
+      expect(overrides.get('browse:query')).toBe('Valid entry');
     });
   });
 
-  describe("isActionDenied", () => {
-    it("should return true for denied actions", () => {
-      process.env.GITLAB_DENIED_ACTIONS = "manage_milestone:delete,manage_milestone:promote";
+  describe('isActionDenied', () => {
+    it('should return true for denied actions', () => {
+      process.env.GITLAB_DENIED_ACTIONS = 'manage_milestone:delete,manage_milestone:promote';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.isActionDenied("manage_milestone", "delete")).toBe(true);
-      expect(config.isActionDenied("manage_milestone", "promote")).toBe(true);
+      expect(config.isActionDenied('manage_milestone', 'delete')).toBe(true);
+      expect(config.isActionDenied('manage_milestone', 'promote')).toBe(true);
     });
 
-    it("should return false for allowed actions", () => {
-      process.env.GITLAB_DENIED_ACTIONS = "manage_milestone:delete";
+    it('should return false for allowed actions', () => {
+      process.env.GITLAB_DENIED_ACTIONS = 'manage_milestone:delete';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.isActionDenied("manage_milestone", "create")).toBe(false);
-      expect(config.isActionDenied("manage_milestone", "update")).toBe(false);
+      expect(config.isActionDenied('manage_milestone', 'create')).toBe(false);
+      expect(config.isActionDenied('manage_milestone', 'update')).toBe(false);
     });
 
-    it("should return false for unknown tools", () => {
-      process.env.GITLAB_DENIED_ACTIONS = "manage_milestone:delete";
+    it('should return false for unknown tools', () => {
+      process.env.GITLAB_DENIED_ACTIONS = 'manage_milestone:delete';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.isActionDenied("unknown_tool", "delete")).toBe(false);
+      expect(config.isActionDenied('unknown_tool', 'delete')).toBe(false);
     });
 
-    it("should be case-insensitive", () => {
-      process.env.GITLAB_DENIED_ACTIONS = "manage_milestone:delete";
+    it('should be case-insensitive', () => {
+      process.env.GITLAB_DENIED_ACTIONS = 'manage_milestone:delete';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.isActionDenied("MANAGE_MILESTONE", "DELETE")).toBe(true);
-      expect(config.isActionDenied("Manage_Milestone", "Delete")).toBe(true);
+      expect(config.isActionDenied('MANAGE_MILESTONE', 'DELETE')).toBe(true);
+      expect(config.isActionDenied('Manage_Milestone', 'Delete')).toBe(true);
     });
 
-    it("should return false when no actions are denied", () => {
+    it('should return false when no actions are denied', () => {
       delete process.env.GITLAB_DENIED_ACTIONS;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.isActionDenied("manage_milestone", "delete")).toBe(false);
+      expect(config.isActionDenied('manage_milestone', 'delete')).toBe(false);
     });
   });
 
-  describe("getAllowedActions", () => {
-    it("should filter out denied actions", () => {
-      process.env.GITLAB_DENIED_ACTIONS = "manage_milestone:delete,manage_milestone:promote";
+  describe('getAllowedActions', () => {
+    it('should filter out denied actions', () => {
+      process.env.GITLAB_DENIED_ACTIONS = 'manage_milestone:delete,manage_milestone:promote';
 
-      const config = require("../../src/config");
-      const allActions = ["create", "update", "delete", "promote", "list"];
-      const allowed = config.getAllowedActions("manage_milestone", allActions);
+      const config = require('../../src/config');
+      const allActions = ['create', 'update', 'delete', 'promote', 'list'];
+      const allowed = config.getAllowedActions('manage_milestone', allActions);
 
-      expect(allowed).toEqual(["create", "update", "list"]);
+      expect(allowed).toEqual(['create', 'update', 'list']);
     });
 
-    it("should return all actions when none are denied", () => {
+    it('should return all actions when none are denied', () => {
       delete process.env.GITLAB_DENIED_ACTIONS;
 
-      const config = require("../../src/config");
-      const allActions = ["create", "update", "delete"];
-      const allowed = config.getAllowedActions("manage_milestone", allActions);
+      const config = require('../../src/config');
+      const allActions = ['create', 'update', 'delete'];
+      const allowed = config.getAllowedActions('manage_milestone', allActions);
 
-      expect(allowed).toEqual(["create", "update", "delete"]);
+      expect(allowed).toEqual(['create', 'update', 'delete']);
     });
 
-    it("should return all actions for unknown tools", () => {
-      process.env.GITLAB_DENIED_ACTIONS = "manage_milestone:delete";
+    it('should return all actions for unknown tools', () => {
+      process.env.GITLAB_DENIED_ACTIONS = 'manage_milestone:delete';
 
-      const config = require("../../src/config");
-      const allActions = ["create", "update", "delete"];
-      const allowed = config.getAllowedActions("unknown_tool", allActions);
+      const config = require('../../src/config');
+      const allActions = ['create', 'update', 'delete'];
+      const allowed = config.getAllowedActions('unknown_tool', allActions);
 
-      expect(allowed).toEqual(["create", "update", "delete"]);
+      expect(allowed).toEqual(['create', 'update', 'delete']);
     });
 
-    it("should be case-insensitive for tool names", () => {
-      process.env.GITLAB_DENIED_ACTIONS = "manage_milestone:delete";
+    it('should be case-insensitive for tool names', () => {
+      process.env.GITLAB_DENIED_ACTIONS = 'manage_milestone:delete';
 
-      const config = require("../../src/config");
-      const allActions = ["create", "update", "delete"];
+      const config = require('../../src/config');
+      const allActions = ['create', 'update', 'delete'];
 
-      expect(config.getAllowedActions("MANAGE_MILESTONE", allActions)).toEqual([
-        "create",
-        "update",
+      expect(config.getAllowedActions('MANAGE_MILESTONE', allActions)).toEqual([
+        'create',
+        'update',
       ]);
-      expect(config.getAllowedActions("Manage_Milestone", allActions)).toEqual([
-        "create",
-        "update",
+      expect(config.getAllowedActions('Manage_Milestone', allActions)).toEqual([
+        'create',
+        'update',
       ]);
     });
 
-    it("should be case-insensitive for action names", () => {
-      process.env.GITLAB_DENIED_ACTIONS = "manage_milestone:delete";
+    it('should be case-insensitive for action names', () => {
+      process.env.GITLAB_DENIED_ACTIONS = 'manage_milestone:delete';
 
-      const config = require("../../src/config");
-      const allActions = ["Create", "Update", "Delete"];
-      const allowed = config.getAllowedActions("manage_milestone", allActions);
+      const config = require('../../src/config');
+      const allActions = ['Create', 'Update', 'Delete'];
+      const allowed = config.getAllowedActions('manage_milestone', allActions);
 
-      expect(allowed).toEqual(["Create", "Update"]);
+      expect(allowed).toEqual(['Create', 'Update']);
     });
 
-    it("should return empty array when all actions are denied", () => {
+    it('should return empty array when all actions are denied', () => {
       process.env.GITLAB_DENIED_ACTIONS =
-        "manage_milestone:create,manage_milestone:update,manage_milestone:delete";
+        'manage_milestone:create,manage_milestone:update,manage_milestone:delete';
 
-      const config = require("../../src/config");
-      const allActions = ["create", "update", "delete"];
-      const allowed = config.getAllowedActions("manage_milestone", allActions);
+      const config = require('../../src/config');
+      const allActions = ['create', 'update', 'delete'];
+      const allowed = config.getAllowedActions('manage_milestone', allActions);
 
       expect(allowed).toEqual([]);
     });
   });
 
-  describe("granular timeout configuration", () => {
-    it("should use defaults when env vars are not set", () => {
+  describe('granular timeout configuration', () => {
+    it('should use defaults when env vars are not set', () => {
       delete process.env.GITLAB_API_CONNECT_TIMEOUT_MS;
       delete process.env.GITLAB_API_HEADERS_TIMEOUT_MS;
       delete process.env.GITLAB_API_BODY_TIMEOUT_MS;
       delete process.env.GITLAB_TOOL_TIMEOUT_MS;
       delete process.env.GITLAB_POOL_MAX_CONNECTIONS;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.CONNECT_TIMEOUT_MS).toBe(2000);
       expect(config.HEADERS_TIMEOUT_MS).toBe(10000);
@@ -735,14 +735,14 @@ describe("config.ts", () => {
       expect(config.POOL_MAX_CONNECTIONS).toBe(25);
     });
 
-    it("should parse valid custom timeout values", () => {
-      process.env.GITLAB_API_CONNECT_TIMEOUT_MS = "5000";
-      process.env.GITLAB_API_HEADERS_TIMEOUT_MS = "20000";
-      process.env.GITLAB_API_BODY_TIMEOUT_MS = "60000";
-      process.env.GITLAB_TOOL_TIMEOUT_MS = "300000";
-      process.env.GITLAB_POOL_MAX_CONNECTIONS = "50";
+    it('should parse valid custom timeout values', () => {
+      process.env.GITLAB_API_CONNECT_TIMEOUT_MS = '5000';
+      process.env.GITLAB_API_HEADERS_TIMEOUT_MS = '20000';
+      process.env.GITLAB_API_BODY_TIMEOUT_MS = '60000';
+      process.env.GITLAB_TOOL_TIMEOUT_MS = '300000';
+      process.env.GITLAB_POOL_MAX_CONNECTIONS = '50';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.CONNECT_TIMEOUT_MS).toBe(5000);
       expect(config.HEADERS_TIMEOUT_MS).toBe(20000);
@@ -751,14 +751,14 @@ describe("config.ts", () => {
       expect(config.POOL_MAX_CONNECTIONS).toBe(50);
     });
 
-    it("should fall back to defaults for non-numeric env values", () => {
-      process.env.GITLAB_API_CONNECT_TIMEOUT_MS = "abc";
-      process.env.GITLAB_API_HEADERS_TIMEOUT_MS = "not-a-number";
-      process.env.GITLAB_API_BODY_TIMEOUT_MS = "";
-      process.env.GITLAB_TOOL_TIMEOUT_MS = "undefined";
-      process.env.GITLAB_POOL_MAX_CONNECTIONS = "xyz";
+    it('should fall back to defaults for non-numeric env values', () => {
+      process.env.GITLAB_API_CONNECT_TIMEOUT_MS = 'abc';
+      process.env.GITLAB_API_HEADERS_TIMEOUT_MS = 'not-a-number';
+      process.env.GITLAB_API_BODY_TIMEOUT_MS = '';
+      process.env.GITLAB_TOOL_TIMEOUT_MS = 'undefined';
+      process.env.GITLAB_POOL_MAX_CONNECTIONS = 'xyz';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.CONNECT_TIMEOUT_MS).toBe(2000);
       expect(config.HEADERS_TIMEOUT_MS).toBe(10000);
@@ -767,14 +767,14 @@ describe("config.ts", () => {
       expect(config.POOL_MAX_CONNECTIONS).toBe(25);
     });
 
-    it("should fall back to defaults for negative values", () => {
-      process.env.GITLAB_API_CONNECT_TIMEOUT_MS = "-1";
-      process.env.GITLAB_API_HEADERS_TIMEOUT_MS = "-100";
-      process.env.GITLAB_API_BODY_TIMEOUT_MS = "0";
-      process.env.GITLAB_TOOL_TIMEOUT_MS = "-500";
-      process.env.GITLAB_POOL_MAX_CONNECTIONS = "-10";
+    it('should fall back to defaults for negative values', () => {
+      process.env.GITLAB_API_CONNECT_TIMEOUT_MS = '-1';
+      process.env.GITLAB_API_HEADERS_TIMEOUT_MS = '-100';
+      process.env.GITLAB_API_BODY_TIMEOUT_MS = '0';
+      process.env.GITLAB_TOOL_TIMEOUT_MS = '-500';
+      process.env.GITLAB_POOL_MAX_CONNECTIONS = '-10';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.CONNECT_TIMEOUT_MS).toBe(2000);
       expect(config.HEADERS_TIMEOUT_MS).toBe(10000);
@@ -784,286 +784,286 @@ describe("config.ts", () => {
     });
   });
 
-  describe("edge cases and error handling", () => {
-    it("should handle completely empty environment", () => {
+  describe('edge cases and error handling', () => {
+    it('should handle completely empty environment', () => {
       // Clear all environment variables
       process.env = {};
 
-      expect(() => require("../../src/config")).not.toThrow();
+      expect(() => require('../../src/config')).not.toThrow();
     });
 
-    it("should handle null and undefined environment values", () => {
+    it('should handle null and undefined environment values', () => {
       process.env.GITLAB_TOKEN = undefined;
       process.env.GITLAB_API_URL = null as any;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.GITLAB_TOKEN).toBeUndefined();
-      expect(config.GITLAB_BASE_URL).toBe("https://gitlab.com");
+      expect(config.GITLAB_BASE_URL).toBe('https://gitlab.com');
     });
 
-    it("should handle very long environment variable values", () => {
-      const longValue = "a".repeat(10000);
+    it('should handle very long environment variable values', () => {
+      const longValue = 'a'.repeat(10000);
       process.env.GITLAB_TOKEN = longValue;
       process.env.GITLAB_TOOL_LONG_NAME = longValue;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.GITLAB_TOKEN).toBe(longValue);
 
       const overrides = config.getToolDescriptionOverrides();
-      expect(overrides.get("long_name")).toBe(longValue);
+      expect(overrides.get('long_name')).toBe(longValue);
     });
 
-    it("should handle special characters in environment variables", () => {
-      process.env.GITLAB_API_URL = "https://gitlab.example.com/special-chars/@#$%";
-      process.env.GITLAB_TOOL_SPECIAL = "Tool with special chars: @#$%^&*()";
+    it('should handle special characters in environment variables', () => {
+      process.env.GITLAB_API_URL = 'https://gitlab.example.com/special-chars/@#$%';
+      process.env.GITLAB_TOOL_SPECIAL = 'Tool with special chars: @#$%^&*()';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_BASE_URL).toBe("https://gitlab.example.com/special-chars/@#$%");
+      expect(config.GITLAB_BASE_URL).toBe('https://gitlab.example.com/special-chars/@#$%');
 
       const overrides = config.getToolDescriptionOverrides();
-      expect(overrides.get("special")).toBe("Tool with special chars: @#$%^&*()");
+      expect(overrides.get('special')).toBe('Tool with special chars: @#$%^&*()');
     });
   });
 
-  describe("GITLAB_SCHEMA_MODE", () => {
+  describe('GITLAB_SCHEMA_MODE', () => {
     it("should default to 'flat' when not set", () => {
       delete process.env.GITLAB_SCHEMA_MODE;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_SCHEMA_MODE).toBe("flat");
+      expect(config.GITLAB_SCHEMA_MODE).toBe('flat');
     });
 
     it("should return 'flat' when set to 'flat'", () => {
-      process.env.GITLAB_SCHEMA_MODE = "flat";
+      process.env.GITLAB_SCHEMA_MODE = 'flat';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_SCHEMA_MODE).toBe("flat");
+      expect(config.GITLAB_SCHEMA_MODE).toBe('flat');
     });
 
     it("should return 'discriminated' when set to 'discriminated'", () => {
-      process.env.GITLAB_SCHEMA_MODE = "discriminated";
+      process.env.GITLAB_SCHEMA_MODE = 'discriminated';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_SCHEMA_MODE).toBe("discriminated");
+      expect(config.GITLAB_SCHEMA_MODE).toBe('discriminated');
     });
 
-    it("should be case-insensitive", () => {
-      process.env.GITLAB_SCHEMA_MODE = "DISCRIMINATED";
+    it('should be case-insensitive', () => {
+      process.env.GITLAB_SCHEMA_MODE = 'DISCRIMINATED';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_SCHEMA_MODE).toBe("discriminated");
+      expect(config.GITLAB_SCHEMA_MODE).toBe('discriminated');
     });
 
     it("should default to 'flat' for invalid values", () => {
-      process.env.GITLAB_SCHEMA_MODE = "invalid";
+      process.env.GITLAB_SCHEMA_MODE = 'invalid';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_SCHEMA_MODE).toBe("flat");
+      expect(config.GITLAB_SCHEMA_MODE).toBe('flat');
     });
 
     it("should default to 'flat' for empty string", () => {
-      process.env.GITLAB_SCHEMA_MODE = "";
+      process.env.GITLAB_SCHEMA_MODE = '';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_SCHEMA_MODE).toBe("flat");
+      expect(config.GITLAB_SCHEMA_MODE).toBe('flat');
     });
 
     it("should return 'auto' when set to 'auto'", () => {
-      process.env.GITLAB_SCHEMA_MODE = "auto";
+      process.env.GITLAB_SCHEMA_MODE = 'auto';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_SCHEMA_MODE).toBe("auto");
+      expect(config.GITLAB_SCHEMA_MODE).toBe('auto');
     });
 
     it("should be case-insensitive for 'auto'", () => {
-      process.env.GITLAB_SCHEMA_MODE = "AUTO";
+      process.env.GITLAB_SCHEMA_MODE = 'AUTO';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.GITLAB_SCHEMA_MODE).toBe("auto");
+      expect(config.GITLAB_SCHEMA_MODE).toBe('auto');
     });
   });
 
-  describe("detectSchemaMode", () => {
+  describe('detectSchemaMode', () => {
     it("should return 'flat' for Claude clients (exact match or prefix)", () => {
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       // Exact match
-      expect(config.detectSchemaMode("claude")).toBe("flat");
-      expect(config.detectSchemaMode("CLAUDE")).toBe("flat");
+      expect(config.detectSchemaMode('claude')).toBe('flat');
+      expect(config.detectSchemaMode('CLAUDE')).toBe('flat');
 
       // Prefix match (claude-*)
-      expect(config.detectSchemaMode("claude-code")).toBe("flat");
-      expect(config.detectSchemaMode("Claude-Desktop")).toBe("flat");
-      expect(config.detectSchemaMode("claude-ai")).toBe("flat");
+      expect(config.detectSchemaMode('claude-code')).toBe('flat');
+      expect(config.detectSchemaMode('Claude-Desktop')).toBe('flat');
+      expect(config.detectSchemaMode('claude-ai')).toBe('flat');
     });
 
     it("should return 'flat' for Cursor (exact match or prefix)", () => {
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.detectSchemaMode("cursor")).toBe("flat");
-      expect(config.detectSchemaMode("Cursor")).toBe("flat");
-      expect(config.detectSchemaMode("cursor-editor")).toBe("flat");
+      expect(config.detectSchemaMode('cursor')).toBe('flat');
+      expect(config.detectSchemaMode('Cursor')).toBe('flat');
+      expect(config.detectSchemaMode('cursor-editor')).toBe('flat');
     });
 
     it("should return 'discriminated' for MCP Inspector", () => {
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.detectSchemaMode("mcp-inspector")).toBe("discriminated");
-      expect(config.detectSchemaMode("MCP-Inspector")).toBe("discriminated");
-      expect(config.detectSchemaMode("inspector")).toBe("discriminated");
-      expect(config.detectSchemaMode("inspector-v2")).toBe("discriminated"); // inspector-* variant
-      expect(config.detectSchemaMode("mcp-inspector-v2")).toBe("discriminated");
+      expect(config.detectSchemaMode('mcp-inspector')).toBe('discriminated');
+      expect(config.detectSchemaMode('MCP-Inspector')).toBe('discriminated');
+      expect(config.detectSchemaMode('inspector')).toBe('discriminated');
+      expect(config.detectSchemaMode('inspector-v2')).toBe('discriminated'); // inspector-* variant
+      expect(config.detectSchemaMode('mcp-inspector-v2')).toBe('discriminated');
     });
 
     it("should return 'flat' for unknown clients", () => {
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.detectSchemaMode("unknown-client")).toBe("flat");
-      expect(config.detectSchemaMode("some-other-ai")).toBe("flat");
+      expect(config.detectSchemaMode('unknown-client')).toBe('flat');
+      expect(config.detectSchemaMode('some-other-ai')).toBe('flat');
     });
 
     it("should return 'flat' for undefined/empty client name", () => {
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.detectSchemaMode(undefined)).toBe("flat");
-      expect(config.detectSchemaMode("")).toBe("flat");
+      expect(config.detectSchemaMode(undefined)).toBe('flat');
+      expect(config.detectSchemaMode('')).toBe('flat');
     });
 
     it("should NOT match clients with 'claude' as substring (avoid false positives)", () => {
       // These should NOT match because 'claude' is a substring, not exact/prefix
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.detectSchemaMode("my-claude-wrapper")).toBe("flat"); // Safe default
-      expect(config.detectSchemaMode("non-claude-app")).toBe("flat"); // Safe default
-      expect(config.detectSchemaMode("preclaude")).toBe("flat"); // Safe default
+      expect(config.detectSchemaMode('my-claude-wrapper')).toBe('flat'); // Safe default
+      expect(config.detectSchemaMode('non-claude-app')).toBe('flat'); // Safe default
+      expect(config.detectSchemaMode('preclaude')).toBe('flat'); // Safe default
     });
 
     it("should NOT match clients with 'cursor' as substring (avoid false positives)", () => {
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.detectSchemaMode("my-cursor-tool")).toBe("flat"); // Safe default
-      expect(config.detectSchemaMode("precursor")).toBe("flat"); // Safe default
+      expect(config.detectSchemaMode('my-cursor-tool')).toBe('flat'); // Safe default
+      expect(config.detectSchemaMode('precursor')).toBe('flat'); // Safe default
     });
   });
 
-  describe("LOG_FILTER parsing", () => {
-    it("should return default Claude Code filter when not set", () => {
+  describe('LOG_FILTER parsing', () => {
+    it('should return default Claude Code filter when not set', () => {
       delete process.env.LOG_FILTER;
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       // Default filters Claude Code polling: GET / with claude-code user agent
       expect(config.LOG_FILTER).toEqual([
-        { method: "get", path: "/", pathIsPrefix: false, userAgent: "claude-code" },
+        { method: 'get', path: '/', pathIsPrefix: false, userAgent: 'claude-code' },
       ]);
     });
 
-    it("should return empty array for empty string (explicit disable)", () => {
-      process.env.LOG_FILTER = "[]";
+    it('should return empty array for empty string (explicit disable)', () => {
+      process.env.LOG_FILTER = '[]';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.LOG_FILTER).toEqual([]);
     });
 
-    it("should return default filter for whitespace-only string", () => {
-      process.env.LOG_FILTER = "   ";
+    it('should return default filter for whitespace-only string', () => {
+      process.env.LOG_FILTER = '   ';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       // Whitespace-only falls back to default filter (Claude Code polling)
       expect(config.LOG_FILTER).toEqual([
-        { method: "get", path: "/", pathIsPrefix: false, userAgent: "claude-code" },
+        { method: 'get', path: '/', pathIsPrefix: false, userAgent: 'claude-code' },
       ]);
     });
 
-    it("should parse single filter rule", () => {
+    it('should parse single filter rule', () => {
       process.env.LOG_FILTER = '[{"method":"GET","path":"/","userAgent":"claude-code"}]';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.LOG_FILTER).toEqual([
-        { method: "get", path: "/", pathIsPrefix: false, userAgent: "claude-code" },
+        { method: 'get', path: '/', pathIsPrefix: false, userAgent: 'claude-code' },
       ]);
     });
 
-    it("should parse multiple filter rules", () => {
+    it('should parse multiple filter rules', () => {
       process.env.LOG_FILTER = '[{"method":"GET","path":"/health"},{"method":"HEAD","path":"/*"}]';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.LOG_FILTER).toHaveLength(2);
       expect(config.LOG_FILTER[0]).toEqual({
-        method: "get",
-        path: "/health",
+        method: 'get',
+        path: '/health',
         pathIsPrefix: false,
       });
       expect(config.LOG_FILTER[1]).toEqual({
-        method: "head",
-        path: "/",
+        method: 'head',
+        path: '/',
         pathIsPrefix: true,
       });
     });
 
-    it("should handle prefix path matching (ending with *)", () => {
+    it('should handle prefix path matching (ending with *)', () => {
       process.env.LOG_FILTER = '[{"path":"/api/*"}]';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.LOG_FILTER).toEqual([{ path: "/api/", pathIsPrefix: true }]);
+      expect(config.LOG_FILTER).toEqual([{ path: '/api/', pathIsPrefix: true }]);
     });
 
-    it("should handle exact path matching (no *)", () => {
+    it('should handle exact path matching (no *)', () => {
       process.env.LOG_FILTER = '[{"path":"/health"}]';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.LOG_FILTER).toEqual([{ path: "/health", pathIsPrefix: false }]);
+      expect(config.LOG_FILTER).toEqual([{ path: '/health', pathIsPrefix: false }]);
     });
 
-    it("should convert method to lowercase", () => {
+    it('should convert method to lowercase', () => {
       process.env.LOG_FILTER = '[{"method":"GET"}]';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.LOG_FILTER[0].method).toBe("get");
+      expect(config.LOG_FILTER[0].method).toBe('get');
     });
 
-    it("should convert userAgent to lowercase", () => {
+    it('should convert userAgent to lowercase', () => {
       process.env.LOG_FILTER = '[{"userAgent":"Claude-Code"}]';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.LOG_FILTER[0].userAgent).toBe("claude-code");
+      expect(config.LOG_FILTER[0].userAgent).toBe('claude-code');
     });
 
-    it("should handle filter with only userAgent", () => {
+    it('should handle filter with only userAgent', () => {
       process.env.LOG_FILTER = '[{"userAgent":"datadog"}]';
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.LOG_FILTER).toEqual([{ userAgent: "datadog" }]);
+      expect(config.LOG_FILTER).toEqual([{ userAgent: 'datadog' }]);
     });
 
-    it("should return empty array for invalid JSON", () => {
-      process.env.LOG_FILTER = "not valid json";
+    it('should return empty array for invalid JSON', () => {
+      process.env.LOG_FILTER = 'not valid json';
 
       // Suppress console.warn for this test
       const originalWarn = console.warn;
       console.warn = jest.fn();
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.LOG_FILTER).toEqual([]);
       expect(console.warn).toHaveBeenCalled();
@@ -1071,13 +1071,13 @@ describe("config.ts", () => {
       console.warn = originalWarn;
     });
 
-    it("should return empty array for invalid schema (not an array)", () => {
+    it('should return empty array for invalid schema (not an array)', () => {
       process.env.LOG_FILTER = '{"method":"GET"}';
 
       const originalWarn = console.warn;
       console.warn = jest.fn();
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       expect(config.LOG_FILTER).toEqual([]);
       expect(console.warn).toHaveBeenCalled();
@@ -1086,146 +1086,146 @@ describe("config.ts", () => {
     });
   });
 
-  describe("shouldSkipAccessLog", () => {
+  describe('shouldSkipAccessLog', () => {
     beforeEach(() => {
       // Set up a test configuration
       process.env.LOG_FILTER =
         '[{"method":"GET","path":"/","userAgent":"claude-code"},{"method":"GET","path":"/health"},{"path":"/api/*"},{"userAgent":"prometheus"}]';
     });
 
-    it("should skip request matching all conditions in a rule", () => {
-      const config = require("../../src/config");
+    it('should skip request matching all conditions in a rule', () => {
+      const config = require('../../src/config');
 
       // Matches first rule: GET / with claude-code user agent
-      expect(config.shouldSkipAccessLog("GET", "/", "claude-code/1.0")).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/', 'claude-code/1.0')).toBe(true);
     });
 
-    it("should skip request matching method and path (no userAgent specified)", () => {
-      const config = require("../../src/config");
+    it('should skip request matching method and path (no userAgent specified)', () => {
+      const config = require('../../src/config');
 
       // Matches second rule: GET /health (any user agent)
-      expect(config.shouldSkipAccessLog("GET", "/health", "any-agent")).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/health', 'any-agent')).toBe(true);
     });
 
-    it("should skip request matching prefix path", () => {
-      const config = require("../../src/config");
+    it('should skip request matching prefix path', () => {
+      const config = require('../../src/config');
 
       // Matches third rule: /api/* prefix
-      expect(config.shouldSkipAccessLog("POST", "/api/v1/users", "browser")).toBe(true);
-      expect(config.shouldSkipAccessLog("GET", "/api/health", undefined)).toBe(true);
+      expect(config.shouldSkipAccessLog('POST', '/api/v1/users', 'browser')).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/api/health', undefined)).toBe(true);
     });
 
-    it("should skip request matching only userAgent", () => {
-      const config = require("../../src/config");
+    it('should skip request matching only userAgent', () => {
+      const config = require('../../src/config');
 
       // Matches fourth rule: prometheus in user agent
-      expect(config.shouldSkipAccessLog("GET", "/metrics", "Prometheus/2.0")).toBe(true);
-      expect(config.shouldSkipAccessLog("HEAD", "/something", "prometheus-agent")).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/metrics', 'Prometheus/2.0')).toBe(true);
+      expect(config.shouldSkipAccessLog('HEAD', '/something', 'prometheus-agent')).toBe(true);
     });
 
-    it("should NOT skip when method does not match", () => {
-      const config = require("../../src/config");
+    it('should NOT skip when method does not match', () => {
+      const config = require('../../src/config');
 
       // First rule requires GET, this is POST
-      expect(config.shouldSkipAccessLog("POST", "/", "claude-code/1.0")).toBe(false);
+      expect(config.shouldSkipAccessLog('POST', '/', 'claude-code/1.0')).toBe(false);
     });
 
-    it("should NOT skip when path does not match", () => {
-      const config = require("../../src/config");
+    it('should NOT skip when path does not match', () => {
+      const config = require('../../src/config');
 
       // Second rule requires /health, this is /healthz
-      expect(config.shouldSkipAccessLog("GET", "/healthz", "any")).toBe(false);
+      expect(config.shouldSkipAccessLog('GET', '/healthz', 'any')).toBe(false);
     });
 
-    it("should NOT skip when userAgent does not match", () => {
-      const config = require("../../src/config");
+    it('should NOT skip when userAgent does not match', () => {
+      const config = require('../../src/config');
 
       // First rule requires claude-code in user agent
-      expect(config.shouldSkipAccessLog("GET", "/", "browser")).toBe(false);
+      expect(config.shouldSkipAccessLog('GET', '/', 'browser')).toBe(false);
     });
 
-    it("should be case-insensitive for method", () => {
-      const config = require("../../src/config");
+    it('should be case-insensitive for method', () => {
+      const config = require('../../src/config');
 
-      expect(config.shouldSkipAccessLog("get", "/health", "any")).toBe(true);
-      expect(config.shouldSkipAccessLog("GET", "/health", "any")).toBe(true);
-      expect(config.shouldSkipAccessLog("Get", "/health", "any")).toBe(true);
+      expect(config.shouldSkipAccessLog('get', '/health', 'any')).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/health', 'any')).toBe(true);
+      expect(config.shouldSkipAccessLog('Get', '/health', 'any')).toBe(true);
     });
 
-    it("should be case-insensitive for userAgent", () => {
-      const config = require("../../src/config");
+    it('should be case-insensitive for userAgent', () => {
+      const config = require('../../src/config');
 
-      expect(config.shouldSkipAccessLog("GET", "/something", "PROMETHEUS")).toBe(true);
-      expect(config.shouldSkipAccessLog("GET", "/something", "Prometheus")).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/something', 'PROMETHEUS')).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/something', 'Prometheus')).toBe(true);
     });
 
-    it("should handle undefined userAgent", () => {
-      const config = require("../../src/config");
+    it('should handle undefined userAgent', () => {
+      const config = require('../../src/config');
 
       // Rules requiring userAgent should not match when undefined
-      expect(config.shouldSkipAccessLog("GET", "/", undefined)).toBe(false);
+      expect(config.shouldSkipAccessLog('GET', '/', undefined)).toBe(false);
 
       // Rules not requiring userAgent should still match
-      expect(config.shouldSkipAccessLog("GET", "/health", undefined)).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/health', undefined)).toBe(true);
     });
 
-    it("should return false when rules explicitly disabled with empty array", () => {
-      process.env.LOG_FILTER = "[]";
+    it('should return false when rules explicitly disabled with empty array', () => {
+      process.env.LOG_FILTER = '[]';
       jest.resetModules();
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
-      expect(config.shouldSkipAccessLog("GET", "/", "any")).toBe(false);
+      expect(config.shouldSkipAccessLog('GET', '/', 'any')).toBe(false);
     });
 
-    it("should use default Claude Code filter when LOG_FILTER not set", () => {
+    it('should use default Claude Code filter when LOG_FILTER not set', () => {
       delete process.env.LOG_FILTER;
       jest.resetModules();
 
-      const config = require("../../src/config");
+      const config = require('../../src/config');
 
       // Default filter skips Claude Code polling
-      expect(config.shouldSkipAccessLog("GET", "/", "claude-code/1.0")).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/', 'claude-code/1.0')).toBe(true);
       // But not other user agents
-      expect(config.shouldSkipAccessLog("GET", "/", "browser")).toBe(false);
+      expect(config.shouldSkipAccessLog('GET', '/', 'browser')).toBe(false);
     });
 
-    it("should match prefix paths correctly", () => {
-      const config = require("../../src/config");
+    it('should match prefix paths correctly', () => {
+      const config = require('../../src/config');
 
       // /api/* should match /api/ and /api/anything but not /api or /apix
-      expect(config.shouldSkipAccessLog("GET", "/api/", "any")).toBe(true);
-      expect(config.shouldSkipAccessLog("GET", "/api/users", "any")).toBe(true);
-      expect(config.shouldSkipAccessLog("GET", "/api/v1/users/123", "any")).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/api/', 'any')).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/api/users', 'any')).toBe(true);
+      expect(config.shouldSkipAccessLog('GET', '/api/v1/users/123', 'any')).toBe(true);
 
       // These should NOT match (prefix is "/api/", not "/api")
-      expect(config.shouldSkipAccessLog("GET", "/api", "any")).toBe(false);
-      expect(config.shouldSkipAccessLog("GET", "/apiv1", "any")).toBe(false);
+      expect(config.shouldSkipAccessLog('GET', '/api', 'any')).toBe(false);
+      expect(config.shouldSkipAccessLog('GET', '/apiv1', 'any')).toBe(false);
     });
 
-    it("should work with Express Request object via shouldSkipAccessLogRequest", () => {
-      const config = require("../../src/config");
+    it('should work with Express Request object via shouldSkipAccessLogRequest', () => {
+      const config = require('../../src/config');
 
       // Mock Express Request with matching rule (GET /health)
       const matchingReq = {
-        method: "GET",
-        path: "/health",
-        headers: { "user-agent": "test-agent" },
+        method: 'GET',
+        path: '/health',
+        headers: { 'user-agent': 'test-agent' },
       };
       expect(config.shouldSkipAccessLogRequest(matchingReq)).toBe(true);
 
       // Mock Express Request not matching any rule
       const nonMatchingReq = {
-        method: "POST",
-        path: "/users",
-        headers: { "user-agent": "browser" },
+        method: 'POST',
+        path: '/users',
+        headers: { 'user-agent': 'browser' },
       };
       expect(config.shouldSkipAccessLogRequest(nonMatchingReq)).toBe(false);
 
       // Mock Express Request with undefined user-agent header
       const noAgentReq = {
-        method: "GET",
-        path: "/health",
+        method: 'GET',
+        path: '/health',
         headers: {},
       };
       expect(config.shouldSkipAccessLogRequest(noAgentReq)).toBe(true);

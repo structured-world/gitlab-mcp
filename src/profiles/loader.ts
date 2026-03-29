@@ -13,10 +13,10 @@
  * accidental requests to wrong GitLab instances during testing.
  */
 
-import * as fs from "fs";
-import * as path from "path";
-import * as os from "os";
-import * as yaml from "yaml";
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
+import * as yaml from 'yaml';
 import {
   Profile,
   Preset,
@@ -25,15 +25,15 @@ import {
   PresetSchema,
   ProfileInfo,
   ProfileValidationResult,
-} from "./types";
-import { logInfo, logWarn, logError, logDebug } from "../logger";
+} from './types';
+import { logInfo, logWarn, logError, logDebug } from '../logger';
 
 // ============================================================================
 // Constants
 // ============================================================================
 
-const USER_CONFIG_DIR = path.join(os.homedir(), ".config", "gitlab-mcp");
-const USER_PROFILES_PATH = path.join(USER_CONFIG_DIR, "profiles.yaml");
+const USER_CONFIG_DIR = path.join(os.homedir(), '.config', 'gitlab-mcp');
+const USER_PROFILES_PATH = path.join(USER_CONFIG_DIR, 'profiles.yaml');
 
 /**
  * Get the built-in presets directory path.
@@ -48,11 +48,11 @@ const USER_PROFILES_PATH = path.join(USER_CONFIG_DIR, "profiles.yaml");
 function getBuiltinDir(): string {
   const candidates = [
     // Primary: relative to this module (works when installed from npm)
-    path.join(__dirname, "builtin"),
+    path.join(__dirname, 'builtin'),
     // Fallback: compiled location from project root
-    path.join(process.cwd(), "dist", "src", "profiles", "builtin"),
+    path.join(process.cwd(), 'dist', 'src', 'profiles', 'builtin'),
     // Fallback: source location for development
-    path.join(process.cwd(), "src", "profiles", "builtin"),
+    path.join(process.cwd(), 'src', 'profiles', 'builtin'),
   ];
 
   for (const dir of candidates) {
@@ -101,7 +101,7 @@ export class ProfileLoader {
 
     throw new Error(
       `Profile '${name}' not found. Full profiles must be defined in user config. ` +
-        `For built-in presets (settings only), use loadPreset('${name}').`
+        `For built-in presets (settings only), use loadPreset('${name}').`,
     );
   }
 
@@ -130,12 +130,12 @@ export class ProfileLoader {
    * Returns { type: 'profile', data: Profile } or { type: 'preset', data: Preset }
    */
   async loadAny(
-    name: string
-  ): Promise<{ type: "profile"; data: Profile } | { type: "preset"; data: Preset }> {
+    name: string,
+  ): Promise<{ type: 'profile'; data: Profile } | { type: 'preset'; data: Preset }> {
     // Try user profile first
     try {
       const profile = await this.loadProfile(name);
-      return { type: "profile", data: profile };
+      return { type: 'profile', data: profile };
     } catch {
       // Not a user profile, try preset
     }
@@ -143,12 +143,12 @@ export class ProfileLoader {
     // Try built-in preset
     const preset = await this.loadBuiltinPreset(name);
     if (preset) {
-      return { type: "preset", data: preset };
+      return { type: 'preset', data: preset };
     }
 
     throw new Error(
       `'${name}' not found as user profile or built-in preset. ` +
-        `Use 'yarn list-tools --profiles' to see available options.`
+        `Use 'yarn list-tools --profiles' to see available options.`,
     );
   }
 
@@ -169,23 +169,23 @@ export class ProfileLoader {
     }
 
     if (!fs.existsSync(this.userConfigPath)) {
-      logDebug("User profiles config not found", { path: this.userConfigPath });
+      logDebug('User profiles config not found', { path: this.userConfigPath });
       return null;
     }
 
     try {
-      const content = fs.readFileSync(this.userConfigPath, "utf8");
+      const content = fs.readFileSync(this.userConfigPath, 'utf8');
       const parsed = yaml.parse(content) as unknown;
       const validated = ProfilesConfigSchema.parse(parsed);
       this.configCache = validated;
-      logDebug("Loaded user profiles config", {
+      logDebug('Loaded user profiles config', {
         path: this.userConfigPath,
         profiles: Object.keys(validated.profiles),
       });
       return validated;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logError("Failed to parse user profiles", { error: message, path: this.userConfigPath });
+      logError('Failed to parse user profiles', { error: message, path: this.userConfigPath });
       throw new Error(`Invalid profiles config: ${message}`, { cause: error });
     }
   }
@@ -205,19 +205,19 @@ export class ProfileLoader {
     const presetPath = path.join(this.builtinDir, `${name}.yaml`);
 
     if (!fs.existsSync(presetPath)) {
-      logDebug("Built-in preset not found", { name, path: presetPath });
+      logDebug('Built-in preset not found', { name, path: presetPath });
       return null;
     }
 
     try {
-      const content = fs.readFileSync(presetPath, "utf8");
+      const content = fs.readFileSync(presetPath, 'utf8');
       const parsed = yaml.parse(content) as unknown;
       const validated = PresetSchema.parse(parsed);
-      logDebug("Loaded built-in preset", { name });
+      logDebug('Loaded built-in preset', { name });
       return validated;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      logError("Failed to parse built-in preset", { error: message, name });
+      logError('Failed to parse built-in preset', { error: message, name });
       throw new Error(`Invalid built-in preset '${name}': ${message}`, { cause: error });
     }
   }
@@ -245,9 +245,9 @@ export class ProfileLoader {
 
     // Load built-in presets (settings only, no host/auth)
     if (fs.existsSync(this.builtinDir)) {
-      const files = fs.readdirSync(this.builtinDir).filter(f => f.endsWith(".yaml"));
+      const files = fs.readdirSync(this.builtinDir).filter((f) => f.endsWith('.yaml'));
       for (const file of files) {
-        const name = path.basename(file, ".yaml");
+        const name = path.basename(file, '.yaml');
 
         try {
           const preset = await this.loadBuiltinPreset(name);
@@ -262,7 +262,7 @@ export class ProfileLoader {
           }
         } catch {
           // Skip invalid presets
-          logWarn("Skipping invalid built-in preset", { name });
+          logWarn('Skipping invalid built-in preset', { name });
         }
       }
     }
@@ -282,12 +282,12 @@ export class ProfileLoader {
   private validateDeniedActions(
     deniedActions: string[] | undefined,
     errors: string[],
-    warnings: string[]
+    warnings: string[],
   ): void {
     if (!deniedActions) return;
 
     for (const action of deniedActions) {
-      const colonIndex = action.indexOf(":");
+      const colonIndex = action.indexOf(':');
       if (colonIndex === -1) {
         errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
       } else {
@@ -297,7 +297,7 @@ export class ProfileLoader {
           errors.push(`Invalid denied_action format '${action}', expected 'tool:action'`);
         } else if (action !== `${tool}:${act}`) {
           warnings.push(
-            `denied_action '${action}' has extra whitespace, normalized to '${tool}:${act}'`
+            `denied_action '${action}' has extra whitespace, normalized to '${tool}:${act}'`,
           );
         }
       }
@@ -312,19 +312,19 @@ export class ProfileLoader {
     const warnings: string[] = [];
 
     // Validate auth config
-    if (profile.auth.type === "pat" && profile.auth.token_env) {
+    if (profile.auth.type === 'pat' && profile.auth.token_env) {
       if (!process.env[profile.auth.token_env]) {
         warnings.push(`Environment variable '${profile.auth.token_env}' is not set`);
       }
     }
 
-    if (profile.auth.type === "oauth" && profile.auth.client_id_env) {
+    if (profile.auth.type === 'oauth' && profile.auth.client_id_env) {
       if (!process.env[profile.auth.client_id_env]) {
         warnings.push(`Environment variable '${profile.auth.client_id_env}' is not set`);
       }
     }
 
-    if (profile.auth.type === "oauth" && profile.auth.client_secret_env) {
+    if (profile.auth.type === 'oauth' && profile.auth.client_secret_env) {
       if (!process.env[profile.auth.client_secret_env]) {
         warnings.push(`Environment variable '${profile.auth.client_secret_env}' is not set`);
       }
@@ -332,8 +332,8 @@ export class ProfileLoader {
 
     // Validate cookie auth path
     if (
-      profile.auth.type === "cookie" &&
-      "cookie_path" in profile.auth &&
+      profile.auth.type === 'cookie' &&
+      'cookie_path' in profile.auth &&
       profile.auth.cookie_path
     ) {
       if (!fs.existsSync(profile.auth.cookie_path)) {
@@ -405,7 +405,7 @@ export class ProfileLoader {
   static ensureConfigDir(): void {
     if (!fs.existsSync(USER_CONFIG_DIR)) {
       fs.mkdirSync(USER_CONFIG_DIR, { recursive: true });
-      logInfo("Created config directory", { path: USER_CONFIG_DIR });
+      logInfo('Created config directory', { path: USER_CONFIG_DIR });
     }
   }
 

@@ -1,9 +1,9 @@
-import * as z from "zod";
-import { BrowseReleasesSchema } from "./schema-readonly";
-import { ManageReleaseSchema } from "./schema";
-import { gitlab, toQuery } from "../../utils/gitlab-api";
-import { ToolRegistry, EnhancedToolDefinition } from "../../types";
-import { isActionDenied } from "../../config";
+import * as z from 'zod';
+import { BrowseReleasesSchema } from './schema-readonly';
+import { ManageReleaseSchema } from './schema';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { ToolRegistry, EnhancedToolDefinition } from '../../types';
+import { isActionDenied } from '../../config';
 
 /**
  * Releases tools registry - 2 CQRS tools
@@ -17,31 +17,31 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "browse_releases",
+    'browse_releases',
     {
-      name: "browse_releases",
+      name: 'browse_releases',
       description:
-        "View project releases and asset download links. Actions: list (releases sorted by date), get (release details by tag name), assets (download link list for release). Related: manage_release to create/publish.",
+        'View project releases and asset download links. Actions: list (releases sorted by date), get (release details by tag name), assets (download link list for release). Related: manage_release to create/publish.',
       inputSchema: z.toJSONSchema(BrowseReleasesSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseReleasesSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("browse_releases", input.action)) {
+        if (isActionDenied('browse_releases', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for browse_releases tool`);
         }
 
         const encodedProjectId = encodeURIComponent(input.project_id);
 
         switch (input.action) {
-          case "list": {
+          case 'list': {
             const { action: _action, project_id: _projectId, ...queryOptions } = input;
             return gitlab.get(`projects/${encodedProjectId}/releases`, {
               query: toQuery(queryOptions, []),
             });
           }
 
-          case "get": {
+          case 'get': {
             const { tag_name, include_html_description } = input;
             const encodedTagName = encodeURIComponent(tag_name);
             const query = include_html_description ? { include_html_description: true } : {};
@@ -50,14 +50,14 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
             });
           }
 
-          case "assets": {
+          case 'assets': {
             const { tag_name, per_page, page } = input;
             const encodedTagName = encodeURIComponent(tag_name);
             return gitlab.get(
               `projects/${encodedProjectId}/releases/${encodedTagName}/assets/links`,
               {
                 query: toQuery({ per_page, page }, []),
-              }
+              },
             );
           }
 
@@ -74,24 +74,24 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
   // TypeScript automatically narrows types in each switch case
   // ============================================================================
   [
-    "manage_release",
+    'manage_release',
     {
-      name: "manage_release",
+      name: 'manage_release',
       description:
-        "Create, update, or delete project releases with asset management. Actions: create (release from tag with notes/assets), update (modify metadata), delete (remove release, tag preserved), create_link (add asset URL), delete_link (remove asset). Related: browse_releases for discovery.",
+        'Create, update, or delete project releases with asset management. Actions: create (release from tag with notes/assets), update (modify metadata), delete (remove release, tag preserved), create_link (add asset URL), delete_link (remove asset). Related: browse_releases for discovery.',
       inputSchema: z.toJSONSchema(ManageReleaseSchema),
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageReleaseSchema.parse(args);
 
         // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied("manage_release", input.action)) {
+        if (isActionDenied('manage_release', input.action)) {
           throw new Error(`Action '${input.action}' is not allowed for manage_release tool`);
         }
 
         const encodedProjectId = encodeURIComponent(input.project_id);
 
         switch (input.action) {
-          case "create": {
+          case 'create': {
             const {
               action: _action,
               project_id: _projectId,
@@ -117,11 +117,11 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
 
             return gitlab.post(`projects/${encodedProjectId}/releases`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "update": {
+          case 'update': {
             const {
               action: _action,
               project_id: _projectId,
@@ -142,11 +142,11 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
 
             return gitlab.put(`projects/${encodedProjectId}/releases/${encodedTagName}`, {
               body,
-              contentType: "json",
+              contentType: 'json',
             });
           }
 
-          case "delete": {
+          case 'delete': {
             const { tag_name } = input;
             const encodedTagName = encodeURIComponent(tag_name);
 
@@ -154,7 +154,7 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
             return { deleted: true, tag_name };
           }
 
-          case "create_link": {
+          case 'create_link': {
             const {
               action: _action,
               project_id: _projectId,
@@ -175,17 +175,17 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
               `projects/${encodedProjectId}/releases/${encodedTagName}/assets/links`,
               {
                 body,
-                contentType: "json",
-              }
+                contentType: 'json',
+              },
             );
           }
 
-          case "delete_link": {
+          case 'delete_link': {
             const { tag_name, link_id } = input;
             const encodedTagName = encodeURIComponent(tag_name);
 
             await gitlab.delete(
-              `projects/${encodedProjectId}/releases/${encodedTagName}/assets/links/${link_id}`
+              `projects/${encodedProjectId}/releases/${encodedTagName}/assets/links/${link_id}`,
             );
             return { deleted: true, tag_name, link_id };
           }
@@ -203,7 +203,7 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
  * Get read-only tool names from the registry
  */
 export function getReleasesReadOnlyToolNames(): string[] {
-  return ["browse_releases"];
+  return ['browse_releases'];
 }
 
 /**
@@ -219,8 +219,8 @@ export function getReleasesToolDefinitions(): EnhancedToolDefinition[] {
 export function getFilteredReleasesTools(readOnlyMode: boolean = false): EnhancedToolDefinition[] {
   if (readOnlyMode) {
     const readOnlyNames = getReleasesReadOnlyToolNames();
-    return Array.from(releasesToolRegistry.values()).filter(tool =>
-      readOnlyNames.includes(tool.name)
+    return Array.from(releasesToolRegistry.values()).filter((tool) =>
+      readOnlyNames.includes(tool.name),
     );
   }
   return getReleasesToolDefinitions();

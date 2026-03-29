@@ -3,31 +3,31 @@
  * Tests schemas using handler functions with real GitLab API
  */
 
-import { BrowseMergeRequestsSchema } from "../../../src/entities/mrs/schema-readonly";
-import { IntegrationTestHelper } from "../helpers/registry-helper";
+import { BrowseMergeRequestsSchema } from '../../../src/entities/mrs/schema-readonly';
+import { IntegrationTestHelper } from '../helpers/registry-helper';
 
-describe("Merge Requests Schema - GitLab Integration", () => {
+describe('Merge Requests Schema - GitLab Integration', () => {
   let helper: IntegrationTestHelper;
 
   beforeAll(async () => {
     const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
     if (!GITLAB_TOKEN) {
-      throw new Error("GITLAB_TOKEN environment variable is required");
+      throw new Error('GITLAB_TOKEN environment variable is required');
     }
 
     helper = new IntegrationTestHelper();
     await helper.initialize();
-    console.log("✅ Integration test helper initialized for merge requests testing");
+    console.log('✅ Integration test helper initialized for merge requests testing');
   });
 
-  describe("BrowseMergeRequestsSchema", () => {
-    it("should validate and test with real project data using handler functions", async () => {
-      console.log("🔍 Getting real project for merge requests testing");
+  describe('BrowseMergeRequestsSchema', () => {
+    it('should validate and test with real project data using handler functions', async () => {
+      console.log('🔍 Getting real project for merge requests testing');
 
       // Get actual project from data lifecycle
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("⚠️  No projects available for testing");
+        console.log('⚠️  No projects available for testing');
         return;
       }
 
@@ -35,12 +35,12 @@ describe("Merge Requests Schema - GitLab Integration", () => {
       console.log(`📋 Using project: ${testProject.name} (ID: ${testProject.id})`);
 
       const validParams = {
-        action: "list" as const,
+        action: 'list' as const,
         project_id: testProject.id.toString(),
-        state: "all" as const,
+        state: 'all' as const,
         per_page: 5,
-        order_by: "updated_at" as const,
-        sort: "desc" as const,
+        order_by: 'updated_at' as const,
+        sort: 'desc' as const,
       };
 
       // Validate schema
@@ -50,8 +50,8 @@ describe("Merge Requests Schema - GitLab Integration", () => {
       if (result.success) {
         // Test actual handler function using CQRS tool
         const mergeRequests = (await helper.executeTool(
-          "browse_merge_requests",
-          result.data
+          'browse_merge_requests',
+          result.data,
         )) as any[];
         expect(Array.isArray(mergeRequests)).toBe(true);
         console.log(`📋 Retrieved ${mergeRequests.length} merge requests via handler`);
@@ -61,92 +61,92 @@ describe("Merge Requests Schema - GitLab Integration", () => {
           const mr = mergeRequests[0];
 
           // Core MR properties
-          expect(mr).toHaveProperty("id");
-          expect(mr).toHaveProperty("iid");
-          expect(mr).toHaveProperty("project_id");
-          expect(mr).toHaveProperty("title");
-          expect(mr).toHaveProperty("description");
-          expect(mr).toHaveProperty("state");
-          expect(mr).toHaveProperty("created_at");
-          expect(mr).toHaveProperty("updated_at");
-          expect(mr).toHaveProperty("merged_by");
-          expect(mr).toHaveProperty("merged_at");
-          expect(mr).toHaveProperty("closed_by");
-          expect(mr).toHaveProperty("closed_at");
+          expect(mr).toHaveProperty('id');
+          expect(mr).toHaveProperty('iid');
+          expect(mr).toHaveProperty('project_id');
+          expect(mr).toHaveProperty('title');
+          expect(mr).toHaveProperty('description');
+          expect(mr).toHaveProperty('state');
+          expect(mr).toHaveProperty('created_at');
+          expect(mr).toHaveProperty('updated_at');
+          expect(mr).toHaveProperty('merged_by');
+          expect(mr).toHaveProperty('merged_at');
+          expect(mr).toHaveProperty('closed_by');
+          expect(mr).toHaveProperty('closed_at');
 
           // Branch information
-          expect(mr).toHaveProperty("target_branch");
-          expect(mr).toHaveProperty("source_branch");
-          expect(mr).toHaveProperty("source_project_id");
-          expect(mr).toHaveProperty("target_project_id");
+          expect(mr).toHaveProperty('target_branch');
+          expect(mr).toHaveProperty('source_branch');
+          expect(mr).toHaveProperty('source_project_id');
+          expect(mr).toHaveProperty('target_project_id');
 
           // Voting and engagement
-          expect(mr).toHaveProperty("upvotes");
-          expect(mr).toHaveProperty("downvotes");
-          expect(mr).toHaveProperty("user_notes_count");
+          expect(mr).toHaveProperty('upvotes');
+          expect(mr).toHaveProperty('downvotes');
+          expect(mr).toHaveProperty('user_notes_count');
 
           // People involved
-          expect(mr).toHaveProperty("author");
-          expect(mr).toHaveProperty("assignees");
-          expect(mr).toHaveProperty("reviewers");
+          expect(mr).toHaveProperty('author');
+          expect(mr).toHaveProperty('assignees');
+          expect(mr).toHaveProperty('reviewers');
 
           // Status and metadata
-          expect(mr).toHaveProperty("labels");
-          expect(mr).toHaveProperty("milestone");
-          expect(mr).toHaveProperty("draft");
-          expect(mr).toHaveProperty("work_in_progress");
-          expect(mr).toHaveProperty("merge_when_pipeline_succeeds");
-          expect(mr).toHaveProperty("merge_status");
-          expect(mr).toHaveProperty("detailed_merge_status");
+          expect(mr).toHaveProperty('labels');
+          expect(mr).toHaveProperty('milestone');
+          expect(mr).toHaveProperty('draft');
+          expect(mr).toHaveProperty('work_in_progress');
+          expect(mr).toHaveProperty('merge_when_pipeline_succeeds');
+          expect(mr).toHaveProperty('merge_status');
+          expect(mr).toHaveProperty('detailed_merge_status');
 
           // Git information
-          expect(mr).toHaveProperty("sha");
-          expect(mr).toHaveProperty("merge_commit_sha");
-          expect(mr).toHaveProperty("squash_commit_sha");
-          expect(mr).toHaveProperty("should_remove_source_branch");
-          expect(mr).toHaveProperty("force_remove_source_branch");
+          expect(mr).toHaveProperty('sha');
+          expect(mr).toHaveProperty('merge_commit_sha');
+          expect(mr).toHaveProperty('squash_commit_sha');
+          expect(mr).toHaveProperty('should_remove_source_branch');
+          expect(mr).toHaveProperty('force_remove_source_branch');
 
           // URLs and other properties
-          expect(mr).toHaveProperty("web_url");
-          expect(mr).toHaveProperty("time_stats");
-          expect(mr).toHaveProperty("squash");
-          expect(mr).toHaveProperty("task_completion_status");
-          expect(mr).toHaveProperty("has_conflicts");
+          expect(mr).toHaveProperty('web_url');
+          expect(mr).toHaveProperty('time_stats');
+          expect(mr).toHaveProperty('squash');
+          expect(mr).toHaveProperty('task_completion_status');
+          expect(mr).toHaveProperty('has_conflicts');
 
           // Validate author structure
           if (mr.author) {
-            expect(mr.author).toHaveProperty("id");
-            expect(mr.author).toHaveProperty("username");
-            expect(mr.author).toHaveProperty("name");
-            expect(mr.author).toHaveProperty("state");
-            expect(mr.author).toHaveProperty("avatar_url");
-            expect(mr.author).toHaveProperty("web_url");
+            expect(mr.author).toHaveProperty('id');
+            expect(mr.author).toHaveProperty('username');
+            expect(mr.author).toHaveProperty('name');
+            expect(mr.author).toHaveProperty('state');
+            expect(mr.author).toHaveProperty('avatar_url');
+            expect(mr.author).toHaveProperty('web_url');
           }
 
           // Validate data types
-          expect(typeof mr.id).toBe("number");
-          expect(typeof mr.iid).toBe("number");
-          expect(typeof mr.project_id).toBe("number");
-          expect(typeof mr.title).toBe("string");
-          expect(["opened", "closed", "locked", "merged"]).toContain(mr.state);
+          expect(typeof mr.id).toBe('number');
+          expect(typeof mr.iid).toBe('number');
+          expect(typeof mr.project_id).toBe('number');
+          expect(typeof mr.title).toBe('string');
+          expect(['opened', 'closed', 'locked', 'merged']).toContain(mr.state);
           expect(Array.isArray(mr.assignees)).toBe(true);
           expect(Array.isArray(mr.reviewers)).toBe(true);
           expect(Array.isArray(mr.labels)).toBe(true);
 
           console.log(
-            `✅ Comprehensively validated MR: ${mr.title} (IID: ${mr.iid}, State: ${mr.state})`
+            `✅ Comprehensively validated MR: ${mr.title} (IID: ${mr.iid}, State: ${mr.state})`,
           );
         }
       }
 
-      console.log("✅ BrowseMergeRequestsSchema test completed with real data");
+      console.log('✅ BrowseMergeRequestsSchema test completed with real data');
     });
 
-    it("should test comprehensive filtering with actual data", async () => {
+    it('should test comprehensive filtering with actual data', async () => {
       // Get a project with actual data
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("⚠️  No projects available for advanced filtering test");
+        console.log('⚠️  No projects available for advanced filtering test');
         return;
       }
 
@@ -155,64 +155,64 @@ describe("Merge Requests Schema - GitLab Integration", () => {
       // Test different filtering combinations with real API calls
       const filterTests = [
         {
-          name: "All MRs",
+          name: 'All MRs',
           params: {
-            action: "list" as const,
+            action: 'list' as const,
             project_id: testProject.id.toString(),
-            state: "all" as const,
+            state: 'all' as const,
             per_page: 20,
           },
         },
         {
-          name: "Opened MRs only",
+          name: 'Opened MRs only',
           params: {
-            action: "list" as const,
+            action: 'list' as const,
             project_id: testProject.id.toString(),
-            state: "opened" as const,
+            state: 'opened' as const,
             per_page: 10,
           },
         },
         {
-          name: "Closed MRs only",
+          name: 'Closed MRs only',
           params: {
-            action: "list" as const,
+            action: 'list' as const,
             project_id: testProject.id.toString(),
-            state: "closed" as const,
+            state: 'closed' as const,
             per_page: 10,
           },
         },
         {
-          name: "Merged MRs only",
+          name: 'Merged MRs only',
           params: {
-            action: "list" as const,
+            action: 'list' as const,
             project_id: testProject.id.toString(),
-            state: "merged" as const,
+            state: 'merged' as const,
             per_page: 10,
           },
         },
         {
-          name: "Ordered by creation date",
+          name: 'Ordered by creation date',
           params: {
-            action: "list" as const,
+            action: 'list' as const,
             project_id: testProject.id.toString(),
-            order_by: "created_at" as const,
-            sort: "desc" as const,
+            order_by: 'created_at' as const,
+            sort: 'desc' as const,
             per_page: 5,
           },
         },
         {
-          name: "With label details",
+          name: 'With label details',
           params: {
-            action: "list" as const,
+            action: 'list' as const,
             project_id: testProject.id.toString(),
             with_labels_details: true,
             per_page: 5,
           },
         },
         {
-          name: "With merge status recheck",
+          name: 'With merge status recheck',
           params: {
-            action: "list" as const,
+            action: 'list' as const,
             project_id: testProject.id.toString(),
             with_merge_status_recheck: true,
             per_page: 5,
@@ -230,8 +230,8 @@ describe("Merge Requests Schema - GitLab Integration", () => {
         if (schemaResult.success) {
           // Test with handler function using CQRS tool
           const mergeRequests = (await helper.executeTool(
-            "browse_merge_requests",
-            schemaResult.data
+            'browse_merge_requests',
+            schemaResult.data,
           )) as any[];
           expect(Array.isArray(mergeRequests)).toBe(true);
 
@@ -240,7 +240,7 @@ describe("Merge Requests Schema - GitLab Integration", () => {
             const mr = mergeRequests[0];
 
             // Validate state filtering
-            if (test.params.state && test.params.state !== "all") {
+            if (test.params.state && test.params.state !== 'all') {
               expect(mr.state).toBe(test.params.state);
             }
 
@@ -249,9 +249,9 @@ describe("Merge Requests Schema - GitLab Integration", () => {
               const first = mergeRequests[0];
               const second = mergeRequests[1];
 
-              if (test.params.order_by === "created_at" && test.params.sort === "desc") {
+              if (test.params.order_by === 'created_at' && test.params.sort === 'desc') {
                 expect(new Date(first.created_at).getTime()).toBeGreaterThanOrEqual(
-                  new Date(second.created_at).getTime()
+                  new Date(second.created_at).getTime(),
                 );
               }
             }
@@ -259,9 +259,9 @@ describe("Merge Requests Schema - GitLab Integration", () => {
             // Validate labels details if requested
             if (test.params.with_labels_details && mr.labels.length > 0) {
               const label = mr.labels[0];
-              if (typeof label === "object") {
-                expect(label).toHaveProperty("name");
-                expect(label).toHaveProperty("color");
+              if (typeof label === 'object') {
+                expect(label).toHaveProperty('name');
+                expect(label).toHaveProperty('color');
               }
             }
           }
@@ -270,38 +270,38 @@ describe("Merge Requests Schema - GitLab Integration", () => {
         }
       }
 
-      console.log("✅ Comprehensive filtering tests completed");
+      console.log('✅ Comprehensive filtering tests completed');
     }, 30000);
 
-    it("should validate schema with different state combinations", async () => {
+    it('should validate schema with different state combinations', async () => {
       const testCases = [
-        { action: "list" as const, state: "opened" as const },
-        { action: "list" as const, state: "closed" as const },
-        { action: "list" as const, state: "locked" as const },
-        { action: "list" as const, state: "merged" as const },
-        { action: "list" as const, state: "all" as const },
+        { action: 'list' as const, state: 'opened' as const },
+        { action: 'list' as const, state: 'closed' as const },
+        { action: 'list' as const, state: 'locked' as const },
+        { action: 'list' as const, state: 'merged' as const },
+        { action: 'list' as const, state: 'all' as const },
       ];
 
       for (const testCase of testCases) {
         const result = BrowseMergeRequestsSchema.safeParse(testCase);
         expect(result.success).toBe(true);
-        if (result.success && result.data.action === "list") {
+        if (result.success && result.data.action === 'list') {
           expect(result.data.state).toBe(testCase.state);
         }
       }
 
-      console.log("✅ BrowseMergeRequestsSchema validates all state combinations");
+      console.log('✅ BrowseMergeRequestsSchema validates all state combinations');
     });
 
-    it("should reject invalid parameters", async () => {
+    it('should reject invalid parameters', async () => {
       const invalidParams = {
-        action: "list" as const,
-        state: "invalid_state", // Invalid enum value
-        order_by: "invalid_field", // Invalid enum value
-        sort: "sideways", // Invalid enum value
+        action: 'list' as const,
+        state: 'invalid_state', // Invalid enum value
+        order_by: 'invalid_field', // Invalid enum value
+        sort: 'sideways', // Invalid enum value
         per_page: 150, // Exceeds max of 100
-        scope: "invalid_scope", // Invalid enum value
-        wip: "maybe", // Invalid enum value
+        scope: 'invalid_scope', // Invalid enum value
+        wip: 'maybe', // Invalid enum value
       };
 
       const result = BrowseMergeRequestsSchema.safeParse(invalidParams);
@@ -311,34 +311,34 @@ describe("Merge Requests Schema - GitLab Integration", () => {
         expect(result.error.issues.length).toBeGreaterThan(0);
       }
 
-      console.log("✅ BrowseMergeRequestsSchema correctly rejects invalid parameters");
+      console.log('✅ BrowseMergeRequestsSchema correctly rejects invalid parameters');
     });
   });
 
-  describe("BrowseMergeRequestsSchema - get action", () => {
-    it("should validate get merge request parameters", async () => {
+  describe('BrowseMergeRequestsSchema - get action', () => {
+    it('should validate get merge request parameters', async () => {
       // Get actual project and its MRs for testing
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("⚠️  No projects available for BrowseMergeRequestsSchema testing");
+        console.log('⚠️  No projects available for BrowseMergeRequestsSchema testing');
         return;
       }
 
       const testProject = projects[0];
-      const mergeRequests = (await helper.executeTool("browse_merge_requests", {
-        action: "list",
+      const mergeRequests = (await helper.executeTool('browse_merge_requests', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 1,
       })) as any[];
 
       if (mergeRequests.length === 0) {
-        console.log("⚠️  No merge requests found for BrowseMergeRequestsSchema testing");
+        console.log('⚠️  No merge requests found for BrowseMergeRequestsSchema testing');
         return;
       }
 
       const testMR = mergeRequests[0];
       const validParams = {
-        action: "get" as const,
+        action: 'get' as const,
         project_id: testProject.id.toString(),
         merge_request_iid: testMR.iid.toString(),
         include_diverged_commits_count: true,
@@ -348,39 +348,39 @@ describe("Merge Requests Schema - GitLab Integration", () => {
       const result = BrowseMergeRequestsSchema.safeParse(validParams);
       expect(result.success).toBe(true);
 
-      if (result.success && result.data.action === "get") {
+      if (result.success && result.data.action === 'get') {
         expect(result.data.project_id).toBe(testProject.id.toString());
         expect(result.data.merge_request_iid).toBe(testMR.iid.toString());
         expect(result.data.include_diverged_commits_count).toBe(true);
         expect(result.data.include_rebase_in_progress).toBe(true);
       }
 
-      console.log("✅ BrowseMergeRequestsSchema validates parameters correctly");
+      console.log('✅ BrowseMergeRequestsSchema validates parameters correctly');
     });
 
-    it("should test handler function for single merge request", async () => {
+    it('should test handler function for single merge request', async () => {
       // Get actual project and its MRs for testing
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("⚠️  No projects available for handler testing");
+        console.log('⚠️  No projects available for handler testing');
         return;
       }
 
       const testProject = projects[0];
-      const mergeRequests = (await helper.executeTool("browse_merge_requests", {
-        action: "list",
+      const mergeRequests = (await helper.executeTool('browse_merge_requests', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 1,
       })) as any[];
 
       if (mergeRequests.length === 0) {
-        console.log("⚠️  No merge requests found for handler testing");
+        console.log('⚠️  No merge requests found for handler testing');
         return;
       }
 
       const testMR = mergeRequests[0];
       const params = {
-        action: "get" as const,
+        action: 'get' as const,
         project_id: testProject.id.toString(),
         merge_request_iid: testMR.iid.toString(),
         include_diverged_commits_count: true,
@@ -393,40 +393,40 @@ describe("Merge Requests Schema - GitLab Integration", () => {
 
       if (paramResult.success) {
         // Test handler function using CQRS tool
-        const mr = (await helper.executeTool("browse_merge_requests", paramResult.data)) as any;
+        const mr = (await helper.executeTool('browse_merge_requests', paramResult.data)) as any;
 
         // Comprehensive single MR validation
-        expect(mr).toHaveProperty("id");
-        expect(mr).toHaveProperty("iid");
-        expect(mr).toHaveProperty("project_id");
-        expect(mr).toHaveProperty("title");
-        expect(mr).toHaveProperty("description");
-        expect(mr).toHaveProperty("state");
-        expect(mr).toHaveProperty("created_at");
-        expect(mr).toHaveProperty("updated_at");
-        expect(mr).toHaveProperty("target_branch");
-        expect(mr).toHaveProperty("source_branch");
-        expect(mr).toHaveProperty("author");
-        expect(mr).toHaveProperty("assignees");
-        expect(mr).toHaveProperty("reviewers");
-        expect(mr).toHaveProperty("labels");
-        expect(mr).toHaveProperty("milestone");
-        expect(mr).toHaveProperty("merge_status");
-        expect(mr).toHaveProperty("detailed_merge_status");
-        expect(mr).toHaveProperty("has_conflicts");
-        expect(mr).toHaveProperty("blocking_discussions_resolved");
-        expect(mr).toHaveProperty("work_in_progress");
-        expect(mr).toHaveProperty("draft");
-        expect(mr).toHaveProperty("merge_when_pipeline_succeeds");
-        expect(mr).toHaveProperty("merge_commit_sha");
-        expect(mr).toHaveProperty("squash_commit_sha");
-        expect(mr).toHaveProperty("user_notes_count");
-        expect(mr).toHaveProperty("upvotes");
-        expect(mr).toHaveProperty("downvotes");
-        expect(mr).toHaveProperty("web_url");
-        expect(mr).toHaveProperty("time_stats");
-        expect(mr).toHaveProperty("squash");
-        expect(mr).toHaveProperty("task_completion_status");
+        expect(mr).toHaveProperty('id');
+        expect(mr).toHaveProperty('iid');
+        expect(mr).toHaveProperty('project_id');
+        expect(mr).toHaveProperty('title');
+        expect(mr).toHaveProperty('description');
+        expect(mr).toHaveProperty('state');
+        expect(mr).toHaveProperty('created_at');
+        expect(mr).toHaveProperty('updated_at');
+        expect(mr).toHaveProperty('target_branch');
+        expect(mr).toHaveProperty('source_branch');
+        expect(mr).toHaveProperty('author');
+        expect(mr).toHaveProperty('assignees');
+        expect(mr).toHaveProperty('reviewers');
+        expect(mr).toHaveProperty('labels');
+        expect(mr).toHaveProperty('milestone');
+        expect(mr).toHaveProperty('merge_status');
+        expect(mr).toHaveProperty('detailed_merge_status');
+        expect(mr).toHaveProperty('has_conflicts');
+        expect(mr).toHaveProperty('blocking_discussions_resolved');
+        expect(mr).toHaveProperty('work_in_progress');
+        expect(mr).toHaveProperty('draft');
+        expect(mr).toHaveProperty('merge_when_pipeline_succeeds');
+        expect(mr).toHaveProperty('merge_commit_sha');
+        expect(mr).toHaveProperty('squash_commit_sha');
+        expect(mr).toHaveProperty('user_notes_count');
+        expect(mr).toHaveProperty('upvotes');
+        expect(mr).toHaveProperty('downvotes');
+        expect(mr).toHaveProperty('web_url');
+        expect(mr).toHaveProperty('time_stats');
+        expect(mr).toHaveProperty('squash');
+        expect(mr).toHaveProperty('task_completion_status');
 
         // Validate IID matches what we requested
         expect(mr.iid).toBe(testMR.iid);
@@ -434,52 +434,52 @@ describe("Merge Requests Schema - GitLab Integration", () => {
 
         // Validate complex nested structures
         if (mr.author) {
-          expect(mr.author).toHaveProperty("id");
-          expect(mr.author).toHaveProperty("username");
-          expect(mr.author).toHaveProperty("name");
-          expect(mr.author).toHaveProperty("state");
+          expect(mr.author).toHaveProperty('id');
+          expect(mr.author).toHaveProperty('username');
+          expect(mr.author).toHaveProperty('name');
+          expect(mr.author).toHaveProperty('state');
         }
 
         if (mr.time_stats) {
-          expect(mr.time_stats).toHaveProperty("time_estimate");
-          expect(mr.time_stats).toHaveProperty("total_time_spent");
-          expect(mr.time_stats).toHaveProperty("human_time_estimate");
-          expect(mr.time_stats).toHaveProperty("human_total_time_spent");
+          expect(mr.time_stats).toHaveProperty('time_estimate');
+          expect(mr.time_stats).toHaveProperty('total_time_spent');
+          expect(mr.time_stats).toHaveProperty('human_time_estimate');
+          expect(mr.time_stats).toHaveProperty('human_total_time_spent');
         }
 
         if (mr.task_completion_status) {
-          expect(mr.task_completion_status).toHaveProperty("count");
-          expect(mr.task_completion_status).toHaveProperty("completed_count");
+          expect(mr.task_completion_status).toHaveProperty('count');
+          expect(mr.task_completion_status).toHaveProperty('completed_count');
         }
 
         // Validate data types
-        expect(typeof mr.id).toBe("number");
-        expect(typeof mr.iid).toBe("number");
-        expect(typeof mr.title).toBe("string");
-        expect(["opened", "closed", "locked", "merged"]).toContain(mr.state);
+        expect(typeof mr.id).toBe('number');
+        expect(typeof mr.iid).toBe('number');
+        expect(typeof mr.title).toBe('string');
+        expect(['opened', 'closed', 'locked', 'merged']).toContain(mr.state);
         expect(Array.isArray(mr.assignees)).toBe(true);
         expect(Array.isArray(mr.reviewers)).toBe(true);
         expect(Array.isArray(mr.labels)).toBe(true);
 
         console.log(
-          `✅ BrowseMergeRequestsSchema comprehensive validation: ${mr.title} (IID: ${mr.iid})`
+          `✅ BrowseMergeRequestsSchema comprehensive validation: ${mr.title} (IID: ${mr.iid})`,
         );
         console.log(
-          `  📊 Details: State=${mr.state}, Conflicts=${mr.has_conflicts}, WIP=${mr.work_in_progress}`
+          `  📊 Details: State=${mr.state}, Conflicts=${mr.has_conflicts}, WIP=${mr.work_in_progress}`,
         );
         console.log(
-          `  👥 People: Assignees=${mr.assignees.length}, Reviewers=${mr.reviewers.length}`
+          `  👥 People: Assignees=${mr.assignees.length}, Reviewers=${mr.reviewers.length}`,
         );
         console.log(
-          `  🏷️  Metadata: Labels=${mr.labels.length}, Milestone=${mr.milestone ? mr.milestone.title : "None"}`
+          `  🏷️  Metadata: Labels=${mr.labels.length}, Milestone=${mr.milestone ? mr.milestone.title : 'None'}`,
         );
       }
     });
 
-    it("should reject invalid merge request parameters", async () => {
+    it('should reject invalid merge request parameters', async () => {
       const invalidParams = {
-        action: "get" as const,
-        project_id: "", // Empty project ID
+        action: 'get' as const,
+        project_id: '', // Empty project ID
         // No merge_request_iid or branch_name - violates schema refine rule
       };
 
@@ -490,28 +490,28 @@ describe("Merge Requests Schema - GitLab Integration", () => {
         expect(result.error.issues.length).toBeGreaterThan(0);
       }
 
-      console.log("✅ BrowseMergeRequestsSchema correctly rejects invalid parameters");
+      console.log('✅ BrowseMergeRequestsSchema correctly rejects invalid parameters');
     });
   });
 
-  describe("BrowseMergeRequestsSchema - versions action", () => {
-    it("should list all diff versions for an MR", async () => {
+  describe('BrowseMergeRequestsSchema - versions action', () => {
+    it('should list all diff versions for an MR', async () => {
       // Get actual project and its MRs for testing
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("⚠️  No projects available for versions testing");
+        console.log('⚠️  No projects available for versions testing');
         return;
       }
 
       const testProject = projects[0];
-      const mergeRequests = (await helper.executeTool("browse_merge_requests", {
-        action: "list",
+      const mergeRequests = (await helper.executeTool('browse_merge_requests', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 5,
       })) as any[];
 
       if (mergeRequests.length === 0) {
-        console.log("⚠️  No merge requests found for versions testing");
+        console.log('⚠️  No merge requests found for versions testing');
         return;
       }
 
@@ -519,7 +519,7 @@ describe("Merge Requests Schema - GitLab Integration", () => {
       console.log(`🔍 Testing versions for MR !${testMR.iid} in ${testProject.name}`);
 
       const params = {
-        action: "versions" as const,
+        action: 'versions' as const,
         project_id: testProject.id.toString(),
         merge_request_iid: testMR.iid.toString(),
       };
@@ -531,8 +531,8 @@ describe("Merge Requests Schema - GitLab Integration", () => {
       if (schemaResult.success) {
         // Test handler function
         const versions = (await helper.executeTool(
-          "browse_merge_requests",
-          schemaResult.data
+          'browse_merge_requests',
+          schemaResult.data,
         )) as any[];
 
         expect(Array.isArray(versions)).toBe(true);
@@ -542,51 +542,51 @@ describe("Merge Requests Schema - GitLab Integration", () => {
           const version = versions[0];
 
           // Validate version structure per GitLab API docs
-          expect(version).toHaveProperty("id");
-          expect(version).toHaveProperty("head_commit_sha");
-          expect(version).toHaveProperty("base_commit_sha");
-          expect(version).toHaveProperty("start_commit_sha");
-          expect(version).toHaveProperty("created_at");
-          expect(version).toHaveProperty("merge_request_id");
-          expect(version).toHaveProperty("state");
+          expect(version).toHaveProperty('id');
+          expect(version).toHaveProperty('head_commit_sha');
+          expect(version).toHaveProperty('base_commit_sha');
+          expect(version).toHaveProperty('start_commit_sha');
+          expect(version).toHaveProperty('created_at');
+          expect(version).toHaveProperty('merge_request_id');
+          expect(version).toHaveProperty('state');
 
           // Validate data types
-          expect(typeof version.id).toBe("number");
-          expect(typeof version.head_commit_sha).toBe("string");
-          expect(typeof version.base_commit_sha).toBe("string");
+          expect(typeof version.id).toBe('number');
+          expect(typeof version.head_commit_sha).toBe('string');
+          expect(typeof version.base_commit_sha).toBe('string');
 
           console.log(
-            `✅ Version ${version.id}: head=${version.head_commit_sha.substring(0, 8)}, state=${version.state}`
+            `✅ Version ${version.id}: head=${version.head_commit_sha.substring(0, 8)}, state=${version.state}`,
           );
         }
       }
 
-      console.log("✅ BrowseMergeRequestsSchema versions action completed");
+      console.log('✅ BrowseMergeRequestsSchema versions action completed');
     });
 
-    it("should support pagination for versions", async () => {
+    it('should support pagination for versions', async () => {
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("⚠️  No projects available for pagination test");
+        console.log('⚠️  No projects available for pagination test');
         return;
       }
 
       const testProject = projects[0];
-      const mergeRequests = (await helper.executeTool("browse_merge_requests", {
-        action: "list",
+      const mergeRequests = (await helper.executeTool('browse_merge_requests', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 1,
       })) as any[];
 
       if (mergeRequests.length === 0) {
-        console.log("⚠️  No merge requests found for pagination test");
+        console.log('⚠️  No merge requests found for pagination test');
         return;
       }
 
       const testMR = mergeRequests[0];
 
       const params = {
-        action: "versions" as const,
+        action: 'versions' as const,
         project_id: testProject.id.toString(),
         merge_request_iid: testMR.iid.toString(),
         per_page: 1,
@@ -597,8 +597,8 @@ describe("Merge Requests Schema - GitLab Integration", () => {
 
       if (schemaResult.success) {
         const versions = (await helper.executeTool(
-          "browse_merge_requests",
-          schemaResult.data
+          'browse_merge_requests',
+          schemaResult.data,
         )) as any[];
 
         expect(Array.isArray(versions)).toBe(true);
@@ -608,37 +608,37 @@ describe("Merge Requests Schema - GitLab Integration", () => {
     });
   });
 
-  describe("BrowseMergeRequestsSchema - version action", () => {
-    it("should get specific version details with diffs", async () => {
+  describe('BrowseMergeRequestsSchema - version action', () => {
+    it('should get specific version details with diffs', async () => {
       const projects = (await helper.listProjects({ per_page: 1 })) as any[];
       if (projects.length === 0) {
-        console.log("⚠️  No projects available for version testing");
+        console.log('⚠️  No projects available for version testing');
         return;
       }
 
       const testProject = projects[0];
-      const mergeRequests = (await helper.executeTool("browse_merge_requests", {
-        action: "list",
+      const mergeRequests = (await helper.executeTool('browse_merge_requests', {
+        action: 'list',
         project_id: testProject.id.toString(),
         per_page: 5,
       })) as any[];
 
       if (mergeRequests.length === 0) {
-        console.log("⚠️  No merge requests found for version testing");
+        console.log('⚠️  No merge requests found for version testing');
         return;
       }
 
       const testMR = mergeRequests[0];
 
       // First get versions list
-      const versions = (await helper.executeTool("browse_merge_requests", {
-        action: "versions",
+      const versions = (await helper.executeTool('browse_merge_requests', {
+        action: 'versions',
         project_id: testProject.id.toString(),
         merge_request_iid: testMR.iid.toString(),
       })) as any[];
 
       if (versions.length === 0) {
-        console.log("⚠️  No diff versions found for version testing");
+        console.log('⚠️  No diff versions found for version testing');
         return;
       }
 
@@ -646,7 +646,7 @@ describe("Merge Requests Schema - GitLab Integration", () => {
       console.log(`🔍 Testing version ${versionId} for MR !${testMR.iid}`);
 
       const params = {
-        action: "version" as const,
+        action: 'version' as const,
         project_id: testProject.id.toString(),
         merge_request_iid: testMR.iid.toString(),
         version_id: String(versionId),
@@ -659,17 +659,17 @@ describe("Merge Requests Schema - GitLab Integration", () => {
       if (schemaResult.success) {
         // Test handler function
         const versionDetail = (await helper.executeTool(
-          "browse_merge_requests",
-          schemaResult.data
+          'browse_merge_requests',
+          schemaResult.data,
         )) as any;
 
         // Validate version detail structure
-        expect(versionDetail).toHaveProperty("id", versionId);
-        expect(versionDetail).toHaveProperty("head_commit_sha");
-        expect(versionDetail).toHaveProperty("base_commit_sha");
-        expect(versionDetail).toHaveProperty("start_commit_sha");
-        expect(versionDetail).toHaveProperty("created_at");
-        expect(versionDetail).toHaveProperty("diffs");
+        expect(versionDetail).toHaveProperty('id', versionId);
+        expect(versionDetail).toHaveProperty('head_commit_sha');
+        expect(versionDetail).toHaveProperty('base_commit_sha');
+        expect(versionDetail).toHaveProperty('start_commit_sha');
+        expect(versionDetail).toHaveProperty('created_at');
+        expect(versionDetail).toHaveProperty('diffs');
 
         // Validate diffs array
         expect(Array.isArray(versionDetail.diffs)).toBe(true);
@@ -679,31 +679,31 @@ describe("Merge Requests Schema - GitLab Integration", () => {
           const diff = versionDetail.diffs[0];
 
           // Validate diff structure
-          expect(diff).toHaveProperty("old_path");
-          expect(diff).toHaveProperty("new_path");
-          expect(diff).toHaveProperty("new_file");
-          expect(diff).toHaveProperty("renamed_file");
-          expect(diff).toHaveProperty("deleted_file");
-          expect(diff).toHaveProperty("diff");
+          expect(diff).toHaveProperty('old_path');
+          expect(diff).toHaveProperty('new_path');
+          expect(diff).toHaveProperty('new_file');
+          expect(diff).toHaveProperty('renamed_file');
+          expect(diff).toHaveProperty('deleted_file');
+          expect(diff).toHaveProperty('diff');
 
           console.log(
-            `  📄 First diff: ${diff.new_path} (new=${diff.new_file}, deleted=${diff.deleted_file})`
+            `  📄 First diff: ${diff.new_path} (new=${diff.new_file}, deleted=${diff.deleted_file})`,
           );
         }
 
         console.log(
-          `✅ Version ${versionId}: head=${versionDetail.head_commit_sha.substring(0, 8)}, diffs=${versionDetail.diffs.length}`
+          `✅ Version ${versionId}: head=${versionDetail.head_commit_sha.substring(0, 8)}, diffs=${versionDetail.diffs.length}`,
         );
       }
 
-      console.log("✅ BrowseMergeRequestsSchema version action completed");
+      console.log('✅ BrowseMergeRequestsSchema version action completed');
     });
 
-    it("should reject version action without version_id", async () => {
+    it('should reject version action without version_id', async () => {
       const invalidParams = {
-        action: "version" as const,
-        project_id: "123",
-        merge_request_iid: "1",
+        action: 'version' as const,
+        project_id: '123',
+        merge_request_iid: '1',
         // Missing version_id
       };
 
@@ -714,49 +714,51 @@ describe("Merge Requests Schema - GitLab Integration", () => {
         expect(result.error.issues.length).toBeGreaterThan(0);
       }
 
-      console.log("✅ BrowseMergeRequestsSchema correctly rejects version without version_id");
+      console.log('✅ BrowseMergeRequestsSchema correctly rejects version without version_id');
     });
 
-    it("should reject versions action with version_id field", async () => {
+    it('should reject versions action with version_id field', async () => {
       // version_id is only valid for 'version' action, not 'versions'
       const invalidParams = {
-        action: "versions" as const,
-        project_id: "123",
-        merge_request_iid: "1",
-        version_id: "456", // Invalid: version_id is version-only field
+        action: 'versions' as const,
+        project_id: '123',
+        merge_request_iid: '1',
+        version_id: '456', // Invalid: version_id is version-only field
       };
 
       const result = BrowseMergeRequestsSchema.safeParse(invalidParams);
       expect(result.success).toBe(false);
 
       if (!result.success) {
-        const versionIdError = result.error.issues.find(issue => issue.path.includes("version_id"));
+        const versionIdError = result.error.issues.find((issue) =>
+          issue.path.includes('version_id'),
+        );
         expect(versionIdError).toBeDefined();
-        expect(versionIdError?.message).toContain("version");
+        expect(versionIdError?.message).toContain('version');
       }
 
-      console.log("✅ BrowseMergeRequestsSchema correctly rejects versions with version_id");
+      console.log('✅ BrowseMergeRequestsSchema correctly rejects versions with version_id');
     });
 
-    it("should reject versions action with list-only fields", async () => {
+    it('should reject versions action with list-only fields', async () => {
       // list-only fields like 'state' should not be valid for 'versions' action
       const invalidParams = {
-        action: "versions" as const,
-        project_id: "123",
-        merge_request_iid: "1",
-        state: "opened", // Invalid: state is list-only field
+        action: 'versions' as const,
+        project_id: '123',
+        merge_request_iid: '1',
+        state: 'opened', // Invalid: state is list-only field
       };
 
       const result = BrowseMergeRequestsSchema.safeParse(invalidParams);
       expect(result.success).toBe(false);
 
       if (!result.success) {
-        const stateError = result.error.issues.find(issue => issue.path.includes("state"));
+        const stateError = result.error.issues.find((issue) => issue.path.includes('state'));
         expect(stateError).toBeDefined();
-        expect(stateError?.message).toContain("list");
+        expect(stateError?.message).toContain('list');
       }
 
-      console.log("✅ BrowseMergeRequestsSchema correctly rejects versions with list-only fields");
+      console.log('✅ BrowseMergeRequestsSchema correctly rejects versions with list-only fields');
     });
   });
 });

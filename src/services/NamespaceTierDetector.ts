@@ -11,11 +11,11 @@
  * - Feature availability mapping per tier
  */
 
-import { logDebug, logWarn } from "../logger.js";
-import { NamespaceTierInfo } from "../oauth/types.js";
-import { getTokenContext } from "../oauth/token-context.js";
-import { enhancedFetch } from "../utils/fetch.js";
-import { GITLAB_BASE_URL } from "../config";
+import { logDebug, logWarn } from '../logger.js';
+import { NamespaceTierInfo } from '../oauth/types.js';
+import { getTokenContext } from '../oauth/token-context.js';
+import { enhancedFetch } from '../utils/fetch.js';
+import { GITLAB_BASE_URL } from '../config';
 
 /**
  * Cache TTL for namespace tier (5 minutes)
@@ -110,28 +110,28 @@ const TIER_FEATURES: Record<string, Record<string, boolean>> = {
 /**
  * Normalize plan name to tier
  */
-function normalizeTier(plan: string | null | undefined): "free" | "premium" | "ultimate" {
-  if (!plan) return "free";
+function normalizeTier(plan: string | null | undefined): 'free' | 'premium' | 'ultimate' {
+  if (!plan) return 'free';
 
   const normalized = plan.toLowerCase();
 
-  if (normalized.includes("ultimate") || normalized.includes("gold")) {
-    return "ultimate";
+  if (normalized.includes('ultimate') || normalized.includes('gold')) {
+    return 'ultimate';
   }
-  if (normalized.includes("premium") || normalized.includes("silver")) {
-    return "premium";
+  if (normalized.includes('premium') || normalized.includes('silver')) {
+    return 'premium';
   }
-  if (normalized.includes("bronze") || normalized.includes("starter")) {
-    return "premium"; // Bronze/Starter maps to Premium tier features
+  if (normalized.includes('bronze') || normalized.includes('starter')) {
+    return 'premium'; // Bronze/Starter maps to Premium tier features
   }
 
-  return "free";
+  return 'free';
 }
 
 /**
  * Get features for a tier
  */
-export function getFeaturesForTier(tier: "free" | "premium" | "ultimate"): Record<string, boolean> {
+export function getFeaturesForTier(tier: 'free' | 'premium' | 'ultimate'): Record<string, boolean> {
   return { ...TIER_FEATURES[tier] };
 }
 
@@ -155,7 +155,7 @@ function getCachedTier(sessionId: string, namespacePath: string): NamespaceTierI
   const age = Date.now() - cached.cachedAt.getTime();
   if (age > NAMESPACE_TIER_CACHE_TTL_MS) {
     namespaceTierCache.delete(key);
-    logDebug("Namespace tier cache expired", {
+    logDebug('Namespace tier cache expired', {
       sessionId,
       namespacePath,
       ageMs: age,
@@ -172,12 +172,12 @@ function getCachedTier(sessionId: string, namespacePath: string): NamespaceTierI
 function setCachedTier(
   sessionId: string,
   namespacePath: string,
-  tierInfo: NamespaceTierInfo
+  tierInfo: NamespaceTierInfo,
 ): void {
   const key = buildCacheKey(sessionId, namespacePath);
   namespaceTierCache.set(key, tierInfo);
 
-  logDebug("Namespace tier cached", {
+  logDebug('Namespace tier cached', {
     sessionId,
     namespacePath,
     tier: tierInfo.tier,
@@ -197,11 +197,11 @@ export function clearNamespaceTierCache(sessionId?: string): void {
         namespaceTierCache.delete(key);
       }
     }
-    logDebug("Namespace tier cache cleared for session", { sessionId });
+    logDebug('Namespace tier cache cleared for session', { sessionId });
   } else {
     // Clear entire cache
     namespaceTierCache.clear();
-    logDebug("All namespace tier caches cleared");
+    logDebug('All namespace tier caches cleared');
   }
 }
 
@@ -211,15 +211,15 @@ export function clearNamespaceTierCache(sessionId?: string): void {
 async function queryNamespaceTier(
   namespacePath: string,
   token: string,
-  baseUrl: string
+  baseUrl: string,
 ): Promise<NamespaceTierInfo> {
   const graphqlUrl = `${baseUrl}/api/graphql`;
 
   try {
     const response = await enhancedFetch(graphqlUrl, {
-      method: "POST",
+      method: 'POST',
       headers: {
-        "Content-Type": "application/json",
+        'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({
@@ -231,14 +231,14 @@ async function queryNamespaceTier(
     });
 
     if (!response.ok) {
-      logWarn("Failed to query namespace tier", {
+      logWarn('Failed to query namespace tier', {
         namespacePath,
         status: response.status,
       });
       // Return free tier as fallback
       return {
-        tier: "free",
-        features: getFeaturesForTier("free"),
+        tier: 'free',
+        features: getFeaturesForTier('free'),
         cachedAt: new Date(),
       };
     }
@@ -254,9 +254,9 @@ async function queryNamespaceTier(
     };
 
     if (result.errors?.length) {
-      logWarn("GraphQL errors querying namespace tier", {
+      logWarn('GraphQL errors querying namespace tier', {
         namespacePath,
-        errors: result.errors.map(e => e.message),
+        errors: result.errors.map((e) => e.message),
       });
     }
 
@@ -271,15 +271,15 @@ async function queryNamespaceTier(
       cachedAt: new Date(),
     };
   } catch (error) {
-    logWarn("Error querying namespace tier", {
+    logWarn('Error querying namespace tier', {
       namespacePath,
       err: error instanceof Error ? error : new Error(String(error)),
     });
 
     // Return free tier as fallback
     return {
-      tier: "free",
-      features: getFeaturesForTier("free"),
+      tier: 'free',
+      features: getFeaturesForTier('free'),
       cachedAt: new Date(),
     };
   }
@@ -296,10 +296,10 @@ export async function getNamespaceTier(namespacePath: string): Promise<Namespace
   const context = getTokenContext();
 
   if (!context) {
-    logWarn("No token context available for namespace tier detection");
+    logWarn('No token context available for namespace tier detection');
     return {
-      tier: "free",
-      features: getFeaturesForTier("free"),
+      tier: 'free',
+      features: getFeaturesForTier('free'),
       cachedAt: new Date(),
     };
   }
@@ -308,10 +308,10 @@ export async function getNamespaceTier(namespacePath: string): Promise<Namespace
   const baseUrl = apiUrl || GITLAB_BASE_URL;
 
   if (!baseUrl) {
-    logWarn("No base URL available for namespace tier detection");
+    logWarn('No base URL available for namespace tier detection');
     return {
-      tier: "free",
-      features: getFeaturesForTier("free"),
+      tier: 'free',
+      features: getFeaturesForTier('free'),
       cachedAt: new Date(),
     };
   }
@@ -319,7 +319,7 @@ export async function getNamespaceTier(namespacePath: string): Promise<Namespace
   // Check cache first
   const cached = getCachedTier(sessionId, namespacePath);
   if (cached) {
-    logDebug("Namespace tier from cache", {
+    logDebug('Namespace tier from cache', {
       namespacePath,
       tier: cached.tier,
     });
@@ -360,7 +360,7 @@ export function getNamespaceTierCacheMetrics(): {
     // Cache key format: ${sessionId}:${namespacePath}
     // sessionId is UUID (no colons), but namespace paths can contain colons.
     // Using lastIndexOf safely handles any future format changes.
-    const separatorIndex = key.lastIndexOf(":");
+    const separatorIndex = key.lastIndexOf(':');
     const sessionId = separatorIndex === -1 ? key : key.slice(0, separatorIndex);
     entriesBySession.set(sessionId, (entriesBySession.get(sessionId) ?? 0) + 1);
   }

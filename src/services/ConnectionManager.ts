@@ -439,6 +439,8 @@ export class ConnectionManager {
   /**
    * Check if the connection manager has been initialized successfully.
    * Used by HealthMonitor to decide if a full initialization is needed.
+   * Note: true for partial states (OAuth REST-only). HealthMonitor's performConnect
+   * derives degraded state from getInstanceInfo().version after this check.
    */
   public isConnected(): boolean {
     return this.isInitialized;

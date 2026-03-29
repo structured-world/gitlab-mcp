@@ -204,7 +204,7 @@ describe('HealthMonitor', () => {
 
       // Report 2 transient errors (below threshold of 3)
       const transientError = new Error('connect ECONNREFUSED');
-      (transientError as any).code = 'ECONNREFUSED';
+      (transientError as Error & { code: string }).code = 'ECONNREFUSED';
       monitor.reportError('https://gitlab.example.com', transientError);
       monitor.reportError('https://gitlab.example.com', transientError);
 
@@ -250,7 +250,7 @@ describe('HealthMonitor', () => {
 
       // Report 2 transient errors
       const transientError = new Error('connect ECONNREFUSED');
-      (transientError as any).code = 'ECONNREFUSED';
+      (transientError as Error & { code: string }).code = 'ECONNREFUSED';
       monitor.reportError('https://gitlab.example.com', transientError);
       monitor.reportError('https://gitlab.example.com', transientError);
 
@@ -542,19 +542,19 @@ describe('classifyError — additional coverage', () => {
 
   it('should classify ETIMEDOUT error code as transient', () => {
     const error = new Error('connection timed out');
-    (error as any).code = 'ETIMEDOUT';
+    (error as Error & { code: string }).code = 'ETIMEDOUT';
     expect(classifyError(error)).toBe('transient');
   });
 
   it('should classify ENOTFOUND error code as transient', () => {
     const error = new Error('getaddrinfo ENOTFOUND gitlab.example.com');
-    (error as any).code = 'ENOTFOUND';
+    (error as Error & { code: string }).code = 'ENOTFOUND';
     expect(classifyError(error)).toBe('transient');
   });
 
   it('should classify UND_ERR_CONNECT_TIMEOUT as transient', () => {
     const error = new Error('connect timeout');
-    (error as any).code = 'UND_ERR_CONNECT_TIMEOUT';
+    (error as Error & { code: string }).code = 'UND_ERR_CONNECT_TIMEOUT';
     expect(classifyError(error)).toBe('transient');
   });
 
@@ -612,7 +612,7 @@ describe('createConnectionFailedError', () => {
 describe('classifyError', () => {
   it('should classify ECONNREFUSED as transient', () => {
     const error = new Error('connect ECONNREFUSED 127.0.0.1:443');
-    (error as any).code = 'ECONNREFUSED';
+    (error as Error & { code: string }).code = 'ECONNREFUSED';
     expect(classifyError(error)).toBe('transient');
   });
 

@@ -31,7 +31,7 @@ Advanced GitLab MCP server — 44 tools across 18 entity types with CQRS archite
 
 - **44 tools** across 18 entity types — projects, merge requests, pipelines, work items, wiki, and more
 - **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
-- **Connection resilience** — Bounded startup, auto-reconnect with exponential backoff, degraded mode when GitLab is unreachable
+- **Connection resilience** — Bounded startup, auto-reconnect with exponential backoff, disconnected mode when GitLab is unreachable
 - **Multi-instance support** — Connect to multiple GitLab instances with per-instance OAuth and rate limiting
 - **Multiple transports** — stdio, SSE, StreamableHTTP
 - **OAuth 2.1** — Per-user authentication via Claude Custom Connector

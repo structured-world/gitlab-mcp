@@ -147,13 +147,19 @@ describe('handlers', () => {
       callToolHandler = mockServer.setRequestHandler.mock.calls[1][1];
     });
 
-    it('should continue setup even if connection initialization fails', async () => {
-      mockConnectionManager.initialize.mockRejectedValue(new Error('Connection failed'));
+    it('should continue setup even if health monitor starts disconnected', async () => {
+      // Simulate HealthMonitor starting in disconnected state (GitLab unreachable)
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
 
       await setupHandlers(mockServer);
 
-      // Should still set up handlers despite connection failure
+      // Should still set up handlers — tools/list returns context-only tools
       expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
+      // refreshCache should NOT be called when disconnected
+      expect(mockRegistryManager.refreshCache).not.toHaveBeenCalled();
+
+      // Restore
+      mockHealthMonitor.getState.mockReturnValue('healthy');
     });
   });
 
@@ -312,7 +318,10 @@ describe('handlers', () => {
     });
 
     it('should initialize connection if not already initialized', async () => {
-      // Reset mocks to simulate uninitialized state
+      // Clear mock call count from setupHandlers to isolate handler behavior
+      mockConnectionManager.initialize.mockClear();
+
+      // Simulate uninitialized state: getClient throws first, then succeeds on retry
       mockConnectionManager.getClient.mockImplementationOnce(() => {
         throw new Error('Not initialized');
       });
@@ -327,8 +336,8 @@ describe('handlers', () => {
 
       await callToolHandler(mockRequest);
 
-      // Connection manager initialize called from the fallback path in handler
-      expect(mockConnectionManager.initialize).toHaveBeenCalled();
+      // Connection manager initialize called from the fallback path in handler (not from setup)
+      expect(mockConnectionManager.initialize).toHaveBeenCalledTimes(1);
     });
 
     it('should return error if connection initialization fails', async () => {

@@ -113,14 +113,19 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
     }
 
     // Try full initialization with timeout
-    const timeoutPromise = new Promise<never>((_, reject) =>
-      setTimeout(
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(
         () => reject(new Error(`Initialization timeout after ${INIT_TIMEOUT_MS}ms`)),
         INIT_TIMEOUT_MS,
-      ),
-    );
+      );
+    });
 
-    await Promise.race([connectionManager.initialize(input.instanceUrl), timeoutPromise]);
+    try {
+      await Promise.race([connectionManager.initialize(input.instanceUrl), timeoutPromise]);
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     // Check if we got full introspection or just REST
     const info = connectionManager.getInstanceInfo();
@@ -201,16 +206,8 @@ const connectionMachine = setup({
       lastSuccessAt: () => Date.now(),
       lastError: null,
     }),
-    recordFailure: assign({
-      consecutiveFailures: ({ context }) => context.consecutiveFailures + 1,
-      lastFailureAt: () => Date.now(),
-      lastError: (_, params: { error: string }) => params.error,
-    }),
     incrementReconnectAttempt: assign({
       reconnectAttempt: ({ context }) => context.reconnectAttempt + 1,
-    }),
-    resetReconnectAttempt: assign({
-      reconnectAttempt: 0,
     }),
   },
 }).createMachine({
@@ -422,6 +419,8 @@ export class HealthMonitor {
   /**
    * Register a callback for connection state changes.
    */
+  // Registered once from handlers.ts at startup (guarded by healthMonitorInitialized flag).
+  // No unregister needed — callbacks are cleared on shutdown().
   public onStateChange(callback: StateChangeCallback): void {
     this.stateChangeCallbacks.push(callback);
   }
@@ -606,7 +605,8 @@ export class HealthMonitor {
 
     for (const actor of this.actors.values()) {
       const state = this.getActorState(actor);
-      if (state === 'healthy' || state === 'degraded') {
+      // connecting = still trying, don't restrict tools yet
+      if (state === 'healthy' || state === 'degraded' || state === 'connecting') {
         return true;
       }
     }

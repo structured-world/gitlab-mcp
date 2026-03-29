@@ -149,7 +149,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   async initialize(): Promise<void> {
     try {
       // Dynamic import Prisma client to avoid initialization if not used
-      const prismaModule = (await import('../../../generated/prisma/client')) as {
+      const prismaModule = (await import('../../../generated/prisma/client')) as unknown as {
         PrismaClient: new (opts: Record<string, unknown>) => GenericPrismaClient;
       };
 

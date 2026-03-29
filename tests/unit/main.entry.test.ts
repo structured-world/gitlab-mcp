@@ -44,7 +44,7 @@ const mockStartServer = jest.fn<() => Promise<void>>();
 // Mock process.exit to prevent tests from actually exiting
 const mockExit = jest
   .spyOn(process, 'exit')
-  .mockImplementation((_code?: number) => undefined as never);
+  .mockImplementation((_code?: string | number | null | undefined) => undefined as never);
 
 describe('main entry point', () => {
   beforeEach(() => {

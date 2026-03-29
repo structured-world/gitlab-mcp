@@ -287,15 +287,18 @@ describe('ConnectionManager Unit', () => {
       let introspectionCallCount = 0;
 
       // Mock doIntrospection to simulate async work with observable side effects
-      jest.spyOn(manager as any, 'doIntrospection').mockImplementation(async (url: string) => {
-        introspectionCallCount++;
-        // Simulate async introspection delay
-        await new Promise((resolve) => setTimeout(resolve, 50));
-        // Set the results that ensureIntrospected expects
-        (manager as any).instanceInfo = { version: '17.0.0', tier: 'free' };
-        (manager as any).schemaInfo = { workItemWidgetTypes: [] };
-        (manager as any).introspectedInstanceUrl = url;
-      });
+      jest
+        .spyOn(manager as any, 'doIntrospection')
+        .mockImplementation(async (...args: unknown[]) => {
+          const url = args[0] as string;
+          introspectionCallCount++;
+          // Simulate async introspection delay
+          await new Promise((resolve) => setTimeout(resolve, 50));
+          // Set the results that ensureIntrospected expects
+          (manager as any).instanceInfo = { version: '17.0.0', tier: 'free' };
+          (manager as any).schemaInfo = { workItemWidgetTypes: [] };
+          (manager as any).introspectedInstanceUrl = url;
+        });
 
       // Fire 5 concurrent calls — should all share the same promise
       await Promise.all([
@@ -320,11 +323,14 @@ describe('ConnectionManager Unit', () => {
       (manager as any).schemaInfo = null;
       (manager as any).introspectedInstanceUrl = null;
 
-      jest.spyOn(manager as any, 'doIntrospection').mockImplementation(async (url: string) => {
-        (manager as any).instanceInfo = { version: '17.0.0', tier: 'free' };
-        (manager as any).schemaInfo = { workItemWidgetTypes: [] };
-        (manager as any).introspectedInstanceUrl = url;
-      });
+      jest
+        .spyOn(manager as any, 'doIntrospection')
+        .mockImplementation(async (...args: unknown[]) => {
+          const url = args[0] as string;
+          (manager as any).instanceInfo = { version: '17.0.0', tier: 'free' };
+          (manager as any).schemaInfo = { workItemWidgetTypes: [] };
+          (manager as any).introspectedInstanceUrl = url;
+        });
 
       await manager.ensureIntrospected();
 

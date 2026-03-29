@@ -1,0 +1,248 @@
+# Release Please — accumulative release PR workflow
+#
+# On every push to main:
+#   1. Creates/updates a release PR with version bump + CHANGELOG
+#   2. When the release PR is merged → creates GitHub release + tag
+#   3. Post-release: runs prepare-release.sh, publishes npm, Docker, MCPB, MCP Registry
+
+name: Release
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+
+env:
+  GHCR_REGISTRY: ghcr.io
+  IMAGE_NAME: structured-world/gitlab-mcp
+
+jobs:
+  # Job 1: Release Please — create/update release PR or create release
+  release-please:
+    name: Release Please
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    outputs:
+      release-created: ${{ steps.release.outputs.release_created }}
+      release-version: ${{ steps.release.outputs.version }}
+      release-tag: ${{ steps.release.outputs.tag_name }}
+      release-sha: ${{ steps.release.outputs.sha }}
+      pr-number: ${{ steps.release.outputs.pr }}
+
+    steps:
+      - name: Generate release token
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+
+  # Job 2: Post-release — update artifacts, publish everywhere
+  post-release:
+    name: Post-Release Publish
+    runs-on: ubuntu-latest
+    needs: release-please
+    if: needs.release-please.outputs.release-created == 'true'
+
+    permissions:
+      contents: write
+      packages: write
+      id-token: write  # npm provenance + MCP Registry OIDC
+
+    steps:
+      - name: Generate release token
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Checkout release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-please.outputs.release-tag }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install Yarn
+        run: corepack prepare yarn@4.12.0 --activate
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: yarn prisma generate
+
+      - name: Build project
+        run: yarn build
+
+      # Update dynamic artifacts (tool counts in server.json, README.md, package.json manifest)
+      - name: Run prepare-release script
+        run: ./scripts/prepare-release.sh "${{ needs.release-please.outputs.release-version }}"
+
+      - name: Commit release artifacts
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add server.json README.md package.json
+          if git diff --cached --quiet; then
+            echo "No artifact changes to commit"
+          else
+            git commit -m "chore(release): update release artifacts for v${{ needs.release-please.outputs.release-version }} [skip ci]"
+            git push origin HEAD:main
+            # Update the release tag to include artifact changes
+            git tag -f "${{ needs.release-please.outputs.release-tag }}"
+            git push origin "${{ needs.release-please.outputs.release-tag }}" --force
+          fi
+
+      # Publish to npm
+      - name: Publish to npm
+        run: yarn npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
+
+      # Build and upload MCPB bundle
+      - name: Build MCPB bundle
+        run: ./scripts/build-mcpb.sh "${{ needs.release-please.outputs.release-version }}"
+
+      - name: Upload MCPB to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.release-please.outputs.release-tag }}
+          files: gitlab-mcp-${{ needs.release-please.outputs.release-version }}.mcpb
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Publish Docker images
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ env.GHCR_REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=raw,value=${{ needs.release-please.outputs.release-version }}
+            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.release-version }}
+            type=semver,pattern={{major}},value=${{ needs.release-please.outputs.release-version }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            VERSION=${{ needs.release-please.outputs.release-version }}
+
+      # Publish to MCP Registry
+      - name: Install mcp-publisher
+        run: |
+          curl -fL -o mcp-publisher.tar.gz "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz"
+          tar xzf mcp-publisher.tar.gz mcp-publisher
+          test -x ./mcp-publisher || { echo "Error: mcp-publisher not found after extraction"; exit 1; }
+          rm -f mcp-publisher.tar.gz
+
+      - name: Download MCPB bundle from release
+        run: |
+          VERSION="${{ needs.release-please.outputs.release-version }}"
+          MCPB_URL="https://github.com/${{ github.repository }}/releases/download/${{ needs.release-please.outputs.release-tag }}/gitlab-mcp-${VERSION}.mcpb"
+          echo "Downloading MCPB from: ${MCPB_URL}"
+          sleep 5
+          curl -fL --retry 3 --retry-delay 10 -o "gitlab-mcp-${VERSION}.mcpb" "${MCPB_URL}"
+          ls -la "gitlab-mcp-${VERSION}.mcpb"
+
+      - name: Add MCPB entry to server.json
+        run: |
+          VERSION="${{ needs.release-please.outputs.release-version }}"
+          MCPB_FILE="gitlab-mcp-${VERSION}.mcpb"
+          MCPB_URL="https://github.com/${{ github.repository }}/releases/download/${{ needs.release-please.outputs.release-tag }}/${MCPB_FILE}"
+          SHA256=$(openssl dgst -sha256 "${MCPB_FILE}" | awk '{print $NF}')
+          echo "MCPB SHA256: ${SHA256}"
+
+          jq --arg url "$MCPB_URL" --arg sha "$SHA256" \
+            '.packages += [{"registryType": "mcpb", "identifier": $url, "fileSha256": $sha, "transport": {"type": "stdio"}}]' \
+            server.json > server.tmp
+          jq . server.tmp > /dev/null || { echo "Error: invalid JSON produced by jq"; exit 1; }
+          mv server.tmp server.json
+
+          echo "Final server.json:"
+          cat server.json
+
+      - name: Authenticate to MCP Registry (OIDC)
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish to MCP Registry
+        run: ./mcp-publisher publish
+
+  # Job 3: Summary
+  summary:
+    name: Release Summary
+    runs-on: ubuntu-latest
+    permissions: {}
+    needs: [release-please, post-release]
+    if: always()
+
+    steps:
+      - name: Summary
+        run: |
+          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          if [[ "${{ needs.release-please.outputs.release-created }}" == "true" ]]; then
+            echo "🚀 New version released: v${{ needs.release-please.outputs.release-version }}" >> $GITHUB_STEP_SUMMARY
+
+            if [[ "${{ needs.post-release.result }}" == "success" ]]; then
+              echo "✅ All publish steps completed" >> $GITHUB_STEP_SUMMARY
+              echo "📦 npm: @structured-world/gitlab-mcp@${{ needs.release-please.outputs.release-version }}" >> $GITHUB_STEP_SUMMARY
+              echo "🐳 Docker: ghcr.io/${{ env.IMAGE_NAME }}:${{ needs.release-please.outputs.release-version }}" >> $GITHUB_STEP_SUMMARY
+              echo "📦 MCPB: gitlab-mcp-${{ needs.release-please.outputs.release-version }}.mcpb" >> $GITHUB_STEP_SUMMARY
+              echo "🌐 MCP Registry: io.github.structured-world/gitlab-mcp" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "❌ Post-release publish failed" >> $GITHUB_STEP_SUMMARY
+            fi
+          elif [[ -n "${{ needs.release-please.outputs.pr-number }}" ]]; then
+            echo "📋 Release PR updated: #${{ needs.release-please.outputs.pr-number }}" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "ℹ️ No release-worthy changes detected" >> $GITHUB_STEP_SUMMARY
+          fi

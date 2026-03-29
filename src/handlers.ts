@@ -351,6 +351,23 @@ export async function setupHandlers(server: Server): Promise<void> {
         };
       }
 
+      // Context tools (manage_context) can run without a GitLab connection —
+      // skip connection bootstrap when disconnected/failed to avoid throwing
+      // on getClient()/initialize() during cold disconnected start.
+      if (
+        toolName === 'manage_context' &&
+        !healthMonitor.isInstanceReachable(effectiveInstanceUrl)
+      ) {
+        const { RegistryManager } = await import('./registry-manager');
+        const registryManager = RegistryManager.getInstance();
+        if (registryManager.hasToolHandler(toolName)) {
+          const result = await registryManager.executeTool(toolName, request.params.arguments);
+          return {
+            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
+          };
+        }
+      }
+
       // Check if connection is initialized - try to initialize if needed
       const connectionManager = ConnectionManager.getInstance();
       const oauthMode = isOAuthEnabled();
@@ -497,6 +514,16 @@ export async function setupHandlers(server: Server): Promise<void> {
         const timeoutError = createTimeoutError(toolName, action, HANDLER_TIMEOUT_MS, retryable);
 
         logError(`Handler timeout: tool '${toolName}' timed out after ${HANDLER_TIMEOUT_MS}ms`);
+
+        // Report timeout to health monitor as transient failure
+        // Note: the timed-out handlerWork() may still call reportSuccess() later,
+        // but that's acceptable — it just resets counters, and the timeout was already reported.
+        const { getGitLabApiUrlFromContext } = await import('./oauth/index');
+        const timedOutInstanceUrl = getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL;
+        HealthMonitor.getInstance().reportError(
+          timedOutInstanceUrl,
+          new Error(`Handler timeout after ${HANDLER_TIMEOUT_MS}ms`),
+        );
 
         return {
           content: [

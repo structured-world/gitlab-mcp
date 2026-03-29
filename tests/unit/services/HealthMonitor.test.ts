@@ -4,8 +4,9 @@
  * Tests state machine transitions, backoff calculation, error classification integration,
  * and multi-instance tracking.
  *
- * NOTE: XState v5 actors use internal microtask scheduling. Most tests use real timers
- * and rely on short test config values. Only the timeout test uses fake timers.
+ * NOTE: XState v5 actors use internal microtask scheduling. All tests use real timers
+ * with short config values (INIT_TIMEOUT_MS=200ms, RECONNECT_BASE_DELAY_MS=100ms,
+ * HEALTH_CHECK_INTERVAL_MS=300ms) to exercise time-dependent behavior without fake timers.
  */
 
 import { HealthMonitor, calculateBackoffDelay } from '../../../src/services/HealthMonitor';
@@ -144,10 +145,15 @@ describe('HealthMonitor', () => {
       expect(monitor.getState('https://gitlab.example.com')).toBe('failed');
       expect(monitor.isAnyInstanceHealthy()).toBe(false);
 
-      // Wait to verify no auto-reconnect happens (unlike disconnected)
+      // Record call count after initial connect attempt
+      const callCountAfterInit = mockInitialize.mock.calls.length;
+
+      // Wait past reconnect delay to verify no auto-reconnect happens
       await new Promise((r) => setTimeout(r, 300));
-      // Still failed — no reconnect attempt
+
+      // Still failed — no reconnect attempt, initialize not called again
       expect(monitor.getState('https://gitlab.example.com')).toBe('failed');
+      expect(mockInitialize.mock.calls.length).toBe(callCountAfterInit);
     });
 
     it('should transition to failed on config error (no auto-reconnect)', async () => {
@@ -159,6 +165,11 @@ describe('HealthMonitor', () => {
       await monitor.initialize('https://gitlab.example.com');
 
       expect(monitor.getState('https://gitlab.example.com')).toBe('failed');
+
+      // Verify no reconnect calls
+      const callCountAfterInit = mockInitialize.mock.calls.length;
+      await new Promise((r) => setTimeout(r, 300));
+      expect(mockInitialize.mock.calls.length).toBe(callCountAfterInit);
     });
 
     it('should allow manual reconnect from failed state via forceReconnect', async () => {

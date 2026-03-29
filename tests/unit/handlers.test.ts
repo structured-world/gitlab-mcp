@@ -504,6 +504,29 @@ describe('handlers', () => {
       mockHealthMonitor.getState.mockReturnValue('healthy');
     });
 
+    it('should return CONNECTION_FAILED with auth hint when state is failed', async () => {
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.getState.mockReturnValue('failed');
+
+      const result = await callToolHandler({
+        params: {
+          name: 'browse_projects',
+          arguments: { action: 'list' },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content[0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      expect(parsed.reconnecting).toBe(false);
+      expect(parsed.message).toContain('authentication or configuration error');
+      expect(parsed.suggested_fix).toContain('GITLAB_TOKEN');
+
+      // Restore
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+    });
+
     it('should report success to health monitor after successful tool execution', async () => {
       mockRegistryManager.executeTool.mockResolvedValue({ ok: true });
 

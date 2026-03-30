@@ -289,7 +289,9 @@ const connectionMachine = setup({
             },
             TOOL_FAILURE: [
               {
-                // Non-transient errors don't affect connection health
+                // Only transient errors (network, 5xx) affect connection health.
+                // Auth errors (401/403) during tool calls are intentionally ignored here —
+                // mid-session token revocation requires authenticated health checks (#370).
                 guard: {
                   type: 'isTransient',
                   params: ({ event }) => ({ category: event.category }),

@@ -88,7 +88,7 @@ The server handles GitLab connectivity issues gracefully:
 - **Bounded startup** — Server starts within `GITLAB_INIT_TIMEOUT_MS` (default 5s) regardless of GitLab availability
 - **Disconnected mode** — When GitLab is unreachable, only `manage_context` tool is exposed (for diagnostics via `whoami`). MCP clients are notified via `tools/list_changed`
 - **Auto-reconnect** — Exponential backoff reconnection (5s → 60s) with ±10% jitter
-- **Error classification** — Only transient errors (network, 5xx, timeouts) trigger health transitions. Auth errors (401/403) and client errors (404, 422) do not
+- **Error classification** — Only transient errors (network, 5xx, timeouts) trigger health transitions. Auth errors (401/403) and client errors (404, 422) do not trigger retries or health state transitions
 - **Per-instance health** — Each GitLab instance is monitored independently with its own state machine
 
 | Variable | Default | Description |

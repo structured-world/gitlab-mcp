@@ -391,6 +391,44 @@ export const HANDLER_TIMEOUT_MS =
     ? parsedHandlerTimeoutMs
     : 120000;
 
+// === Connection health monitoring ===
+// Startup initialization timeout — how long to wait for GitLab during server startup
+// If exceeded, server starts in disconnected mode and retries in background
+const parsedInitTimeoutMs = parseInt(process.env.GITLAB_INIT_TIMEOUT_MS ?? '5000', 10);
+export const INIT_TIMEOUT_MS =
+  Number.isFinite(parsedInitTimeoutMs) && parsedInitTimeoutMs > 0 ? parsedInitTimeoutMs : 5000;
+
+// Reconnect backoff: base delay (doubles each attempt up to max)
+const parsedReconnectBaseDelay = parseInt(process.env.GITLAB_RECONNECT_BASE_DELAY_MS ?? '5000', 10);
+export const RECONNECT_BASE_DELAY_MS =
+  Number.isFinite(parsedReconnectBaseDelay) && parsedReconnectBaseDelay > 0
+    ? parsedReconnectBaseDelay
+    : 5000;
+
+// Reconnect backoff: maximum delay between attempts
+const parsedReconnectMaxDelay = parseInt(process.env.GITLAB_RECONNECT_MAX_DELAY_MS ?? '60000', 10);
+export const RECONNECT_MAX_DELAY_MS =
+  Number.isFinite(parsedReconnectMaxDelay) && parsedReconnectMaxDelay > 0
+    ? parsedReconnectMaxDelay
+    : 60000;
+
+// Health check interval when connection is healthy (light ping)
+const parsedHealthCheckInterval = parseInt(
+  process.env.GITLAB_HEALTH_CHECK_INTERVAL_MS ?? '60000',
+  10,
+);
+export const HEALTH_CHECK_INTERVAL_MS =
+  Number.isFinite(parsedHealthCheckInterval) && parsedHealthCheckInterval > 0
+    ? parsedHealthCheckInterval
+    : 60000;
+
+// Consecutive transient failures before transitioning to DISCONNECTED
+const parsedFailureThreshold = parseInt(process.env.GITLAB_FAILURE_THRESHOLD ?? '3', 10);
+export const FAILURE_THRESHOLD =
+  Number.isFinite(parsedFailureThreshold) && parsedFailureThreshold > 0
+    ? parsedFailureThreshold
+    : 3;
+
 // === Connection pool configuration ===
 // Max HTTP connections per GitLab instance (default: 25, up from 10)
 const parsedPoolMaxConnections = parseInt(process.env.GITLAB_POOL_MAX_CONNECTIONS ?? '25', 10);

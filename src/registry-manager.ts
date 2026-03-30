@@ -59,6 +59,7 @@ import {
 } from './config';
 import { ToolAvailability } from './services/ToolAvailability';
 import { ConnectionManager } from './services/ConnectionManager';
+import { HealthMonitor } from './services/HealthMonitor';
 import { isToolAvailableForScopes } from './services/TokenScopeDetector';
 import type { GitLabScope } from './services/TokenScopeDetector';
 import type { GitLabTier } from './services/GitLabVersionDetector';
@@ -289,6 +290,25 @@ class RegistryManager {
   private buildToolLookupCache(): void {
     this.toolLookupCache.clear();
 
+    // Connection health filter: when all MONITORED instances are disconnected,
+    // only expose context tools (manage_context for diagnostics like whoami).
+    // Note: this is a global cache filter. In multi-instance OAuth mode, untracked
+    // instances are assumed reachable at the handler level (isInstanceReachable),
+    // so per-request tool calls still go through for healthy unmonitored instances.
+    let disconnectedMode = false;
+    try {
+      const healthMonitor = HealthMonitor.getInstance();
+      if (
+        healthMonitor.getMonitoredInstances().length > 0 &&
+        !healthMonitor.isAnyInstanceHealthy()
+      ) {
+        disconnectedMode = true;
+        logDebug('Building tool cache in disconnected mode — only context tools available');
+      }
+    } catch {
+      // HealthMonitor not initialized yet (first cache build during constructor)
+    }
+
     // Pre-fetch instance info once per cache build to avoid redundant calls
     let instanceInfo: { tier: GitLabTier; version: string } | undefined;
     try {
@@ -309,7 +329,12 @@ class RegistryManager {
       // Connection not initialized - scope filtering won't apply
     }
 
-    for (const registry of this.registries.values()) {
+    for (const [registryName, registry] of this.registries) {
+      // In disconnected mode, only include context tools
+      if (disconnectedMode && registryName !== 'context') {
+        continue;
+      }
+
       for (const [toolName, tool] of registry) {
         // Apply GITLAB_READ_ONLY_MODE filtering at registry level
         if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) {

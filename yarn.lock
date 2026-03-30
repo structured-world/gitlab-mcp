@@ -2164,6 +2164,7 @@ __metadata:
     typescript: "npm:^6.0.2"
     undici: "npm:^7.24.6"
     vitepress: "npm:^1.6.4"
+    xstate: "npm:^5"
     yaml: "npm:^2.8.3"
     zod: "npm:^4.3.6"
   bin:
@@ -8558,6 +8559,13 @@ __metadata:
     is-wsl: "npm:^3.1.0"
     powershell-utils: "npm:^0.1.0"
   checksum: 10c0/b3ba99cc6b71f66457eef598d529beeb8cb57a72646877fe25993894b808c60b82f6d47df5463f0b6e54632272f62f5eaea105c12784fd09b06f500f3f53aa2e
+  languageName: node
+  linkType: hard
+
+"xstate@npm:^5":
+  version: 5.30.0
+  resolution: "xstate@npm:5.30.0"
+  checksum: 10c0/4c41be815bea6c62492952f813f363d8c630364010fdfd3be73b43b4eecaa9da3548e0b30d058c28f861c386d705b024815692ae654555cd1048dbba0ca5184f
   languageName: node
   linkType: hard
 

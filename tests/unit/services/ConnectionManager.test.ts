@@ -77,6 +77,10 @@ describe('ConnectionManager Unit', () => {
     it('should throw error when getting schema info before initialization', () => {
       expect(() => manager.getSchemaInfo()).toThrow(errorMessage);
     });
+
+    it('should return false from isConnected before initialization', () => {
+      expect(manager.isConnected()).toBe(false);
+    });
   });
 
   describe('refreshTokenScopes', () => {

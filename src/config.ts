@@ -398,6 +398,9 @@ export const HANDLER_TIMEOUT_MS =
     : 120000;
 
 // === Connection health monitoring ===
+// Node.js setTimeout max is 2^31-1 (≈24.8 days). All defaults are well under this.
+// User-configurable values are validated with isFinite + > 0 checks below.
+
 // Startup initialization timeout — how long to wait for GitLab during server startup
 // If exceeded, server starts in disconnected mode and retries in background
 const parsedInitTimeoutMs = Number.parseInt(process.env.GITLAB_INIT_TIMEOUT_MS ?? '5000', 10);

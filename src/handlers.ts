@@ -206,9 +206,9 @@ export async function setupHandlers(server: Server): Promise<void> {
           });
         }
 
-        // Initializes with default GITLAB_BASE_URL. OAuth multi-instance URLs
-        // are tracked lazily via reportSuccess/reportError when tool calls arrive.
-        // Untracked URLs pass through isInstanceReachable() as "assume reachable".
+        // Initializes with default GITLAB_BASE_URL only. OAuth multi-instance
+        // URLs are NOT auto-tracked — reportSuccess/reportError are no-ops for
+        // untracked URLs. Untracked URLs pass isInstanceReachable() as reachable.
         await healthMonitor.initialize();
         const state = healthMonitor.getState();
         logInfo('Connection health monitor initialized', { state });
@@ -653,9 +653,16 @@ export async function setupHandlers(server: Server): Promise<void> {
       // original and a client retry could complete). Idempotent tools (browse_*,
       // list_*, get_*) are safe to race.
       const toolName = request.params.name;
-      const result = isIdempotentOperation(toolName)
-        ? await Promise.race([handlerWork(), timeoutPromise])
-        : await handlerWork();
+      let result: Awaited<ReturnType<typeof handlerWork>> | typeof HANDLER_TIMEOUT_SYMBOL;
+      if (isIdempotentOperation(toolName)) {
+        result = await Promise.race([handlerWork(), timeoutPromise]);
+      } else {
+        // Non-idempotent: skip Promise.race to avoid duplicate mutations.
+        // Clear the timer so it doesn't set timedOut=true and suppress
+        // late reportSuccess/reportError for legitimately slow operations.
+        result = await handlerWork();
+        clearTimeout(handlerTimeoutId);
+      }
 
       if (result === HANDLER_TIMEOUT_SYMBOL) {
         // timedOut already set in timer callback — handler is still running but we respond

@@ -275,8 +275,9 @@ describe('ConnectionManager Enhanced Tests', () => {
       // Second initialization should use cached introspection data
       await connectionManager.initialize();
 
-      // Should only call detectInstance once total (second init used cache)
+      // Should only call detectInstance/introspectSchema once total (second init used cache)
       expect(mockVersionDetector.detectInstance).toHaveBeenCalledTimes(1);
+      expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalledTimes(1);
     });
 
     it('should fetch fresh data when cache is expired', async () => {

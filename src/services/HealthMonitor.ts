@@ -718,7 +718,8 @@ export class HealthMonitor {
   }
 
   /**
-   * Check if at least one monitored instance is healthy or degraded.
+   * Check if at least one monitored instance is healthy, degraded, or connecting.
+   * Connecting is included to avoid context-only tools/list during startup.
    * Used by registry-manager to decide tool filtering.
    */
   public isAnyInstanceHealthy(): boolean {

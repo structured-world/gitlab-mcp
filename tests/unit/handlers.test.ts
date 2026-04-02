@@ -493,7 +493,8 @@ describe('handlers', () => {
       expect(parsed.error_code).toBe('CONNECTION_FAILED');
       expect(parsed.tool).toBe('browse_projects');
       expect(parsed.action).toBe('list');
-      expect(parsed.reconnecting).toBe(false);
+      // disconnected = transient, auto-reconnect in progress
+      expect(parsed.reconnecting).toBe(true);
 
       // Restore
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);

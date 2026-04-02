@@ -962,7 +962,7 @@ describe('createConnectionFailedError', () => {
   it('should create error for disconnected state (will retry)', () => {
     const error = createConnectionFailedError('manage_project', 'update', url, 'disconnected');
     expect(error.error_code).toBe('CONNECTION_FAILED');
-    expect(error.reconnecting).toBe(false);
+    expect(error.reconnecting).toBe(true);
     expect(error.message).toContain('Connection will be retried automatically');
     expect(error.suggested_fix).toContain('network connectivity');
   });

@@ -19,6 +19,7 @@ const mockGetInstanceInfo = jest.fn();
 const mockGetSchemaInfo = jest.fn();
 const mockGetClient = jest.fn();
 const mockGetCurrentInstanceUrl = jest.fn();
+const mockClearInflight = jest.fn();
 jest.mock('../../../src/services/ConnectionManager', () => ({
   ConnectionManager: {
     getInstance: () => ({
@@ -28,20 +29,20 @@ jest.mock('../../../src/services/ConnectionManager', () => ({
       getSchemaInfo: mockGetSchemaInfo,
       getCurrentInstanceUrl: mockGetCurrentInstanceUrl,
       getClient: mockGetClient,
-      clearInflight: jest.fn(),
+      clearInflight: mockClearInflight,
     }),
   },
 }));
 
-// Mock InstanceRegistry
 // Mock InstanceRegistry — configurable per test via mockRegistryIsInitialized/mockGetIntrospection
 const mockRegistryIsInitialized = jest.fn().mockReturnValue(false);
 const mockGetIntrospection = jest.fn().mockReturnValue(null);
+const mockUpdateConnectionStatus = jest.fn();
 jest.mock('../../../src/services/InstanceRegistry', () => ({
   InstanceRegistry: {
     getInstance: () => ({
       isInitialized: mockRegistryIsInitialized,
-      updateConnectionStatus: jest.fn(),
+      updateConnectionStatus: mockUpdateConnectionStatus,
       getIntrospection: mockGetIntrospection,
     }),
   },
@@ -190,6 +191,9 @@ describe('HealthMonitor', () => {
 
       const monitor = await initMonitor();
       expect(monitor.getState(TEST_URL)).toBe('disconnected');
+
+      // clearInflight should have been called with the instance URL to release hung promise
+      expect(mockClearInflight).toHaveBeenCalledWith(TEST_URL);
 
       const callsAfterTimeout = mockInitialize.mock.calls.length;
 
@@ -658,6 +662,34 @@ describe('HealthMonitor', () => {
       const monitor = await initMonitor();
 
       expect(monitor.getState(TEST_URL)).toBe('degraded');
+    });
+  });
+
+  describe('InstanceRegistry integration', () => {
+    it('should update InstanceRegistry when registry is initialized', async () => {
+      // Enable InstanceRegistry mock
+      mockRegistryIsInitialized.mockReturnValue(true);
+
+      mockIsConnected.mockReturnValue(true);
+      mockFetch.mockResolvedValue({ status: 200, ok: true });
+      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+
+      const monitor = await initMonitor();
+
+      expect(monitor.getState(TEST_URL)).toBe('healthy');
+      // InstanceRegistry.updateConnectionStatus should have been called with 'healthy'
+      expect(mockUpdateConnectionStatus).toHaveBeenCalledWith(TEST_URL, 'healthy');
+    });
+
+    it('should map disconnected state to offline in InstanceRegistry', async () => {
+      mockRegistryIsInitialized.mockReturnValue(true);
+      // Init fails → disconnected
+      mockInitialize.mockRejectedValue(new Error('ECONNREFUSED'));
+
+      const monitor = await initMonitor();
+
+      expect(monitor.getState(TEST_URL)).toBe('disconnected');
+      expect(mockUpdateConnectionStatus).toHaveBeenCalledWith(TEST_URL, 'offline');
     });
   });
 

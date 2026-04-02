@@ -180,6 +180,35 @@ describe('handlers', () => {
       mockHealthMonitor.isAnyInstanceHealthy.mockReturnValue(true);
       mockHealthMonitor.getMonitoredInstances.mockReturnValue(['https://gitlab.example.com']);
     });
+
+    it('should return context-only tools when disconnected', async () => {
+      // Simulate disconnected state
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
+      mockHealthMonitor.isAnyInstanceHealthy.mockReturnValue(false);
+      mockHealthMonitor.getMonitoredInstances.mockReturnValue(['https://gitlab.example.com']);
+
+      // getAllToolDefinitions in disconnected mode returns only context tools
+      mockRegistryManager.getAllToolDefinitions.mockReturnValue([
+        {
+          name: 'manage_context',
+          description: 'Context management tool',
+          inputSchema: { type: 'object', properties: {} },
+        },
+      ]);
+
+      await setupHandlers(mockServer);
+      const handler = mockServer.setRequestHandler.mock.calls[0][1] as McpHandler;
+      const result = await handler({ method: 'tools/list' }, {});
+
+      // Only context tools should be returned when disconnected
+      expect(result.tools).toHaveLength(1);
+      expect(result.tools![0].name).toBe('manage_context');
+
+      // Restore
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+      mockHealthMonitor.isAnyInstanceHealthy.mockReturnValue(true);
+      mockHealthMonitor.getMonitoredInstances.mockReturnValue(['https://gitlab.example.com']);
+    });
   });
 
   describe('list tools handler', () => {
@@ -376,6 +405,34 @@ describe('handlers', () => {
       const parsed = JSON.parse(result.content![0].text);
       expect(parsed.error_code).toBe('CONNECTION_FAILED');
       expect(parsed.tool).toBe('test_tool');
+
+      // Restore
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+    });
+
+    it('should return CONNECTION_FAILED with reconnecting=false on auth error', async () => {
+      // Simulate uninitialized + auth failure (401)
+      mockConnectionManager.isConnected.mockReturnValue(false);
+      mockConnectionManager.initialize.mockRejectedValue(
+        new Error('GitLab API error: 401 Unauthorized'),
+      );
+
+      const mockRequest = {
+        params: {
+          name: 'test_tool',
+          arguments: { action: 'list' },
+        },
+      };
+
+      const result = await callToolHandler(mockRequest);
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      expect(parsed.tool).toBe('test_tool');
+      // Auth errors → failed state → no auto-reconnect
+      expect(parsed.reconnecting).toBe(false);
 
       // Restore
       mockConnectionManager.isConnected.mockReturnValue(true);

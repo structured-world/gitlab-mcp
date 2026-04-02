@@ -690,6 +690,9 @@ class RegistryManager {
   }
 
   /** True when monitored instances exist but none are healthy/degraded */
+  // isAnyInstanceHealthy() returns true for healthy, degraded, AND connecting states
+  // (connecting is optimistic during startup). Unreachable = all instances are
+  // disconnected or failed (no healthy/degraded/connecting).
   private isUnreachableMode(): boolean {
     try {
       const healthMonitor = HealthMonitor.getInstance();

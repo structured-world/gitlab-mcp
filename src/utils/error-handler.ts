@@ -1112,9 +1112,14 @@ export function classifyError(error: unknown): ErrorCategory {
 
   const message = error.message.toLowerCase();
   const code = (error as Error & { code?: string }).code;
+  // Node.js/Undici wraps network errors as TypeError('fetch failed') with
+  // the original error (containing .code) on error.cause
+  const causeCode = (error as Error & { cause?: { code?: string } }).cause?.code;
 
-  // Check error code first (most reliable for network errors)
-  if (code && TRANSIENT_ERROR_CODES.has(code)) {
+  // Check error code first (most reliable for network errors).
+  // Also check cause.code — Undici wraps network errors as TypeError('fetch failed')
+  const effectiveCode = code ?? causeCode;
+  if (effectiveCode && TRANSIENT_ERROR_CODES.has(effectiveCode)) {
     return 'transient';
   }
 

@@ -113,6 +113,17 @@ describe('HealthMonitor', () => {
     return monitor;
   }
 
+  /** Set up mocks for "already connected" scenario */
+  function setupConnectedState(
+    version: string,
+    tier: string,
+    fetchStatus: { status: number; ok: boolean } = { status: 200, ok: true },
+  ): void {
+    mockIsConnected.mockReturnValue(true);
+    mockFetch.mockResolvedValue(fetchStatus);
+    mockGetInstanceInfo.mockReturnValue({ version, tier });
+  }
+
   describe('singleton pattern', () => {
     it('should return the same instance', () => {
       const a = HealthMonitor.getInstance();
@@ -552,17 +563,6 @@ describe('HealthMonitor', () => {
   });
 
   describe('already connected path', () => {
-    /** Set up mocks for "already connected" scenario */
-    function setupConnectedState(
-      version: string,
-      tier: string,
-      fetchStatus: { status: number; ok: boolean } = { status: 200, ok: true },
-    ): void {
-      mockIsConnected.mockReturnValue(true);
-      mockFetch.mockResolvedValue(fetchStatus);
-      mockGetInstanceInfo.mockReturnValue({ version, tier });
-    }
-
     it('should return degraded when connected but getInstanceInfo throws', async () => {
       mockIsConnected.mockReturnValue(true);
       mockFetch.mockResolvedValue({ status: 200, ok: true });
@@ -611,13 +611,6 @@ describe('HealthMonitor', () => {
   });
 
   describe('per-instance degraded detection', () => {
-    /** Set up mocks for "already connected" scenario */
-    function setupConnectedState(version: string, tier: string): void {
-      mockIsConnected.mockReturnValue(true);
-      mockFetch.mockResolvedValue({ status: 200, ok: true });
-      mockGetInstanceInfo.mockReturnValue({ version, tier });
-    }
-
     it('should use singleton getInstanceInfo when InstanceRegistry has no data', async () => {
       // isConnected = true, health check passes, no InstanceRegistry data → singleton fallback
       setupConnectedState('17.0', 'premium');
@@ -628,16 +621,16 @@ describe('HealthMonitor', () => {
       expect(monitor.getState(TEST_URL)).toBe('healthy');
     });
 
-    it.each([
-      ['unknown', 'free'],
-      ['unknown', 'free'], // duplicated intentionally — second block's "derive degraded" was identical
-    ])('should detect degraded when version is %s (tier: %s)', async (version, tier) => {
-      setupConnectedState(version, tier);
+    it.each([['unknown', 'free']])(
+      'should detect degraded when version is %s (tier: %s)',
+      async (version, tier) => {
+        setupConnectedState(version, tier);
 
-      const monitor = await initMonitor();
+        const monitor = await initMonitor();
 
-      expect(monitor.getState(TEST_URL)).toBe('degraded');
-    });
+        expect(monitor.getState(TEST_URL)).toBe('degraded');
+      },
+    );
 
     it('should detect degraded when version is known but schema is missing', async () => {
       // REST-only/OAuth-deferred: has real version but no schema introspection
@@ -905,14 +898,14 @@ describe('calculateBackoffDelay', () => {
   });
 });
 
-describe('classifyError', () => {
-  /** Helper to create an Error with an optional `.code` property */
-  function errorWithCode(message: string, code?: string): Error {
-    const err = new Error(message);
-    if (code) (err as Error & { code: string }).code = code;
-    return err;
-  }
+/** Helper to create an Error with an optional `.code` property */
+function errorWithCode(message: string, code?: string): Error {
+  const err = new Error(message);
+  if (code) (err as Error & { code: string }).code = code;
+  return err;
+}
 
+describe('classifyError', () => {
   // HTTP status codes
   it.each<{ label: string; message: string; expected: string }>([
     { label: '401 → auth', message: 'GitLab API error: 401 Unauthorized', expected: 'auth' },

@@ -503,20 +503,24 @@ export async function setupHandlers(server: Server): Promise<void> {
             request.params.arguments && typeof request.params.arguments.action === 'string'
               ? request.params.arguments.action
               : 'unknown';
-          // Use error classification to determine state — for untracked URLs,
-          // getState() defaults to 'disconnected' which maps to reconnecting=true.
-          // This is acceptable: bootstrap always runs initialize() which registers
-          // the URL with HealthMonitor, so untracked URLs only occur on first-ever
-          // call before the actor exists. The 'auth' override below catches the
-          // permanent case (401 → failed → reconnecting=false).
+          // Use error classification together with HealthMonitor state to determine
+          // the derived connection state. For untracked URLs, getState() falls back
+          // to 'disconnected', so we must not rely on that alone — otherwise
+          // permanent/auth failures would incorrectly appear retriable.
           const errorCategory = initError instanceof Error ? classifyError(initError) : 'permanent';
-          const rawDerivedState =
-            errorCategory === 'auth' ? 'failed' : healthMonitor.getState(effectiveInstanceUrl);
-          // Map to the three states createConnectionFailedError handles
-          const derivedState: 'connecting' | 'disconnected' | 'failed' =
-            rawDerivedState === 'connecting' || rawDerivedState === 'failed'
-              ? rawDerivedState
-              : 'disconnected';
+          const monitorState = healthMonitor.getState(effectiveInstanceUrl);
+          // Prefer explicit monitor states when available; otherwise derive from
+          // the error category:
+          // - auth/permanent → failed (no auto-retry)
+          // - transient/other → disconnected (retriable)
+          let derivedState: 'connecting' | 'disconnected' | 'failed';
+          if (monitorState === 'connecting' || monitorState === 'failed') {
+            derivedState = monitorState;
+          } else if (errorCategory === 'auth' || errorCategory === 'permanent') {
+            derivedState = 'failed';
+          } else {
+            derivedState = 'disconnected';
+          }
           const connError = createConnectionFailedError(
             toolName,
             action,

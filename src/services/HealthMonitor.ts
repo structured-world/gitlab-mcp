@@ -229,6 +229,10 @@ async function quickHealthCheck(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    // enhancedFetch respects proxy/TLS/custom CA settings. In OAuth mode it
+    // logs a warning about missing token context — harmless for health probes
+    // since 401 still confirms the server is alive. Suppressing the warning
+    // requires adding skipAuth to enhancedFetch (#379 scope).
     const response = await enhancedFetch(`${instanceUrl}/api/v4/version`, {
       method: 'HEAD',
       signal: controller.signal,
@@ -240,6 +244,9 @@ async function quickHealthCheck(
     // a responding HTTP endpoint — actual GitLab API errors are caught at tool level.
     return response.status < 500;
   } catch {
+    // Intentionally swallows the error — health checks are lightweight probes.
+    // Error classification (transient vs permanent) happens in performConnect
+    // during the full init/reconnect path, not during periodic probes.
     return false;
   } finally {
     clearTimeout(timeoutId);

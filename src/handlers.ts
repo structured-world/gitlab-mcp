@@ -336,11 +336,15 @@ export async function setupHandlers(server: Server): Promise<void> {
     // Capture instance URL early — used for both handlerWork and timeout reporting.
     // Must be resolved before Promise.race so timeout branch doesn't re-derive a
     // potentially different URL after a concurrent switch_instance.
-    const { getGitLabApiUrlFromContext: getUrlFromCtx } = await import('./oauth/index');
-    // In OAuth mode, use the per-request context URL. Fall back to the static
-    // GITLAB_BASE_URL rather than getCurrentInstanceUrl() which reflects the
-    // last-set URL and could bleed across concurrent OAuth sessions.
-    const requestInstanceUrl = getUrlFromCtx() ?? GITLAB_BASE_URL;
+    const { getGitLabApiUrlFromContext: getUrlFromCtx, isOAuthEnabled } =
+      await import('./oauth/index');
+    // In OAuth mode, use the per-request context URL to avoid bleeding the
+    // last-set ConnectionManager instance across concurrent OAuth sessions.
+    // In static-token mode, prefer the actively selected instance URL so
+    // switch_instance requests continue routing to the current instance.
+    const requestInstanceUrl = isOAuthEnabled()
+      ? (getUrlFromCtx() ?? GITLAB_BASE_URL)
+      : (ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL);
 
     // Flag to prevent late reportSuccess/reportError from a timed-out handlerWork()
     // overwriting the timeout signal already sent to HealthMonitor.

@@ -550,6 +550,17 @@ describe('HealthMonitor', () => {
   });
 
   describe('already connected path', () => {
+    /** Set up mocks for "already connected" scenario */
+    function setupConnectedState(
+      version: string,
+      tier: string,
+      fetchStatus: { status: number; ok: boolean } = { status: 200, ok: true },
+    ): void {
+      mockIsConnected.mockReturnValue(true);
+      mockFetch.mockResolvedValue(fetchStatus);
+      mockGetInstanceInfo.mockReturnValue({ version, tier });
+    }
+
     it('should return degraded when connected but getInstanceInfo throws', async () => {
       mockIsConnected.mockReturnValue(true);
       mockFetch.mockResolvedValue({ status: 200, ok: true });
@@ -564,9 +575,7 @@ describe('HealthMonitor', () => {
     });
 
     it('should verify with health check when already connected', async () => {
-      mockIsConnected.mockReturnValue(true);
-      mockFetch.mockResolvedValue({ status: 200, ok: true });
-      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+      setupConnectedState('17.0', 'premium');
 
       const monitor = await initMonitor();
 
@@ -591,8 +600,7 @@ describe('HealthMonitor', () => {
     });
 
     it('should disconnect when already connected but health check fails', async () => {
-      mockIsConnected.mockReturnValue(true);
-      mockFetch.mockResolvedValue({ status: 502, ok: false });
+      setupConnectedState('17.0', 'premium', { status: 502, ok: false });
 
       const monitor = await initMonitor();
 
@@ -601,11 +609,16 @@ describe('HealthMonitor', () => {
   });
 
   describe('per-instance degraded detection', () => {
-    it('should use singleton getInstanceInfo when InstanceRegistry has no data', async () => {
-      // isConnected = true, health check passes, no InstanceRegistry data → singleton fallback
+    /** Set up mocks for "already connected" scenario */
+    function setupConnectedState(version: string, tier: string): void {
       mockIsConnected.mockReturnValue(true);
       mockFetch.mockResolvedValue({ status: 200, ok: true });
-      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+      mockGetInstanceInfo.mockReturnValue({ version, tier });
+    }
+
+    it('should use singleton getInstanceInfo when InstanceRegistry has no data', async () => {
+      // isConnected = true, health check passes, no InstanceRegistry data → singleton fallback
+      setupConnectedState('17.0', 'premium');
 
       const monitor = await initMonitor();
 
@@ -613,23 +626,20 @@ describe('HealthMonitor', () => {
       expect(monitor.getState(TEST_URL)).toBe('healthy');
     });
 
-    it('should detect degraded from per-URL getInstanceInfo when version is unknown', async () => {
-      // Per-URL state has version=unknown → degraded
-      mockIsConnected.mockReturnValue(true);
-      mockFetch.mockResolvedValue({ status: 200, ok: true });
-      mockGetInstanceInfo.mockReturnValue({ version: 'unknown', tier: 'free' });
+    it.each([
+      ['unknown', 'free'],
+      ['unknown', 'free'], // duplicated intentionally — second block's "derive degraded" was identical
+    ])('should detect degraded when version is %s (tier: %s)', async (version, tier) => {
+      setupConnectedState(version, tier);
 
       const monitor = await initMonitor();
 
-      // Should be degraded because getInstanceInfo(url) returns version=unknown
       expect(monitor.getState(TEST_URL)).toBe('degraded');
     });
 
     it('should detect degraded when version is known but schema is missing', async () => {
       // REST-only/OAuth-deferred: has real version but no schema introspection
-      mockIsConnected.mockReturnValue(true);
-      mockFetch.mockResolvedValue({ status: 200, ok: true });
-      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+      setupConnectedState('17.0', 'premium');
       mockGetSchemaInfo.mockImplementation(() => {
         throw new Error('Connection not initialized');
       });
@@ -641,10 +651,7 @@ describe('HealthMonitor', () => {
     });
 
     it('should derive healthy when version is known and schema present', async () => {
-      mockIsConnected.mockReturnValue(true);
-      mockFetch.mockResolvedValue({ status: 200, ok: true });
-      // Both getInstanceInfo and getSchemaInfo return valid data
-      mockGetInstanceInfo.mockReturnValue({ version: '17.5', tier: 'premium' });
+      setupConnectedState('17.5', 'premium');
 
       const monitor = await initMonitor();
 
@@ -652,16 +659,6 @@ describe('HealthMonitor', () => {
       // Verify per-URL getInstanceInfo was called (not InstanceRegistry fallback)
       expect(mockGetInstanceInfo).toHaveBeenCalledWith(TEST_URL);
       expect(mockGetSchemaInfo).toHaveBeenCalledWith(TEST_URL);
-    });
-
-    it('should derive degraded when version is unknown', async () => {
-      mockIsConnected.mockReturnValue(true);
-      mockFetch.mockResolvedValue({ status: 200, ok: true });
-      mockGetInstanceInfo.mockReturnValue({ version: 'unknown', tier: 'free' });
-
-      const monitor = await initMonitor();
-
-      expect(monitor.getState(TEST_URL)).toBe('degraded');
     });
   });
 
@@ -735,44 +732,51 @@ describe('HealthMonitor', () => {
   });
 
   describe('isInstanceReachable', () => {
-    it('should return true for healthy instance', async () => {
-      mockInitialize.mockResolvedValue(undefined);
-      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
-
+    it.each<{
+      scenario: string;
+      setup: () => void;
+      expected: boolean;
+    }>([
+      {
+        scenario: 'healthy instance → true',
+        setup: () => {
+          mockInitialize.mockResolvedValue(undefined);
+          mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+        },
+        expected: true,
+      },
+      {
+        scenario: 'degraded instance → true',
+        setup: () => {
+          mockInitialize.mockResolvedValue(undefined);
+          mockGetInstanceInfo.mockReturnValue({ version: 'unknown', tier: 'free' });
+        },
+        expected: true,
+      },
+      {
+        scenario: 'disconnected instance → false',
+        setup: () => {
+          mockInitialize.mockRejectedValue(new Error('ECONNREFUSED'));
+        },
+        expected: false,
+      },
+      {
+        scenario: 'failed instance (auth error) → false',
+        setup: () => {
+          mockInitialize.mockRejectedValue(new Error('GitLab API error: 401 Unauthorized'));
+        },
+        expected: false,
+      },
+    ])('should return $expected for $scenario', async ({ setup, expected }) => {
+      setup();
       const monitor = await initMonitor();
-
-      expect(monitor.isInstanceReachable(TEST_URL)).toBe(true);
+      expect(monitor.isInstanceReachable(TEST_URL)).toBe(expected);
     });
 
-    it('should return true for degraded instance', async () => {
-      mockInitialize.mockResolvedValue(undefined);
-      mockGetInstanceInfo.mockReturnValue({ version: 'unknown', tier: 'free' });
-
-      const monitor = await initMonitor();
-
-      expect(monitor.isInstanceReachable(TEST_URL)).toBe(true);
-    });
-
-    it('should return false for disconnected instance', async () => {
-      mockInitialize.mockRejectedValue(new Error('ECONNREFUSED'));
-
-      const monitor = await initMonitor();
-
-      expect(monitor.isInstanceReachable(TEST_URL)).toBe(false);
-    });
-
-    it('should return true for untracked instance (assume reachable)', async () => {
+    it('should return true for untracked instance (assume reachable)', () => {
       const monitor = HealthMonitor.getInstance();
       // No actor for this URL — should assume reachable
       expect(monitor.isInstanceReachable('https://unknown.example.com')).toBe(true);
-    });
-
-    it('should return false for failed instance', async () => {
-      mockInitialize.mockRejectedValue(new Error('GitLab API error: 401 Unauthorized'));
-
-      const monitor = await initMonitor();
-
-      expect(monitor.isInstanceReachable(TEST_URL)).toBe(false);
     });
   });
 
@@ -782,19 +786,15 @@ describe('HealthMonitor', () => {
       expect(monitor.isAnyInstanceHealthy()).toBe(true);
     });
 
-    it('should return false when all instances disconnected', async () => {
-      mockInitialize.mockRejectedValue(new Error('ECONNREFUSED'));
-
+    it.each<{
+      scenario: string;
+      errorMsg: string;
+    }>([
+      { scenario: 'all instances disconnected', errorMsg: 'ECONNREFUSED' },
+      { scenario: 'all instances failed', errorMsg: 'GitLab API error: 401 Unauthorized' },
+    ])('should return false when $scenario', async ({ errorMsg }) => {
+      mockInitialize.mockRejectedValue(new Error(errorMsg));
       const monitor = await initMonitor();
-
-      expect(monitor.isAnyInstanceHealthy()).toBe(false);
-    });
-
-    it('should return false when all instances failed', async () => {
-      mockInitialize.mockRejectedValue(new Error('GitLab API error: 401 Unauthorized'));
-
-      const monitor = await initMonitor();
-
       expect(monitor.isAnyInstanceHealthy()).toBe(false);
     });
   });
@@ -903,78 +903,106 @@ describe('calculateBackoffDelay', () => {
   });
 });
 
-describe('classifyError — additional coverage', () => {
-  it('should classify 429 rate limit as transient', () => {
-    const error = new Error('GitLab API error: 429 Too Many Requests');
-    expect(classifyError(error)).toBe('transient');
+describe('classifyError', () => {
+  /** Helper to create an Error with an optional `.code` property */
+  function errorWithCode(message: string, code?: string): Error {
+    const err = new Error(message);
+    if (code) (err as Error & { code: string }).code = code;
+    return err;
+  }
+
+  // HTTP status codes
+  it.each<{ label: string; message: string; expected: string }>([
+    { label: '401 → auth', message: 'GitLab API error: 401 Unauthorized', expected: 'auth' },
+    { label: '403 → permanent', message: 'GitLab API error: 403 Forbidden', expected: 'permanent' },
+    { label: '404 → permanent', message: 'GitLab API error: 404 Not Found', expected: 'permanent' },
+    {
+      label: '400 → permanent',
+      message: 'GitLab API error: 400 Bad Request',
+      expected: 'permanent',
+    },
+    {
+      label: '422 → permanent',
+      message: 'GitLab API error: 422 Unprocessable Entity',
+      expected: 'permanent',
+    },
+    {
+      label: '429 → transient',
+      message: 'GitLab API error: 429 Too Many Requests',
+      expected: 'transient',
+    },
+    {
+      label: '500 → transient',
+      message: 'GitLab API error: 500 Internal Server Error',
+      expected: 'transient',
+    },
+    {
+      label: '502 → transient',
+      message: 'GitLab API error: 502 Bad Gateway',
+      expected: 'transient',
+    },
+    {
+      label: '503 → transient',
+      message: 'GitLab API error: 503 Service Unavailable',
+      expected: 'transient',
+    },
+  ])('should classify HTTP $label', ({ message, expected }) => {
+    expect(classifyError(new Error(message))).toBe(expected);
   });
 
-  it('should classify 502 bad gateway as transient', () => {
-    const error = new Error('GitLab API error: 502 Bad Gateway');
-    expect(classifyError(error)).toBe('transient');
+  // Error codes (`.code` property)
+  it.each<{ code: string; message: string; expected: string }>([
+    { code: 'ECONNREFUSED', message: 'connect ECONNREFUSED 127.0.0.1:443', expected: 'transient' },
+    { code: 'ETIMEDOUT', message: 'connection timed out', expected: 'transient' },
+    { code: 'UND_ERR_CONNECT_TIMEOUT', message: 'connect timeout', expected: 'transient' },
+    {
+      code: 'ENOTFOUND',
+      message: 'getaddrinfo ENOTFOUND gitlab.example.com',
+      expected: 'permanent',
+    },
+  ])('should classify error code $code as $expected', ({ code, message, expected }) => {
+    expect(classifyError(errorWithCode(message, code))).toBe(expected);
   });
 
-  it('should classify 503 service unavailable as transient', () => {
-    const error = new Error('GitLab API error: 503 Service Unavailable');
-    expect(classifyError(error)).toBe('transient');
+  // Message-based classification (no `.code`)
+  it.each<{ label: string; message: string; expected: string }>([
+    {
+      label: 'timeout in message',
+      message: 'Request timed out after 5000ms',
+      expected: 'transient',
+    },
+    { label: 'fetch failed', message: 'fetch failed', expected: 'transient' },
+    { label: 'socket hang up', message: 'socket hang up', expected: 'transient' },
+    { label: 'econnreset in message', message: 'read econnreset', expected: 'transient' },
+    { label: 'network error', message: 'network error occurred', expected: 'transient' },
+    {
+      label: 'health check failed',
+      message: 'Health check failed for https://gitlab.example.com',
+      expected: 'transient',
+    },
+    {
+      label: 'initialization timeout',
+      message: 'Initialization timeout after 5000ms',
+      expected: 'transient',
+    },
+    {
+      label: 'enotfound in message',
+      message: 'getaddrinfo enotfound gitlab.example.com',
+      expected: 'permanent',
+    },
+    {
+      label: 'unknown error',
+      message: 'something completely unexpected happened',
+      expected: 'permanent',
+    },
+  ])('should classify "$label" as $expected', ({ message, expected }) => {
+    expect(classifyError(new Error(message))).toBe(expected);
   });
 
-  it('should classify 422 as permanent', () => {
-    const error = new Error('GitLab API error: 422 Unprocessable Entity');
-    expect(classifyError(error)).toBe('permanent');
-  });
-
-  it('should classify 400 as permanent', () => {
-    const error = new Error('GitLab API error: 400 Bad Request');
-    expect(classifyError(error)).toBe('permanent');
-  });
-
-  it('should classify ETIMEDOUT error code as transient', () => {
-    const error = new Error('connection timed out');
-    (error as Error & { code: string }).code = 'ETIMEDOUT';
-    expect(classifyError(error)).toBe('transient');
-  });
-
-  it('should classify ENOTFOUND error code as permanent (config error, not transient)', () => {
-    const error = new Error('getaddrinfo ENOTFOUND gitlab.example.com');
-    (error as Error & { code: string }).code = 'ENOTFOUND';
-    expect(classifyError(error)).toBe('permanent');
-  });
-
-  it('should classify UND_ERR_CONNECT_TIMEOUT as transient', () => {
-    const error = new Error('connect timeout');
-    (error as Error & { code: string }).code = 'UND_ERR_CONNECT_TIMEOUT';
-    expect(classifyError(error)).toBe('transient');
-  });
-
-  it('should classify econnreset in message as transient', () => {
-    const error = new Error('read econnreset');
-    expect(classifyError(error)).toBe('transient');
-  });
-
-  it('should classify enotfound in message as permanent (config error)', () => {
-    const error = new Error('getaddrinfo enotfound gitlab.example.com');
-    expect(classifyError(error)).toBe('permanent');
-  });
-
-  it('should classify network error message as transient', () => {
-    const error = new Error('network error occurred');
-    expect(classifyError(error)).toBe('transient');
-  });
-
-  it('should classify unknown error without code as permanent (programming bugs)', () => {
-    const error = new Error('something completely unexpected happened');
-    expect(classifyError(error)).toBe('permanent');
-  });
-
-  it('should classify health check failed as transient', () => {
-    const error = new Error('Health check failed for https://gitlab.example.com');
-    expect(classifyError(error)).toBe('transient');
-  });
-
-  it('should classify initialization timeout as transient', () => {
-    const error = new Error('Initialization timeout after 5000ms');
-    expect(classifyError(error)).toBe('transient');
+  it('should classify non-Error values as permanent', () => {
+    expect(classifyError('string error')).toBe('permanent');
+    expect(classifyError(42)).toBe('permanent');
+    expect(classifyError(null)).toBe('permanent');
   });
 });
 
@@ -1006,54 +1034,5 @@ describe('createConnectionFailedError', () => {
     expect(error.message).toContain('authentication or configuration error');
     expect(error.message).toContain('Automatic reconnection is disabled');
     expect(error.suggested_fix).toContain('authentication credentials');
-  });
-});
-
-describe('classifyError', () => {
-  it('should classify ECONNREFUSED as transient', () => {
-    const error = new Error('connect ECONNREFUSED 127.0.0.1:443');
-    (error as Error & { code: string }).code = 'ECONNREFUSED';
-    expect(classifyError(error)).toBe('transient');
-  });
-
-  it('should classify timeout as transient', () => {
-    const error = new Error('Request timed out after 5000ms');
-    expect(classifyError(error)).toBe('transient');
-  });
-
-  it('should classify 401 as auth', () => {
-    const error = new Error('GitLab API error: 401 Unauthorized');
-    expect(classifyError(error)).toBe('auth');
-  });
-
-  it('should classify 403 as permanent (permission/tier, not auth)', () => {
-    const error = new Error('GitLab API error: 403 Forbidden');
-    expect(classifyError(error)).toBe('permanent');
-  });
-
-  it('should classify 500 as transient', () => {
-    const error = new Error('GitLab API error: 500 Internal Server Error');
-    expect(classifyError(error)).toBe('transient');
-  });
-
-  it('should classify 404 as permanent', () => {
-    const error = new Error('GitLab API error: 404 Not Found');
-    expect(classifyError(error)).toBe('permanent');
-  });
-
-  it('should classify non-Error as permanent', () => {
-    expect(classifyError('string error')).toBe('permanent');
-    expect(classifyError(42)).toBe('permanent');
-    expect(classifyError(null)).toBe('permanent');
-  });
-
-  it('should classify fetch failed as transient', () => {
-    const error = new Error('fetch failed');
-    expect(classifyError(error)).toBe('transient');
-  });
-
-  it('should classify socket hang up as transient', () => {
-    const error = new Error('socket hang up');
-    expect(classifyError(error)).toBe('transient');
   });
 });

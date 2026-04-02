@@ -4,10 +4,14 @@
  *  consolidating them is tracked but deferred to avoid touching InstanceRegistry in this PR. */
 export function normalizeInstanceUrl(url: string): string {
   if (!url) return url;
-  // Strip trailing slashes first (no regex — avoids ReDoS on pathological input)
+  // Strip trailing slashes (single-pass scan, no regex — avoids ReDoS)
   let normalized = url;
-  while (normalized.endsWith('/')) {
-    normalized = normalized.slice(0, -1);
+  let end = normalized.length - 1;
+  while (end >= 0 && normalized.charCodeAt(end) === 47 /* '/' */) {
+    end -= 1;
+  }
+  if (end < normalized.length - 1) {
+    normalized = normalized.slice(0, end + 1);
   }
   // Strip known API path suffixes
   if (normalized.endsWith('/api/v4')) {

@@ -1141,7 +1141,7 @@ export function classifyError(error: unknown): ErrorCategory {
     }
 
     // Server errors and rate limiting — transient
-    if (status >= 500 || status === 429) {
+    if (status === 408 || status === 429 || status >= 500) {
       return 'transient';
     }
 

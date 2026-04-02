@@ -205,6 +205,9 @@ export async function setupHandlers(server: Server): Promise<void> {
           });
         }
 
+        // Initializes with default GITLAB_BASE_URL. OAuth multi-instance URLs
+        // are tracked lazily via reportSuccess/reportError when tool calls arrive.
+        // Untracked URLs pass through isInstanceReachable() as "assume reachable".
         await healthMonitor.initialize();
         const state = healthMonitor.getState();
         logInfo('Connection health monitor initialized', { state });
@@ -334,8 +337,10 @@ export async function setupHandlers(server: Server): Promise<void> {
     // Must be resolved before Promise.race so timeout branch doesn't re-derive a
     // potentially different URL after a concurrent switch_instance.
     const { getGitLabApiUrlFromContext: getUrlFromCtx } = await import('./oauth/index');
-    const requestInstanceUrl =
-      getUrlFromCtx() ?? ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL;
+    // In OAuth mode, use the per-request context URL. Fall back to the static
+    // GITLAB_BASE_URL rather than getCurrentInstanceUrl() which reflects the
+    // last-set URL and could bleed across concurrent OAuth sessions.
+    const requestInstanceUrl = getUrlFromCtx() ?? GITLAB_BASE_URL;
 
     // Flag to prevent late reportSuccess/reportError from a timed-out handlerWork()
     // overwriting the timeout signal already sent to HealthMonitor.

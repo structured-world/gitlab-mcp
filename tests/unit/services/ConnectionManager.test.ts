@@ -383,14 +383,16 @@ describe('ConnectionManager Unit', () => {
         isInitialized: true,
       });
 
-      // Spy on initialize to verify reinitialize calls it
-      const initSpy = jest.spyOn(manager, 'initialize');
+      // Force initialize to reject so the rollback path is always exercised,
+      // regardless of ambient config (tokens, GITLAB_BASE_URL)
+      const initSpy = jest
+        .spyOn(manager, 'initialize')
+        .mockRejectedValue(new Error('forced test failure'));
 
-      // reinitialize will remove old state and call initialize() which requires proper config
-      // Since we're mocking, we just verify it throws due to missing GITLAB_BASE_URL
-      await expect(manager.reinitialize('https://new-gitlab.com')).rejects.toThrow();
+      await expect(manager.reinitialize('https://new-gitlab.com')).rejects.toThrow(
+        'forced test failure',
+      );
 
-      // Verify initialize was actually called
       expect(initSpy).toHaveBeenCalledWith('https://new-gitlab.com');
 
       // On failure, saved state is restored so the URL remains usable

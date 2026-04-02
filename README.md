@@ -89,7 +89,7 @@ The server handles GitLab connectivity issues gracefully:
 - **Disconnected mode** — When GitLab is unreachable, only `manage_context` tool is exposed (for diagnostics via `whoami`). MCP clients are notified via `tools/list_changed`
 - **Auto-reconnect** — Exponential backoff reconnection (5s → 60s) with ±10% jitter
 - **Error classification** — Transient errors (network, 5xx, timeouts) trigger auto-reconnect. Auth/config errors at startup transition to `failed` state (no auto-reconnect). Runtime auth errors from tool calls do not affect health state (#370)
-- **Per-instance health** — Each GitLab instance is monitored independently with its own state machine
+- **Instance health monitor** — The configured GitLab instance is monitored with its own state machine (multi-instance OAuth support tracks URLs as they appear)
 
 | Variable | Default | Description |
 |----------|---------|-------------|

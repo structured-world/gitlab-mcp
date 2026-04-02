@@ -403,9 +403,13 @@ export const HANDLER_TIMEOUT_MS =
 
 // Startup initialization timeout — how long to wait for GitLab during server startup
 // If exceeded, server starts in disconnected mode and retries in background
+// setTimeout/setInterval max safe delay is 2^31-1 ms (~24.8 days); larger values fire immediately.
+const MAX_SAFE_TIMEOUT_MS = 2_147_483_647;
 const parsedInitTimeoutMs = Number.parseInt(process.env.GITLAB_INIT_TIMEOUT_MS ?? '5000', 10);
 export const INIT_TIMEOUT_MS =
-  Number.isFinite(parsedInitTimeoutMs) && parsedInitTimeoutMs > 0 ? parsedInitTimeoutMs : 5000;
+  Number.isFinite(parsedInitTimeoutMs) && parsedInitTimeoutMs > 0
+    ? Math.min(parsedInitTimeoutMs, MAX_SAFE_TIMEOUT_MS)
+    : 5000;
 
 // Reconnect backoff: base delay (doubles each attempt up to max)
 const parsedReconnectBaseDelay = Number.parseInt(
@@ -414,7 +418,7 @@ const parsedReconnectBaseDelay = Number.parseInt(
 );
 export const RECONNECT_BASE_DELAY_MS =
   Number.isFinite(parsedReconnectBaseDelay) && parsedReconnectBaseDelay > 0
-    ? parsedReconnectBaseDelay
+    ? Math.min(parsedReconnectBaseDelay, MAX_SAFE_TIMEOUT_MS)
     : 5000;
 
 // Reconnect backoff: maximum delay between attempts
@@ -424,7 +428,7 @@ const parsedReconnectMaxDelay = Number.parseInt(
 );
 export const RECONNECT_MAX_DELAY_MS =
   Number.isFinite(parsedReconnectMaxDelay) && parsedReconnectMaxDelay > 0
-    ? parsedReconnectMaxDelay
+    ? Math.min(parsedReconnectMaxDelay, MAX_SAFE_TIMEOUT_MS)
     : 60000;
 
 // Health check interval when connection is healthy (light ping)
@@ -434,7 +438,7 @@ const parsedHealthCheckInterval = Number.parseInt(
 );
 export const HEALTH_CHECK_INTERVAL_MS =
   Number.isFinite(parsedHealthCheckInterval) && parsedHealthCheckInterval > 0
-    ? parsedHealthCheckInterval
+    ? Math.min(parsedHealthCheckInterval, MAX_SAFE_TIMEOUT_MS)
     : 60000;
 
 // Consecutive transient failures before transitioning to DISCONNECTED

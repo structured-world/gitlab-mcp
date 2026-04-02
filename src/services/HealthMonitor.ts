@@ -184,7 +184,8 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
     if (isDegraded) {
       // Verify reachability — OAuth/REST-only init can succeed with fallback
       // data even when GitLab is unreachable. Throwing here lands in disconnected.
-      const remainingMs = Math.max(1, deadline - Date.now());
+      // Ensure at least 500ms for the health probe even if init consumed most of the budget
+      const remainingMs = Math.max(500, deadline - Date.now());
       const reachable = await quickHealthCheck(input.instanceUrl, remainingMs);
       if (!reachable) {
         // Message must match transient patterns in classifyError() so state goes

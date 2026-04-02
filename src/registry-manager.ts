@@ -339,12 +339,12 @@ class RegistryManager {
     return null;
   }
 
-  private buildToolLookupCache(instanceUrl?: string): void {
-    // Build into a new map and swap atomically — prevents a concurrent
-    // refreshCache from clearing the live cache between hasToolHandler()
-    // and executeTool() in an in-flight request.
-    const newCache = new Map<string, EnhancedToolDefinition>();
-    const ctx = this.loadInstanceContext(instanceUrl);
+  /** Filter registries and build transformed tool map (schema + description overrides). */
+  private buildFilteredTools(ctx: {
+    instanceInfo?: { tier: GitLabTier; version: string };
+    tokenScopes?: GitLabScope[];
+  }): Map<string, EnhancedToolDefinition> {
+    const result = new Map<string, EnhancedToolDefinition>();
 
     for (const [, registry] of this.registries) {
       for (const [toolName, tool] of registry) {
@@ -354,11 +354,9 @@ class RegistryManager {
           continue;
         }
 
-        // Tool passes all filters - apply schema transformation and description override
-        // Transform schema to remove denied actions and apply description overrides
         let transformedSchema = transformToolSchema(toolName, tool.inputSchema);
 
-        // Strip tier-restricted parameters from schema (skip when version unknown or not initialized)
+        // Strip tier-restricted parameters (skip when version unknown or not initialized)
         if (ctx.instanceInfo && ctx.instanceInfo.version !== 'unknown') {
           const restrictedParams = ToolAvailability.getRestrictedParameters(
             toolName,
@@ -369,9 +367,7 @@ class RegistryManager {
           }
         }
 
-        // Apply tool-level description override if available
         const customDescription = this.descriptionOverrides.get(toolName);
-
         const finalTool = {
           ...tool,
           inputSchema: transformedSchema,
@@ -382,34 +378,43 @@ class RegistryManager {
           logDebug('Applied description override', { toolName, customDescription });
         }
 
-        newCache.set(toolName, finalTool);
+        result.set(toolName, finalTool);
       }
     }
 
-    // Second pass: handle Related references based on GITLAB_CROSS_REFS setting
-    if (GITLAB_CROSS_REFS) {
-      // Resolve Related references against available tools
-      const availableToolNames = new Set(newCache.keys());
-      for (const [toolName, tool] of newCache) {
-        // Skip tools with custom description overrides (user controls entire description)
-        if (this.descriptionOverrides.has(toolName)) continue;
+    return result;
+  }
 
+  /** Resolve or strip Related: references in tool descriptions. */
+  private postProcessRelatedReferences(cache: Map<string, EnhancedToolDefinition>): void {
+    if (GITLAB_CROSS_REFS) {
+      const availableToolNames = new Set(cache.keys());
+      for (const [toolName, tool] of cache) {
+        if (this.descriptionOverrides.has(toolName)) continue;
         const resolved = resolveRelatedReferences(tool.description, availableToolNames);
         if (resolved !== tool.description) {
-          newCache.set(toolName, { ...tool, description: resolved });
+          cache.set(toolName, { ...tool, description: resolved });
         }
       }
     } else {
-      // Cross-refs disabled: strip all "Related:" sections entirely
-      for (const [toolName, tool] of newCache) {
+      for (const [toolName, tool] of cache) {
         if (this.descriptionOverrides.has(toolName)) continue;
-
         const stripped = stripRelatedSection(tool.description);
         if (stripped !== tool.description) {
-          newCache.set(toolName, { ...tool, description: stripped });
+          cache.set(toolName, { ...tool, description: stripped });
         }
       }
     }
+  }
+
+  private buildToolLookupCache(instanceUrl?: string): void {
+    const ctx = this.loadInstanceContext(instanceUrl);
+
+    // Build into a new map and swap atomically — prevents a concurrent
+    // refreshCache from clearing the live cache between hasToolHandler()
+    // and executeTool() in an in-flight request.
+    const newCache = this.buildFilteredTools(ctx);
+    this.postProcessRelatedReferences(newCache);
 
     // Atomic swap — in-flight requests that captured a reference to the old map
     // via getTool() keep working; new requests see the updated cache

@@ -588,9 +588,13 @@ describe('HealthMonitor', () => {
     });
 
     it('should not take fast-path for a different URL than what was initialized', async () => {
-      // isConnected returns true for URL-A, but we initialize for URL-B
-      // isConnected(URL-B) should return false → full init path
-      mockIsConnected.mockImplementation((url?: string) => url === 'https://gitlab-a.example.com');
+      // Model: URL-A is connected (singleton path), URL-B is not.
+      // Pin currentInstanceUrl to URL-A so the test verifies the per-URL guard.
+      mockIsConnected.mockImplementation((url?: string) => {
+        if (url === 'https://gitlab-b.example.com') return false;
+        return true; // singleton/current-instance path still pointing at URL-A
+      });
+      mockGetCurrentInstanceUrl.mockReturnValue('https://gitlab-a.example.com');
       mockFetch.mockResolvedValue({ status: 200, ok: true });
       mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
 
@@ -966,7 +970,11 @@ describe('classifyError', () => {
       message: 'Request timed out after 5000ms',
       expected: 'transient',
     },
-    { label: 'fetch failed', message: 'fetch failed', expected: 'transient' },
+    {
+      label: 'fetch failed (no cause) → permanent',
+      message: 'fetch failed',
+      expected: 'permanent',
+    },
     { label: 'socket hang up', message: 'socket hang up', expected: 'transient' },
     { label: 'econnreset in message', message: 'read econnreset', expected: 'transient' },
     { label: 'network error', message: 'network error occurred', expected: 'transient' },
@@ -992,6 +1000,21 @@ describe('classifyError', () => {
     },
   ])('should classify "$label" as $expected', ({ message, expected }) => {
     expect(classifyError(new Error(message))).toBe(expected);
+  });
+
+  it('should classify fetch failed with ECONNREFUSED cause as transient', () => {
+    // Undici wraps network errors: TypeError('fetch failed', { cause: Error('...', { code }) })
+    const cause = new Error('connect ECONNREFUSED');
+    (cause as Error & { code: string }).code = 'ECONNREFUSED';
+    const error = new TypeError('fetch failed', { cause });
+    expect(classifyError(error)).toBe('transient');
+  });
+
+  it('should classify fetch failed with ENOTFOUND cause as permanent', () => {
+    const cause = new Error('getaddrinfo ENOTFOUND unknown.host');
+    (cause as Error & { code: string }).code = 'ENOTFOUND';
+    const error = new TypeError('fetch failed', { cause });
+    expect(classifyError(error)).toBe('permanent');
   });
 
   it('should classify non-Error values as permanent', () => {

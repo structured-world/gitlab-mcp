@@ -115,7 +115,10 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
 
     // Fast-path: if already initialized for this URL, verify with health check.
     if (connectionManager.isConnected(input.instanceUrl)) {
-      const healthy = await quickHealthCheck(input.instanceUrl);
+      const healthy = await quickHealthCheck(
+        input.instanceUrl,
+        Math.min(INIT_TIMEOUT_MS, HEALTH_CHECK_PROBE_MS),
+      );
       if (!healthy) {
         // Intentionally a new Error (not the original fetch cause) — health check
         // failures are always transient regardless of the underlying cause.

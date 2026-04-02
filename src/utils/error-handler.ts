@@ -1129,7 +1129,6 @@ export function classifyError(error: unknown): ErrorCategory {
     message.includes('timed out') ||
     message.includes('socket hang up') ||
     message.includes('network error') ||
-    message.includes('fetch failed') ||
     message.includes('health check failed') ||
     message.includes('initialization timeout') ||
     message.includes('econnrefused') ||

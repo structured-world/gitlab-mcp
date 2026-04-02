@@ -659,14 +659,12 @@ export async function setupHandlers(server: Server): Promise<void> {
         // Only report to health monitor and clear inflight if bootstrap was
         // actually attempted (not for disconnected manage_context bypass which
         // does no GitLab I/O and shouldn't affect connection health).
-        if (bootstrapStarted) {
+        if (bootstrapStarted && !bootstrapComplete) {
           HealthMonitor.getInstance().reportError(
             requestInstanceUrl,
             new Error(`Handler timeout after ${HANDLER_TIMEOUT_MS}ms`),
           );
-          if (!bootstrapComplete) {
-            ConnectionManager.getInstance().clearInflight(requestInstanceUrl);
-          }
+          ConnectionManager.getInstance().clearInflight(requestInstanceUrl);
         }
 
         recordEarlyReturnError(toolName, action, timeoutError.message);

@@ -344,6 +344,8 @@ export class ToolAvailability {
       rawVersion = cachedInstanceInfo.version;
       instanceVersion = parseVersion(rawVersion);
     } else {
+      // Fallback to singleton — prefer passing cachedInstanceInfo explicitly
+      // to avoid cross-request leakage in concurrent OAuth flows
       const connectionManager = ConnectionManager.getInstance();
       try {
         const instanceInfo = connectionManager.getInstanceInfo();

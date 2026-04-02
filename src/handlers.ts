@@ -402,12 +402,17 @@ export async function setupHandlers(server: Server): Promise<void> {
             ? request.params.arguments.action
             : 'unknown';
 
-        const instanceState = healthMonitor.getState(effectiveInstanceUrl);
+        const rawState = healthMonitor.getState(effectiveInstanceUrl);
+        // Map to the three states createConnectionFailedError handles;
+        // healthy/degraded shouldn't reach here (guarded by !isInstanceReachable),
+        // but default to 'disconnected' for safety.
+        const connectionState: 'connecting' | 'disconnected' | 'failed' =
+          rawState === 'connecting' || rawState === 'failed' ? rawState : 'disconnected';
         const connError = createConnectionFailedError(
           toolName,
           action,
           effectiveInstanceUrl,
-          instanceState,
+          connectionState,
         );
 
         recordEarlyReturnError(toolName, action, connError.message);
@@ -501,8 +506,13 @@ export async function setupHandlers(server: Server): Promise<void> {
           // Use error classification to determine state — for untracked URLs,
           // getState() defaults to 'disconnected' which may mislabel auth errors.
           const errorCategory = initError instanceof Error ? classifyError(initError) : 'permanent';
-          const derivedState =
+          const rawDerivedState =
             errorCategory === 'auth' ? 'failed' : healthMonitor.getState(effectiveInstanceUrl);
+          // Map to the three states createConnectionFailedError handles
+          const derivedState: 'connecting' | 'disconnected' | 'failed' =
+            rawDerivedState === 'connecting' || rawDerivedState === 'failed'
+              ? rawDerivedState
+              : 'disconnected';
           const connError = createConnectionFailedError(
             toolName,
             action,

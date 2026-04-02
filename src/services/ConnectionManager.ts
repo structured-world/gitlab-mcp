@@ -583,8 +583,8 @@ export class ConnectionManager {
     return state.instanceInfo.version;
   }
 
-  public isWidgetAvailable(widgetType: string): boolean {
-    const url = this.currentInstanceUrl;
+  public isWidgetAvailable(widgetType: string, instanceUrl?: string): boolean {
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) return false;
     const state = this.instances.get(url);
     // Read from schemaInfo directly — schemaIntrospector's internal cache may

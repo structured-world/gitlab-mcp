@@ -1185,7 +1185,7 @@ export function createConnectionFailedError(
   toolName: string,
   action: string,
   instanceUrl: string,
-  connectionState: 'connecting' | 'disconnected' | 'failed' | (string & {}),
+  connectionState: 'connecting' | 'disconnected' | 'failed',
 ): ConnectionFailedError {
   // connecting and disconnected both auto-reconnect; only failed is terminal
   const reconnecting = connectionState === 'connecting' || connectionState === 'disconnected';

@@ -1189,12 +1189,14 @@ export function createConnectionFailedError(
 ): ConnectionFailedError {
   // connecting and disconnected both auto-reconnect; only failed is terminal
   const reconnecting = connectionState === 'connecting' || connectionState === 'disconnected';
-  const message =
-    connectionState === 'failed'
-      ? `GitLab instance ${instanceUrl} connection failed (authentication or configuration error). Automatic reconnection is disabled.`
-      : connectionState === 'connecting'
-        ? `GitLab instance ${instanceUrl} is currently unreachable. Automatic reconnection is in progress.`
-        : `GitLab instance ${instanceUrl} is currently unreachable. Connection will be retried automatically.`;
+  let message: string;
+  if (connectionState === 'failed') {
+    message = `GitLab instance ${instanceUrl} connection failed (authentication or configuration error). Automatic reconnection is disabled.`;
+  } else if (connectionState === 'connecting') {
+    message = `GitLab instance ${instanceUrl} is currently unreachable. Automatic reconnection is in progress.`;
+  } else {
+    message = `GitLab instance ${instanceUrl} is currently unreachable. Connection will be retried automatically.`;
+  }
 
   const suggestedFix =
     connectionState === 'failed'

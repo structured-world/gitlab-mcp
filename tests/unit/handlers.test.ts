@@ -610,7 +610,7 @@ describe('handlers', () => {
         },
       });
 
-      expect(mockHealthMonitor.reportSuccess).toHaveBeenCalled();
+      expect(mockHealthMonitor.reportSuccess).toHaveBeenCalledWith('https://gitlab.example.com');
     });
 
     it('should report error to health monitor after tool execution failure', async () => {
@@ -623,7 +623,10 @@ describe('handlers', () => {
         },
       });
 
-      expect(mockHealthMonitor.reportError).toHaveBeenCalled();
+      expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+        expect.any(Error),
+      );
     });
 
     it('should register state change callback during setup', async () => {
@@ -668,8 +671,11 @@ describe('handlers', () => {
       });
 
       expect(result.isError).toBe(true);
-      // Health monitor should have been notified of bootstrap failure
-      expect(mockHealthMonitor.reportError).toHaveBeenCalled();
+      // Health monitor should have been notified of bootstrap failure with the instance URL
+      expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+        expect.any(Error),
+      );
 
       // Restore
       mockConnectionManager.isConnected.mockReturnValue(true);

@@ -642,8 +642,10 @@ export class ConnectionManager {
       previousHasGraphQL !== newScopeInfo.hasGraphQLAccess ||
       previousHasWrite !== newScopeInfo.hasWriteAccess;
 
-    if (scopesChanged && state) {
-      state.tokenScopeInfo = newScopeInfo;
+    // Always persist refreshed scope info (even when scopes haven't changed)
+    // so non-scope metadata in TokenScopeInfo stays fresh
+    state.tokenScopeInfo = newScopeInfo;
+    if (scopesChanged) {
       logInfo('Token scopes changed - tool registry will be refreshed', {
         previousScopes,
         newScopes,
@@ -766,9 +768,13 @@ export class ConnectionManager {
     this.introspectionPromises.delete(newInstanceUrl);
     this.instances.delete(newInstanceUrl);
 
-    // Clear all caches for the new URL
-    const registry = InstanceRegistry.getInstance();
-    registry.clearIntrospectionCache(newInstanceUrl);
+    // Clear all caches for the new URL (guard: registry may not be initialized yet)
+    try {
+      const registry = InstanceRegistry.getInstance();
+      registry.clearIntrospectionCache(newInstanceUrl);
+    } catch {
+      // InstanceRegistry not initialized — no cache to clear
+    }
     ConnectionManager.introspectionCache.delete(newInstanceUrl);
     ConnectionManager.introspectionCache.delete(`${newInstanceUrl}/api/graphql`);
 

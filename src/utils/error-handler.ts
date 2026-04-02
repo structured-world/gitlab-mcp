@@ -1170,8 +1170,10 @@ export interface ConnectionFailedError extends StructuredError {
   error_code: 'CONNECTION_FAILED';
   /** GitLab instance URL that is unreachable */
   instance_url: string;
-  /** Whether automatic reconnection is in progress */
+  /** Whether a reconnect attempt is actively in progress right now */
   reconnecting: boolean;
+  /** Whether automatic retry is enabled (connecting/disconnected = true, failed = false) */
+  auto_retry_enabled: boolean;
 }
 
 /**
@@ -1187,8 +1189,9 @@ export function createConnectionFailedError(
   instanceUrl: string,
   connectionState: 'connecting' | 'disconnected' | 'failed',
 ): ConnectionFailedError {
-  // connecting and disconnected both auto-reconnect; only failed is terminal
-  const reconnecting = connectionState === 'connecting' || connectionState === 'disconnected';
+  // reconnecting = actively retrying right now; auto_retry_enabled = will retry eventually
+  const reconnecting = connectionState === 'connecting';
+  const autoRetryEnabled = connectionState !== 'failed';
   let message: string;
   if (connectionState === 'failed') {
     message = `GitLab instance ${instanceUrl} connection failed (authentication or configuration error). Automatic reconnection is disabled.`;
@@ -1211,6 +1214,7 @@ export function createConnectionFailedError(
     action,
     instance_url: instanceUrl,
     reconnecting,
+    auto_retry_enabled: autoRetryEnabled,
     message,
     suggested_fix: suggestedFix,
   };

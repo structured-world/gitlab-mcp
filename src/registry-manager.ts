@@ -716,6 +716,8 @@ class RegistryManager {
     // toolLookupCache — the cache reflects whichever instance last called
     // refreshCache(), which may differ from the requested instanceUrl.
     const ctx = this.loadInstanceContext(instanceUrl);
+    const unreachableMode = this.isUnreachableMode();
+    const contextTools = unreachableMode ? this.registries.get('context') : null;
     let availableTools = 0;
     let filteredByReadOnly = 0;
     let filteredByDeniedRegex = 0;
@@ -725,6 +727,9 @@ class RegistryManager {
 
     for (const registry of this.registries.values()) {
       for (const [toolName, tool] of registry) {
+        // In unreachable mode, only context tools are available
+        if (contextTools && !contextTools.has(toolName)) continue;
+
         const reason = this.getToolExclusionReason(toolName, tool, ctx);
         if (!reason) {
           availableTools++;

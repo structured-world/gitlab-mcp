@@ -550,8 +550,9 @@ describe('handlers', () => {
       expect(parsed.error_code).toBe('CONNECTION_FAILED');
       expect(parsed.tool).toBe('browse_projects');
       expect(parsed.action).toBe('list');
-      // disconnected = transient, auto-reconnect in progress
-      expect(parsed.reconnecting).toBe(true);
+      // disconnected = not actively reconnecting, but auto-retry is enabled
+      expect(parsed.reconnecting).toBe(false);
+      expect(parsed.auto_retry_enabled).toBe(true);
 
       // Restore
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);

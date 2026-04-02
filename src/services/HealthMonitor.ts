@@ -507,10 +507,10 @@ type StateChangeCallback = (
 
 export class HealthMonitor {
   private static instance: HealthMonitor | null = null;
-  private actors = new Map<string, ConnectionActor>();
-  private previousStates = new Map<string, ConnectionState>();
+  private readonly actors = new Map<string, ConnectionActor>();
+  private readonly previousStates = new Map<string, ConnectionState>();
   private stateChangeCallbacks: StateChangeCallback[] = [];
-  private subscriptions = new Map<string, { unsubscribe: () => void }>();
+  private readonly subscriptions = new Map<string, { unsubscribe: () => void }>();
 
   private constructor() {}
 

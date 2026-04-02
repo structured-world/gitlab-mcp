@@ -634,8 +634,8 @@ describe('handlers', () => {
         await new Promise((resolve) => process.nextTick(resolve));
       }
 
-      // refreshCache should have been called by the state change callback
-      expect(mockRegistryManager.refreshCache).toHaveBeenCalled();
+      // refreshCache should have been called with the instance URL by the state change callback
+      expect(mockRegistryManager.refreshCache).toHaveBeenCalledWith('https://gitlab.example.com');
     });
 
     it('should handle CONNECTION_FAILED with missing action field', async () => {

@@ -615,13 +615,16 @@ export class ConnectionManager {
     }
 
     const url = this.currentInstanceUrl;
-    const state = url ? this.instances.get(url) : undefined;
-    const previousScopes = state?.tokenScopeInfo?.scopes ?? [];
-    const previousHasGraphQL = state?.tokenScopeInfo?.hasGraphQLAccess ?? false;
-    const previousHasWrite = state?.tokenScopeInfo?.hasWriteAccess ?? false;
+    if (!url) return false;
+    const state = this.instances.get(url);
+    if (!state) return false;
+
+    const previousScopes = state.tokenScopeInfo?.scopes ?? [];
+    const previousHasGraphQL = state.tokenScopeInfo?.hasGraphQLAccess ?? false;
+    const previousHasWrite = state.tokenScopeInfo?.hasWriteAccess ?? false;
 
     // Re-detect token scopes against the current instance URL
-    const newScopeInfo = await detectTokenScopes(url ?? undefined);
+    const newScopeInfo = await detectTokenScopes(url);
 
     if (!newScopeInfo) {
       // Detection failed - keep existing state

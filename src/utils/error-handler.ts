@@ -1138,9 +1138,14 @@ export function classifyError(error: unknown): ErrorCategory {
   if (parsed) {
     const { status } = parsed;
 
-    // Auth errors — token won't fix itself
-    if (status === 401 || status === 403) {
+    // Auth error — token invalid/expired, won't fix itself
+    if (status === 401) {
       return 'auth';
+    }
+    // 403 = permission/tier mismatch, not a bad token — treat as permanent
+    // (request-level error, not connection failure)
+    if (status === 403) {
+      return 'permanent';
     }
 
     // Server errors and rate limiting — transient

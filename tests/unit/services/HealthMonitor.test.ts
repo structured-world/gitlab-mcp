@@ -994,9 +994,9 @@ describe('classifyError', () => {
     expect(classifyError(error)).toBe('auth');
   });
 
-  it('should classify 403 as auth', () => {
+  it('should classify 403 as permanent (permission/tier, not auth)', () => {
     const error = new Error('GitLab API error: 403 Forbidden');
-    expect(classifyError(error)).toBe('auth');
+    expect(classifyError(error)).toBe('permanent');
   });
 
   it('should classify 500 as transient', () => {

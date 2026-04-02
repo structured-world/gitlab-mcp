@@ -493,7 +493,9 @@ export class ToolAvailability {
       if (version < parseVersion(actionReq.minVersion)) return false;
       return this.isTierSufficient(instanceInfo.tier, actionReq.tier);
     }
-    return parseVersion(instanceInfo.version) >= parseVersion('15.0');
+    // Tools not in actionRequirements (e.g. manage_context — local/session tools)
+    // are always available regardless of GitLab version
+    return true;
   }
 
   public static getAvailableTools(): string[] {

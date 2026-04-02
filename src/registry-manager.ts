@@ -318,20 +318,25 @@ class RegistryManager {
   }
 
   /** Check if a tool should be included in the cache (passes all filters). */
-  private shouldIncludeTool(
+  /** Why a tool was excluded from the cache. Returns null if tool should be included.
+   *  Used by both buildToolLookupCache and getFilterStats to ensure consistent logic. */
+  private getToolExclusionReason(
     toolName: string,
+    tool: EnhancedToolDefinition,
     ctx: { instanceInfo?: { tier: GitLabTier; version: string }; tokenScopes?: GitLabScope[] },
-  ): boolean {
-    if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) return false;
-    if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) return false;
-    if (ctx.tokenScopes && !isToolAvailableForScopes(toolName, ctx.tokenScopes)) return false;
+  ): 'readOnly' | 'deniedRegex' | 'scopes' | 'tier' | 'actionDenial' | null {
+    if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) return 'readOnly';
+    if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) return 'deniedRegex';
+    if (ctx.tokenScopes && !isToolAvailableForScopes(toolName, ctx.tokenScopes)) return 'scopes';
     if (
       ctx.instanceInfo &&
       ctx.instanceInfo.version !== 'unknown' &&
       !ToolAvailability.isToolAvailableForInstance(toolName, ctx.instanceInfo)
     )
-      return false;
-    return true;
+      return 'tier';
+    const allActions = extractActionsFromSchema(tool.inputSchema);
+    if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) return 'actionDenial';
+    return null;
   }
 
   private buildToolLookupCache(instanceUrl?: string): void {
@@ -343,14 +348,9 @@ class RegistryManager {
 
     for (const [, registry] of this.registries) {
       for (const [toolName, tool] of registry) {
-        if (!this.shouldIncludeTool(toolName, ctx)) {
-          continue;
-        }
-
-        // Check if all actions are denied for this CQRS tool
-        const allActions = extractActionsFromSchema(tool.inputSchema);
-        if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) {
-          logDebug('Tool filtered out: all actions denied', { toolName });
+        const exclusion = this.getToolExclusionReason(toolName, tool, ctx);
+        if (exclusion) {
+          logDebug('Tool filtered out', { toolName, reason: exclusion });
           continue;
         }
 
@@ -358,8 +358,8 @@ class RegistryManager {
         // Transform schema to remove denied actions and apply description overrides
         let transformedSchema = transformToolSchema(toolName, tool.inputSchema);
 
-        // Strip tier-restricted parameters from schema (skip if connection not initialized)
-        if (ctx.instanceInfo) {
+        // Strip tier-restricted parameters from schema (skip when version unknown or not initialized)
+        if (ctx.instanceInfo && ctx.instanceInfo.version !== 'unknown') {
           const restrictedParams = ToolAvailability.getRestrictedParameters(
             toolName,
             ctx.instanceInfo,
@@ -721,26 +721,26 @@ class RegistryManager {
       for (const [toolName, tool] of registry) {
         if (this.toolLookupCache.has(toolName)) continue;
 
-        // Determine why (same order as shouldIncludeTool)
-        if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) {
-          filteredByReadOnly++;
-        } else if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) {
-          filteredByDeniedRegex++;
-        } else if (ctx.tokenScopes && !isToolAvailableForScopes(toolName, ctx.tokenScopes)) {
-          filteredByScopes++;
-        } else if (
-          ctx.instanceInfo &&
-          ctx.instanceInfo.version !== 'unknown' &&
-          !ToolAvailability.isToolAvailableForInstance(toolName, ctx.instanceInfo)
-        ) {
-          filteredByTier++;
-        } else {
-          const allActions = extractActionsFromSchema(tool.inputSchema);
-          if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) {
+        const reason = this.getToolExclusionReason(toolName, tool, ctx);
+        switch (reason) {
+          case 'readOnly':
+            filteredByReadOnly++;
+            break;
+          case 'deniedRegex':
+            filteredByDeniedRegex++;
+            break;
+          case 'scopes':
+            filteredByScopes++;
+            break;
+          case 'tier':
+            filteredByTier++;
+            break;
+          case 'actionDenial':
             filteredByActionDenial++;
-          } else {
-            filteredByTier++; // Unknown reason
-          }
+            break;
+          default:
+            filteredByTier++;
+            break; // Unknown reason
         }
       }
     }

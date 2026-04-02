@@ -59,6 +59,7 @@ import {
 } from './config';
 import { ToolAvailability } from './services/ToolAvailability';
 import { ConnectionManager } from './services/ConnectionManager';
+import { HealthMonitor } from './services/HealthMonitor';
 import { isToolAvailableForScopes } from './services/TokenScopeDetector';
 import type { GitLabScope } from './services/TokenScopeDetector';
 import type { GitLabTier } from './services/GitLabVersionDetector';
@@ -284,80 +285,89 @@ class RegistryManager {
   }
 
   /**
-   * Build unified tool lookup cache for O(1) tool access with filtering applied
+   * Build unified tool lookup cache for O(1) tool access with filtering applied.
+   * @param instanceUrl — when provided, fetches tier/version/scopes for this
+   *   specific instance URL instead of the default (currentInstanceUrl). Prevents
+   *   cross-instance leakage when called from per-URL init/state-change events.
    */
-  private buildToolLookupCache(): void {
-    this.toolLookupCache.clear();
-
-    // Pre-fetch instance info once per cache build to avoid redundant calls
+  /** Load instance context (tier/version/scopes) for cache build and stats.
+   *  Returns undefined fields when connection is not initialized. */
+  private loadInstanceContext(instanceUrl?: string): {
+    instanceInfo?: { tier: GitLabTier; version: string };
+    tokenScopes?: GitLabScope[];
+  } {
     let instanceInfo: { tier: GitLabTier; version: string } | undefined;
     try {
-      const info = ConnectionManager.getInstance().getInstanceInfo();
+      const info = ConnectionManager.getInstance().getInstanceInfo(instanceUrl);
       instanceInfo = { tier: info.tier, version: info.version };
     } catch {
-      // Connection not initialized - parameter restrictions won't apply
+      // Connection not initialized
     }
 
-    // Pre-fetch token scope info for scope-based filtering
     let tokenScopes: GitLabScope[] | undefined;
     try {
-      const scopeInfo = ConnectionManager.getInstance().getTokenScopeInfo();
+      const scopeInfo = ConnectionManager.getInstance().getTokenScopeInfo(instanceUrl);
       if (scopeInfo) {
         tokenScopes = scopeInfo.scopes;
       }
     } catch {
-      // Connection not initialized - scope filtering won't apply
+      // Connection not initialized
     }
 
-    for (const registry of this.registries.values()) {
+    return { instanceInfo, tokenScopes };
+  }
+
+  /** Check if a tool should be included in the cache (passes all filters). */
+  /** Why a tool was excluded from the cache. Returns null if tool should be included.
+   *  Used by both buildToolLookupCache and getFilterStats to ensure consistent logic. */
+  private getToolExclusionReason(
+    toolName: string,
+    tool: EnhancedToolDefinition,
+    ctx: { instanceInfo?: { tier: GitLabTier; version: string }; tokenScopes?: GitLabScope[] },
+  ): 'readOnly' | 'deniedRegex' | 'scopes' | 'tier' | 'actionDenial' | null {
+    if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) return 'readOnly';
+    if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) return 'deniedRegex';
+    if (ctx.tokenScopes && !isToolAvailableForScopes(toolName, ctx.tokenScopes)) return 'scopes';
+    if (
+      ctx.instanceInfo &&
+      ctx.instanceInfo.version !== 'unknown' &&
+      !ToolAvailability.isToolAvailableForInstance(toolName, ctx.instanceInfo)
+    )
+      return 'tier';
+    const allActions = extractActionsFromSchema(tool.inputSchema);
+    if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) return 'actionDenial';
+    return null;
+  }
+
+  /** Filter registries and build transformed tool map (schema + description overrides). */
+  private buildFilteredTools(ctx: {
+    instanceInfo?: { tier: GitLabTier; version: string };
+    tokenScopes?: GitLabScope[];
+  }): Map<string, EnhancedToolDefinition> {
+    const result = new Map<string, EnhancedToolDefinition>();
+
+    for (const [, registry] of this.registries) {
       for (const [toolName, tool] of registry) {
-        // Apply GITLAB_READ_ONLY_MODE filtering at registry level
-        if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) {
-          logDebug('Tool filtered out: read-only mode', { toolName });
+        const exclusion = this.getToolExclusionReason(toolName, tool, ctx);
+        if (exclusion) {
+          logDebug('Tool filtered out', { toolName, reason: exclusion });
           continue;
         }
 
-        // Apply GITLAB_DENIED_TOOLS_REGEX filtering at registry level
-        if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) {
-          logDebug('Tool filtered out: matches denied regex', { toolName });
-          continue;
-        }
-
-        // Apply token scope filtering - skip tools the token can't access
-        if (tokenScopes && !isToolAvailableForScopes(toolName, tokenScopes)) {
-          logDebug('Tool filtered out: insufficient token scopes', { toolName });
-          continue;
-        }
-
-        // Apply GitLab version/tier filtering at registry level
-        if (!ToolAvailability.isToolAvailable(toolName)) {
-          const reason = ToolAvailability.getUnavailableReason(toolName);
-          logDebug('Tool filtered out', { toolName, reason });
-          continue;
-        }
-
-        // Check if all actions are denied for this CQRS tool
-        const allActions = extractActionsFromSchema(tool.inputSchema);
-        if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) {
-          logDebug('Tool filtered out: all actions denied', { toolName });
-          continue;
-        }
-
-        // Tool passes all filters - apply schema transformation and description override
-        // Transform schema to remove denied actions and apply description overrides
         let transformedSchema = transformToolSchema(toolName, tool.inputSchema);
 
-        // Strip tier-restricted parameters from schema (skip if connection not initialized)
-        if (instanceInfo) {
-          const restrictedParams = ToolAvailability.getRestrictedParameters(toolName, instanceInfo);
+        // Strip tier-restricted parameters (skip when version unknown or not initialized)
+        if (ctx.instanceInfo && ctx.instanceInfo.version !== 'unknown') {
+          const restrictedParams = ToolAvailability.getRestrictedParameters(
+            toolName,
+            ctx.instanceInfo,
+          );
           if (restrictedParams.length > 0) {
             transformedSchema = stripTierRestrictedParameters(transformedSchema, restrictedParams);
           }
         }
 
-        // Apply tool-level description override if available
         const customDescription = this.descriptionOverrides.get(toolName);
-
         const finalTool = {
           ...tool,
           inputSchema: transformedSchema,
@@ -368,35 +378,47 @@ class RegistryManager {
           logDebug('Applied description override', { toolName, customDescription });
         }
 
-        // Add to cache
-        this.toolLookupCache.set(toolName, finalTool);
+        result.set(toolName, finalTool);
       }
     }
 
-    // Second pass: handle Related references based on GITLAB_CROSS_REFS setting
-    if (GITLAB_CROSS_REFS) {
-      // Resolve Related references against available tools
-      const availableToolNames = new Set(this.toolLookupCache.keys());
-      for (const [toolName, tool] of this.toolLookupCache) {
-        // Skip tools with custom description overrides (user controls entire description)
-        if (this.descriptionOverrides.has(toolName)) continue;
+    return result;
+  }
 
+  /** Resolve or strip Related: references in tool descriptions. */
+  private postProcessRelatedReferences(cache: Map<string, EnhancedToolDefinition>): void {
+    if (GITLAB_CROSS_REFS) {
+      const availableToolNames = new Set(cache.keys());
+      for (const [toolName, tool] of cache) {
+        if (this.descriptionOverrides.has(toolName)) continue;
         const resolved = resolveRelatedReferences(tool.description, availableToolNames);
         if (resolved !== tool.description) {
-          this.toolLookupCache.set(toolName, { ...tool, description: resolved });
+          cache.set(toolName, { ...tool, description: resolved });
         }
       }
     } else {
-      // Cross-refs disabled: strip all "Related:" sections entirely
-      for (const [toolName, tool] of this.toolLookupCache) {
+      for (const [toolName, tool] of cache) {
         if (this.descriptionOverrides.has(toolName)) continue;
-
         const stripped = stripRelatedSection(tool.description);
         if (stripped !== tool.description) {
-          this.toolLookupCache.set(toolName, { ...tool, description: stripped });
+          cache.set(toolName, { ...tool, description: stripped });
         }
       }
     }
+  }
+
+  private buildToolLookupCache(instanceUrl?: string): void {
+    const ctx = this.loadInstanceContext(instanceUrl);
+
+    // Build into a new map and swap atomically — prevents a concurrent
+    // refreshCache from clearing the live cache between hasToolHandler()
+    // and executeTool() in an in-flight request.
+    const newCache = this.buildFilteredTools(ctx);
+    this.postProcessRelatedReferences(newCache);
+
+    // Atomic swap — in-flight requests that captured a reference to the old map
+    // via getTool() keep working; new requests see the updated cache
+    this.toolLookupCache = newCache;
 
     logDebug('Registry manager built cache after filtering', {
       toolCount: this.toolLookupCache.size,
@@ -406,11 +428,11 @@ class RegistryManager {
   /**
    * Invalidate all caches - call when registries change
    */
-  private invalidateCaches(): void {
+  private invalidateCaches(instanceUrl?: string): void {
     this.toolDefinitionsCache = null;
     this.toolNamesCache = null;
     this.readOnlyToolsCache = null;
-    this.buildToolLookupCache();
+    this.buildToolLookupCache(instanceUrl);
   }
 
   /**
@@ -433,26 +455,39 @@ class RegistryManager {
   }
 
   /**
-   * Clear all caches and rebuild (e.g., after ConnectionManager init provides tier/version)
+   * Clear all caches and rebuild (e.g., after ConnectionManager init provides tier/version).
+   * @param instanceUrl — optional URL to fetch tier/version/scopes from. Prevents
+   *   the cache from resolving zero-arg defaults to a stale currentInstanceUrl.
    */
-  public refreshCache(): void {
-    this.invalidateCaches();
+  public refreshCache(instanceUrl?: string): void {
+    this.invalidateCaches(instanceUrl);
   }
 
   /**
    * Get all tool definitions (for backward compatibility with tools.ts) - cached for performance
    */
   public getAllToolDefinitions(): ToolDefinition[] {
-    if (this.toolDefinitionsCache === null) {
-      // Build cache
-      this.toolDefinitionsCache = [];
+    const unreachableMode = this.isUnreachableMode();
+    // In unreachable mode, rebuild every call (transient state — don't cache
+    // a context-only list that would persist after recovery)
+    if (this.toolDefinitionsCache === null || unreachableMode) {
+      const contextTools = unreachableMode ? this.registries.get('context') : null;
 
+      this.toolDefinitionsCache = [];
       for (const tool of this.toolLookupCache.values()) {
+        if (contextTools && !contextTools.has(tool.name)) continue;
         this.toolDefinitionsCache.push({
           name: tool.name,
           description: tool.description,
           inputSchema: tool.inputSchema,
         });
+      }
+      // Don't persist cache in unreachable mode — next call after recovery
+      // should see full tool list
+      if (unreachableMode) {
+        const result = this.toolDefinitionsCache;
+        this.toolDefinitionsCache = null;
+        return result;
       }
     }
 
@@ -639,79 +674,91 @@ class RegistryManager {
    * Get all available tool names - cached for performance
    */
   public getAvailableToolNames(): string[] {
-    this.toolNamesCache ??= Array.from(this.toolLookupCache.keys());
-
+    const unreachableMode = this.isUnreachableMode();
+    if (this.toolNamesCache === null || unreachableMode) {
+      const contextTools = unreachableMode ? this.registries.get('context') : null;
+      this.toolNamesCache = Array.from(this.toolLookupCache.keys()).filter(
+        (name) => !contextTools || contextTools.has(name),
+      );
+      if (unreachableMode) {
+        const result = this.toolNamesCache;
+        this.toolNamesCache = null;
+        return result;
+      }
+    }
     return this.toolNamesCache;
+  }
+
+  /** True when monitored instances exist but none are healthy/degraded */
+  // isAnyInstanceHealthy() returns true for healthy, degraded, AND connecting states
+  // (connecting is optimistic during startup). Unreachable = all instances are
+  // disconnected or failed (no healthy/degraded/connecting).
+  private isUnreachableMode(): boolean {
+    try {
+      const healthMonitor = HealthMonitor.getInstance();
+      return (
+        healthMonitor.getMonitoredInstances().length > 0 && !healthMonitor.isAnyInstanceHealthy()
+      );
+    } catch {
+      return false;
+    }
   }
 
   /**
    * Get filter statistics showing how tools were filtered
    * Used by whoami action to explain tool availability
    */
-  public getFilterStats(): FilterStats {
-    // Count total tools across all registries
+  public getFilterStats(instanceUrl?: string): FilterStats {
+    const unreachableMode = this.isUnreachableMode();
+    const contextTools = unreachableMode ? this.registries.get('context') : null;
+
+    // Count total tools — in unreachable mode, only context tools are in scope
     let totalTools = 0;
     for (const registry of this.registries.values()) {
-      totalTools += registry.size;
+      for (const [toolName] of registry) {
+        if (contextTools && !contextTools.has(toolName)) continue;
+        totalTools++;
+      }
     }
 
-    const availableTools = this.toolLookupCache.size;
-
-    // Calculate filtered counts by re-running filter logic
+    // Re-run filter logic with per-URL context instead of reading the shared
+    // toolLookupCache — the cache reflects whichever instance last called
+    // refreshCache(), which may differ from the requested instanceUrl.
+    const ctx = this.loadInstanceContext(instanceUrl);
+    let availableTools = 0;
     let filteredByReadOnly = 0;
     let filteredByDeniedRegex = 0;
     let filteredByScopes = 0;
     let filteredByTier = 0;
     let filteredByActionDenial = 0;
 
-    // Get token scopes for scope filtering check
-    let tokenScopes: GitLabScope[] | undefined;
-    try {
-      const scopeInfo = ConnectionManager.getInstance().getTokenScopeInfo();
-      if (scopeInfo) {
-        tokenScopes = scopeInfo.scopes;
-      }
-    } catch {
-      // Connection not initialized
-    }
-
     for (const registry of this.registries.values()) {
       for (const [toolName, tool] of registry) {
-        // Check if already in cache (passed all filters)
-        if (this.toolLookupCache.has(toolName)) {
+        // In unreachable mode, only context tools are available
+        if (contextTools && !contextTools.has(toolName)) continue;
+
+        const reason = this.getToolExclusionReason(toolName, tool, ctx);
+        if (!reason) {
+          availableTools++;
           continue;
         }
-
-        // Tool was filtered - determine why (in same order as buildToolLookupCache)
-        if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) {
-          filteredByReadOnly++;
-          continue;
+        switch (reason) {
+          case 'readOnly':
+            filteredByReadOnly++;
+            break;
+          case 'deniedRegex':
+            filteredByDeniedRegex++;
+            break;
+          case 'scopes':
+            filteredByScopes++;
+            break;
+          case 'tier':
+            filteredByTier++;
+            break;
+          case 'actionDenial':
+            filteredByActionDenial++;
+            break;
         }
-
-        if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) {
-          filteredByDeniedRegex++;
-          continue;
-        }
-
-        if (tokenScopes && !isToolAvailableForScopes(toolName, tokenScopes)) {
-          filteredByScopes++;
-          continue;
-        }
-
-        if (!ToolAvailability.isToolAvailable(toolName)) {
-          filteredByTier++;
-          continue;
-        }
-
-        // Check if all actions are denied for this CQRS tool
-        const allActions = extractActionsFromSchema(tool.inputSchema);
-        if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) {
-          filteredByActionDenial++;
-          continue;
-        }
-
-        // Unknown filtering reason - count as tier
-        filteredByTier++;
       }
     }
 

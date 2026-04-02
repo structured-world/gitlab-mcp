@@ -345,14 +345,14 @@ export const TRUST_PROXY = process.env.TRUST_PROXY;
 // SSE heartbeat interval (in milliseconds)
 // Sends `: ping\n\n` comments to keep SSE connections alive through proxies (Cloudflare, Envoy, etc.)
 // Default 30s — well under Cloudflare's ~100-125s idle timeout
-const parsedHeartbeatMs = parseInt(process.env.GITLAB_SSE_HEARTBEAT_MS ?? '30000', 10);
+const parsedHeartbeatMs = Number.parseInt(process.env.GITLAB_SSE_HEARTBEAT_MS ?? '30000', 10);
 export const SSE_HEARTBEAT_MS =
   Number.isFinite(parsedHeartbeatMs) && parsedHeartbeatMs > 0 ? parsedHeartbeatMs : 30000;
 
 // HTTP server keepalive timeout (in milliseconds)
 // Must be higher than any upstream proxy timeout (Cloudflare max is 600s for Enterprise)
 // Default 620s ensures the Node.js server doesn't close connections before the proxy does
-const parsedKeepAliveTimeout = parseInt(
+const parsedKeepAliveTimeout = Number.parseInt(
   process.env.GITLAB_HTTP_KEEPALIVE_TIMEOUT_MS ?? '620000',
   10,
 );
@@ -365,14 +365,20 @@ export const HTTP_KEEPALIVE_TIMEOUT_MS =
 // Each phase of an HTTP request has its own timeout to prevent different types of hangs.
 
 // TCP connect timeout (default: 2s)
-const parsedConnectTimeoutMs = parseInt(process.env.GITLAB_API_CONNECT_TIMEOUT_MS ?? '2000', 10);
+const parsedConnectTimeoutMs = Number.parseInt(
+  process.env.GITLAB_API_CONNECT_TIMEOUT_MS ?? '2000',
+  10,
+);
 export const CONNECT_TIMEOUT_MS =
   Number.isFinite(parsedConnectTimeoutMs) && parsedConnectTimeoutMs > 0
     ? parsedConnectTimeoutMs
     : 2000;
 
 // Response headers timeout (default: 10s) — time to first response byte after connect
-const parsedHeadersTimeoutMs = parseInt(process.env.GITLAB_API_HEADERS_TIMEOUT_MS ?? '10000', 10);
+const parsedHeadersTimeoutMs = Number.parseInt(
+  process.env.GITLAB_API_HEADERS_TIMEOUT_MS ?? '10000',
+  10,
+);
 export const HEADERS_TIMEOUT_MS =
   Number.isFinite(parsedHeadersTimeoutMs) && parsedHeadersTimeoutMs > 0
     ? parsedHeadersTimeoutMs
@@ -380,20 +386,70 @@ export const HEADERS_TIMEOUT_MS =
 
 // Response body timeout (default: 30s) — time to receive full body after headers
 // Larger default for big responses (pipeline logs, large diffs)
-const parsedBodyTimeoutMs = parseInt(process.env.GITLAB_API_BODY_TIMEOUT_MS ?? '30000', 10);
+const parsedBodyTimeoutMs = Number.parseInt(process.env.GITLAB_API_BODY_TIMEOUT_MS ?? '30000', 10);
 export const BODY_TIMEOUT_MS =
   Number.isFinite(parsedBodyTimeoutMs) && parsedBodyTimeoutMs > 0 ? parsedBodyTimeoutMs : 30000;
 
 // Tool handler timeout (default: 120s) — total time for entire tool execution including retries
-const parsedHandlerTimeoutMs = parseInt(process.env.GITLAB_TOOL_TIMEOUT_MS ?? '120000', 10);
+const parsedHandlerTimeoutMs = Number.parseInt(process.env.GITLAB_TOOL_TIMEOUT_MS ?? '120000', 10);
 export const HANDLER_TIMEOUT_MS =
   Number.isFinite(parsedHandlerTimeoutMs) && parsedHandlerTimeoutMs > 0
     ? parsedHandlerTimeoutMs
     : 120000;
 
+// === Connection health monitoring ===
+// Node.js setTimeout max is 2^31-1 (≈24.8 days). All defaults are well under this.
+// User-configurable values are validated with isFinite + > 0 checks below.
+
+// Startup initialization timeout — how long to wait for GitLab during server startup
+// If exceeded, server starts in disconnected mode and retries in background
+const parsedInitTimeoutMs = Number.parseInt(process.env.GITLAB_INIT_TIMEOUT_MS ?? '5000', 10);
+export const INIT_TIMEOUT_MS =
+  Number.isFinite(parsedInitTimeoutMs) && parsedInitTimeoutMs > 0 ? parsedInitTimeoutMs : 5000;
+
+// Reconnect backoff: base delay (doubles each attempt up to max)
+const parsedReconnectBaseDelay = Number.parseInt(
+  process.env.GITLAB_RECONNECT_BASE_DELAY_MS ?? '5000',
+  10,
+);
+export const RECONNECT_BASE_DELAY_MS =
+  Number.isFinite(parsedReconnectBaseDelay) && parsedReconnectBaseDelay > 0
+    ? parsedReconnectBaseDelay
+    : 5000;
+
+// Reconnect backoff: maximum delay between attempts
+const parsedReconnectMaxDelay = Number.parseInt(
+  process.env.GITLAB_RECONNECT_MAX_DELAY_MS ?? '60000',
+  10,
+);
+export const RECONNECT_MAX_DELAY_MS =
+  Number.isFinite(parsedReconnectMaxDelay) && parsedReconnectMaxDelay > 0
+    ? parsedReconnectMaxDelay
+    : 60000;
+
+// Health check interval when connection is healthy (light ping)
+const parsedHealthCheckInterval = Number.parseInt(
+  process.env.GITLAB_HEALTH_CHECK_INTERVAL_MS ?? '60000',
+  10,
+);
+export const HEALTH_CHECK_INTERVAL_MS =
+  Number.isFinite(parsedHealthCheckInterval) && parsedHealthCheckInterval > 0
+    ? parsedHealthCheckInterval
+    : 60000;
+
+// Consecutive transient failures before transitioning to DISCONNECTED
+const parsedFailureThreshold = Number.parseInt(process.env.GITLAB_FAILURE_THRESHOLD ?? '3', 10);
+export const FAILURE_THRESHOLD =
+  Number.isFinite(parsedFailureThreshold) && parsedFailureThreshold > 0
+    ? parsedFailureThreshold
+    : 3;
+
 // === Connection pool configuration ===
 // Max HTTP connections per GitLab instance (default: 25, up from 10)
-const parsedPoolMaxConnections = parseInt(process.env.GITLAB_POOL_MAX_CONNECTIONS ?? '25', 10);
+const parsedPoolMaxConnections = Number.parseInt(
+  process.env.GITLAB_POOL_MAX_CONNECTIONS ?? '25',
+  10,
+);
 export const POOL_MAX_CONNECTIONS =
   Number.isFinite(parsedPoolMaxConnections) && parsedPoolMaxConnections > 0
     ? parsedPoolMaxConnections
@@ -403,34 +459,37 @@ export const POOL_MAX_CONNECTIONS =
 // Retries on: timeouts, network errors, 5xx server errors, 429 rate limits
 export const API_RETRY_ENABLED = process.env.GITLAB_API_RETRY_ENABLED !== 'false';
 
-const parsedMaxAttempts = parseInt(process.env.GITLAB_API_RETRY_MAX_ATTEMPTS ?? '3', 10);
+const parsedMaxAttempts = Number.parseInt(process.env.GITLAB_API_RETRY_MAX_ATTEMPTS ?? '3', 10);
 export const API_RETRY_MAX_ATTEMPTS =
   Number.isFinite(parsedMaxAttempts) && parsedMaxAttempts >= 0 ? parsedMaxAttempts : 3;
 
-const parsedBaseDelay = parseInt(process.env.GITLAB_API_RETRY_BASE_DELAY_MS ?? '1000', 10);
+const parsedBaseDelay = Number.parseInt(process.env.GITLAB_API_RETRY_BASE_DELAY_MS ?? '1000', 10);
 export const API_RETRY_BASE_DELAY_MS =
   Number.isFinite(parsedBaseDelay) && parsedBaseDelay > 0 ? parsedBaseDelay : 1000;
 
-const parsedMaxDelay = parseInt(process.env.GITLAB_API_RETRY_MAX_DELAY_MS ?? '4000', 10);
+const parsedMaxDelay = Number.parseInt(process.env.GITLAB_API_RETRY_MAX_DELAY_MS ?? '4000', 10);
 export const API_RETRY_MAX_DELAY_MS =
   Number.isFinite(parsedMaxDelay) && parsedMaxDelay > 0 ? parsedMaxDelay : 4000;
 
 // Rate limiting configuration
 // Per-IP rate limiting (for anonymous requests) - enabled by default
 export const RATE_LIMIT_IP_ENABLED = process.env.RATE_LIMIT_IP_ENABLED !== 'false';
-export const RATE_LIMIT_IP_WINDOW_MS = parseInt(process.env.RATE_LIMIT_IP_WINDOW_MS ?? '60000', 10); // 1 minute
-export const RATE_LIMIT_IP_MAX_REQUESTS = parseInt(
+export const RATE_LIMIT_IP_WINDOW_MS = Number.parseInt(
+  process.env.RATE_LIMIT_IP_WINDOW_MS ?? '60000',
+  10,
+); // 1 minute
+export const RATE_LIMIT_IP_MAX_REQUESTS = Number.parseInt(
   process.env.RATE_LIMIT_IP_MAX_REQUESTS ?? '100',
   10,
 );
 
 // Per-session rate limiting (for authenticated requests) - disabled by default
 export const RATE_LIMIT_SESSION_ENABLED = process.env.RATE_LIMIT_SESSION_ENABLED === 'true';
-export const RATE_LIMIT_SESSION_WINDOW_MS = parseInt(
+export const RATE_LIMIT_SESSION_WINDOW_MS = Number.parseInt(
   process.env.RATE_LIMIT_SESSION_WINDOW_MS ?? '60000',
   10,
 );
-export const RATE_LIMIT_SESSION_MAX_REQUESTS = parseInt(
+export const RATE_LIMIT_SESSION_MAX_REQUESTS = Number.parseInt(
   process.env.RATE_LIMIT_SESSION_MAX_REQUESTS ?? '300',
   10,
 );

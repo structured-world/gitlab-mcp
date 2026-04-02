@@ -474,6 +474,28 @@ export class ToolAvailability {
     }
   }
 
+  /**
+   * Check if a tool is available for a specific instance (uses provided info
+   * instead of reading currentInstanceUrl from ConnectionManager).
+   */
+  public static isToolAvailableForInstance(
+    toolName: string,
+    instanceInfo: { tier: GitLabTier; version: string },
+    action?: string,
+  ): boolean {
+    // When version is unknown (REST fallback, OAuth deferred), allow all tools
+    // rather than filtering them out — the version will be detected later
+    if (instanceInfo.version === 'unknown') return true;
+
+    const actionReq = this.getActionRequirement(toolName, action);
+    if (actionReq) {
+      const version = parseVersion(instanceInfo.version);
+      if (version < parseVersion(actionReq.minVersion)) return false;
+      return this.isTierSufficient(instanceInfo.tier, actionReq.tier);
+    }
+    return parseVersion(instanceInfo.version) >= parseVersion('15.0');
+  }
+
   public static getAvailableTools(): string[] {
     return Object.keys(this.actionRequirements).filter((tool) => this.isToolAvailable(tool));
   }

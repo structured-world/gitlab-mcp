@@ -182,13 +182,14 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
  *
  * @returns TokenScopeInfo or null if detection fails
  */
-export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
-  if (!GITLAB_BASE_URL || !GITLAB_TOKEN) {
+export async function detectTokenScopes(baseUrl?: string): Promise<TokenScopeInfo | null> {
+  const url = baseUrl ?? GITLAB_BASE_URL;
+  if (!url || !GITLAB_TOKEN) {
     return null;
   }
 
   try {
-    const response = await enhancedFetch(`${GITLAB_BASE_URL}/api/v4/personal_access_tokens/self`, {
+    const response = await enhancedFetch(`${url}/api/v4/personal_access_tokens/self`, {
       headers: {
         'PRIVATE-TOKEN': GITLAB_TOKEN,
         Accept: 'application/json',
@@ -333,7 +334,11 @@ export function getTokenCreationUrl(
 /**
  * Log a clean, user-friendly startup message about token scopes
  */
-export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): void {
+export function logTokenScopeInfo(
+  info: TokenScopeInfo,
+  totalTools: number,
+  baseUrl: string = GITLAB_BASE_URL,
+): void {
   const availableTools = getToolsForScopes(info.scopes);
   const scopeList = info.scopes.join(', ');
 
@@ -381,7 +386,7 @@ export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): voi
       logInfo("GraphQL introspection skipped (requires 'api' or 'read_api' scope)");
     }
 
-    const fixUrl = getTokenCreationUrl(GITLAB_BASE_URL);
+    const fixUrl = getTokenCreationUrl(baseUrl);
     logInfo(`For full functionality, create a token with 'api' scope: ${fixUrl}`, { url: fixUrl });
   }
 }

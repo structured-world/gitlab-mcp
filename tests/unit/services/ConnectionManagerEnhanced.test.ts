@@ -168,17 +168,18 @@ describe('ConnectionManager Enhanced Tests', () => {
       jest.doMock('../../../src/graphql/client');
       jest.doMock('../../../src/services/GitLabVersionDetector');
       jest.doMock('../../../src/services/SchemaIntrospector');
+      // Mock enhancedFetch BEFORE require so ConnectionManager picks it up
+      jest.doMock('../../../src/utils/fetch', () => ({
+        enhancedFetch: jest.fn().mockResolvedValue({
+          ok: false,
+          status: 401,
+        }),
+      }));
 
       const {
         ConnectionManager: OAuthConnectionManager,
       } = require('../../../src/services/ConnectionManager');
       const { GraphQLClient: OAuthGraphQLClient } = require('../../../src/graphql/client');
-
-      // Mock global fetch for version detection attempt
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: false,
-        status: 401,
-      }) as unknown as typeof fetch;
 
       const manager = OAuthConnectionManager.getInstance();
       await manager.initialize();
@@ -264,15 +265,17 @@ describe('ConnectionManager Enhanced Tests', () => {
 
   describe('Caching Mechanism', () => {
     it('should use cached data when available and not expired', async () => {
-      // First initialization
+      // First initialization populates introspection cache
       await connectionManager.initialize();
-      connectionManager.reset();
 
-      // Second initialization should use cache
-      const newManager = ConnectionManager.getInstance();
-      await newManager.initialize();
+      // Clear per-URL state only (not the static cache) to force re-init
+      (connectionManager as any).instances.clear();
+      (connectionManager as any).currentInstanceUrl = null;
 
-      // Should only call detectInstance once total (from cache)
+      // Second initialization should use cached introspection data
+      await connectionManager.initialize();
+
+      // Should only call detectInstance once total (second init used cache)
       expect(mockVersionDetector.detectInstance).toHaveBeenCalledTimes(1);
     });
 
@@ -285,14 +288,16 @@ describe('ConnectionManager Enhanced Tests', () => {
       try {
         // First initialization
         await connectionManager.initialize();
-        connectionManager.reset();
+
+        // Clear per-URL state but keep static cache (simulates re-init scenario)
+        (connectionManager as any).instances.clear();
+        (connectionManager as any).currentInstanceUrl = null;
 
         // Advance time beyond cache TTL (10 minutes = 600000ms)
         currentTime += 600001;
 
-        // Second initialization should fetch fresh data
-        const newManager = ConnectionManager.getInstance();
-        await newManager.initialize();
+        // Second initialization should fetch fresh data (cache expired)
+        await connectionManager.initialize();
 
         expect(mockVersionDetector.detectInstance).toHaveBeenCalledTimes(2);
       } finally {
@@ -415,8 +420,9 @@ describe('ConnectionManager Enhanced Tests', () => {
     });
 
     it('should check widget availability correctly', () => {
+      // isWidgetAvailable reads from schemaInfo.workItemWidgetTypes directly
       expect(connectionManager.isWidgetAvailable('ASSIGNEES')).toBe(true);
-      expect(mockSchemaIntrospector.isWidgetTypeAvailable).toHaveBeenCalledWith('ASSIGNEES');
+      expect(connectionManager.isWidgetAvailable('NONEXISTENT')).toBe(false);
     });
 
     it('should return false for widget availability before initialization', () => {
@@ -605,8 +611,8 @@ describe('ConnectionManager Enhanced Tests', () => {
 
       await connectionManager.initialize();
 
-      // Should call logTokenScopeInfo with dynamically derived tool count (3)
-      expect(mockedLogTokenScopeInfo).toHaveBeenCalledWith(scopeInfo, 3);
+      // Should call logTokenScopeInfo with dynamically derived tool count (3) and instance URL
+      expect(mockedLogTokenScopeInfo).toHaveBeenCalledWith(scopeInfo, 3, 'https://test-gitlab.com');
     });
 
     it('should use REST fallback with defaults when /api/v4/version fails', async () => {
@@ -738,13 +744,16 @@ describe('ConnectionManager Enhanced Tests', () => {
       }));
 
       // Mock successful unauthenticated version detection for enterprise instance
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          version: '17.3.0',
-          enterprise: true,
+      // OAuth probe now uses enhancedFetch, not global.fetch
+      jest.doMock('../../../src/utils/fetch', () => ({
+        enhancedFetch: jest.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            version: '17.3.0',
+            enterprise: true,
+          }),
         }),
-      }) as unknown as typeof fetch;
+      }));
 
       const {
         ConnectionManager: OAuthConnectionManager,
@@ -781,13 +790,15 @@ describe('ConnectionManager Enhanced Tests', () => {
       }));
 
       // Mock successful unauthenticated version detection for free (CE) instance
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({
-          version: '16.9.0',
-          enterprise: false,
+      jest.doMock('../../../src/utils/fetch', () => ({
+        enhancedFetch: jest.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({
+            version: '16.9.0',
+            enterprise: false,
+          }),
         }),
-      }) as unknown as typeof fetch;
+      }));
 
       const {
         ConnectionManager: OAuthConnectionManager,
@@ -827,9 +838,10 @@ describe('ConnectionManager Enhanced Tests', () => {
       }));
 
       // Mock network error during version detection
-      global.fetch = jest
-        .fn()
-        .mockRejectedValue(new Error('ECONNREFUSED')) as unknown as typeof fetch;
+      const mockEnhancedFetch = jest.fn().mockRejectedValue(new Error('ECONNREFUSED'));
+      jest.doMock('../../../src/utils/fetch', () => ({
+        enhancedFetch: mockEnhancedFetch,
+      }));
 
       const {
         ConnectionManager: OAuthConnectionManager,
@@ -838,6 +850,8 @@ describe('ConnectionManager Enhanced Tests', () => {
       const manager = OAuthConnectionManager.getInstance();
       // Should initialize without throwing - defers introspection
       await expect(manager.initialize()).resolves.not.toThrow();
+      // Verify the OAuth probe was actually attempted via enhancedFetch
+      expect(mockEnhancedFetch).toHaveBeenCalled();
 
       manager.reset();
       jest.resetModules();
@@ -853,23 +867,36 @@ describe('ConnectionManager Enhanced Tests', () => {
       await connectionManager.initialize();
 
       // Clear local state only (simulates deferred introspection scenario)
-      (connectionManager as any).instanceInfo = null;
-      (connectionManager as any).schemaInfo = null;
+      const url = connectionManager.getCurrentInstanceUrl()!;
+      const state = (connectionManager as any).instances.get(url);
+      state.instanceInfo = null;
+      state.schemaInfo = null;
+      state.introspectedInstanceUrl = null;
+
+      // Capture call counts before ensureIntrospected — if cache is used,
+      // detectInstance/introspectSchema must NOT be called again
+      const detectCalls = mockVersionDetector.detectInstance.mock.calls.length;
+      const introspectCalls = mockSchemaIntrospector.introspectSchema.mock.calls.length;
 
       // ensureIntrospected should use legacy cache (lines 278-282)
       await connectionManager.ensureIntrospected();
 
-      // Should have restored data from legacy cache
+      // Should have restored data from legacy cache (not re-introspected)
       expect(connectionManager.getVersion()).toBe('16.5.0');
+      expect(mockVersionDetector.detectInstance).toHaveBeenCalledTimes(detectCalls);
+      expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalledTimes(introspectCalls);
     });
 
     it('should perform fresh introspection when all caches are cleared', async () => {
       // Initialize connection first
       await connectionManager.initialize();
 
-      // Clear ALL state and caches
-      (connectionManager as any).instanceInfo = null;
-      (connectionManager as any).schemaInfo = null;
+      // Clear ALL state and caches (per-URL state)
+      const url = connectionManager.getCurrentInstanceUrl()!;
+      const state = (connectionManager as any).instances.get(url);
+      state.instanceInfo = null;
+      state.schemaInfo = null;
+      state.introspectedInstanceUrl = null;
       (ConnectionManager as any).introspectionCache.clear();
 
       // Reset mocks to count new calls
@@ -907,11 +934,12 @@ describe('ConnectionManager Enhanced Tests', () => {
         },
       };
 
+      const getIntrospection = jest.fn().mockReturnValue(mockCachedIntrospection);
       jest.doMock('../../../src/services/InstanceRegistry', () => ({
         InstanceRegistry: {
           getInstance: () => ({
             isInitialized: () => true,
-            getIntrospection: jest.fn().mockReturnValue(mockCachedIntrospection),
+            getIntrospection,
           }),
         },
       }));
@@ -959,10 +987,12 @@ describe('ConnectionManager Enhanced Tests', () => {
         })),
       }));
 
-      global.fetch = jest.fn().mockResolvedValue({
-        ok: true,
-        json: async () => ({ version: '17.0.0', enterprise: true }),
-      }) as unknown as typeof fetch;
+      jest.doMock('../../../src/utils/fetch', () => ({
+        enhancedFetch: jest.fn().mockResolvedValue({
+          ok: true,
+          json: async () => ({ version: '17.0.0', enterprise: true }),
+        }),
+      }));
 
       const {
         ConnectionManager: CachedConnectionManager,
@@ -971,17 +1001,32 @@ describe('ConnectionManager Enhanced Tests', () => {
       const manager = CachedConnectionManager.getInstance();
       await manager.initialize();
 
-      // Clear local state to trigger ensureIntrospected
-      manager.instanceInfo = null;
-      manager.schemaInfo = null;
+      // Clear per-URL state to trigger ensureIntrospected
+      const url = manager.getCurrentInstanceUrl();
+      expect(url).not.toBeNull();
+      const state = manager.instances.get(url);
+      if (state) {
+        state.instanceInfo = null;
+        state.schemaInfo = null;
+        state.introspectedInstanceUrl = null;
+      }
       CachedConnectionManager.introspectionCache.clear();
 
       // ensureIntrospected should use InstanceRegistry cache (lines 262-270)
       await manager.ensureIntrospected();
 
+      // Verify InstanceRegistry cache was actually consulted
+      expect(getIntrospection).toHaveBeenCalledWith('https://cached-gitlab.example.com');
+
       // Should have restored data from InstanceRegistry cache
       expect(manager.getVersion()).toBe('17.0.0');
       expect(manager.getTier()).toBe('ultimate');
+      // Regression: isWidgetAvailable must work after cache restore (#374)
+      // Assert LABELS/MILESTONE — only in InstanceRegistry mock, not in
+      // SchemaIntrospector mock (which has only ASSIGNEES), proving cache path
+      expect(manager.isWidgetAvailable('LABELS')).toBe(true);
+      expect(manager.isWidgetAvailable('MILESTONE')).toBe(true);
+      expect(manager.isWidgetAvailable('NONEXISTENT')).toBe(false);
 
       manager.reset();
       jest.resetModules();
@@ -1004,6 +1049,46 @@ describe('ConnectionManager Enhanced Tests', () => {
       connectionManager.reset();
       expect(connectionManager.getCurrentInstanceUrl()).toBeNull();
     });
+
+    it('should not let stale init overwrite currentInstanceUrl after newer init', async () => {
+      // Simulate: init(A) starts, init(B) starts, B finishes first, A finishes last
+      // A must NOT overwrite currentInstanceUrl back to itself
+      const urlA = 'https://instance-a.example.com';
+      const urlB = 'https://instance-b.example.com';
+
+      // Start both inits — B will resolve, then A
+      let resolveA!: () => void;
+      const blockA = new Promise<void>((r) => {
+        resolveA = r;
+      });
+      const originalDoInit = (connectionManager as any).doInitialize.bind(connectionManager);
+
+      // Spy on doInitialize to control timing
+      const doInitSpy = jest.spyOn(connectionManager as any, 'doInitialize');
+      doInitSpy.mockImplementation(async (url: unknown) => {
+        if (url === urlA) {
+          // A waits until we release it
+          await blockA;
+        }
+        return originalDoInit(url);
+      });
+
+      const promiseA = connectionManager.initialize(urlA);
+      const promiseB = connectionManager.initialize(urlB);
+
+      // B finishes first
+      await promiseB;
+      expect(connectionManager.getCurrentInstanceUrl()).toBe(urlB);
+
+      // Now release A
+      resolveA();
+      await promiseA;
+
+      // A must NOT have overwritten currentInstanceUrl — B was requested later
+      expect(connectionManager.getCurrentInstanceUrl()).toBe(urlB);
+
+      doInitSpy.mockRestore();
+    });
   });
 
   describe('Reinitialize Method', () => {
@@ -1011,25 +1096,19 @@ describe('ConnectionManager Enhanced Tests', () => {
      * Tests reinitialize() method (lines 502-521)
      * Should reset state, clear cache for new instance, and re-initialize
      */
-    it('should reset state and call initialize', async () => {
+    it('should remove old state and re-initialize for the new URL', async () => {
       // First, initialize normally
       await connectionManager.initialize();
+      const previousUrl = connectionManager.getCurrentInstanceUrl();
       expect(connectionManager.getVersion()).toBe('16.5.0');
 
-      // Spy on reset method
-      const resetSpy = jest.spyOn(connectionManager, 'reset');
-
       // Reinitialize for a different instance
-      // Note: reinitialize() calls initialize() which may use cached data
       await connectionManager.reinitialize('https://new-gitlab.example.com');
 
-      // Should have called reset
-      expect(resetSpy).toHaveBeenCalled();
-
-      // After reinitialize, connection should still work
-      expect(connectionManager.getClient()).toBeDefined();
-
-      resetSpy.mockRestore();
+      // Verify URL actually switched and new client is accessible
+      expect(connectionManager.getCurrentInstanceUrl()).toBe('https://new-gitlab.example.com');
+      expect(connectionManager.getCurrentInstanceUrl()).not.toBe(previousUrl);
+      expect(connectionManager.getClient('https://new-gitlab.example.com')).toBeDefined();
     });
 
     it('should complete reinitialize without errors and restore working state', async () => {
@@ -1064,13 +1143,13 @@ describe('ConnectionManager Enhanced Tests', () => {
       expect(client).toBe(connectionManager.getClient());
     });
 
-    it('should return singleton client for unregistered instance', async () => {
+    it('should throw for explicit unregistered instance URL', async () => {
       await connectionManager.initialize();
 
-      // Request client for URL not in registry
-      const client = connectionManager.getInstanceClient('https://unknown.gitlab.com');
-      expect(client).toBeDefined();
-      expect(client).toBe(connectionManager.getClient());
+      // Explicit URL not found anywhere — should throw, not silently use wrong instance
+      expect(() => connectionManager.getInstanceClient('https://unknown.gitlab.com')).toThrow(
+        'Connection not initialized for https://unknown.gitlab.com',
+      );
     });
   });
 

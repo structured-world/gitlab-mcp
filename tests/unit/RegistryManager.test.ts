@@ -72,6 +72,7 @@ jest.mock('../../src/entities/labels/registry', () => ({
 jest.mock('../../src/services/ToolAvailability', () => ({
   ToolAvailability: {
     isToolAvailable: jest.fn(),
+    isToolAvailableForInstance: jest.fn().mockReturnValue(true),
     getUnavailableReason: jest.fn(),
     getRestrictedParameters: jest.fn().mockReturnValue([]),
   },
@@ -89,6 +90,18 @@ jest.mock('../../src/services/ConnectionManager', () => ({
 jest.mock('../../src/services/TokenScopeDetector', () => ({
   isToolAvailableForScopes: jest.fn().mockReturnValue(true),
   getToolScopeRequirements: jest.fn().mockReturnValue({}),
+}));
+
+// Mock HealthMonitor for disconnected mode testing
+const mockHealthMonitorInstance = {
+  getMonitoredInstances: jest.fn().mockReturnValue([]),
+  isAnyInstanceHealthy: jest.fn().mockReturnValue(true),
+};
+
+jest.mock('../../src/services/HealthMonitor', () => ({
+  HealthMonitor: {
+    getInstance: jest.fn(() => mockHealthMonitorInstance),
+  },
 }));
 
 jest.mock('../../src/logger', () => ({
@@ -184,6 +197,7 @@ describe('RegistryManager', () => {
     // Reset default mocks
     mockConfig.getToolDescriptionOverrides = jest.fn(() => new Map());
     ToolAvailability.isToolAvailable.mockReturnValue(true);
+    ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
     ToolAvailability.getUnavailableReason.mockReturnValue('');
 
     registryManager = RegistryManager.getInstance();
@@ -325,7 +339,7 @@ describe('RegistryManager', () => {
 
   describe('Tool Availability Filtering', () => {
     beforeEach(() => {
-      ToolAvailability.isToolAvailable.mockImplementation(
+      ToolAvailability.isToolAvailableForInstance.mockImplementation(
         (name: string) => !name.includes('unavailable'),
       );
       ToolAvailability.getUnavailableReason.mockImplementation((name: string) =>
@@ -1106,8 +1120,8 @@ describe('RegistryManager', () => {
     it('should count tools filtered by tier restrictions', () => {
       const { ToolAvailability } = require('../../src/services/ToolAvailability');
 
-      // Make some tools unavailable due to tier
-      ToolAvailability.isToolAvailable.mockImplementation(
+      // Make some tools unavailable due to tier (uses isToolAvailableForInstance now)
+      ToolAvailability.isToolAvailableForInstance.mockImplementation(
         (name: string) => !name.includes('labels'),
       );
       ToolAvailability.getUnavailableReason.mockImplementation((name: string) =>
@@ -1123,7 +1137,7 @@ describe('RegistryManager', () => {
       expect(stats.filteredByTier).toBeGreaterThan(0);
 
       // Restore mocks
-      ToolAvailability.isToolAvailable.mockReturnValue(true);
+      ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
       ToolAvailability.getUnavailableReason.mockReturnValue('');
     });
 
@@ -1186,6 +1200,49 @@ describe('RegistryManager', () => {
           expect(schema.oneOf.length).toBeGreaterThan(0);
         }
       }
+    });
+  });
+
+  describe('disconnected mode filtering', () => {
+    it('should only expose context tools when all instances are disconnected', () => {
+      // Simulate all instances disconnected
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
+        'https://gitlab.example.com',
+      ]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(false);
+
+      // Reset RegistryManager to trigger cache rebuild
+      (RegistryManager as any).instance = null;
+      registryManager = RegistryManager.getInstance();
+
+      const tools = registryManager.getAllToolDefinitions();
+      const toolNames = tools.map((t) => t.name);
+
+      // Should only have context tools (manage_context from context registry)
+      expect(toolNames).toContain('manage_context');
+      // Should NOT have non-context tools
+      expect(toolNames).not.toContain('core_tool_1');
+      expect(toolNames).not.toContain('core_readonly');
+
+      // Restore
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+    });
+
+    it('should expose all tools when health monitor not yet initialized', () => {
+      // No monitored instances = HealthMonitor not initialized yet
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+
+      (RegistryManager as any).instance = null;
+      registryManager = RegistryManager.getInstance();
+
+      const tools = registryManager.getAllToolDefinitions();
+      const toolNames = tools.map((t) => t.name);
+
+      // Should have all tools (no filtering)
+      expect(toolNames).toContain('core_tool_1');
+      expect(toolNames).toContain('manage_context');
     });
   });
 });

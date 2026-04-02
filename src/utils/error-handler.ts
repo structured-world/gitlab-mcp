@@ -176,7 +176,8 @@ export type GitLabStructuredError =
   | PermissionDeniedError
   | NotFoundError
   | ApiError
-  | TimeoutError;
+  | TimeoutError
+  | ConnectionFailedError;
 
 // ============================================================================
 // Tier Restriction Detection
@@ -1066,4 +1067,143 @@ export class StructuredToolError extends Error {
  */
 export function isStructuredToolError(error: unknown): error is StructuredToolError {
   return error instanceof StructuredToolError;
+}
+
+// ============================================================================
+// Connection Health — Error Classification
+// ============================================================================
+
+/**
+ * Error category for connection health decisions.
+ * - transient: network issues, server errors — will retry
+ * - auth: authentication/authorization — no auto-retry (token won't fix itself)
+ * - permanent: bad requests, config errors — no retry
+ */
+export type ErrorCategory = 'transient' | 'auth' | 'permanent';
+
+/** Network error codes that indicate transient connectivity issues */
+const TRANSIENT_ERROR_CODES = new Set([
+  'ECONNREFUSED',
+  'ECONNRESET',
+  'ECONNABORTED',
+  'ETIMEDOUT',
+  // ENOTFOUND intentionally excluded — a wrong hostname is a config error,
+  // not a transient outage. Including it would cause infinite reconnect loops.
+  'ENETUNREACH',
+  'EHOSTUNREACH',
+  'EPIPE',
+  'EAI_AGAIN',
+  'UND_ERR_CONNECT_TIMEOUT',
+  'UND_ERR_HEADERS_TIMEOUT',
+  'UND_ERR_BODY_TIMEOUT',
+  'UND_ERR_SOCKET',
+]);
+
+/**
+ * Classify an error for connection health decisions.
+ *
+ * @param error - The error to classify
+ * @returns Error category: transient (retry), auth (no retry), or permanent (no retry)
+ */
+export function classifyError(error: unknown): ErrorCategory {
+  if (!(error instanceof Error)) {
+    return 'permanent';
+  }
+
+  const message = error.message.toLowerCase();
+  const code = (error as Error & { code?: string }).code;
+
+  // Check error code first (most reliable for network errors)
+  if (code && TRANSIENT_ERROR_CODES.has(code)) {
+    return 'transient';
+  }
+
+  // Check for timeout patterns in message
+  if (
+    message.includes('timeout') ||
+    message.includes('timed out') ||
+    message.includes('socket hang up') ||
+    message.includes('network error') ||
+    message.includes('fetch failed') ||
+    message.includes('health check failed') ||
+    message.includes('initialization timeout') ||
+    message.includes('econnrefused') ||
+    message.includes('econnreset')
+  ) {
+    return 'transient';
+  }
+
+  // Check for HTTP status codes in the error message
+  const parsed = parseGitLabApiError(error.message);
+  if (parsed) {
+    const { status } = parsed;
+
+    // Auth errors — token won't fix itself
+    if (status === 401 || status === 403) {
+      return 'auth';
+    }
+
+    // Server errors and rate limiting — transient
+    if (status >= 500 || status === 429) {
+      return 'transient';
+    }
+
+    // Client errors (400, 404, 422, etc.) — permanent
+    return 'permanent';
+  }
+
+  // Default: treat unknown errors as permanent — programming bugs (TypeError, RangeError)
+  // should not trigger connection health transitions
+  return 'permanent';
+}
+
+/**
+ * Structured error for when GitLab connection is unavailable.
+ * Returned to MCP clients when tools are called during disconnected state.
+ */
+export interface ConnectionFailedError extends StructuredError {
+  error_code: 'CONNECTION_FAILED';
+  /** GitLab instance URL that is unreachable */
+  instance_url: string;
+  /** Whether automatic reconnection is in progress */
+  reconnecting: boolean;
+}
+
+/**
+ * Create a ConnectionFailedError for tool calls during disconnected/failed state.
+ *
+ * @param connectionState - The current health monitor state for this instance.
+ *   'connecting' → reconnect in progress; 'disconnected' → will auto-retry;
+ *   'failed' → auth/config error, requires manual intervention.
+ */
+export function createConnectionFailedError(
+  toolName: string,
+  action: string,
+  instanceUrl: string,
+  connectionState: 'connecting' | 'disconnected' | 'failed' | (string & {}),
+): ConnectionFailedError {
+  const reconnecting = connectionState === 'connecting';
+  const message =
+    connectionState === 'failed'
+      ? `GitLab instance ${instanceUrl} connection failed (authentication or configuration error). Automatic reconnection is disabled.`
+      : connectionState === 'connecting'
+        ? `GitLab instance ${instanceUrl} is currently unreachable. Automatic reconnection is in progress.`
+        : `GitLab instance ${instanceUrl} is currently unreachable. Connection will be retried automatically.`;
+
+  const suggestedFix =
+    connectionState === 'failed'
+      ? 'Check authentication credentials (token or OAuth) and GITLAB_API_URL configuration. ' +
+        "Use manage_context with action 'whoami' to check connection status."
+      : 'Check network connectivity, VPN status, or GitLab instance availability. ' +
+        "Use manage_context with action 'whoami' to check connection status.";
+
+  return {
+    error_code: 'CONNECTION_FAILED',
+    tool: toolName,
+    action,
+    instance_url: instanceUrl,
+    reconnecting,
+    message,
+    suggested_fix: suggestedFix,
+  };
 }

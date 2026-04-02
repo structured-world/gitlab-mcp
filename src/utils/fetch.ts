@@ -270,6 +270,8 @@ export interface FetchWithRetryOptions extends RequestInit {
   rateLimit?: boolean;
   /** Override the base URL for rate limit slot acquisition (derived from request URL if not specified) */
   rateLimitBaseUrl?: string;
+  /** Skip auth headers — for intentionally unauthenticated probes (health checks, version detection) */
+  skipAuth?: boolean;
 }
 
 /**
@@ -467,6 +469,7 @@ async function doFetch(
   url: string,
   options: RequestInit = {},
   instanceDispatcher?: unknown,
+  skipAuth = false,
 ): Promise<Response> {
   // Use per-instance dispatcher if provided, otherwise fall back to global
   const dispatcher = instanceDispatcher ?? getDispatcher();
@@ -478,7 +481,9 @@ async function doFetch(
     ? { 'User-Agent': DEFAULT_HEADERS['User-Agent'], Accept: DEFAULT_HEADERS.Accept }
     : { ...DEFAULT_HEADERS };
 
-  const headers: Record<string, string> = { ...baseHeaders, ...getAuthHeaders() };
+  const headers: Record<string, string> = skipAuth
+    ? { ...baseHeaders }
+    : { ...baseHeaders, ...getAuthHeaders() };
 
   if (options.headers) {
     if (options.headers instanceof Headers) {
@@ -774,15 +779,16 @@ export async function enhancedFetch(
 
   try {
     // If retry is disabled, just do a single fetch
+    const unauthenticated = options.skipAuth === true;
     if (!shouldRetry || maxRetries <= 0) {
-      return await doFetch(url, fetchOptions, instanceDispatcher);
+      return await doFetch(url, fetchOptions, instanceDispatcher, unauthenticated);
     }
 
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const response = await doFetch(url, fetchOptions, instanceDispatcher);
+        const response = await doFetch(url, fetchOptions, instanceDispatcher, unauthenticated);
 
         // Check if response status is retryable (5xx, 429)
         if (isRetryableStatus(response.status) && attempt < maxRetries) {

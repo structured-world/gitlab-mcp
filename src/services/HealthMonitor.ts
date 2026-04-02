@@ -236,14 +236,13 @@ async function quickHealthCheck(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    // enhancedFetch respects proxy/TLS/custom CA settings. In OAuth mode it
-    // logs a warning about missing token context — harmless for health probes
-    // since 401 still confirms the server is alive. Suppressing the warning
-    // requires adding skipAuth to enhancedFetch (#379 scope).
+    // Health probes are intentionally unauthenticated — 401 still confirms
+    // the server is alive. skipAuth prevents OAuth "no token context" warnings.
     const response = await enhancedFetch(`${instanceUrl}/api/v4/version`, {
       method: 'HEAD',
       signal: controller.signal,
       retry: false,
+      skipAuth: true,
     });
 
     // Any non-5xx response means the server is reachable. 401/403 = auth needed

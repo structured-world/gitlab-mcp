@@ -113,7 +113,7 @@ describe('handlers', () => {
     // Create mock server
     mockServer = {
       setRequestHandler: jest.fn(),
-    } as any;
+    } as unknown as jest.Mocked<Server>;
 
     // Mock ConnectionManager methods
     mockConnectionManager.initialize.mockResolvedValue(undefined);
@@ -972,8 +972,10 @@ describe('handlers', () => {
       // Test extractActionFromError when wrapped error's cause has action property (line 88)
       // The error gets wrapped on line 320: throw new Error(..., { cause: error })
       // So the wrapper's cause (original error) needs the action property
-      const errorWithAction = new Error('GitLab API error: 403 Forbidden');
-      (errorWithAction as any).action = 'custom_action';
+      const errorWithAction: Error & { action?: string } = new Error(
+        'GitLab API error: 403 Forbidden',
+      );
+      errorWithAction.action = 'custom_action';
       mockRegistryManager.executeTool.mockRejectedValue(errorWithAction);
 
       const mockRequest = {
@@ -1277,10 +1279,11 @@ describe('handlers', () => {
 
       mockRegistryManager.getAllToolDefinitions.mockReturnValue([toolWithRef]);
 
-      return listToolsHandler({ method: 'tools/list' }, {}).then((result: any) => {
+      return listToolsHandler({ method: 'tools/list' }, {}).then((result) => {
         // The $ref should be resolved
-        expect(result.tools![0].inputSchema.properties.refProp).not.toHaveProperty('$ref');
-        expect(result.tools![0].inputSchema.properties.refProp.type).toBe('string');
+        const schema = result.tools![0].inputSchema as Record<string, Record<string, unknown>>;
+        expect(schema.properties.refProp).not.toHaveProperty('$ref');
+        expect((schema.properties.refProp as Record<string, unknown>).type).toBe('string');
       });
     });
 
@@ -1299,10 +1302,13 @@ describe('handlers', () => {
 
       mockRegistryManager.getAllToolDefinitions.mockReturnValue([toolWithBadRef]);
 
-      return listToolsHandler({ method: 'tools/list' }, {}).then((result: any) => {
+      return listToolsHandler({ method: 'tools/list' }, {}).then((result) => {
         // The $ref should be removed, but description preserved
-        expect(result.tools![0].inputSchema.properties.badRef).not.toHaveProperty('$ref');
-        expect(result.tools![0].inputSchema.properties.badRef.description).toBe('Has bad ref');
+        const schema = result.tools![0].inputSchema as Record<string, Record<string, unknown>>;
+        expect(schema.properties.badRef).not.toHaveProperty('$ref');
+        expect((schema.properties.badRef as Record<string, unknown>).description).toBe(
+          'Has bad ref',
+        );
       });
     });
 
@@ -1323,9 +1329,10 @@ describe('handlers', () => {
 
       mockRegistryManager.getAllToolDefinitions.mockReturnValue([toolWithArray]);
 
-      return listToolsHandler({ method: 'tools/list' }, {}).then((result: any) => {
+      return listToolsHandler({ method: 'tools/list' }, {}).then((result) => {
         // The array should be preserved
-        expect(result.tools![0].inputSchema.properties.items.oneOf).toHaveLength(2);
+        const schema = result.tools![0].inputSchema as Record<string, Record<string, unknown>>;
+        expect((schema.properties.items as Record<string, unknown[]>).oneOf).toHaveLength(2);
       });
     });
 
@@ -1347,10 +1354,10 @@ describe('handlers', () => {
 
       mockRegistryManager.getAllToolDefinitions.mockReturnValue([toolWithNested]);
 
-      return listToolsHandler({ method: 'tools/list' }, {}).then((result: any) => {
-        expect(result.tools![0].inputSchema.properties.nested.additionalProperties.type).toBe(
-          'string',
-        );
+      return listToolsHandler({ method: 'tools/list' }, {}).then((result) => {
+        const schema = result.tools![0].inputSchema as Record<string, Record<string, unknown>>;
+        const nested = schema.properties.nested as Record<string, Record<string, string>>;
+        expect(nested.additionalProperties.type).toBe('string');
       });
     });
   });

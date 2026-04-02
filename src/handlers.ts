@@ -504,7 +504,11 @@ export async function setupHandlers(server: Server): Promise<void> {
               ? request.params.arguments.action
               : 'unknown';
           // Use error classification to determine state — for untracked URLs,
-          // getState() defaults to 'disconnected' which may mislabel auth errors.
+          // getState() defaults to 'disconnected' which maps to reconnecting=true.
+          // This is acceptable: bootstrap always runs initialize() which registers
+          // the URL with HealthMonitor, so untracked URLs only occur on first-ever
+          // call before the actor exists. The 'auth' override below catches the
+          // permanent case (401 → failed → reconnecting=false).
           const errorCategory = initError instanceof Error ? classifyError(initError) : 'permanent';
           const rawDerivedState =
             errorCategory === 'auth' ? 'failed' : healthMonitor.getState(effectiveInstanceUrl);
@@ -609,7 +613,8 @@ export async function setupHandlers(server: Server): Promise<void> {
       } catch (error) {
         // Only report connectivity/auth errors to HealthMonitor — not request-level
         // 4xx (e.g. 404 "project not found") which don't indicate connection problems.
-        // classifyError returns 'permanent' for 400/404, 'transient' for network, 'auth' for 401/403.
+        // classifyError returns 'permanent' for 4xx like 400/403/404, 'transient' for network issues,
+        // and 'auth' for authentication errors like 401; only 'transient' and 'auth' are reported here.
         if (!timedOut && error instanceof Error) {
           const category = classifyError(error);
           if (category === 'transient' || category === 'auth') {

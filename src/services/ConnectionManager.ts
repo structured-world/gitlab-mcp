@@ -450,7 +450,7 @@ export class ConnectionManager {
    */
   // TODO: no-arg callers (ToolAvailability, WidgetAvailability) resolve against
   // currentInstanceUrl which may not match the OAuth request context in concurrent
-  // traffic. Those callers should pass an explicit URL (#370 follow-up).
+  // traffic. Those callers should pass an explicit URL (#379).
   private resolveState(instanceUrl?: string): [InstanceState, string] {
     const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) {
@@ -559,24 +559,27 @@ export class ConnectionManager {
     return state?.isInitialized ?? false;
   }
 
-  public isFeatureAvailable(feature: keyof GitLabInstanceInfo['features']): boolean {
-    const url = this.currentInstanceUrl;
+  public isFeatureAvailable(
+    feature: keyof GitLabInstanceInfo['features'],
+    instanceUrl?: string,
+  ): boolean {
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) return false;
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return false;
     return state.instanceInfo.features[feature];
   }
 
-  public getTier(): string {
-    const url = this.currentInstanceUrl;
+  public getTier(instanceUrl?: string): string {
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) return 'unknown';
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return 'unknown';
     return state.instanceInfo.tier;
   }
 
-  public getVersion(): string {
-    const url = this.currentInstanceUrl;
+  public getVersion(instanceUrl?: string): string {
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) return 'unknown';
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return 'unknown';

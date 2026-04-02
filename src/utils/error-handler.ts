@@ -1076,8 +1076,8 @@ export function isStructuredToolError(error: unknown): error is StructuredToolEr
 /**
  * Error category for connection health decisions.
  * - transient: network issues, server errors — will retry
- * - auth: authentication/authorization — no auto-retry (token won't fix itself)
- * - permanent: bad requests, config errors — no retry
+ * - auth: authentication issues (e.g., invalid/expired token) — no auto-retry
+ * - permanent: bad requests, permission/authorization and config errors — no retry
  */
 export type ErrorCategory = 'transient' | 'auth' | 'permanent';
 

@@ -207,6 +207,8 @@ describe('HealthMonitor', () => {
 
       // initialize should have been called again (fresh attempt, not re-awaiting hung promise)
       expect(mockInitialize.mock.calls.length).toBeGreaterThan(callsAfterTimeout);
+      // End-to-end: recovery should reach healthy state
+      expect(monitor.getState(TEST_URL)).toBe('healthy');
     });
 
     it('should transition to failed on auth error (no auto-reconnect)', async () => {

@@ -712,10 +712,11 @@ class RegistryManager {
       totalTools += registry.size;
     }
 
-    const availableTools = this.toolLookupCache.size;
-
-    // Calculate filtered counts by re-running filter logic with shared context
+    // Re-run filter logic with per-URL context instead of reading the shared
+    // toolLookupCache — the cache reflects whichever instance last called
+    // refreshCache(), which may differ from the requested instanceUrl.
     const ctx = this.loadInstanceContext(instanceUrl);
+    let availableTools = 0;
     let filteredByReadOnly = 0;
     let filteredByDeniedRegex = 0;
     let filteredByScopes = 0;
@@ -724,9 +725,11 @@ class RegistryManager {
 
     for (const registry of this.registries.values()) {
       for (const [toolName, tool] of registry) {
-        if (this.toolLookupCache.has(toolName)) continue;
-
         const reason = this.getToolExclusionReason(toolName, tool, ctx);
+        if (!reason) {
+          availableTools++;
+          continue;
+        }
         switch (reason) {
           case 'readOnly':
             filteredByReadOnly++;
@@ -743,9 +746,6 @@ class RegistryManager {
           case 'actionDenial':
             filteredByActionDenial++;
             break;
-          default:
-            filteredByTier++;
-            break; // Unknown reason
         }
       }
     }

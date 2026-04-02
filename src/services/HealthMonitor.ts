@@ -218,9 +218,12 @@ const performHealthCheck = fromPromise<{ degraded: boolean }, { instanceUrl: str
  * Lightweight health check: HEAD request to /api/v4/version with short timeout.
  * Uses enhancedFetch to respect proxy/TLS/custom CA settings.
  */
+// Steady-state probes use a shorter timeout than startup init
+const HEALTH_CHECK_PROBE_MS = 3000;
+
 async function quickHealthCheck(
   instanceUrl: string,
-  timeoutMs: number = INIT_TIMEOUT_MS,
+  timeoutMs: number = HEALTH_CHECK_PROBE_MS,
 ): Promise<boolean> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -626,8 +629,14 @@ export class HealthMonitor {
     try {
       const registry = InstanceRegistry.getInstance();
       if (registry.isInitialized()) {
-        const registryStatus =
-          newState === 'healthy' ? 'healthy' : newState === 'degraded' ? 'degraded' : 'offline';
+        let registryStatus: 'healthy' | 'degraded' | 'offline';
+        if (newState === 'healthy') {
+          registryStatus = 'healthy';
+        } else if (newState === 'degraded') {
+          registryStatus = 'degraded';
+        } else {
+          registryStatus = 'offline';
+        }
         registry.updateConnectionStatus(instanceUrl, registryStatus);
       }
     } catch {

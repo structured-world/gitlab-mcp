@@ -22,6 +22,17 @@ jest.mock('../../../src/services/TokenScopeDetector', () => ({
   ),
 }));
 
+/** Type-safe access to ConnectionManager private fields in tests */
+type CMInternals = {
+  instances: Map<string, InstanceState>;
+  currentInstanceUrl: string | null;
+  introspectionPromises: Map<string, Promise<void>>;
+  doIntrospection: (url: string) => Promise<void>;
+};
+function internals(manager: ConnectionManager): CMInternals {
+  return manager as unknown as CMInternals;
+}
+
 /** Helper: inject per-URL InstanceState into the ConnectionManager's internal Map */
 function injectInstanceState(
   manager: ConnectionManager,
@@ -39,14 +50,14 @@ function injectInstanceState(
     introspectedInstanceUrl: null,
     ...overrides,
   };
-  (manager as any).instances.set(url, state);
-  (manager as any).currentInstanceUrl = url;
+  internals(manager).instances.set(url, state);
+  internals(manager).currentInstanceUrl = url;
 }
 
 describe('ConnectionManager Unit', () => {
   beforeEach(() => {
     // Reset singleton instance for each test
-    (ConnectionManager as any).instance = null;
+    (ConnectionManager as unknown as { instance: null }).instance = null;
   });
 
   describe('singleton pattern', () => {
@@ -141,7 +152,9 @@ describe('ConnectionManager Unit', () => {
         daysUntilExpiry: null,
       };
 
-      injectInstanceState(manager, TEST_URL, { tokenScopeInfo: initialScopes as any });
+      injectInstanceState(manager, TEST_URL, {
+        tokenScopeInfo: initialScopes as unknown as InstanceState['tokenScopeInfo'],
+      });
       mockDetectTokenScopes.mockResolvedValue(initialScopes);
 
       const result = await manager.refreshTokenScopes();
@@ -160,7 +173,9 @@ describe('ConnectionManager Unit', () => {
         daysUntilExpiry: null,
       };
 
-      injectInstanceState(manager, TEST_URL, { tokenScopeInfo: initialScopes as any });
+      injectInstanceState(manager, TEST_URL, {
+        tokenScopeInfo: initialScopes as unknown as InstanceState['tokenScopeInfo'],
+      });
 
       mockDetectTokenScopes.mockResolvedValue({
         ...initialScopes,
@@ -184,7 +199,9 @@ describe('ConnectionManager Unit', () => {
         daysUntilExpiry: null,
       };
 
-      injectInstanceState(manager, TEST_URL, { tokenScopeInfo: initialScopes as any });
+      injectInstanceState(manager, TEST_URL, {
+        tokenScopeInfo: initialScopes as unknown as InstanceState['tokenScopeInfo'],
+      });
 
       mockDetectTokenScopes.mockResolvedValue({
         ...initialScopes,
@@ -208,7 +225,9 @@ describe('ConnectionManager Unit', () => {
         daysUntilExpiry: null,
       };
 
-      injectInstanceState(manager, TEST_URL, { tokenScopeInfo: initialScopes as any });
+      injectInstanceState(manager, TEST_URL, {
+        tokenScopeInfo: initialScopes as unknown as InstanceState['tokenScopeInfo'],
+      });
 
       mockDetectTokenScopes.mockResolvedValue({
         ...initialScopes,
@@ -232,7 +251,9 @@ describe('ConnectionManager Unit', () => {
         daysUntilExpiry: null,
       };
 
-      injectInstanceState(manager, TEST_URL, { tokenScopeInfo: initialScopes as any });
+      injectInstanceState(manager, TEST_URL, {
+        tokenScopeInfo: initialScopes as unknown as InstanceState['tokenScopeInfo'],
+      });
 
       const newScopes = {
         ...initialScopes,
@@ -269,8 +290,11 @@ describe('ConnectionManager Unit', () => {
 
       // Simulate introspected state for the same instance
       injectInstanceState(manager, 'https://gitlab.example.com', {
-        instanceInfo: { version: '16.0.0', tier: 'premium' } as any,
-        schemaInfo: { workItemWidgetTypes: [] } as any,
+        instanceInfo: {
+          version: '16.0.0',
+          tier: 'premium',
+        } as unknown as InstanceState['instanceInfo'],
+        schemaInfo: { workItemWidgetTypes: [] } as unknown as InstanceState['schemaInfo'],
         introspectedInstanceUrl: 'https://gitlab.example.com',
       });
 
@@ -284,7 +308,9 @@ describe('ConnectionManager Unit', () => {
 
       // Inject per-URL state with no cached introspection
       injectInstanceState(manager, 'https://gitlab.dedup.com', {
-        client: { endpoint: 'https://gitlab.dedup.com/api/graphql' } as any,
+        client: {
+          endpoint: 'https://gitlab.dedup.com/api/graphql',
+        } as unknown as InstanceState['client'],
       });
 
       // Track how many times doIntrospection actually executes
@@ -292,7 +318,10 @@ describe('ConnectionManager Unit', () => {
 
       // Mock doIntrospection to simulate async work with observable side effects
       jest
-        .spyOn(manager as any, 'doIntrospection')
+        .spyOn(
+          internals(manager) as { doIntrospection: (...args: unknown[]) => Promise<void> },
+          'doIntrospection',
+        )
         .mockImplementation(async (...args: unknown[]) => {
           // Enforce doIntrospection(url: string) contract despite variadic mock signature
           expect(args).toHaveLength(1);
@@ -302,9 +331,12 @@ describe('ConnectionManager Unit', () => {
           // Simulate async introspection delay
           await new Promise((resolve) => setTimeout(resolve, 50));
           // Set the results in per-URL state
-          const state = (manager as any).instances.get(url);
-          state.instanceInfo = { version: '17.0.0', tier: 'free' };
-          state.schemaInfo = { workItemWidgetTypes: [] };
+          const state = internals(manager).instances.get(url)!;
+          state.instanceInfo = {
+            version: '17.0.0',
+            tier: 'free',
+          } as unknown as InstanceState['instanceInfo'];
+          state.schemaInfo = { workItemWidgetTypes: [] } as unknown as InstanceState['schemaInfo'];
           state.introspectedInstanceUrl = url;
         });
 
@@ -325,26 +357,34 @@ describe('ConnectionManager Unit', () => {
       mockGetGitLabApiUrlFromContext.mockReturnValue('https://gitlab.clear.com');
 
       injectInstanceState(manager, 'https://gitlab.clear.com', {
-        client: { endpoint: 'https://gitlab.clear.com/api/graphql' } as any,
+        client: {
+          endpoint: 'https://gitlab.clear.com/api/graphql',
+        } as unknown as InstanceState['client'],
       });
 
       jest
-        .spyOn(manager as any, 'doIntrospection')
+        .spyOn(
+          internals(manager) as { doIntrospection: (...args: unknown[]) => Promise<void> },
+          'doIntrospection',
+        )
         .mockImplementation(async (...args: unknown[]) => {
           // Enforce doIntrospection(url: string) contract despite variadic mock signature
           expect(args).toHaveLength(1);
           expect(typeof args[0]).toBe('string');
           const url = args[0] as string;
-          const state = (manager as any).instances.get(url);
-          state.instanceInfo = { version: '17.0.0', tier: 'free' };
-          state.schemaInfo = { workItemWidgetTypes: [] };
+          const state = internals(manager).instances.get(url)!;
+          state.instanceInfo = {
+            version: '17.0.0',
+            tier: 'free',
+          } as unknown as InstanceState['instanceInfo'];
+          state.schemaInfo = { workItemWidgetTypes: [] } as unknown as InstanceState['schemaInfo'];
           state.introspectedInstanceUrl = url;
         });
 
       await manager.ensureIntrospected();
 
       // Promise should be cleaned up from the map
-      const promisesMap = (manager as any).introspectionPromises as Map<string, Promise<void>>;
+      const promisesMap = internals(manager).introspectionPromises;
       expect(promisesMap.has('https://gitlab.clear.com')).toBe(false);
     });
 
@@ -352,17 +392,22 @@ describe('ConnectionManager Unit', () => {
       mockGetGitLabApiUrlFromContext.mockReturnValue('https://gitlab.fail.com');
 
       injectInstanceState(manager, 'https://gitlab.fail.com', {
-        client: { endpoint: 'https://gitlab.fail.com/api/graphql' } as any,
+        client: {
+          endpoint: 'https://gitlab.fail.com/api/graphql',
+        } as unknown as InstanceState['client'],
       });
 
       jest
-        .spyOn(manager as any, 'doIntrospection')
+        .spyOn(
+          internals(manager) as { doIntrospection: (...args: unknown[]) => Promise<void> },
+          'doIntrospection',
+        )
         .mockRejectedValue(new Error('Introspection network error'));
 
       await expect(manager.ensureIntrospected()).rejects.toThrow('Introspection network error');
 
       // Promise should still be cleaned up (finally block)
-      const promisesMap = (manager as any).introspectionPromises as Map<string, Promise<void>>;
+      const promisesMap = internals(manager).introspectionPromises;
       expect(promisesMap.has('https://gitlab.fail.com')).toBe(false);
     });
   });
@@ -399,8 +444,8 @@ describe('ConnectionManager Unit', () => {
       expect(initSpy).toHaveBeenCalledWith('https://new-gitlab.com');
 
       // On failure, saved state is restored so the URL remains usable
-      expect((manager as any).instances.has('https://new-gitlab.com')).toBe(true);
-      expect((manager as any).instances.get('https://new-gitlab.com').isInitialized).toBe(true);
+      expect(internals(manager).instances.has('https://new-gitlab.com')).toBe(true);
+      expect(internals(manager).instances.get('https://new-gitlab.com')!.isInitialized).toBe(true);
 
       initSpy.mockRestore();
     });

@@ -185,11 +185,16 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
       // Verify reachability — OAuth/REST-only init can succeed with fallback
       // data even when GitLab is unreachable. Throwing here lands in disconnected.
       // Keep the degraded-path probe within the original startup budget.
-      const remainingMs = Math.max(0, deadline - Date.now());
+      // If budget is nearly exhausted (< 500ms), skip the probe — init already
+      // succeeded so the instance is likely reachable, and a near-zero timeout
+      // would almost certainly fail and cause a false disconnect.
+      const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
-        // Message must match transient patterns in classifyError() so state goes
-        // to disconnected (auto-reconnect), not failed (permanent)
         throw new Error('Health check failed: startup budget exhausted after degraded init');
+      }
+      if (remainingMs < 500) {
+        // Not enough time for a meaningful probe — assume reachable since init succeeded
+        return { degraded: isDegraded };
       }
       const reachable = await quickHealthCheck(input.instanceUrl, remainingMs);
       if (!reachable) {

@@ -648,21 +648,12 @@ export async function setupHandlers(server: Server): Promise<void> {
     };
 
     try {
-      // For non-idempotent operations, skip Promise.race to avoid duplicate
-      // mutations (timeout doesn't cancel the underlying work, so both the
-      // original and a client retry could complete). Idempotent tools (browse_*,
-      // list_*, get_*) are safe to race.
-      const toolName = request.params.name;
-      let result: Awaited<ReturnType<typeof handlerWork>> | typeof HANDLER_TIMEOUT_SYMBOL;
-      if (isIdempotentOperation(toolName)) {
-        result = await Promise.race([handlerWork(), timeoutPromise]);
-      } else {
-        // Non-idempotent: skip Promise.race to avoid duplicate mutations.
-        // Clear the timer BEFORE awaiting so it can't fire during execution
-        // and suppress legitimate reportSuccess/reportError calls.
-        clearTimeout(handlerTimeoutId);
-        result = await handlerWork();
-      }
+      // Race all tools against the timeout. For non-idempotent mutations this
+      // means the client gets a timeout response while the mutation may still
+      // complete — but the alternative (no timeout) leaves bootstrap unbounded
+      // if the instance is hung. The timedOut flag prevents late reportSuccess/
+      // reportError from overwriting the timeout health signal.
+      const result = await Promise.race([handlerWork(), timeoutPromise]);
 
       if (result === HANDLER_TIMEOUT_SYMBOL) {
         // timedOut already set in timer callback — handler is still running but we respond

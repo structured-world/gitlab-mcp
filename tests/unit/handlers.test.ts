@@ -1221,8 +1221,9 @@ describe('handlers', () => {
       expect(parsed.timeout_ms).toBe(100);
     }, 5000);
 
-    it('should skip timeout race for non-idempotent operations to prevent duplicate mutations', async () => {
-      // Non-idempotent tool (manage_*) runs to completion even if slow
+    it('should timeout non-idempotent operations to bound bootstrap phase', async () => {
+      // Non-idempotent tools (manage_*) now also race with timeout to prevent
+      // hung bootstrap (init/introspection) from blocking indefinitely
       mockRegistryManager.executeTool.mockImplementation(
         () => new Promise((resolve) => setTimeout(() => resolve({ result: 'mutated' }), 200)),
       );
@@ -1234,10 +1235,10 @@ describe('handlers', () => {
         },
       });
 
-      // Should complete successfully (no timeout) even though it took 200ms > HANDLER_TIMEOUT_MS (100ms)
-      expect(result.isError).toBeUndefined();
+      // Should timeout (200ms > HANDLER_TIMEOUT_MS 100ms) — bootstrap needs bounding
+      expect(result.isError).toBe(true);
       const parsed = JSON.parse(result.content![0].text);
-      expect(parsed.result).toBe('mutated');
+      expect(parsed.error_code).toBe('TIMEOUT');
     }, 5000);
 
     it('should not trigger timeout when tool completes within HANDLER_TIMEOUT_MS', async () => {

@@ -723,6 +723,7 @@ export async function enhancedFetch(
     maxRetries: _maxRetries,
     rateLimit: _rateLimit,
     rateLimitBaseUrl: _rateLimitBaseUrl,
+    skipAuth: _skipAuth,
     ...fetchOptions
   } = options;
 

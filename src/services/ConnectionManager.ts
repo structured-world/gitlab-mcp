@@ -165,10 +165,10 @@ export class ConnectionManager {
       // In OAuth mode, try unauthenticated version detection first
       // Many GitLab instances expose /api/v4/version without auth
       if (oauthMode) {
-        // Intentionally unauthenticated — many GitLab instances expose
-        // /api/v4/version without auth. enhancedFetch may log a warning about
-        // skipAuth prevents OAuth "no token context" warnings for this
-        // intentionally unauthenticated version probe.
+        // This request is intentionally unauthenticated because many GitLab
+        // instances expose /api/v4/version without authentication.
+        // skipAuth prevents enhancedFetch from emitting OAuth "no token context"
+        // warnings for this deliberate version probe.
         logInfo('OAuth mode: attempting unauthenticated version detection');
         try {
           const versionResponse = await enhancedFetch(`${baseUrl}/api/v4/version`, {

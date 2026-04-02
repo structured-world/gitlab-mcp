@@ -658,10 +658,10 @@ export async function setupHandlers(server: Server): Promise<void> {
         result = await Promise.race([handlerWork(), timeoutPromise]);
       } else {
         // Non-idempotent: skip Promise.race to avoid duplicate mutations.
-        // Clear the timer so it doesn't set timedOut=true and suppress
-        // late reportSuccess/reportError for legitimately slow operations.
-        result = await handlerWork();
+        // Clear the timer BEFORE awaiting so it can't fire during execution
+        // and suppress legitimate reportSuccess/reportError calls.
         clearTimeout(handlerTimeoutId);
+        result = await handlerWork();
       }
 
       if (result === HANDLER_TIMEOUT_SYMBOL) {

@@ -183,22 +183,17 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
  *
  * @returns TokenScopeInfo or null if detection fails
  */
-/** Handle non-OK status from token self-introspection. Returns true if handled (caller should return null). */
-function handleTokenSelfIntrospectionErrorStatus(status: number): boolean {
+/** Log the appropriate message for a non-OK token self-introspection status. */
+function logTokenSelfIntrospectionError(status: number): void {
   if (status === 404) {
     logDebug('Token self-introspection endpoint not available (older GitLab version)');
-    return true;
-  }
-  if (status === 401) {
+  } else if (status === 401) {
     logInfo('Token is invalid or expired');
-    return true;
-  }
-  if (status === 403) {
+  } else if (status === 403) {
     logDebug('Token self-introspection not permitted for this token type');
-    return true;
+  } else {
+    logDebug('Unexpected response from token self-introspection', { status });
   }
-  logDebug('Unexpected response from token self-introspection', { status });
-  return true;
 }
 
 /** Parse YYYY-MM-DD expiry date to days remaining (UTC). Returns null on invalid input. */
@@ -231,7 +226,7 @@ export async function detectTokenScopes(baseUrl?: string): Promise<TokenScopeInf
     });
 
     if (!response.ok) {
-      handleTokenSelfIntrospectionErrorStatus(response.status);
+      logTokenSelfIntrospectionError(response.status);
       return null;
     }
 

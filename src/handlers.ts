@@ -2,6 +2,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { ConnectionManager } from './services/ConnectionManager';
 import { HealthMonitor } from './services/HealthMonitor';
+import { normalizeInstanceUrl } from './utils/url';
 import { logInfo, logWarn, logError, logDebug } from './logger';
 import {
   handleGitLabError,
@@ -342,9 +343,11 @@ export async function setupHandlers(server: Server): Promise<void> {
     // last-set ConnectionManager instance across concurrent OAuth sessions.
     // In static-token mode, prefer the actively selected instance URL so
     // switch_instance requests continue routing to the current instance.
-    const requestInstanceUrl = isOAuthEnabled()
+    const rawInstanceUrl = isOAuthEnabled()
       ? (getUrlFromCtx() ?? GITLAB_BASE_URL)
       : (ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL);
+    // Normalize so CONNECTION_FAILED instance_url and HealthMonitor keys are consistent
+    const requestInstanceUrl = normalizeInstanceUrl(rawInstanceUrl);
 
     // Flag to prevent late reportSuccess/reportError from a timed-out handlerWork()
     // overwriting the timeout signal already sent to HealthMonitor.
@@ -360,7 +363,10 @@ export async function setupHandlers(server: Server): Promise<void> {
     const HANDLER_TIMEOUT_SYMBOL = Symbol('handler_timeout');
     let handlerTimeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<typeof HANDLER_TIMEOUT_SYMBOL>((resolve) => {
-      handlerTimeoutId = setTimeout(() => resolve(HANDLER_TIMEOUT_SYMBOL), HANDLER_TIMEOUT_MS);
+      handlerTimeoutId = setTimeout(() => {
+        timedOut = true;
+        resolve(HANDLER_TIMEOUT_SYMBOL);
+      }, HANDLER_TIMEOUT_MS);
     });
 
     // The actual handler logic as a separate async function
@@ -652,9 +658,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         : await handlerWork();
 
       if (result === HANDLER_TIMEOUT_SYMBOL) {
-        // Prevent late handlerWork() from overwriting timeout health signal
-        timedOut = true;
-        // Timeout won the race — handler is still running but we respond immediately
+        // timedOut already set in timer callback — handler is still running but we respond
         const toolName = request.params.name;
         const action =
           request.params.arguments && typeof request.params.arguments.action === 'string'

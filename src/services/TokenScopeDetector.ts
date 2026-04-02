@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { logInfo, logWarn, logDebug } from '../logger';
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from '../config';
 import { enhancedFetch } from '../utils/fetch';
+import { normalizeInstanceUrl } from '../utils/url';
 
 /**
  * GitLab token types that can be detected
@@ -183,7 +184,7 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
  * @returns TokenScopeInfo or null if detection fails
  */
 export async function detectTokenScopes(baseUrl?: string): Promise<TokenScopeInfo | null> {
-  const url = baseUrl ?? GITLAB_BASE_URL;
+  const url = normalizeInstanceUrl(baseUrl ?? GITLAB_BASE_URL);
   if (!url || !GITLAB_TOKEN) {
     return null;
   }

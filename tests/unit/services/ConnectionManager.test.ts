@@ -29,9 +29,9 @@ function injectInstanceState(
   overrides: Partial<InstanceState> = {},
 ): void {
   const state: InstanceState = {
-    client: {} as any,
-    versionDetector: {} as any,
-    schemaIntrospector: {} as any,
+    client: {} as unknown as InstanceState['client'],
+    versionDetector: {} as unknown as InstanceState['versionDetector'],
+    schemaIntrospector: {} as unknown as InstanceState['schemaIntrospector'],
     instanceInfo: null,
     schemaInfo: null,
     tokenScopeInfo: null,
@@ -375,11 +375,14 @@ describe('ConnectionManager Unit', () => {
       mockIsOAuthEnabled.mockReturnValue(false);
     });
 
-    it('should remove old state and call initialize', async () => {
+    it('should restore saved state on failed reinitialize', async () => {
       // Set up initial state for the URL
       injectInstanceState(manager, 'https://new-gitlab.com', {
-        instanceInfo: { version: '15.0.0', tier: 'free' } as any,
-        schemaInfo: { workItemWidgetTypes: ['OLD'] } as any,
+        instanceInfo: {
+          version: '15.0.0',
+          tier: 'free',
+        } as unknown as InstanceState['instanceInfo'],
+        schemaInfo: { workItemWidgetTypes: ['OLD'] } as unknown as InstanceState['schemaInfo'],
         isInitialized: true,
       });
 

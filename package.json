@@ -406,7 +406,7 @@
   ],
   "license": "Apache-2.0",
   "author": "Dmitry Prudnikov <mail@polaz.com>",
-  "packageManager": "yarn@4.12.0",
+  "packageManager": "yarn@4.13.0",
   "contributors": [
     {
       "name": "zereight",

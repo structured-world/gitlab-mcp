@@ -1461,6 +1461,8 @@ describe('handlers', () => {
       const oauth = require('../../src/oauth/index');
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
       (oauth.isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
+      (oauth.getTokenContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
     });
 
     it('should call ensureIntrospected in OAuth mode (line 493)', async () => {

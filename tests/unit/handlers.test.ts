@@ -599,6 +599,9 @@ describe('handlers', () => {
 
     it('should treat connecting state as reachable (optimistic during startup)', async () => {
       mockHealthMonitor.getState.mockReturnValue('connecting');
+      // isInstanceReachable false — the only reason tool proceeds is the
+      // getState('connecting') gate treating connecting as reachable
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
 
       const result = await callToolHandler({
         params: {
@@ -611,6 +614,7 @@ describe('handlers', () => {
       expect(result.isError).toBeUndefined();
 
       // Restore
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
       mockHealthMonitor.getState.mockReturnValue('healthy');
     });
 

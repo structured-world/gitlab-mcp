@@ -181,7 +181,7 @@ describe('RegistryManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (RegistryManager as unknown as { instance: null }).instance = null;
+    resetRegistryManagerSingleton();
 
     // Get the mocked config
     mockConfig = require('../../src/config');
@@ -213,7 +213,7 @@ describe('RegistryManager', () => {
   });
 
   afterEach(() => {
-    (RegistryManager as unknown as { instance: null }).instance = null;
+    resetRegistryManagerSingleton();
   });
 
   describe('Singleton Pattern', () => {
@@ -1245,13 +1245,15 @@ describe('RegistryManager', () => {
       expect(names).toContain('manage_context');
       expect(names).not.toContain('core_tool_1');
 
-      // Call again to verify no caching (transient state — each call re-evaluates)
+      // Flip to healthy — second call should re-evaluate and expand back to full set
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+
       const names2 = registryManager.getAvailableToolNames();
-      expect(names2).toEqual(names);
+      expect(names2).toContain('core_tool_1');
+      expect(names2).toContain('manage_context');
 
       // Restore
       mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
-      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
     });
   });
 

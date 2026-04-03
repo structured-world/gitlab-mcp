@@ -690,7 +690,7 @@ export async function setupHandlers(server: Server): Promise<void> {
           // via classifyError() → triggers disconnected → auto-reconnect
           HealthMonitor.getInstance().reportError(
             requestInstanceUrl,
-            new Error(`Handler timeout after ${HANDLER_TIMEOUT_MS}ms`),
+            new Error(`Initialization timed out after ${HANDLER_TIMEOUT_MS}ms`),
           );
           ConnectionManager.getInstance().clearInflight(requestInstanceUrl);
         }

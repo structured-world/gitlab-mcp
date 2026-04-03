@@ -479,6 +479,10 @@ export class ToolAvailability {
   /**
    * Check if a tool is available for a specific instance (uses provided info
    * instead of reading currentInstanceUrl from ConnectionManager).
+   *
+   * @precondition Caller must exclude context/local tools (e.g. manage_context)
+   * before calling — those bypass version/tier filtering at the registry level.
+   * Unknown tools fall through to a conservative >= 15.0 gate.
    */
   public static isToolAvailableForInstance(
     toolName: string,

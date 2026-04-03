@@ -430,13 +430,11 @@ const parsedMaxAttempts = Number.parseInt(process.env.GITLAB_API_RETRY_MAX_ATTEM
 export const API_RETRY_MAX_ATTEMPTS =
   Number.isFinite(parsedMaxAttempts) && parsedMaxAttempts >= 0 ? parsedMaxAttempts : 3;
 
-const parsedBaseDelay = Number.parseInt(process.env.GITLAB_API_RETRY_BASE_DELAY_MS ?? '1000', 10);
-export const API_RETRY_BASE_DELAY_MS =
-  Number.isFinite(parsedBaseDelay) && parsedBaseDelay > 0 ? parsedBaseDelay : 1000;
-
-const parsedMaxDelay = Number.parseInt(process.env.GITLAB_API_RETRY_MAX_DELAY_MS ?? '4000', 10);
-export const API_RETRY_MAX_DELAY_MS =
-  Number.isFinite(parsedMaxDelay) && parsedMaxDelay > 0 ? parsedMaxDelay : 4000;
+export const API_RETRY_BASE_DELAY_MS = parseTimerMs(
+  process.env.GITLAB_API_RETRY_BASE_DELAY_MS,
+  1000,
+);
+export const API_RETRY_MAX_DELAY_MS = parseTimerMs(process.env.GITLAB_API_RETRY_MAX_DELAY_MS, 4000);
 
 // Rate limiting configuration
 // Per-IP rate limiting (for anonymous requests) - enabled by default

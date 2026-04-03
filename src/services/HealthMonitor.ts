@@ -715,6 +715,9 @@ export class HealthMonitor {
   /**
    * Get connection state for an instance.
    */
+  // Note: returns 'disconnected' for untracked URLs (no actor). This differs from
+  // isInstanceReachable() which treats untracked URLs as reachable. Use
+  // isInstanceReachable() for gate decisions; use getState() only for status display.
   public getState(instanceUrl?: string): ConnectionState {
     const actor = this.getActor(instanceUrl);
     if (!actor) return 'disconnected';

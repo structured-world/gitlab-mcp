@@ -16,7 +16,7 @@ describe('normalizeInstanceUrl', () => {
   });
 
   it('should strip a single trailing slash', () => {
-    // Line 11-14: trailing slash scan
+    // Trailing slash is removed before suffix checks
     expect(normalizeInstanceUrl('https://gitlab.example.com/')).toBe('https://gitlab.example.com');
   });
 
@@ -27,14 +27,14 @@ describe('normalizeInstanceUrl', () => {
   });
 
   it('should strip /api/v4 suffix', () => {
-    // Line 18: /api/v4 suffix removal
+    // /api/v4 suffix removal
     expect(normalizeInstanceUrl('https://gitlab.example.com/api/v4')).toBe(
       'https://gitlab.example.com',
     );
   });
 
   it('should strip /api/graphql suffix', () => {
-    // Line 20: /api/graphql suffix removal
+    // /api/graphql suffix removal
     expect(normalizeInstanceUrl('https://gitlab.example.com/api/graphql')).toBe(
       'https://gitlab.example.com',
     );

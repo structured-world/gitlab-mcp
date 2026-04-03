@@ -450,9 +450,10 @@ export async function setupHandlers(server: Server): Promise<void> {
       }
 
       // Disconnected/failed fast-path for manage_context: skip connection bootstrap
-      // and health reporting. Context tools operate on local state only (cached scopes,
-      // instance registry, config) and do not call the GitLab API, so skipping
-      // healthMonitor.reportSuccess/reportError is deliberate.
+      // and health reporting. Most context actions operate on local state (cached
+      // scopes, config, instance registry). Some actions (e.g. whoami) may attempt
+      // GitLab API calls that fail gracefully. Health reporting is skipped because
+      // the fast-path bypasses bootstrap — there's no connection lifecycle to report on.
       if (
         toolName === 'manage_context' &&
         !healthMonitor.isInstanceReachable(effectiveInstanceUrl)
@@ -704,11 +705,13 @@ export async function setupHandlers(server: Server): Promise<void> {
         // actually attempted (not for disconnected manage_context bypass which
         // does no GitLab I/O and shouldn't affect connection health).
         if (bootstrapStarted && !bootstrapComplete) {
-          // "timeout" in the message intentionally classifies as transient
-          // via classifyError() → triggers disconnected → auto-reconnect
+          // "timeout" in the message classifies as transient via classifyError()
+          // → triggers disconnected → auto-reconnect. Use a plain Error (not
+          // InitializationTimeoutError) because this is a handler-level timeout,
+          // not the startup init timeout from HealthMonitor.performConnect.
           HealthMonitor.getInstance().reportError(
             requestInstanceUrl,
-            new InitializationTimeoutError(HANDLER_TIMEOUT_MS),
+            new Error(`Handler timeout after ${HANDLER_TIMEOUT_MS}ms — bootstrap did not complete`),
           );
           ConnectionManager.getInstance().clearInflight(requestInstanceUrl);
         }

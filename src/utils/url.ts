@@ -31,7 +31,17 @@ export function normalizeInstanceUrl(url: string): string {
   // reconstruct via origin + pathname to get the canonical form.
   try {
     const u = new URL(normalized);
-    return trimTrailingSlashes(u.origin + u.pathname);
+    // Re-strip API suffixes from parsed pathname — URL constructor drops
+    // query/hash but preserves path, so "https://host/api/v4?token=x"
+    // would otherwise keep the suffix after parsing.
+    let pathname = trimTrailingSlashes(u.pathname);
+    if (pathname.endsWith('/api/v4')) {
+      pathname = pathname.slice(0, -7);
+    } else if (pathname.endsWith('/api/graphql')) {
+      pathname = pathname.slice(0, -12);
+    }
+    pathname = trimTrailingSlashes(pathname);
+    return `${u.origin}${pathname}`;
   } catch {
     return normalized;
   }

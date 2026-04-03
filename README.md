@@ -86,7 +86,7 @@ docker run -i --rm -e GITLAB_TOKEN=your_token \
 The server handles GitLab connectivity issues gracefully:
 
 - **Bounded startup** — Server starts within `GITLAB_INIT_TIMEOUT_MS` (default 5s) regardless of GitLab availability
-- **Disconnected mode** — When GitLab is unreachable, only `manage_context` tools are exposed (e.g. `whoami`, `switch_instance` for diagnostics). MCP clients are notified via `tools/list_changed`
+- **Disconnected mode** — When GitLab is unreachable, only `manage_context` tools are exposed (e.g. `whoami`, `switch_profile`, `set_scope` for diagnostics). MCP clients are notified via `tools/list_changed`
 - **Auto-reconnect** — Exponential backoff reconnection (5s → 60s) with ±10% jitter
 - **Error classification** — Transient errors (network, 5xx, timeouts) trigger auto-reconnect. Auth/config errors at startup transition to `failed` state (no auto-reconnect). Runtime auth errors from tool calls are forwarded to `HealthMonitor.reportError()` via `classifyError()`; the remaining gap is token-revocation/403 detection (#370)
 - **Instance health monitor** — The configured GitLab instance is monitored with its own XState state machine. Multi-instance OAuth URLs currently pass through as reachable.

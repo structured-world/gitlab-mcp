@@ -303,7 +303,11 @@ class RegistryManager {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // Only treat "not initialized" as an expected no-op; surface unexpected errors
-      if (!msg.includes('not initialized') && !msg.includes('No connection')) {
+      if (
+        !msg.includes('not initialized') &&
+        !msg.includes('not available') &&
+        !msg.includes('No connection')
+      ) {
         logWarn('Unexpected error loading instance info for tool cache', {
           error: msg,
           instanceUrl,
@@ -320,7 +324,11 @@ class RegistryManager {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // Only treat "not initialized" as an expected no-op; surface unexpected errors
-      if (!msg.includes('not initialized') && !msg.includes('No connection')) {
+      if (
+        !msg.includes('not initialized') &&
+        !msg.includes('not available') &&
+        !msg.includes('No connection')
+      ) {
         logWarn('Unexpected error loading token scopes for tool cache', {
           error: msg,
           instanceUrl,

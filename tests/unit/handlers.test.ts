@@ -1767,12 +1767,21 @@ describe('handlers', () => {
     it('should not report success/error after deferred init resolves post-timeout', async () => {
       // Bootstrap hangs, then resolves AFTER timeout fires
       let resolveInit!: () => void;
+      let resolveExecuteReached!: () => void;
+      const executeReached = new Promise<void>((resolve) => {
+        resolveExecuteReached = resolve;
+      });
       mockConnectionManager.initialize.mockImplementation(
         () =>
           new Promise<void>((r) => {
             resolveInit = r;
           }),
       );
+      // Track when executeTool is reached after late bootstrap settles
+      mockRegistryManager.executeTool.mockImplementationOnce(async () => {
+        resolveExecuteReached();
+        return { result: 'late' };
+      });
 
       const { isOAuthEnabled, isAuthenticationConfigured } = await import('../../src/oauth/index');
       (isOAuthEnabled as jest.Mock).mockReturnValue(false);
@@ -1789,10 +1798,10 @@ describe('handlers', () => {
       const successCallsAfterTimeout = mockHealthMonitor.reportSuccess.mock.calls.length;
       const errorCallsAfterTimeout = mockHealthMonitor.reportError.mock.calls.length;
 
-      // Now resolve the deferred init — timedOut flag should prevent late calls
+      // Now resolve the deferred init — wait through the full chain
+      // (initialize → ensureIntrospected → executeTool) before asserting
       resolveInit();
-      // Two ticks: first settles initialize(), second settles ensureIntrospected()
-      await new Promise((r) => process.nextTick(r));
+      await executeReached;
       await new Promise((r) => process.nextTick(r));
 
       // Neither reportSuccess nor reportError should have been called after timeout

@@ -454,6 +454,8 @@ export class ConnectionManager {
   // currentInstanceUrl which may not match the OAuth request context in concurrent
   // traffic. Those callers should pass an explicit URL (#379).
   private resolveState(instanceUrl?: string): [InstanceState, string] {
+    // Empty string is falsy → falls to currentInstanceUrl (same as undefined/null).
+    // This is intentional: callers pass either a real URL or nothing.
     const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) {
       throw new Error('Connection not initialized. Call initialize() first.');

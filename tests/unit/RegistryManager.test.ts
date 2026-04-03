@@ -210,6 +210,7 @@ describe('RegistryManager', () => {
     mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
     mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
     mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
+    mockHealthMonitorInstance.getState.mockReturnValue('healthy');
     ToolAvailability.getUnavailableReason.mockReturnValue('');
 
     registryManager = RegistryManager.getInstance();

@@ -155,8 +155,10 @@ describe('handlers', () => {
       setRequestHandler: jest.fn(),
     } as unknown as jest.Mocked<Server>;
 
-    // Mock ConnectionManager methods
+    // Mock ConnectionManager methods — re-seed defaults that tests may flip
+    mockConnectionManager.isConnected.mockReturnValue(true);
     mockConnectionManager.initialize.mockResolvedValue(undefined);
+    mockConnectionManager.ensureIntrospected.mockResolvedValue(undefined);
     mockConnectionManager.getClient.mockReturnValue({});
     mockConnectionManager.getInstanceInfo.mockReturnValue({
       version: '16.0.0',
@@ -165,6 +167,11 @@ describe('handlers', () => {
     // Tier detection methods used by error-handler.ts
     mockConnectionManager.getTier.mockReturnValue('ultimate');
     mockConnectionManager.isFeatureAvailable.mockReturnValue(true);
+
+    // Mock HealthMonitor defaults — re-seed after tests that flip these
+    mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+    mockHealthMonitor.getState.mockReturnValue('healthy');
+    mockHealthMonitor.isAnyInstanceHealthy.mockReturnValue(true);
 
     // Mock RegistryManager methods
     mockRegistryManager.getAllToolDefinitions.mockReturnValue([
@@ -1331,8 +1338,9 @@ describe('handlers', () => {
 
       // Now resolve the delayed tool — this should NOT trigger late health reports
       resolveDelayed({ result: 'late' });
-      // Give microtasks a chance to settle
-      await new Promise((r) => setTimeout(r, 50));
+      // Flush microtasks deterministically (no scheduler-dependent setTimeout)
+      await new Promise((r) => process.nextTick(r));
+      await new Promise((r) => process.nextTick(r));
 
       expect(mockHealthMonitor.reportSuccess).not.toHaveBeenCalled();
       expect(mockHealthMonitor.reportError).not.toHaveBeenCalled();

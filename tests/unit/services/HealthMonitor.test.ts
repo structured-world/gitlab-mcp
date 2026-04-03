@@ -901,10 +901,10 @@ describe('calculateBackoffDelay', () => {
   });
 
   it('should cap at max delay', () => {
-    // Very high attempt should cap at 1000ms (test config RECONNECT_MAX_DELAY_MS=1000)
+    // Very high attempt should never exceed 1000ms (test config RECONNECT_MAX_DELAY_MS=1000)
     const delay = calculateBackoffDelay(20);
-    expect(delay).toBeLessThanOrEqual(1100); // 1000 + 10% jitter
-    expect(delay).toBeGreaterThanOrEqual(900); // 1000 - 10% jitter
+    expect(delay).toBeLessThanOrEqual(1000);
+    expect(delay).toBeGreaterThanOrEqual(900); // jitter may still reduce the delay
   });
 });
 

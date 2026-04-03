@@ -503,14 +503,17 @@ export async function setupHandlers(server: Server): Promise<void> {
           await connectionManager.ensureIntrospected(effectiveInstanceUrl);
         }
 
+        // Mark bootstrap complete BEFORE cache rebuild — refreshCache is local
+        // bookkeeping, not a connectivity step. If it fails, the tool call should
+        // still proceed (not return CONNECTION_FAILED for a successful connection).
+        bootstrapComplete = true;
+
         // Rebuild registry cache AFTER full bootstrap (initialize + introspection)
         // so tier/version/widget availability are all populated
         {
           const { RegistryManager } = await import('./registry-manager');
           RegistryManager.getInstance().refreshCache(effectiveInstanceUrl);
         }
-
-        bootstrapComplete = true;
         // Best-effort log enrichment — getInstanceInfo may throw in OAuth-deferred
         // or degraded mode where version detection hasn't completed yet.
         if (LOG_FORMAT === 'verbose') {
@@ -705,13 +708,15 @@ export async function setupHandlers(server: Server): Promise<void> {
         // actually attempted (not for disconnected manage_context bypass which
         // does no GitLab I/O and shouldn't affect connection health).
         if (bootstrapStarted && !bootstrapComplete) {
-          // "timeout" in the message classifies as transient via classifyError()
-          // → triggers disconnected → auto-reconnect. Use a plain Error (not
+          // Use "timed out" so classifyError() reliably treats this as transient
+          // and triggers disconnected → auto-reconnect. Use a plain Error (not
           // InitializationTimeoutError) because this is a handler-level timeout,
           // not the startup init timeout from HealthMonitor.performConnect.
           HealthMonitor.getInstance().reportError(
             requestInstanceUrl,
-            new Error(`Handler timeout after ${HANDLER_TIMEOUT_MS}ms — bootstrap did not complete`),
+            new Error(
+              `Handler timed out after ${HANDLER_TIMEOUT_MS}ms — bootstrap did not complete`,
+            ),
           );
           ConnectionManager.getInstance().clearInflight(requestInstanceUrl);
         }

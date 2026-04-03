@@ -7,13 +7,14 @@
 FROM node:22-alpine AS dependencies
 
 # Enable Corepack and prepare Yarn
-RUN corepack enable && corepack prepare yarn@4.12.0 --activate
+RUN corepack enable && corepack prepare yarn@4.13.0 --activate
 
 # Set working directory
 WORKDIR /app
 
 # Copy only package files for better caching
 COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn/releases/ .yarn/releases/
 
 # Install ALL dependencies (including dev) for building
 RUN --mount=type=cache,target=/root/.yarn/berry/cache \
@@ -26,7 +27,7 @@ RUN --mount=type=cache,target=/root/.yarn/berry/cache \
 FROM node:22-alpine AS builder
 
 # Enable Corepack and prepare Yarn (same version)
-RUN corepack enable && corepack prepare yarn@4.12.0 --activate
+RUN corepack enable && corepack prepare yarn@4.13.0 --activate
 
 # Set working directory
 WORKDIR /app
@@ -54,7 +55,7 @@ RUN yarn build
 FROM node:22-alpine AS production-deps
 
 # Enable Corepack and prepare Yarn (same version)
-RUN corepack enable && corepack prepare yarn@4.12.0 --activate
+RUN corepack enable && corepack prepare yarn@4.13.0 --activate
 
 # Set working directory
 WORKDIR /app

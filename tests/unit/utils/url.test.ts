@@ -108,4 +108,10 @@ describe('normalizeInstanceUrl', () => {
       'https://host.com/gitlab',
     );
   });
+
+  it('should gracefully fall back when URL parsing fails', () => {
+    // Malformed URLs that new URL() rejects — fallback to string-based normalization
+    expect(normalizeInstanceUrl('not-a-url')).toBe('not-a-url');
+    expect(normalizeInstanceUrl('/just/a/path/api/v4')).toBe('/just/a/path');
+  });
 });

@@ -400,7 +400,7 @@ describe('handlers', () => {
       await callToolHandler(mockRequest);
 
       expect(mockConnectionManager.getClient).toHaveBeenCalled();
-      expect(mockConnectionManager.getInstanceInfo).toHaveBeenCalled();
+      // getInstanceInfo is now only called in verbose log mode (best-effort enrichment)
     });
 
     it('should initialize connection if not already initialized', async () => {

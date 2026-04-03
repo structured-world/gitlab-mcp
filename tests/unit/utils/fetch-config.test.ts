@@ -941,14 +941,16 @@ describe('Fetch Configuration Edge Cases', () => {
 
       createFetchOptions();
 
+      // ProxyAgent in Undici v8 does not support `connect` option
       expect(proxyAgentSpy).toHaveBeenCalledWith(
         expect.objectContaining({
           uri: 'https://proxy.example.com:8443',
           headersTimeout: 10000,
           bodyTimeout: 30000,
-          connect: { timeout: 2000 },
         }),
       );
+      // Verify connect is NOT passed
+      expect(proxyAgentSpy.mock.calls[0][0]).not.toHaveProperty('connect');
     });
   });
 });

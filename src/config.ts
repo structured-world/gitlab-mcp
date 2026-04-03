@@ -345,7 +345,7 @@ export const TRUST_PROXY = process.env.TRUST_PROXY;
 // Node.js setTimeout/setInterval max safe delay is 2^31-1 ms (~24.8 days).
 // Larger values silently clamp to 1ms, causing tight loops. All timer-backed
 // configs are parsed through this helper to enforce the ceiling.
-const MAX_SAFE_TIMEOUT_MS = 2_147_483_647;
+export const MAX_SAFE_TIMEOUT_MS = 2_147_483_647;
 function parseTimerMs(envValue: string | undefined, fallback: number): number {
   const parsed = Number.parseInt(envValue ?? String(fallback), 10);
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, MAX_SAFE_TIMEOUT_MS) : fallback;

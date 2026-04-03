@@ -16,7 +16,7 @@ jest.mock('../../../src/oauth/index.js', () => ({
 // Mock detectTokenScopes for testing scope refresh
 const mockDetectTokenScopes = jest.fn();
 jest.mock('../../../src/services/TokenScopeDetector', () => ({
-  detectTokenScopes: () => mockDetectTokenScopes(),
+  detectTokenScopes: (...args: unknown[]) => mockDetectTokenScopes(...args),
   getTokenCreationUrl: jest.fn(
     () => 'https://gitlab.example.com/-/user_settings/personal_access_tokens',
   ),
@@ -138,6 +138,7 @@ describe('ConnectionManager Unit', () => {
 
       const result = await manager.refreshTokenScopes();
       expect(result).toBe(false);
+      expect(mockDetectTokenScopes).toHaveBeenCalledWith(TEST_URL);
     });
 
     it('should return false when scopes have not changed', async () => {

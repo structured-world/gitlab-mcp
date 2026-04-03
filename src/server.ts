@@ -16,6 +16,7 @@ import {
   TRUST_PROXY,
   SSE_HEARTBEAT_MS,
   HTTP_KEEPALIVE_TIMEOUT_MS,
+  MAX_SAFE_TIMEOUT_MS,
   LOG_FORMAT,
   GITLAB_BASE_URL,
   DASHBOARD_ENABLED,
@@ -200,7 +201,7 @@ function configureTrustProxy(app: Express): void {
  */
 function configureServerTimeouts(server: http.Server | https.Server): void {
   server.keepAliveTimeout = HTTP_KEEPALIVE_TIMEOUT_MS;
-  server.headersTimeout = HTTP_KEEPALIVE_TIMEOUT_MS + 5000; // Must be > keepAliveTimeout
+  server.headersTimeout = Math.min(HTTP_KEEPALIVE_TIMEOUT_MS + 5000, MAX_SAFE_TIMEOUT_MS); // Must be > keepAliveTimeout
   server.timeout = 0; // No socket timeout for SSE streaming
 
   // Enable TCP keepalive on every incoming socket to detect dead connections

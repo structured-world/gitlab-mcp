@@ -151,12 +151,13 @@ function createDispatcher(): unknown {
   // HTTP/HTTPS proxy — apply same Undici timeouts as direct Agent
   if (proxyUrl) {
     logInfo(`Using proxy: ${proxyUrl}`);
+    // ProxyAgent in Undici v8 does not support the `connect` option (only Agent/Pool do).
+    // Connect timeout is handled by the proxy's own connection negotiation.
     return new undici.ProxyAgent({
       uri: proxyUrl,
       requestTls: hasTlsConfig ? tlsOptions : undefined,
       headersTimeout: HEADERS_TIMEOUT_MS,
       bodyTimeout: BODY_TIMEOUT_MS,
-      connect: { timeout: CONNECT_TIMEOUT_MS },
     });
   }
 

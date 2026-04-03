@@ -510,9 +510,17 @@ export async function setupHandlers(server: Server): Promise<void> {
         }
 
         bootstrapComplete = true;
-        const instanceInfo = connectionManager.getInstanceInfo(effectiveInstanceUrl);
+        // Best-effort log enrichment — getInstanceInfo may throw in OAuth-deferred
+        // or degraded mode where version detection hasn't completed yet.
         if (LOG_FORMAT === 'verbose') {
-          logInfo(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
+          try {
+            const instanceInfo = connectionManager.getInstanceInfo(effectiveInstanceUrl);
+            logInfo(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
+          } catch {
+            logDebug('Connection verified but instance info not yet available', {
+              instanceUrl: effectiveInstanceUrl,
+            });
+          }
         }
       } catch (initError) {
         // Use bootstrapComplete (not isConnected) — isConnected flips after

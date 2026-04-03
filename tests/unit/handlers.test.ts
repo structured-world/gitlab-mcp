@@ -614,10 +614,11 @@ describe('handlers', () => {
         },
       });
 
-      // connecting + unreachable → CONNECTION_FAILED with disconnected state
+      // connecting + unreachable → CONNECTION_FAILED with preserved connecting state
       expect(result.isError).toBe(true);
       const parsed = JSON.parse(result.content![0].text);
       expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      expect(parsed.reconnecting).toBe(true);
 
       // Restore
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
@@ -1291,6 +1292,44 @@ describe('handlers', () => {
       expect(parsed.error_code).toBe('TIMEOUT');
     }, 5000);
 
+    it('should suppress late health reports after tool-timeout via timedOut guard', async () => {
+      // When executeTool resolves AFTER the timeout fires, the timedOut guard
+      // must prevent the late success from being reported to HealthMonitor.
+      // This verifies the timedOut flag suppresses reportSuccess/reportError.
+      let resolveDelayed!: (value: unknown) => void;
+      mockRegistryManager.executeTool.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            resolveDelayed = resolve;
+          }),
+      );
+
+      const resultPromise = callToolHandler({
+        params: {
+          name: 'browse_projects',
+          arguments: { action: 'list' },
+        },
+      });
+
+      // Wait for timeout to fire
+      const result = await resultPromise;
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBe('TIMEOUT');
+
+      // Clear any calls from the bootstrap phase
+      mockHealthMonitor.reportSuccess.mockClear();
+      mockHealthMonitor.reportError.mockClear();
+
+      // Now resolve the delayed tool — this should NOT trigger late health reports
+      resolveDelayed({ result: 'late' });
+      // Give microtasks a chance to settle
+      await new Promise((r) => setTimeout(r, 50));
+
+      expect(mockHealthMonitor.reportSuccess).not.toHaveBeenCalled();
+      expect(mockHealthMonitor.reportError).not.toHaveBeenCalled();
+    }, 5000);
+
     it('should not trigger timeout when tool completes within HANDLER_TIMEOUT_MS', async () => {
       // Tool resolves immediately (well within 100ms timeout)
       mockRegistryManager.executeTool.mockResolvedValue({ result: 'fast' });
@@ -1532,6 +1571,34 @@ describe('handlers', () => {
       expect(result.isError).toBe(true);
       const parsed = JSON.parse(result.content![0].text);
       expect(parsed.error_code).toBe('CONNECTION_FAILED');
+    });
+
+    it('should route per-request OAuth URL through failing bootstrap and report to HealthMonitor', async () => {
+      const oauth = require('../../src/oauth/index');
+      const oauthUrl = 'https://oauth-failing.example.com';
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(oauthUrl);
+
+      // ensureIntrospected fails — bootstrapComplete stays false
+      mockConnectionManager.ensureIntrospected.mockRejectedValueOnce(
+        new Error('Introspection failed'),
+      );
+
+      const result = await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      expect(parsed.instance_url).toBe(oauthUrl);
+      // Verify the OAuth URL was used for health reporting
+      expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(oauthUrl, expect.any(Error));
+
+      // Restore
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
     });
   });
 

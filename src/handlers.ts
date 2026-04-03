@@ -450,9 +450,9 @@ export async function setupHandlers(server: Server): Promise<void> {
       }
 
       // Disconnected/failed fast-path for manage_context: skip connection bootstrap
-      // and health reporting so the tool can serve diagnostic info (whoami, scope info)
-      // even when GitLab is unreachable. The tool handler itself may attempt GitLab I/O
-      // (e.g., refreshTokenScopes in whoami) — those calls will fail gracefully.
+      // and health reporting. Context tools operate on local state only (cached scopes,
+      // instance registry, config) and do not call the GitLab API, so skipping
+      // healthMonitor.reportSuccess/reportError is deliberate.
       if (
         toolName === 'manage_context' &&
         !healthMonitor.isInstanceReachable(effectiveInstanceUrl)
@@ -519,9 +519,14 @@ export async function setupHandlers(server: Server): Promise<void> {
         // initialize() but getClient/ensureIntrospected can still fail before
         // bootstrapComplete is set, and those failures should return CONNECTION_FAILED.
         if (!bootstrapComplete) {
-          // Report bootstrap failure — skip if handler already timed out
-          if (!timedOut && initError instanceof Error) {
-            healthMonitor.reportError(effectiveInstanceUrl, initError);
+          const errorCategory = initError instanceof Error ? classifyError(initError) : 'permanent';
+          // Report bootstrap failure to HealthMonitor. When the handler has already
+          // timed out, we still forward auth/permanent errors so the instance
+          // converges to `failed` instead of staying in `reconnecting` indefinitely.
+          if (initError instanceof Error) {
+            if (!timedOut || errorCategory === 'auth' || errorCategory === 'permanent') {
+              healthMonitor.reportError(effectiveInstanceUrl, initError);
+            }
           }
           logError(
             `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`,
@@ -537,7 +542,6 @@ export async function setupHandlers(server: Server): Promise<void> {
           // the derived connection state. For untracked URLs, getState() falls back
           // to 'disconnected', so we must not rely on that alone — otherwise
           // permanent/auth failures would incorrectly appear retriable.
-          const errorCategory = initError instanceof Error ? classifyError(initError) : 'permanent';
           const monitorState = healthMonitor.getState(effectiveInstanceUrl);
           // Prefer explicit monitor states when available; otherwise derive from
           // the error category:

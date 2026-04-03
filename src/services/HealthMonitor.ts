@@ -52,6 +52,14 @@ export interface InstanceHealthSnapshot {
   lastError: string | null;
 }
 
+/** Dedicated error for initialization timeouts — replaces fragile string matching. */
+export class InitializationTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`Initialization timeout after ${timeoutMs}ms`);
+    this.name = 'InitializationTimeoutError';
+  }
+}
+
 // ============================================================================
 // XState Machine Context & Events
 // ============================================================================
@@ -151,7 +159,7 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
     let timeoutId: ReturnType<typeof setTimeout> | undefined;
     const timeoutPromise = new Promise<never>((_, reject) => {
       timeoutId = setTimeout(
-        () => reject(new Error(`Initialization timeout after ${INIT_TIMEOUT_MS}ms`)),
+        () => reject(new InitializationTimeoutError(INIT_TIMEOUT_MS)),
         INIT_TIMEOUT_MS,
       );
     });
@@ -162,7 +170,7 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
       // Only clear the inflight promise on timeout — for auth/network errors the
       // underlying doInitialize() has already settled and cleaned up normally.
       // Clearing on non-timeout errors could race with a concurrent doInitialize().
-      const isTimeout = error instanceof Error && error.message.includes('Initialization timeout');
+      const isTimeout = error instanceof InitializationTimeoutError;
       if (isTimeout) {
         connectionManager.clearInflight(input.instanceUrl);
       }
@@ -255,6 +263,7 @@ async function quickHealthCheck(
       signal: controller.signal,
       retry: false,
       skipAuth: true,
+      rateLimit: false,
     });
 
     // Any non-5xx response means the server is reachable. 401/403 = auth needed

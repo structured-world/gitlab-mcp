@@ -304,7 +304,10 @@ class RegistryManager {
       const msg = err instanceof Error ? err.message : String(err);
       // Only treat "not initialized" as an expected no-op; surface unexpected errors
       if (!msg.includes('not initialized') && !msg.includes('No connection')) {
-        logWarn('Unexpected error loading instance info for tool cache', { error: msg });
+        logWarn('Unexpected error loading instance info for tool cache', {
+          error: msg,
+          instanceUrl,
+        });
       }
     }
 
@@ -318,7 +321,10 @@ class RegistryManager {
       const msg = err instanceof Error ? err.message : String(err);
       // Only treat "not initialized" as an expected no-op; surface unexpected errors
       if (!msg.includes('not initialized') && !msg.includes('No connection')) {
-        logWarn('Unexpected error loading token scopes for tool cache', { error: msg });
+        logWarn('Unexpected error loading token scopes for tool cache', {
+          error: msg,
+          instanceUrl,
+        });
       }
     }
 
@@ -400,22 +406,15 @@ class RegistryManager {
 
   /** Resolve or strip Related: references in tool descriptions. */
   private postProcessRelatedReferences(cache: Map<string, EnhancedToolDefinition>): void {
-    if (GITLAB_CROSS_REFS) {
-      const availableToolNames = new Set(cache.keys());
-      for (const [toolName, tool] of cache) {
-        if (this.descriptionOverrides.has(toolName)) continue;
-        const resolved = resolveRelatedReferences(tool.description, availableToolNames);
-        if (resolved !== tool.description) {
-          cache.set(toolName, { ...tool, description: resolved });
-        }
-      }
-    } else {
-      for (const [toolName, tool] of cache) {
-        if (this.descriptionOverrides.has(toolName)) continue;
-        const stripped = stripRelatedSection(tool.description);
-        if (stripped !== tool.description) {
-          cache.set(toolName, { ...tool, description: stripped });
-        }
+    const availableToolNames = GITLAB_CROSS_REFS ? new Set(cache.keys()) : undefined;
+
+    for (const [toolName, tool] of cache) {
+      if (this.descriptionOverrides.has(toolName)) continue;
+      const nextDescription = availableToolNames
+        ? resolveRelatedReferences(tool.description, availableToolNames)
+        : stripRelatedSection(tool.description);
+      if (nextDescription !== tool.description) {
+        cache.set(toolName, { ...tool, description: nextDescription });
       }
     }
   }
@@ -739,19 +738,24 @@ class RegistryManager {
       byActionDenial: 0,
     };
 
+    const counterByReason: Record<string, keyof typeof counts> = {
+      readOnly: 'byReadOnly',
+      deniedRegex: 'byDeniedRegex',
+      scopes: 'byScopes',
+      tier: 'byTier',
+      actionDenial: 'byActionDenial',
+    };
+
     for (const registry of this.registries.values()) {
       for (const [toolName, tool] of registry) {
         if (contextTools && !contextTools.has(toolName)) continue;
         const reason = this.getToolExclusionReason(toolName, tool, ctx);
         if (!reason) {
           counts.available++;
-          continue;
+        } else {
+          const key = counterByReason[reason];
+          if (key) counts[key]++;
         }
-        if (reason === 'readOnly') counts.byReadOnly++;
-        else if (reason === 'deniedRegex') counts.byDeniedRegex++;
-        else if (reason === 'scopes') counts.byScopes++;
-        else if (reason === 'tier') counts.byTier++;
-        else if (reason === 'actionDenial') counts.byActionDenial++;
       }
     }
 

@@ -209,8 +209,8 @@ export class ConnectionManager {
           // Intentionally swallowed: the version probe is a best-effort optimization
           // in OAuth mode. Even if GitLab is unreachable here, the OAuth client is
           // ready — actual connectivity is verified when the first authenticated
-          // request arrives. HealthMonitor will detect unreachability through its
-          // periodic health check cycle, not through this probe.
+          // request arrives. HealthMonitor may also detect unreachability via its
+          // immediate post-initialization probe and subsequent periodic health checks.
           logInfo(
             'OAuth mode: unauthenticated version detection failed, deferring all introspection',
             {

@@ -1466,6 +1466,7 @@ describe('handlers', () => {
       // A second call should attempt initialization again
       mockHealthMonitor.initialize.mockResolvedValue(undefined);
       await expect(setupHandlers(mockServer)).resolves.not.toThrow();
+      expect(mockHealthMonitor.initialize).toHaveBeenCalledTimes(2);
 
       // Restore
       mockHealthMonitor.initialize.mockResolvedValue(undefined);

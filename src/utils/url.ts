@@ -1,7 +1,7 @@
-/** Strip trailing slashes and known API path suffixes so equivalent URLs
- *  (e.g. `https://host/`, `https://host/api/v4`) map to the same key.
- *  Note: InstanceRegistry has an equivalent private normalizeUrl() method —
- *  consolidating them is tracked but deferred to avoid touching InstanceRegistry in this PR. */
+/** Strip trailing slashes, known API path suffixes, and default ports so
+ *  equivalent URLs (e.g. `https://host/`, `https://host/api/v4`,
+ *  `https://host:443`) map to the same key.
+ *  Used by both ConnectionManager and InstanceRegistry for consistent lookups. */
 export function normalizeInstanceUrl(url: string): string {
   if (!url) return url;
 

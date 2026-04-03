@@ -93,4 +93,19 @@ describe('normalizeInstanceUrl', () => {
       'https://self-hosted.gitlab.company.org/gitlab',
     );
   });
+
+  it('should strip default ports for canonical map keys', () => {
+    expect(normalizeInstanceUrl('https://gitlab.example.com:443')).toBe(
+      'https://gitlab.example.com',
+    );
+    expect(normalizeInstanceUrl('http://gitlab.example.com:80')).toBe('http://gitlab.example.com');
+    // Non-default ports preserved
+    expect(normalizeInstanceUrl('https://gitlab.example.com:8443')).toBe(
+      'https://gitlab.example.com:8443',
+    );
+    // Self-hosted with subpath + default port
+    expect(normalizeInstanceUrl('https://host.com:443/gitlab/api/v4')).toBe(
+      'https://host.com/gitlab',
+    );
+  });
 });

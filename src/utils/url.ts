@@ -23,5 +23,16 @@ export function normalizeInstanceUrl(url: string): string {
   }
   // Trim again — suffix removal can expose new trailing slashes
   // (e.g. "https://host//api/v4" → "https://host/")
-  return trimTrailingSlashes(normalized);
+  normalized = trimTrailingSlashes(normalized);
+
+  // Strip default ports so equivalent URLs (e.g. https://host vs https://host:443)
+  // map to the same key in instances/inflight caches.
+  // Node's URL constructor normalizes default ports automatically —
+  // reconstruct via origin + pathname to get the canonical form.
+  try {
+    const u = new URL(normalized);
+    return trimTrailingSlashes(u.origin + u.pathname);
+  } catch {
+    return normalized;
+  }
 }

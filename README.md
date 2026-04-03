@@ -98,6 +98,7 @@ The server handles GitLab connectivity issues gracefully:
 | `GITLAB_RECONNECT_MAX_DELAY_MS` | `60000` | Maximum reconnect delay |
 | `GITLAB_HEALTH_CHECK_INTERVAL_MS` | `60000` | Health check interval when connected |
 | `GITLAB_FAILURE_THRESHOLD` | `3` | Consecutive transient failures before disconnecting |
+| `GITLAB_TOOL_TIMEOUT_MS` | `120000` | Max time for tool/bootstrap execution before timeout |
 
 ## Feature Flags
 

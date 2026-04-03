@@ -1529,8 +1529,9 @@ describe('handlers', () => {
         },
       });
 
-      // Tool should execute successfully; OAuth context is logged (debug)
+      // Tool should execute successfully; OAuth context path was exercised
       expect(result.isError).toBeUndefined();
+      expect(getTokenContext).toHaveBeenCalled();
     });
 
     it('should route per-request OAuth URL through initialize and health reporting', async () => {
@@ -1759,14 +1760,18 @@ describe('handlers', () => {
       });
 
       expect(result.isError).toBe(true);
-      const callsAfterTimeout = mockHealthMonitor.reportSuccess.mock.calls.length;
+      const successCallsAfterTimeout = mockHealthMonitor.reportSuccess.mock.calls.length;
+      const errorCallsAfterTimeout = mockHealthMonitor.reportError.mock.calls.length;
 
       // Now resolve the deferred init — timedOut flag should prevent late calls
       resolveInit();
+      // Two ticks: first settles initialize(), second settles ensureIntrospected()
+      await new Promise((r) => process.nextTick(r));
       await new Promise((r) => process.nextTick(r));
 
-      // reportSuccess should NOT have been called after the deferred resolve
-      expect(mockHealthMonitor.reportSuccess.mock.calls.length).toBe(callsAfterTimeout);
+      // Neither reportSuccess nor reportError should have been called after timeout
+      expect(mockHealthMonitor.reportSuccess.mock.calls.length).toBe(successCallsAfterTimeout);
+      expect(mockHealthMonitor.reportError.mock.calls.length).toBe(errorCallsAfterTimeout);
 
       // Restore
       mockConnectionManager.isConnected.mockReturnValue(true);

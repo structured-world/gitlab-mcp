@@ -771,7 +771,18 @@ class RegistryManager {
    * Used by whoami action to explain tool availability
    */
   public getFilterStats(instanceUrl?: string): FilterStats {
-    const unreachableMode = this.isUnreachableMode();
+    // Per-URL reachability when a specific instance is requested; otherwise
+    // fall back to the global "all instances down" check.
+    let unreachableMode: boolean;
+    if (instanceUrl !== undefined) {
+      try {
+        unreachableMode = !HealthMonitor.getInstance().isInstanceReachable(instanceUrl);
+      } catch {
+        unreachableMode = false; // HealthMonitor not initialized — assume reachable
+      }
+    } else {
+      unreachableMode = this.isUnreachableMode();
+    }
     const contextTools = unreachableMode ? this.registries.get('context') : null;
 
     // Count total tools — in unreachable mode, only context tools are in scope

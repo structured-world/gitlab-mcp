@@ -597,8 +597,7 @@ describe('handlers', () => {
       mockHealthMonitor.getState.mockReturnValue('healthy');
     });
 
-    it('should indicate reconnecting when state is connecting', async () => {
-      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+    it('should treat connecting state as reachable (optimistic during startup)', async () => {
       mockHealthMonitor.getState.mockReturnValue('connecting');
 
       const result = await callToolHandler({
@@ -608,11 +607,10 @@ describe('handlers', () => {
         },
       });
 
-      const parsed = JSON.parse(result.content![0].text);
-      expect(parsed.reconnecting).toBe(true);
+      // connecting is reachable — tool proceeds to execution, not CONNECTION_FAILED
+      expect(result.isError).toBeUndefined();
 
       // Restore
-      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
       mockHealthMonitor.getState.mockReturnValue('healthy');
     });
 

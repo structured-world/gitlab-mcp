@@ -171,7 +171,7 @@ jest.mock('../../src/config', () => ({
 /** Reset the RegistryManager singleton between tests.
  *  Centralises the private-field access cast to a single location. */
 function resetRegistryManagerSingleton(): void {
-  (RegistryManager as any).instance = null; // accessing private static for test isolation
+  (RegistryManager as unknown as { instance: null }).instance = null;
 }
 
 describe('RegistryManager', () => {
@@ -181,7 +181,7 @@ describe('RegistryManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (RegistryManager as any).instance = null;
+    (RegistryManager as unknown as { instance: null }).instance = null;
 
     // Get the mocked config
     mockConfig = require('../../src/config');
@@ -213,7 +213,7 @@ describe('RegistryManager', () => {
   });
 
   afterEach(() => {
-    (RegistryManager as any).instance = null;
+    (RegistryManager as unknown as { instance: null }).instance = null;
   });
 
   describe('Singleton Pattern', () => {

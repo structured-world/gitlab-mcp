@@ -473,7 +473,8 @@ async function doFetch(
 ): Promise<Response> {
   // Use per-instance dispatcher if provided, otherwise fall back to global
   const dispatcher = instanceDispatcher ?? getDispatcher();
-  const cookieHeader = loadCookieHeader();
+  // skipAuth also skips cookie-based auth — health probes must be fully unauthenticated
+  const cookieHeader = skipAuth ? null : loadCookieHeader();
 
   // For FormData, don't set Content-Type - let fetch set it with proper boundary
   const isFormData = options.body instanceof FormData;

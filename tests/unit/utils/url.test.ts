@@ -73,4 +73,13 @@ describe('normalizeInstanceUrl', () => {
     const url = 'https://self-hosted.gitlab.company.org/gitlab';
     expect(normalizeInstanceUrl(url)).toBe(url);
   });
+
+  it('should strip API suffixes for self-managed instances on a subpath', () => {
+    expect(normalizeInstanceUrl('https://self-hosted.gitlab.company.org/gitlab/api/v4')).toBe(
+      'https://self-hosted.gitlab.company.org/gitlab',
+    );
+    expect(normalizeInstanceUrl('https://self-hosted.gitlab.company.org/gitlab/api/graphql/')).toBe(
+      'https://self-hosted.gitlab.company.org/gitlab',
+    );
+  });
 });

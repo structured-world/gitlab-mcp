@@ -387,8 +387,8 @@ export class ConnectionManager {
     }
 
     // Check legacy cache: prefer instanceUrl for multi-instance consistency,
-    // but fall back to endpoint-keyed entries
-    const primaryCacheKey = instanceUrl ?? endpoint;
+    // but fall back to endpoint-keyed entries from older cache format
+    const primaryCacheKey = instanceUrl;
     const legacyCacheKey = endpoint;
     let cached = ConnectionManager.introspectionCache.get(primaryCacheKey);
     if (!cached && primaryCacheKey !== legacyCacheKey) {

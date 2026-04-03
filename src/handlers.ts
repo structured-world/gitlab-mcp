@@ -413,21 +413,21 @@ export async function setupHandlers(server: Server): Promise<void> {
       // actions (e.g., whoami, show_scope, set_scope).
       const healthMonitor = HealthMonitor.getInstance();
       const toolName = request.params.name;
-      if (
-        !healthMonitor.isInstanceReachable(effectiveInstanceUrl) &&
-        toolName !== 'manage_context'
-      ) {
+      // Read state once to avoid TOCTOU between reachability check and state derivation
+      const instanceState = healthMonitor.getState(effectiveInstanceUrl);
+      const isReachable =
+        instanceState === 'healthy' ||
+        instanceState === 'degraded' ||
+        instanceState === 'connecting';
+      if (!isReachable && toolName !== 'manage_context') {
         const action =
           request.params.arguments && typeof request.params.arguments.action === 'string'
             ? request.params.arguments.action
             : 'unknown';
 
-        const rawState = healthMonitor.getState(effectiveInstanceUrl);
-        // Map to the three states createConnectionFailedError handles;
-        // healthy/degraded shouldn't reach here (guarded by !isInstanceReachable),
-        // but default to 'disconnected' for safety.
-        const connectionState: 'connecting' | 'disconnected' | 'failed' =
-          rawState === 'connecting' || rawState === 'failed' ? rawState : 'disconnected';
+        // Only disconnected/failed reach here (connecting/healthy/degraded = reachable)
+        const connectionState: 'disconnected' | 'failed' =
+          instanceState === 'failed' ? 'failed' : 'disconnected';
         const connError = createConnectionFailedError(
           toolName,
           action,

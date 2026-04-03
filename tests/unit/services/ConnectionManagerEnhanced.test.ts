@@ -1,7 +1,21 @@
-import { ConnectionManager } from '../../../src/services/ConnectionManager';
+import { ConnectionManager, type InstanceState } from '../../../src/services/ConnectionManager';
 import { GraphQLClient } from '../../../src/graphql/client';
 import { GitLabVersionDetector } from '../../../src/services/GitLabVersionDetector';
 import { SchemaIntrospector } from '../../../src/services/SchemaIntrospector';
+
+/** Type-safe access to ConnectionManager private fields in tests */
+type CMStatic = { instance: ConnectionManager | null; introspectionCache: Map<string, unknown> };
+type CMInternal = {
+  instances: Map<string, InstanceState>;
+  currentInstanceUrl: string | null;
+  doInitialize: (url: string) => Promise<void>;
+};
+function cmStatic(): CMStatic {
+  return ConnectionManager as unknown as CMStatic;
+}
+function cmInternal(m: ConnectionManager): CMInternal {
+  return m as unknown as CMInternal;
+}
 
 // Mock dependencies
 jest.mock('../../../src/graphql/client');
@@ -74,8 +88,8 @@ describe('ConnectionManager Enhanced Tests', () => {
 
   beforeEach(() => {
     // Clear singleton instance before each test
-    (ConnectionManager as any).instance = null;
-    (ConnectionManager as any).introspectionCache.clear();
+    cmStatic().instance = null;
+    cmStatic().introspectionCache.clear();
 
     jest.clearAllMocks();
 
@@ -89,7 +103,7 @@ describe('ConnectionManager Enhanced Tests', () => {
       request: jest.fn(),
       endpoint: 'https://test-gitlab.com/api/graphql',
       setEndpoint: jest.fn(),
-    } as any;
+    } as unknown as jest.Mocked<GraphQLClient>;
     MockedGraphQLClient.mockImplementation(() => mockClient);
 
     mockVersionDetector = {
@@ -98,7 +112,7 @@ describe('ConnectionManager Enhanced Tests', () => {
       getVersion: jest.fn().mockReturnValue('16.5.0'),
       isFeatureAvailable: jest.fn().mockReturnValue(true),
       getCachedInfo: jest.fn().mockReturnValue(mockInstanceInfo),
-    } as any;
+    } as unknown as jest.Mocked<GitLabVersionDetector>;
     MockedGitLabVersionDetector.mockImplementation(() => mockVersionDetector);
 
     mockSchemaIntrospector = {
@@ -107,7 +121,7 @@ describe('ConnectionManager Enhanced Tests', () => {
       getAvailableWidgetTypes: jest.fn().mockReturnValue(['ASSIGNEES', 'LABELS']),
       getCachedSchema: jest.fn().mockReturnValue(mockSchemaInfo),
       getFieldsForType: jest.fn().mockReturnValue([]),
-    } as any;
+    } as unknown as jest.Mocked<SchemaIntrospector>;
     MockedSchemaIntrospector.mockImplementation(() => mockSchemaIntrospector);
 
     connectionManager = ConnectionManager.getInstance();
@@ -116,7 +130,7 @@ describe('ConnectionManager Enhanced Tests', () => {
   afterEach(() => {
     // Reset singleton for clean tests
     connectionManager.reset();
-    (ConnectionManager as any).instance = null;
+    cmStatic().instance = null;
   });
 
   describe('Singleton Pattern', () => {
@@ -182,20 +196,22 @@ describe('ConnectionManager Enhanced Tests', () => {
       } = require('../../../src/services/ConnectionManager');
       const { GraphQLClient: OAuthGraphQLClient } = require('../../../src/graphql/client');
 
-      const manager = OAuthConnectionManager.getInstance();
-      await manager.initialize();
+      const manager = OAuthConnectionManager.getInstance() as ConnectionManager;
+      try {
+        await manager.initialize();
 
-      // In OAuth mode, GraphQLClient should receive empty headers
-      expect(OAuthGraphQLClient).toHaveBeenCalledWith('https://test-gitlab.com/api/graphql', {});
+        // In OAuth mode, GraphQLClient should receive empty headers
+        expect(OAuthGraphQLClient).toHaveBeenCalledWith('https://test-gitlab.com/api/graphql', {});
 
-      // The unauthenticated version probe must be sent with skipAuth: true
-      expect(mockEnhancedFetch401).toHaveBeenCalledWith(
-        expect.stringContaining('/api/v4/version'),
-        expect.objectContaining({ skipAuth: true }),
-      );
-
-      manager.reset();
-      jest.resetModules();
+        // The unauthenticated version probe must be sent with skipAuth: true
+        expect(mockEnhancedFetch401).toHaveBeenCalledWith(
+          expect.stringContaining('/api/v4/version'),
+          expect.objectContaining({ skipAuth: true }),
+        );
+      } finally {
+        manager.reset();
+        jest.resetModules();
+      }
     });
 
     it('should handle multiple initialization calls gracefully', async () => {
@@ -271,18 +287,15 @@ describe('ConnectionManager Enhanced Tests', () => {
   });
 
   describe('Caching Mechanism', () => {
-    // NOTE: Several tests below reach into private fields via `as any` (instances,
-    // currentInstanceUrl, doInitialize).  This is the only way to set up specific
-    // intermediate states (e.g., "state cleared but static cache intact") without
-    // making these internals part of the public API.  Exposing them purely for
-    // tests would widen the contract undesirably; the tradeoff is accepted here.
+    // Tests below reach private fields via typed cmInternal()/cmStatic() helpers
+    // to set up specific intermediate states without widening the public API.
     it('should use cached data when available and not expired', async () => {
       // First initialization populates introspection cache
       await connectionManager.initialize();
 
       // Clear per-URL state only (not the static cache) to force re-init
-      (connectionManager as any).instances.clear();
-      (connectionManager as any).currentInstanceUrl = null;
+      cmInternal(connectionManager).instances.clear();
+      cmInternal(connectionManager).currentInstanceUrl = null;
 
       // Second initialization should use cached introspection data
       await connectionManager.initialize();
@@ -303,8 +316,8 @@ describe('ConnectionManager Enhanced Tests', () => {
         await connectionManager.initialize();
 
         // Clear per-URL state but keep static cache (simulates re-init scenario)
-        (connectionManager as any).instances.clear();
-        (connectionManager as any).currentInstanceUrl = null;
+        cmInternal(connectionManager).instances.clear();
+        cmInternal(connectionManager).currentInstanceUrl = null;
 
         // Advance time beyond cache TTL (10 minutes = 600000ms)
         currentTime += 600001;
@@ -323,7 +336,7 @@ describe('ConnectionManager Enhanced Tests', () => {
       // For now, just verify cache is used correctly
       await connectionManager.initialize();
 
-      const cache = (ConnectionManager as any).introspectionCache;
+      const cache = cmStatic().introspectionCache;
       expect(cache.size).toBeGreaterThan(0);
       expect(cache.has('https://test-gitlab.com/api/graphql')).toBe(true);
     });
@@ -694,15 +707,21 @@ describe('ConnectionManager Enhanced Tests', () => {
     it('should handle undefined feature keys gracefully', async () => {
       await connectionManager.initialize();
 
-      // Test with undefined feature (should not throw)
-      expect(connectionManager.isFeatureAvailable(undefined as any)).toBe(undefined);
+      // Test with undefined feature (should not throw) — deliberately passing
+      // invalid input to verify robustness of the runtime guard
+      expect(
+        connectionManager.isFeatureAvailable(
+          undefined as unknown as keyof import('../../../src/services/GitLabVersionDetector').GitLabInstanceInfo['features'],
+        ),
+      ).toBe(undefined);
     });
 
     it('should handle instance info with missing features', async () => {
       const infoWithoutFeatures = {
         version: '16.5.0',
         tier: 'premium' as const,
-        features: {} as any, // Empty object instead of undefined
+        features:
+          {} as unknown as import('../../../src/services/GitLabVersionDetector').GitLabInstanceInfo['features'],
         detectedAt: new Date('2024-01-15T10:00:00Z'),
       };
       mockVersionDetector.detectInstance.mockResolvedValueOnce(infoWithoutFeatures);
@@ -898,7 +917,7 @@ describe('ConnectionManager Enhanced Tests', () => {
 
       // Clear local state only (simulates deferred introspection scenario)
       const url = connectionManager.getCurrentInstanceUrl()!;
-      const state = (connectionManager as any).instances.get(url);
+      const state = cmInternal(connectionManager).instances.get(url)!;
       state.instanceInfo = null;
       state.schemaInfo = null;
       state.introspectedInstanceUrl = null;
@@ -923,11 +942,11 @@ describe('ConnectionManager Enhanced Tests', () => {
 
       // Clear ALL state and caches (per-URL state)
       const url = connectionManager.getCurrentInstanceUrl()!;
-      const state = (connectionManager as any).instances.get(url);
+      const state = cmInternal(connectionManager).instances.get(url)!;
       state.instanceInfo = null;
       state.schemaInfo = null;
       state.introspectedInstanceUrl = null;
-      (ConnectionManager as any).introspectionCache.clear();
+      cmStatic().introspectionCache.clear();
 
       // Reset mocks to count new calls
       jest.clearAllMocks();
@@ -1091,10 +1110,14 @@ describe('ConnectionManager Enhanced Tests', () => {
       const blockA = new Promise<void>((r) => {
         resolveA = r;
       });
-      const originalDoInit = (connectionManager as any).doInitialize.bind(connectionManager);
+      const internal = cmInternal(connectionManager);
+      const originalDoInit = internal.doInitialize.bind(connectionManager);
 
       // Spy on doInitialize to control timing
-      const doInitSpy = jest.spyOn(connectionManager as any, 'doInitialize');
+      const doInitSpy = jest.spyOn(
+        internal as { doInitialize: (...args: unknown[]) => Promise<void> },
+        'doInitialize',
+      );
       doInitSpy.mockImplementation(async (url: unknown) => {
         if (url === urlA) {
           // A waits until we release it

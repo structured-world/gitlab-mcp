@@ -72,6 +72,7 @@ jest.mock('../../src/entities/labels/registry', () => ({
 jest.mock('../../src/services/ToolAvailability', () => ({
   ToolAvailability: {
     isToolAvailable: jest.fn(),
+    isToolAvailableForInstance: jest.fn().mockReturnValue(true),
     getUnavailableReason: jest.fn(),
     getRestrictedParameters: jest.fn().mockReturnValue([]),
   },
@@ -89,6 +90,19 @@ jest.mock('../../src/services/ConnectionManager', () => ({
 jest.mock('../../src/services/TokenScopeDetector', () => ({
   isToolAvailableForScopes: jest.fn().mockReturnValue(true),
   getToolScopeRequirements: jest.fn().mockReturnValue({}),
+}));
+
+// Mock HealthMonitor for disconnected mode testing
+const mockHealthMonitorInstance = {
+  getMonitoredInstances: jest.fn().mockReturnValue([]),
+  isAnyInstanceHealthy: jest.fn().mockReturnValue(true),
+  isInstanceReachable: jest.fn().mockReturnValue(true),
+};
+
+jest.mock('../../src/services/HealthMonitor', () => ({
+  HealthMonitor: {
+    getInstance: jest.fn(() => mockHealthMonitorInstance),
+  },
 }));
 
 jest.mock('../../src/logger', () => ({
@@ -155,6 +169,12 @@ jest.mock('../../src/config', () => ({
   getParamDescriptionOverrides: jest.fn(() => new Map()),
 }));
 
+/** Reset the RegistryManager singleton between tests.
+ *  Centralises the private-field access cast to a single location. */
+function resetRegistryManagerSingleton(): void {
+  (RegistryManager as unknown as { instance: null }).instance = null;
+}
+
 describe('RegistryManager', () => {
   let registryManager: RegistryManager;
   let mockConfig: any;
@@ -162,7 +182,7 @@ describe('RegistryManager', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    (RegistryManager as any).instance = null;
+    resetRegistryManagerSingleton();
 
     // Get the mocked config
     mockConfig = require('../../src/config');
@@ -184,13 +204,18 @@ describe('RegistryManager', () => {
     // Reset default mocks
     mockConfig.getToolDescriptionOverrides = jest.fn(() => new Map());
     ToolAvailability.isToolAvailable.mockReturnValue(true);
+    ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
+    ToolAvailability.getRestrictedParameters.mockReturnValue([]);
+    mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+    mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+    mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
     ToolAvailability.getUnavailableReason.mockReturnValue('');
 
     registryManager = RegistryManager.getInstance();
   });
 
   afterEach(() => {
-    (RegistryManager as any).instance = null;
+    resetRegistryManagerSingleton();
   });
 
   describe('Singleton Pattern', () => {
@@ -254,7 +279,7 @@ describe('RegistryManager', () => {
   describe('Read-Only Mode Filtering', () => {
     beforeEach(() => {
       process.env.GITLAB_READ_ONLY_MODE = 'true';
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
     });
 
@@ -275,7 +300,7 @@ describe('RegistryManager', () => {
   describe('Regex Filtering', () => {
     beforeEach(() => {
       process.env.GITLAB_DENIED_TOOLS_REGEX = '^core_';
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
     });
 
@@ -298,7 +323,7 @@ describe('RegistryManager', () => {
       process.env.USE_WORKITEMS = 'false';
 
       // Create new instance with USE_WORKITEMS=false
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       const newManager = RegistryManager.getInstance();
       const toolNames = newManager.getAvailableToolNames();
 
@@ -325,7 +350,7 @@ describe('RegistryManager', () => {
 
   describe('Tool Availability Filtering', () => {
     beforeEach(() => {
-      ToolAvailability.isToolAvailable.mockImplementation(
+      ToolAvailability.isToolAvailableForInstance.mockImplementation(
         (name: string) => !name.includes('unavailable'),
       );
       ToolAvailability.getUnavailableReason.mockImplementation((name: string) =>
@@ -334,7 +359,6 @@ describe('RegistryManager', () => {
     });
 
     it('should filter unavailable tools', () => {
-      // Add an unavailable tool to the registry for testing
       const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
       coreRegistry.set('unavailable_tool', {
         name: 'unavailable_tool',
@@ -343,12 +367,16 @@ describe('RegistryManager', () => {
         handler: jest.fn(),
       });
 
-      (RegistryManager as any).instance = null;
-      registryManager = RegistryManager.getInstance();
+      try {
+        resetRegistryManagerSingleton();
+        registryManager = RegistryManager.getInstance();
 
-      const names = registryManager.getAvailableToolNames();
-      expect(names).toContain('core_tool_1');
-      expect(names).not.toContain('unavailable_tool');
+        const names = registryManager.getAvailableToolNames();
+        expect(names).toContain('core_tool_1');
+        expect(names).not.toContain('unavailable_tool');
+      } finally {
+        coreRegistry.delete('unavailable_tool');
+      }
     });
 
     it('should filter tools based on token scopes', () => {
@@ -363,7 +391,7 @@ describe('RegistryManager', () => {
       // Only allow tools whose name contains "core_tool_1" (simulate read_user scope)
       isToolAvailableForScopes.mockImplementation((toolName: string) => toolName === 'core_tool_1');
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       const scopedManager = RegistryManager.getInstance();
       const names = scopedManager.getAvailableToolNames();
 
@@ -404,7 +432,7 @@ describe('RegistryManager', () => {
           toolName === 'tool_with_params' ? ['weight', 'healthStatus'] : [],
         );
 
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('tool_with_params');
@@ -461,7 +489,7 @@ describe('RegistryManager', () => {
         // Clear call history from beforeEach cache build before creating new instance
         ToolAvailability.getRestrictedParameters.mockClear();
 
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('tool_with_params');
@@ -511,20 +539,25 @@ describe('RegistryManager', () => {
       process.env.USE_MRS = 'true';
 
       // Mock MRS registry for this test
-      const mrsRegistry = new Map([
+      const mrsModule = require('../../src/entities/mrs/registry');
+      const originalMrsRegistry = mrsModule.mrsToolRegistry;
+      mrsModule.mrsToolRegistry = new Map([
         [
           'mrs_tool',
           { name: 'mrs_tool', description: 'MRS tool', inputSchema: {}, handler: jest.fn() },
         ],
       ]);
-      require('../../src/entities/mrs/registry').mrsToolRegistry = mrsRegistry;
 
-      (RegistryManager as any).instance = null;
-      const newManager = RegistryManager.getInstance();
+      try {
+        resetRegistryManagerSingleton();
+        const newManager = RegistryManager.getInstance();
 
-      const names = newManager.getAvailableToolNames();
-      expect(names).toContain('core_tool_1'); // Always includes core
-      expect(names).not.toContain('labels_tool_1'); // Labels disabled
+        const names = newManager.getAvailableToolNames();
+        expect(names).toContain('core_tool_1'); // Always includes core
+        expect(names).not.toContain('labels_tool_1'); // Labels disabled
+      } finally {
+        mrsModule.mrsToolRegistry = originalMrsRegistry;
+      }
     });
 
     it('should provide cache refresh functionality', () => {
@@ -551,10 +584,14 @@ describe('RegistryManager', () => {
       const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
       coreRegistry.set('error_tool', errorTool);
 
-      (RegistryManager as any).instance = null;
-      const errorManager = RegistryManager.getInstance();
+      try {
+        resetRegistryManagerSingleton();
+        const errorManager = RegistryManager.getInstance();
 
-      await expect(errorManager.executeTool('error_tool', {})).rejects.toThrow('Tool error');
+        await expect(errorManager.executeTool('error_tool', {})).rejects.toThrow('Tool error');
+      } finally {
+        coreRegistry.delete('error_tool');
+      }
     });
   });
 
@@ -563,7 +600,7 @@ describe('RegistryManager', () => {
       process.env.GITLAB_READ_ONLY_MODE = 'true';
       process.env.GITLAB_DENIED_TOOLS_REGEX = 'readonly';
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       const filteredManager = RegistryManager.getInstance();
 
       // Should filter out tools that match denied regex even if they're read-only
@@ -575,7 +612,7 @@ describe('RegistryManager', () => {
 
     it('should maintain consistency across multiple calls after filtering', () => {
       process.env.GITLAB_READ_ONLY_MODE = 'true';
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       const readOnlyManager = RegistryManager.getInstance();
 
       for (let i = 0; i < 3; i++) {
@@ -591,8 +628,8 @@ describe('RegistryManager', () => {
     let originalEnv: NodeJS.ProcessEnv;
 
     beforeEach(() => {
-      originalEnv = process.env;
-      (RegistryManager as any).instance = null;
+      originalEnv = { ...process.env };
+      resetRegistryManagerSingleton();
     });
 
     afterEach(() => {
@@ -696,7 +733,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_CROSS_REFS = 'false';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tools = registryManager.getAllToolDefinitionsTierless();
@@ -732,7 +769,7 @@ describe('RegistryManager', () => {
       try {
         // Default: GITLAB_CROSS_REFS not set (=true)
         delete process.env.GITLAB_CROSS_REFS;
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tools = registryManager.getAllToolDefinitionsTierless();
@@ -783,7 +820,7 @@ describe('RegistryManager', () => {
       });
 
       try {
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_test');
@@ -813,7 +850,7 @@ describe('RegistryManager', () => {
       });
 
       try {
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_with_ref');
@@ -851,7 +888,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_READ_ONLY_MODE = 'true';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_readonly_test');
@@ -885,7 +922,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_DENIED_TOOLS_REGEX = 'manage_deny_target';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_deny_test');
@@ -920,7 +957,7 @@ describe('RegistryManager', () => {
       );
 
       try {
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_override_test');
@@ -956,7 +993,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_CROSS_REFS = 'false';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_crossref_test');
@@ -983,7 +1020,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_CROSS_REFS = 'false';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_no_related');
@@ -1013,7 +1050,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_CROSS_REFS = 'false';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_crossref_override');
@@ -1052,7 +1089,7 @@ describe('RegistryManager', () => {
 
     it('should count tools filtered by read-only mode', () => {
       process.env.GITLAB_READ_ONLY_MODE = 'true';
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const stats = registryManager.getFilterStats();
@@ -1064,7 +1101,7 @@ describe('RegistryManager', () => {
 
     it('should count tools filtered by denied regex', () => {
       process.env.GITLAB_DENIED_TOOLS_REGEX = '^core_tool';
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const stats = registryManager.getFilterStats();
@@ -1087,7 +1124,7 @@ describe('RegistryManager', () => {
       // Only allow core_tool_1
       isToolAvailableForScopes.mockImplementation((toolName: string) => toolName === 'core_tool_1');
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const stats = registryManager.getFilterStats();
@@ -1106,15 +1143,15 @@ describe('RegistryManager', () => {
     it('should count tools filtered by tier restrictions', () => {
       const { ToolAvailability } = require('../../src/services/ToolAvailability');
 
-      // Make some tools unavailable due to tier
-      ToolAvailability.isToolAvailable.mockImplementation(
+      // Make some tools unavailable due to tier (uses isToolAvailableForInstance now)
+      ToolAvailability.isToolAvailableForInstance.mockImplementation(
         (name: string) => !name.includes('labels'),
       );
       ToolAvailability.getUnavailableReason.mockImplementation((name: string) =>
         name.includes('labels') ? 'Requires Premium tier' : '',
       );
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const stats = registryManager.getFilterStats();
@@ -1123,7 +1160,7 @@ describe('RegistryManager', () => {
       expect(stats.filteredByTier).toBeGreaterThan(0);
 
       // Restore mocks
-      ToolAvailability.isToolAvailable.mockReturnValue(true);
+      ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
       ToolAvailability.getUnavailableReason.mockReturnValue('');
     });
 
@@ -1131,7 +1168,7 @@ describe('RegistryManager', () => {
       process.env.GITLAB_READ_ONLY_MODE = 'true';
       process.env.GITLAB_DENIED_TOOLS_REGEX = 'core_readonly';
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const stats = registryManager.getFilterStats();
@@ -1141,6 +1178,30 @@ describe('RegistryManager', () => {
       // Since core_readonly matches both read-only list AND denied regex,
       // it gets counted in denied regex (first filter that matches)
       expect(stats.filteredByDeniedRegex + stats.filteredByReadOnly).toBeGreaterThan(0);
+    });
+  });
+
+  describe('getFilterStats - per-URL reachability', () => {
+    it('should use per-URL reachability when instanceUrl is provided', () => {
+      // Instance is unreachable for this specific URL
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(false);
+
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      const stats = registryManager.getFilterStats('https://unreachable.example.com');
+
+      // In unreachable mode, total is scoped to context tools only
+      // (manage_context). Global stats include ALL tools.
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
+      const globalStats = registryManager.getFilterStats();
+
+      // Per-URL unreachable total should be smaller than global total
+      expect(stats.total).toBeLessThan(globalStats.total);
+      // isInstanceReachable should have been called with the URL
+      expect(mockHealthMonitorInstance.isInstanceReachable).toHaveBeenCalledWith(
+        'https://unreachable.example.com',
+      );
     });
   });
 
@@ -1185,6 +1246,191 @@ describe('RegistryManager', () => {
           expect(Array.isArray(schema.oneOf)).toBe(true);
           expect(schema.oneOf.length).toBeGreaterThan(0);
         }
+      }
+    });
+  });
+
+  describe('isUnreachableMode - error handling and getAvailableToolNames in unreachable mode', () => {
+    it('should return false (not unreachable) when no instances are monitored', () => {
+      // HealthMonitor.getInstance() is a lazy singleton — never throws.
+      // When no instances are monitored, isUnreachableMode returns false → full tool list.
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      const tools = registryManager.getAllToolDefinitions();
+      expect(tools.length).toBeGreaterThan(0);
+      expect(tools.map((t) => t.name)).toContain('core_tool_1');
+    });
+
+    it('should return context-only names from getAvailableToolNames when unreachable', () => {
+      // Cover lines 692-694: getAvailableToolNames in unreachable mode does not cache the result
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
+        'https://gitlab.example.com',
+      ]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(false);
+
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      const names = registryManager.getAvailableToolNames();
+      expect(names).toContain('manage_context');
+      expect(names).not.toContain('core_tool_1');
+
+      // Flip to healthy — second call should re-evaluate and expand back to full set
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+
+      const names2 = registryManager.getAvailableToolNames();
+      expect(names2).toContain('core_tool_1');
+      expect(names2).toContain('manage_context');
+
+      // Restore
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+    });
+  });
+
+  describe('getFilterStats - actionDenial counter', () => {
+    it('should count tools filtered by actionDenial when all actions are denied (lines 773-774)', () => {
+      // extractActionsFromSchema recognises `enum` on the action property and
+      // shouldRemoveTool checks GITLAB_DENIED_ACTIONS via the mocked config.
+      // We set GITLAB_DENIED_ACTIONS to deny the sole action of a test tool.
+      const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
+      const mockConfig = require('../../src/config');
+
+      coreRegistry.set('manage_all_denied', {
+        name: 'manage_all_denied',
+        description: 'Tool whose only action is denied',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: ['do_thing'] },
+          },
+        },
+        handler: jest.fn(),
+      });
+
+      // GITLAB_DENIED_ACTIONS: block the only action so shouldRemoveTool returns true
+      const deniedActionsMap = new Map([['manage_all_denied', new Set(['do_thing'])]]);
+      // Override the getter defined in the jest.mock factory
+      Object.defineProperty(mockConfig, 'GITLAB_DENIED_ACTIONS', {
+        get: () => deniedActionsMap,
+        configurable: true,
+      });
+
+      try {
+        resetRegistryManagerSingleton();
+        registryManager = RegistryManager.getInstance();
+
+        const stats = registryManager.getFilterStats();
+        // manage_all_denied should be counted in filteredByActionDenial
+        expect(stats.filteredByActionDenial).toBeGreaterThan(0);
+      } finally {
+        coreRegistry.delete('manage_all_denied');
+        // Restore GITLAB_DENIED_ACTIONS to the mock default (empty Map)
+        Object.defineProperty(mockConfig, 'GITLAB_DENIED_ACTIONS', {
+          get: () => new Map(),
+          configurable: true,
+        });
+        resetRegistryManagerSingleton();
+      }
+    });
+  });
+
+  describe('loadInstanceContext - unexpected error warning (line 307)', () => {
+    it('should log warning when ConnectionManager throws an unexpected error', () => {
+      // Cover line 307: logWarn for non-"not initialized"/"No connection" errors
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
+      const { logWarn } = require('../../src/logger');
+
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockImplementation(() => {
+          throw new Error('Unexpected internal error');
+        }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+      });
+
+      try {
+        resetRegistryManagerSingleton();
+        registryManager = RegistryManager.getInstance();
+
+        expect(logWarn).toHaveBeenCalledWith(
+          'Unexpected error loading instance info for tool cache',
+          expect.objectContaining({ error: expect.stringContaining('Unexpected internal error') }),
+        );
+      } finally {
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        });
+      }
+    });
+  });
+
+  describe('disconnected mode filtering', () => {
+    it('should only expose context tools when all instances are disconnected', () => {
+      // Simulate all instances disconnected
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
+        'https://gitlab.example.com',
+      ]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(false);
+
+      // Reset RegistryManager to trigger cache rebuild
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      const tools = registryManager.getAllToolDefinitions();
+      const toolNames = tools.map((t) => t.name);
+
+      // Should only have context tools (manage_context from context registry)
+      expect(toolNames).toContain('manage_context');
+      // Should NOT have non-context tools
+      expect(toolNames).not.toContain('core_tool_1');
+      expect(toolNames).not.toContain('core_readonly');
+
+      // Restore
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+    });
+
+    it('should expose all tools when health monitor not yet initialized', () => {
+      // No monitored instances = HealthMonitor not initialized yet
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      const tools = registryManager.getAllToolDefinitions();
+      const toolNames = tools.map((t) => t.name);
+
+      // Should have all tools (no filtering)
+      expect(toolNames).toContain('core_tool_1');
+      expect(toolNames).toContain('manage_context');
+    });
+
+    it('should expose all tools when at least one monitored instance is healthy', () => {
+      // Initialized monitoring with a healthy instance — full tool set should be available
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
+        'https://gitlab.example.com',
+      ]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+
+      try {
+        resetRegistryManagerSingleton();
+        registryManager = RegistryManager.getInstance();
+
+        const toolNames = registryManager.getAllToolDefinitions().map((t) => t.name);
+        // Both core tools and context tools should be present
+        expect(toolNames).toContain('core_tool_1');
+        expect(toolNames).toContain('manage_context');
+        // Non-context tools must NOT be filtered out when a healthy instance exists
+        expect(toolNames).not.toHaveLength(0);
+      } finally {
+        // Restore to no-monitored-instances state so other tests are unaffected
+        mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+        mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
       }
     });
   });

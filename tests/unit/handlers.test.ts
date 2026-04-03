@@ -101,6 +101,21 @@ type McpHandler = (
   extra?: Record<string, unknown>,
 ) => Promise<HandlerResult>;
 
+/** Resolve a registered MCP handler by its schema rather than by call index.
+ *  This decouples tests from the registration order inside setupHandlers(). */
+function getRegisteredHandler(
+  mockServer: jest.Mocked<Server>,
+  schema: typeof ListToolsRequestSchema | typeof CallToolRequestSchema,
+): McpHandler {
+  const call = (mockServer.setRequestHandler as jest.Mock).mock.calls.find(
+    ([s]: [unknown]) => s === schema,
+  );
+  if (!call) {
+    throw new Error(`Handler for schema ${String(schema)} was not registered`);
+  }
+  return call[1] as McpHandler;
+}
+
 describe('handlers', () => {
   let mockServer: jest.Mocked<Server>;
   let listToolsHandler: McpHandler;
@@ -158,8 +173,8 @@ describe('handlers', () => {
       );
 
       // Capture the handlers for further testing
-      listToolsHandler = mockServer.setRequestHandler.mock.calls[0][1] as McpHandler;
-      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1] as McpHandler;
+      listToolsHandler = getRegisteredHandler(mockServer, ListToolsRequestSchema);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
     });
 
     it('should continue setup even if health monitor starts disconnected', async () => {
@@ -197,7 +212,7 @@ describe('handlers', () => {
       ]);
 
       await setupHandlers(mockServer);
-      const handler = mockServer.setRequestHandler.mock.calls[0][1] as McpHandler;
+      const handler = getRegisteredHandler(mockServer, ListToolsRequestSchema);
       const result = await handler({ method: 'tools/list' }, {});
 
       // Only context tools should be returned when disconnected
@@ -214,7 +229,7 @@ describe('handlers', () => {
   describe('list tools handler', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
-      listToolsHandler = mockServer.setRequestHandler.mock.calls[0][1] as McpHandler;
+      listToolsHandler = getRegisteredHandler(mockServer, ListToolsRequestSchema);
     });
 
     it('should return list of tools from registry manager', async () => {
@@ -299,7 +314,7 @@ describe('handlers', () => {
   describe('call tool handler', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
-      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1] as McpHandler;
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
     });
 
     it('should execute tool and return result', async () => {
@@ -531,7 +546,7 @@ describe('handlers', () => {
   describe('connection health integration', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
-      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1] as McpHandler;
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
     });
 
     it('should return CONNECTION_FAILED error when instance is unreachable', async () => {
@@ -593,8 +608,10 @@ describe('handlers', () => {
       const parsed = JSON.parse(result.content![0].text);
       expect(parsed.error_code).toBe('CONNECTION_FAILED');
       expect(parsed.reconnecting).toBe(false);
-      expect(parsed.message).toContain('authentication or configuration error');
-      expect(parsed.suggested_fix).toContain('authentication credentials');
+      expect(parsed.message).toContain(
+        'permanent authentication, permission, or configuration error',
+      );
+      expect(parsed.suggested_fix).toContain('authentication/authorization');
 
       // Restore
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
@@ -615,7 +632,9 @@ describe('handlers', () => {
     });
 
     it('should report error to health monitor after tool execution failure', async () => {
-      mockRegistryManager.executeTool.mockRejectedValue(new Error('API timeout'));
+      // Use a transport-level error message that classifyError maps to 'transient'
+      // (bare "API timeout" would be classified as 'permanent' after the narrowed heuristic)
+      mockRegistryManager.executeTool.mockRejectedValue(new Error('connect timeout: ETIMEDOUT'));
 
       await callToolHandler({
         params: {
@@ -726,7 +745,7 @@ describe('handlers', () => {
   describe('edge cases', () => {
     it('should handle empty arguments in tool call', async () => {
       await setupHandlers(mockServer);
-      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1] as McpHandler;
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
 
       const mockRequest = {
         params: {
@@ -744,7 +763,7 @@ describe('handlers', () => {
   describe('structured error handling', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
-      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1] as McpHandler;
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
     });
 
     it('should parse GitLab API error and return structured error response', async () => {
@@ -966,7 +985,7 @@ describe('handlers', () => {
   describe('structured error handling - additional paths', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
-      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1] as McpHandler;
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
     });
 
     it('should extract action from error cause via wrapper', async () => {
@@ -1028,7 +1047,7 @@ describe('handlers', () => {
   describe('timeout error handling', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
-      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1] as McpHandler;
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
     });
 
     it('should convert timeout error to structured TIMEOUT response for idempotent tools', async () => {
@@ -1170,7 +1189,7 @@ describe('handlers', () => {
       (isAuthenticationConfigured as jest.Mock).mockReturnValue(false);
 
       await setupHandlers(mockServer);
-      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1] as McpHandler;
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
 
       const mockRequest = {
         params: {
@@ -1196,7 +1215,7 @@ describe('handlers', () => {
 
     beforeEach(async () => {
       await setupHandlers(mockServer);
-      callToolHandler = mockServer.setRequestHandler.mock.calls[1][1] as McpHandler;
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
     });
 
     it('should return structured timeout error when tool execution exceeds HANDLER_TIMEOUT_MS', async () => {
@@ -1262,7 +1281,7 @@ describe('handlers', () => {
   describe('list tools handler - resolveRefs edge cases', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
-      listToolsHandler = mockServer.setRequestHandler.mock.calls[0][1] as McpHandler;
+      listToolsHandler = getRegisteredHandler(mockServer, ListToolsRequestSchema);
     });
 
     it('should resolve $ref references in input schemas', () => {

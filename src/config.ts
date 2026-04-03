@@ -441,25 +441,25 @@ export const API_RETRY_MAX_DELAY_MS =
 // Rate limiting configuration
 // Per-IP rate limiting (for anonymous requests) - enabled by default
 export const RATE_LIMIT_IP_ENABLED = process.env.RATE_LIMIT_IP_ENABLED !== 'false';
-export const RATE_LIMIT_IP_WINDOW_MS = Number.parseInt(
-  process.env.RATE_LIMIT_IP_WINDOW_MS ?? '60000',
-  10,
-); // 1 minute
-export const RATE_LIMIT_IP_MAX_REQUESTS = Number.parseInt(
-  process.env.RATE_LIMIT_IP_MAX_REQUESTS ?? '100',
-  10,
-);
+export const RATE_LIMIT_IP_WINDOW_MS = parseTimerMs(process.env.RATE_LIMIT_IP_WINDOW_MS, 60000); // 1 minute
+const parsedIpMaxRequests = Number.parseInt(process.env.RATE_LIMIT_IP_MAX_REQUESTS ?? '100', 10);
+export const RATE_LIMIT_IP_MAX_REQUESTS =
+  Number.isFinite(parsedIpMaxRequests) && parsedIpMaxRequests > 0 ? parsedIpMaxRequests : 100;
 
 // Per-session rate limiting (for authenticated requests) - disabled by default
 export const RATE_LIMIT_SESSION_ENABLED = process.env.RATE_LIMIT_SESSION_ENABLED === 'true';
-export const RATE_LIMIT_SESSION_WINDOW_MS = Number.parseInt(
-  process.env.RATE_LIMIT_SESSION_WINDOW_MS ?? '60000',
-  10,
+export const RATE_LIMIT_SESSION_WINDOW_MS = parseTimerMs(
+  process.env.RATE_LIMIT_SESSION_WINDOW_MS,
+  60000,
 );
-export const RATE_LIMIT_SESSION_MAX_REQUESTS = Number.parseInt(
+const parsedSessionMaxRequests = Number.parseInt(
   process.env.RATE_LIMIT_SESSION_MAX_REQUESTS ?? '300',
   10,
 );
+export const RATE_LIMIT_SESSION_MAX_REQUESTS =
+  Number.isFinite(parsedSessionMaxRequests) && parsedSessionMaxRequests > 0
+    ? parsedSessionMaxRequests
+    : 300;
 
 // Transport mode selection:
 // - If PORT env var is present: HTTP mode with dual transport (SSE + StreamableHTTP)

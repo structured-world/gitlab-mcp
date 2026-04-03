@@ -12,6 +12,12 @@
 import { HealthMonitor, calculateBackoffDelay } from '../../../src/services/HealthMonitor';
 import { classifyError, createConnectionFailedError } from '../../../src/utils/error-handler';
 
+/** Flush XState v5 internal microtask queue with a double-tick for CI stability. */
+async function flushXStateMicrotasks(): Promise<void> {
+  await new Promise<void>((resolve) => process.nextTick(resolve));
+  await new Promise<void>((resolve) => process.nextTick(resolve));
+}
+
 // Mock ConnectionManager
 const mockInitialize = jest.fn();
 const mockIsConnected = jest.fn();
@@ -99,7 +105,7 @@ describe('HealthMonitor', () => {
   afterEach(async () => {
     HealthMonitor.resetInstance();
     // Allow XState cleanup microtasks to complete
-    await new Promise((r) => process.nextTick(r));
+    await flushXStateMicrotasks();
   });
 
   const TEST_URL = 'https://gitlab.example.com';
@@ -305,7 +311,7 @@ describe('HealthMonitor', () => {
       monitor.reportSuccess(TEST_URL);
 
       // Flush microtask queue so XState processes the TOOL_SUCCESS event
-      await new Promise((r) => process.nextTick(r));
+      await flushXStateMicrotasks();
 
       expect(callback).not.toHaveBeenCalled();
     });
@@ -347,7 +353,7 @@ describe('HealthMonitor', () => {
       monitor.reportError(TEST_URL, transientError);
 
       // Allow XState microtasks to process
-      await new Promise((r) => process.nextTick(r));
+      await flushXStateMicrotasks();
 
       const snapshot = monitor.getSnapshot(TEST_URL);
       expect(snapshot.consecutiveFailures).toBe(2);
@@ -367,7 +373,7 @@ describe('HealthMonitor', () => {
       (transientError as Error & { code: string }).code = 'ECONNREFUSED';
       monitor.reportError(TEST_URL, transientError);
 
-      await new Promise((r) => process.nextTick(r));
+      await flushXStateMicrotasks();
 
       const snapshot = monitor.getSnapshot(TEST_URL);
       expect(snapshot.consecutiveFailures).toBe(1);
@@ -385,7 +391,7 @@ describe('HealthMonitor', () => {
         monitor.reportError(TEST_URL, new Error('GitLab API error: 401 Unauthorized'));
       }
 
-      await new Promise((r) => process.nextTick(r));
+      await flushXStateMicrotasks();
 
       const snapshot = monitor.getSnapshot(TEST_URL);
       // Auth errors are classified as 'auth', not 'transient',
@@ -410,7 +416,7 @@ describe('HealthMonitor', () => {
       monitor.reportSuccess(TEST_URL);
 
       // Allow XState to process the event
-      await new Promise((r) => process.nextTick(r));
+      await flushXStateMicrotasks();
 
       const snapshot = monitor.getSnapshot(TEST_URL);
       expect(snapshot.consecutiveFailures).toBe(0);
@@ -1034,7 +1040,7 @@ describe('createConnectionFailedError', () => {
     expect(error.action).toBe('list');
     expect(error.instance_url).toBe(url);
     expect(error.reconnecting).toBe(true);
-    expect(error.message).toContain('Automatic reconnection is in progress');
+    expect(error.message).toContain('A connection attempt is in progress');
   });
 
   it('should create error for disconnected state (will retry)', () => {
@@ -1051,8 +1057,8 @@ describe('createConnectionFailedError', () => {
     const error = createConnectionFailedError('browse_projects', 'list', url, 'failed');
     expect(error.error_code).toBe('CONNECTION_FAILED');
     expect(error.reconnecting).toBe(false);
-    expect(error.message).toContain('authentication or configuration error');
+    expect(error.message).toContain('permanent authentication, permission, or configuration error');
     expect(error.message).toContain('Automatic reconnection is disabled');
-    expect(error.suggested_fix).toContain('authentication credentials');
+    expect(error.suggested_fix).toContain('authentication/authorization');
   });
 });

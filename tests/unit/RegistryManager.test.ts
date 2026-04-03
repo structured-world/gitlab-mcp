@@ -168,6 +168,12 @@ jest.mock('../../src/config', () => ({
   getParamDescriptionOverrides: jest.fn(() => new Map()),
 }));
 
+/** Reset the RegistryManager singleton between tests.
+ *  Centralises the private-field access cast to a single location. */
+function resetRegistryManagerSingleton(): void {
+  (RegistryManager as any).instance = null; // accessing private static for test isolation
+}
+
 describe('RegistryManager', () => {
   let registryManager: RegistryManager;
   let mockConfig: any;
@@ -268,7 +274,7 @@ describe('RegistryManager', () => {
   describe('Read-Only Mode Filtering', () => {
     beforeEach(() => {
       process.env.GITLAB_READ_ONLY_MODE = 'true';
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
     });
 
@@ -289,7 +295,7 @@ describe('RegistryManager', () => {
   describe('Regex Filtering', () => {
     beforeEach(() => {
       process.env.GITLAB_DENIED_TOOLS_REGEX = '^core_';
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
     });
 
@@ -312,7 +318,7 @@ describe('RegistryManager', () => {
       process.env.USE_WORKITEMS = 'false';
 
       // Create new instance with USE_WORKITEMS=false
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       const newManager = RegistryManager.getInstance();
       const toolNames = newManager.getAvailableToolNames();
 
@@ -357,7 +363,7 @@ describe('RegistryManager', () => {
         handler: jest.fn(),
       });
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const names = registryManager.getAvailableToolNames();
@@ -377,7 +383,7 @@ describe('RegistryManager', () => {
       // Only allow tools whose name contains "core_tool_1" (simulate read_user scope)
       isToolAvailableForScopes.mockImplementation((toolName: string) => toolName === 'core_tool_1');
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       const scopedManager = RegistryManager.getInstance();
       const names = scopedManager.getAvailableToolNames();
 
@@ -418,7 +424,7 @@ describe('RegistryManager', () => {
           toolName === 'tool_with_params' ? ['weight', 'healthStatus'] : [],
         );
 
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('tool_with_params');
@@ -475,7 +481,7 @@ describe('RegistryManager', () => {
         // Clear call history from beforeEach cache build before creating new instance
         ToolAvailability.getRestrictedParameters.mockClear();
 
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('tool_with_params');
@@ -533,7 +539,7 @@ describe('RegistryManager', () => {
       ]);
       require('../../src/entities/mrs/registry').mrsToolRegistry = mrsRegistry;
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       const newManager = RegistryManager.getInstance();
 
       const names = newManager.getAvailableToolNames();
@@ -565,7 +571,7 @@ describe('RegistryManager', () => {
       const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
       coreRegistry.set('error_tool', errorTool);
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       const errorManager = RegistryManager.getInstance();
 
       await expect(errorManager.executeTool('error_tool', {})).rejects.toThrow('Tool error');
@@ -577,7 +583,7 @@ describe('RegistryManager', () => {
       process.env.GITLAB_READ_ONLY_MODE = 'true';
       process.env.GITLAB_DENIED_TOOLS_REGEX = 'readonly';
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       const filteredManager = RegistryManager.getInstance();
 
       // Should filter out tools that match denied regex even if they're read-only
@@ -589,7 +595,7 @@ describe('RegistryManager', () => {
 
     it('should maintain consistency across multiple calls after filtering', () => {
       process.env.GITLAB_READ_ONLY_MODE = 'true';
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       const readOnlyManager = RegistryManager.getInstance();
 
       for (let i = 0; i < 3; i++) {
@@ -606,7 +612,7 @@ describe('RegistryManager', () => {
 
     beforeEach(() => {
       originalEnv = process.env;
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
     });
 
     afterEach(() => {
@@ -710,7 +716,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_CROSS_REFS = 'false';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tools = registryManager.getAllToolDefinitionsTierless();
@@ -746,7 +752,7 @@ describe('RegistryManager', () => {
       try {
         // Default: GITLAB_CROSS_REFS not set (=true)
         delete process.env.GITLAB_CROSS_REFS;
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tools = registryManager.getAllToolDefinitionsTierless();
@@ -797,7 +803,7 @@ describe('RegistryManager', () => {
       });
 
       try {
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_test');
@@ -827,7 +833,7 @@ describe('RegistryManager', () => {
       });
 
       try {
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_with_ref');
@@ -865,7 +871,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_READ_ONLY_MODE = 'true';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_readonly_test');
@@ -899,7 +905,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_DENIED_TOOLS_REGEX = 'manage_deny_target';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_deny_test');
@@ -934,7 +940,7 @@ describe('RegistryManager', () => {
       );
 
       try {
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_override_test');
@@ -970,7 +976,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_CROSS_REFS = 'false';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_crossref_test');
@@ -997,7 +1003,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_CROSS_REFS = 'false';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_no_related');
@@ -1027,7 +1033,7 @@ describe('RegistryManager', () => {
 
       try {
         process.env.GITLAB_CROSS_REFS = 'false';
-        (RegistryManager as any).instance = null;
+        resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const tool = registryManager.getTool('browse_crossref_override');
@@ -1066,7 +1072,7 @@ describe('RegistryManager', () => {
 
     it('should count tools filtered by read-only mode', () => {
       process.env.GITLAB_READ_ONLY_MODE = 'true';
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const stats = registryManager.getFilterStats();
@@ -1078,7 +1084,7 @@ describe('RegistryManager', () => {
 
     it('should count tools filtered by denied regex', () => {
       process.env.GITLAB_DENIED_TOOLS_REGEX = '^core_tool';
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const stats = registryManager.getFilterStats();
@@ -1101,7 +1107,7 @@ describe('RegistryManager', () => {
       // Only allow core_tool_1
       isToolAvailableForScopes.mockImplementation((toolName: string) => toolName === 'core_tool_1');
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const stats = registryManager.getFilterStats();
@@ -1128,7 +1134,7 @@ describe('RegistryManager', () => {
         name.includes('labels') ? 'Requires Premium tier' : '',
       );
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const stats = registryManager.getFilterStats();
@@ -1145,7 +1151,7 @@ describe('RegistryManager', () => {
       process.env.GITLAB_READ_ONLY_MODE = 'true';
       process.env.GITLAB_DENIED_TOOLS_REGEX = 'core_readonly';
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const stats = registryManager.getFilterStats();
@@ -1212,7 +1218,7 @@ describe('RegistryManager', () => {
       mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(false);
 
       // Reset RegistryManager to trigger cache rebuild
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const tools = registryManager.getAllToolDefinitions();
@@ -1234,7 +1240,7 @@ describe('RegistryManager', () => {
       mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
       mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
 
-      (RegistryManager as any).instance = null;
+      resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
       const tools = registryManager.getAllToolDefinitions();
@@ -1243,6 +1249,30 @@ describe('RegistryManager', () => {
       // Should have all tools (no filtering)
       expect(toolNames).toContain('core_tool_1');
       expect(toolNames).toContain('manage_context');
+    });
+
+    it('should expose all tools when at least one monitored instance is healthy', () => {
+      // Initialized monitoring with a healthy instance — full tool set should be available
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
+        'https://gitlab.example.com',
+      ]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+
+      try {
+        resetRegistryManagerSingleton();
+        registryManager = RegistryManager.getInstance();
+
+        const toolNames = registryManager.getAllToolDefinitions().map((t) => t.name);
+        // Both core tools and context tools should be present
+        expect(toolNames).toContain('core_tool_1');
+        expect(toolNames).toContain('manage_context');
+        // Non-context tools must NOT be filtered out when a healthy instance exists
+        expect(toolNames).not.toHaveLength(0);
+      } finally {
+        // Restore to no-monitored-instances state so other tests are unaffected
+        mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+        mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+      }
     });
   });
 });

@@ -328,11 +328,10 @@ export async function setupHandlers(server: Server): Promise<void> {
     };
   });
 
-  // Call tool handler — idempotent tools are wrapped with a handler-level timeout
-  // using Promise.race() so the client gets a response early on hang (the underlying
-  // work continues running but late results are guarded by the timedOut flag).
-  // Non-idempotent operations (manage_*) skip Promise.race to avoid duplicate
-  // mutations — the underlying work runs to completion without a race.
+  // Call tool handler — all tool execution is wrapped with a handler-level timeout
+  // using Promise.race() so the client gets a response early on hang. The underlying
+  // work may continue running after the timeout fires, but late results are guarded
+  // by the timedOut flag to prevent overwriting the timeout error response.
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     // Capture instance URL early — used for both handlerWork and timeout reporting.
     // Must be resolved before Promise.race so timeout branch doesn't re-derive a
@@ -461,6 +460,10 @@ export async function setupHandlers(server: Server): Promise<void> {
 
         const { RegistryManager } = await import('./registry-manager');
         const registryManager = RegistryManager.getInstance();
+        // hasToolHandler + executeTool are not a single atomic operation — a concurrent
+        // refreshCache() could swap the lookup cache between the two calls. In practice
+        // this is benign: executeTool() falls through with undefined and we re-enter the
+        // bootstrap path below. A full atomic getTool() refactor is tracked separately.
         if (registryManager.hasToolHandler(toolName)) {
           const result = await registryManager.executeTool(toolName, request.params.arguments);
           return {
@@ -592,7 +595,10 @@ export async function setupHandlers(server: Server): Promise<void> {
         const { RegistryManager } = await import('./registry-manager');
         const registryManager = RegistryManager.getInstance();
 
-        // Check if tool exists and passes all filtering (applied at registry level)
+        // Check if tool exists and passes all filtering (applied at registry level).
+        // hasToolHandler + executeTool are not atomic — see comment above on the
+        // bootstrap fast-path for context. Here a TOCTOU miss throws, which is
+        // caught and converted to a McpError with the message below.
         if (!registryManager.hasToolHandler(toolName)) {
           throw new Error(`Tool '${toolName}' is not available or has been filtered out`);
         }

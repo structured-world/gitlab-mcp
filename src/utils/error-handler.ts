@@ -1153,12 +1153,16 @@ export function classifyError(error: unknown): ErrorCategory {
   // Placed AFTER parseGitLabApiError to avoid false transient on API errors
   // whose message happens to contain "timeout" etc.
   if (
-    message.includes('timeout') ||
+    // Use specific transport-level timeout phrases rather than bare 'timeout' to
+    // avoid misclassifying validation/config errors whose message happens to contain
+    // the word "timeout" (e.g. "token refresh timeout policy exceeded").
     message.includes('timed out') ||
+    message.includes('request timeout') ||
+    message.includes('connect timeout') ||
+    message.includes('initialization timeout') ||
     message.includes('socket hang up') ||
     message.includes('network error') ||
     message.includes('health check failed') ||
-    message.includes('initialization timeout') ||
     message.includes('econnrefused') ||
     message.includes('econnreset')
   ) {
@@ -1202,16 +1206,20 @@ export function createConnectionFailedError(
   const autoRetryEnabled = connectionState !== 'failed';
   let message: string;
   if (connectionState === 'failed') {
-    message = `GitLab instance ${instanceUrl} connection failed (authentication or configuration error). Automatic reconnection is disabled.`;
+    message =
+      `GitLab instance ${instanceUrl} connection failed due to a permanent authentication, ` +
+      `permission, or configuration error. Automatic reconnection is disabled.`;
   } else if (connectionState === 'connecting') {
-    message = `GitLab instance ${instanceUrl} is currently unreachable. Automatic reconnection is in progress.`;
+    // 'connecting' covers both initial bootstrap and active reconnect attempts —
+    // avoid saying "reconnection" here since no prior connection may have existed.
+    message = `GitLab instance ${instanceUrl} is not ready yet. A connection attempt is in progress.`;
   } else {
     message = `GitLab instance ${instanceUrl} is currently unreachable. Connection will be retried automatically.`;
   }
 
   const suggestedFix =
     connectionState === 'failed'
-      ? 'Check authentication credentials (token or OAuth) and GITLAB_API_URL configuration. ' +
+      ? 'Check authentication/authorization, permissions or tier access, and the configured GitLab instance URL. ' +
         "Use manage_context with action 'whoami' to check connection status."
       : 'Check network connectivity, VPN status, or GitLab instance availability. ' +
         "Use manage_context with action 'whoami' to check connection status.";

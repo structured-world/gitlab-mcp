@@ -495,9 +495,13 @@ export class ToolAvailability {
       if (version < parseVersion(actionReq.minVersion)) return false;
       return this.isTierSufficient(instanceInfo.tier, actionReq.tier);
     }
-    // Tools not in actionRequirements (e.g. manage_context — local/session tools)
-    // are always available regardless of GitLab version
-    return true;
+    // Tool not found in actionRequirements — apply the same conservative fallback
+    // as isToolAvailable(): require >= 15.0 for unknown GitLab-backed tools.
+    // manage_context and other local/session tools are not in actionRequirements,
+    // but they also don't pass through this per-instance path (they are always
+    // included at the registry level before version filtering). The conservative
+    // fallback prevents accidentally-unmapped tools from failing open.
+    return parseVersion(instanceInfo.version) >= parseVersion('15.0');
   }
 
   public static getAvailableTools(): string[] {

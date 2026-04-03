@@ -63,7 +63,7 @@ import { HealthMonitor } from './services/HealthMonitor';
 import { isToolAvailableForScopes } from './services/TokenScopeDetector';
 import type { GitLabScope } from './services/TokenScopeDetector';
 import type { GitLabTier } from './services/GitLabVersionDetector';
-import { logDebug } from './logger';
+import { logDebug, logWarn } from './logger';
 import {
   transformToolSchema,
   stripTierRestrictedParameters,
@@ -300,8 +300,12 @@ class RegistryManager {
     try {
       const info = ConnectionManager.getInstance().getInstanceInfo(instanceUrl);
       instanceInfo = { tier: info.tier, version: info.version };
-    } catch {
-      // Connection not initialized
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Only treat "not initialized" as an expected no-op; surface unexpected errors
+      if (!msg.includes('not initialized') && !msg.includes('No connection')) {
+        logWarn('Unexpected error loading instance info for tool cache', { error: msg });
+      }
     }
 
     let tokenScopes: GitLabScope[] | undefined;
@@ -310,8 +314,12 @@ class RegistryManager {
       if (scopeInfo) {
         tokenScopes = scopeInfo.scopes;
       }
-    } catch {
-      // Connection not initialized
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // Only treat "not initialized" as an expected no-op; surface unexpected errors
+      if (!msg.includes('not initialized') && !msg.includes('No connection')) {
+        logWarn('Unexpected error loading token scopes for tool cache', { error: msg });
+      }
     }
 
     return { instanceInfo, tokenScopes };
@@ -699,7 +707,13 @@ class RegistryManager {
       return (
         healthMonitor.getMonitoredInstances().length > 0 && !healthMonitor.isAnyInstanceHealthy()
       );
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      // HealthMonitor.getInstance() can throw before first initialization — that is
+      // expected (treat as "not yet in unreachable mode"). Any other error is surfaced.
+      if (!msg.includes('not initialized') && !msg.includes('No instance')) {
+        logWarn('Unexpected error checking unreachable mode', { error: msg });
+      }
       return false;
     }
   }

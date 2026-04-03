@@ -109,6 +109,11 @@ function hasSchemaInfo(connectionManager: ConnectionManager, instanceUrl: string
   }
 }
 
+// performConnect handles three phases in one function: (1) fast-path for already-connected
+// instances, (2) full initialization with timeout budget, (3) degraded-path reachability probe.
+// SonarCloud flags cognitive complexity=17 (limit 15). Extracting phase helpers would split
+// the shared `deadline` variable across callsites and obscure the single-budget invariant.
+// The three phases are demarcated by inline comments; complexity is intentional here.
 const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string }>(
   async ({ input }) => {
     const connectionManager = ConnectionManager.getInstance();
@@ -185,12 +190,14 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
       // Verify reachability — OAuth/REST-only init can succeed with fallback
       // data even when GitLab is unreachable. Throwing here lands in disconnected.
       // Keep the degraded-path probe within the original startup budget.
-      // If budget is nearly exhausted (< 500ms), skip the probe — init already
-      // succeeded so the instance is likely reachable, and a near-zero timeout
-      // would almost certainly fail and cause a false disconnect.
+      // If the budget is exhausted or nearly exhausted (< 500ms), skip the probe —
+      // init already succeeded, and deadline jitter or a near-zero timeout would
+      // almost certainly fail and cause a false disconnect.
       const remainingMs = deadline - Date.now();
       if (remainingMs <= 0) {
-        throw new Error('Health check failed: startup budget exhausted after degraded init');
+        // Budget exhausted — init succeeded so treat as reachable (avoids false disconnect
+        // from timer/event-loop jitter that can flip remainingMs negative by a few ms).
+        return { degraded: isDegraded };
       }
       if (remainingMs < 500) {
         // Not enough time for a meaningful probe — assume reachable since init succeeded

@@ -1097,7 +1097,7 @@ describe('ConnectionManager Enhanced Tests', () => {
      * Tests reinitialize() method (lines 502-521)
      * Should reset state, clear cache for new instance, and re-initialize
      */
-    it('should remove old state and re-initialize for the new URL', async () => {
+    it('should switch to new URL and make new client available', async () => {
       // First, initialize normally
       await connectionManager.initialize();
       const previousUrl = connectionManager.getCurrentInstanceUrl();

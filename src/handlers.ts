@@ -1,7 +1,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { ConnectionManager } from './services/ConnectionManager';
-import { HealthMonitor, InitializationTimeoutError } from './services/HealthMonitor';
+import { HealthMonitor } from './services/HealthMonitor';
 import { normalizeInstanceUrl } from './utils/url';
 import { logInfo, logWarn, logError, logDebug } from './logger';
 import {

@@ -1251,10 +1251,8 @@ describe('handlers', () => {
     });
 
     it('should return structured timeout error when tool execution exceeds HANDLER_TIMEOUT_MS', async () => {
-      // Make executeTool hang longer than HANDLER_TIMEOUT_MS (100ms)
-      mockRegistryManager.executeTool.mockImplementation(
-        () => new Promise((resolve) => setTimeout(resolve, 500)),
-      );
+      // Never-settling promise — avoids delayed resolve leaking into later tests
+      mockRegistryManager.executeTool.mockImplementation(() => new Promise<never>(() => {}));
 
       const result = await callToolHandler({
         params: {
@@ -1275,9 +1273,7 @@ describe('handlers', () => {
     it('should timeout non-idempotent operations to bound bootstrap phase', async () => {
       // Non-idempotent tools (manage_*) now also race with timeout to prevent
       // hung bootstrap (init/introspection) from blocking indefinitely
-      mockRegistryManager.executeTool.mockImplementation(
-        () => new Promise((resolve) => setTimeout(() => resolve({ result: 'mutated' }), 200)),
-      );
+      mockRegistryManager.executeTool.mockImplementation(() => new Promise<never>(() => {}));
 
       const result = await callToolHandler({
         params: {
@@ -1286,10 +1282,13 @@ describe('handlers', () => {
         },
       });
 
-      // Should timeout (200ms > HANDLER_TIMEOUT_MS 100ms) — bootstrap needs bounding
+      // Should timeout — bootstrap needs bounding even for non-idempotent ops
       expect(result.isError).toBe(true);
       const parsed = JSON.parse(result.content![0].text);
       expect(parsed.error_code).toBe('TIMEOUT');
+      expect(parsed.tool).toBe('manage_merge_request');
+      expect(parsed.retryable).toBe(false);
+      expect(parsed.timeout_ms).toBe(100);
     }, 5000);
 
     it('should suppress late health reports after tool-timeout via timedOut guard', async () => {
@@ -1701,10 +1700,8 @@ describe('handlers', () => {
     });
 
     it('should report error to HealthMonitor and call clearInflight when bootstrap times out', async () => {
-      // Bootstrap (connectionManager.initialize) hangs longer than HANDLER_TIMEOUT_MS (100ms)
-      mockConnectionManager.initialize.mockImplementation(
-        () => new Promise((resolve) => setTimeout(resolve, 500)),
-      );
+      // Never-settling promise — avoids delayed resolve leaking into later tests
+      mockConnectionManager.initialize.mockImplementation(() => new Promise<never>(() => {}));
 
       const { isOAuthEnabled, isAuthenticationConfigured } = await import('../../src/oauth/index');
       (isOAuthEnabled as jest.Mock).mockReturnValue(false);
@@ -1736,6 +1733,35 @@ describe('handlers', () => {
       // Restore
       mockConnectionManager.isConnected.mockReturnValue(true);
       mockConnectionManager.initialize.mockResolvedValue(undefined);
+    }, 5000);
+
+    it('should report error and clearInflight against OAuth URL when bootstrap times out', async () => {
+      const oauth = require('../../src/oauth/index');
+      const oauthUrl = 'https://oauth-timeout.example.com';
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(oauthUrl);
+      mockConnectionManager.initialize.mockImplementation(() => new Promise<never>(() => {}));
+
+      const { isAuthenticationConfigured } = await import('../../src/oauth/index');
+      (isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
+
+      await setupHandlers(mockServer);
+      const handler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+
+      const result = await handler({
+        params: { name: 'browse_projects', arguments: { action: 'list' } },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content![0].text).error_code).toBe('TIMEOUT');
+      expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(oauthUrl, expect.any(Error));
+      expect(mockConnectionManager.clearInflight).toHaveBeenCalledWith(oauthUrl);
+
+      // Restore
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
     }, 5000);
 
     it('should not report success/error after deferred init resolves post-timeout', async () => {

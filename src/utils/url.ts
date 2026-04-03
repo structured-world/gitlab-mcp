@@ -7,7 +7,7 @@ export function normalizeInstanceUrl(url: string): string {
 
   const trimTrailingSlashes = (value: string): string => {
     let end = value.length - 1;
-    while (end >= 0 && value.charCodeAt(end) === 47 /* '/' */) {
+    while (end >= 0 && value.codePointAt(end) === 47 /* '/' */) {
       end -= 1;
     }
     return end < value.length - 1 ? value.slice(0, end + 1) : value;

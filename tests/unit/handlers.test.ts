@@ -1537,6 +1537,8 @@ describe('handlers', () => {
       const oauth = require('../../src/oauth/index');
       const oauthUrl = 'https://oauth-instance.example.com';
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(oauthUrl);
+      // Force bootstrap path — isConnected=false triggers initialize(oauthUrl)
+      mockConnectionManager.isConnected.mockReturnValue(false);
 
       const result = await callToolHandler({
         params: {
@@ -1546,11 +1548,14 @@ describe('handlers', () => {
       });
 
       expect(result.isError).toBeUndefined();
-      // Verify the OAuth URL was passed through to per-URL code paths
+      // Verify the OAuth URL was passed through bootstrap + health reporting
+      expect(mockConnectionManager.initialize).toHaveBeenCalledWith(oauthUrl);
+      expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(oauthUrl);
       expect(mockHealthMonitor.isInstanceReachable).toHaveBeenCalledWith(oauthUrl);
       expect(mockHealthMonitor.reportSuccess).toHaveBeenCalledWith(oauthUrl);
 
       // Restore
+      mockConnectionManager.isConnected.mockReturnValue(true);
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
     });
 

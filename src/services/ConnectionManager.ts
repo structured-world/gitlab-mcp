@@ -14,7 +14,6 @@ import { logInfo, logDebug, logError } from '../logger';
 import { InstanceRegistry } from './InstanceRegistry';
 import { CachedIntrospection } from '../config/instances-schema';
 
-export { normalizeInstanceUrl } from '../utils/url';
 import { normalizeInstanceUrl } from '../utils/url';
 
 interface CacheEntry {

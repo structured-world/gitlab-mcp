@@ -17,6 +17,8 @@ const mockConnectionManager = {
   isFeatureAvailable: jest.fn(),
   isConnected: jest.fn().mockReturnValue(true),
   getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+  clearInflight: jest.fn(),
+  ensureIntrospected: jest.fn().mockResolvedValue(undefined),
 };
 
 jest.mock('../../src/services/ConnectionManager', () => ({
@@ -86,6 +88,27 @@ jest.mock('../../src/oauth/index', () => ({
   isAuthenticationConfigured: jest.fn().mockReturnValue(true),
   getTokenContext: jest.fn().mockReturnValue(null),
   getGitLabApiUrlFromContext: jest.fn().mockReturnValue(null),
+}));
+
+// Mock logging/index so connection-tracker paths (lines 712-715) can be exercised
+const mockRequestTracker = {
+  setToolForCurrentRequest: jest.fn(),
+  setErrorForCurrentRequest: jest.fn(),
+  setContextForCurrentRequest: jest.fn(),
+  setReadOnlyForCurrentRequest: jest.fn(),
+  getStack: jest.fn().mockReturnValue(null),
+};
+const mockConnectionTracker = {
+  incrementTools: jest.fn(),
+  recordError: jest.fn(),
+};
+// getCurrentRequestId returns undefined by default (no AsyncLocalStorage context in tests)
+const mockGetCurrentRequestId = jest.fn().mockReturnValue(undefined);
+
+jest.mock('../../src/logging/index', () => ({
+  getRequestTracker: jest.fn(() => mockRequestTracker),
+  getConnectionTracker: jest.fn(() => mockConnectionTracker),
+  getCurrentRequestId: jest.fn(() => mockGetCurrentRequestId()),
 }));
 
 /** Handler result type matching MCP SDK response shape */
@@ -1380,6 +1403,292 @@ describe('handlers', () => {
         const nested = schema.properties.nested as Record<string, Record<string, string>>;
         expect(nested.additionalProperties.type).toBe('string');
       });
+    });
+  });
+
+  describe('setupHandlers - health monitor startup failure', () => {
+    it('should reset healthMonitorStartup promise on health monitor init failure', async () => {
+      // Cover lines 222-223: healthMonitorStartup = null; throw error
+      mockHealthMonitor.initialize.mockRejectedValueOnce(new Error('Health monitor init failed'));
+
+      // First call should throw (propagating the health monitor error)
+      await expect(setupHandlers(mockServer)).rejects.toThrow('Health monitor init failed');
+
+      // After failure, healthMonitorStartup is reset to null so next call retries
+      // A second call should attempt initialization again
+      mockHealthMonitor.initialize.mockResolvedValue(undefined);
+      await expect(setupHandlers(mockServer)).resolves.not.toThrow();
+
+      // Restore
+      mockHealthMonitor.initialize.mockResolvedValue(undefined);
+    });
+  });
+
+  describe('OAuth mode - introspection and token context paths', () => {
+    beforeEach(async () => {
+      resetHandlersState();
+      jest.clearAllMocks();
+
+      const { isOAuthEnabled, isAuthenticationConfigured } = await import('../../src/oauth/index');
+      (isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      (isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
+
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.getClient.mockReturnValue({});
+      mockConnectionManager.getInstanceInfo.mockReturnValue({ version: '17.0.0', tier: 'free' });
+      mockConnectionManager.ensureIntrospected.mockResolvedValue(undefined);
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.executeTool.mockResolvedValue({ result: 'ok' });
+      mockRegistryManager.refreshCache.mockReturnValue(undefined);
+      mockHealthMonitor.initialize.mockResolvedValue(undefined);
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+
+      await setupHandlers(mockServer);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+    });
+
+    afterEach(() => {
+      // Restore default mocks
+      const oauth = require('../../src/oauth/index');
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (oauth.isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
+    });
+
+    it('should call ensureIntrospected in OAuth mode (line 493)', async () => {
+      // In OAuth mode, the handler calls connectionManager.ensureIntrospected()
+      await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+      );
+    });
+
+    it('should log OAuth context check before tool execution (lines 612-614)', async () => {
+      const { getTokenContext } = await import('../../src/oauth/index');
+      (getTokenContext as jest.Mock).mockReturnValue({ gitlabToken: 'test-token' });
+
+      const result = await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      // Tool should execute successfully; OAuth context is logged (debug)
+      expect(result.isError).toBeUndefined();
+    });
+
+    it('should rethrow when connected but introspection fails (line 560)', async () => {
+      // isConnected returns true (already connected), but ensureIntrospected throws
+      mockConnectionManager.ensureIntrospected.mockRejectedValueOnce(
+        new Error('Introspection failed'),
+      );
+
+      const result = await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      // The error propagates to the outer catch → structured error or plain error
+      expect(result.isError).toBe(true);
+      // Should contain the rethrown error message
+      expect(result.content![0].text).toContain('Introspection failed');
+    });
+  });
+
+  describe('connection tracker integration via logging mock', () => {
+    beforeEach(async () => {
+      resetHandlersState();
+      jest.clearAllMocks();
+
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.getClient.mockReturnValue({});
+      mockConnectionManager.getInstanceInfo.mockReturnValue({ version: '17.0.0', tier: 'free' });
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.executeTool.mockResolvedValue({ result: 'ok' });
+      mockRegistryManager.refreshCache.mockReturnValue(undefined);
+      mockHealthMonitor.initialize.mockResolvedValue(undefined);
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+
+      const { isOAuthEnabled, isAuthenticationConfigured } = await import('../../src/oauth/index');
+      (isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
+
+      await setupHandlers(mockServer);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+    });
+
+    afterEach(() => {
+      // Reset getCurrentRequestId mock to default (undefined)
+      mockGetCurrentRequestId.mockReturnValue(undefined);
+      mockRequestTracker.getStack.mockReturnValue(null);
+    });
+
+    it('should call getStack when getCurrentRequestId returns a value (lines 712-715)', async () => {
+      // Make getCurrentRequestId return a real-looking requestId so the
+      // connection tracker path (lines 712-715) is exercised on error
+      mockGetCurrentRequestId.mockReturnValue('req-123');
+      mockRequestTracker.getStack.mockReturnValue({ sessionId: 'sess-456' });
+
+      mockRegistryManager.executeTool.mockRejectedValueOnce(
+        new Error('GitLab API error: 500 Internal Server Error'),
+      );
+
+      const result = await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: { action: 'list' },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      // Connection tracker recordError should have been called via the outer catch block
+      expect(mockConnectionTracker.recordError).toHaveBeenCalledWith(
+        'sess-456',
+        expect.any(String),
+      );
+    });
+
+    it('should skip connection tracker when getStack has no sessionId', async () => {
+      mockGetCurrentRequestId.mockReturnValue('req-789');
+      // getStack returns a stack without sessionId
+      mockRequestTracker.getStack.mockReturnValue({ sessionId: undefined });
+
+      mockRegistryManager.executeTool.mockRejectedValueOnce(new Error('Some error'));
+
+      await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      // recordError should NOT have been called (no sessionId)
+      expect(mockConnectionTracker.recordError).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handler-level timeout with bootstrap in progress', () => {
+    // Test the bootstrapStarted && !bootstrapComplete path (lines 680-684)
+    // This is triggered when the bootstrap phase (init + introspection) times out,
+    // NOT when a normal tool execution times out after bootstrap completed.
+    beforeEach(() => {
+      resetHandlersState();
+      jest.clearAllMocks();
+
+      mockConnectionManager.isConnected.mockReturnValue(false);
+      mockConnectionManager.getClient.mockReturnValue({});
+      mockConnectionManager.getInstanceInfo.mockReturnValue({ version: '17.0.0', tier: 'free' });
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.refreshCache.mockReturnValue(undefined);
+      mockHealthMonitor.initialize.mockResolvedValue(undefined);
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+    });
+
+    it('should report error to HealthMonitor and call clearInflight when bootstrap times out', async () => {
+      // Bootstrap (connectionManager.initialize) hangs longer than HANDLER_TIMEOUT_MS (100ms)
+      mockConnectionManager.initialize.mockImplementation(
+        () => new Promise((resolve) => setTimeout(resolve, 500)),
+      );
+
+      const { isOAuthEnabled, isAuthenticationConfigured } = await import('../../src/oauth/index');
+      (isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
+
+      await setupHandlers(mockServer);
+      const handler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+
+      const result = await handler({
+        params: {
+          name: 'browse_projects',
+          arguments: { action: 'list' },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBe('TIMEOUT');
+
+      // bootstrapStarted=true and bootstrapComplete=false → HealthMonitor and clearInflight are called
+      expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+        expect.any(Error),
+      );
+      expect(mockConnectionManager.clearInflight).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+      );
+
+      // Restore
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+    }, 5000);
+  });
+
+  describe('recordEarlyReturnError - connection tracker path', () => {
+    // Tests the getConnectionTracker().recordError() branch inside recordEarlyReturnError
+    // (lines 79-81) which runs when currentRequestId is set and stack has sessionId
+    beforeEach(async () => {
+      resetHandlersState();
+      jest.clearAllMocks();
+
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.getClient.mockReturnValue({});
+      mockConnectionManager.getInstanceInfo.mockReturnValue({ version: '17.0.0', tier: 'free' });
+      mockHealthMonitor.initialize.mockResolvedValue(undefined);
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.refreshCache.mockReturnValue(undefined);
+
+      const { isOAuthEnabled, isAuthenticationConfigured } = await import('../../src/oauth/index');
+      (isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
+
+      await setupHandlers(mockServer);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+    });
+
+    afterEach(() => {
+      mockGetCurrentRequestId.mockReturnValue(undefined);
+      mockRequestTracker.getStack.mockReturnValue(null);
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+    });
+
+    it('should call recordError on connectionTracker inside recordEarlyReturnError (lines 79-81)', async () => {
+      // getCurrentRequestId returns a value and stack has sessionId
+      // This triggers recordEarlyReturnError → getConnectionTracker().recordError()
+      mockGetCurrentRequestId.mockReturnValue('req-early-001');
+      mockRequestTracker.getStack.mockReturnValue({ sessionId: 'sess-early-001' });
+
+      const result = await callToolHandler({
+        params: {
+          name: 'browse_projects',
+          arguments: { action: 'list' },
+        },
+      });
+
+      // The disconnected health check triggers CONNECTION_FAILED → recordEarlyReturnError
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
+
+      // recordError should have been called via recordEarlyReturnError (lines 79-81)
+      expect(mockConnectionTracker.recordError).toHaveBeenCalledWith(
+        'sess-early-001',
+        expect.any(String),
+      );
     });
   });
 });

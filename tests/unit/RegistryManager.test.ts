@@ -1209,6 +1209,127 @@ describe('RegistryManager', () => {
     });
   });
 
+  describe('isUnreachableMode - error handling and getAvailableToolNames in unreachable mode', () => {
+    it('should return false (not unreachable) when HealthMonitor throws "not initialized"', () => {
+      // Cover lines 711-717: isUnreachableMode catches HealthMonitor init errors gracefully
+      mockHealthMonitorInstance.getMonitoredInstances.mockImplementation(() => {
+        throw new Error('HealthMonitor not initialized');
+      });
+
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      // Should not throw; isUnreachableMode returns false → full tool list available
+      const tools = registryManager.getAllToolDefinitions();
+      expect(tools.length).toBeGreaterThan(0);
+      expect(tools.map((t) => t.name)).toContain('core_tool_1');
+
+      // Restore
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+    });
+
+    it('should return context-only names from getAvailableToolNames when unreachable', () => {
+      // Cover lines 692-694: getAvailableToolNames in unreachable mode does not cache the result
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
+        'https://gitlab.example.com',
+      ]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(false);
+
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      const names = registryManager.getAvailableToolNames();
+      expect(names).toContain('manage_context');
+      expect(names).not.toContain('core_tool_1');
+
+      // Call again to verify no caching (transient state — each call re-evaluates)
+      const names2 = registryManager.getAvailableToolNames();
+      expect(names2).toEqual(names);
+
+      // Restore
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+    });
+  });
+
+  describe('getFilterStats - actionDenial counter', () => {
+    it('should count tools filtered by actionDenial when all actions are denied (lines 773-774)', () => {
+      // extractActionsFromSchema recognises `enum` on the action property and
+      // shouldRemoveTool checks GITLAB_DENIED_ACTIONS via the mocked config.
+      // We set GITLAB_DENIED_ACTIONS to deny the sole action of a test tool.
+      const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
+      const mockConfig = require('../../src/config');
+
+      coreRegistry.set('manage_all_denied', {
+        name: 'manage_all_denied',
+        description: 'Tool whose only action is denied',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: ['do_thing'] },
+          },
+        },
+        handler: jest.fn(),
+      });
+
+      // GITLAB_DENIED_ACTIONS: block the only action so shouldRemoveTool returns true
+      const deniedActionsMap = new Map([['manage_all_denied', new Set(['do_thing'])]]);
+      // Override the getter defined in the jest.mock factory
+      Object.defineProperty(mockConfig, 'GITLAB_DENIED_ACTIONS', {
+        get: () => deniedActionsMap,
+        configurable: true,
+      });
+
+      try {
+        resetRegistryManagerSingleton();
+        registryManager = RegistryManager.getInstance();
+
+        const stats = registryManager.getFilterStats();
+        // manage_all_denied should be counted in filteredByActionDenial
+        expect(stats.filteredByActionDenial).toBeGreaterThan(0);
+      } finally {
+        coreRegistry.delete('manage_all_denied');
+        // Restore GITLAB_DENIED_ACTIONS to the mock default (empty Map)
+        Object.defineProperty(mockConfig, 'GITLAB_DENIED_ACTIONS', {
+          get: () => new Map(),
+          configurable: true,
+        });
+        resetRegistryManagerSingleton();
+      }
+    });
+  });
+
+  describe('loadInstanceContext - unexpected error warning (line 307)', () => {
+    it('should log warning when ConnectionManager throws an unexpected error', () => {
+      // Cover line 307: logWarn for non-"not initialized"/"No connection" errors
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
+      const { logWarn } = require('../../src/logger');
+
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockImplementation(() => {
+          throw new Error('Unexpected internal error');
+        }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+      });
+
+      resetRegistryManagerSingleton();
+      // getInstance triggers buildToolLookupCache → loadInstanceContext → warning
+      registryManager = RegistryManager.getInstance();
+
+      // logWarn should have been called for the unexpected error
+      expect(logWarn).toHaveBeenCalledWith(
+        'Unexpected error loading instance info for tool cache',
+        expect.objectContaining({ error: expect.stringContaining('Unexpected internal error') }),
+      );
+
+      // Restore ConnectionManager mock
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+      });
+    });
+  });
+
   describe('disconnected mode filtering', () => {
     it('should only expose context tools when all instances are disconnected', () => {
       // Simulate all instances disconnected

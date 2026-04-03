@@ -594,4 +594,97 @@ describe('ToolAvailability - Tier-based Filtering', () => {
       expect(restricted).toContain('healthStatus');
     });
   });
+
+  describe('isToolAvailableForInstance - per-instance availability check', () => {
+    it('should return true when version is unknown (deferred introspection)', () => {
+      // Version 'unknown' triggers the early-return allow-all path (line 490)
+      const result = ToolAvailability.isToolAvailableForInstance('browse_work_items', {
+        tier: 'free',
+        version: 'unknown',
+      });
+      expect(result).toBe(true);
+    });
+
+    it('should allow a free tool on a free tier instance (version meets requirement)', () => {
+      const result = ToolAvailability.isToolAvailableForInstance('browse_projects', {
+        tier: 'free',
+        version: '17.0.0',
+      });
+      expect(result).toBe(true);
+    });
+
+    it('should block a tool when the instance version is too old', () => {
+      // browse_work_items requires 15.0; version 10.0 should be blocked
+      const result = ToolAvailability.isToolAvailableForInstance('browse_work_items', {
+        tier: 'ultimate',
+        version: '10.0.0',
+      });
+      expect(result).toBe(false);
+    });
+
+    it('should block a premium tool on a free tier instance', () => {
+      // browse_iterations requires premium tier
+      const result = ToolAvailability.isToolAvailableForInstance('browse_iterations', {
+        tier: 'free',
+        version: '17.0.0',
+      });
+      expect(result).toBe(false);
+    });
+
+    it('should allow a premium tool on a premium tier instance', () => {
+      const result = ToolAvailability.isToolAvailableForInstance('browse_iterations', {
+        tier: 'premium',
+        version: '17.0.0',
+      });
+      expect(result).toBe(true);
+    });
+
+    it('should apply conservative fallback (>=15.0) for tools not in actionRequirements', () => {
+      // Unknown tool not in actionRequirements — conservative fallback: require >= 15.0
+      // Version 14.x → false
+      expect(
+        ToolAvailability.isToolAvailableForInstance('totally_unknown_tool_xyz', {
+          tier: 'ultimate',
+          version: '14.9.0',
+        }),
+      ).toBe(false);
+
+      // Version 15.0 → true
+      expect(
+        ToolAvailability.isToolAvailableForInstance('totally_unknown_tool_xyz', {
+          tier: 'ultimate',
+          version: '15.0.0',
+        }),
+      ).toBe(true);
+    });
+
+    it('should check action-specific tier requirement', () => {
+      // manage_merge_request approve action requires premium
+      expect(
+        ToolAvailability.isToolAvailableForInstance(
+          'manage_merge_request',
+          { tier: 'free', version: '17.0.0' },
+          'approve',
+        ),
+      ).toBe(false);
+
+      expect(
+        ToolAvailability.isToolAvailableForInstance(
+          'manage_merge_request',
+          { tier: 'premium', version: '17.0.0' },
+          'approve',
+        ),
+      ).toBe(true);
+    });
+
+    it('should block action when version requirement is not met', () => {
+      // browse_work_items default requires 15.0; version 12.0 is insufficient
+      expect(
+        ToolAvailability.isToolAvailableForInstance('browse_work_items', {
+          tier: 'ultimate',
+          version: '12.0.0',
+        }),
+      ).toBe(false);
+    });
+  });
 });

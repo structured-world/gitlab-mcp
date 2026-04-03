@@ -497,10 +497,10 @@ export class ToolAvailability {
     }
     // Tool not found in actionRequirements — apply the same conservative fallback
     // as isToolAvailable(): require >= 15.0 for unknown GitLab-backed tools.
-    // manage_context and other local/session tools are not in actionRequirements,
-    // but they also don't pass through this per-instance path (they are always
-    // included at the registry level before version filtering). The conservative
-    // fallback prevents accidentally-unmapped tools from failing open.
+    // Note: manage_context etc. are in contextToolRegistry and bypass version
+    // filtering entirely (RegistryManager.getToolExclusionReason skips them).
+    // This path is only reached for GitLab-backed tools missing from the
+    // actionRequirements map — the conservative gate prevents failing open.
     return parseVersion(instanceInfo.version) >= parseVersion('15.0');
   }
 

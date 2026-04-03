@@ -5060,10 +5060,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"hono@npm:4.11.7":
-  version: 4.11.7
-  resolution: "hono@npm:4.11.7"
-  checksum: 10c0/c7cde1779c9352fc6aacb242af009f280f4d89315cf95135d08df5c680f845fcfb1c3c1a650ec15e1d1c2d0af26fdc87b745bb3c471c5045d88c247a7bd2aae4
+"hono@npm:4.12.10":
+  version: 4.12.10
+  resolution: "hono@npm:4.12.10"
+  checksum: 10c0/3fed7c0c0847968ae51910dd06bc4b64cc336af24ee913efdc105de80b467ddaa9e4f03a2814cb73771622eabbe3e7699998dc0536fe35acb0bac9f5d0e67aa1
   languageName: node
   linkType: hard
 

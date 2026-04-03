@@ -637,8 +637,6 @@ export class HealthMonitor {
 
     if (previousState === newState) return;
 
-    this.previousStates.set(instanceUrl, newState);
-
     const context = snapshot.context;
 
     logInfo('Connection state changed', {
@@ -668,16 +666,19 @@ export class HealthMonitor {
       // InstanceRegistry may not be initialized yet
     }
 
-    // Fire callbacks
-    if (previousState) {
-      for (const callback of this.stateChangeCallbacks) {
-        try {
-          callback(instanceUrl, previousState, newState);
-        } catch (error) {
-          logError('State change callback error', { err: error as Error });
-        }
+    // Fire callbacks — use 'connecting' as default previous for the first emission
+    // so broadcastToolsListChanged fires on the initial connecting→healthy transition.
+    const effectivePrevious = previousState ?? 'connecting';
+    for (const callback of this.stateChangeCallbacks) {
+      try {
+        callback(instanceUrl, effectivePrevious, newState);
+      } catch (error) {
+        logError('State change callback error', { err: error as Error });
       }
     }
+
+    // Update previousStates AFTER callbacks so they see the pre-transition value
+    this.previousStates.set(instanceUrl, newState);
   }
 
   /**

@@ -62,6 +62,17 @@ describe('normalizeInstanceUrl', () => {
     );
   });
 
+  it('should trim trailing slashes exposed after suffix removal', () => {
+    // Regression: "https://host//api/v4" → strip slashes leaves "https://host//api/v4"
+    // (first / is not trailing) → strip suffix → "https://host/" → second trim → "https://host"
+    expect(normalizeInstanceUrl('https://gitlab.example.com//api/v4')).toBe(
+      'https://gitlab.example.com',
+    );
+    expect(normalizeInstanceUrl('https://gitlab.example.com//api/graphql')).toBe(
+      'https://gitlab.example.com',
+    );
+  });
+
   it('should not strip partial API path matches', () => {
     // /api/v4extra does not end with /api/v4 so it is preserved
     expect(normalizeInstanceUrl('https://gitlab.example.com/api/v4extra')).toBe(

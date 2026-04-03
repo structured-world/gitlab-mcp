@@ -96,6 +96,7 @@ jest.mock('../../src/services/TokenScopeDetector', () => ({
 const mockHealthMonitorInstance = {
   getMonitoredInstances: jest.fn().mockReturnValue([]),
   isAnyInstanceHealthy: jest.fn().mockReturnValue(true),
+  isInstanceReachable: jest.fn().mockReturnValue(true),
 };
 
 jest.mock('../../src/services/HealthMonitor', () => ({
@@ -207,6 +208,7 @@ describe('RegistryManager', () => {
     ToolAvailability.getRestrictedParameters.mockReturnValue([]);
     mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
     mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+    mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
     ToolAvailability.getUnavailableReason.mockReturnValue('');
 
     registryManager = RegistryManager.getInstance();
@@ -357,7 +359,6 @@ describe('RegistryManager', () => {
     });
 
     it('should filter unavailable tools', () => {
-      // Add an unavailable tool to the registry for testing
       const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
       coreRegistry.set('unavailable_tool', {
         name: 'unavailable_tool',
@@ -366,12 +367,16 @@ describe('RegistryManager', () => {
         handler: jest.fn(),
       });
 
-      resetRegistryManagerSingleton();
-      registryManager = RegistryManager.getInstance();
+      try {
+        resetRegistryManagerSingleton();
+        registryManager = RegistryManager.getInstance();
 
-      const names = registryManager.getAvailableToolNames();
-      expect(names).toContain('core_tool_1');
-      expect(names).not.toContain('unavailable_tool');
+        const names = registryManager.getAvailableToolNames();
+        expect(names).toContain('core_tool_1');
+        expect(names).not.toContain('unavailable_tool');
+      } finally {
+        coreRegistry.delete('unavailable_tool');
+      }
     });
 
     it('should filter tools based on token scopes', () => {
@@ -534,20 +539,25 @@ describe('RegistryManager', () => {
       process.env.USE_MRS = 'true';
 
       // Mock MRS registry for this test
-      const mrsRegistry = new Map([
+      const mrsModule = require('../../src/entities/mrs/registry');
+      const originalMrsRegistry = mrsModule.mrsToolRegistry;
+      mrsModule.mrsToolRegistry = new Map([
         [
           'mrs_tool',
           { name: 'mrs_tool', description: 'MRS tool', inputSchema: {}, handler: jest.fn() },
         ],
       ]);
-      require('../../src/entities/mrs/registry').mrsToolRegistry = mrsRegistry;
 
-      resetRegistryManagerSingleton();
-      const newManager = RegistryManager.getInstance();
+      try {
+        resetRegistryManagerSingleton();
+        const newManager = RegistryManager.getInstance();
 
-      const names = newManager.getAvailableToolNames();
-      expect(names).toContain('core_tool_1'); // Always includes core
-      expect(names).not.toContain('labels_tool_1'); // Labels disabled
+        const names = newManager.getAvailableToolNames();
+        expect(names).toContain('core_tool_1'); // Always includes core
+        expect(names).not.toContain('labels_tool_1'); // Labels disabled
+      } finally {
+        mrsModule.mrsToolRegistry = originalMrsRegistry;
+      }
     });
 
     it('should provide cache refresh functionality', () => {
@@ -574,10 +584,14 @@ describe('RegistryManager', () => {
       const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
       coreRegistry.set('error_tool', errorTool);
 
-      resetRegistryManagerSingleton();
-      const errorManager = RegistryManager.getInstance();
+      try {
+        resetRegistryManagerSingleton();
+        const errorManager = RegistryManager.getInstance();
 
-      await expect(errorManager.executeTool('error_tool', {})).rejects.toThrow('Tool error');
+        await expect(errorManager.executeTool('error_tool', {})).rejects.toThrow('Tool error');
+      } finally {
+        coreRegistry.delete('error_tool');
+      }
     });
   });
 
@@ -1164,6 +1178,30 @@ describe('RegistryManager', () => {
       // Since core_readonly matches both read-only list AND denied regex,
       // it gets counted in denied regex (first filter that matches)
       expect(stats.filteredByDeniedRegex + stats.filteredByReadOnly).toBeGreaterThan(0);
+    });
+  });
+
+  describe('getFilterStats - per-URL reachability', () => {
+    it('should use per-URL reachability when instanceUrl is provided', () => {
+      // Instance is unreachable for this specific URL
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(false);
+
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      const stats = registryManager.getFilterStats('https://unreachable.example.com');
+
+      // In unreachable mode, total is scoped to context tools only
+      // (manage_context). Global stats include ALL tools.
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
+      const globalStats = registryManager.getFilterStats();
+
+      // Per-URL unreachable total should be smaller than global total
+      expect(stats.total).toBeLessThan(globalStats.total);
+      // isInstanceReachable should have been called with the URL
+      expect(mockHealthMonitorInstance.isInstanceReachable).toHaveBeenCalledWith(
+        'https://unreachable.example.com',
+      );
     });
   });
 

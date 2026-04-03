@@ -500,6 +500,13 @@ async function doFetch(
     }
   }
 
+  // skipAuth: also strip any credential headers the caller may have set
+  if (skipAuth) {
+    delete headers.Authorization;
+    delete headers['PRIVATE-TOKEN'];
+    delete headers.Cookie;
+  }
+
   if (cookieHeader) {
     headers.Cookie = cookieHeader;
   }

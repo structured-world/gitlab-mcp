@@ -777,8 +777,15 @@ class RegistryManager {
     if (instanceUrl !== undefined) {
       try {
         unreachableMode = !HealthMonitor.getInstance().isInstanceReachable(instanceUrl);
-      } catch {
-        unreachableMode = false; // HealthMonitor not initialized — assume reachable
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (!msg.includes('not initialized') && !msg.includes('No instance')) {
+          logWarn('Unexpected error checking per-instance reachability', {
+            error: msg,
+            instanceUrl,
+          });
+        }
+        unreachableMode = false; // assume reachable on expected init errors
       }
     } else {
       unreachableMode = this.isUnreachableMode();

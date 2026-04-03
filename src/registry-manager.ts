@@ -706,21 +706,13 @@ class RegistryManager {
   // isAnyInstanceHealthy() returns true for healthy, degraded, AND connecting states
   // (connecting is optimistic during startup). Unreachable = all instances are
   // disconnected or failed (no healthy/degraded/connecting).
+  // HealthMonitor.getInstance() is a lazy singleton — never throws.
+  // getMonitoredInstances/isAnyInstanceHealthy return safe defaults.
   private isUnreachableMode(): boolean {
-    try {
-      const healthMonitor = HealthMonitor.getInstance();
-      return (
-        healthMonitor.getMonitoredInstances().length > 0 && !healthMonitor.isAnyInstanceHealthy()
-      );
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // HealthMonitor.getInstance() can throw before first initialization — that is
-      // expected (treat as "not yet in unreachable mode"). Any other error is surfaced.
-      if (!msg.includes('not initialized') && !msg.includes('No instance')) {
-        logWarn('Unexpected error checking unreachable mode', { error: msg });
-      }
-      return false;
-    }
+    const healthMonitor = HealthMonitor.getInstance();
+    return (
+      healthMonitor.getMonitoredInstances().length > 0 && !healthMonitor.isAnyInstanceHealthy()
+    );
   }
 
   /**

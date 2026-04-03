@@ -1251,22 +1251,18 @@ describe('RegistryManager', () => {
   });
 
   describe('isUnreachableMode - error handling and getAvailableToolNames in unreachable mode', () => {
-    it('should return false (not unreachable) when HealthMonitor throws "not initialized"', () => {
-      // Cover lines 711-717: isUnreachableMode catches HealthMonitor init errors gracefully
-      mockHealthMonitorInstance.getMonitoredInstances.mockImplementation(() => {
-        throw new Error('HealthMonitor not initialized');
-      });
+    it('should return false (not unreachable) when no instances are monitored', () => {
+      // HealthMonitor.getInstance() is a lazy singleton — never throws.
+      // When no instances are monitored, isUnreachableMode returns false → full tool list.
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
 
       resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
 
-      // Should not throw; isUnreachableMode returns false → full tool list available
       const tools = registryManager.getAllToolDefinitions();
       expect(tools.length).toBeGreaterThan(0);
       expect(tools.map((t) => t.name)).toContain('core_tool_1');
-
-      // Restore
-      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
     });
 
     it('should return context-only names from getAvailableToolNames when unreachable', () => {
@@ -1355,21 +1351,20 @@ describe('RegistryManager', () => {
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
       });
 
-      resetRegistryManagerSingleton();
-      // getInstance triggers buildToolLookupCache → loadInstanceContext → warning
-      registryManager = RegistryManager.getInstance();
+      try {
+        resetRegistryManagerSingleton();
+        registryManager = RegistryManager.getInstance();
 
-      // logWarn should have been called for the unexpected error
-      expect(logWarn).toHaveBeenCalledWith(
-        'Unexpected error loading instance info for tool cache',
-        expect.objectContaining({ error: expect.stringContaining('Unexpected internal error') }),
-      );
-
-      // Restore ConnectionManager mock
-      ConnectionManager.getInstance.mockReturnValue({
-        getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-        getTokenScopeInfo: jest.fn().mockReturnValue(null),
-      });
+        expect(logWarn).toHaveBeenCalledWith(
+          'Unexpected error loading instance info for tool cache',
+          expect.objectContaining({ error: expect.stringContaining('Unexpected internal error') }),
+        );
+      } finally {
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        });
+      }
     });
   });
 

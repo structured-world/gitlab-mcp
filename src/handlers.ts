@@ -449,13 +449,10 @@ export async function setupHandlers(server: Server): Promise<void> {
         };
       }
 
-      // In the disconnected/failed state we intentionally skip connection bootstrap
-      // to avoid throwing on getClient()/initialize() during a cold disconnected start.
-      // In the disconnected bypass path we also skip reportSuccess/reportError, so
-      // HealthMonitor does not track the outcome of these calls. Note that some
-      // manage_context actions (e.g. whoami) may still perform GitLab I/O such as
-      // refreshTokenScopes()/fetchCurrentUser(), and can therefore influence perceived
-      // connectivity and timeouts, but those network effects are not reported here.
+      // Disconnected/failed fast-path for manage_context: skip connection bootstrap
+      // and health reporting so the tool can serve diagnostic info (whoami, scope info)
+      // even when GitLab is unreachable. The tool handler itself may attempt GitLab I/O
+      // (e.g., refreshTokenScopes in whoami) — those calls will fail gracefully.
       if (
         toolName === 'manage_context' &&
         !healthMonitor.isInstanceReachable(effectiveInstanceUrl)

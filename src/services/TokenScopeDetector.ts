@@ -192,7 +192,17 @@ function computeDaysUntilExpiry(expiresAt: string | null): number | null {
   const day = Number(dayStr);
   if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return null;
   if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  const expiryUtcMs = Date.UTC(year, month - 1, day);
+  // Validate calendar-correctness: Date.UTC normalizes invalid dates (e.g. Feb 31 → Mar 3),
+  // so roundtrip-check that the constructed date matches the input components.
+  const expiry = new Date(Date.UTC(year, month - 1, day));
+  if (
+    expiry.getUTCFullYear() !== year ||
+    expiry.getUTCMonth() !== month - 1 ||
+    expiry.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  const expiryUtcMs = expiry.getTime();
   const now = new Date();
   const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
   return Math.ceil((expiryUtcMs - todayUtcMs) / (1000 * 60 * 60 * 24));

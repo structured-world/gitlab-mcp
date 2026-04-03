@@ -214,6 +214,7 @@ describe('server', () => {
         PORT: '3000',
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -322,6 +323,7 @@ describe('server', () => {
         PORT: '3000',
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -346,6 +348,7 @@ describe('server', () => {
         PORT: '3000',
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -2347,6 +2350,7 @@ describe('server', () => {
         PORT: undefined, // No PORT means stdio mode
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -2389,6 +2393,7 @@ describe('server', () => {
         PORT: undefined, // No PORT means stdio mode
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -2416,6 +2421,7 @@ describe('server', () => {
         PORT: undefined, // No PORT means stdio mode
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',

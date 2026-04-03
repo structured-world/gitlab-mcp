@@ -80,6 +80,8 @@ jest.mock('../../src/services/HealthMonitor', () => ({
     getInstance: jest.fn(() => mockHealthMonitor),
     resetInstance: jest.fn(),
   },
+  InitializationTimeoutError: jest.requireActual('../../src/services/HealthMonitor')
+    .InitializationTimeoutError,
 }));
 
 // Mock OAuth module for authentication checks

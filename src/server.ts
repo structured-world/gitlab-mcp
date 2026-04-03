@@ -200,8 +200,10 @@ function configureTrustProxy(app: Express): void {
  * - timeout: Set to 0 to disable socket timeout entirely for long-lived SSE streams.
  */
 function configureServerTimeouts(server: http.Server | https.Server): void {
-  server.keepAliveTimeout = HTTP_KEEPALIVE_TIMEOUT_MS;
-  server.headersTimeout = Math.min(HTTP_KEEPALIVE_TIMEOUT_MS + 5000, MAX_SAFE_TIMEOUT_MS); // Must be > keepAliveTimeout
+  // Clamp keepAliveTimeout to leave room for the mandatory 5s headersTimeout gap
+  const keepAliveTimeout = Math.min(HTTP_KEEPALIVE_TIMEOUT_MS, MAX_SAFE_TIMEOUT_MS - 5000);
+  server.keepAliveTimeout = keepAliveTimeout;
+  server.headersTimeout = keepAliveTimeout + 5000; // Must be > keepAliveTimeout
   server.timeout = 0; // No socket timeout for SSE streaming
 
   // Enable TCP keepalive on every incoming socket to detect dead connections

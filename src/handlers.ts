@@ -1,7 +1,7 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { ConnectionManager } from './services/ConnectionManager';
-import { HealthMonitor } from './services/HealthMonitor';
+import { HealthMonitor, InitializationTimeoutError } from './services/HealthMonitor';
 import { normalizeInstanceUrl } from './utils/url';
 import { logInfo, logWarn, logError, logDebug } from './logger';
 import {
@@ -708,7 +708,7 @@ export async function setupHandlers(server: Server): Promise<void> {
           // via classifyError() → triggers disconnected → auto-reconnect
           HealthMonitor.getInstance().reportError(
             requestInstanceUrl,
-            new Error(`Initialization timed out after ${HANDLER_TIMEOUT_MS}ms`),
+            new InitializationTimeoutError(HANDLER_TIMEOUT_MS),
           );
           ConnectionManager.getInstance().clearInflight(requestInstanceUrl);
         }

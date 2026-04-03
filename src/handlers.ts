@@ -556,7 +556,10 @@ export async function setupHandlers(server: Server): Promise<void> {
             isError: true,
           };
         }
-        // Connected but introspection/other step failed — rethrow
+        // Connected but getClient()/ensureIntrospected() failed — rethrow as
+        // generic tool error. These are NOT connection failures (initialize
+        // succeeded), so CONNECTION_FAILED would be misleading. The error will
+        // be caught by the outer handler and returned as a standard tool error.
         throw initError;
       }
 
@@ -677,6 +680,8 @@ export async function setupHandlers(server: Server): Promise<void> {
         // actually attempted (not for disconnected manage_context bypass which
         // does no GitLab I/O and shouldn't affect connection health).
         if (bootstrapStarted && !bootstrapComplete) {
+          // "timeout" in the message intentionally classifies as transient
+          // via classifyError() → triggers disconnected → auto-reconnect
           HealthMonitor.getInstance().reportError(
             requestInstanceUrl,
             new Error(`Handler timeout after ${HANDLER_TIMEOUT_MS}ms`),

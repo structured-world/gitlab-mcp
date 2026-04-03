@@ -413,21 +413,21 @@ export async function setupHandlers(server: Server): Promise<void> {
       // actions (e.g., whoami, show_scope, set_scope).
       const healthMonitor = HealthMonitor.getInstance();
       const toolName = request.params.name;
-      // Read state once to avoid TOCTOU between reachability check and state derivation
-      const instanceState = healthMonitor.getState(effectiveInstanceUrl);
-      const isReachable =
-        instanceState === 'healthy' ||
-        instanceState === 'degraded' ||
-        instanceState === 'connecting';
-      if (!isReachable && toolName !== 'manage_context') {
+      // isInstanceReachable treats untracked URLs as reachable (first call before
+      // HealthMonitor.initialize) and healthy/degraded as reachable.
+      if (
+        !healthMonitor.isInstanceReachable(effectiveInstanceUrl) &&
+        toolName !== 'manage_context'
+      ) {
         const action =
           request.params.arguments && typeof request.params.arguments.action === 'string'
             ? request.params.arguments.action
             : 'unknown';
 
-        // Only disconnected/failed reach here (connecting/healthy/degraded = reachable)
+        // Read state for CONNECTION_FAILED payload
+        const rawState = healthMonitor.getState(effectiveInstanceUrl);
         const connectionState: 'disconnected' | 'failed' =
-          instanceState === 'failed' ? 'failed' : 'disconnected';
+          rawState === 'failed' ? 'failed' : 'disconnected';
         const connError = createConnectionFailedError(
           toolName,
           action,
@@ -512,7 +512,10 @@ export async function setupHandlers(server: Server): Promise<void> {
           logInfo(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
         }
       } catch (initError) {
-        if (!connectionManager.isConnected(effectiveInstanceUrl)) {
+        // Use bootstrapComplete (not isConnected) — isConnected flips after
+        // initialize() but getClient/ensureIntrospected can still fail before
+        // bootstrapComplete is set, and those failures should return CONNECTION_FAILED.
+        if (!bootstrapComplete) {
           // Report bootstrap failure — skip if handler already timed out
           if (!timedOut && initError instanceof Error) {
             healthMonitor.reportError(effectiveInstanceUrl, initError);

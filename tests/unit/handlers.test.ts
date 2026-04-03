@@ -455,6 +455,8 @@ describe('handlers', () => {
       mockConnectionManager.initialize.mockRejectedValue(
         new Error('GitLab API error: 401 Unauthorized'),
       );
+      // Pin health state to 'failed' — auth errors derive failed state
+      mockHealthMonitor.getState.mockReturnValue('failed');
 
       const mockRequest = {
         params: {
@@ -471,9 +473,13 @@ describe('handlers', () => {
       expect(parsed.tool).toBe('test_tool');
       // Auth errors → failed state → no auto-reconnect
       expect(parsed.reconnecting).toBe(false);
+      expect(parsed.auto_retry_enabled).toBe(false);
+      expect(parsed.message).toContain('authentication');
+      expect(parsed.message).toContain('Automatic reconnection is disabled');
 
       // Restore
       mockConnectionManager.isConnected.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
       mockConnectionManager.initialize.mockResolvedValue(undefined);
     });
 
@@ -597,10 +603,8 @@ describe('handlers', () => {
       mockHealthMonitor.getState.mockReturnValue('healthy');
     });
 
-    it('should treat connecting state as reachable (optimistic during startup)', async () => {
+    it('should block connecting state when isInstanceReachable returns false', async () => {
       mockHealthMonitor.getState.mockReturnValue('connecting');
-      // isInstanceReachable false — the only reason tool proceeds is the
-      // getState('connecting') gate treating connecting as reachable
       mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
 
       const result = await callToolHandler({
@@ -610,8 +614,10 @@ describe('handlers', () => {
         },
       });
 
-      // connecting is reachable — tool proceeds to execution, not CONNECTION_FAILED
-      expect(result.isError).toBeUndefined();
+      // connecting + unreachable → CONNECTION_FAILED with disconnected state
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
 
       // Restore
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
@@ -1486,8 +1492,30 @@ describe('handlers', () => {
       expect(result.isError).toBeUndefined();
     });
 
-    it('should rethrow when connected but introspection fails (line 560)', async () => {
+    it('should route per-request OAuth URL through initialize and health reporting', async () => {
+      const oauth = require('../../src/oauth/index');
+      const oauthUrl = 'https://oauth-instance.example.com';
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(oauthUrl);
+
+      const result = await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      expect(result.isError).toBeUndefined();
+      // Verify the OAuth URL was passed through to per-URL code paths
+      expect(mockHealthMonitor.isInstanceReachable).toHaveBeenCalledWith(oauthUrl);
+      expect(mockHealthMonitor.reportSuccess).toHaveBeenCalledWith(oauthUrl);
+
+      // Restore
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+    });
+
+    it('should return CONNECTION_FAILED when introspection fails before bootstrap completes', async () => {
       // isConnected returns true (already connected), but ensureIntrospected throws
+      // Since bootstrapComplete is still false, this goes to CONNECTION_FAILED path
       mockConnectionManager.ensureIntrospected.mockRejectedValueOnce(
         new Error('Introspection failed'),
       );
@@ -1499,10 +1527,9 @@ describe('handlers', () => {
         },
       });
 
-      // The error propagates to the outer catch → structured error or plain error
       expect(result.isError).toBe(true);
-      // Should contain the rethrown error message
-      expect(result.content![0].text).toContain('Introspection failed');
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
     });
   });
 
@@ -1630,6 +1657,42 @@ describe('handlers', () => {
       expect(mockConnectionManager.clearInflight).toHaveBeenCalledWith(
         'https://gitlab.example.com',
       );
+
+      // Restore
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+    }, 5000);
+
+    it('should not report success/error after deferred init resolves post-timeout', async () => {
+      // Bootstrap hangs, then resolves AFTER timeout fires
+      let resolveInit!: () => void;
+      mockConnectionManager.initialize.mockImplementation(
+        () =>
+          new Promise<void>((r) => {
+            resolveInit = r;
+          }),
+      );
+
+      const { isOAuthEnabled, isAuthenticationConfigured } = await import('../../src/oauth/index');
+      (isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
+
+      await setupHandlers(mockServer);
+      const handler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+
+      const result = await handler({
+        params: { name: 'browse_projects', arguments: { action: 'list' } },
+      });
+
+      expect(result.isError).toBe(true);
+      const callsAfterTimeout = mockHealthMonitor.reportSuccess.mock.calls.length;
+
+      // Now resolve the deferred init — timedOut flag should prevent late calls
+      resolveInit();
+      await new Promise((r) => process.nextTick(r));
+
+      // reportSuccess should NOT have been called after the deferred resolve
+      expect(mockHealthMonitor.reportSuccess.mock.calls.length).toBe(callsAfterTimeout);
 
       // Restore
       mockConnectionManager.isConnected.mockReturnValue(true);

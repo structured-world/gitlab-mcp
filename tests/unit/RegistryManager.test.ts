@@ -204,6 +204,9 @@ describe('RegistryManager', () => {
     mockConfig.getToolDescriptionOverrides = jest.fn(() => new Map());
     ToolAvailability.isToolAvailable.mockReturnValue(true);
     ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
+    ToolAvailability.getRestrictedParameters.mockReturnValue([]);
+    mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+    mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
     ToolAvailability.getUnavailableReason.mockReturnValue('');
 
     registryManager = RegistryManager.getInstance();

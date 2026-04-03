@@ -336,7 +336,12 @@ class RegistryManager {
     if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) return 'readOnly';
     if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) return 'deniedRegex';
     if (ctx.tokenScopes && !isToolAvailableForScopes(toolName, ctx.tokenScopes)) return 'scopes';
+    // Context tools (manage_context etc.) are always available regardless of
+    // GitLab version/tier — they are local/session tools, not GitLab API tools.
+    // Skip tier filtering for tools in the context registry.
+    const isContextTool = this.registries.get('context')?.has(toolName) ?? false;
     if (
+      !isContextTool &&
       ctx.instanceInfo &&
       ctx.instanceInfo.version !== 'unknown' &&
       !ToolAvailability.isToolAvailableForInstance(toolName, ctx.instanceInfo)

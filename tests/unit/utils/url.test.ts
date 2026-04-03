@@ -45,6 +45,10 @@ describe('normalizeInstanceUrl', () => {
     expect(normalizeInstanceUrl('https://gitlab.example.com/api/v4/')).toBe(
       'https://gitlab.example.com',
     );
+    // Same for /api/graphql/ combined path
+    expect(normalizeInstanceUrl('https://gitlab.example.com/api/graphql/')).toBe(
+      'https://gitlab.example.com',
+    );
   });
 
   it('should not strip partial API path matches', () => {

@@ -770,6 +770,9 @@ class RegistryManager {
    * Get filter statistics showing how tools were filtered
    * Used by whoami action to explain tool availability
    */
+  // SonarCloud may flag complexity here. The per-URL reachability branch adds
+  // necessary branching; aggregateFilterCounters already extracts the loop.
+  // Further splitting would scatter the single-method invariant (total = available + filtered).
   public getFilterStats(instanceUrl?: string): FilterStats {
     // Per-URL reachability when a specific instance is requested; otherwise
     // fall back to the global "all instances down" check.

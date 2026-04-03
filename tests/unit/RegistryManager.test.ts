@@ -628,7 +628,7 @@ describe('RegistryManager', () => {
     let originalEnv: NodeJS.ProcessEnv;
 
     beforeEach(() => {
-      originalEnv = process.env;
+      originalEnv = { ...process.env };
       resetRegistryManagerSingleton();
     });
 

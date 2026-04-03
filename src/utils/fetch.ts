@@ -500,11 +500,14 @@ async function doFetch(
     }
   }
 
-  // skipAuth: also strip any credential headers the caller may have set
+  // skipAuth: strip credential headers case-insensitively (RFC 7230)
   if (skipAuth) {
-    delete headers.Authorization;
-    delete headers['PRIVATE-TOKEN'];
-    delete headers.Cookie;
+    for (const key of Object.keys(headers)) {
+      const lower = key.toLowerCase();
+      if (lower === 'authorization' || lower === 'private-token' || lower === 'cookie') {
+        delete headers[key];
+      }
+    }
   }
 
   if (cookieHeader) {

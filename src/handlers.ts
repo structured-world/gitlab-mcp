@@ -426,12 +426,14 @@ export async function setupHandlers(server: Server): Promise<void> {
 
         // Read state for CONNECTION_FAILED payload
         const rawState = healthMonitor.getState(effectiveInstanceUrl);
-        const connectionState: 'connecting' | 'disconnected' | 'failed' =
-          rawState === 'failed'
-            ? 'failed'
-            : rawState === 'connecting'
-              ? 'connecting'
-              : 'disconnected';
+        let connectionState: 'connecting' | 'disconnected' | 'failed';
+        if (rawState === 'failed') {
+          connectionState = 'failed';
+        } else if (rawState === 'connecting') {
+          connectionState = 'connecting';
+        } else {
+          connectionState = 'disconnected';
+        }
         const connError = createConnectionFailedError(
           toolName,
           action,

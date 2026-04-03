@@ -213,6 +213,8 @@ describe('handlers', () => {
       // Should still set up handlers — tools/list returns context-only tools
       expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
       // refreshCache IS called even when disconnected (applies disconnected-mode filter)
+      // setupHandlers calls refreshCache() without URL — the per-URL variant is
+      // used only in the state-change callback, not during initial setup.
       expect(mockRegistryManager.refreshCache).toHaveBeenCalled();
 
       // Restore
@@ -694,6 +696,8 @@ describe('handlers', () => {
 
       // manage_context should NOT be blocked by health gate
       mockRegistryManager.executeTool.mockResolvedValue({ context: 'info' });
+      mockHealthMonitor.reportSuccess.mockClear();
+      mockHealthMonitor.reportError.mockClear();
 
       const result = await callToolHandler({
         params: {
@@ -706,6 +710,9 @@ describe('handlers', () => {
       expect(result.isError).toBeUndefined();
       const parsed = JSON.parse(result.content![0].text);
       expect(parsed.context).toBe('info');
+      // Fast-path does no GitLab I/O — must not mutate connection state
+      expect(mockHealthMonitor.reportSuccess).not.toHaveBeenCalled();
+      expect(mockHealthMonitor.reportError).not.toHaveBeenCalled();
 
       // Restore
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);

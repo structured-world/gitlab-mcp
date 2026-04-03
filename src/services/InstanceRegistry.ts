@@ -12,7 +12,7 @@
  */
 
 import { logInfo, logWarn, logDebug } from '../logger.js';
-import { normalizeInstanceUrl } from '../utils/url.js';
+import { normalizeInstanceUrl } from '../utils/url';
 import {
   InstanceRateLimiter,
   RateLimiterConfig,

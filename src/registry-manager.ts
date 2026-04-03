@@ -783,7 +783,12 @@ class RegistryManager {
     let unreachableMode: boolean;
     if (instanceUrl !== undefined) {
       try {
-        unreachableMode = !HealthMonitor.getInstance().isInstanceReachable(instanceUrl);
+        const hm = HealthMonitor.getInstance();
+        // isInstanceReachable returns false for 'connecting', but we treat
+        // connecting as reachable here (consistent with isUnreachableMode)
+        // to avoid reporting context-only stats during startup/reconnect.
+        unreachableMode =
+          !hm.isInstanceReachable(instanceUrl) && hm.getState(instanceUrl) !== 'connecting';
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
         if (!msg.includes('not initialized') && !msg.includes('No instance')) {

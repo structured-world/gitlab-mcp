@@ -1474,6 +1474,8 @@ describe('handlers', () => {
       mockHealthMonitor.initialize.mockResolvedValue(undefined);
       await expect(setupHandlers(mockServer)).resolves.not.toThrow();
       expect(mockHealthMonitor.initialize).toHaveBeenCalledTimes(2);
+      // State-change listener must not be double-registered after retry
+      expect(mockHealthMonitor.onStateChange).toHaveBeenCalledTimes(1);
 
       // Restore
       mockHealthMonitor.initialize.mockResolvedValue(undefined);
@@ -1817,6 +1819,49 @@ describe('handlers', () => {
       // Neither reportSuccess nor reportError should have been called after timeout
       expect(mockHealthMonitor.reportSuccess.mock.calls.length).toBe(successCallsAfterTimeout);
       expect(mockHealthMonitor.reportError.mock.calls.length).toBe(errorCallsAfterTimeout);
+
+      // Restore
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+    }, 5000);
+
+    it('should forward late bootstrap rejection (auth error) to HealthMonitor after timeout', async () => {
+      // Bootstrap hangs past timeout, then REJECTS with an auth error.
+      // The timedOut guard must still forward auth/permanent errors to reportError
+      // so the instance converges to `failed` instead of staying in `reconnecting`.
+      let rejectInit!: (err: Error) => void;
+      mockConnectionManager.initialize.mockImplementation(
+        () =>
+          new Promise<void>((_, reject) => {
+            rejectInit = reject;
+          }),
+      );
+
+      const { isOAuthEnabled, isAuthenticationConfigured } = await import('../../src/oauth/index');
+      (isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
+
+      await setupHandlers(mockServer);
+      const handler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+
+      const result = await handler({
+        params: { name: 'browse_projects', arguments: { action: 'list' } },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content![0].text).error_code).toBe('TIMEOUT');
+
+      // Now reject with a real auth error — should be forwarded despite timedOut
+      mockHealthMonitor.reportError.mockClear();
+      rejectInit(new Error('401 Unauthorized'));
+      await new Promise((r) => process.nextTick(r));
+      await new Promise((r) => process.nextTick(r));
+
+      // Auth error classified as 'auth' → forwarded through timedOut guard
+      expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+        expect.any(Error),
+      );
 
       // Restore
       mockConnectionManager.isConnected.mockReturnValue(true);

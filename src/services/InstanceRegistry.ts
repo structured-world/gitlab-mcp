@@ -407,17 +407,17 @@ export class InstanceRegistry {
    */
   public getDispatcher(baseUrl: string): unknown {
     const connectionPool = InstanceConnectionPool.getInstance();
-    let dispatcher = connectionPool.getDispatcher(baseUrl);
+    const normalizedUrl = normalizeInstanceUrl(baseUrl);
+    let dispatcher = connectionPool.getDispatcher(normalizedUrl);
 
     // Lazily create pool if instance is registered but pool doesn't exist yet
     // This ensures per-instance TLS settings are applied for REST calls
     if (!dispatcher) {
-      const normalizedUrl = normalizeInstanceUrl(baseUrl);
       const entry = this.instances.get(normalizedUrl);
       if (entry) {
         // Creating the GraphQL client also initializes the connection pool
         connectionPool.getGraphQLClient(entry.config);
-        dispatcher = connectionPool.getDispatcher(baseUrl);
+        dispatcher = connectionPool.getDispatcher(normalizedUrl);
       }
     }
 

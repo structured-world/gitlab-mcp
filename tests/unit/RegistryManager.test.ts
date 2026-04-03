@@ -97,6 +97,7 @@ const mockHealthMonitorInstance = {
   getMonitoredInstances: jest.fn().mockReturnValue([]),
   isAnyInstanceHealthy: jest.fn().mockReturnValue(true),
   isInstanceReachable: jest.fn().mockReturnValue(true),
+  getState: jest.fn().mockReturnValue('healthy'),
 };
 
 jest.mock('../../src/services/HealthMonitor', () => ({
@@ -1183,8 +1184,9 @@ describe('RegistryManager', () => {
 
   describe('getFilterStats - per-URL reachability', () => {
     it('should use per-URL reachability when instanceUrl is provided', () => {
-      // Instance is unreachable for this specific URL
+      // Instance is unreachable for this specific URL (disconnected, not connecting)
       mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitorInstance.getState.mockReturnValue('disconnected');
 
       resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();

@@ -883,6 +883,15 @@ async function gracefulShutdown(signal: string): Promise<void> {
     logError('Error closing connections', { err: error as Error });
   }
 
+  // Stop health monitor timers before closing sessions
+  try {
+    const { HealthMonitor } = await import('./services/HealthMonitor');
+    HealthMonitor.getInstance().shutdown();
+    logInfo('Health monitor shut down successfully');
+  } catch (error) {
+    logError('Error shutting down health monitor', { err: error as Error });
+  }
+
   try {
     // Shut down session manager (closes all per-session Server instances)
     const sm = getSessionManager();

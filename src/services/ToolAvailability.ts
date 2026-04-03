@@ -344,6 +344,8 @@ export class ToolAvailability {
       rawVersion = cachedInstanceInfo.version;
       instanceVersion = parseVersion(rawVersion);
     } else {
+      // Fallback to singleton — prefer passing cachedInstanceInfo explicitly
+      // to avoid cross-request leakage in concurrent OAuth flows
       const connectionManager = ConnectionManager.getInstance();
       try {
         const instanceInfo = connectionManager.getInstanceInfo();
@@ -472,6 +474,38 @@ export class ToolAvailability {
       logWarn('Failed to check tool availability', { toolName, error: errorMessage });
       return false;
     }
+  }
+
+  /**
+   * Check if a tool is available for a specific instance (uses provided info
+   * instead of reading currentInstanceUrl from ConnectionManager).
+   *
+   * @precondition Caller must exclude context/local tools (e.g. manage_context)
+   * before calling — those bypass version/tier filtering at the registry level.
+   * Unknown tools fall through to a conservative >= 15.0 gate.
+   */
+  public static isToolAvailableForInstance(
+    toolName: string,
+    instanceInfo: { tier: GitLabTier; version: string },
+    action?: string,
+  ): boolean {
+    // When version is unknown (REST fallback, OAuth deferred), allow all tools
+    // rather than filtering them out — the version will be detected later
+    if (instanceInfo.version === 'unknown') return true;
+
+    const actionReq = this.getActionRequirement(toolName, action);
+    if (actionReq) {
+      const version = parseVersion(instanceInfo.version);
+      if (version < parseVersion(actionReq.minVersion)) return false;
+      return this.isTierSufficient(instanceInfo.tier, actionReq.tier);
+    }
+    // Tool not found in actionRequirements — apply the same conservative fallback
+    // as isToolAvailable(): require >= 15.0 for unknown GitLab-backed tools.
+    // Note: manage_context etc. are in contextToolRegistry and bypass version
+    // filtering entirely (RegistryManager.getToolExclusionReason skips them).
+    // This path is only reached for GitLab-backed tools missing from the
+    // actionRequirements map — the conservative gate prevents failing open.
+    return parseVersion(instanceInfo.version) >= parseVersion('15.0');
   }
 
   public static getAvailableTools(): string[] {

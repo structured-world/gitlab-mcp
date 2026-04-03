@@ -51,6 +51,17 @@ describe('normalizeInstanceUrl', () => {
     );
   });
 
+  it('should strip multiple trailing slashes before checking API path suffix', () => {
+    // Multiple trailing slashes are collapsed first, then suffix is removed — verifies
+    // single-pass normalization order handles both patterns simultaneously
+    expect(normalizeInstanceUrl('https://gitlab.example.com/api/v4///')).toBe(
+      'https://gitlab.example.com',
+    );
+    expect(normalizeInstanceUrl('https://gitlab.example.com/api/graphql///')).toBe(
+      'https://gitlab.example.com',
+    );
+  });
+
   it('should not strip partial API path matches', () => {
     // /api/v4extra does not end with /api/v4 so it is preserved
     expect(normalizeInstanceUrl('https://gitlab.example.com/api/v4extra')).toBe(

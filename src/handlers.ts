@@ -177,31 +177,37 @@ export async function setupHandlers(server: Server): Promise<void> {
         // if healthMonitorStartup resets to null on failure and retries.
         if (!stateChangeRegistered) {
           stateChangeRegistered = true;
+          const broadcastToolsListChangedForStateChange = async (
+            instanceUrl: string,
+            from: string,
+            to: string,
+          ): Promise<void> => {
+            const { RegistryManager } = await import('./registry-manager');
+            RegistryManager.getInstance().refreshCache(instanceUrl);
+
+            const { getSessionManager } = await import('./session-manager');
+            await getSessionManager().broadcastToolsListChanged();
+
+            logInfo('Tool list updated after connection state change', {
+              instanceUrl,
+              from,
+              to,
+            });
+          };
+
           healthMonitor.onStateChange((instanceUrl, from, to) => {
             // Broadcast on any state transition that could change the tool list:
             // disconnected↔connected changes available registries, and degraded↔healthy
             // can enable/disable version-gated tools (version goes from 'unknown' to real).
             if (from !== to) {
-              void (async () => {
-                try {
-                  const { RegistryManager } = await import('./registry-manager');
-                  RegistryManager.getInstance().refreshCache(instanceUrl);
-
-                  const { getSessionManager } = await import('./session-manager');
-                  await getSessionManager().broadcastToolsListChanged();
-
-                  logInfo('Tool list updated after connection state change', {
-                    instanceUrl,
-                    from,
-                    to,
-                  });
-                } catch (error) {
+              broadcastToolsListChangedForStateChange(instanceUrl, from, to).catch(
+                (error: unknown) => {
                   logWarn('Failed to broadcast tools/list_changed after state change', {
                     instanceUrl,
                     err: error as Error,
                   });
-                }
-              })();
+                },
+              );
             }
           });
         }

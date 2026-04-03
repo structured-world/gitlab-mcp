@@ -170,19 +170,6 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   browse_iterations: ['api', 'read_api'],
 };
 
-/**
- * Detect token scopes by calling GET /api/v4/personal_access_tokens/self
- *
- * This endpoint works with:
- * - Personal access tokens (PAT) - returns full token info
- * - Project/Group access tokens - returns full token info
- *
- * Does NOT work with:
- * - OAuth tokens - use OAuth introspection instead
- * - Job tokens - have different scope model
- *
- * @returns TokenScopeInfo or null if detection fails
- */
 /** Log the appropriate message for a non-OK token self-introspection status. */
 function logTokenSelfIntrospectionError(status: number): void {
   if (status === 404) {
@@ -210,6 +197,19 @@ function computeDaysUntilExpiry(expiresAt: string | null): number | null {
   return Math.ceil((expiryUtcMs - todayUtcMs) / (1000 * 60 * 60 * 24));
 }
 
+/**
+ * Detect token scopes by calling GET /api/v4/personal_access_tokens/self
+ *
+ * This endpoint works with:
+ * - Personal access tokens (PAT) - returns full token info
+ * - Project/Group access tokens - returns full token info
+ *
+ * Does NOT work with:
+ * - OAuth tokens - use OAuth introspection instead
+ * - Job tokens - have different scope model
+ *
+ * @returns TokenScopeInfo or null if detection fails
+ */
 export async function detectTokenScopes(baseUrl?: string): Promise<TokenScopeInfo | null> {
   const url = normalizeInstanceUrl(baseUrl ?? GITLAB_BASE_URL);
   if (!url || !GITLAB_TOKEN) {

@@ -169,11 +169,12 @@ describe('ConnectionManager Enhanced Tests', () => {
       jest.doMock('../../../src/services/GitLabVersionDetector');
       jest.doMock('../../../src/services/SchemaIntrospector');
       // Mock enhancedFetch BEFORE require so ConnectionManager picks it up
+      const mockEnhancedFetch401 = jest.fn().mockResolvedValue({
+        ok: false,
+        status: 401,
+      });
       jest.doMock('../../../src/utils/fetch', () => ({
-        enhancedFetch: jest.fn().mockResolvedValue({
-          ok: false,
-          status: 401,
-        }),
+        enhancedFetch: mockEnhancedFetch401,
       }));
 
       const {
@@ -186,6 +187,12 @@ describe('ConnectionManager Enhanced Tests', () => {
 
       // In OAuth mode, GraphQLClient should receive empty headers
       expect(OAuthGraphQLClient).toHaveBeenCalledWith('https://test-gitlab.com/api/graphql', {});
+
+      // The unauthenticated version probe must be sent with skipAuth: true
+      expect(mockEnhancedFetch401).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v4/version'),
+        expect.objectContaining({ skipAuth: true }),
+      );
 
       manager.reset();
       jest.resetModules();
@@ -264,6 +271,11 @@ describe('ConnectionManager Enhanced Tests', () => {
   });
 
   describe('Caching Mechanism', () => {
+    // NOTE: Several tests below reach into private fields via `as any` (instances,
+    // currentInstanceUrl, doInitialize).  This is the only way to set up specific
+    // intermediate states (e.g., "state cleared but static cache intact") without
+    // making these internals part of the public API.  Exposing them purely for
+    // tests would widen the contract undesirably; the tradeoff is accepted here.
     it('should use cached data when available and not expired', async () => {
       // First initialization populates introspection cache
       await connectionManager.initialize();
@@ -746,14 +758,15 @@ describe('ConnectionManager Enhanced Tests', () => {
 
       // Mock successful unauthenticated version detection for enterprise instance
       // OAuth probe now uses enhancedFetch, not global.fetch
-      jest.doMock('../../../src/utils/fetch', () => ({
-        enhancedFetch: jest.fn().mockResolvedValue({
-          ok: true,
-          json: async () => ({
-            version: '17.3.0',
-            enterprise: true,
-          }),
+      const mockEnhancedFetchEnterprise = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          version: '17.3.0',
+          enterprise: true,
         }),
+      });
+      jest.doMock('../../../src/utils/fetch', () => ({
+        enhancedFetch: mockEnhancedFetchEnterprise,
       }));
 
       const {
@@ -767,6 +780,12 @@ describe('ConnectionManager Enhanced Tests', () => {
       expect(manager.getVersion()).toBe('17.3.0');
       // Enterprise instances default to premium tier
       expect(manager.getTier()).toBe('premium');
+
+      // The unauthenticated version probe must be sent with skipAuth: true
+      expect(mockEnhancedFetchEnterprise).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v4/version'),
+        expect.objectContaining({ skipAuth: true }),
+      );
 
       manager.reset();
       jest.resetModules();
@@ -791,14 +810,15 @@ describe('ConnectionManager Enhanced Tests', () => {
       }));
 
       // Mock successful unauthenticated version detection for free (CE) instance
-      jest.doMock('../../../src/utils/fetch', () => ({
-        enhancedFetch: jest.fn().mockResolvedValue({
-          ok: true,
-          json: async () => ({
-            version: '16.9.0',
-            enterprise: false,
-          }),
+      const mockEnhancedFetchFree = jest.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          version: '16.9.0',
+          enterprise: false,
         }),
+      });
+      jest.doMock('../../../src/utils/fetch', () => ({
+        enhancedFetch: mockEnhancedFetchFree,
       }));
 
       const {
@@ -811,6 +831,12 @@ describe('ConnectionManager Enhanced Tests', () => {
       // Should have detected version and free tier
       expect(manager.getVersion()).toBe('16.9.0');
       expect(manager.getTier()).toBe('free');
+
+      // The unauthenticated version probe must be sent with skipAuth: true
+      expect(mockEnhancedFetchFree).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v4/version'),
+        expect.objectContaining({ skipAuth: true }),
+      );
 
       manager.reset();
       jest.resetModules();
@@ -851,8 +877,11 @@ describe('ConnectionManager Enhanced Tests', () => {
       const manager = OAuthConnectionManager.getInstance();
       // Should initialize without throwing - defers introspection
       await expect(manager.initialize()).resolves.not.toThrow();
-      // Verify the OAuth probe was actually attempted via enhancedFetch
-      expect(mockEnhancedFetch).toHaveBeenCalled();
+      // Verify the OAuth probe was actually attempted via enhancedFetch with skipAuth: true
+      expect(mockEnhancedFetch).toHaveBeenCalledWith(
+        expect.stringContaining('/api/v4/version'),
+        expect.objectContaining({ skipAuth: true }),
+      );
 
       manager.reset();
       jest.resetModules();
@@ -1074,21 +1103,26 @@ describe('ConnectionManager Enhanced Tests', () => {
         return originalDoInit(url);
       });
 
-      const promiseA = connectionManager.initialize(urlA);
-      const promiseB = connectionManager.initialize(urlB);
+      try {
+        const promiseA = connectionManager.initialize(urlA);
+        const promiseB = connectionManager.initialize(urlB);
 
-      // B finishes first
-      await promiseB;
-      expect(connectionManager.getCurrentInstanceUrl()).toBe(urlB);
+        // B finishes first
+        await promiseB;
+        expect(connectionManager.getCurrentInstanceUrl()).toBe(urlB);
 
-      // Now release A
-      resolveA();
-      await promiseA;
+        // Now release A
+        resolveA();
+        await promiseA;
 
-      // A must NOT have overwritten currentInstanceUrl — B was requested later
-      expect(connectionManager.getCurrentInstanceUrl()).toBe(urlB);
-
-      doInitSpy.mockRestore();
+        // A must NOT have overwritten currentInstanceUrl — B was requested later
+        expect(connectionManager.getCurrentInstanceUrl()).toBe(urlB);
+      } finally {
+        // Always unblock A and restore the spy — prevents test pollution if
+        // an assertion fails before we reach the cleanup at the end of the body
+        resolveA?.();
+        doInitSpy.mockRestore();
+      }
     });
   });
 

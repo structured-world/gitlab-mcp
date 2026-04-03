@@ -780,7 +780,7 @@ export async function enhancedFetch(
 
   try {
     // If retry is disabled, just do a single fetch
-    const unauthenticated = options.skipAuth === true;
+    const unauthenticated = _skipAuth === true;
     if (!shouldRetry || maxRetries <= 0) {
       return await doFetch(url, fetchOptions, instanceDispatcher, unauthenticated);
     }

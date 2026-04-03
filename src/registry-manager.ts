@@ -724,6 +724,49 @@ class RegistryManager {
   }
 
   /**
+   * Aggregate per-tool exclusion counts across all registries.
+   * Extracted from getFilterStats to keep cognitive complexity within limits.
+   */
+  private aggregateFilterCounters(
+    ctx: ReturnType<RegistryManager['loadInstanceContext']>,
+    contextTools: Map<string, EnhancedToolDefinition> | null | undefined,
+  ): {
+    available: number;
+    byReadOnly: number;
+    byDeniedRegex: number;
+    byScopes: number;
+    byTier: number;
+    byActionDenial: number;
+  } {
+    const counts = {
+      available: 0,
+      byReadOnly: 0,
+      byDeniedRegex: 0,
+      byScopes: 0,
+      byTier: 0,
+      byActionDenial: 0,
+    };
+
+    for (const registry of this.registries.values()) {
+      for (const [toolName, tool] of registry) {
+        if (contextTools && !contextTools.has(toolName)) continue;
+        const reason = this.getToolExclusionReason(toolName, tool, ctx);
+        if (!reason) {
+          counts.available++;
+          continue;
+        }
+        if (reason === 'readOnly') counts.byReadOnly++;
+        else if (reason === 'deniedRegex') counts.byDeniedRegex++;
+        else if (reason === 'scopes') counts.byScopes++;
+        else if (reason === 'tier') counts.byTier++;
+        else if (reason === 'actionDenial') counts.byActionDenial++;
+      }
+    }
+
+    return counts;
+  }
+
+  /**
    * Get filter statistics showing how tools were filtered
    * Used by whoami action to explain tool availability
    */
@@ -744,42 +787,14 @@ class RegistryManager {
     // toolLookupCache — the cache reflects whichever instance last called
     // refreshCache(), which may differ from the requested instanceUrl.
     const ctx = this.loadInstanceContext(instanceUrl);
-    let availableTools = 0;
-    let filteredByReadOnly = 0;
-    let filteredByDeniedRegex = 0;
-    let filteredByScopes = 0;
-    let filteredByTier = 0;
-    let filteredByActionDenial = 0;
-
-    for (const registry of this.registries.values()) {
-      for (const [toolName, tool] of registry) {
-        // In unreachable mode, only context tools are available
-        if (contextTools && !contextTools.has(toolName)) continue;
-
-        const reason = this.getToolExclusionReason(toolName, tool, ctx);
-        if (!reason) {
-          availableTools++;
-          continue;
-        }
-        switch (reason) {
-          case 'readOnly':
-            filteredByReadOnly++;
-            break;
-          case 'deniedRegex':
-            filteredByDeniedRegex++;
-            break;
-          case 'scopes':
-            filteredByScopes++;
-            break;
-          case 'tier':
-            filteredByTier++;
-            break;
-          case 'actionDenial':
-            filteredByActionDenial++;
-            break;
-        }
-      }
-    }
+    const {
+      available: availableTools,
+      byReadOnly: filteredByReadOnly,
+      byDeniedRegex: filteredByDeniedRegex,
+      byScopes: filteredByScopes,
+      byTier: filteredByTier,
+      byActionDenial: filteredByActionDenial,
+    } = this.aggregateFilterCounters(ctx, contextTools);
 
     return {
       available: availableTools,

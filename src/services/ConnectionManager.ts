@@ -646,6 +646,16 @@ export class ConnectionManager {
       previousHasGraphQL !== newScopeInfo.hasGraphQLAccess ||
       previousHasWrite !== newScopeInfo.hasWriteAccess;
 
+    // Re-check that the state entry is still the live one: a concurrent
+    // reinitialize() or reset() may have replaced / deleted it while we were
+    // awaiting detectTokenScopes() above.  Writing into a stale object would
+    // silently lose the refreshed scopes or corrupt a connection that is no
+    // longer active.
+    const currentState = this.instances.get(url);
+    if (currentState !== state) {
+      return false;
+    }
+
     // Always persist refreshed scope info (even when scopes haven't changed)
     // so non-scope metadata in TokenScopeInfo stays fresh
     state.tokenScopeInfo = newScopeInfo;
@@ -768,6 +778,11 @@ export class ConnectionManager {
     // save the live state and restore it if re-init fails.
     const previousUrl = this.currentInstanceUrl;
     const savedState = this.instances.get(newInstanceUrl);
+    // Only restore states that were successfully initialized; a placeholder
+    // entry written by doInitialize() before any network step completed is not
+    // a valid fallback — reinstate it would point currentInstanceUrl at an
+    // uninitialised connection.
+    const restorableState = savedState?.isInitialized ? savedState : undefined;
     this.initializePromises.delete(newInstanceUrl);
     this.introspectionPromises.delete(newInstanceUrl);
     this.instances.delete(newInstanceUrl);
@@ -789,12 +804,12 @@ export class ConnectionManager {
       // On failure: restore the best available state.
       // - Same-URL refresh: restore saved state for this URL
       // - URL switch: keep previousUrl as the active healthy instance
-      if (savedState) {
-        this.instances.set(newInstanceUrl, savedState);
+      if (restorableState) {
+        this.instances.set(newInstanceUrl, restorableState);
       }
       if (previousUrl && this.instances.has(previousUrl)) {
         this.currentInstanceUrl = previousUrl;
-      } else if (savedState) {
+      } else if (restorableState) {
         this.currentInstanceUrl = newInstanceUrl;
       }
       throw error;

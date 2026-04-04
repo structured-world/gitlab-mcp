@@ -34,8 +34,13 @@ import { isOAuthEnabled, getTokenContext, getGitLabApiUrlFromContext } from '../
 import { getRequestTracker } from '../logging/index';
 import { InstanceRegistry } from '../services/InstanceRegistry.js';
 
-// Dynamic require to avoid TypeScript analyzing complex undici types at compile time
+// Dynamic require to avoid TypeScript analyzing complex undici types at compile time.
+// We use undici.fetch() instead of the global fetch() to ensure the fetch function
+// and any custom dispatchers (Pool/Agent/ProxyAgent) come from the same undici version.
+// The global fetch() uses Node.js's bundled undici, which may be a different major version
+// than our npm package — causing "invalid onRequestStart method" dispatcher API mismatches.
 const undici = require('undici') as {
+  fetch: typeof globalThis.fetch;
   Agent: new (opts?: Record<string, unknown>) => unknown;
   ProxyAgent: new (opts: string | Record<string, unknown>) => unknown;
 };
@@ -542,7 +547,7 @@ async function doFetch(
   const requestTracker = getRequestTracker();
 
   try {
-    const response = await fetch(url, fetchOptions as RequestInit);
+    const response = await undici.fetch(url, fetchOptions as RequestInit);
 
     const duration = Date.now() - startTime;
     logDebug('GitLab API request completed', {

@@ -10,9 +10,13 @@ import {
   testConnection,
 } from '../../../../src/cli/init/connection';
 
-// Mock fetch for testConnection
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
+// Mock enhancedFetch used by testConnection
+jest.mock('../../../../src/utils/fetch', () => ({
+  enhancedFetch: jest.fn(),
+}));
+
+import { enhancedFetch } from '../../../../src/utils/fetch';
+const mockFetch = enhancedFetch as unknown as jest.Mock;
 
 describe('connection', () => {
   beforeEach(() => {
@@ -229,11 +233,10 @@ describe('connection', () => {
       expect(result.error).toContain('Network error');
     });
 
-    it('should return timeout error for AbortError', async () => {
-      // Covers line 86: AbortError handling
-      const abortError = new Error('The operation was aborted');
-      abortError.name = 'AbortError';
-      mockFetch.mockRejectedValueOnce(abortError);
+    it('should return timeout error for timeout errors', async () => {
+      // enhancedFetch converts timeouts to "GitLab API timeout" messages
+      const timeoutError = new Error('GitLab API timeout after 10000ms (connect phase)');
+      mockFetch.mockRejectedValueOnce(timeoutError);
 
       const result = await testConnection('https://gitlab.example.com', 'glpat-xxx');
 

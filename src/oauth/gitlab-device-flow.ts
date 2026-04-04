@@ -12,6 +12,7 @@ import { GITLAB_BASE_URL } from '../config';
 import { OAuthConfig } from './config';
 import { GitLabDeviceResponse, GitLabTokenResponse, GitLabUserInfo } from './types';
 import { logInfo, logWarn, logError, logDebug } from '../logger';
+import { enhancedFetch } from '../utils/fetch';
 
 /**
  * Device flow error types from GitLab
@@ -51,7 +52,7 @@ export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDev
   // Convert comma-separated scopes to space-separated (GitLab requirement)
   const scopes = config.gitlabScopes.replace(/,/g, ' ');
 
-  const response = await fetch(url, {
+  const response = await enhancedFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -61,6 +62,9 @@ export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDev
       client_id: config.gitlabClientId,
       scope: scopes,
     }),
+    retry: false,
+    skipAuth: true,
+    rateLimit: false,
   });
 
   if (!response.ok) {
@@ -108,13 +112,16 @@ export async function pollDeviceFlowOnce(
     params.client_secret = config.gitlabClientSecret;
   }
 
-  const response = await fetch(url, {
+  const response = await enhancedFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
+    retry: false,
+    skipAuth: true,
+    rateLimit: false,
   });
 
   if (response.ok) {
@@ -235,13 +242,16 @@ export async function refreshGitLabToken(
 
   logDebug('Refreshing GitLab token');
 
-  const response = await fetch(url, {
+  const response = await enhancedFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
+    retry: false,
+    skipAuth: true,
+    rateLimit: false,
   });
 
   if (!response.ok) {
@@ -267,11 +277,14 @@ export async function refreshGitLabToken(
 export async function getGitLabUser(accessToken: string): Promise<GitLabUserInfo> {
   const url = `${GITLAB_BASE_URL}/api/v4/user`;
 
-  const response = await fetch(url, {
+  const response = await enhancedFetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: 'application/json',
     },
+    retry: false,
+    skipAuth: true,
+    rateLimit: false,
   });
 
   if (!response.ok) {
@@ -304,11 +317,14 @@ export async function validateGitLabToken(accessToken: string): Promise<boolean>
   try {
     const url = `${GITLAB_BASE_URL}/api/v4/user`;
 
-    const response = await fetch(url, {
+    const response = await enhancedFetch(url, {
       method: 'HEAD',
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
+      retry: false,
+      skipAuth: true,
+      rateLimit: false,
     });
 
     return response.ok;
@@ -349,13 +365,16 @@ export async function exchangeGitLabAuthCode(
 
   logDebug('Exchanging GitLab authorization code for tokens', { redirectUri });
 
-  const response = await fetch(url, {
+  const response = await enhancedFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
+    retry: false,
+    skipAuth: true,
+    rateLimit: false,
   });
 
   if (!response.ok) {

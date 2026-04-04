@@ -25,9 +25,18 @@ import {
 } from '../../../src/utils/fetch';
 import { InstanceRegistry } from '../../../src/services/InstanceRegistry';
 
-// Mock global fetch
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
+// Mock undici (provides fetch, Agent, ProxyAgent, Pool used across modules)
+jest.mock('undici', () => ({
+  fetch: jest.fn(),
+  Agent: jest.fn(() => ({ type: 'agent' })),
+  ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+  Pool: jest.fn(() => ({
+    stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
+    destroy: jest.fn().mockResolvedValue(undefined),
+  })),
+}));
+
+const mockFetch = require('undici').fetch as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -127,6 +136,15 @@ describe('Fetch Utils Coverage Tests', () => {
 
       // Reset modules to force re-import with new environment variable
       jest.resetModules();
+      jest.doMock('undici', () => ({
+        fetch: mockFetch,
+        Agent: jest.fn(() => ({ type: 'agent' })),
+        ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+        Pool: jest.fn(() => ({
+          stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
+          destroy: jest.fn().mockResolvedValue(undefined),
+        })),
+      }));
 
       // Mock fs to simulate cookie file exists
       const fs = require('fs');
@@ -161,6 +179,15 @@ describe('Fetch Utils Coverage Tests', () => {
 
       // Reset modules to force re-import with new environment variable
       jest.resetModules();
+      jest.doMock('undici', () => ({
+        fetch: mockFetch,
+        Agent: jest.fn(() => ({ type: 'agent' })),
+        ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+        Pool: jest.fn(() => ({
+          stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
+          destroy: jest.fn().mockResolvedValue(undefined),
+        })),
+      }));
 
       // Mock fs to simulate error reading cookie file
       const fs = require('fs');
@@ -193,6 +220,15 @@ describe('Fetch Utils Coverage Tests', () => {
 
       // Reset modules to force re-import with new environment variable
       jest.resetModules();
+      jest.doMock('undici', () => ({
+        fetch: mockFetch,
+        Agent: jest.fn(() => ({ type: 'agent' })),
+        ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+        Pool: jest.fn(() => ({
+          stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
+          destroy: jest.fn().mockResolvedValue(undefined),
+        })),
+      }));
 
       // Mock fs to simulate malformed cookie file
       const fs = require('fs');
@@ -227,6 +263,15 @@ describe('Fetch Utils Coverage Tests', () => {
 
       // Reset modules to force re-import with new environment variable
       jest.resetModules();
+      jest.doMock('undici', () => ({
+        fetch: mockFetch,
+        Agent: jest.fn(() => ({ type: 'agent' })),
+        ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+        Pool: jest.fn(() => ({
+          stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
+          destroy: jest.fn().mockResolvedValue(undefined),
+        })),
+      }));
 
       // Mock fs to simulate empty cookie file
       const fs = require('fs');
@@ -256,6 +301,15 @@ describe('Fetch Utils Coverage Tests', () => {
 
       // Reset modules to force re-import with new environment variable
       jest.resetModules();
+      jest.doMock('undici', () => ({
+        fetch: mockFetch,
+        Agent: jest.fn(() => ({ type: 'agent' })),
+        ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+        Pool: jest.fn(() => ({
+          stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
+          destroy: jest.fn().mockResolvedValue(undefined),
+        })),
+      }));
 
       // Mock fs to simulate cookie file with only comments
       const fs = require('fs');
@@ -357,6 +411,15 @@ describe('Fetch Utils Coverage Tests', () => {
 
       // Reset modules to force re-import with new environment variable
       jest.resetModules();
+      jest.doMock('undici', () => ({
+        fetch: mockFetch,
+        Agent: jest.fn(() => ({ type: 'agent' })),
+        ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+        Pool: jest.fn(() => ({
+          stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
+          destroy: jest.fn().mockResolvedValue(undefined),
+        })),
+      }));
 
       // Mock fs to simulate CA cert file exists
       const fs = require('fs');
@@ -437,6 +500,11 @@ describe('Fetch Utils Coverage Tests', () => {
 
         // Reset modules to test DEFAULT_HEADERS without token
         jest.resetModules();
+        jest.doMock('undici', () => ({
+          fetch: mockFetch,
+          Agent: jest.fn(() => ({ type: 'agent' })),
+          ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+        }));
         const { DEFAULT_HEADERS } = require('../../../src/utils/fetch');
 
         expect(DEFAULT_HEADERS.Authorization).toBeUndefined();
@@ -472,6 +540,17 @@ describe('Fetch Utils Coverage Tests', () => {
 
   describe('per-instance dispatcher integration', () => {
     beforeEach(async () => {
+      // Re-register undici mock to ensure Pool is available after any resetModules
+      jest.doMock('undici', () => ({
+        fetch: mockFetch,
+        Agent: jest.fn(() => ({ type: 'agent' })),
+        ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+        Pool: jest.fn(() => ({
+          stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
+          destroy: jest.fn().mockResolvedValue(undefined),
+        })),
+      }));
+
       // Reset InstanceRegistry to ensure clean state for each test
       await InstanceRegistry.getInstance().resetWithPools();
     });
@@ -569,7 +648,6 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should use rateLimitBaseUrl option when provided', async () => {
-      const { InstanceRegistry } = await import('../../../src/services/InstanceRegistry');
       const registry = InstanceRegistry.getInstance();
       await registry.initialize();
 
@@ -577,8 +655,6 @@ describe('Fetch Utils Coverage Tests', () => {
         url: 'https://custom.gitlab.com',
         insecureSkipVerify: false,
       });
-
-      registry.getGraphQLClient('https://custom.gitlab.com');
 
       mockFetch.mockResolvedValue({
         ok: true,

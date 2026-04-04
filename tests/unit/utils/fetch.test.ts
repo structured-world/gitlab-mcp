@@ -24,6 +24,15 @@ jest.mock('../../../src/config', () => ({
   API_RETRY_MAX_DELAY_MS: 400,
 }));
 
+// Mock undici - provides fetch, Agent, ProxyAgent used by doFetch()
+jest.mock('undici', () => ({
+  fetch: jest.fn(),
+  Agent: jest.fn(() => ({ type: 'agent' })),
+  ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+}));
+
+const mockUndiciFetch = require('undici').fetch as jest.MockedFunction<typeof fetch>;
+
 // Mock dependencies
 jest.mock('fs');
 jest.mock('https');
@@ -55,13 +64,7 @@ const { enhancedFetch, createFetchOptions, DEFAULT_HEADERS, getAuthHeaders, extr
 const { isOAuthEnabled, getTokenContext } = require('../../../src/oauth/index');
 
 describe('Enhanced Fetch Utilities', () => {
-  let mockFetch: jest.MockedFunction<typeof fetch>;
-
-  beforeAll(() => {
-    // Mock the global fetch function
-    mockFetch = jest.fn();
-    global.fetch = mockFetch;
-  });
+  const mockFetch = mockUndiciFetch;
 
   afterAll(() => {
     jest.restoreAllMocks();

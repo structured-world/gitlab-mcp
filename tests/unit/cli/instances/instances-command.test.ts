@@ -9,6 +9,14 @@ import {
 import * as instancesLoader from '../../../../src/config/instances-loader';
 import { InstanceRegistry } from '../../../../src/services/InstanceRegistry';
 
+// Mock enhancedFetch used by instances-command
+jest.mock('../../../../src/utils/fetch', () => ({
+  enhancedFetch: jest.fn(),
+}));
+
+import { enhancedFetch } from '../../../../src/utils/fetch';
+const mockEnhancedFetch = enhancedFetch as unknown as jest.Mock;
+
 // Mock dependencies
 jest.mock('../../../../src/config/instances-loader');
 jest.mock('../../../../src/services/InstanceRegistry');
@@ -226,14 +234,14 @@ describe('instances-command', () => {
       });
 
       it('should test specific URL when provided', async () => {
-        global.fetch = jest.fn().mockResolvedValue({
+        mockEnhancedFetch.mockResolvedValue({
           ok: true,
           json: async () => ({ version: '16.5.0', revision: 'abc123' }),
         });
 
         await runInstanceCommand(['test', 'https://custom.gitlab.com']);
 
-        expect(global.fetch).toHaveBeenCalledWith(
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
           'https://custom.gitlab.com/api/v4/version',
           expect.any(Object),
         );
@@ -243,18 +251,18 @@ describe('instances-command', () => {
       it('should test all instances when no URL provided', async () => {
         mockRegistry.getUrls.mockReturnValue(['https://gitlab.com', 'https://git.corp.io']);
 
-        global.fetch = jest.fn().mockResolvedValue({
+        mockEnhancedFetch.mockResolvedValue({
           ok: true,
           json: async () => ({ version: '16.5.0' }),
         });
 
         await runInstanceCommand(['test']);
 
-        expect(global.fetch).toHaveBeenCalledTimes(2);
+        expect(mockEnhancedFetch).toHaveBeenCalledTimes(2);
       });
 
       it('should handle 401 response as reachable', async () => {
-        global.fetch = jest.fn().mockResolvedValue({
+        mockEnhancedFetch.mockResolvedValue({
           ok: false,
           status: 401,
         });
@@ -265,7 +273,7 @@ describe('instances-command', () => {
       });
 
       it('should handle HTTP errors', async () => {
-        global.fetch = jest.fn().mockResolvedValue({
+        mockEnhancedFetch.mockResolvedValue({
           ok: false,
           status: 500,
         });
@@ -276,7 +284,7 @@ describe('instances-command', () => {
       });
 
       it('should handle network errors', async () => {
-        global.fetch = jest.fn().mockRejectedValue(new Error('Connection refused'));
+        mockEnhancedFetch.mockRejectedValue(new Error('Connection refused'));
 
         await runInstanceCommand(['test', 'https://gitlab.com']);
 

@@ -212,7 +212,9 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
       }
       const reachable = await quickHealthCheck(input.instanceUrl, remainingMs);
       if (!reachable) {
-        throw new Error('Health check failed: instance unreachable after degraded init');
+        throw new Error(
+          `Health check failed for ${input.instanceUrl}: instance unreachable after degraded init`,
+        );
       }
     }
     return { degraded: isDegraded };

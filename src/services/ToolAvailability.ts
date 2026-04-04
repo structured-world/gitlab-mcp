@@ -482,7 +482,8 @@ export class ToolAvailability {
    *
    * @precondition Caller must exclude context/local tools (e.g. manage_context)
    * before calling — those bypass version/tier filtering at the registry level.
-   * Unknown tools fall through to a conservative >= 15.0 gate.
+   * When version is unknown, all tools are allowed (detected later).
+   * Known-version unknown tools fall through to a conservative >= 15.0 gate.
    */
   public static isToolAvailableForInstance(
     toolName: string,

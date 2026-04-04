@@ -156,7 +156,10 @@ function createDispatcher(): unknown {
     // timeout budget (AbortSignal.timeout would be one-shot on a cached agent).
     return new undici.ProxyAgent({
       uri: proxyUrl,
-      requestTls: hasTlsConfig ? tlsOptions : undefined,
+      // requestTls: upstream TLS handshake after CONNECT tunnel established
+      // proxyTls: TLS handshake to the proxy itself (if HTTPS proxy)
+      // Both need connect timeout to fully bound HTTPS-over-proxy connections.
+      requestTls: hasTlsConfig ? { ...tlsOptions, timeout: CONNECT_TIMEOUT_MS } : undefined,
       proxyTls: { timeout: CONNECT_TIMEOUT_MS },
       headersTimeout: HEADERS_TIMEOUT_MS,
       bodyTimeout: BODY_TIMEOUT_MS,

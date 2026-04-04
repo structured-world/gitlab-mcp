@@ -114,4 +114,15 @@ describe('normalizeInstanceUrl', () => {
     expect(normalizeInstanceUrl('not-a-url')).toBe('not-a-url');
     expect(normalizeInstanceUrl('/just/a/path/api/v4')).toBe('/just/a/path');
   });
+
+  it('should strip query/fragment and re-strip API suffix after URL parsing', () => {
+    // URL constructor drops query/fragment but preserves pathname — second suffix
+    // strip pass catches the remaining /api/v4
+    expect(normalizeInstanceUrl('https://host.com/api/v4?private_token=x')).toBe(
+      'https://host.com',
+    );
+    expect(normalizeInstanceUrl('https://host.com/gitlab/api/graphql#section')).toBe(
+      'https://host.com/gitlab',
+    );
+  });
 });

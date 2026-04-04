@@ -480,6 +480,8 @@ describe('HealthMonitor', () => {
       const p1 = monitor.initialize(TEST_URL);
       const p2 = monitor.initialize(TEST_URL);
 
+      // Flush XState microtasks so the actor invoke reaches mockInitialize
+      await Promise.resolve();
       // Resolve the pending init
       resolveInit();
       await Promise.all([p1, p2]);
@@ -803,12 +805,14 @@ describe('HealthMonitor', () => {
       expect(monitor.isAnyInstanceHealthy()).toBe(false);
     });
 
-    it('should treat connecting (pending initialize) as healthy', () => {
+    it('should treat connecting (pending initialize) as healthy', async () => {
       // Initialize hangs — actor stays in connecting state
       mockInitialize.mockImplementation(() => new Promise<never>(() => {}));
       const monitor = HealthMonitor.getInstance();
       // Start initialize but don't await — actor is in connecting state
       void monitor.initialize(TEST_URL);
+      // Flush XState microtasks so the actor is created
+      await Promise.resolve();
       // connecting is treated as healthy to avoid context-only tools during startup
       expect(monitor.isAnyInstanceHealthy()).toBe(true);
     });

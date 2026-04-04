@@ -347,8 +347,11 @@ export const TRUST_PROXY = process.env.TRUST_PROXY;
 // configs are parsed through this helper to enforce the ceiling.
 export const MAX_SAFE_TIMEOUT_MS = 2_147_483_647;
 function parseTimerMs(envValue: string | undefined, fallback: number): number {
-  const parsed = Number.parseInt(envValue ?? String(fallback), 10);
-  return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, MAX_SAFE_TIMEOUT_MS) : fallback;
+  const raw = envValue ?? String(fallback);
+  // Strict: only accept pure digit strings to avoid parseInt("120s") → 120
+  if (!/^\d+$/.test(raw)) return fallback;
+  const parsed = Number(raw);
+  return parsed > 0 ? Math.min(parsed, MAX_SAFE_TIMEOUT_MS) : fallback;
 }
 
 // SSE heartbeat interval (in milliseconds)

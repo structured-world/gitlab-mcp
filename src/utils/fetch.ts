@@ -151,12 +151,18 @@ function createDispatcher(): unknown {
   // HTTP/HTTPS proxy — apply same Undici timeouts as direct Agent
   if (proxyUrl) {
     logInfo(`Using proxy: ${proxyUrl}`);
+    // ProxyAgent in Undici v8 does not support the `connect` option (only Agent/Pool do).
+    // Use numeric timeout in proxyTls so each new proxy connection gets its own
+    // timeout budget (AbortSignal.timeout would be one-shot on a cached agent).
     return new undici.ProxyAgent({
       uri: proxyUrl,
-      requestTls: hasTlsConfig ? tlsOptions : undefined,
+      // requestTls: upstream TLS handshake after CONNECT tunnel established
+      // proxyTls: TLS handshake to the proxy itself (if HTTPS proxy)
+      // Both need connect timeout to fully bound HTTPS-over-proxy connections.
+      requestTls: { ...(hasTlsConfig ? tlsOptions : {}), timeout: CONNECT_TIMEOUT_MS },
+      proxyTls: { timeout: CONNECT_TIMEOUT_MS },
       headersTimeout: HEADERS_TIMEOUT_MS,
       bodyTimeout: BODY_TIMEOUT_MS,
-      connect: { timeout: CONNECT_TIMEOUT_MS },
     });
   }
 
@@ -270,6 +276,8 @@ export interface FetchWithRetryOptions extends RequestInit {
   rateLimit?: boolean;
   /** Override the base URL for rate limit slot acquisition (derived from request URL if not specified) */
   rateLimitBaseUrl?: string;
+  /** Skip auth headers — for intentionally unauthenticated probes (health checks, version detection) */
+  skipAuth?: boolean;
 }
 
 /**
@@ -467,10 +475,12 @@ async function doFetch(
   url: string,
   options: RequestInit = {},
   instanceDispatcher?: unknown,
+  skipAuth = false,
 ): Promise<Response> {
   // Use per-instance dispatcher if provided, otherwise fall back to global
   const dispatcher = instanceDispatcher ?? getDispatcher();
-  const cookieHeader = loadCookieHeader();
+  // skipAuth also skips cookie-based auth — health probes must be fully unauthenticated
+  const cookieHeader = skipAuth ? null : loadCookieHeader();
 
   // For FormData, don't set Content-Type - let fetch set it with proper boundary
   const isFormData = options.body instanceof FormData;
@@ -478,7 +488,9 @@ async function doFetch(
     ? { 'User-Agent': DEFAULT_HEADERS['User-Agent'], Accept: DEFAULT_HEADERS.Accept }
     : { ...DEFAULT_HEADERS };
 
-  const headers: Record<string, string> = { ...baseHeaders, ...getAuthHeaders() };
+  const headers: Record<string, string> = skipAuth
+    ? { ...baseHeaders }
+    : { ...baseHeaders, ...getAuthHeaders() };
 
   if (options.headers) {
     if (options.headers instanceof Headers) {
@@ -491,6 +503,16 @@ async function doFetch(
       }
     } else {
       Object.assign(headers, options.headers);
+    }
+  }
+
+  // skipAuth: strip credential headers case-insensitively (RFC 7230)
+  if (skipAuth) {
+    for (const key of Object.keys(headers)) {
+      const lower = key.toLowerCase();
+      if (lower === 'authorization' || lower === 'private-token' || lower === 'cookie') {
+        delete headers[key];
+      }
     }
   }
 
@@ -718,6 +740,7 @@ export async function enhancedFetch(
     maxRetries: _maxRetries,
     rateLimit: _rateLimit,
     rateLimitBaseUrl: _rateLimitBaseUrl,
+    skipAuth: _skipAuth,
     ...fetchOptions
   } = options;
 
@@ -774,15 +797,16 @@ export async function enhancedFetch(
 
   try {
     // If retry is disabled, just do a single fetch
+    const unauthenticated = _skipAuth === true;
     if (!shouldRetry || maxRetries <= 0) {
-      return await doFetch(url, fetchOptions, instanceDispatcher);
+      return await doFetch(url, fetchOptions, instanceDispatcher, unauthenticated);
     }
 
     let lastError: Error | null = null;
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const response = await doFetch(url, fetchOptions, instanceDispatcher);
+        const response = await doFetch(url, fetchOptions, instanceDispatcher, unauthenticated);
 
         // Check if response status is retryable (5xx, 429)
         if (isRetryableStatus(response.status) && attempt < maxRetries) {

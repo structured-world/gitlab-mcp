@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { logInfo, logWarn, logDebug } from '../logger';
 import { GITLAB_BASE_URL, GITLAB_TOKEN } from '../config';
 import { enhancedFetch } from '../utils/fetch';
+import { normalizeInstanceUrl } from '../utils/url';
 
 /**
  * GitLab token types that can be detected
@@ -169,6 +170,44 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   browse_iterations: ['api', 'read_api'],
 };
 
+/** Log the appropriate message for a non-OK token self-introspection status. */
+function logTokenSelfIntrospectionError(status: number, url: string): void {
+  if (status === 404) {
+    logDebug('Token self-introspection endpoint not available (older GitLab version)', { url });
+  } else if (status === 401) {
+    logInfo('Token is invalid or expired', { url });
+  } else if (status === 403) {
+    logDebug('Token self-introspection not permitted for this token type', { url });
+  } else {
+    logDebug('Unexpected response from token self-introspection', { status, url });
+  }
+}
+
+/** Parse YYYY-MM-DD expiry date to days remaining (UTC). Returns null on invalid input. */
+function computeDaysUntilExpiry(expiresAt: string | null): number | null {
+  if (!expiresAt) return null;
+  const [yearStr, monthStr, dayStr] = expiresAt.split('-');
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+  if (Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return null;
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  // Validate calendar-correctness: Date.UTC normalizes invalid dates (e.g. Feb 31 → Mar 3),
+  // so roundtrip-check that the constructed date matches the input components.
+  const expiry = new Date(Date.UTC(year, month - 1, day));
+  if (
+    expiry.getUTCFullYear() !== year ||
+    expiry.getUTCMonth() !== month - 1 ||
+    expiry.getUTCDate() !== day
+  ) {
+    return null;
+  }
+  const expiryUtcMs = expiry.getTime();
+  const now = new Date();
+  const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  return Math.ceil((expiryUtcMs - todayUtcMs) / (1000 * 60 * 60 * 24));
+}
+
 /**
  * Detect token scopes by calling GET /api/v4/personal_access_tokens/self
  *
@@ -182,36 +221,23 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
  *
  * @returns TokenScopeInfo or null if detection fails
  */
-export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
-  if (!GITLAB_BASE_URL || !GITLAB_TOKEN) {
+export async function detectTokenScopes(baseUrl?: string): Promise<TokenScopeInfo | null> {
+  const url = normalizeInstanceUrl(baseUrl ?? GITLAB_BASE_URL);
+  if (!url || !GITLAB_TOKEN) {
     return null;
   }
 
   try {
-    const response = await enhancedFetch(`${GITLAB_BASE_URL}/api/v4/personal_access_tokens/self`, {
+    const response = await enhancedFetch(`${url}/api/v4/personal_access_tokens/self`, {
       headers: {
         'PRIVATE-TOKEN': GITLAB_TOKEN,
         Accept: 'application/json',
       },
-      retry: false, // Don't retry scope detection - it runs at startup
+      retry: false,
     });
 
     if (!response.ok) {
-      // 401 = invalid token, 403 = insufficient permissions, 404 = endpoint not available
-      if (response.status === 404) {
-        logDebug('Token self-introspection endpoint not available (older GitLab version)');
-        return null;
-      }
-      if (response.status === 401) {
-        logInfo('Token is invalid or expired');
-        return null;
-      }
-      if (response.status === 403) {
-        // Some token types (e.g. deploy tokens) can't self-introspect
-        logDebug('Token self-introspection not permitted for this token type');
-        return null;
-      }
-      logDebug('Unexpected response from token self-introspection', { status: response.status });
+      logTokenSelfIntrospectionError(response.status, url);
       return null;
     }
 
@@ -219,6 +245,7 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
     const parsed = TokenSelfResponseSchema.safeParse(raw);
     if (!parsed.success) {
       logDebug('Token self-introspection response validation failed', {
+        url,
         error: parsed.error.message,
       });
       return null;
@@ -229,40 +256,19 @@ export async function detectTokenScopes(): Promise<TokenScopeInfo | null> {
     const hasGraphQLAccess = scopes.some((s) => s === 'api' || s === 'read_api');
     const hasWriteAccess = scopes.includes('api');
 
-    // Calculate days until expiry using UTC dates to avoid timezone off-by-one errors.
-    // expires_at is a date-only string (YYYY-MM-DD) — parse as UTC midnight.
-    let daysUntilExpiry: number | null = null;
-    if (data.expires_at) {
-      const [yearStr, monthStr, dayStr] = data.expires_at.split('-');
-      const year = Number(yearStr);
-      const month = Number(monthStr);
-      const day = Number(dayStr);
-
-      if (!Number.isNaN(year) && !Number.isNaN(month) && !Number.isNaN(day)) {
-        const expiryUtcMs = Date.UTC(year, month - 1, day);
-        const now = new Date();
-        const todayUtcMs = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
-        daysUntilExpiry = Math.ceil((expiryUtcMs - todayUtcMs) / (1000 * 60 * 60 * 24));
-      }
-    }
-
-    // /personal_access_tokens/self works for PAT, project, and group tokens,
-    // but the type cannot be reliably inferred from user-controlled fields.
-    const tokenType: GitLabTokenType = 'unknown';
-
     return {
       name: data.name,
       scopes,
       expiresAt: data.expires_at,
       active: data.active && !data.revoked,
-      tokenType,
+      tokenType: 'unknown',
       hasGraphQLAccess,
       hasWriteAccess,
-      daysUntilExpiry,
+      daysUntilExpiry: computeDaysUntilExpiry(data.expires_at),
     };
   } catch (error) {
-    // Network errors, DNS failures, etc. - don't block startup
     logDebug('Token scope detection failed (network error)', {
+      url,
       error: error instanceof Error ? error.message : String(error),
     });
     return null;
@@ -333,7 +339,12 @@ export function getTokenCreationUrl(
 /**
  * Log a clean, user-friendly startup message about token scopes
  */
-export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): void {
+export function logTokenScopeInfo(
+  info: TokenScopeInfo,
+  totalTools: number,
+  baseUrl: string = GITLAB_BASE_URL,
+): void {
+  const url = normalizeInstanceUrl(baseUrl);
   const availableTools = getToolsForScopes(info.scopes);
   const scopeList = info.scopes.join(', ');
 
@@ -341,16 +352,19 @@ export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): voi
   if (info.daysUntilExpiry !== null && info.daysUntilExpiry <= 7) {
     if (info.daysUntilExpiry < 0) {
       logWarn(`Token "${info.name}" has expired! Please create a new token.`, {
+        url,
         tokenName: info.name,
         expiresAt: info.expiresAt,
       });
     } else if (info.daysUntilExpiry === 0) {
       logWarn(`Token "${info.name}" expires today!`, {
+        url,
         tokenName: info.name,
         expiresAt: info.expiresAt,
       });
     } else {
       logWarn(`Token "${info.name}" expires in ${info.daysUntilExpiry} day(s)`, {
+        url,
         tokenName: info.name,
         daysUntilExpiry: info.daysUntilExpiry,
         expiresAt: info.expiresAt,
@@ -361,6 +375,7 @@ export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): voi
   if (info.hasWriteAccess) {
     // Full access (api scope) - brief message
     logInfo(`Token "${info.name}" detected`, {
+      url,
       tokenName: info.name,
       scopes: scopeList,
       expiresAt: info.expiresAt ?? 'never',
@@ -370,6 +385,7 @@ export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): voi
     logInfo(
       `Token "${info.name}" has limited scopes - ${availableTools.length} of ${totalTools} scope-gated tools available`,
       {
+        url,
         tokenName: info.name,
         scopes: scopeList,
         availableTools: availableTools.length,
@@ -378,10 +394,13 @@ export function logTokenScopeInfo(info: TokenScopeInfo, totalTools: number): voi
     );
 
     if (!info.hasGraphQLAccess) {
-      logInfo("GraphQL introspection skipped (requires 'api' or 'read_api' scope)");
+      logInfo("GraphQL introspection skipped (requires 'api' or 'read_api' scope)", { url });
     }
 
-    const fixUrl = getTokenCreationUrl(GITLAB_BASE_URL);
-    logInfo(`For full functionality, create a token with 'api' scope: ${fixUrl}`, { url: fixUrl });
+    const fixUrl = getTokenCreationUrl(url);
+    logInfo(`For full functionality, create a token with 'api' scope: ${fixUrl}`, {
+      url,
+      fixUrl,
+    });
   }
 }

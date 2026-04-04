@@ -1824,7 +1824,7 @@ describe('handlers', () => {
       // bootstrapStarted=true and bootstrapComplete=false → HealthMonitor and clearInflight are called
       expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(
         'https://gitlab.example.com',
-        expect.any(Error),
+        expect.objectContaining({ message: expect.stringContaining('timed out') }),
       );
       expect(mockConnectionManager.clearInflight).toHaveBeenCalledWith(
         'https://gitlab.example.com',
@@ -1854,7 +1854,10 @@ describe('handlers', () => {
 
       expect(result.isError).toBe(true);
       expect(JSON.parse(result.content![0].text).error_code).toBe('TIMEOUT');
-      expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(oauthUrl, expect.any(Error));
+      expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(
+        oauthUrl,
+        expect.objectContaining({ message: expect.stringContaining('timed out') }),
+      );
       expect(mockConnectionManager.clearInflight).toHaveBeenCalledWith(oauthUrl);
 
       // Restore

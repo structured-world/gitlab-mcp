@@ -526,20 +526,20 @@ export class ConnectionManager {
   }
 
   public getInstanceInfo(instanceUrl?: string): GitLabInstanceInfo {
-    const [state] = this.resolveState(instanceUrl);
+    const [state, resolvedUrl] = this.resolveState(instanceUrl);
     if (!state.instanceInfo) {
       throw new Error(
-        'Instance information is not available. Initialization may have completed without version detection (OAuth deferred/REST-only mode).',
+        `Instance information is not available for ${resolvedUrl}. Initialization may have completed without version detection (OAuth deferred/REST-only mode).`,
       );
     }
     return state.instanceInfo;
   }
 
   public getSchemaInfo(instanceUrl?: string): SchemaInfo {
-    const [state] = this.resolveState(instanceUrl);
+    const [state, resolvedUrl] = this.resolveState(instanceUrl);
     if (!state.schemaInfo) {
       throw new Error(
-        'Schema information is not available. Initialization may have completed without schema introspection.',
+        `Schema information is not available for ${resolvedUrl}. Initialization may have completed without schema introspection.`,
       );
     }
     return state.schemaInfo;

@@ -346,12 +346,18 @@ export const TRUST_PROXY = process.env.TRUST_PROXY;
 // Larger values silently clamp to 1ms, causing tight loops. All timer-backed
 // configs are parsed through this helper to enforce the ceiling.
 export const MAX_SAFE_TIMEOUT_MS = 2_147_483_647;
-function parseTimerMs(envValue: string | undefined, fallback: number): number {
+
+/** Strict integer parse — rejects partial matches like "120s" or "1e3". */
+function parseStrictInt(envValue: string | undefined, fallback: number): number {
   const raw = envValue ?? String(fallback);
-  // Strict: only accept pure digit strings to avoid parseInt("120s") → 120
   if (!/^\d+$/.test(raw)) return fallback;
   const parsed = Number(raw);
-  return parsed > 0 ? Math.min(parsed, MAX_SAFE_TIMEOUT_MS) : fallback;
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+function parseTimerMs(envValue: string | undefined, fallback: number): number {
+  const parsed = parseStrictInt(envValue, fallback);
+  return Math.min(parsed, MAX_SAFE_TIMEOUT_MS);
 }
 
 // SSE heartbeat interval (in milliseconds)
@@ -408,30 +414,17 @@ export const HEALTH_CHECK_INTERVAL_MS = parseTimerMs(
 );
 
 // Consecutive transient failures before transitioning to DISCONNECTED
-const parsedFailureThreshold = Number.parseInt(process.env.GITLAB_FAILURE_THRESHOLD ?? '3', 10);
-export const FAILURE_THRESHOLD =
-  Number.isFinite(parsedFailureThreshold) && parsedFailureThreshold > 0
-    ? parsedFailureThreshold
-    : 3;
+export const FAILURE_THRESHOLD = parseStrictInt(process.env.GITLAB_FAILURE_THRESHOLD, 3);
 
 // === Connection pool configuration ===
 // Max HTTP connections per GitLab instance (default: 25, up from 10)
-const parsedPoolMaxConnections = Number.parseInt(
-  process.env.GITLAB_POOL_MAX_CONNECTIONS ?? '25',
-  10,
-);
-export const POOL_MAX_CONNECTIONS =
-  Number.isFinite(parsedPoolMaxConnections) && parsedPoolMaxConnections > 0
-    ? parsedPoolMaxConnections
-    : 25;
+export const POOL_MAX_CONNECTIONS = parseStrictInt(process.env.GITLAB_POOL_MAX_CONNECTIONS, 25);
 
 // Retry configuration for idempotent operations (GET/HEAD/OPTIONS requests by default)
 // Retries on: timeouts, network errors, 5xx server errors, 429 rate limits
 export const API_RETRY_ENABLED = process.env.GITLAB_API_RETRY_ENABLED !== 'false';
 
-const parsedMaxAttempts = Number.parseInt(process.env.GITLAB_API_RETRY_MAX_ATTEMPTS ?? '3', 10);
-export const API_RETRY_MAX_ATTEMPTS =
-  Number.isFinite(parsedMaxAttempts) && parsedMaxAttempts >= 0 ? parsedMaxAttempts : 3;
+export const API_RETRY_MAX_ATTEMPTS = parseStrictInt(process.env.GITLAB_API_RETRY_MAX_ATTEMPTS, 3);
 
 export const API_RETRY_BASE_DELAY_MS = parseTimerMs(
   process.env.GITLAB_API_RETRY_BASE_DELAY_MS,
@@ -443,9 +436,10 @@ export const API_RETRY_MAX_DELAY_MS = parseTimerMs(process.env.GITLAB_API_RETRY_
 // Per-IP rate limiting (for anonymous requests) - enabled by default
 export const RATE_LIMIT_IP_ENABLED = process.env.RATE_LIMIT_IP_ENABLED !== 'false';
 export const RATE_LIMIT_IP_WINDOW_MS = parseTimerMs(process.env.RATE_LIMIT_IP_WINDOW_MS, 60000); // 1 minute
-const parsedIpMaxRequests = Number.parseInt(process.env.RATE_LIMIT_IP_MAX_REQUESTS ?? '100', 10);
-export const RATE_LIMIT_IP_MAX_REQUESTS =
-  Number.isFinite(parsedIpMaxRequests) && parsedIpMaxRequests > 0 ? parsedIpMaxRequests : 100;
+export const RATE_LIMIT_IP_MAX_REQUESTS = parseStrictInt(
+  process.env.RATE_LIMIT_IP_MAX_REQUESTS,
+  100,
+);
 
 // Per-session rate limiting (for authenticated requests) - disabled by default
 export const RATE_LIMIT_SESSION_ENABLED = process.env.RATE_LIMIT_SESSION_ENABLED === 'true';
@@ -453,14 +447,10 @@ export const RATE_LIMIT_SESSION_WINDOW_MS = parseTimerMs(
   process.env.RATE_LIMIT_SESSION_WINDOW_MS,
   60000,
 );
-const parsedSessionMaxRequests = Number.parseInt(
-  process.env.RATE_LIMIT_SESSION_MAX_REQUESTS ?? '300',
-  10,
+export const RATE_LIMIT_SESSION_MAX_REQUESTS = parseStrictInt(
+  process.env.RATE_LIMIT_SESSION_MAX_REQUESTS,
+  300,
 );
-export const RATE_LIMIT_SESSION_MAX_REQUESTS =
-  Number.isFinite(parsedSessionMaxRequests) && parsedSessionMaxRequests > 0
-    ? parsedSessionMaxRequests
-    : 300;
 
 // Transport mode selection:
 // - If PORT env var is present: HTTP mode with dual transport (SSE + StreamableHTTP)

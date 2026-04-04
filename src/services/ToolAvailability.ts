@@ -447,6 +447,10 @@ export class ToolAvailability {
     try {
       const instanceInfo = connectionManager.getInstanceInfo();
 
+      // When version is unknown (REST fallback, OAuth deferred), allow all tools
+      // rather than filtering them out — consistent with isToolAvailableForInstance
+      if (instanceInfo.version === 'unknown') return true;
+
       const actionReq = this.getActionRequirement(toolName, action);
       if (actionReq) {
         const version = parseVersion(instanceInfo.version);

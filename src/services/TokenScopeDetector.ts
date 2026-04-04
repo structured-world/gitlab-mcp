@@ -245,6 +245,7 @@ export async function detectTokenScopes(baseUrl?: string): Promise<TokenScopeInf
     const parsed = TokenSelfResponseSchema.safeParse(raw);
     if (!parsed.success) {
       logDebug('Token self-introspection response validation failed', {
+        url,
         error: parsed.error.message,
       });
       return null;
@@ -267,6 +268,7 @@ export async function detectTokenScopes(baseUrl?: string): Promise<TokenScopeInf
     };
   } catch (error) {
     logDebug('Token scope detection failed (network error)', {
+      url,
       error: error instanceof Error ? error.message : String(error),
     });
     return null;

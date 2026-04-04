@@ -591,8 +591,11 @@ describe('HealthMonitor', () => {
 
       // Should be healthy (connected + health check passed)
       expect(monitor.getState(TEST_URL)).toBe('healthy');
-      // Fetch should have been called for health check
-      expect(mockFetch).toHaveBeenCalled();
+      // Fetch should have been called for health check with correct URL and method
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${TEST_URL}/api/v4/version`,
+        expect.objectContaining({ method: 'HEAD' }),
+      );
     });
 
     it('should not take fast-path for a different URL than what was initialized', async () => {

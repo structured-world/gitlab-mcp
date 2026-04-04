@@ -535,9 +535,10 @@ describe('TokenScopeDetector', () => {
           totalTools: 45,
         }),
       );
-      // Should mention GraphQL being skipped
+      // Should mention GraphQL being skipped (with url metadata)
       expect(mockLogInfo).toHaveBeenCalledWith(
         expect.stringContaining('GraphQL introspection skipped'),
+        expect.objectContaining({ url: expect.any(String) }),
       );
     });
 

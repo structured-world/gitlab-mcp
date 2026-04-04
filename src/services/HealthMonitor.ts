@@ -265,12 +265,11 @@ async function quickHealthCheck(
       rateLimit: false,
     });
 
-    // 401/403 = auth needed but server is alive.
-    // 405 = HEAD not supported but endpoint exists.
-    // 404/400 on /api/v4/version = misconfigured URL or not a GitLab instance.
-    // 5xx = server error, treat as unreachable.
-    const s = response.status;
-    return s === 200 || s === 401 || s === 403 || s === 405;
+    // Any non-5xx response means the server is reachable. The probe measures
+    // connectivity, not API correctness: 401/403 = auth needed, 3xx = redirect,
+    // 400/404 = unusual but still a responding HTTP endpoint. Actual API errors
+    // are caught at tool-call level, not here.
+    return response.status < 500;
   } catch {
     // Intentionally swallows the error — health checks are lightweight probes.
     // Error classification (transient vs permanent) happens in performConnect

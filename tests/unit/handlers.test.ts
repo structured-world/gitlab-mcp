@@ -791,7 +791,8 @@ describe('handlers', () => {
         await new Promise((resolve) => process.nextTick(resolve));
       }
 
-      // refreshCache should have been called with the instance URL by the state change callback
+      // refreshCache should have been called exactly once with the instance URL
+      expect(mockRegistryManager.refreshCache).toHaveBeenCalledTimes(1);
       expect(mockRegistryManager.refreshCache).toHaveBeenCalledWith('https://gitlab.example.com');
     });
 
@@ -1622,6 +1623,11 @@ describe('handlers', () => {
       expect(result.isError).toBe(true);
       const parsed = JSON.parse(result.content![0].text);
       expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      // Introspection failure should be reported to HealthMonitor
+      expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+        expect.any(Error),
+      );
     });
 
     it('should route per-request OAuth URL through failing bootstrap and report to HealthMonitor', async () => {

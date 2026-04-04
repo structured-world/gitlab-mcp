@@ -347,12 +347,14 @@ export const TRUST_PROXY = process.env.TRUST_PROXY;
 // configs are parsed through this helper to enforce the ceiling.
 export const MAX_SAFE_TIMEOUT_MS = 2_147_483_647;
 
-/** Strict integer parse — rejects partial matches like "120s" or "1e3". */
-function parseStrictInt(envValue: string | undefined, fallback: number): number {
+/** Strict integer parse — rejects partial matches like "120s" or "1e3".
+ *  @param allowZero - when true, 0 is a valid value (e.g. retry attempts) */
+function parseStrictInt(envValue: string | undefined, fallback: number, allowZero = false): number {
   const raw = envValue ?? String(fallback);
   if (!/^\d+$/.test(raw)) return fallback;
   const parsed = Number(raw);
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+  if (!Number.isFinite(parsed)) return fallback;
+  return allowZero ? (parsed >= 0 ? parsed : fallback) : parsed > 0 ? parsed : fallback;
 }
 
 function parseTimerMs(envValue: string | undefined, fallback: number): number {
@@ -424,7 +426,12 @@ export const POOL_MAX_CONNECTIONS = parseStrictInt(process.env.GITLAB_POOL_MAX_C
 // Retries on: timeouts, network errors, 5xx server errors, 429 rate limits
 export const API_RETRY_ENABLED = process.env.GITLAB_API_RETRY_ENABLED !== 'false';
 
-export const API_RETRY_MAX_ATTEMPTS = parseStrictInt(process.env.GITLAB_API_RETRY_MAX_ATTEMPTS, 3);
+// allowZero: 0 means "single attempt, no retries" — valid config without toggling RETRY_ENABLED
+export const API_RETRY_MAX_ATTEMPTS = parseStrictInt(
+  process.env.GITLAB_API_RETRY_MAX_ATTEMPTS,
+  3,
+  true,
+);
 
 export const API_RETRY_BASE_DELAY_MS = parseTimerMs(
   process.env.GITLAB_API_RETRY_BASE_DELAY_MS,

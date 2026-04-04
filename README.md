@@ -31,6 +31,7 @@ Advanced GitLab MCP server — 44 tools across 18 entity types with CQRS archite
 
 - **44 tools** across 18 entity types — projects, merge requests, pipelines, work items, wiki, and more
 - **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
+- **Connection resilience** — Bounded startup, auto-reconnect with exponential backoff, disconnected mode when GitLab is unreachable
 - **Multi-instance support** — Connect to multiple GitLab instances with per-instance OAuth and rate limiting
 - **Multiple transports** — stdio, SSE, StreamableHTTP
 - **OAuth 2.1** — Per-user authentication via Claude Custom Connector
@@ -79,6 +80,25 @@ docker run -e PORT=3002 -e GITLAB_TOKEN=your_token -p 3333:3002 \
 docker run -i --rm -e GITLAB_TOKEN=your_token \
   ghcr.io/structured-world/gitlab-mcp:latest
 ```
+
+## Connection Resilience
+
+The server handles GitLab connectivity issues gracefully:
+
+- **Bounded startup** — Server starts within `GITLAB_INIT_TIMEOUT_MS` (default 5s) regardless of GitLab availability
+- **Disconnected mode** — When GitLab is unreachable (`disconnected`/`failed` state), only the `manage_context` tool is exposed, with local actions such as `whoami`, `switch_profile`, and `set_scope` for diagnostics. During active reconnect (`connecting` state), the full tool list remains available so MCP clients don't lose their tool catalog during brief outages. MCP clients are notified of tool availability changes via `tools/list_changed`
+- **Auto-reconnect** — Exponential backoff reconnection (5s → 60s) with ±10% jitter
+- **Error classification** — Transient errors (network, 5xx, timeouts) trigger auto-reconnect. Auth/config errors at startup transition to `failed` state (no auto-reconnect). Runtime auth errors from tool calls are forwarded to `HealthMonitor.reportError()` via `classifyError()`; the remaining gap is token-revocation/403 detection (#370)
+- **Instance health monitor** — Each monitored instance URL has its own XState state machine. Untracked OAuth URLs currently pass through as reachable.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GITLAB_INIT_TIMEOUT_MS` | `5000` | Max time to wait for GitLab during startup |
+| `GITLAB_RECONNECT_BASE_DELAY_MS` | `5000` | Initial reconnect delay (doubles each attempt) |
+| `GITLAB_RECONNECT_MAX_DELAY_MS` | `60000` | Maximum reconnect delay |
+| `GITLAB_HEALTH_CHECK_INTERVAL_MS` | `60000` | Health check interval when connected |
+| `GITLAB_FAILURE_THRESHOLD` | `3` | Consecutive transient failures before disconnecting |
+| `GITLAB_TOOL_TIMEOUT_MS` | `120000` | Max time for tool/bootstrap execution before timeout |
 
 ## Feature Flags
 

@@ -43,6 +43,7 @@ jest.mock('../../../src/logger', () => ({
 jest.mock('../../../src/services/ToolAvailability', () => ({
   ToolAvailability: {
     isToolAvailable: jest.fn().mockReturnValue(true),
+    isToolAvailableForInstance: jest.fn().mockReturnValue(true),
     getUnavailableReason: jest.fn().mockReturnValue(''),
     getRestrictedParameters: jest.fn().mockReturnValue([]),
   },

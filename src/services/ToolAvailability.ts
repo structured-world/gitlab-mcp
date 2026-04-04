@@ -340,13 +340,19 @@ export class ToolAvailability {
     let rawVersion: string;
 
     if (cachedInstanceInfo) {
+      // When version is unknown, don't restrict parameters — consistent with
+      // isToolAvailable/isToolAvailableForInstance which allow all tools
+      if (cachedInstanceInfo.version === 'unknown') return [];
       instanceTier = cachedInstanceInfo.tier;
       rawVersion = cachedInstanceInfo.version;
       instanceVersion = parseVersion(rawVersion);
     } else {
+      // Fallback to singleton — prefer passing cachedInstanceInfo explicitly
+      // to avoid cross-request leakage in concurrent OAuth flows
       const connectionManager = ConnectionManager.getInstance();
       try {
         const instanceInfo = connectionManager.getInstanceInfo();
+        if (instanceInfo.version === 'unknown') return [];
         instanceTier = instanceInfo.tier;
         rawVersion = instanceInfo.version;
         instanceVersion = parseVersion(rawVersion);
@@ -445,6 +451,10 @@ export class ToolAvailability {
     try {
       const instanceInfo = connectionManager.getInstanceInfo();
 
+      // When version is unknown (REST fallback, OAuth deferred), allow all tools
+      // rather than filtering them out — consistent with isToolAvailableForInstance
+      if (instanceInfo.version === 'unknown') return true;
+
       const actionReq = this.getActionRequirement(toolName, action);
       if (actionReq) {
         const version = parseVersion(instanceInfo.version);
@@ -474,6 +484,39 @@ export class ToolAvailability {
     }
   }
 
+  /**
+   * Check if a tool is available for a specific instance (uses provided info
+   * instead of reading currentInstanceUrl from ConnectionManager).
+   *
+   * @precondition Caller must exclude context/local tools (e.g. manage_context)
+   * before calling — those bypass version/tier filtering at the registry level.
+   * When version is unknown, all tools are allowed (detected later).
+   * Known-version unknown tools fall through to a conservative >= 15.0 gate.
+   */
+  public static isToolAvailableForInstance(
+    toolName: string,
+    instanceInfo: { tier: GitLabTier; version: string },
+    action?: string,
+  ): boolean {
+    // When version is unknown (REST fallback, OAuth deferred), allow all tools
+    // rather than filtering them out — the version will be detected later
+    if (instanceInfo.version === 'unknown') return true;
+
+    const actionReq = this.getActionRequirement(toolName, action);
+    if (actionReq) {
+      const version = parseVersion(instanceInfo.version);
+      if (version < parseVersion(actionReq.minVersion)) return false;
+      return this.isTierSufficient(instanceInfo.tier, actionReq.tier);
+    }
+    // Tool not found in actionRequirements — apply the same conservative fallback
+    // as isToolAvailable(): require >= 15.0 for unknown GitLab-backed tools.
+    // Note: manage_context etc. are in contextToolRegistry and bypass version
+    // filtering entirely (RegistryManager.getToolExclusionReason skips them).
+    // This path is only reached for GitLab-backed tools missing from the
+    // actionRequirements map — the conservative gate prevents failing open.
+    return parseVersion(instanceInfo.version) >= parseVersion('15.0');
+  }
+
   public static getAvailableTools(): string[] {
     return Object.keys(this.actionRequirements).filter((tool) => this.isToolAvailable(tool));
   }
@@ -495,6 +538,11 @@ export class ToolAvailability {
 
     try {
       const instanceInfo = connectionManager.getInstanceInfo();
+
+      // When version is unknown (REST fallback, OAuth deferred), report no
+      // unavailability — consistent with isToolAvailable() returning true.
+      if (instanceInfo.version === 'unknown') return null;
+
       const actionReq = this.getActionRequirement(toolName, action);
 
       if (!actionReq) {

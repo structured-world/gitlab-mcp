@@ -13,7 +13,8 @@ coverage/
 **/*.test.js.map
 
 # Yarn (this project uses Yarn 4, not npm)
-.yarn/
+.yarn/*
+!.yarn/releases/
 package-lock.json
 
 .dist/

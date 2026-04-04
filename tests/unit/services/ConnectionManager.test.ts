@@ -3,7 +3,7 @@
  * Tests singleton pattern and error handling without external dependencies
  */
 
-import { ConnectionManager } from '../../../src/services/ConnectionManager';
+import { ConnectionManager, type InstanceState } from '../../../src/services/ConnectionManager';
 
 // Mock isOAuthEnabled and getGitLabApiUrlFromContext
 const mockIsOAuthEnabled = jest.fn();
@@ -16,16 +16,48 @@ jest.mock('../../../src/oauth/index.js', () => ({
 // Mock detectTokenScopes for testing scope refresh
 const mockDetectTokenScopes = jest.fn();
 jest.mock('../../../src/services/TokenScopeDetector', () => ({
-  detectTokenScopes: () => mockDetectTokenScopes(),
+  detectTokenScopes: (...args: unknown[]) => mockDetectTokenScopes(...args),
   getTokenCreationUrl: jest.fn(
     () => 'https://gitlab.example.com/-/user_settings/personal_access_tokens',
   ),
 }));
 
+/** Type-safe access to ConnectionManager private fields in tests */
+type CMInternals = {
+  instances: Map<string, InstanceState>;
+  currentInstanceUrl: string | null;
+  introspectionPromises: Map<string, Promise<void>>;
+  doIntrospection: (url: string) => Promise<void>;
+};
+function internals(manager: ConnectionManager): CMInternals {
+  return manager as unknown as CMInternals;
+}
+
+/** Helper: inject per-URL InstanceState into the ConnectionManager's internal Map */
+function injectInstanceState(
+  manager: ConnectionManager,
+  url: string,
+  overrides: Partial<InstanceState> = {},
+): void {
+  const state: InstanceState = {
+    client: {} as unknown as InstanceState['client'],
+    versionDetector: {} as unknown as InstanceState['versionDetector'],
+    schemaIntrospector: {} as unknown as InstanceState['schemaIntrospector'],
+    instanceInfo: null,
+    schemaInfo: null,
+    tokenScopeInfo: null,
+    isInitialized: false,
+    introspectedInstanceUrl: null,
+    ...overrides,
+  };
+  internals(manager).instances.set(url, state);
+  internals(manager).currentInstanceUrl = url;
+}
+
 describe('ConnectionManager Unit', () => {
   beforeEach(() => {
     // Reset singleton instance for each test
-    (ConnectionManager as any).instance = null;
+    (ConnectionManager as unknown as { instance: null }).instance = null;
   });
 
   describe('singleton pattern', () => {
@@ -77,10 +109,15 @@ describe('ConnectionManager Unit', () => {
     it('should throw error when getting schema info before initialization', () => {
       expect(() => manager.getSchemaInfo()).toThrow(errorMessage);
     });
+
+    it('should return false from isConnected before initialization', () => {
+      expect(manager.isConnected()).toBe(false);
+    });
   });
 
   describe('refreshTokenScopes', () => {
     let manager: ConnectionManager;
+    const TEST_URL = 'https://test-gitlab.com';
 
     beforeEach(() => {
       manager = ConnectionManager.getInstance();
@@ -89,7 +126,6 @@ describe('ConnectionManager Unit', () => {
     });
 
     it('should return false in OAuth mode', async () => {
-      // Mock OAuth mode enabled
       mockIsOAuthEnabled.mockReturnValue(true);
 
       const result = await manager.refreshTokenScopes();
@@ -97,15 +133,15 @@ describe('ConnectionManager Unit', () => {
     });
 
     it('should return false when token detection fails (returns null)', async () => {
-      // Detection returns null on failure
+      injectInstanceState(manager, TEST_URL);
       mockDetectTokenScopes.mockResolvedValue(null);
 
       const result = await manager.refreshTokenScopes();
       expect(result).toBe(false);
+      expect(mockDetectTokenScopes).toHaveBeenCalledWith(TEST_URL);
     });
 
     it('should return false when scopes have not changed', async () => {
-      // First, set up initial token info with some scopes
       const initialScopes = {
         active: true,
         scopes: ['read_api', 'read_user'],
@@ -117,10 +153,9 @@ describe('ConnectionManager Unit', () => {
         daysUntilExpiry: null,
       };
 
-      // Set initial state
-      (manager as any).tokenScopeInfo = initialScopes;
-
-      // Return same scopes on refresh
+      injectInstanceState(manager, TEST_URL, {
+        tokenScopeInfo: initialScopes as unknown as InstanceState['tokenScopeInfo'],
+      });
       mockDetectTokenScopes.mockResolvedValue(initialScopes);
 
       const result = await manager.refreshTokenScopes();
@@ -128,7 +163,6 @@ describe('ConnectionManager Unit', () => {
     });
 
     it('should return true when scopes change (new scopes added)', async () => {
-      // Set up initial token info with limited scopes
       const initialScopes = {
         active: true,
         scopes: ['read_api'],
@@ -140,10 +174,10 @@ describe('ConnectionManager Unit', () => {
         daysUntilExpiry: null,
       };
 
-      // Set initial state
-      (manager as any).tokenScopeInfo = initialScopes;
+      injectInstanceState(manager, TEST_URL, {
+        tokenScopeInfo: initialScopes as unknown as InstanceState['tokenScopeInfo'],
+      });
 
-      // Return new scopes with api scope added
       mockDetectTokenScopes.mockResolvedValue({
         ...initialScopes,
         scopes: ['api', 'read_api'],
@@ -155,7 +189,6 @@ describe('ConnectionManager Unit', () => {
     });
 
     it('should return true when GraphQL access changes', async () => {
-      // Set up initial token info without GraphQL access
       const initialScopes = {
         active: true,
         scopes: ['read_user'],
@@ -167,10 +200,10 @@ describe('ConnectionManager Unit', () => {
         daysUntilExpiry: null,
       };
 
-      // Set initial state
-      (manager as any).tokenScopeInfo = initialScopes;
+      injectInstanceState(manager, TEST_URL, {
+        tokenScopeInfo: initialScopes as unknown as InstanceState['tokenScopeInfo'],
+      });
 
-      // Return scopes with GraphQL access now available
       mockDetectTokenScopes.mockResolvedValue({
         ...initialScopes,
         scopes: ['api'],
@@ -182,7 +215,6 @@ describe('ConnectionManager Unit', () => {
     });
 
     it('should return true when write access changes', async () => {
-      // Set up initial token info without write access
       const initialScopes = {
         active: true,
         scopes: ['read_api'],
@@ -194,10 +226,10 @@ describe('ConnectionManager Unit', () => {
         daysUntilExpiry: null,
       };
 
-      // Set initial state
-      (manager as any).tokenScopeInfo = initialScopes;
+      injectInstanceState(manager, TEST_URL, {
+        tokenScopeInfo: initialScopes as unknown as InstanceState['tokenScopeInfo'],
+      });
 
-      // Return scopes with write access now available
       mockDetectTokenScopes.mockResolvedValue({
         ...initialScopes,
         scopes: ['api'],
@@ -209,7 +241,6 @@ describe('ConnectionManager Unit', () => {
     });
 
     it('should update tokenScopeInfo when scopes change', async () => {
-      // Set up initial token info
       const initialScopes = {
         active: true,
         scopes: ['read_api'],
@@ -221,10 +252,10 @@ describe('ConnectionManager Unit', () => {
         daysUntilExpiry: null,
       };
 
-      // Set initial state
-      (manager as any).tokenScopeInfo = initialScopes;
+      injectInstanceState(manager, TEST_URL, {
+        tokenScopeInfo: initialScopes as unknown as InstanceState['tokenScopeInfo'],
+      });
 
-      // Return new scopes
       const newScopes = {
         ...initialScopes,
         scopes: ['api'],
@@ -234,7 +265,6 @@ describe('ConnectionManager Unit', () => {
 
       await manager.refreshTokenScopes();
 
-      // Verify the tokenScopeInfo was updated
       const updatedInfo = manager.getTokenScopeInfo();
       expect(updatedInfo?.scopes).toEqual(['api']);
       expect(updatedInfo?.hasWriteAccess).toBe(true);
@@ -260,12 +290,14 @@ describe('ConnectionManager Unit', () => {
       mockGetGitLabApiUrlFromContext.mockReturnValue('https://gitlab.example.com');
 
       // Simulate introspected state for the same instance
-      (manager as any).instanceInfo = { version: '16.0.0', tier: 'premium' };
-      (manager as any).schemaInfo = { workItemWidgetTypes: [] };
-      (manager as any).introspectedInstanceUrl = 'https://gitlab.example.com';
-      (manager as any).client = {};
-      (manager as any).versionDetector = {};
-      (manager as any).schemaIntrospector = {};
+      injectInstanceState(manager, 'https://gitlab.example.com', {
+        instanceInfo: {
+          version: '16.0.0',
+          tier: 'premium',
+        } as unknown as InstanceState['instanceInfo'],
+        schemaInfo: { workItemWidgetTypes: [] } as unknown as InstanceState['schemaInfo'],
+        introspectedInstanceUrl: 'https://gitlab.example.com',
+      });
 
       // Should not throw and return quickly (same instance)
       await expect(manager.ensureIntrospected()).resolves.toBeUndefined();
@@ -275,20 +307,22 @@ describe('ConnectionManager Unit', () => {
       // Set up manager with minimal initialized state so ensureIntrospected() proceeds
       mockGetGitLabApiUrlFromContext.mockReturnValue('https://gitlab.dedup.com');
 
-      // Mock internal dependencies as present but no cached introspection
-      (manager as any).client = { endpoint: 'https://gitlab.dedup.com/api/graphql' };
-      (manager as any).versionDetector = {};
-      (manager as any).schemaIntrospector = {};
-      (manager as any).instanceInfo = null;
-      (manager as any).schemaInfo = null;
-      (manager as any).introspectedInstanceUrl = null;
+      // Inject per-URL state with no cached introspection
+      injectInstanceState(manager, 'https://gitlab.dedup.com', {
+        client: {
+          endpoint: 'https://gitlab.dedup.com/api/graphql',
+        } as unknown as InstanceState['client'],
+      });
 
       // Track how many times doIntrospection actually executes
       let introspectionCallCount = 0;
 
       // Mock doIntrospection to simulate async work with observable side effects
       jest
-        .spyOn(manager as any, 'doIntrospection')
+        .spyOn(
+          internals(manager) as { doIntrospection: (...args: unknown[]) => Promise<void> },
+          'doIntrospection',
+        )
         .mockImplementation(async (...args: unknown[]) => {
           // Enforce doIntrospection(url: string) contract despite variadic mock signature
           expect(args).toHaveLength(1);
@@ -297,10 +331,14 @@ describe('ConnectionManager Unit', () => {
           introspectionCallCount++;
           // Simulate async introspection delay
           await new Promise((resolve) => setTimeout(resolve, 50));
-          // Set the results that ensureIntrospected expects
-          (manager as any).instanceInfo = { version: '17.0.0', tier: 'free' };
-          (manager as any).schemaInfo = { workItemWidgetTypes: [] };
-          (manager as any).introspectedInstanceUrl = url;
+          // Set the results in per-URL state
+          const state = internals(manager).instances.get(url)!;
+          state.instanceInfo = {
+            version: '17.0.0',
+            tier: 'free',
+          } as unknown as InstanceState['instanceInfo'];
+          state.schemaInfo = { workItemWidgetTypes: [] } as unknown as InstanceState['schemaInfo'];
+          state.introspectedInstanceUrl = url;
         });
 
       // Fire 5 concurrent calls — should all share the same promise
@@ -319,50 +357,58 @@ describe('ConnectionManager Unit', () => {
     it('should clear introspection promise after completion', async () => {
       mockGetGitLabApiUrlFromContext.mockReturnValue('https://gitlab.clear.com');
 
-      (manager as any).client = { endpoint: 'https://gitlab.clear.com/api/graphql' };
-      (manager as any).versionDetector = {};
-      (manager as any).schemaIntrospector = {};
-      (manager as any).instanceInfo = null;
-      (manager as any).schemaInfo = null;
-      (manager as any).introspectedInstanceUrl = null;
+      injectInstanceState(manager, 'https://gitlab.clear.com', {
+        client: {
+          endpoint: 'https://gitlab.clear.com/api/graphql',
+        } as unknown as InstanceState['client'],
+      });
 
       jest
-        .spyOn(manager as any, 'doIntrospection')
+        .spyOn(
+          internals(manager) as { doIntrospection: (...args: unknown[]) => Promise<void> },
+          'doIntrospection',
+        )
         .mockImplementation(async (...args: unknown[]) => {
           // Enforce doIntrospection(url: string) contract despite variadic mock signature
           expect(args).toHaveLength(1);
           expect(typeof args[0]).toBe('string');
           const url = args[0] as string;
-          (manager as any).instanceInfo = { version: '17.0.0', tier: 'free' };
-          (manager as any).schemaInfo = { workItemWidgetTypes: [] };
-          (manager as any).introspectedInstanceUrl = url;
+          const state = internals(manager).instances.get(url)!;
+          state.instanceInfo = {
+            version: '17.0.0',
+            tier: 'free',
+          } as unknown as InstanceState['instanceInfo'];
+          state.schemaInfo = { workItemWidgetTypes: [] } as unknown as InstanceState['schemaInfo'];
+          state.introspectedInstanceUrl = url;
         });
 
       await manager.ensureIntrospected();
 
       // Promise should be cleaned up from the map
-      const promisesMap = (manager as any).introspectionPromises as Map<string, Promise<void>>;
+      const promisesMap = internals(manager).introspectionPromises;
       expect(promisesMap.has('https://gitlab.clear.com')).toBe(false);
     });
 
     it('should clear introspection promise even when doIntrospection fails', async () => {
       mockGetGitLabApiUrlFromContext.mockReturnValue('https://gitlab.fail.com');
 
-      (manager as any).client = { endpoint: 'https://gitlab.fail.com/api/graphql' };
-      (manager as any).versionDetector = {};
-      (manager as any).schemaIntrospector = {};
-      (manager as any).instanceInfo = null;
-      (manager as any).schemaInfo = null;
-      (manager as any).introspectedInstanceUrl = null;
+      injectInstanceState(manager, 'https://gitlab.fail.com', {
+        client: {
+          endpoint: 'https://gitlab.fail.com/api/graphql',
+        } as unknown as InstanceState['client'],
+      });
 
       jest
-        .spyOn(manager as any, 'doIntrospection')
+        .spyOn(
+          internals(manager) as { doIntrospection: (...args: unknown[]) => Promise<void> },
+          'doIntrospection',
+        )
         .mockRejectedValue(new Error('Introspection network error'));
 
       await expect(manager.ensureIntrospected()).rejects.toThrow('Introspection network error');
 
       // Promise should still be cleaned up (finally block)
-      const promisesMap = (manager as any).introspectionPromises as Map<string, Promise<void>>;
+      const promisesMap = internals(manager).introspectionPromises;
       expect(promisesMap.has('https://gitlab.fail.com')).toBe(false);
     });
   });
@@ -375,22 +421,37 @@ describe('ConnectionManager Unit', () => {
       mockIsOAuthEnabled.mockReturnValue(false);
     });
 
-    it('should reset state and call initialize', async () => {
-      // Set up initial state to verify reset happens
-      (manager as any).instanceInfo = { version: '15.0.0', tier: 'free' };
-      (manager as any).schemaInfo = { workItemWidgetTypes: ['OLD'] };
-      (manager as any).isInitialized = true;
+    it('should restore saved state on failed reinitialize', async () => {
+      // Set up initial state for the URL
+      injectInstanceState(manager, 'https://new-gitlab.com', {
+        instanceInfo: {
+          version: '15.0.0',
+          tier: 'free',
+        } as unknown as InstanceState['instanceInfo'],
+        schemaInfo: { workItemWidgetTypes: ['OLD'] } as unknown as InstanceState['schemaInfo'],
+        isInitialized: true,
+      });
 
-      // Spy on reset and initialize
-      const resetSpy = jest.spyOn(manager, 'reset');
+      // Force initialize to reject so the rollback path is always exercised,
+      // regardless of ambient config (tokens, GITLAB_BASE_URL)
+      const initSpy = jest
+        .spyOn(manager, 'initialize')
+        .mockRejectedValue(new Error('forced test failure'));
 
-      // reinitialize will call initialize() which requires proper config
-      // Since we're mocking, we just verify it throws due to missing GITLAB_BASE_URL
-      // (reset was called, clearing state)
-      await expect(manager.reinitialize('https://new-gitlab.com')).rejects.toThrow();
+      await expect(manager.reinitialize('https://new-gitlab.com')).rejects.toThrow(
+        'forced test failure',
+      );
 
-      // Verify reset was called
-      expect(resetSpy).toHaveBeenCalled();
+      expect(initSpy).toHaveBeenCalledWith('https://new-gitlab.com');
+
+      // On failure, saved state is restored so the URL remains usable
+      expect(internals(manager).instances.has('https://new-gitlab.com')).toBe(true);
+      expect(internals(manager).instances.get('https://new-gitlab.com')!.isInitialized).toBe(true);
+      // currentInstanceUrl must also be restored so zero-arg accessors
+      // (getInstanceInfo(), getClient()) point at the correct instance
+      expect(internals(manager).currentInstanceUrl).toBe('https://new-gitlab.com');
+
+      initSpy.mockRestore();
     });
   });
 });

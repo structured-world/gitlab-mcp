@@ -11,8 +11,10 @@ import { GITLAB_BASE_URL, GITLAB_TOKEN } from '../config';
 import { isOAuthEnabled, getGitLabApiUrlFromContext } from '../oauth/index';
 import { enhancedFetch } from '../utils/fetch';
 import { logInfo, logDebug, logError } from '../logger';
-import { InstanceRegistry } from './InstanceRegistry.js';
-import { CachedIntrospection } from '../config/instances-schema.js';
+import { InstanceRegistry } from './InstanceRegistry';
+import { CachedIntrospection } from '../config/instances-schema';
+
+import { normalizeInstanceUrl } from '../utils/url';
 
 interface CacheEntry {
   schemaInfo: SchemaInfo;
@@ -20,22 +22,38 @@ interface CacheEntry {
   timestamp: number;
 }
 
+/**
+ * Per-URL instance state. Each GitLab URL gets isolated client, detectors,
+ * and introspection data — no shared mutable fields to overwrite.
+ */
+export interface InstanceState {
+  client: GraphQLClient;
+  versionDetector: GitLabVersionDetector;
+  schemaIntrospector: SchemaIntrospector;
+  instanceInfo: GitLabInstanceInfo | null;
+  schemaInfo: SchemaInfo | null;
+  tokenScopeInfo: TokenScopeInfo | null;
+  isInitialized: boolean;
+  /** Tracks which instance URL the cached instanceInfo/schemaInfo belongs to */
+  introspectedInstanceUrl: string | null;
+}
+
 export class ConnectionManager {
   private static instance: ConnectionManager | null = null;
-  private client: GraphQLClient | null = null;
-  private versionDetector: GitLabVersionDetector | null = null;
-  private schemaIntrospector: SchemaIntrospector | null = null;
-  private instanceInfo: GitLabInstanceInfo | null = null;
-  private schemaInfo: SchemaInfo | null = null;
-  private tokenScopeInfo: TokenScopeInfo | null = null;
-  private isInitialized: boolean = false;
+  /** Per-URL isolated state — each initialize(url) creates its own entry */
+  private instances = new Map<string, InstanceState>();
+  /** The "active" instance URL — used as default for no-arg getClient()/getInstanceInfo() */
   private currentInstanceUrl: string | null = null;
-  /** Tracks which instance URL the cached instanceInfo/schemaInfo belongs to */
-  private introspectedInstanceUrl: string | null = null;
   /** Deduplication map: prevents thundering herd on concurrent ensureIntrospected() calls */
   private introspectionPromises = new Map<string, Promise<void>>();
   private static introspectionCache = new Map<string, CacheEntry>();
   private static readonly CACHE_TTL = 10 * 60 * 1000; // 10 minutes in milliseconds
+  /** In-flight initialize promises keyed by instance URL — prevents concurrent initialize()
+   *  calls for the same URL from doing duplicate work when HealthMonitor's timeout races. */
+  private initializePromises = new Map<string, Promise<void>>();
+  /** Tracks the most recently requested URL so stale inits don't overwrite currentInstanceUrl.
+   *  E.g. init(A) starts, init(B) starts, A finishes last — A must not rebind to itself. */
+  private latestRequestedUrl: string | null = null;
 
   private constructor() {}
 
@@ -45,10 +63,53 @@ export class ConnectionManager {
   }
 
   public async initialize(instanceUrl?: string): Promise<void> {
-    if (this.isInitialized) {
+    const url = normalizeInstanceUrl(instanceUrl ?? GITLAB_BASE_URL);
+    this.latestRequestedUrl = url;
+
+    // Already initialized for this URL — nothing to do
+    const existing = this.instances.get(url);
+    if (existing?.isInitialized) {
+      // Update currentInstanceUrl to the requested URL
+      this.currentInstanceUrl = url;
       return;
     }
 
+    // Deduplicate concurrent initialize() calls for the same URL.
+    // HealthMonitor calls clearInflight(url) after timeout to prevent a hung
+    // doInitialize() from blocking all future reconnect attempts.
+    const inflight = this.initializePromises.get(url);
+    if (inflight) {
+      return inflight;
+    }
+
+    const promise = this.doInitialize(url);
+    this.initializePromises.set(url, promise);
+    try {
+      await promise;
+      // Only update currentInstanceUrl if:
+      // 1. This is still OUR promise AND this is the most recently requested URL
+      //    (prevents stale init A from overwriting after newer init B took over), OR
+      // 2. No currentInstanceUrl is set AND init succeeded — bootstrap fallback
+      //    so no-arg callers have a URL even if this wasn't the latest request.
+      const isOurPromise = this.initializePromises.get(url) === promise;
+      const initSucceeded = this.instances.get(url)?.isInitialized === true;
+      if (
+        (isOurPromise && url === this.latestRequestedUrl) ||
+        (!this.currentInstanceUrl && initSucceeded)
+      ) {
+        this.currentInstanceUrl = url;
+      }
+    } finally {
+      // Guard: only delete if this is still OUR promise (clearInflight from a
+      // timed-out attempt A must not wipe retry B's fresh promise).
+      if (this.initializePromises.get(url) === promise) {
+        this.initializePromises.delete(url);
+      }
+    }
+  }
+
+  private async doInitialize(baseUrl: string): Promise<void> {
+    let state: InstanceState | undefined;
     try {
       const oauthMode = isOAuthEnabled();
 
@@ -57,10 +118,6 @@ export class ConnectionManager {
       if (!registry.isInitialized()) {
         await registry.initialize();
       }
-
-      // Use provided instanceUrl or fall back to global GITLAB_BASE_URL
-      const baseUrl = instanceUrl ?? GITLAB_BASE_URL;
-      this.currentInstanceUrl = baseUrl;
 
       // In OAuth mode, token comes from request context via enhancedFetch
       // In static mode, require both base URL and token
@@ -87,17 +144,36 @@ export class ConnectionManager {
         ? {}
         : { headers: { 'PRIVATE-TOKEN': String(GITLAB_TOKEN) } };
 
-      this.client = new GraphQLClient(endpoint, clientOptions);
+      const client = new GraphQLClient(endpoint, clientOptions);
+      const versionDetector = new GitLabVersionDetector(client);
+      const schemaIntrospector = new SchemaIntrospector(client);
 
-      this.versionDetector = new GitLabVersionDetector(this.client);
-      this.schemaIntrospector = new SchemaIntrospector(this.client);
+      // Create per-URL state entry (assigned to outer `let state` for catch guard)
+      state = {
+        client,
+        versionDetector,
+        schemaIntrospector,
+        instanceInfo: null,
+        schemaInfo: null,
+        tokenScopeInfo: null,
+        isInitialized: false,
+        introspectedInstanceUrl: null,
+      };
+      this.instances.set(baseUrl, state);
 
       // In OAuth mode, try unauthenticated version detection first
       // Many GitLab instances expose /api/v4/version without auth
       if (oauthMode) {
+        // This request is intentionally unauthenticated because many GitLab
+        // instances expose /api/v4/version without authentication.
+        // skipAuth prevents enhancedFetch from emitting OAuth "no token context"
+        // warnings for this deliberate version probe.
         logInfo('OAuth mode: attempting unauthenticated version detection');
         try {
-          const versionResponse = await fetch(`${baseUrl}/api/v4/version`);
+          const versionResponse = await enhancedFetch(`${baseUrl}/api/v4/version`, {
+            retry: false,
+            skipAuth: true,
+          });
           if (versionResponse.ok) {
             const versionData = (await versionResponse.json()) as {
               version: string;
@@ -109,7 +185,7 @@ export class ConnectionManager {
 
             // Create basic instance info from unauthenticated response
             // Default to "premium" tier for enterprise instances - will be refined on first authenticated request
-            this.instanceInfo = {
+            state.instanceInfo = {
               version: versionData.version,
               tier: versionData.enterprise ? 'premium' : 'free',
               features: this.getDefaultFeatures(versionData.enterprise ?? false),
@@ -129,6 +205,11 @@ export class ConnectionManager {
             );
           }
         } catch (error) {
+          // Intentionally swallowed: the version probe is a best-effort optimization
+          // in OAuth mode. Even if GitLab is unreachable here, the OAuth client is
+          // ready — actual connectivity is verified when the first authenticated
+          // request arrives. HealthMonitor may also detect unreachability via its
+          // immediate post-initialization probe and subsequent periodic health checks.
           logInfo(
             'OAuth mode: unauthenticated version detection failed, deferring all introspection',
             {
@@ -136,24 +217,26 @@ export class ConnectionManager {
             },
           );
         }
-        this.isInitialized = true;
+        // Verify state is still ours (reinitialize may have replaced it during async work)
+        if (this.instances.get(baseUrl) !== state) return;
+        state.isInitialized = true;
         return;
       }
 
       // Step 1: Detect token scopes BEFORE GraphQL introspection
       // This prevents ugly 401 stack traces when token lacks api/read_api scope
-      this.tokenScopeInfo = await detectTokenScopes();
+      state.tokenScopeInfo = await detectTokenScopes(baseUrl);
 
-      if (this.tokenScopeInfo) {
+      if (state.tokenScopeInfo) {
         // Log token scope info — derive total tools dynamically from scope requirements map
         const totalTools = Object.keys(getToolScopeRequirements()).length;
-        logTokenScopeInfo(this.tokenScopeInfo, totalTools);
+        logTokenScopeInfo(state.tokenScopeInfo, totalTools, baseUrl);
 
         // If token lacks GraphQL access, skip introspection entirely
-        if (!this.tokenScopeInfo.hasGraphQLAccess) {
+        if (!state.tokenScopeInfo.hasGraphQLAccess) {
           // Detect version via REST (doesn't require api scope for most GitLab versions)
-          this.instanceInfo = await this.detectVersionViaREST();
-          this.isInitialized = true;
+          state.instanceInfo = await this.detectVersionViaREST(baseUrl);
+          state.isInitialized = true;
           return;
         }
       }
@@ -163,24 +246,27 @@ export class ConnectionManager {
       const now = Date.now();
 
       if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
+        // Verify state is still ours (reinitialize may have replaced it during prior awaits)
+        if (this.instances.get(baseUrl) !== state) return;
         logInfo('Using cached GraphQL introspection data');
-        this.instanceInfo = cached.instanceInfo;
-        this.schemaInfo = cached.schemaInfo;
-        // Track which instance was introspected to avoid re-introspection in ensureIntrospected()
-        this.introspectedInstanceUrl = baseUrl;
+        state.instanceInfo = cached.instanceInfo;
+        state.schemaInfo = cached.schemaInfo;
+        state.introspectedInstanceUrl = baseUrl;
       } else {
         logDebug('Introspecting GitLab GraphQL schema...');
 
         // Detect instance info and introspect schema in parallel
         const [instanceInfo, schemaInfo] = await Promise.all([
-          this.versionDetector.detectInstance(),
-          this.schemaIntrospector.introspectSchema(),
+          versionDetector.detectInstance(),
+          schemaIntrospector.introspectSchema(),
         ]);
 
-        this.instanceInfo = instanceInfo;
-        this.schemaInfo = schemaInfo;
-        // Track which instance was introspected to avoid re-introspection in ensureIntrospected()
-        this.introspectedInstanceUrl = baseUrl;
+        // Verify this state entry is still ours (reinitialize may have replaced it)
+        if (this.instances.get(baseUrl) !== state) return;
+
+        state.instanceInfo = instanceInfo;
+        state.schemaInfo = schemaInfo;
+        state.introspectedInstanceUrl = baseUrl;
 
         // Cache the results
         ConnectionManager.introspectionCache.set(endpoint, {
@@ -192,20 +278,25 @@ export class ConnectionManager {
         logInfo('GraphQL schema introspection completed');
       }
 
-      this.isInitialized = true;
+      state.isInitialized = true;
 
       logInfo('GitLab instance and schema detected', {
-        version: this.instanceInfo?.version,
-        tier: this.instanceInfo?.tier,
-        features: this.instanceInfo
-          ? Object.entries(this.instanceInfo.features)
+        version: state.instanceInfo?.version,
+        tier: state.instanceInfo?.tier,
+        features: state.instanceInfo
+          ? Object.entries(state.instanceInfo.features)
               .filter(([, enabled]) => enabled)
               .map(([feature]) => feature)
           : [],
-        widgetTypes: this.schemaInfo?.workItemWidgetTypes.length || 0,
-        schemaTypes: this.schemaInfo?.typeDefinitions.size || 0,
+        widgetTypes: state.schemaInfo?.workItemWidgetTypes.length || 0,
+        schemaTypes: state.schemaInfo?.typeDefinitions.size || 0,
       });
     } catch (error) {
+      // Guard: only delete if this is still OUR state entry — a concurrent retry
+      // (after clearInflight) may have already replaced it with a fresh one.
+      if (state && this.instances.get(baseUrl) === state) {
+        this.instances.delete(baseUrl);
+      }
       logError('Failed to initialize connection', { err: error as Error });
       throw error;
     }
@@ -219,18 +310,26 @@ export class ConnectionManager {
    * Uses Promise-based deduplication to prevent thundering herd when
    * multiple concurrent requests trigger introspection simultaneously.
    */
-  public async ensureIntrospected(): Promise<void> {
-    if (!this.client || !this.versionDetector || !this.schemaIntrospector) {
+  public async ensureIntrospected(explicitUrl?: string): Promise<void> {
+    // Use explicit URL if provided (handler knows the effective URL),
+    // otherwise fall back to OAuth context / current instance
+    const instanceUrl = normalizeInstanceUrl(
+      explicitUrl ?? getGitLabApiUrlFromContext() ?? this.currentInstanceUrl ?? GITLAB_BASE_URL,
+    );
+
+    const state = this.instances.get(instanceUrl);
+    if (!state?.client || !state.versionDetector || !state.schemaIntrospector) {
       throw new Error('Connection not initialized. Call initialize() first.');
     }
 
-    // Determine the instance URL for caching
-    // In OAuth mode, use URL from context; in static mode, use current instance URL
-    const instanceUrl = getGitLabApiUrlFromContext() ?? this.currentInstanceUrl ?? GITLAB_BASE_URL;
-
     // Already introspected for THIS instance - reuse cached data
-    // In multi-instance mode, different instances need separate introspection
-    if (this.instanceInfo && this.schemaInfo && this.introspectedInstanceUrl === instanceUrl) {
+    if (state.instanceInfo && state.schemaInfo && state.introspectedInstanceUrl === instanceUrl) {
+      return;
+    }
+
+    // REST-only mode: token lacks GraphQL access, skip introspection entirely
+    // (doInitialize set instanceInfo via REST, no point hitting GraphQL)
+    if (state.tokenScopeInfo && !state.tokenScopeInfo.hasGraphQLAccess) {
       return;
     }
 
@@ -249,7 +348,9 @@ export class ConnectionManager {
     try {
       await promise;
     } finally {
-      this.introspectionPromises.delete(instanceUrl);
+      if (this.introspectionPromises.get(instanceUrl) === promise) {
+        this.introspectionPromises.delete(instanceUrl);
+      }
     }
   }
 
@@ -258,16 +359,12 @@ export class ConnectionManager {
    * Extracted from ensureIntrospected() for deduplication support.
    */
   private async doIntrospection(instanceUrl: string): Promise<void> {
-    // Caller (ensureIntrospected) guarantees these are non-null
-    const client = this.client;
-    const versionDet = this.versionDetector;
-    const schemaDet = this.schemaIntrospector;
-    if (!client || !versionDet || !schemaDet) {
+    const state = this.instances.get(instanceUrl);
+    if (!state?.client || !state.versionDetector || !state.schemaIntrospector) {
       throw new Error('Connection not initialized. Call initialize() first.');
     }
 
-    // Use per-instance GraphQL client for thread-safe multi-instance support
-    // This avoids the singleton endpoint mutation issue in concurrent OAuth scenarios
+    const { client, versionDetector, schemaIntrospector } = state;
     const endpoint = client.endpoint;
     const registry = InstanceRegistry.getInstance();
 
@@ -276,22 +373,21 @@ export class ConnectionManager {
       const cachedIntrospection = registry.getIntrospection(instanceUrl);
       if (cachedIntrospection) {
         logInfo('Using cached introspection from InstanceRegistry', { url: instanceUrl });
-        this.instanceInfo = {
+        state.instanceInfo = {
           version: cachedIntrospection.version,
           tier: cachedIntrospection.tier as 'free' | 'premium' | 'ultimate',
           features: cachedIntrospection.features as unknown as GitLabInstanceInfo['features'],
           detectedAt: cachedIntrospection.cachedAt,
         };
-        this.schemaInfo = cachedIntrospection.schemaInfo as SchemaInfo;
-        this.introspectedInstanceUrl = instanceUrl;
+        state.schemaInfo = cachedIntrospection.schemaInfo as SchemaInfo;
+        state.introspectedInstanceUrl = instanceUrl;
         return;
       }
     }
 
     // Check legacy cache: prefer instanceUrl for multi-instance consistency,
-    // but fall back to endpoint-keyed entries
-    // (initialize() populates cache with endpoint as key).
-    const primaryCacheKey = instanceUrl ?? endpoint;
+    // but fall back to endpoint-keyed entries from older cache format
+    const primaryCacheKey = instanceUrl;
     const legacyCacheKey = endpoint;
     let cached = ConnectionManager.introspectionCache.get(primaryCacheKey);
     if (!cached && primaryCacheKey !== legacyCacheKey) {
@@ -301,40 +397,29 @@ export class ConnectionManager {
 
     if (cached && now - cached.timestamp < ConnectionManager.CACHE_TTL) {
       logInfo('Using cached GraphQL introspection data');
-      this.instanceInfo = cached.instanceInfo;
-      this.schemaInfo = cached.schemaInfo;
-      this.introspectedInstanceUrl = instanceUrl;
+      state.instanceInfo = cached.instanceInfo;
+      state.schemaInfo = cached.schemaInfo;
+      state.introspectedInstanceUrl = instanceUrl;
       return;
     }
 
     logDebug('Introspecting GitLab GraphQL schema (deferred OAuth mode)...');
 
-    // For multi-instance OAuth: use per-instance client if instanceUrl differs from current
-    // This ensures introspection runs against the correct instance
-    let versionDetector = versionDet;
-    let schemaIntrospector = schemaDet;
-
-    if (registry.isInitialized() && instanceUrl !== this.currentInstanceUrl) {
-      const instanceClient = this.getInstanceClient(instanceUrl);
-      if (instanceClient !== client) {
-        // Create temporary detectors with per-instance client
-        versionDetector = new GitLabVersionDetector(instanceClient);
-        schemaIntrospector = new SchemaIntrospector(instanceClient);
-        logDebug('Using per-instance detectors for introspection', { instanceUrl });
-      }
-    }
-
     // Detect instance info and introspect schema in parallel
+    // Per-URL state already has the correct client for this instance
     const [instanceInfo, schemaInfo] = await Promise.all([
       versionDetector.detectInstance(),
       schemaIntrospector.introspectSchema(),
     ]);
 
-    this.instanceInfo = instanceInfo;
-    this.schemaInfo = schemaInfo;
-    this.introspectedInstanceUrl = instanceUrl;
+    // Verify this state entry is still ours (reinitialize may have replaced it)
+    if (this.instances.get(instanceUrl) !== state) return;
 
-    // Cache the results in legacy cache (use primaryCacheKey for consistency)
+    state.instanceInfo = instanceInfo;
+    state.schemaInfo = schemaInfo;
+    state.introspectedInstanceUrl = instanceUrl;
+
+    // Cache the results
     ConnectionManager.introspectionCache.set(primaryCacheKey, {
       instanceInfo,
       schemaInfo,
@@ -354,25 +439,49 @@ export class ConnectionManager {
     }
 
     logInfo('GraphQL schema introspection completed (deferred)', {
-      version: this.instanceInfo?.version,
-      tier: this.instanceInfo?.tier,
-      widgetTypes: this.schemaInfo?.workItemWidgetTypes.length || 0,
+      version: state.instanceInfo?.version,
+      tier: state.instanceInfo?.tier,
+      widgetTypes: state.schemaInfo?.workItemWidgetTypes.length || 0,
     });
   }
 
-  public getClient(): GraphQLClient {
-    if (!this.client) {
+  /**
+   * Helper to resolve URL and look up per-URL state.
+   * Returns [state, resolvedUrl] or throws if not initialized.
+   */
+  // TODO: no-arg callers (ToolAvailability, WidgetAvailability) resolve against
+  // currentInstanceUrl which may not match the OAuth request context in concurrent
+  // traffic. Those callers should pass an explicit URL (#379).
+  private resolveState(instanceUrl?: string): [InstanceState, string] {
+    // Empty string is falsy → falls to currentInstanceUrl (same as undefined/null).
+    // This is intentional: callers pass either a real URL or nothing.
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    if (!url) {
       throw new Error('Connection not initialized. Call initialize() first.');
     }
-    return this.client;
+    const state = this.instances.get(url);
+    if (!state) {
+      throw new Error(`Connection not initialized for ${url}. Call initialize() first.`);
+    }
+    // Note: state.isInitialized may be false during doInitialize() — the client
+    // is valid at this point (constructed before map insertion). Failed inits
+    // delete the entry entirely (see doInitialize catch block), so a present
+    // entry always has a usable client. Individual getters (getInstanceInfo,
+    // getSchemaInfo) null-check their respective fields independently.
+    return [state, url];
+  }
+
+  public getClient(instanceUrl?: string): GraphQLClient {
+    const [state] = this.resolveState(instanceUrl);
+    return state.client;
   }
 
   /**
-   * Get a thread-safe GraphQL client for the current or specified instance
+   * Get a thread-safe GraphQL client for the current or specified instance.
    *
    * In OAuth mode with multi-instance support, this returns a per-instance
    * client from the connection pool, avoiding singleton endpoint mutation.
-   * In static mode, returns the default singleton client.
+   * In static mode, returns the per-URL client from InstanceState.
    *
    * @param instanceUrl - Optional instance URL (defaults to current context)
    * @param authHeaders - Optional auth headers for OAuth per-request tokens
@@ -383,8 +492,9 @@ export class ConnectionManager {
   ): GraphQLClient {
     const registry = InstanceRegistry.getInstance();
 
-    // Determine which instance to use
-    const targetUrl = instanceUrl ?? getGitLabApiUrlFromContext() ?? this.currentInstanceUrl;
+    // Determine which instance to use — normalize all sources for consistent Map keys
+    const rawTargetUrl = instanceUrl ?? getGitLabApiUrlFromContext() ?? this.currentInstanceUrl;
+    const targetUrl = rawTargetUrl ? normalizeInstanceUrl(rawTargetUrl) : null;
 
     // If registry is initialized and instance is registered, use per-instance client
     if (targetUrl && registry.isInitialized() && registry.has(targetUrl)) {
@@ -394,39 +504,45 @@ export class ConnectionManager {
       }
     }
 
-    // Fallback to singleton client (static mode or unregistered instance)
-    if (!this.client) {
-      throw new Error('Connection not initialized. Call initialize() first.');
+    // Fallback to per-URL state client
+    if (targetUrl) {
+      const state = this.instances.get(targetUrl);
+      if (state) return state.client;
+      // targetUrl resolved (explicit or from context) but not found anywhere —
+      // fail fast rather than silently routing to a different instance's client.
+      throw new Error(`Connection not initialized for ${targetUrl}. Call initialize() first.`);
     }
-    return this.client;
+    return this.getClient();
   }
 
-  public getVersionDetector(): GitLabVersionDetector {
-    if (!this.versionDetector) {
-      throw new Error('Connection not initialized. Call initialize() first.');
-    }
-    return this.versionDetector;
+  public getVersionDetector(instanceUrl?: string): GitLabVersionDetector {
+    const [state] = this.resolveState(instanceUrl);
+    return state.versionDetector;
   }
 
-  public getSchemaIntrospector(): SchemaIntrospector {
-    if (!this.schemaIntrospector) {
-      throw new Error('Connection not initialized. Call initialize() first.');
-    }
-    return this.schemaIntrospector;
+  public getSchemaIntrospector(instanceUrl?: string): SchemaIntrospector {
+    const [state] = this.resolveState(instanceUrl);
+    return state.schemaIntrospector;
   }
 
-  public getInstanceInfo(): GitLabInstanceInfo {
-    if (!this.instanceInfo) {
-      throw new Error('Connection not initialized. Call initialize() first.');
+  public getInstanceInfo(instanceUrl?: string): GitLabInstanceInfo {
+    const [state, resolvedUrl] = this.resolveState(instanceUrl);
+    if (!state.instanceInfo) {
+      throw new Error(
+        `Instance information is not available for ${resolvedUrl}. Initialization may have completed without version detection (OAuth deferred/REST-only mode).`,
+      );
     }
-    return this.instanceInfo;
+    return state.instanceInfo;
   }
 
-  public getSchemaInfo(): SchemaInfo {
-    if (!this.schemaInfo) {
-      throw new Error('Connection not initialized. Call initialize() first.');
+  public getSchemaInfo(instanceUrl?: string): SchemaInfo {
+    const [state, resolvedUrl] = this.resolveState(instanceUrl);
+    if (!state.schemaInfo) {
+      throw new Error(
+        `Schema information is not available for ${resolvedUrl}. Initialization may have completed without schema introspection.`,
+      );
     }
-    return this.schemaInfo;
+    return state.schemaInfo;
   }
 
   /**
@@ -436,39 +552,64 @@ export class ConnectionManager {
     return this.currentInstanceUrl;
   }
 
-  public isFeatureAvailable(feature: keyof GitLabInstanceInfo['features']): boolean {
-    if (!this.instanceInfo) {
-      return false;
-    }
-    return this.instanceInfo.features[feature];
+  /**
+   * Check if initialize() has completed for the given (or current) URL.
+   * This is an initialization flag, NOT a live connectivity check — use
+   * HealthMonitor.isInstanceReachable() for runtime reachability.
+   * True for partial states (OAuth REST-only). HealthMonitor's performConnect
+   * derives degraded state from getInstanceInfo().version after this check.
+   */
+  public isConnected(instanceUrl?: string): boolean {
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    if (!url) return false;
+    const state = this.instances.get(url);
+    return state?.isInitialized ?? false;
   }
 
-  public getTier(): string {
-    if (!this.instanceInfo) {
-      return 'unknown';
-    }
-    return this.instanceInfo.tier;
+  public isFeatureAvailable(
+    feature: keyof GitLabInstanceInfo['features'],
+    instanceUrl?: string,
+  ): boolean {
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    if (!url) return false;
+    const state = this.instances.get(url);
+    if (!state?.instanceInfo) return false;
+    return state.instanceInfo.features[feature];
   }
 
-  public getVersion(): string {
-    if (!this.instanceInfo) {
-      return 'unknown';
-    }
-    return this.instanceInfo.version;
+  public getTier(instanceUrl?: string): string {
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    if (!url) return 'unknown';
+    const state = this.instances.get(url);
+    if (!state?.instanceInfo) return 'unknown';
+    return state.instanceInfo.tier;
   }
 
-  public isWidgetAvailable(widgetType: string): boolean {
-    if (!this.schemaIntrospector) {
-      return false;
-    }
-    return this.schemaIntrospector.isWidgetTypeAvailable(widgetType);
+  public getVersion(instanceUrl?: string): string {
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    if (!url) return 'unknown';
+    const state = this.instances.get(url);
+    if (!state?.instanceInfo) return 'unknown';
+    return state.instanceInfo.version;
+  }
+
+  public isWidgetAvailable(widgetType: string, instanceUrl?: string): boolean {
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    if (!url) return false;
+    const state = this.instances.get(url);
+    // Read from schemaInfo directly — schemaIntrospector's internal cache may
+    // not be populated after a cache-hit restore (only schemaInfo is copied).
+    return state?.schemaInfo?.workItemWidgetTypes.includes(widgetType) ?? false;
   }
 
   /**
    * Get detected token scope info (null if detection was skipped or failed)
    */
-  public getTokenScopeInfo(): TokenScopeInfo | null {
-    return this.tokenScopeInfo;
+  public getTokenScopeInfo(instanceUrl?: string): TokenScopeInfo | null {
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    if (!url) return null;
+    const state = this.instances.get(url);
+    return state?.tokenScopeInfo ?? null;
   }
 
   /**
@@ -483,12 +624,17 @@ export class ConnectionManager {
       return false;
     }
 
-    const previousScopes = this.tokenScopeInfo?.scopes ?? [];
-    const previousHasGraphQL = this.tokenScopeInfo?.hasGraphQLAccess ?? false;
-    const previousHasWrite = this.tokenScopeInfo?.hasWriteAccess ?? false;
+    const url = this.currentInstanceUrl;
+    if (!url) return false;
+    const state = this.instances.get(url);
+    if (!state) return false;
 
-    // Re-detect token scopes
-    const newScopeInfo = await detectTokenScopes();
+    const previousScopes = state.tokenScopeInfo?.scopes ?? [];
+    const previousHasGraphQL = state.tokenScopeInfo?.hasGraphQLAccess ?? false;
+    const previousHasWrite = state.tokenScopeInfo?.hasWriteAccess ?? false;
+
+    // Re-detect token scopes against the current instance URL
+    const newScopeInfo = await detectTokenScopes(url);
 
     if (!newScopeInfo) {
       // Detection failed - keep existing state
@@ -503,8 +649,20 @@ export class ConnectionManager {
       previousHasGraphQL !== newScopeInfo.hasGraphQLAccess ||
       previousHasWrite !== newScopeInfo.hasWriteAccess;
 
+    // Re-check that the state entry is still the live one: a concurrent
+    // reinitialize() or reset() may have replaced / deleted it while we were
+    // awaiting detectTokenScopes() above.  Writing into a stale object would
+    // silently lose the refreshed scopes or corrupt a connection that is no
+    // longer active.
+    const currentState = this.instances.get(url);
+    if (currentState !== state) {
+      return false;
+    }
+
+    // Always persist refreshed scope info (even when scopes haven't changed)
+    // so non-scope metadata in TokenScopeInfo stays fresh
+    state.tokenScopeInfo = newScopeInfo;
     if (scopesChanged) {
-      this.tokenScopeInfo = newScopeInfo;
       logInfo('Token scopes changed - tool registry will be refreshed', {
         previousScopes,
         newScopes,
@@ -521,10 +679,10 @@ export class ConnectionManager {
    * Uses GET /api/v4/version; authentication requirements depend on instance
    * configuration. This helper always sends the configured token as a fallback.
    */
-  private async detectVersionViaREST(): Promise<GitLabInstanceInfo> {
+  private async detectVersionViaREST(baseUrl?: string): Promise<GitLabInstanceInfo> {
     try {
-      const baseUrl = this.currentInstanceUrl ?? GITLAB_BASE_URL;
-      const response = await enhancedFetch(`${baseUrl}/api/v4/version`, {
+      const url = baseUrl ?? this.currentInstanceUrl ?? GITLAB_BASE_URL;
+      const response = await enhancedFetch(`${url}/api/v4/version`, {
         headers: {
           'PRIVATE-TOKEN': GITLAB_TOKEN ?? '',
           Accept: 'application/json',
@@ -612,39 +770,93 @@ export class ConnectionManager {
    *
    * @param newInstanceUrl - The new GitLab instance URL to connect to
    */
-  public async reinitialize(newInstanceUrl: string): Promise<void> {
+  public async reinitialize(rawInstanceUrl: string): Promise<void> {
+    const newInstanceUrl = normalizeInstanceUrl(rawInstanceUrl);
     logInfo('Re-initializing ConnectionManager for new instance', {
       newInstanceUrl,
     });
 
-    // Reset current state
-    this.reset();
+    // Clear state for the NEW URL before re-init. When switching instances,
+    // keep previous state alive as fallback. When refreshing the same URL,
+    // save the live state and restore it if re-init fails.
+    const previousUrl = this.currentInstanceUrl;
+    const savedState = this.instances.get(newInstanceUrl);
+    // Only restore states that were successfully initialized; a placeholder
+    // entry written by doInitialize() before any network step completed is not
+    // a valid fallback — reinstate it would point currentInstanceUrl at an
+    // uninitialised connection.
+    const restorableState = savedState?.isInitialized ? savedState : undefined;
+    this.initializePromises.delete(newInstanceUrl);
+    this.introspectionPromises.delete(newInstanceUrl);
+    this.instances.delete(newInstanceUrl);
 
-    // Clear instance-level cache for the new URL
-    const registry = InstanceRegistry.getInstance();
-    registry.clearIntrospectionCache(newInstanceUrl);
+    // Clear all caches for the new URL (guard: registry may not be initialized yet)
+    try {
+      const registry = InstanceRegistry.getInstance();
+      registry.clearIntrospectionCache(newInstanceUrl);
+    } catch {
+      // InstanceRegistry not initialized — no cache to clear
+    }
+    ConnectionManager.introspectionCache.delete(newInstanceUrl);
+    ConnectionManager.introspectionCache.delete(`${newInstanceUrl}/api/graphql`);
 
     // Re-initialize the connection with the new instance URL
-    // This builds a new GraphQL client pointing to the new instance
-    await this.initialize(newInstanceUrl);
+    try {
+      await this.initialize(newInstanceUrl);
+    } catch (error) {
+      // On failure: restore the best available state.
+      // - Same-URL refresh: restore saved state for this URL
+      // - URL switch: keep previousUrl as the active healthy instance
+      if (restorableState) {
+        this.instances.set(newInstanceUrl, restorableState);
+      }
+      if (previousUrl && this.instances.has(previousUrl)) {
+        this.currentInstanceUrl = previousUrl;
+      } else if (restorableState) {
+        this.currentInstanceUrl = newInstanceUrl;
+      }
+      throw error;
+    }
 
+    // Only after successful init: clean up the previous instance state
+    if (previousUrl && previousUrl !== newInstanceUrl) {
+      this.initializePromises.delete(previousUrl);
+      this.introspectionPromises.delete(previousUrl);
+      this.instances.delete(previousUrl);
+    }
+
+    const state = this.instances.get(newInstanceUrl);
     logInfo('ConnectionManager re-initialized', {
-      version: this.instanceInfo?.version,
-      tier: this.instanceInfo?.tier,
+      version: state?.instanceInfo?.version,
+      tier: state?.instanceInfo?.tier,
       instanceUrl: this.currentInstanceUrl,
     });
   }
 
+  /**
+   * Clear the inflight initialize promise for a URL.
+   * Called by HealthMonitor after init timeout — prevents reconnect attempts
+   * from re-awaiting a hung doInitialize() promise.
+   */
+  public clearInflight(rawUrl: string): void {
+    const url = normalizeInstanceUrl(rawUrl);
+    this.initializePromises.delete(url);
+    this.introspectionPromises.delete(url);
+  }
+
   public reset(): void {
-    this.client = null;
-    this.versionDetector = null;
-    this.schemaIntrospector = null;
-    this.instanceInfo = null;
-    this.schemaInfo = null;
-    this.tokenScopeInfo = null;
+    this.instances.clear();
     this.currentInstanceUrl = null;
-    this.introspectedInstanceUrl = null;
+    this.latestRequestedUrl = null;
     this.introspectionPromises.clear();
-    this.isInitialized = false;
+    this.initializePromises.clear();
+    ConnectionManager.introspectionCache.clear();
+    // Clear InstanceRegistry introspection cache to prevent doIntrospection()
+    // from resurrecting stale data after a full reset
+    try {
+      InstanceRegistry.getInstance().clearIntrospectionCache();
+    } catch {
+      // InstanceRegistry not initialized — nothing to clear
+    }
   }
 }

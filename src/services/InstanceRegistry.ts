@@ -12,6 +12,7 @@
  */
 
 import { logInfo, logWarn, logDebug } from '../logger.js';
+import { normalizeInstanceUrl } from '../utils/url';
 import {
   InstanceRateLimiter,
   RateLimiterConfig,
@@ -114,7 +115,7 @@ export class InstanceRegistry {
    * Register a GitLab instance
    */
   public register(config: GitLabInstanceConfig): void {
-    const normalizedUrl = this.normalizeUrl(config.url);
+    const normalizedUrl = normalizeInstanceUrl(config.url);
 
     if (this.instances.has(normalizedUrl)) {
       logWarn('Instance already registered, updating configuration', {
@@ -154,7 +155,7 @@ export class InstanceRegistry {
    * Get instance entry by URL
    */
   public get(baseUrl: string): RegistryEntry | undefined {
-    const normalizedUrl = this.normalizeUrl(baseUrl);
+    const normalizedUrl = normalizeInstanceUrl(baseUrl);
     return this.instances.get(normalizedUrl);
   }
 
@@ -202,7 +203,7 @@ export class InstanceRegistry {
    * Check if an instance is registered
    */
   public has(baseUrl: string): boolean {
-    const normalizedUrl = this.normalizeUrl(baseUrl);
+    const normalizedUrl = normalizeInstanceUrl(baseUrl);
     return this.instances.has(normalizedUrl);
   }
 
@@ -210,7 +211,7 @@ export class InstanceRegistry {
    * Unregister an instance
    */
   public unregister(baseUrl: string): boolean {
-    const normalizedUrl = this.normalizeUrl(baseUrl);
+    const normalizedUrl = normalizeInstanceUrl(baseUrl);
     const existed = this.instances.delete(normalizedUrl);
 
     if (existed) {
@@ -391,7 +392,7 @@ export class InstanceRegistry {
    */
   public getInstancePoolStats(baseUrl: string): PoolStats | undefined {
     const connectionPool = InstanceConnectionPool.getInstance();
-    return connectionPool.getInstanceStats(baseUrl);
+    return connectionPool.getInstanceStats(normalizeInstanceUrl(baseUrl));
   }
 
   /**
@@ -406,17 +407,17 @@ export class InstanceRegistry {
    */
   public getDispatcher(baseUrl: string): unknown {
     const connectionPool = InstanceConnectionPool.getInstance();
-    let dispatcher = connectionPool.getDispatcher(baseUrl);
+    const normalizedUrl = normalizeInstanceUrl(baseUrl);
+    let dispatcher = connectionPool.getDispatcher(normalizedUrl);
 
     // Lazily create pool if instance is registered but pool doesn't exist yet
     // This ensures per-instance TLS settings are applied for REST calls
     if (!dispatcher) {
-      const normalizedUrl = this.normalizeUrl(baseUrl);
       const entry = this.instances.get(normalizedUrl);
       if (entry) {
         // Creating the GraphQL client also initializes the connection pool
         connectionPool.getGraphQLClient(entry.config);
-        dispatcher = connectionPool.getDispatcher(baseUrl);
+        dispatcher = connectionPool.getDispatcher(normalizedUrl);
       }
     }
 
@@ -441,29 +442,5 @@ export class InstanceRegistry {
     this.reset();
     await InstanceConnectionPool.resetInstance();
     logDebug('InstanceRegistry and connection pools reset');
-  }
-
-  /**
-   * Normalize URL for consistent lookup
-   */
-  private normalizeUrl(url: string): string {
-    let normalized = url;
-
-    // Remove trailing slash
-    if (normalized.endsWith('/')) {
-      normalized = normalized.slice(0, -1);
-    }
-
-    // Remove /api/v4 suffix
-    if (normalized.endsWith('/api/v4')) {
-      normalized = normalized.slice(0, -7);
-    }
-
-    // Remove /api/graphql suffix
-    if (normalized.endsWith('/api/graphql')) {
-      normalized = normalized.slice(0, -12);
-    }
-
-    return normalized;
   }
 }

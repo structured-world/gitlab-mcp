@@ -16,6 +16,7 @@ import {
   TRUST_PROXY,
   SSE_HEARTBEAT_MS,
   HTTP_KEEPALIVE_TIMEOUT_MS,
+  MAX_SAFE_TIMEOUT_MS,
   LOG_FORMAT,
   GITLAB_BASE_URL,
   DASHBOARD_ENABLED,
@@ -56,6 +57,10 @@ import {
   getConnectionTracker,
   runWithRequestContextAsync,
 } from './logging/index';
+
+// Clamp keepAliveTimeout to leave room for the mandatory 5s headersTimeout gap.
+// Single source of truth — used by both configureServerTimeouts() and startup log.
+const KEEP_ALIVE_TIMEOUT_MS = Math.min(HTTP_KEEPALIVE_TIMEOUT_MS, MAX_SAFE_TIMEOUT_MS - 5000);
 
 /**
  * Send a tools/list_changed notification to ALL connected clients.
@@ -199,8 +204,8 @@ function configureTrustProxy(app: Express): void {
  * - timeout: Set to 0 to disable socket timeout entirely for long-lived SSE streams.
  */
 function configureServerTimeouts(server: http.Server | https.Server): void {
-  server.keepAliveTimeout = HTTP_KEEPALIVE_TIMEOUT_MS;
-  server.headersTimeout = HTTP_KEEPALIVE_TIMEOUT_MS + 5000; // Must be > keepAliveTimeout
+  server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 5000; // Must be > keepAliveTimeout
   server.timeout = 0; // No socket timeout for SSE streaming
 
   // Enable TCP keepalive on every incoming socket to detect dead connections
@@ -861,7 +866,7 @@ export async function startServer(): Promise<void> {
         }
         logInfo('SSE keepalive configured for proxy chain compatibility', {
           heartbeatMs: SSE_HEARTBEAT_MS,
-          keepAliveTimeoutMs: HTTP_KEEPALIVE_TIMEOUT_MS,
+          keepAliveTimeoutMs: KEEP_ALIVE_TIMEOUT_MS,
         });
         logInfo('Clients can use either transport as needed');
       });
@@ -881,6 +886,15 @@ async function gracefulShutdown(signal: string): Promise<void> {
     logInfo('All connections closed for shutdown');
   } catch (error) {
     logError('Error closing connections', { err: error as Error });
+  }
+
+  // Stop health monitor timers before closing sessions
+  try {
+    const { HealthMonitor } = await import('./services/HealthMonitor');
+    HealthMonitor.getInstance().shutdown();
+    logInfo('Health monitor shut down successfully');
+  } catch (error) {
+    logError('Error shutting down health monitor', { err: error as Error });
   }
 
   try {

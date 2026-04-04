@@ -99,6 +99,7 @@ jest.mock('../../src/config', () => ({
   PORT: '3000',
   SSE_HEARTBEAT_MS: 30000,
   HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+  MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
   packageName: 'test-package',
   packageVersion: '1.0.0',
   LOG_FORMAT: 'condensed',
@@ -213,6 +214,7 @@ describe('server', () => {
         PORT: '3000',
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -321,6 +323,7 @@ describe('server', () => {
         PORT: '3000',
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -345,6 +348,7 @@ describe('server', () => {
         PORT: '3000',
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -1350,6 +1354,35 @@ describe('server', () => {
       expect(mockHttpServer.timeout).toBe(0); // No socket timeout for SSE
     });
 
+    it('should clamp keepAliveTimeout to preserve headersTimeout gap at MAX_SAFE_TIMEOUT_MS', async () => {
+      process.env.PORT = '3000';
+
+      // Re-mock config with keepAlive at the 32-bit ceiling
+      jest.resetModules();
+      jest.doMock('../../src/config', () => ({
+        SSE: true,
+        STREAMABLE_HTTP: false,
+        HOST: 'localhost',
+        PORT: '3000',
+        SSE_HEARTBEAT_MS: 30000,
+        HTTP_KEEPALIVE_TIMEOUT_MS: 2_147_483_647, // MAX_SAFE_TIMEOUT_MS
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
+        packageName: 'test-package',
+        packageVersion: '1.0.0',
+        LOG_FORMAT: 'condensed',
+        LOG_FILTER: [],
+        shouldSkipAccessLogRequest: jest.fn(() => false),
+      }));
+
+      const { startServer: clampStartServer } = await import('../../src/server');
+      await clampStartServer();
+
+      // keepAlive should be clamped to MAX - 5000
+      expect(mockHttpServer.keepAliveTimeout).toBe(2_147_483_647 - 5000);
+      // headersTimeout = clamped keepAlive + 5000 = MAX
+      expect(mockHttpServer.headersTimeout).toBe(2_147_483_647);
+    });
+
     it('should register TCP keepalive on incoming sockets', async () => {
       process.env.PORT = '3000';
       await startServer();
@@ -2346,6 +2379,7 @@ describe('server', () => {
         PORT: undefined, // No PORT means stdio mode
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -2388,6 +2422,7 @@ describe('server', () => {
         PORT: undefined, // No PORT means stdio mode
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -2415,6 +2450,7 @@ describe('server', () => {
         PORT: undefined, // No PORT means stdio mode
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
+        MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',

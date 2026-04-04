@@ -132,9 +132,9 @@ function getRegisteredHandler(
   mockServer: jest.Mocked<Server>,
   schema: typeof ListToolsRequestSchema | typeof CallToolRequestSchema,
 ): McpHandler {
-  const call = (mockServer.setRequestHandler as jest.Mock).mock.calls.find(
-    ([s]: [unknown]) => s === schema,
-  );
+  // Use findLast to get the latest registered handler (not a stale pre-retry one)
+  const calls = (mockServer.setRequestHandler as jest.Mock).mock.calls;
+  const call = [...calls].reverse().find(([s]: [unknown]) => s === schema);
   if (!call) {
     throw new Error(`Handler for schema ${String(schema)} was not registered`);
   }
@@ -1675,6 +1675,31 @@ describe('handlers', () => {
       expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(oauthUrl, expect.any(Error));
 
       // Restore
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+    });
+
+    it('should short-circuit with CONNECTION_FAILED for OAuth URL when unreachable', async () => {
+      const oauth = require('../../src/oauth/index');
+      const oauthUrl = 'https://oauth-unreachable.example.com';
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(oauthUrl);
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.isInstanceReachable.mockClear();
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
+
+      const result = await callToolHandler({
+        params: { name: 'browse_projects', arguments: { action: 'list' } },
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      expect(parsed.instance_url).toBe(oauthUrl);
+      // Verify reachability gate used the OAuth URL, not GITLAB_BASE_URL
+      expect(mockHealthMonitor.isInstanceReachable).toHaveBeenCalledWith(oauthUrl);
+
+      // Restore
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
     });
   });

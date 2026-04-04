@@ -1703,6 +1703,7 @@ describe('handlers', () => {
         },
       });
 
+      expect(mockRequestTracker.getStack).toHaveBeenCalledWith('req-789');
       // recordError should NOT have been called (no sessionId)
       expect(mockConnectionTracker.recordError).not.toHaveBeenCalled();
     });
@@ -1933,6 +1934,7 @@ describe('handlers', () => {
       const parsed = JSON.parse(result.content![0].text);
       expect(parsed.error_code).toBe('CONNECTION_FAILED');
 
+      expect(mockRequestTracker.getStack).toHaveBeenCalledWith('req-early-001');
       // recordError should have been called via recordEarlyReturnError (lines 79-81)
       expect(mockConnectionTracker.recordError).toHaveBeenCalledWith(
         'sess-early-001',

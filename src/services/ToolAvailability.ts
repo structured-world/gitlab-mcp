@@ -340,6 +340,9 @@ export class ToolAvailability {
     let rawVersion: string;
 
     if (cachedInstanceInfo) {
+      // When version is unknown, don't restrict parameters — consistent with
+      // isToolAvailable/isToolAvailableForInstance which allow all tools
+      if (cachedInstanceInfo.version === 'unknown') return [];
       instanceTier = cachedInstanceInfo.tier;
       rawVersion = cachedInstanceInfo.version;
       instanceVersion = parseVersion(rawVersion);
@@ -349,6 +352,7 @@ export class ToolAvailability {
       const connectionManager = ConnectionManager.getInstance();
       try {
         const instanceInfo = connectionManager.getInstanceInfo();
+        if (instanceInfo.version === 'unknown') return [];
         instanceTier = instanceInfo.tier;
         rawVersion = instanceInfo.version;
         instanceVersion = parseVersion(rawVersion);

@@ -709,6 +709,8 @@ describe('handlers', () => {
       mockRegistryManager.executeTool.mockResolvedValue({ context: 'info' });
       mockHealthMonitor.reportSuccess.mockClear();
       mockHealthMonitor.reportError.mockClear();
+      mockConnectionManager.getClient.mockClear();
+      mockConnectionManager.ensureIntrospected.mockClear();
 
       const result = await callToolHandler({
         params: {
@@ -721,7 +723,9 @@ describe('handlers', () => {
       expect(result.isError).toBeUndefined();
       const parsed = JSON.parse(result.content![0].text);
       expect(parsed.context).toBe('info');
-      // Fast-path does no GitLab I/O — must not mutate connection state
+      // Fast-path skips bootstrap entirely — no GitLab I/O, no health reporting
+      expect(mockConnectionManager.getClient).not.toHaveBeenCalled();
+      expect(mockConnectionManager.ensureIntrospected).not.toHaveBeenCalled();
       expect(mockHealthMonitor.reportSuccess).not.toHaveBeenCalled();
       expect(mockHealthMonitor.reportError).not.toHaveBeenCalled();
 

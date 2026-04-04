@@ -159,7 +159,7 @@ function createDispatcher(): unknown {
       // requestTls: upstream TLS handshake after CONNECT tunnel established
       // proxyTls: TLS handshake to the proxy itself (if HTTPS proxy)
       // Both need connect timeout to fully bound HTTPS-over-proxy connections.
-      requestTls: hasTlsConfig ? { ...tlsOptions, timeout: CONNECT_TIMEOUT_MS } : undefined,
+      requestTls: { ...(hasTlsConfig ? tlsOptions : {}), timeout: CONNECT_TIMEOUT_MS },
       proxyTls: { timeout: CONNECT_TIMEOUT_MS },
       headersTimeout: HEADERS_TIMEOUT_MS,
       bodyTimeout: BODY_TIMEOUT_MS,

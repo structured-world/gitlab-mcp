@@ -730,6 +730,23 @@ describe('handlers', () => {
       mockHealthMonitor.getState.mockReturnValue('healthy');
     });
 
+    it('should route reachable manage_context through normal bootstrap and report health', async () => {
+      // When instance IS reachable, manage_context goes through full bootstrap
+      // (unlike the disconnected fast-path above)
+      mockRegistryManager.executeTool.mockResolvedValue({ context: 'info' });
+
+      const result = await callToolHandler({
+        params: {
+          name: 'manage_context',
+          arguments: { action: 'whoami' },
+        },
+      });
+
+      expect(result.isError).toBeUndefined();
+      // Reachable path goes through bootstrap → reports health
+      expect(mockHealthMonitor.reportSuccess).toHaveBeenCalled();
+    });
+
     it('should report bootstrap init error to health monitor', async () => {
       // Simulate: isConnected false, then initialize also fails
       mockConnectionManager.isConnected.mockReturnValue(false);

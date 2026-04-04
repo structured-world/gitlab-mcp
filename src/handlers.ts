@@ -346,6 +346,12 @@ export async function setupHandlers(server: Server): Promise<void> {
       await import('./oauth/index');
     // In OAuth mode, use the per-request context URL to avoid bleeding the
     // last-set ConnectionManager instance across concurrent OAuth sessions.
+    // When OAuth is enabled but no request context is available (e.g. startup
+    // health check, non-OAuth transport), we fall back to GITLAB_BASE_URL as the
+    // default instance. This is intentional: the alternative (returning an auth
+    // error) would block health monitoring and tool-list initialization. The
+    // fallback is safe because GITLAB_BASE_URL is always configured. See #379
+    // for the planned migration to explicit URL threading.
     // In static-token mode, prefer the actively selected instance URL so
     // switch_instance requests continue routing to the current instance.
     const rawInstanceUrl = isOAuthEnabled()

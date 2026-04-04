@@ -13,7 +13,7 @@ import * as p from '@clack/prompts';
 import { InstanceRegistry } from '../../services/InstanceRegistry.js';
 import { loadInstancesConfig, generateSampleConfig } from '../../config/instances-loader.js';
 import { GitLabInstanceConfig } from '../../config/instances-schema.js';
-import { enhancedFetch } from '../../utils/fetch.js';
+import { enhancedFetch } from '../../utils/fetch';
 
 /**
  * Instance subcommand type

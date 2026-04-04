@@ -243,7 +243,12 @@ describe('instances-command', () => {
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
           'https://custom.gitlab.com/api/v4/version',
-          expect.any(Object),
+          expect.objectContaining({
+            retry: false,
+            skipAuth: true,
+            rateLimit: false,
+            headers: { Accept: 'application/json' },
+          }),
         );
         expect(consoleSpy).toHaveBeenCalledWith(expect.stringContaining('Connected'));
       });

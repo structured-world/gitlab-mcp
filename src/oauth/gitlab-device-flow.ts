@@ -14,10 +14,14 @@ import { GitLabDeviceResponse, GitLabTokenResponse, GitLabUserInfo } from './typ
 import { logInfo, logWarn, logError, logDebug } from '../logger';
 import { enhancedFetch, type FetchWithRetryOptions } from '../utils/fetch';
 
-/** Shared options for OAuth endpoint calls — no retry, no auth injection, no rate limiting */
-const OAUTH_FETCH_OPTS: Pick<FetchWithRetryOptions, 'retry' | 'skipAuth' | 'rateLimit'> = {
+/**
+ * Shared options for OAuth endpoint calls — no retry, no rate limiting.
+ * skipAuth is NOT set: these requests either carry explicit credentials in headers
+ * (Authorization: Bearer for user info/validation) or in the POST body (client_id/secret
+ * for token exchange). skipAuth would strip the explicit headers.
+ */
+const OAUTH_FETCH_OPTS: Pick<FetchWithRetryOptions, 'retry' | 'rateLimit'> = {
   retry: false,
-  skipAuth: true,
   rateLimit: false,
 };
 

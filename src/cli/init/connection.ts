@@ -24,7 +24,6 @@ export async function testConnection(
         Accept: 'application/json',
       },
       retry: false,
-      skipAuth: true,
       rateLimit: false,
     });
 

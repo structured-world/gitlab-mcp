@@ -350,7 +350,7 @@ export const MAX_SAFE_TIMEOUT_MS = 2_147_483_647;
 /** Strict integer parse — rejects partial matches like "120s" or "1e3".
  *  @param allowZero - when true, 0 is a valid value (e.g. retry attempts) */
 function parseStrictInt(envValue: string | undefined, fallback: number, allowZero = false): number {
-  const raw = envValue ?? String(fallback);
+  const raw = envValue?.trim() ?? String(fallback);
   if (!/^\d+$/.test(raw)) return fallback;
   const parsed = Number(raw);
   if (!Number.isSafeInteger(parsed)) return fallback;

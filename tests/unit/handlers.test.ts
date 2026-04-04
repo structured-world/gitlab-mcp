@@ -595,6 +595,7 @@ describe('handlers', () => {
 
     it('should return CONNECTION_FAILED error when instance is unreachable', async () => {
       mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.isInstanceReachable.mockClear();
       mockHealthMonitor.getState.mockReturnValue('disconnected');
       // Clear bootstrap mocks to verify the health gate short-circuits
       mockConnectionManager.isConnected.mockReturnValue(false);
@@ -613,11 +614,16 @@ describe('handlers', () => {
       expect(result.isError).toBe(true);
       const parsed = JSON.parse(result.content![0].text);
       expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      expect(parsed.instance_url).toBe('https://gitlab.example.com');
       expect(parsed.tool).toBe('browse_projects');
       expect(parsed.action).toBe('list');
       // disconnected = not actively reconnecting, but auto-retry is enabled
       expect(parsed.reconnecting).toBe(false);
       expect(parsed.auto_retry_enabled).toBe(true);
+      // Verify the health gate was consulted with the correct URL
+      expect(mockHealthMonitor.isInstanceReachable).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+      );
       // Health gate must prevent bootstrap and tool execution
       expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
       expect(mockConnectionManager.getClient).not.toHaveBeenCalled();
@@ -1522,6 +1528,8 @@ describe('handlers', () => {
       expect(mockHealthMonitor.initialize).toHaveBeenCalledTimes(2);
       // State-change listener must not be double-registered after retry
       expect(mockHealthMonitor.onStateChange).toHaveBeenCalledTimes(1);
+      // Verify the retry registered handlers (server is usable after recovery)
+      expect(mockServer.setRequestHandler).toHaveBeenCalled();
 
       // Restore
       mockHealthMonitor.initialize.mockResolvedValue(undefined);

@@ -221,8 +221,15 @@ export async function setupHandlers(server: Server): Promise<void> {
 
         // Rebuild registry cache after initialization — applies tier/version info
         // when healthy/degraded, or applies disconnected-mode tool filtering otherwise.
-        const { RegistryManager } = await import('./registry-manager');
-        RegistryManager.getInstance().refreshCache();
+        // Best-effort: a cache rebuild failure should not block handler installation.
+        try {
+          const { RegistryManager } = await import('./registry-manager');
+          RegistryManager.getInstance().refreshCache();
+        } catch (cacheError) {
+          logWarn('Failed to refresh registry cache during handler setup', {
+            err: cacheError as Error,
+          });
+        }
       } catch (error) {
         // Reset so the next session retries instead of re-awaiting a rejected promise
         healthMonitorStartup = null;

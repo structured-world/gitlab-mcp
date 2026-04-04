@@ -58,6 +58,10 @@ import {
   runWithRequestContextAsync,
 } from './logging/index';
 
+// Clamp keepAliveTimeout to leave room for the mandatory 5s headersTimeout gap.
+// Single source of truth — used by both configureServerTimeouts() and startup log.
+const KEEP_ALIVE_TIMEOUT_MS = Math.min(HTTP_KEEPALIVE_TIMEOUT_MS, MAX_SAFE_TIMEOUT_MS - 5000);
+
 /**
  * Send a tools/list_changed notification to ALL connected clients.
  *
@@ -200,10 +204,8 @@ function configureTrustProxy(app: Express): void {
  * - timeout: Set to 0 to disable socket timeout entirely for long-lived SSE streams.
  */
 function configureServerTimeouts(server: http.Server | https.Server): void {
-  // Clamp keepAliveTimeout to leave room for the mandatory 5s headersTimeout gap
-  const keepAliveTimeout = Math.min(HTTP_KEEPALIVE_TIMEOUT_MS, MAX_SAFE_TIMEOUT_MS - 5000);
-  server.keepAliveTimeout = keepAliveTimeout;
-  server.headersTimeout = keepAliveTimeout + 5000; // Must be > keepAliveTimeout
+  server.keepAliveTimeout = KEEP_ALIVE_TIMEOUT_MS;
+  server.headersTimeout = KEEP_ALIVE_TIMEOUT_MS + 5000; // Must be > keepAliveTimeout
   server.timeout = 0; // No socket timeout for SSE streaming
 
   // Enable TCP keepalive on every incoming socket to detect dead connections
@@ -864,7 +866,7 @@ export async function startServer(): Promise<void> {
         }
         logInfo('SSE keepalive configured for proxy chain compatibility', {
           heartbeatMs: SSE_HEARTBEAT_MS,
-          keepAliveTimeoutMs: Math.min(HTTP_KEEPALIVE_TIMEOUT_MS, MAX_SAFE_TIMEOUT_MS - 5000),
+          keepAliveTimeoutMs: KEEP_ALIVE_TIMEOUT_MS,
         });
         logInfo('Clients can use either transport as needed');
       });

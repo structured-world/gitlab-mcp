@@ -1680,6 +1680,8 @@ describe('handlers', () => {
       });
 
       expect(result.isError).toBe(true);
+      // Verify requestId was forwarded to getStack
+      expect(mockRequestTracker.getStack).toHaveBeenCalledWith('req-123');
       // Connection tracker recordError should have been called via the outer catch block
       expect(mockConnectionTracker.recordError).toHaveBeenCalledWith(
         'sess-456',

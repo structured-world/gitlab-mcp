@@ -802,6 +802,16 @@ describe('HealthMonitor', () => {
       const monitor = await initMonitor();
       expect(monitor.isAnyInstanceHealthy()).toBe(false);
     });
+
+    it('should treat connecting (pending initialize) as healthy', () => {
+      // Initialize hangs — actor stays in connecting state
+      mockInitialize.mockImplementation(() => new Promise<never>(() => {}));
+      const monitor = HealthMonitor.getInstance();
+      // Start initialize but don't await — actor is in connecting state
+      void monitor.initialize(TEST_URL);
+      // connecting is treated as healthy to avoid context-only tools during startup
+      expect(monitor.isAnyInstanceHealthy()).toBe(true);
+    });
   });
 
   describe('periodic health checks', () => {

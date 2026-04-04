@@ -360,7 +360,7 @@ export async function setupHandlers(server: Server): Promise<void> {
     // Tracks whether bootstrap was entered and whether it completed.
     // bootstrapStarted: true once we enter the init/introspection path (not set
     //   for disconnected manage_context bypass which does no GitLab I/O)
-    // bootstrapComplete: true after init + introspection + cache all succeeded
+    // bootstrapComplete: true after init + introspection succeed (before cache rebuild)
     let bootstrapStarted = false;
     let bootstrapComplete = false;
 

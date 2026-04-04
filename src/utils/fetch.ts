@@ -152,10 +152,11 @@ function createDispatcher(): unknown {
   if (proxyUrl) {
     logInfo(`Using proxy: ${proxyUrl}`);
     // ProxyAgent in Undici v8 does not support the `connect` option (only Agent/Pool do).
-    // Connect timeout is handled by the proxy's own connection negotiation.
+    // Use proxyTls.signal to enforce connect timeout for the proxy tunnel instead.
     return new undici.ProxyAgent({
       uri: proxyUrl,
       requestTls: hasTlsConfig ? tlsOptions : undefined,
+      proxyTls: { signal: AbortSignal.timeout(CONNECT_TIMEOUT_MS) },
       headersTimeout: HEADERS_TIMEOUT_MS,
       bodyTimeout: BODY_TIMEOUT_MS,
     });

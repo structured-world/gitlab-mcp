@@ -461,7 +461,7 @@ export class ConnectionManager {
     }
     const state = this.instances.get(url);
     if (!state) {
-      throw new Error('Connection not initialized. Call initialize() first.');
+      throw new Error(`Connection not initialized for ${url}. Call initialize() first.`);
     }
     // Note: state.isInitialized may be false during doInitialize() — the client
     // is valid at this point (constructed before map insertion). Failed inits

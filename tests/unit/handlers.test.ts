@@ -401,6 +401,9 @@ describe('handlers', () => {
     });
 
     it('should verify connection and continue if already initialized', async () => {
+      // isConnected returns true (default) → should skip initialize()
+      mockConnectionManager.initialize.mockClear();
+
       const mockRequest = {
         params: {
           name: 'test_tool',
@@ -411,7 +414,8 @@ describe('handlers', () => {
       await callToolHandler(mockRequest);
 
       expect(mockConnectionManager.getClient).toHaveBeenCalled();
-      // getInstanceInfo is now only called in verbose log mode (best-effort enrichment)
+      // Connected fast-path skips initialize()
+      expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
     });
 
     it('should initialize connection if not already initialized', async () => {
@@ -1568,7 +1572,8 @@ describe('handlers', () => {
       });
 
       expect(result.isError).toBeUndefined();
-      // Verify the OAuth URL was passed through bootstrap + health reporting
+      // Verify the OAuth URL was passed through all per-URL code paths
+      expect(mockConnectionManager.isConnected).toHaveBeenCalledWith(oauthUrl);
       expect(mockConnectionManager.initialize).toHaveBeenCalledWith(oauthUrl);
       expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(oauthUrl);
       expect(mockHealthMonitor.isInstanceReachable).toHaveBeenCalledWith(oauthUrl);

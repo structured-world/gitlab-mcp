@@ -127,11 +127,10 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
     const connectionManager = ConnectionManager.getInstance();
 
     // Fast-path: if already initialized for this URL, verify with health check.
+    // Use HEALTH_CHECK_PROBE_MS (not INIT_TIMEOUT_MS) — init timeout may be
+    // configured very low to speed up startup, which would cause spurious disconnects.
     if (connectionManager.isConnected(input.instanceUrl)) {
-      const healthy = await quickHealthCheck(
-        input.instanceUrl,
-        Math.min(INIT_TIMEOUT_MS, HEALTH_CHECK_PROBE_MS),
-      );
+      const healthy = await quickHealthCheck(input.instanceUrl, HEALTH_CHECK_PROBE_MS);
       if (!healthy) {
         // Intentionally a new Error (not the original fetch cause) — health check
         // failures are always transient regardless of the underlying cause.

@@ -353,8 +353,9 @@ function parseStrictInt(envValue: string | undefined, fallback: number, allowZer
   const raw = envValue ?? String(fallback);
   if (!/^\d+$/.test(raw)) return fallback;
   const parsed = Number(raw);
-  if (!Number.isFinite(parsed)) return fallback;
-  return allowZero ? (parsed >= 0 ? parsed : fallback) : parsed > 0 ? parsed : fallback;
+  if (!Number.isSafeInteger(parsed)) return fallback;
+  const minValue = allowZero ? 0 : 1;
+  return parsed >= minValue ? parsed : fallback;
 }
 
 function parseTimerMs(envValue: string | undefined, fallback: number): number {

@@ -596,6 +596,12 @@ describe('handlers', () => {
     it('should return CONNECTION_FAILED error when instance is unreachable', async () => {
       mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
       mockHealthMonitor.getState.mockReturnValue('disconnected');
+      // Clear bootstrap mocks to verify the health gate short-circuits
+      mockConnectionManager.isConnected.mockReturnValue(false);
+      mockConnectionManager.initialize.mockClear();
+      mockConnectionManager.getClient.mockClear();
+      mockConnectionManager.ensureIntrospected.mockClear();
+      mockRegistryManager.executeTool.mockClear();
 
       const result = await callToolHandler({
         params: {
@@ -612,8 +618,14 @@ describe('handlers', () => {
       // disconnected = not actively reconnecting, but auto-retry is enabled
       expect(parsed.reconnecting).toBe(false);
       expect(parsed.auto_retry_enabled).toBe(true);
+      // Health gate must prevent bootstrap and tool execution
+      expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
+      expect(mockConnectionManager.getClient).not.toHaveBeenCalled();
+      expect(mockConnectionManager.ensureIntrospected).not.toHaveBeenCalled();
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
 
       // Restore
+      mockConnectionManager.isConnected.mockReturnValue(true);
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
       mockHealthMonitor.getState.mockReturnValue('healthy');
     });
@@ -1901,9 +1913,10 @@ describe('handlers', () => {
       await new Promise((r) => process.nextTick(r));
 
       // Auth error classified as 'auth' → forwarded through timedOut guard
+      // Pin to the actual 401 rejection (not the timeout sentinel)
       expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(
         'https://gitlab.example.com',
-        expect.any(Error),
+        expect.objectContaining({ message: expect.stringContaining('401') }),
       );
 
       // Restore

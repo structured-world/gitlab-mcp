@@ -12,7 +12,14 @@ import { GITLAB_BASE_URL } from '../config';
 import { OAuthConfig } from './config';
 import { GitLabDeviceResponse, GitLabTokenResponse, GitLabUserInfo } from './types';
 import { logInfo, logWarn, logError, logDebug } from '../logger';
-import { enhancedFetch } from '../utils/fetch';
+import { enhancedFetch, type FetchWithRetryOptions } from '../utils/fetch';
+
+/** Shared options for OAuth endpoint calls — no retry, no auth injection, no rate limiting */
+const OAUTH_FETCH_OPTS: Pick<FetchWithRetryOptions, 'retry' | 'skipAuth' | 'rateLimit'> = {
+  retry: false,
+  skipAuth: true,
+  rateLimit: false,
+};
 
 /**
  * Device flow error types from GitLab
@@ -62,9 +69,7 @@ export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDev
       client_id: config.gitlabClientId,
       scope: scopes,
     }),
-    retry: false,
-    skipAuth: true,
-    rateLimit: false,
+    ...OAUTH_FETCH_OPTS,
   });
 
   if (!response.ok) {
@@ -119,9 +124,7 @@ export async function pollDeviceFlowOnce(
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
-    retry: false,
-    skipAuth: true,
-    rateLimit: false,
+    ...OAUTH_FETCH_OPTS,
   });
 
   if (response.ok) {
@@ -249,9 +252,7 @@ export async function refreshGitLabToken(
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
-    retry: false,
-    skipAuth: true,
-    rateLimit: false,
+    ...OAUTH_FETCH_OPTS,
   });
 
   if (!response.ok) {
@@ -282,9 +283,7 @@ export async function getGitLabUser(accessToken: string): Promise<GitLabUserInfo
       Authorization: `Bearer ${accessToken}`,
       Accept: 'application/json',
     },
-    retry: false,
-    skipAuth: true,
-    rateLimit: false,
+    ...OAUTH_FETCH_OPTS,
   });
 
   if (!response.ok) {
@@ -372,9 +371,7 @@ export async function exchangeGitLabAuthCode(
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
-    retry: false,
-    skipAuth: true,
-    rateLimit: false,
+    ...OAUTH_FETCH_OPTS,
   });
 
   if (!response.ok) {

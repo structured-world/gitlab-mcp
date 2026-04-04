@@ -15,6 +15,15 @@ jest.mock('undici', () => ({
 
 const mockFetch = require('undici').fetch as jest.Mock;
 
+/** Re-register undici mock after jest.resetModules() clears the module cache */
+function reregisterUndiciMock(): void {
+  jest.doMock('undici', () => ({
+    fetch: mockFetch,
+    Agent: jest.fn().mockImplementation(() => ({})),
+    ProxyAgent: jest.fn().mockImplementation(() => ({})),
+  }));
+}
+
 describe('Fetch Configuration Edge Cases', () => {
   const createMockResponse = (overrides: Partial<Response> = {}): Response =>
     ({
@@ -50,27 +59,26 @@ describe('Fetch Configuration Edge Cases', () => {
   const mockLogError = jest.fn();
   const mockLogDebug = jest.fn();
 
+  /** Common beforeEach setup: resetModules + re-register undici/logger mocks */
+  function resetAndReregisterMocks(setupMockFetch = true): void {
+    jest.resetModules();
+    jest.clearAllMocks();
+    if (setupMockFetch) {
+      mockFetch.mockResolvedValue(createMockResponse());
+    }
+    reregisterUndiciMock();
+    jest.doMock('../../../src/logger', () => ({
+      logger: mockLogger,
+      logInfo: mockLogInfo,
+      logWarn: mockLogWarn,
+      logError: mockLogError,
+      logDebug: mockLogDebug,
+    }));
+  }
+
   describe('SOCKS Proxy Detection', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      // Re-register undici mock after resetModules
-      jest.doMock('undici', () => ({
-        fetch: mockFetch,
-        Agent: jest.fn().mockImplementation(() => ({})),
-        ProxyAgent: jest.fn().mockImplementation(() => ({})),
-      }));
-
-      // Re-register logger mock with persistent instance
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should warn about SOCKS5 proxy not being supported', async () => {
@@ -147,12 +155,7 @@ describe('Fetch Configuration Edge Cases', () => {
       jest.clearAllMocks();
       mockFetch.mockResolvedValue(createMockResponse());
 
-      // Re-register undici mock after resetModules
-      jest.doMock('undici', () => ({
-        fetch: mockFetch,
-        Agent: jest.fn().mockImplementation(() => ({})),
-        ProxyAgent: jest.fn().mockImplementation(() => ({})),
-      }));
+      reregisterUndiciMock();
 
       jest.doMock('../../../src/logger', () => ({
         logger: mockLogger,
@@ -239,12 +242,7 @@ describe('Fetch Configuration Edge Cases', () => {
       jest.clearAllMocks();
       mockFetch.mockResolvedValue(createMockResponse());
 
-      // Re-register undici mock after resetModules
-      jest.doMock('undici', () => ({
-        fetch: mockFetch,
-        Agent: jest.fn().mockImplementation(() => ({})),
-        ProxyAgent: jest.fn().mockImplementation(() => ({})),
-      }));
+      reregisterUndiciMock();
 
       jest.doMock('../../../src/logger', () => ({
         logger: mockLogger,
@@ -326,12 +324,7 @@ describe('Fetch Configuration Edge Cases', () => {
       jest.clearAllMocks();
       mockFetch.mockResolvedValue(createMockResponse());
 
-      // Re-register undici mock after resetModules
-      jest.doMock('undici', () => ({
-        fetch: mockFetch,
-        Agent: jest.fn().mockImplementation(() => ({})),
-        ProxyAgent: jest.fn().mockImplementation(() => ({})),
-      }));
+      reregisterUndiciMock();
 
       jest.doMock('../../../src/logger', () => ({
         logger: mockLogger,
@@ -432,12 +425,7 @@ describe('Fetch Configuration Edge Cases', () => {
       jest.clearAllMocks();
       mockFetch.mockResolvedValue(createMockResponse());
 
-      // Re-register undici mock after resetModules
-      jest.doMock('undici', () => ({
-        fetch: mockFetch,
-        Agent: jest.fn().mockImplementation(() => ({})),
-        ProxyAgent: jest.fn().mockImplementation(() => ({})),
-      }));
+      reregisterUndiciMock();
 
       jest.doMock('../../../src/logger', () => ({
         logger: mockLogger,
@@ -558,12 +546,7 @@ describe('Fetch Configuration Edge Cases', () => {
       jest.clearAllMocks();
       mockFetch.mockResolvedValue(createMockResponse());
 
-      // Re-register undici mock after resetModules
-      jest.doMock('undici', () => ({
-        fetch: mockFetch,
-        Agent: jest.fn().mockImplementation(() => ({})),
-        ProxyAgent: jest.fn().mockImplementation(() => ({})),
-      }));
+      reregisterUndiciMock();
 
       jest.doMock('../../../src/logger', () => ({
         logger: mockLogger,
@@ -634,23 +617,7 @@ describe('Fetch Configuration Edge Cases', () => {
     // Tests that AbortError from caller signal is re-thrown as-is (not mapped to timeout).
 
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-
-      // Re-register undici mock after resetModules
-      jest.doMock('undici', () => ({
-        fetch: mockFetch,
-        Agent: jest.fn().mockImplementation(() => ({})),
-        ProxyAgent: jest.fn().mockImplementation(() => ({})),
-      }));
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks(false);
 
       jest.doMock('../../../src/config', () => ({
         SKIP_TLS_VERIFY: false,
@@ -719,23 +686,7 @@ describe('Fetch Configuration Edge Cases', () => {
     // with the correct phase and timeout value, so isRetryableError() can match them.
 
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-
-      // Re-register undici mock after resetModules
-      jest.doMock('undici', () => ({
-        fetch: mockFetch,
-        Agent: jest.fn().mockImplementation(() => ({})),
-        ProxyAgent: jest.fn().mockImplementation(() => ({})),
-      }));
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks(false);
 
       jest.doMock('../../../src/config', () => ({
         SKIP_TLS_VERIFY: false,
@@ -873,12 +824,7 @@ describe('Fetch Configuration Edge Cases', () => {
       jest.clearAllMocks();
       mockFetch.mockResolvedValue(createMockResponse());
 
-      // Re-register undici mock after resetModules
-      jest.doMock('undici', () => ({
-        fetch: mockFetch,
-        Agent: jest.fn().mockImplementation(() => ({})),
-        ProxyAgent: jest.fn().mockImplementation(() => ({})),
-      }));
+      reregisterUndiciMock();
 
       jest.doMock('../../../src/logger', () => ({
         logger: mockLogger,
@@ -953,12 +899,7 @@ describe('Fetch Configuration Edge Cases', () => {
       jest.clearAllMocks();
       mockFetch.mockResolvedValue(createMockResponse());
 
-      // Re-register undici mock after resetModules
-      jest.doMock('undici', () => ({
-        fetch: mockFetch,
-        Agent: jest.fn().mockImplementation(() => ({})),
-        ProxyAgent: jest.fn().mockImplementation(() => ({})),
-      }));
+      reregisterUndiciMock();
 
       jest.doMock('../../../src/logger', () => ({
         logger: mockLogger,

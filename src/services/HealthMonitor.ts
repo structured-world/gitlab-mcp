@@ -117,6 +117,19 @@ function hasSchemaInfo(connectionManager: ConnectionManager, instanceUrl: string
   }
 }
 
+/**
+ * Check if an instance is running in degraded mode.
+ * Degraded = version unknown (REST/OAuth fallback) OR schema introspection incomplete.
+ */
+function isDegradedInstance(connectionManager: ConnectionManager, instanceUrl: string): boolean {
+  try {
+    const info = connectionManager.getInstanceInfo(instanceUrl);
+    return info.version === 'unknown' || !hasSchemaInfo(connectionManager, instanceUrl);
+  } catch {
+    return true;
+  }
+}
+
 // performConnect handles three phases in one function: (1) fast-path for already-connected
 // instances, (2) full initialization with timeout budget, (3) degraded-path reachability probe.
 // SonarCloud flags cognitive complexity=17 (limit 15). Extracting phase helpers would split
@@ -137,17 +150,7 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
         // classifyError maps this to 'transient' → disconnected → auto-reconnect.
         throw new Error(`Health check failed for ${input.instanceUrl}`);
       }
-      // Degraded = version unknown OR schema introspection incomplete
-      // (REST-only/OAuth-deferred modes have a real version but no schemaInfo)
-      try {
-        const info = connectionManager.getInstanceInfo(input.instanceUrl);
-        return {
-          degraded:
-            info.version === 'unknown' || !hasSchemaInfo(connectionManager, input.instanceUrl),
-        };
-      } catch {
-        return { degraded: true };
-      }
+      return { degraded: isDegradedInstance(connectionManager, input.instanceUrl) };
     }
 
     // Full initialization with timeout.
@@ -183,15 +186,8 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
     // succeed with fallback data even when GitLab is unreachable. Without this
     // check, the state machine would report "degraded" (reachable) instead of
     // "disconnected", keeping all tools exposed.
-    let isDegraded: boolean;
-    try {
-      const info = connectionManager.getInstanceInfo(input.instanceUrl);
-      isDegraded =
-        info.version === 'unknown' || !hasSchemaInfo(connectionManager, input.instanceUrl);
-    } catch {
-      // OAuth deferred: init succeeded but instanceInfo not yet available
-      isDegraded = true;
-    }
+    // OAuth deferred: init may succeed but instanceInfo not yet available → degraded
+    const isDegraded = isDegradedInstance(connectionManager, input.instanceUrl);
 
     if (isDegraded) {
       // Verify reachability — OAuth/REST-only init can succeed with fallback
@@ -228,17 +224,8 @@ const performHealthCheck = fromPromise<{ degraded: boolean }, { instanceUrl: str
       throw new Error(`Health check failed for ${input.instanceUrl}`);
     }
 
-    // Degraded = version unknown OR schema introspection incomplete
     const connectionManager = ConnectionManager.getInstance();
-    try {
-      const info = connectionManager.getInstanceInfo(input.instanceUrl);
-      return {
-        degraded:
-          info.version === 'unknown' || !hasSchemaInfo(connectionManager, input.instanceUrl),
-      };
-    } catch {
-      return { degraded: true };
-    }
+    return { degraded: isDegradedInstance(connectionManager, input.instanceUrl) };
   },
 );
 
@@ -320,6 +307,16 @@ const connectionMachine = setup({
     incrementReconnectAttempt: assign({
       reconnectAttempt: ({ context }) => context.reconnectAttempt + 1,
     }),
+    // Shared action for TOOL_FAILURE and health check onError — increments
+    // failure counter and records the error for threshold-based disconnect.
+    recordFailure: assign({
+      consecutiveFailures: ({ context }) => context.consecutiveFailures + 1,
+      lastFailureAt: () => Date.now(),
+      lastError: ({ event }) => {
+        const e = (event as { error?: unknown }).error;
+        return e instanceof Error ? e.message : typeof e === 'string' ? e : String(e);
+      },
+    }),
   },
 }).createMachine({
   id: 'connection',
@@ -354,12 +351,7 @@ const connectionMachine = setup({
             // Transient errors (network, timeout, 5xx) → disconnected → auto-reconnect
             guard: 'connectErrorIsTransient',
             target: 'disconnected',
-            actions: assign({
-              consecutiveFailures: ({ context }) => context.consecutiveFailures + 1,
-              lastFailureAt: () => Date.now(),
-              lastError: ({ event }) =>
-                event.error instanceof Error ? event.error.message : String(event.error),
-            }),
+            actions: 'recordFailure',
           },
           {
             // Auth/permanent errors (401, config) → failed, no auto-reconnect
@@ -391,11 +383,7 @@ const connectionMachine = setup({
               type: 'isTransient',
               params: ({ event }) => ({ category: event.category }),
             },
-            actions: assign({
-              consecutiveFailures: ({ context }) => context.consecutiveFailures + 1,
-              lastFailureAt: () => Date.now(),
-              lastError: ({ event }) => event.error,
-            }),
+            actions: 'recordFailure',
           },
         ],
       },
@@ -430,12 +418,7 @@ const connectionMachine = setup({
             ],
             onError: {
               target: 'idle',
-              actions: assign({
-                consecutiveFailures: ({ context }) => context.consecutiveFailures + 1,
-                lastFailureAt: () => Date.now(),
-                lastError: ({ event }) =>
-                  event.error instanceof Error ? event.error.message : String(event.error),
-              }),
+              actions: 'recordFailure',
             },
           },
         },
@@ -454,11 +437,7 @@ const connectionMachine = setup({
               type: 'isTransient',
               params: ({ event }) => ({ category: event.category }),
             },
-            actions: assign({
-              consecutiveFailures: ({ context }) => context.consecutiveFailures + 1,
-              lastFailureAt: () => Date.now(),
-              lastError: ({ event }) => event.error,
-            }),
+            actions: 'recordFailure',
           },
         ],
       },
@@ -492,12 +471,7 @@ const connectionMachine = setup({
             ],
             onError: {
               target: 'idle',
-              actions: assign({
-                consecutiveFailures: ({ context }) => context.consecutiveFailures + 1,
-                lastFailureAt: () => Date.now(),
-                lastError: ({ event }) =>
-                  event.error instanceof Error ? event.error.message : String(event.error),
-              }),
+              actions: 'recordFailure',
             },
           },
         },

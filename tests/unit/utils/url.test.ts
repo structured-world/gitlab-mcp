@@ -5,9 +5,11 @@
 
 import { normalizeInstanceUrl } from '../../../src/utils/url';
 
+// Both API suffixes must be stripped identically
+const API_SUFFIXES = ['/api/v4', '/api/graphql'] as const;
+
 describe('normalizeInstanceUrl', () => {
   it('should return the input unchanged when it is falsy (empty string)', () => {
-    // Empty string is falsy — early return preserves it as-is
     expect(normalizeInstanceUrl('')).toBe('');
   });
 
@@ -16,7 +18,6 @@ describe('normalizeInstanceUrl', () => {
   });
 
   it('should strip a single trailing slash', () => {
-    // Trailing slash is removed before suffix checks
     expect(normalizeInstanceUrl('https://gitlab.example.com/')).toBe('https://gitlab.example.com');
   });
 
@@ -26,55 +27,35 @@ describe('normalizeInstanceUrl', () => {
     );
   });
 
-  it('should strip /api/v4 suffix', () => {
-    // /api/v4 suffix removal
-    expect(normalizeInstanceUrl('https://gitlab.example.com/api/v4')).toBe(
+  it.each(API_SUFFIXES)('should strip %s suffix', (suffix) => {
+    expect(normalizeInstanceUrl(`https://gitlab.example.com${suffix}`)).toBe(
       'https://gitlab.example.com',
     );
   });
 
-  it('should strip /api/graphql suffix', () => {
-    // /api/graphql suffix removal
-    expect(normalizeInstanceUrl('https://gitlab.example.com/api/graphql')).toBe(
+  it.each(API_SUFFIXES)('should strip trailing slash before %s suffix', (suffix) => {
+    expect(normalizeInstanceUrl(`https://gitlab.example.com${suffix}/`)).toBe(
       'https://gitlab.example.com',
     );
   });
 
-  it('should strip trailing slash before checking API path suffix', () => {
-    // Trailing slash stripped first, then suffix checked — /api/v4/ → /api/v4 → base
-    expect(normalizeInstanceUrl('https://gitlab.example.com/api/v4/')).toBe(
-      'https://gitlab.example.com',
-    );
-    // Same for /api/graphql/ combined path
-    expect(normalizeInstanceUrl('https://gitlab.example.com/api/graphql/')).toBe(
+  it.each(API_SUFFIXES)('should strip multiple trailing slashes after %s suffix', (suffix) => {
+    expect(normalizeInstanceUrl(`https://gitlab.example.com${suffix}///`)).toBe(
       'https://gitlab.example.com',
     );
   });
 
-  it('should strip multiple trailing slashes before checking API path suffix', () => {
-    // Multiple trailing slashes are collapsed first, then suffix is removed — verifies
-    // single-pass normalization order handles both patterns simultaneously
-    expect(normalizeInstanceUrl('https://gitlab.example.com/api/v4///')).toBe(
-      'https://gitlab.example.com',
-    );
-    expect(normalizeInstanceUrl('https://gitlab.example.com/api/graphql///')).toBe(
-      'https://gitlab.example.com',
-    );
-  });
-
-  it('should trim trailing slashes exposed after suffix removal', () => {
-    // Regression: "https://host//api/v4" → strip slashes leaves "https://host//api/v4"
-    // (first / is not trailing) → strip suffix → "https://host/" → second trim → "https://host"
-    expect(normalizeInstanceUrl('https://gitlab.example.com//api/v4')).toBe(
-      'https://gitlab.example.com',
-    );
-    expect(normalizeInstanceUrl('https://gitlab.example.com//api/graphql')).toBe(
-      'https://gitlab.example.com',
-    );
-  });
+  it.each(API_SUFFIXES)(
+    'should trim trailing slashes exposed after removing %s suffix',
+    (suffix) => {
+      // "https://host//api/v4" → strip suffix → "https://host/" → trim → "https://host"
+      expect(normalizeInstanceUrl(`https://gitlab.example.com/${suffix}`)).toBe(
+        'https://gitlab.example.com',
+      );
+    },
+  );
 
   it('should not strip partial API path matches', () => {
-    // /api/v4extra does not end with /api/v4 so it is preserved
     expect(normalizeInstanceUrl('https://gitlab.example.com/api/v4extra')).toBe(
       'https://gitlab.example.com/api/v4extra',
     );
@@ -85,14 +66,15 @@ describe('normalizeInstanceUrl', () => {
     expect(normalizeInstanceUrl(url)).toBe(url);
   });
 
-  it('should strip API suffixes for self-managed instances on a subpath', () => {
-    expect(normalizeInstanceUrl('https://self-hosted.gitlab.company.org/gitlab/api/v4')).toBe(
-      'https://self-hosted.gitlab.company.org/gitlab',
-    );
-    expect(normalizeInstanceUrl('https://self-hosted.gitlab.company.org/gitlab/api/graphql/')).toBe(
-      'https://self-hosted.gitlab.company.org/gitlab',
-    );
-  });
+  it.each(API_SUFFIXES)(
+    'should strip %s suffix for self-managed instances on a subpath',
+    (suffix) => {
+      const trailing = suffix === '/api/graphql' ? '/' : '';
+      expect(
+        normalizeInstanceUrl(`https://self-hosted.gitlab.company.org/gitlab${suffix}${trailing}`),
+      ).toBe('https://self-hosted.gitlab.company.org/gitlab');
+    },
+  );
 
   it('should strip default ports for canonical map keys', () => {
     expect(normalizeInstanceUrl('https://gitlab.example.com:443')).toBe(
@@ -110,19 +92,14 @@ describe('normalizeInstanceUrl', () => {
   });
 
   it('should gracefully fall back when URL parsing fails', () => {
-    // Malformed URLs that new URL() rejects — fallback to string-based normalization
     expect(normalizeInstanceUrl('not-a-url')).toBe('not-a-url');
     expect(normalizeInstanceUrl('/just/a/path/api/v4')).toBe('/just/a/path');
   });
 
-  it('should strip query/fragment and re-strip API suffix after URL parsing', () => {
-    // URL constructor drops query/fragment but preserves pathname — second suffix
-    // strip pass catches the remaining /api/v4
-    expect(normalizeInstanceUrl('https://host.com/api/v4?private_token=x')).toBe(
-      'https://host.com',
-    );
-    expect(normalizeInstanceUrl('https://host.com/gitlab/api/graphql#section')).toBe(
-      'https://host.com/gitlab',
-    );
+  it.each([
+    ['https://host.com/api/v4?private_token=x', 'https://host.com'],
+    ['https://host.com/gitlab/api/graphql#section', 'https://host.com/gitlab'],
+  ])('should strip query/fragment from %s', (input, expected) => {
+    expect(normalizeInstanceUrl(input)).toBe(expected);
   });
 });

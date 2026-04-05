@@ -77,9 +77,10 @@ describe('Fetch Configuration Edge Cases', () => {
     API_RETRY_MAX_DELAY_MS: 400,
   };
 
-  /** Register config mock with selective overrides */
+  /** Register config mock with selective overrides (undefined allowed for nullish-coalescing tests) */
   function mockConfig(
-    overrides: Partial<typeof DEFAULT_CONFIG> & Record<string, unknown> = {},
+    overrides: Partial<Record<keyof typeof DEFAULT_CONFIG, string | number | boolean | undefined>> &
+      Record<string, unknown> = {},
   ): void {
     jest.doMock('../../../src/config', () => ({
       ...DEFAULT_CONFIG,
@@ -91,6 +92,7 @@ describe('Fetch Configuration Edge Cases', () => {
   function resetAndReregisterMocks(setupMockFetch = true): void {
     jest.resetModules();
     jest.clearAllMocks();
+    mockFetch.mockReset();
     if (setupMockFetch) {
       mockFetch.mockResolvedValue(createMockResponse());
     }

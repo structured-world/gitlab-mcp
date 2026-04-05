@@ -17,9 +17,11 @@ import { enhancedFetch, type FetchWithRetryOptions } from '../utils/fetch';
 /** Throw a descriptive error if the GitLab OAuth response indicates failure */
 async function throwOnHttpError(response: Response, operation: string): Promise<void> {
   if (!response.ok) {
-    const errorText = await response.text();
-    logError(`Failed to ${operation}`, { status: response.status, error: errorText });
-    throw new Error(`Failed to ${operation}: ${response.status} ${errorText}`);
+    const rawText = await response.text();
+    // Truncate to prevent unbounded HTML/proxy error pages from bloating logs
+    const details = rawText.trim().slice(0, 500) || response.statusText;
+    logError(`Failed to ${operation}`, { status: response.status, error: details });
+    throw new Error(`Failed to ${operation}: ${response.status} ${details}`);
   }
 }
 

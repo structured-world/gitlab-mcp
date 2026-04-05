@@ -201,6 +201,22 @@ describe('Response Write Timeout Middleware', () => {
     expect(res.destroy).not.toHaveBeenCalled();
   });
 
+  it('skips SSE when Content-Type header is an array value', () => {
+    const middleware = responseWriteTimeoutMiddleware();
+    const req = createMockReq({ method: 'GET' });
+    const res = createMockRes({
+      getHeader: jest.fn().mockReturnValue(['text/event-stream']),
+    });
+    const next = jest.fn();
+
+    middleware(req, res, next);
+    res.writeHead(200);
+
+    jest.advanceTimersByTime(60000);
+
+    expect(res.destroy).not.toHaveBeenCalled();
+  });
+
   it('is disabled when RESPONSE_WRITE_TIMEOUT_MS is 0', () => {
     mockTimeoutMs = 0;
     const middleware = responseWriteTimeoutMiddleware();

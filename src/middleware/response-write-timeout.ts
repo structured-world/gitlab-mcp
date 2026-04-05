@@ -75,7 +75,8 @@ export function responseWriteTimeoutMiddleware() {
               res.locals = res.locals ?? {};
               res.locals.writeTimedOut = true;
 
-              const sessionId = req.headers['mcp-session-id'] as string | undefined;
+              const rawSessionId = req.headers['mcp-session-id'];
+              const sessionId = typeof rawSessionId === 'string' ? rawSessionId : rawSessionId?.[0];
               logWarn('Response write timeout — destroying zombie connection', {
                 method: req.method,
                 path: req.path,

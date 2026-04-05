@@ -83,6 +83,7 @@ jest.mock('../../src/services/ConnectionManager', () => ({
     getInstance: jest.fn().mockReturnValue({
       getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
       getTokenScopeInfo: jest.fn().mockReturnValue(null),
+      getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
     }),
   },
 }));
@@ -165,6 +166,7 @@ jest.mock('../../src/config', () => ({
   get USE_ITERATIONS() {
     return process.env.USE_ITERATIONS !== 'false';
   },
+  GITLAB_BASE_URL: 'https://gitlab.example.com',
   getToolDescriptionOverrides: jest.fn(() => new Map()),
   getActionDescriptionOverrides: jest.fn(() => new Map()),
   getParamDescriptionOverrides: jest.fn(() => new Map()),
@@ -387,6 +389,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue({ scopes: ['read_user'] }),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
 
       const { isToolAvailableForScopes } = require('../../src/services/TokenScopeDetector');
@@ -406,6 +409,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
     });
 
@@ -1121,6 +1125,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue({ scopes: ['read_user'] }),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
 
       // Only allow core_tool_1
@@ -1139,6 +1144,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
     });
 
@@ -1352,6 +1358,7 @@ describe('RegistryManager', () => {
           throw new Error('Unexpected internal error');
         }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
 
       try {

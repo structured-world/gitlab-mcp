@@ -107,11 +107,11 @@ export class WidgetAvailability {
     [WorkItemWidgetTypes.VERIFICATION_STATUS]: { tier: 'ultimate', minVersion: '13.1' },
   };
 
-  public static isWidgetAvailable(widget: WorkItemWidgetType): boolean {
+  public static isWidgetAvailable(widget: WorkItemWidgetType, instanceUrl?: string): boolean {
     const connectionManager = ConnectionManager.getInstance();
 
     try {
-      const instanceInfo = connectionManager.getInstanceInfo();
+      const instanceInfo = connectionManager.getInstanceInfo(instanceUrl);
       const requirement = this.widgetRequirements[widget];
 
       if (!requirement) {
@@ -141,10 +141,11 @@ export class WidgetAvailability {
     }
   }
 
-  public static getAvailableWidgets(): WorkItemWidgetType[] {
+  public static getAvailableWidgets(instanceUrl?: string): WorkItemWidgetType[] {
     return Object.values(WorkItemWidgetTypes).filter(
       (widget): widget is WorkItemWidgetType =>
-        typeof widget === 'string' && this.isWidgetAvailable(widget as WorkItemWidgetType),
+        typeof widget === 'string' &&
+        this.isWidgetAvailable(widget as WorkItemWidgetType, instanceUrl),
     );
   }
 
@@ -161,6 +162,7 @@ export class WidgetAvailability {
    */
   public static validateWidgetParams(
     params: Record<string, unknown>,
+    instanceUrl?: string,
   ): WidgetValidationFailure | null {
     const connectionManager = ConnectionManager.getInstance();
 
@@ -168,7 +170,7 @@ export class WidgetAvailability {
     let instanceTier: GitLabTier;
 
     try {
-      const instanceInfo = connectionManager.getInstanceInfo();
+      const instanceInfo = connectionManager.getInstanceInfo(instanceUrl);
       instanceVersion = instanceInfo.version;
       instanceTier = instanceInfo.tier;
     } catch {

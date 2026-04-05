@@ -397,10 +397,15 @@ describe('handlers', () => {
         ],
       });
 
-      expect(mockRegistryManager.hasToolHandler).toHaveBeenCalledWith('get_project');
-      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith('get_project', {
-        id: 'test-project',
-      });
+      expect(mockRegistryManager.hasToolHandler).toHaveBeenCalledWith(
+        'get_project',
+        'https://gitlab.example.com',
+      );
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'get_project',
+        { id: 'test-project' },
+        'https://gitlab.example.com',
+      );
     });
 
     it('should throw error if arguments are missing', async () => {
@@ -880,7 +885,11 @@ describe('handlers', () => {
 
       await callToolHandler(mockRequest);
 
-      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith('test_tool', {});
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'test_tool',
+        {},
+        'https://gitlab.example.com',
+      );
     });
   });
 

@@ -453,9 +453,6 @@ export class ConnectionManager {
    * Helper to resolve URL and look up per-URL state.
    * Returns [state, resolvedUrl] or throws if not initialized.
    */
-  // TODO: no-arg callers (ToolAvailability, WidgetAvailability) resolve against
-  // currentInstanceUrl which may not match the OAuth request context in concurrent
-  // traffic. Those callers should pass an explicit URL (#379).
   private resolveState(instanceUrl?: string): [InstanceState, string] {
     // Empty string is falsy → falls to currentInstanceUrl (same as undefined/null).
     // This is intentional: callers pass either a real URL or nothing.

@@ -326,11 +326,14 @@ export class ToolAvailability {
    * for the current instance tier and version.
    *
    * @param toolName - Tool name to check parameter requirements for
+   * @param cachedInstanceInfo - Pre-resolved instance info (preferred to avoid cross-request leakage)
+   * @param instanceUrl - Optional instance URL for the fallback ConnectionManager lookup
    * @returns Array of parameter names that should be stripped from the schema
    */
   public static getRestrictedParameters(
     toolName: string,
     cachedInstanceInfo?: { tier: GitLabTier; version: string },
+    instanceUrl?: string,
   ): string[] {
     const paramReqs = this.parameterRequirements[toolName];
     if (!paramReqs) return [];
@@ -347,11 +350,11 @@ export class ToolAvailability {
       rawVersion = cachedInstanceInfo.version;
       instanceVersion = parseVersion(rawVersion);
     } else {
-      // Fallback to singleton — prefer passing cachedInstanceInfo explicitly
-      // to avoid cross-request leakage in concurrent OAuth flows
+      // Fallback to ConnectionManager — thread instanceUrl to avoid resolving
+      // against currentInstanceUrl which may belong to a different request (#379)
       const connectionManager = ConnectionManager.getInstance();
       try {
-        const instanceInfo = connectionManager.getInstanceInfo();
+        const instanceInfo = connectionManager.getInstanceInfo(instanceUrl);
         if (instanceInfo.version === 'unknown') return [];
         instanceTier = instanceInfo.tier;
         rawVersion = instanceInfo.version;
@@ -439,7 +442,7 @@ export class ToolAvailability {
       .map(([action]) => action);
   }
 
-  public static isToolAvailable(toolName: string, action?: string): boolean {
+  public static isToolAvailable(toolName: string, action?: string, instanceUrl?: string): boolean {
     const connectionManager = ConnectionManager.getInstance();
 
     // Add null check as extra safety
@@ -449,7 +452,7 @@ export class ToolAvailability {
     }
 
     try {
-      const instanceInfo = connectionManager.getInstanceInfo();
+      const instanceInfo = connectionManager.getInstanceInfo(instanceUrl);
 
       // When version is unknown (REST fallback, OAuth deferred), allow all tools
       // rather than filtering them out — consistent with isToolAvailableForInstance
@@ -517,8 +520,10 @@ export class ToolAvailability {
     return parseVersion(instanceInfo.version) >= parseVersion('15.0');
   }
 
-  public static getAvailableTools(): string[] {
-    return Object.keys(this.actionRequirements).filter((tool) => this.isToolAvailable(tool));
+  public static getAvailableTools(instanceUrl?: string): string[] {
+    return Object.keys(this.actionRequirements).filter((tool) =>
+      this.isToolAvailable(tool, undefined, instanceUrl),
+    );
   }
 
   public static getToolRequirement(toolName: string, action?: string): ToolRequirement | undefined {
@@ -533,11 +538,15 @@ export class ToolAvailability {
     return undefined;
   }
 
-  public static getUnavailableReason(toolName: string, action?: string): string | null {
+  public static getUnavailableReason(
+    toolName: string,
+    action?: string,
+    instanceUrl?: string,
+  ): string | null {
     const connectionManager = ConnectionManager.getInstance();
 
     try {
-      const instanceInfo = connectionManager.getInstanceInfo();
+      const instanceInfo = connectionManager.getInstanceInfo(instanceUrl);
 
       // When version is unknown (REST fallback, OAuth deferred), report no
       // unavailability — consistent with isToolAvailable() returning true.
@@ -580,8 +589,8 @@ export class ToolAvailability {
     return actualLevel >= requiredLevel;
   }
 
-  public static filterToolsByAvailability(tools: string[]): string[] {
-    return tools.filter((tool) => this.isToolAvailable(tool));
+  public static filterToolsByAvailability(tools: string[], instanceUrl?: string): string[] {
+    return tools.filter((tool) => this.isToolAvailable(tool, undefined, instanceUrl));
   }
 
   public static getToolsByTier(tier: 'free' | 'premium' | 'ultimate'): string[] {

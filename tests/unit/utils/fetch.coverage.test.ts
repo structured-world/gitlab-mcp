@@ -495,9 +495,15 @@ describe('Fetch Utils Coverage Tests', () => {
   });
 
   describe('per-instance dispatcher integration', () => {
+    // Re-require after resetModules so the binding uses the fresh undici mock
+    let enhancedFetch: typeof import('../../../src/utils/fetch').enhancedFetch;
+
     beforeEach(async () => {
       // Re-register undici mock (with Pool) to ensure availability after prior resetModules calls
       resetModulesWithUndici();
+
+      // Re-require to get fresh module binding after resetModules
+      ({ enhancedFetch } = require('../../../src/utils/fetch'));
 
       // Reset InstanceRegistry to ensure clean state for each test
       await InstanceRegistry.getInstance().resetWithPools();
@@ -596,13 +602,17 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should use rateLimitBaseUrl option when provided', async () => {
-      const registry = InstanceRegistry.getInstance();
+      // Use fresh InstanceRegistry from re-required module (matches what enhancedFetch sees)
+      const { InstanceRegistry: FreshRegistry } = require('../../../src/services/InstanceRegistry');
+      const registry = FreshRegistry.getInstance();
       await registry.initialize();
 
       registry.register({
         url: 'https://custom.gitlab.com',
         insecureSkipVerify: false,
       });
+
+      const getDispatcherSpy = jest.spyOn(registry, 'getDispatcher');
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -618,6 +628,7 @@ describe('Fetch Utils Coverage Tests', () => {
         rateLimitBaseUrl: 'https://custom.gitlab.com',
       });
 
+      expect(getDispatcherSpy).toHaveBeenCalledWith('https://custom.gitlab.com');
       expect(mockFetch).toHaveBeenCalled();
     });
 

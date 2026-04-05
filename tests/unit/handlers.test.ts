@@ -7,6 +7,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import { setupHandlers, resetHandlersState } from '../../src/handlers';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
+import { GitLabTimeoutError } from '../../src/utils/fetch';
 
 // Mock ConnectionManager
 const mockConnectionManager = {
@@ -1162,9 +1163,7 @@ describe('handlers', () => {
 
     it('should convert timeout error to structured TIMEOUT response for idempotent tools', async () => {
       // Test timeout handling for browse_* (idempotent) tools
-      mockRegistryManager.executeTool.mockRejectedValue(
-        new Error('GitLab API timeout after 10000ms'),
-      );
+      mockRegistryManager.executeTool.mockRejectedValue(new GitLabTimeoutError('headers', 10000));
 
       const mockRequest = {
         params: {
@@ -1186,9 +1185,7 @@ describe('handlers', () => {
 
     it('should convert timeout error to structured TIMEOUT response for non-idempotent tools', async () => {
       // Test timeout handling for manage_* (non-idempotent) tools
-      mockRegistryManager.executeTool.mockRejectedValue(
-        new Error('GitLab API timeout after 10000ms'),
-      );
+      mockRegistryManager.executeTool.mockRejectedValue(new GitLabTimeoutError('headers', 10000));
 
       const mockRequest = {
         params: {
@@ -1205,12 +1202,11 @@ describe('handlers', () => {
       expect(parsed.tool).toBe('manage_merge_request');
       expect(parsed.action).toBe('merge');
       expect(parsed.retryable).toBe(false); // manage_* is NOT idempotent
+      expect(parsed.timeout_ms).toBe(10000);
     });
 
     it('should mark browse_* tools as idempotent for timeout errors', async () => {
-      mockRegistryManager.executeTool.mockRejectedValue(
-        new Error('GitLab API timeout after 5000ms'),
-      );
+      mockRegistryManager.executeTool.mockRejectedValue(new GitLabTimeoutError('connect', 5000));
 
       const mockRequest = {
         params: {
@@ -1226,9 +1222,7 @@ describe('handlers', () => {
     });
 
     it('should mark browse_* tools as idempotent for timeout errors (CQRS pattern)', async () => {
-      mockRegistryManager.executeTool.mockRejectedValue(
-        new Error('GitLab API timeout after 5000ms'),
-      );
+      mockRegistryManager.executeTool.mockRejectedValue(new GitLabTimeoutError('connect', 5000));
 
       const mockRequest = {
         params: {
@@ -1246,9 +1240,7 @@ describe('handlers', () => {
     it('should mark legacy list_*/get_* patterns as idempotent (backwards compat)', async () => {
       // isIdempotentOperation still recognizes legacy prefixes as a safety net
       for (const legacyName of ['list_merge_requests', 'get_pipeline']) {
-        mockRegistryManager.executeTool.mockRejectedValue(
-          new Error('GitLab API timeout after 5000ms'),
-        );
+        mockRegistryManager.executeTool.mockRejectedValue(new GitLabTimeoutError('connect', 5000));
 
         const mockRequest = {
           params: {

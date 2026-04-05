@@ -12,6 +12,41 @@ import { GITLAB_BASE_URL } from '../config';
 import { OAuthConfig } from './config';
 import { GitLabDeviceResponse, GitLabTokenResponse, GitLabUserInfo } from './types';
 import { logInfo, logWarn, logError, logDebug } from '../logger';
+import { enhancedFetch, type FetchWithRetryOptions } from '../utils/fetch';
+
+/** Throw a descriptive error if the GitLab OAuth response indicates failure */
+async function throwOnHttpError(response: Response, operation: string): Promise<void> {
+  if (!response.ok) {
+    const rawText = await response.text();
+    // Truncate to prevent unbounded HTML/proxy error pages from bloating logs
+    const details = rawText.trim().slice(0, 500) || response.statusText;
+    logError(`Failed to ${operation}`, { status: response.status, error: details });
+    throw new Error(`Failed to ${operation}: ${response.status} ${details}`);
+  }
+}
+
+/**
+ * Shared options for OAuth endpoint calls — no retry, no rate limiting,
+ * no ambient auth injection.
+ *
+ * skipAuth suppresses auto-injected credentials (PAT from env, cookies) so OAuth
+ * endpoints only receive explicitly provided auth (Bearer token in headers or
+ * client_id/secret in POST body). Caller-supplied headers are never stripped.
+ *
+ * rateLimitBaseUrl is set even with rate limiting disabled so enhancedFetch can
+ * consistently select the correct per-instance dispatcher. Without it, OAuth paths
+ * like /oauth/token don't match extractBaseUrl()'s /api/v4|/api/graphql stripping,
+ * causing fallback to the global dispatcher (missing per-instance TLS settings).
+ */
+const OAUTH_FETCH_OPTS: Pick<
+  FetchWithRetryOptions,
+  'retry' | 'rateLimit' | 'rateLimitBaseUrl' | 'skipAuth'
+> = {
+  retry: false,
+  rateLimit: false,
+  rateLimitBaseUrl: GITLAB_BASE_URL,
+  skipAuth: true,
+};
 
 /**
  * Device flow error types from GitLab
@@ -51,7 +86,7 @@ export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDev
   // Convert comma-separated scopes to space-separated (GitLab requirement)
   const scopes = config.gitlabScopes.replace(/,/g, ' ');
 
-  const response = await fetch(url, {
+  const response = await enhancedFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
@@ -61,13 +96,10 @@ export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDev
       client_id: config.gitlabClientId,
       scope: scopes,
     }),
+    ...OAUTH_FETCH_OPTS,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    logError('Failed to initiate device flow', { status: response.status, error: errorText });
-    throw new Error(`Failed to initiate device flow: ${response.status} ${errorText}`);
-  }
+  await throwOnHttpError(response, 'initiate device flow');
 
   const data = (await response.json()) as GitLabDeviceResponse;
 
@@ -108,13 +140,14 @@ export async function pollDeviceFlowOnce(
     params.client_secret = config.gitlabClientSecret;
   }
 
-  const response = await fetch(url, {
+  const response = await enhancedFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
+    ...OAUTH_FETCH_OPTS,
   });
 
   if (response.ok) {
@@ -235,20 +268,17 @@ export async function refreshGitLabToken(
 
   logDebug('Refreshing GitLab token');
 
-  const response = await fetch(url, {
+  const response = await enhancedFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
+    ...OAUTH_FETCH_OPTS,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    logError('Failed to refresh GitLab token', { status: response.status, error: errorText });
-    throw new Error(`Failed to refresh token: ${response.status} ${errorText}`);
-  }
+  await throwOnHttpError(response, 'refresh token');
 
   const data = (await response.json()) as GitLabTokenResponse;
   logInfo('GitLab token refreshed successfully');
@@ -267,18 +297,15 @@ export async function refreshGitLabToken(
 export async function getGitLabUser(accessToken: string): Promise<GitLabUserInfo> {
   const url = `${GITLAB_BASE_URL}/api/v4/user`;
 
-  const response = await fetch(url, {
+  const response = await enhancedFetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: 'application/json',
     },
+    ...OAUTH_FETCH_OPTS,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    logError('Failed to get GitLab user info', { status: response.status, error: errorText });
-    throw new Error(`Failed to get GitLab user info: ${response.status}`);
-  }
+  await throwOnHttpError(response, 'get GitLab user info');
 
   const user = (await response.json()) as GitLabUserInfo;
 
@@ -304,11 +331,12 @@ export async function validateGitLabToken(accessToken: string): Promise<boolean>
   try {
     const url = `${GITLAB_BASE_URL}/api/v4/user`;
 
-    const response = await fetch(url, {
+    const response = await enhancedFetch(url, {
       method: 'HEAD',
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
+      ...OAUTH_FETCH_OPTS,
     });
 
     return response.ok;
@@ -349,20 +377,17 @@ export async function exchangeGitLabAuthCode(
 
   logDebug('Exchanging GitLab authorization code for tokens', { redirectUri });
 
-  const response = await fetch(url, {
+  const response = await enhancedFetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/x-www-form-urlencoded',
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
+    ...OAUTH_FETCH_OPTS,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    logError('Failed to exchange GitLab auth code', { status: response.status, error: errorText });
-    throw new Error(`Failed to exchange authorization code: ${response.status} ${errorText}`);
-  }
+  await throwOnHttpError(response, 'exchange authorization code');
 
   const data = (await response.json()) as GitLabTokenResponse;
   logInfo('GitLab authorization code exchanged successfully');

@@ -13,6 +13,7 @@ import * as p from '@clack/prompts';
 import { InstanceRegistry } from '../../services/InstanceRegistry.js';
 import { loadInstancesConfig, generateSampleConfig } from '../../config/instances-loader.js';
 import { GitLabInstanceConfig } from '../../config/instances-schema.js';
+import { enhancedFetch } from '../../utils/fetch';
 
 /**
  * Instance subcommand type
@@ -307,8 +308,11 @@ async function testInstance(url?: string): Promise<void> {
     try {
       // Try to fetch version endpoint
       const versionUrl = `${instanceUrl}/api/v4/version`;
-      const response = await fetch(versionUrl, {
+      const response = await enhancedFetch(versionUrl, {
         headers: { Accept: 'application/json' },
+        retry: false,
+        skipAuth: true,
+        rateLimit: false,
       });
 
       if (response.ok) {

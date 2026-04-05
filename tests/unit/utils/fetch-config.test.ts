@@ -6,20 +6,25 @@
  * since the fetch module caches config imports at load time.
  */
 
-// Mock undici to avoid actual network calls
+// Mock undici - provides fetch, Agent, ProxyAgent
 jest.mock('undici', () => ({
+  fetch: jest.fn(),
   Agent: jest.fn().mockImplementation(() => ({})),
   ProxyAgent: jest.fn().mockImplementation(() => ({})),
 }));
 
+const mockFetch = require('undici').fetch as jest.Mock;
+
+/** Re-register undici mock after jest.resetModules() clears the module cache */
+function reregisterUndiciMock(): void {
+  jest.doMock('undici', () => ({
+    fetch: mockFetch,
+    Agent: jest.fn().mockImplementation(() => ({})),
+    ProxyAgent: jest.fn().mockImplementation(() => ({})),
+  }));
+}
+
 describe('Fetch Configuration Edge Cases', () => {
-  let mockFetch: jest.MockedFunction<typeof fetch>;
-
-  beforeAll(() => {
-    mockFetch = jest.fn();
-    global.fetch = mockFetch;
-  });
-
   const createMockResponse = (overrides: Partial<Response> = {}): Response =>
     ({
       ok: true,
@@ -54,39 +59,60 @@ describe('Fetch Configuration Edge Cases', () => {
   const mockLogError = jest.fn();
   const mockLogDebug = jest.fn();
 
+  /** Default config values — override only the fields each test needs */
+  const DEFAULT_CONFIG = {
+    SKIP_TLS_VERIFY: false,
+    GITLAB_AUTH_COOKIE_PATH: '',
+    GITLAB_CA_CERT_PATH: '',
+    HTTP_PROXY: '',
+    HTTPS_PROXY: '',
+    NODE_TLS_REJECT_UNAUTHORIZED: '',
+    GITLAB_TOKEN: 'test-token',
+    CONNECT_TIMEOUT_MS: 2000,
+    HEADERS_TIMEOUT_MS: 10000,
+    BODY_TIMEOUT_MS: 30000,
+    API_RETRY_ENABLED: false,
+    API_RETRY_MAX_ATTEMPTS: 0,
+    API_RETRY_BASE_DELAY_MS: 100,
+    API_RETRY_MAX_DELAY_MS: 400,
+  };
+
+  /** Register config mock with selective overrides (undefined allowed for nullish-coalescing tests) */
+  function mockConfig(
+    overrides: Partial<Record<keyof typeof DEFAULT_CONFIG, string | number | boolean | undefined>> &
+      Record<string, unknown> = {},
+  ): void {
+    jest.doMock('../../../src/config', () => ({
+      ...DEFAULT_CONFIG,
+      ...overrides,
+    }));
+  }
+
+  /** Common beforeEach setup: resetModules + re-register undici/logger mocks */
+  function resetAndReregisterMocks(setupMockFetch = true): void {
+    jest.resetModules();
+    jest.clearAllMocks();
+    mockFetch.mockReset();
+    if (setupMockFetch) {
+      mockFetch.mockResolvedValue(createMockResponse());
+    }
+    reregisterUndiciMock();
+    jest.doMock('../../../src/logger', () => ({
+      logger: mockLogger,
+      logInfo: mockLogInfo,
+      logWarn: mockLogWarn,
+      logError: mockLogError,
+      logDebug: mockLogDebug,
+    }));
+  }
+
   describe('SOCKS Proxy Detection', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      // Re-register logger mock with persistent instance
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should warn about SOCKS5 proxy not being supported', async () => {
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: 'socks5://proxy.example.com:1080',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ HTTPS_PROXY: 'socks5://proxy.example.com:1080' });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -107,22 +133,7 @@ describe('Fetch Configuration Edge Cases', () => {
     it('should detect socks4:// proxy URLs', async () => {
       // Use undefined instead of "" for HTTPS_PROXY because ?? (nullish coalescing)
       // only checks for null/undefined, not falsy values like empty string
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: 'socks4://proxy.example.com:1080',
-        HTTPS_PROXY: undefined,
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ HTTP_PROXY: 'socks4://proxy.example.com:1080', HTTPS_PROXY: undefined });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -140,37 +151,12 @@ describe('Fetch Configuration Edge Cases', () => {
 
   describe('HTTP/HTTPS Proxy', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should log when using HTTP proxy', async () => {
       // Use undefined for HTTPS_PROXY so HTTP_PROXY is used (nullish coalescing)
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: 'http://proxy.example.com:8080',
-        HTTPS_PROXY: undefined,
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ HTTP_PROXY: 'http://proxy.example.com:8080', HTTPS_PROXY: undefined });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -190,22 +176,7 @@ describe('Fetch Configuration Edge Cases', () => {
     it('should create ProxyAgent for HTTPS proxy', async () => {
       const undici = require('undici');
 
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: 'https://secure-proxy.example.com:8443',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ HTTPS_PROXY: 'https://secure-proxy.example.com:8443' });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -225,36 +196,11 @@ describe('Fetch Configuration Edge Cases', () => {
 
   describe('TLS Verification Skip', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should warn when SKIP_TLS_VERIFY is true', async () => {
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: true,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ SKIP_TLS_VERIFY: true });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -270,22 +216,7 @@ describe('Fetch Configuration Edge Cases', () => {
     });
 
     it('should warn when NODE_TLS_REJECT_UNAUTHORIZED is 0', async () => {
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '0',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ NODE_TLS_REJECT_UNAUTHORIZED: '0' });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -305,17 +236,7 @@ describe('Fetch Configuration Edge Cases', () => {
 
   describe('CA Certificate Loading', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should log error when CA certificate file cannot be read', async () => {
@@ -330,22 +251,7 @@ describe('Fetch Configuration Edge Cases', () => {
         }),
       }));
 
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '/path/to/ca-cert.pem',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ GITLAB_CA_CERT_PATH: '/path/to/ca-cert.pem' });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -369,22 +275,7 @@ describe('Fetch Configuration Edge Cases', () => {
         readFileSync: jest.fn(() => Buffer.from('-----BEGIN CERTIFICATE-----')),
       }));
 
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '/path/to/ca-cert.pem',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ GITLAB_CA_CERT_PATH: '/path/to/ca-cert.pem' });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -404,36 +295,11 @@ describe('Fetch Configuration Edge Cases', () => {
 
   describe('OAuth Mode Token Handling', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should warn when OAuth is enabled but no token context', async () => {
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: '',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ GITLAB_TOKEN: '' });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => true),
@@ -451,22 +317,7 @@ describe('Fetch Configuration Edge Cases', () => {
     });
 
     it('should warn when OAuth context exists but no gitlabToken', async () => {
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: '',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ GITLAB_TOKEN: '' });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => true),
@@ -484,22 +335,7 @@ describe('Fetch Configuration Edge Cases', () => {
     });
 
     it('should debug log when OAuth token is available', async () => {
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: '',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ GITLAB_TOKEN: '' });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => true),
@@ -523,34 +359,9 @@ describe('Fetch Configuration Edge Cases', () => {
 
   describe('URL Redaction Edge Cases', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
+      resetAndReregisterMocks();
 
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
-
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig();
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -596,33 +407,9 @@ describe('Fetch Configuration Edge Cases', () => {
     // Tests that AbortError from caller signal is re-thrown as-is (not mapped to timeout).
 
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
+      resetAndReregisterMocks(false);
 
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
-
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig();
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -674,33 +461,9 @@ describe('Fetch Configuration Edge Cases', () => {
     // with the correct phase and timeout value, so isRetryableError() can match them.
 
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
+      resetAndReregisterMocks(false);
 
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
-
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig();
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -817,35 +580,9 @@ describe('Fetch Configuration Edge Cases', () => {
     // Verifies that logWarn is called when Undici pool has queued requests (stats.queued > 0)
 
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
+      resetAndReregisterMocks();
 
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
-
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: '',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        GITLAB_BASE_URL: 'https://example.com',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ GITLAB_BASE_URL: 'https://example.com' });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),
@@ -890,17 +627,7 @@ describe('Fetch Configuration Edge Cases', () => {
     // Verifies that ProxyAgent receives the same timeout options as direct Agent
 
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should pass timeout options to ProxyAgent', async () => {
@@ -912,22 +639,7 @@ describe('Fetch Configuration Edge Cases', () => {
         ProxyAgent: proxyAgentSpy,
       }));
 
-      jest.doMock('../../../src/config', () => ({
-        SKIP_TLS_VERIFY: false,
-        GITLAB_AUTH_COOKIE_PATH: '',
-        GITLAB_CA_CERT_PATH: '',
-        HTTP_PROXY: '',
-        HTTPS_PROXY: 'https://proxy.example.com:8443',
-        NODE_TLS_REJECT_UNAUTHORIZED: '',
-        GITLAB_TOKEN: 'test-token',
-        CONNECT_TIMEOUT_MS: 2000,
-        HEADERS_TIMEOUT_MS: 10000,
-        BODY_TIMEOUT_MS: 30000,
-        API_RETRY_ENABLED: false,
-        API_RETRY_MAX_ATTEMPTS: 0,
-        API_RETRY_BASE_DELAY_MS: 100,
-        API_RETRY_MAX_DELAY_MS: 400,
-      }));
+      mockConfig({ HTTPS_PROXY: 'https://proxy.example.com:8443' });
 
       jest.doMock('../../../src/oauth/index', () => ({
         isOAuthEnabled: jest.fn(() => false),

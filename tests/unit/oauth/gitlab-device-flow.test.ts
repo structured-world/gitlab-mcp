@@ -16,9 +16,13 @@ import {
 } from '../../../src/oauth/gitlab-device-flow';
 import { OAuthConfig } from '../../../src/oauth/config';
 
-// Mock fetch globally
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
+// Mock enhancedFetch used by device flow functions
+jest.mock('../../../src/utils/fetch', () => ({
+  enhancedFetch: jest.fn(),
+}));
+
+import { enhancedFetch } from '../../../src/utils/fetch';
+const mockFetch = enhancedFetch as unknown as jest.Mock;
 
 // Mock the config module
 jest.mock('../../../src/config', () => ({
@@ -403,12 +407,15 @@ describe('GitLab Device Flow Client', () => {
       const result = await getGitLabUser('access-token-123');
 
       expect(result).toEqual(mockUserInfo);
-      expect(mockFetch).toHaveBeenCalledWith('https://gitlab.example.com/api/v4/user', {
-        headers: {
-          Authorization: 'Bearer access-token-123',
-          Accept: 'application/json',
-        },
-      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://gitlab.example.com/api/v4/user',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Authorization: 'Bearer access-token-123',
+            Accept: 'application/json',
+          }),
+        }),
+      );
     });
 
     it('should throw error on failed user info fetch', async () => {
@@ -433,12 +440,17 @@ describe('GitLab Device Flow Client', () => {
       const result = await validateGitLabToken('valid-token');
 
       expect(result).toBe(true);
-      expect(mockFetch).toHaveBeenCalledWith('https://gitlab.example.com/api/v4/user', {
-        method: 'HEAD',
-        headers: {
-          Authorization: 'Bearer valid-token',
-        },
-      });
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://gitlab.example.com/api/v4/user',
+        expect.objectContaining({
+          method: 'HEAD',
+          retry: false,
+          rateLimit: false,
+          headers: expect.objectContaining({
+            Authorization: 'Bearer valid-token',
+          }),
+        }),
+      );
     });
 
     it('should return false for invalid token', async () => {

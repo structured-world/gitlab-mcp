@@ -75,9 +75,15 @@ function encodeBody(
     };
   }
 
-  if (body instanceof FormData) {
+  // Duck-type check covers both global FormData and undici.FormData
+  if (
+    body != null &&
+    typeof body === 'object' &&
+    typeof (body as Record<string, unknown>).append === 'function' &&
+    typeof (body as Record<string, unknown>).getAll === 'function'
+  ) {
     return {
-      body,
+      body: body as FormData,
       headers: {}, // Let fetch set Content-Type with boundary
     };
   }

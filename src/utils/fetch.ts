@@ -34,8 +34,13 @@ import { isOAuthEnabled, getTokenContext, getGitLabApiUrlFromContext } from '../
 import { getRequestTracker } from '../logging/index';
 import { InstanceRegistry } from '../services/InstanceRegistry.js';
 
-// Dynamic require to avoid TypeScript analyzing complex undici types at compile time
+// Dynamic require to avoid TypeScript analyzing complex undici types at compile time.
+// We use undici.fetch() instead of the global fetch() to ensure the fetch function
+// and any custom dispatchers (Pool/Agent/ProxyAgent) come from the same undici version.
+// The global fetch() uses Node.js's bundled undici, which may be a different major version
+// than our npm package — causing "invalid onRequestStart method" dispatcher API mismatches.
 const undici = require('undici') as {
+  fetch: typeof globalThis.fetch;
   Agent: new (opts?: Record<string, unknown>) => unknown;
   ProxyAgent: new (opts: string | Record<string, unknown>) => unknown;
 };
@@ -261,6 +266,30 @@ export function createFetchOptions(): Record<string, unknown> {
 }
 
 // ============================================================================
+// Structured Timeout Error
+// ============================================================================
+
+/** Timeout phase reported by doFetch when Undici native timeouts fire */
+export type TimeoutPhase = 'connect' | 'headers' | 'body';
+
+/**
+ * Structured timeout error thrown by doFetch instead of plain Error.
+ * Allows callers to detect timeouts via instanceof rather than string matching.
+ */
+export class GitLabTimeoutError extends Error {
+  public readonly phase: TimeoutPhase;
+  public readonly timeoutMs: number;
+
+  constructor(phase: TimeoutPhase, timeoutMs: number, cause?: Error) {
+    super(`GitLab API timeout after ${timeoutMs}ms (${phase} phase)`);
+    this.name = 'GitLabTimeoutError';
+    this.phase = phase;
+    this.timeoutMs = timeoutMs;
+    this.cause = cause;
+  }
+}
+
+// ============================================================================
 // Retry Logic
 // ============================================================================
 
@@ -276,7 +305,12 @@ export interface FetchWithRetryOptions extends RequestInit {
   rateLimit?: boolean;
   /** Override the base URL for rate limit slot acquisition (derived from request URL if not specified) */
   rateLimitBaseUrl?: string;
-  /** Skip auth headers — for intentionally unauthenticated probes (health checks, version detection) */
+  /**
+   * Suppress auto-injected auth (getAuthHeaders from env/OAuth context, loadCookieHeader).
+   * Caller-supplied headers in `options.headers` are NOT stripped — only ambient credentials
+   * are blocked. Use for health probes (no auth at all) or requests that carry their own
+   * explicit token (e.g., CLI wizard with user-provided PRIVATE-TOKEN).
+   */
   skipAuth?: boolean;
 }
 
@@ -392,16 +426,23 @@ function redactUrlForLogging(url: string): string {
 function isRetryableError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
 
-  const message = error.message.toLowerCase();
-
   // Caller-initiated AbortErrors are NOT retryable
-  // (doFetch converts internal timeouts to "GitLab API timeout" message)
   if (error.name === 'AbortError') {
     return false;
   }
 
-  // Internal timeout errors (converted by doFetch) are retryable
-  if (message.includes('gitlab api timeout')) {
+  // Internal timeout errors (thrown as GitLabTimeoutError by doFetch) are retryable
+  if (error instanceof GitLabTimeoutError) {
+    return true;
+  }
+
+  // undici.fetch() wraps errors in TypeError('fetch failed') with the real error as .cause.
+  // Unwrap one level to check the underlying error message for retryable network conditions.
+  const underlying = error.cause instanceof Error ? error.cause : error;
+  const message = underlying.message.toLowerCase();
+
+  // Check underlying for timeout (in case undici wraps GitLabTimeoutError)
+  if (underlying instanceof GitLabTimeoutError) {
     return true;
   }
 
@@ -477,48 +518,55 @@ async function doFetch(
   instanceDispatcher?: unknown,
   skipAuth = false,
 ): Promise<Response> {
-  // Use per-instance dispatcher if provided, otherwise fall back to global
+  // skipAuth controls auto-injected credentials only:
+  //   - Suppresses getAuthHeaders() (OAuth Bearer / static PRIVATE-TOKEN from env)
+  //   - Suppresses loadCookieHeader() (cookie file auth)
+  // Caller-supplied headers in options.headers are NEVER stripped — they are merged
+  // after the skipAuth guard and always reach the server. This allows callers like
+  // testConnection() to pass explicit PRIVATE-TOKEN while still blocking ambient
+  // credentials from leaking into the request.
   const dispatcher = instanceDispatcher ?? getDispatcher();
-  // skipAuth also skips cookie-based auth — health probes must be fully unauthenticated
   const cookieHeader = skipAuth ? null : loadCookieHeader();
 
-  // For FormData, don't set Content-Type - let fetch set it with proper boundary
-  const isFormData = options.body instanceof FormData;
+  // For FormData, don't set Content-Type - let fetch set it with proper boundary.
+  // Duck-type check covers both global FormData and undici.FormData.
+  const isFormData =
+    options.body != null &&
+    typeof options.body === 'object' &&
+    typeof (options.body as unknown as Record<string, unknown>).append === 'function' &&
+    typeof (options.body as unknown as Record<string, unknown>).getAll === 'function';
   const baseHeaders = isFormData
     ? { 'User-Agent': DEFAULT_HEADERS['User-Agent'], Accept: DEFAULT_HEADERS.Accept }
     : { ...DEFAULT_HEADERS };
 
-  const headers: Record<string, string> = skipAuth
-    ? { ...baseHeaders }
-    : { ...baseHeaders, ...getAuthHeaders() };
+  // Use Headers API for case-insensitive merge. This prevents duplicate auth
+  // headers when caller uses different casing (e.g., 'authorization' vs 'Authorization').
+  // Merge order: base → ambient auth (if !skipAuth) → caller headers (wins).
+  const h = new Headers(baseHeaders);
+
+  if (!skipAuth) {
+    for (const [key, value] of Object.entries(getAuthHeaders())) {
+      h.set(key, value);
+    }
+  }
 
   if (options.headers) {
-    if (options.headers instanceof Headers) {
-      options.headers.forEach((value, key) => {
-        headers[key] = value;
-      });
-    } else if (Array.isArray(options.headers)) {
-      for (const [key, value] of options.headers) {
-        headers[key] = value;
-      }
-    } else {
-      Object.assign(headers, options.headers);
-    }
+    // Normalize all header formats to Headers, then merge (caller wins)
+    new Headers(options.headers).forEach((value, key) => {
+      h.set(key, value);
+    });
   }
 
-  // skipAuth: strip credential headers case-insensitively (RFC 7230)
-  if (skipAuth) {
-    for (const key of Object.keys(headers)) {
-      const lower = key.toLowerCase();
-      if (lower === 'authorization' || lower === 'private-token' || lower === 'cookie') {
-        delete headers[key];
-      }
-    }
+  // Only inject cookie-file auth if caller didn't supply their own Cookie header
+  if (cookieHeader && !h.has('cookie')) {
+    h.set('Cookie', cookieHeader);
   }
 
-  if (cookieHeader) {
-    headers.Cookie = cookieHeader;
-  }
+  // Convert back to plain object for fetch options
+  const headers: Record<string, string> = {};
+  h.forEach((value, key) => {
+    headers[key] = value;
+  });
 
   const method = (options.method ?? 'GET').toUpperCase();
 
@@ -542,7 +590,7 @@ async function doFetch(
   const requestTracker = getRequestTracker();
 
   try {
-    const response = await fetch(url, fetchOptions as RequestInit);
+    const response = await undici.fetch(url, fetchOptions as RequestInit);
 
     const duration = Date.now() - startTime;
     logDebug('GitLab API request completed', {
@@ -570,11 +618,12 @@ async function doFetch(
     }
 
     // Map Undici native timeout errors to structured timeout messages.
-    // Undici throws HeadersTimeoutError, BodyTimeoutError, ConnectTimeoutError
-    // with corresponding class names and messages.
+    // undici.fetch() wraps timeout errors in TypeError('fetch failed') with the
+    // real timeout error as .cause — unwrap before checking constructor name.
     if (error instanceof Error) {
-      const errName = error.constructor?.name ?? '';
-      const msg = error.message.toLowerCase();
+      const underlying = error.cause instanceof Error ? error.cause : error;
+      const errName = underlying.constructor?.name ?? '';
+      const msg = underlying.message.toLowerCase();
 
       if (errName === 'HeadersTimeoutError' || msg.includes('headers timeout')) {
         logWarn('GitLab API headers timeout', {
@@ -584,9 +633,7 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new Error(`GitLab API timeout after ${HEADERS_TIMEOUT_MS}ms (headers phase)`, {
-          cause: error,
-        });
+        throw new GitLabTimeoutError('headers', HEADERS_TIMEOUT_MS, underlying);
       }
       if (errName === 'BodyTimeoutError' || msg.includes('body timeout')) {
         logWarn('GitLab API body timeout', {
@@ -596,9 +643,7 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new Error(`GitLab API timeout after ${BODY_TIMEOUT_MS}ms (body phase)`, {
-          cause: error,
-        });
+        throw new GitLabTimeoutError('body', BODY_TIMEOUT_MS, underlying);
       }
       if (errName === 'ConnectTimeoutError' || msg.includes('connect timeout')) {
         logWarn('GitLab API connect timeout', {
@@ -608,9 +653,7 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new Error(`GitLab API timeout after ${CONNECT_TIMEOUT_MS}ms (connect phase)`, {
-          cause: error,
-        });
+        throw new GitLabTimeoutError('connect', CONNECT_TIMEOUT_MS, underlying);
       }
     }
 

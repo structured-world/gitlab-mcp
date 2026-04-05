@@ -10,9 +10,17 @@ import {
   testConnection,
 } from '../../../../src/cli/init/connection';
 
-// Mock fetch for testConnection
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
+// Mock enhancedFetch but keep real GitLabTimeoutError for instanceof checks
+jest.mock('../../../../src/utils/fetch', () => {
+  const actual = jest.requireActual('../../../../src/utils/fetch');
+  return {
+    enhancedFetch: jest.fn(),
+    GitLabTimeoutError: actual.GitLabTimeoutError,
+  };
+});
+
+import { enhancedFetch, GitLabTimeoutError } from '../../../../src/utils/fetch';
+const mockFetch = enhancedFetch as unknown as jest.Mock;
 
 describe('connection', () => {
   beforeEach(() => {
@@ -179,6 +187,28 @@ describe('connection', () => {
       expect(result.username).toBe('testuser');
       expect(result.email).toBe('test@example.com');
       expect(result.gitlabVersion).toBe('16.5.0');
+
+      // Verify isolation flags on both /user and /version calls
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        'https://gitlab.example.com/api/v4/user',
+        expect.objectContaining({
+          skipAuth: true,
+          retry: false,
+          rateLimit: false,
+          headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'glpat-xxx' }),
+        }),
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        'https://gitlab.example.com/api/v4/version',
+        expect.objectContaining({
+          skipAuth: true,
+          retry: false,
+          rateLimit: false,
+          headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'glpat-xxx' }),
+        }),
+      );
     });
 
     it('should return error for 401 unauthorized', async () => {
@@ -229,11 +259,10 @@ describe('connection', () => {
       expect(result.error).toContain('Network error');
     });
 
-    it('should return timeout error for AbortError', async () => {
-      // Covers line 86: AbortError handling
-      const abortError = new Error('The operation was aborted');
-      abortError.name = 'AbortError';
-      mockFetch.mockRejectedValueOnce(abortError);
+    it('should return timeout error for timeout errors', async () => {
+      // enhancedFetch throws GitLabTimeoutError for all Undici timeout types
+      const timeoutError = new GitLabTimeoutError('connect', 10000);
+      mockFetch.mockRejectedValueOnce(timeoutError);
 
       const result = await testConnection('https://gitlab.example.com', 'glpat-xxx');
 

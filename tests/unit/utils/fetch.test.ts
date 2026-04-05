@@ -24,6 +24,15 @@ jest.mock('../../../src/config', () => ({
   API_RETRY_MAX_DELAY_MS: 400,
 }));
 
+// Mock undici - provides fetch, Agent, ProxyAgent used by doFetch()
+jest.mock('undici', () => ({
+  fetch: jest.fn(),
+  Agent: jest.fn(() => ({ type: 'agent' })),
+  ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+}));
+
+const mockUndiciFetch = require('undici').fetch as jest.MockedFunction<typeof fetch>;
+
 // Mock dependencies
 jest.mock('fs');
 jest.mock('https');
@@ -48,20 +57,20 @@ jest.mock('../../../src/oauth/index', () => ({
 
 // Import the actual implementation (not mocked)
 const fetchModule = jest.requireActual('../../../src/utils/fetch');
-const { enhancedFetch, createFetchOptions, DEFAULT_HEADERS, getAuthHeaders, extractBaseUrl } =
-  fetchModule;
+const {
+  enhancedFetch,
+  createFetchOptions,
+  DEFAULT_HEADERS,
+  getAuthHeaders,
+  extractBaseUrl,
+  GitLabTimeoutError,
+} = fetchModule;
 
 // Import mocked OAuth module to control behavior per test
 const { isOAuthEnabled, getTokenContext } = require('../../../src/oauth/index');
 
 describe('Enhanced Fetch Utilities', () => {
-  let mockFetch: jest.MockedFunction<typeof fetch>;
-
-  beforeAll(() => {
-    // Mock the global fetch function
-    mockFetch = jest.fn();
-    global.fetch = mockFetch;
-  });
+  const mockFetch = mockUndiciFetch;
 
   afterAll(() => {
     jest.restoreAllMocks();
@@ -128,10 +137,10 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'PRIVATE-TOKEN': 'test-token',
+            'user-agent': 'GitLab MCP Server',
+            'content-type': 'application/json',
+            accept: 'application/json',
+            'private-token': 'test-token',
           }),
         }),
       );
@@ -150,9 +159,9 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
-            'X-Custom-Header': 'custom-value',
-            'PRIVATE-TOKEN': 'test-token',
+            'user-agent': 'GitLab MCP Server',
+            'x-custom-header': 'custom-value',
+            'private-token': 'test-token',
           }),
         }),
       );
@@ -229,7 +238,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
+            'user-agent': 'GitLab MCP Server',
           }),
         }),
       );
@@ -343,7 +352,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
+            'user-agent': 'GitLab MCP Server',
           }),
         }),
       );
@@ -359,7 +368,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
+            'user-agent': 'GitLab MCP Server',
           }),
         }),
       );
@@ -378,7 +387,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'PRIVATE-TOKEN': 'test-token',
+            'private-token': 'test-token',
           }),
         }),
       );
@@ -399,7 +408,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
+            'user-agent': 'GitLab MCP Server',
           }),
         }),
       );
@@ -417,7 +426,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'Content-Type': 'text/plain',
+            'content-type': 'text/plain',
           }),
         }),
       );
@@ -436,7 +445,7 @@ describe('Enhanced Fetch Utilities', () => {
         expect.objectContaining({
           method: 'DELETE',
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
+            'user-agent': 'GitLab MCP Server',
           }),
         }),
       );
@@ -677,7 +686,7 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should retry on network timeout errors', async () => {
-      const timeoutError = new Error('GitLab API timeout after 10000ms');
+      const timeoutError = new GitLabTimeoutError('headers', 10000);
       const successResponse = createMockResponse({ status: 200, ok: true });
 
       mockFetch.mockRejectedValueOnce(timeoutError).mockResolvedValueOnce(successResponse);

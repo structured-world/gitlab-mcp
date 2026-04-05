@@ -25,9 +25,60 @@ import {
 } from '../../../src/utils/fetch';
 import { InstanceRegistry } from '../../../src/services/InstanceRegistry';
 
-// Mock global fetch
-const mockFetch = jest.fn();
-global.fetch = mockFetch;
+// Shared undici mock factory — single source of truth for both jest.mock and resetModulesWithUndici.
+// Pool is included because InstanceConnectionPool.ts (loaded transitively via InstanceRegistry)
+// calls `new undici.Pool(...)`. Without it, per-instance dispatcher tests fail.
+function createUndiciMock(fetchFn: jest.Mock = jest.fn()) {
+  return {
+    fetch: fetchFn,
+    Agent: jest.fn(() => ({ type: 'agent' })),
+    ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+    Pool: jest.fn(() => ({
+      stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
+      destroy: jest.fn().mockResolvedValue(undefined),
+    })),
+  };
+}
+
+jest.mock('undici', () => createUndiciMock());
+
+const mockFetch = require('undici').fetch as jest.Mock;
+
+/**
+ * Run a test body with temporary env var overrides, restoring originals in finally.
+ * Prevents env state leakage when tests throw.
+ */
+async function withEnv(
+  overrides: Record<string, string | undefined>,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const saved: Record<string, string | undefined> = {};
+  for (const key of Object.keys(overrides)) {
+    saved[key] = process.env[key];
+    if (overrides[key] === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = overrides[key];
+    }
+  }
+  try {
+    await fn();
+  } finally {
+    for (const key of Object.keys(saved)) {
+      if (saved[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = saved[key];
+      }
+    }
+  }
+}
+
+/** Reset module cache and re-register undici mock for fresh require() calls */
+function resetModulesWithUndici(): void {
+  jest.resetModules();
+  jest.doMock('undici', () => createUndiciMock(mockFetch));
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -53,6 +104,23 @@ describe('Fetch Utils Coverage Tests', () => {
       expect(DEFAULT_HEADERS.Accept).toBe('application/json');
     });
   });
+
+  /** Run a cookie test: set env, reset modules, mock fs, call enhancedFetch, assert readFileSync */
+  async function runCookieTest(setupFs: (fs: { readFileSync: jest.Mock }) => void): Promise<void> {
+    await withEnv({ GITLAB_AUTH_COOKIE_PATH: '/fake/cookie/path' }, async () => {
+      resetModulesWithUndici();
+      const fs = require('fs');
+      setupFs(fs);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({}),
+      });
+      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
+      await newEnhancedFetch('https://gitlab.example.com/api/test');
+      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
+    });
+  }
 
   describe('enhancedFetch', () => {
     it('should propagate AbortError from caller signal without converting to timeout', async () => {
@@ -91,8 +159,8 @@ describe('Fetch Utils Coverage Tests', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
-            'X-Custom': 'custom-value',
+            'user-agent': 'GitLab MCP Server',
+            'x-custom': 'custom-value',
           }),
         }),
       );
@@ -120,167 +188,47 @@ describe('Fetch Utils Coverage Tests', () => {
       );
     });
 
-    it('should handle loadGitLabCookies success case', async () => {
-      // Set environment variable to trigger cookie loading
-      const originalCookiePath = process.env.GITLAB_AUTH_COOKIE_PATH;
-      process.env.GITLAB_AUTH_COOKIE_PATH = '/fake/cookie/path';
+    it('should handle loadGitLabCookies success case', () =>
+      runCookieTest((fs) =>
+        fs.readFileSync.mockReturnValue(
+          '# HTTP Cookie File\n' +
+            'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\t_gitlab_session\tabc123\n' +
+            'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\tremember_token\tdef456\n',
+        ),
+      ));
 
-      // Reset modules to force re-import with new environment variable
-      jest.resetModules();
+    it('should handle loadGitLabCookies error case', () =>
+      runCookieTest((fs) =>
+        fs.readFileSync.mockImplementation(() => {
+          throw new Error('File not found');
+        }),
+      ));
 
-      // Mock fs to simulate cookie file exists
-      const fs = require('fs');
-      fs.readFileSync.mockReturnValue(
-        '# HTTP Cookie File\n' +
-          'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\t_gitlab_session\tabc123\n' +
-          'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\tremember_token\tdef456\n',
-      );
+    it('should handle malformed cookie lines', () =>
+      runCookieTest((fs) =>
+        fs.readFileSync.mockReturnValue(
+          '# HTTP Cookie File\nmalformed line\n' +
+            'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\t_gitlab_session\tabc123\n' +
+            'incomplete\ttab\tseparated\n',
+        ),
+      ));
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
+    it('should handle empty cookie file', () =>
+      runCookieTest((fs) => fs.readFileSync.mockReturnValue('# HTTP Cookie File\n\n')));
 
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
+    it('should handle cookie file with comments only', () =>
+      runCookieTest((fs) =>
+        fs.readFileSync.mockReturnValue(
+          '# HTTP Cookie File\n# This is a comment\n# Another comment\n',
+        ),
+      ));
 
-      // This should trigger cookie loading logic
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
-
-      // Restore original value
-      process.env.GITLAB_AUTH_COOKIE_PATH = originalCookiePath;
-    });
-
-    it('should handle loadGitLabCookies error case', async () => {
-      // Set environment variable to trigger cookie loading
-      const originalCookiePath = process.env.GITLAB_AUTH_COOKIE_PATH;
-      process.env.GITLAB_AUTH_COOKIE_PATH = '/fake/cookie/path';
-
-      // Reset modules to force re-import with new environment variable
-      jest.resetModules();
-
-      // Mock fs to simulate error reading cookie file
-      const fs = require('fs');
-      fs.readFileSync.mockImplementation(() => {
-        throw new Error('File not found');
-      });
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-
-      // This should handle the cookie loading error gracefully
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
-
-      // Restore original value
-      process.env.GITLAB_AUTH_COOKIE_PATH = originalCookiePath;
-    });
-
-    it('should handle malformed cookie lines', async () => {
-      // Set environment variable to trigger cookie loading
-      const originalCookiePath = process.env.GITLAB_AUTH_COOKIE_PATH;
-      process.env.GITLAB_AUTH_COOKIE_PATH = '/fake/cookie/path';
-
-      // Reset modules to force re-import with new environment variable
-      jest.resetModules();
-
-      // Mock fs to simulate malformed cookie file
-      const fs = require('fs');
-      fs.readFileSync.mockReturnValue(
-        '# HTTP Cookie File\n' +
-          'malformed line\n' +
-          'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\t_gitlab_session\tabc123\n' +
-          'incomplete\ttab\tseparated\n',
-      );
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
-
-      // Restore original value
-      process.env.GITLAB_AUTH_COOKIE_PATH = originalCookiePath;
-    });
-
-    it('should handle empty cookie file', async () => {
-      // Set environment variable to trigger cookie loading
-      const originalCookiePath = process.env.GITLAB_AUTH_COOKIE_PATH;
-      process.env.GITLAB_AUTH_COOKIE_PATH = '/fake/cookie/path';
-
-      // Reset modules to force re-import with new environment variable
-      jest.resetModules();
-
-      // Mock fs to simulate empty cookie file
-      const fs = require('fs');
-      fs.readFileSync.mockReturnValue('# HTTP Cookie File\n\n');
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
-
-      // Restore original value
-      process.env.GITLAB_AUTH_COOKIE_PATH = originalCookiePath;
-    });
-
-    it('should handle cookie file with comments only', async () => {
-      // Set environment variable to trigger cookie loading
-      const originalCookiePath = process.env.GITLAB_AUTH_COOKIE_PATH;
-      process.env.GITLAB_AUTH_COOKIE_PATH = '/fake/cookie/path';
-
-      // Reset modules to force re-import with new environment variable
-      jest.resetModules();
-
-      // Mock fs to simulate cookie file with only comments
-      const fs = require('fs');
-      fs.readFileSync.mockReturnValue(
-        '# HTTP Cookie File\n' + '# This is a comment\n' + '# Another comment\n',
-      );
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
-
-      // Restore original value
-      process.env.GITLAB_AUTH_COOKIE_PATH = originalCookiePath;
-    });
-
+    // These env-mutation tests use the top-level enhancedFetch import with
+    // resetDispatcherCache() before each test to force createDispatcher() to
+    // re-read process.env. Without the reset, the cached dispatcher from a
+    // previous test would mask the env changes.
     it('should handle proxy configuration scenarios', async () => {
+      resetDispatcherCache();
       // Test various proxy configurations
       const originalHttpProxy = process.env.HTTP_PROXY;
       const originalHttpsProxy = process.env.HTTPS_PROXY;
@@ -305,6 +253,7 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should handle SOCKS proxy configuration', async () => {
+      resetDispatcherCache();
       const originalHttpProxy = process.env.HTTP_PROXY;
 
       try {
@@ -325,6 +274,7 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should handle TLS configuration scenarios', async () => {
+      resetDispatcherCache();
       const originalRejectUnauth = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
 
       try {
@@ -344,46 +294,32 @@ describe('Fetch Utils Coverage Tests', () => {
       }
     });
 
-    it('should handle CA certificate path configuration', async () => {
-      // Set environment variable to trigger CA cert loading
-      const originalCACertPath = process.env.GITLAB_CA_CERT_PATH;
-      const originalHttpProxy = process.env.HTTP_PROXY;
-      const originalHttpsProxy = process.env.HTTPS_PROXY;
-
-      process.env.GITLAB_CA_CERT_PATH = '/fake/ca/cert/path';
-      // Clear proxy variables to avoid conflicts
-      delete process.env.HTTP_PROXY;
-      delete process.env.HTTPS_PROXY;
-
-      // Reset modules to force re-import with new environment variable
-      jest.resetModules();
-
-      // Mock fs to simulate CA cert file exists
-      const fs = require('fs');
-      fs.readFileSync.mockReturnValue(
-        '-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----',
-      );
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/ca/cert/path');
-
-      // Restore original values
-      process.env.GITLAB_CA_CERT_PATH = originalCACertPath;
-      process.env.HTTP_PROXY = originalHttpProxy;
-      process.env.HTTPS_PROXY = originalHttpsProxy;
-    });
+    it('should handle CA certificate path configuration', () =>
+      withEnv(
+        {
+          GITLAB_CA_CERT_PATH: '/fake/ca/cert/path',
+          HTTP_PROXY: undefined,
+          HTTPS_PROXY: undefined,
+        },
+        async () => {
+          resetModulesWithUndici();
+          const fs = require('fs');
+          fs.readFileSync.mockReturnValue(
+            '-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----',
+          );
+          mockFetch.mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: jest.fn().mockResolvedValue({}),
+          });
+          const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
+          await newEnhancedFetch('https://gitlab.example.com/api/test');
+          expect(fs.readFileSync).toHaveBeenCalledWith('/fake/ca/cert/path');
+        },
+      ));
 
     it('should handle SOCKS4 proxy', async () => {
+      resetDispatcherCache();
       const originalHttpProxy = process.env.HTTP_PROXY;
 
       try {
@@ -404,6 +340,7 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should handle default HTTP proxy fallback', async () => {
+      resetDispatcherCache();
       const originalHttpProxy = process.env.HTTP_PROXY;
       const originalHttpsProxy = process.env.HTTPS_PROXY;
 
@@ -436,7 +373,7 @@ describe('Fetch Utils Coverage Tests', () => {
         delete process.env.GITLAB_TOKEN;
 
         // Reset modules to test DEFAULT_HEADERS without token
-        jest.resetModules();
+        resetModulesWithUndici();
         const { DEFAULT_HEADERS } = require('../../../src/utils/fetch');
 
         expect(DEFAULT_HEADERS.Authorization).toBeUndefined();
@@ -471,14 +408,25 @@ describe('Fetch Utils Coverage Tests', () => {
   });
 
   describe('per-instance dispatcher integration', () => {
+    // Re-require after resetModules so bindings use the fresh undici mock
+    let enhancedFetch: typeof import('../../../src/utils/fetch').enhancedFetch;
+    let FreshRegistry: typeof InstanceRegistry;
+
     beforeEach(async () => {
-      // Reset InstanceRegistry to ensure clean state for each test
-      await InstanceRegistry.getInstance().resetWithPools();
+      // Re-register undici mock (with Pool) to ensure availability after prior resetModules calls
+      resetModulesWithUndici();
+
+      // Re-require to get fresh module bindings after resetModules
+      ({ enhancedFetch } = require('../../../src/utils/fetch'));
+      ({ InstanceRegistry: FreshRegistry } = require('../../../src/services/InstanceRegistry'));
+
+      // Reset fresh registry to ensure clean state for each test
+      await FreshRegistry.getInstance().resetWithPools();
     });
 
     it('should get dispatcher from registry when initialized', async () => {
       // Initialize registry (this sets isInitialized to true)
-      const registry = InstanceRegistry.getInstance();
+      const registry = FreshRegistry.getInstance();
       await registry.initialize(); // This makes isInitialized() return true
 
       // Register additional test instance
@@ -508,12 +456,15 @@ describe('Fetch Utils Coverage Tests', () => {
         rateLimit: false,
       });
 
-      // Verify fetch was called
-      expect(mockFetch).toHaveBeenCalled();
+      // Verify fetch was called with the per-instance dispatcher
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://gitlab.example.com/api/v4/projects',
+        expect.objectContaining({ dispatcher }),
+      );
     });
 
     it('should proceed without dispatcher for unregistered instance', async () => {
-      const registry = InstanceRegistry.getInstance();
+      const registry = FreshRegistry.getInstance();
       await registry.initialize(); // Make isInitialized() return true
 
       mockFetch.mockResolvedValue({
@@ -535,7 +486,7 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should acquire rate limit slot when registry initialized and rate limiting enabled', async () => {
-      const registry = InstanceRegistry.getInstance();
+      const registry = FreshRegistry.getInstance();
       await registry.initialize(); // Make isInitialized() return true
 
       // Register instance with rate limiting
@@ -569,8 +520,7 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should use rateLimitBaseUrl option when provided', async () => {
-      const { InstanceRegistry } = await import('../../../src/services/InstanceRegistry');
-      const registry = InstanceRegistry.getInstance();
+      const registry = FreshRegistry.getInstance();
       await registry.initialize();
 
       registry.register({
@@ -578,7 +528,12 @@ describe('Fetch Utils Coverage Tests', () => {
         insecureSkipVerify: false,
       });
 
+      // Initialize pool so getDispatcher returns a real dispatcher
       registry.getGraphQLClient('https://custom.gitlab.com');
+      const dispatcher = registry.getDispatcher('https://custom.gitlab.com');
+      expect(dispatcher).toBeDefined();
+
+      const getDispatcherSpy = jest.spyOn(registry, 'getDispatcher');
 
       mockFetch.mockResolvedValue({
         ok: true,
@@ -594,14 +549,18 @@ describe('Fetch Utils Coverage Tests', () => {
         rateLimitBaseUrl: 'https://custom.gitlab.com',
       });
 
-      expect(mockFetch).toHaveBeenCalled();
+      expect(getDispatcherSpy).toHaveBeenCalledWith('https://custom.gitlab.com');
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://someproxy.com/api/v4/projects',
+        expect.objectContaining({ dispatcher }),
+      );
     });
 
     it('should check pool stats when dispatcher has stats property', async () => {
       // Verifies that the pool pressure code path runs when the dispatcher
       // has a stats property. The actual logging is verified in fetch-config.test.ts
       // where the logger is properly mocked.
-      const registry = InstanceRegistry.getInstance();
+      const registry = FreshRegistry.getInstance();
       await registry.initialize();
 
       // Register instance and create pool

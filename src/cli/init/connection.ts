@@ -3,6 +3,7 @@
  */
 
 import { ConnectionTestResult } from './types';
+import { enhancedFetch, GitLabTimeoutError } from '../../utils/fetch';
 
 /**
  * Test GitLab connection with provided credentials
@@ -15,18 +16,18 @@ export async function testConnection(
   const baseUrl = instanceUrl.replace(/\/$/, '').replace(/\/api\/v4\/?$/, '');
   const apiUrl = `${baseUrl}/api/v4`;
 
-  // 10 second timeout for connection test
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 10000);
-
   try {
-    // Test /user endpoint to verify token
-    const userResponse = await fetch(`${apiUrl}/user`, {
+    // Test /user endpoint to verify token.
+    // Timeout is handled by enhancedFetch's Undici dispatcher (connect + headers timeouts)
+    // rather than a manual AbortController — consistent with all other fetch calls.
+    const userResponse = await enhancedFetch(`${apiUrl}/user`, {
       headers: {
         'PRIVATE-TOKEN': token,
         Accept: 'application/json',
       },
-      signal: controller.signal,
+      retry: false,
+      skipAuth: true,
+      rateLimit: false,
     });
 
     if (!userResponse.ok) {
@@ -54,15 +55,17 @@ export async function testConnection(
       is_admin?: boolean;
     };
 
-    // Get GitLab version (with same timeout)
+    // Get GitLab version
     let gitlabVersion: string | undefined;
     try {
-      const versionResponse = await fetch(`${apiUrl}/version`, {
+      const versionResponse = await enhancedFetch(`${apiUrl}/version`, {
         headers: {
           'PRIVATE-TOKEN': token,
           Accept: 'application/json',
         },
-        signal: controller.signal,
+        retry: false,
+        skipAuth: true,
+        rateLimit: false,
       });
 
       if (versionResponse.ok) {
@@ -81,11 +84,11 @@ export async function testConnection(
       gitlabVersion,
     };
   } catch (error) {
-    // Handle timeout
-    if (error instanceof Error && error.name === 'AbortError') {
+    // Handle timeout — doFetch throws GitLabTimeoutError for all Undici timeout types
+    if (error instanceof GitLabTimeoutError) {
       return {
         success: false,
-        error: `Connection timeout - ${instanceUrl} did not respond within 10 seconds`,
+        error: `Connection timeout - ${instanceUrl} did not respond`,
       };
     }
     // Handle network errors
@@ -100,8 +103,6 @@ export async function testConnection(
       success: false,
       error: error instanceof Error ? error.message : String(error),
     };
-  } finally {
-    clearTimeout(timeoutId);
   }
 }
 

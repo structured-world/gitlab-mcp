@@ -552,7 +552,7 @@ async function doFetch(
 
   if (options.headers) {
     // Normalize all header formats to Headers, then merge (caller wins)
-    new Headers(options.headers as HeadersInit).forEach((value, key) => {
+    new Headers(options.headers).forEach((value, key) => {
       h.set(key, value);
     });
   }

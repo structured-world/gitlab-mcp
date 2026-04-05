@@ -68,21 +68,24 @@ describe('ConnectionManager Integration', () => {
     // (introspectSchema must NOT be called — rehydrate() populates the cache instead)
     const introspectSpy = jest.spyOn(SchemaIntrospector.prototype, 'introspectSchema');
 
-    // Second init: hits the static cache (no GraphQL call)
-    await manager.initialize();
+    try {
+      // Second init: hits the static cache (no GraphQL call)
+      await manager.initialize();
 
-    // Cache-hit proof: introspectSchema was never called on the new instance
-    expect(introspectSpy).not.toHaveBeenCalled();
-    introspectSpy.mockRestore();
+      // Cache-hit proof: introspectSchema was never called on the new instance
+      expect(introspectSpy).not.toHaveBeenCalled();
 
-    // SchemaIntrospector must be rehydrated — getCachedSchema() should not be null
-    const introspector = manager.getSchemaIntrospector();
-    const cached = introspector.getCachedSchema();
-    expect(cached).not.toBeNull();
-    expect(cached!.workItemWidgetTypes).toEqual(widgetTypes);
+      // SchemaIntrospector must be rehydrated — getCachedSchema() should not be null
+      const introspector = manager.getSchemaIntrospector();
+      const cached = introspector.getCachedSchema();
+      expect(cached).not.toBeNull();
+      expect(cached!.workItemWidgetTypes).toEqual(widgetTypes);
 
-    // Direct method calls must work (these would throw before #374 fix)
-    expect(introspector.isWidgetTypeAvailable(widgetTypes[0])).toBe(true);
-    expect(introspector.getAvailableWidgetTypes().length).toBeGreaterThan(0);
+      // Direct method calls must work (these would throw before #374 fix)
+      expect(introspector.isWidgetTypeAvailable(widgetTypes[0])).toBe(true);
+      expect(introspector.getAvailableWidgetTypes().length).toBeGreaterThan(0);
+    } finally {
+      introspectSpy.mockRestore();
+    }
   });
 });

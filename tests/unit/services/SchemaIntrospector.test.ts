@@ -357,6 +357,17 @@ describe('SchemaIntrospector', () => {
         workItemWidgetTypes: ['ASSIGNEES', 'LABELS', 'MILESTONE'],
         typeDefinitions: new Map([
           ['WorkItem', { name: 'WorkItem', fields: [], enumValues: null }],
+          [
+            'WorkItemWidgetAssignees',
+            {
+              name: 'WorkItemWidgetAssignees',
+              fields: [
+                { name: 'assignees', type: { name: 'UserConnection', kind: 'OBJECT' } },
+                { name: 'canInviteMembers', type: { name: 'Boolean', kind: 'SCALAR' } },
+              ],
+              enumValues: null,
+            },
+          ],
         ]),
         availableFeatures: new Set(['ASSIGNEES', 'LABELS', 'MILESTONE']),
       };
@@ -368,6 +379,10 @@ describe('SchemaIntrospector', () => {
       expect(introspector.isWidgetTypeAvailable('ASSIGNEES')).toBe(true);
       expect(introspector.isWidgetTypeAvailable('NONEXISTENT')).toBe(false);
       expect(introspector.getAvailableWidgetTypes()).toEqual(['ASSIGNEES', 'LABELS', 'MILESTONE']);
+      // getFieldsForType / hasField must also work after rehydrate
+      expect(introspector.getFieldsForType('WorkItemWidgetAssignees')).toHaveLength(2);
+      expect(introspector.hasField('WorkItemWidgetAssignees', 'assignees')).toBe(true);
+      expect(introspector.hasField('WorkItemWidgetAssignees', 'nonexistent')).toBe(false);
       // No GraphQL request was made
       expect(mockGraphQLClient.request).not.toHaveBeenCalled();
     });

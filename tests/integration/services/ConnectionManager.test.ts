@@ -51,6 +51,12 @@ describe('ConnectionManager Integration', () => {
   // its internal cache populated so that direct callers (DynamicWorkItemsQuery)
   // can call isWidgetTypeAvailable() / getFieldsForType() without errors.
   it('should rehydrate SchemaIntrospector on cache-hit re-initialization', async () => {
+    // Clear static introspection cache to ensure the first init below performs
+    // a live GraphQL introspection (not a cache hit from a preceding test)
+    (
+      ConnectionManager as unknown as { introspectionCache: Map<string, unknown> }
+    ).introspectionCache.clear();
+
     // First init: populates introspection cache via live GraphQL
     await manager.initialize();
     const widgetTypes = manager.getSchemaInfo().workItemWidgetTypes;

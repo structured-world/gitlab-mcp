@@ -21,6 +21,14 @@ import type { Request, Response, NextFunction } from 'express';
 import { RESPONSE_WRITE_TIMEOUT_MS } from '../config';
 import { logWarn } from '../logger';
 
+/** Normalize Content-Type header to lowercase string for comparison.
+ *  Handles string, string[] (Node.js allows both), and undefined. */
+function normalizeContentType(value: string | number | string[] | undefined): string {
+  if (typeof value === 'string') return value.toLowerCase();
+  if (Array.isArray(value)) return value.join(',').toLowerCase();
+  return '';
+}
+
 /**
  * Express middleware that destroys sockets when response writes stall.
  *
@@ -58,15 +66,9 @@ export function responseWriteTimeoutMiddleware() {
 
       // Start timer only once, and only for non-SSE responses
       if (!writeTimer) {
-        const contentType = res.getHeader('content-type');
-        // Case-insensitive check — HTTP headers like "Text/Event-Stream" are valid
-        const normalizedContentType =
-          typeof contentType === 'string'
-            ? contentType.toLowerCase()
-            : Array.isArray(contentType)
-              ? contentType.join(',').toLowerCase()
-              : '';
-        const isSSE = normalizedContentType.includes('text/event-stream');
+        const isSSE = normalizeContentType(res.getHeader('content-type')).includes(
+          'text/event-stream',
+        );
 
         if (!isSSE) {
           writeTimer = setTimeout(() => {

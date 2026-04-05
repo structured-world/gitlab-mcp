@@ -223,6 +223,11 @@ describe('Fetch Utils Coverage Tests', () => {
         ),
       ));
 
+    // These env-mutation tests intentionally use the top-level enhancedFetch import
+    // (not fresh require after resetModules). This works because createDispatcher()
+    // is called lazily on first fetch, not at import time — so env changes before the
+    // first call ARE picked up. The cachedDispatcher is also reset between tests
+    // by resetDispatcherCache() or jest.clearAllMocks().
     it('should handle proxy configuration scenarios', async () => {
       // Test various proxy configurations
       const originalHttpProxy = process.env.HTTP_PROXY;
@@ -447,8 +452,11 @@ describe('Fetch Utils Coverage Tests', () => {
         rateLimit: false,
       });
 
-      // Verify fetch was called
-      expect(mockFetch).toHaveBeenCalled();
+      // Verify fetch was called with the per-instance dispatcher
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://gitlab.example.com/api/v4/projects',
+        expect.objectContaining({ dispatcher }),
+      );
     });
 
     it('should proceed without dispatcher for unregistered instance', async () => {

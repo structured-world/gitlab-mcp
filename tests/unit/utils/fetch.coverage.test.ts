@@ -528,6 +528,11 @@ describe('Fetch Utils Coverage Tests', () => {
         insecureSkipVerify: false,
       });
 
+      // Initialize pool so getDispatcher returns a real dispatcher
+      registry.getGraphQLClient('https://custom.gitlab.com');
+      const dispatcher = registry.getDispatcher('https://custom.gitlab.com');
+      expect(dispatcher).toBeDefined();
+
       const getDispatcherSpy = jest.spyOn(registry, 'getDispatcher');
 
       mockFetch.mockResolvedValue({
@@ -545,7 +550,10 @@ describe('Fetch Utils Coverage Tests', () => {
       });
 
       expect(getDispatcherSpy).toHaveBeenCalledWith('https://custom.gitlab.com');
-      expect(mockFetch).toHaveBeenCalled();
+      expect(mockFetch).toHaveBeenCalledWith(
+        'https://someproxy.com/api/v4/projects',
+        expect.objectContaining({ dispatcher }),
+      );
     });
 
     it('should check pool stats when dispatcher has stats property', async () => {

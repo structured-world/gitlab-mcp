@@ -138,7 +138,10 @@ function toStructuredError(
   // the original GitLabTimeoutError message is embedded in a generic Error).
   if (
     error instanceof GitLabTimeoutError ||
-    (error instanceof Error && error.name === 'GitLabTimeoutError' && 'timeoutMs' in error)
+    (error instanceof Error &&
+      error.name === 'GitLabTimeoutError' &&
+      'timeoutMs' in error &&
+      typeof (error as GitLabTimeoutError).timeoutMs === 'number')
   ) {
     const retryable = isIdempotentOperation(toolName);
     return createTimeoutError(toolName, action, (error as GitLabTimeoutError).timeoutMs, retryable);

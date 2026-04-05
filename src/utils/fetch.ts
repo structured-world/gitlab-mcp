@@ -426,8 +426,6 @@ function redactUrlForLogging(url: string): string {
 function isRetryableError(error: unknown): boolean {
   if (!(error instanceof Error)) return false;
 
-  const message = error.message.toLowerCase();
-
   // Caller-initiated AbortErrors are NOT retryable
   if (error.name === 'AbortError') {
     return false;
@@ -435,6 +433,16 @@ function isRetryableError(error: unknown): boolean {
 
   // Internal timeout errors (thrown as GitLabTimeoutError by doFetch) are retryable
   if (error instanceof GitLabTimeoutError) {
+    return true;
+  }
+
+  // undici.fetch() wraps errors in TypeError('fetch failed') with the real error as .cause.
+  // Unwrap one level to check the underlying error message for retryable network conditions.
+  const underlying = error.cause instanceof Error ? error.cause : error;
+  const message = underlying.message.toLowerCase();
+
+  // Check underlying for timeout (in case undici wraps GitLabTimeoutError)
+  if (underlying instanceof GitLabTimeoutError) {
     return true;
   }
 
@@ -520,17 +528,22 @@ async function doFetch(
   const dispatcher = instanceDispatcher ?? getDispatcher();
   const cookieHeader = skipAuth ? null : loadCookieHeader();
 
-  // For FormData, don't set Content-Type - let fetch set it with proper boundary
-  const isFormData = options.body instanceof FormData;
+  // For FormData, don't set Content-Type - let fetch set it with proper boundary.
+  // Duck-type check covers both global FormData and undici.FormData.
+  const isFormData =
+    options.body != null &&
+    typeof options.body === 'object' &&
+    typeof (options.body as unknown as Record<string, unknown>).append === 'function' &&
+    typeof (options.body as unknown as Record<string, unknown>).getAll === 'function';
   const baseHeaders = isFormData
     ? { 'User-Agent': DEFAULT_HEADERS['User-Agent'], Accept: DEFAULT_HEADERS.Accept }
     : { ...DEFAULT_HEADERS };
 
   // When skipAuth is false, ambient auth is merged first, then caller headers override.
-  // Caller headers win for same-cased keys (Object.assign / Headers.forEach).
-  // Note: case mismatch (e.g., caller sends lowercase 'authorization' while getAuthHeaders
-  // returns 'Authorization') could result in duplicate auth headers. In practice this is safe
-  // because all callers with explicit auth also set skipAuth: true, preventing any conflict.
+  // Caller headers win for same-cased keys via Object.assign / Headers.forEach.
+  // This is safe because getAuthHeaders() uses canonical casing ('Authorization' or
+  // 'PRIVATE-TOKEN') and callers (GraphQLClient, NamespaceTierDetector) use the same
+  // casing — so Object.assign overwrites rather than duplicates.
   const headers: Record<string, string> = skipAuth
     ? { ...baseHeaders }
     : { ...baseHeaders, ...getAuthHeaders() };

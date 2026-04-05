@@ -251,6 +251,7 @@ export class ConnectionManager {
         logInfo('Using cached GraphQL introspection data');
         state.instanceInfo = cached.instanceInfo;
         state.schemaInfo = cached.schemaInfo;
+        state.schemaIntrospector.rehydrate(cached.schemaInfo);
         state.introspectedInstanceUrl = baseUrl;
       } else {
         logDebug('Introspecting GitLab GraphQL schema...');
@@ -379,7 +380,9 @@ export class ConnectionManager {
           features: cachedIntrospection.features as unknown as GitLabInstanceInfo['features'],
           detectedAt: cachedIntrospection.cachedAt,
         };
-        state.schemaInfo = cachedIntrospection.schemaInfo as SchemaInfo;
+        const restoredSchema = cachedIntrospection.schemaInfo as SchemaInfo;
+        state.schemaInfo = restoredSchema;
+        state.schemaIntrospector.rehydrate(restoredSchema);
         state.introspectedInstanceUrl = instanceUrl;
         return;
       }
@@ -399,6 +402,7 @@ export class ConnectionManager {
       logInfo('Using cached GraphQL introspection data');
       state.instanceInfo = cached.instanceInfo;
       state.schemaInfo = cached.schemaInfo;
+      state.schemaIntrospector.rehydrate(cached.schemaInfo);
       state.introspectedInstanceUrl = instanceUrl;
       return;
     }

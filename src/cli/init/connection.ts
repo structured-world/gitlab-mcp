@@ -84,7 +84,9 @@ export async function testConnection(
       gitlabVersion,
     };
   } catch (error) {
-    // Handle timeout (enhancedFetch maps Undici timeouts to "GitLab API timeout ..." messages)
+    // Handle timeout — enhancedFetch maps all Undici timeout errors (connect, headers, body)
+    // to messages starting with this exact prefix in doFetch(). Using startsWith rather than
+    // includes to avoid false positives from unrelated errors mentioning "timeout".
     if (error instanceof Error && error.message.startsWith('GitLab API timeout')) {
       return {
         success: false,

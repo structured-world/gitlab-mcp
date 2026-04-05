@@ -16,15 +16,24 @@ import { enhancedFetch, type FetchWithRetryOptions } from '../utils/fetch';
 
 /**
  * Shared options for OAuth endpoint calls — no retry, no rate limiting,
- * and no ambient auth injection.
+ * no ambient auth injection.
  *
  * skipAuth suppresses auto-injected credentials (PAT from env, cookies) so OAuth
  * endpoints only receive explicitly provided auth (Bearer token in headers or
  * client_id/secret in POST body). Caller-supplied headers are never stripped.
+ *
+ * rateLimitBaseUrl is set even with rate limiting disabled so enhancedFetch can
+ * consistently select the correct per-instance dispatcher. Without it, OAuth paths
+ * like /oauth/token don't match extractBaseUrl()'s /api/v4|/api/graphql stripping,
+ * causing fallback to the global dispatcher (missing per-instance TLS settings).
  */
-const OAUTH_FETCH_OPTS: Pick<FetchWithRetryOptions, 'retry' | 'rateLimit' | 'skipAuth'> = {
+const OAUTH_FETCH_OPTS: Pick<
+  FetchWithRetryOptions,
+  'retry' | 'rateLimit' | 'rateLimitBaseUrl' | 'skipAuth'
+> = {
   retry: false,
   rateLimit: false,
+  rateLimitBaseUrl: GITLAB_BASE_URL,
   skipAuth: true,
 };
 

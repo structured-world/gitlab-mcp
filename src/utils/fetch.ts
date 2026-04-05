@@ -281,7 +281,12 @@ export interface FetchWithRetryOptions extends RequestInit {
   rateLimit?: boolean;
   /** Override the base URL for rate limit slot acquisition (derived from request URL if not specified) */
   rateLimitBaseUrl?: string;
-  /** Skip auth headers — for intentionally unauthenticated probes (health checks, version detection) */
+  /**
+   * Suppress auto-injected auth (getAuthHeaders from env/OAuth context, loadCookieHeader).
+   * Caller-supplied headers in `options.headers` are NOT stripped — only ambient credentials
+   * are blocked. Use for health probes (no auth at all) or requests that carry their own
+   * explicit token (e.g., CLI wizard with user-provided PRIVATE-TOKEN).
+   */
   skipAuth?: boolean;
 }
 

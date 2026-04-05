@@ -494,23 +494,25 @@ describe('Fetch Utils Coverage Tests', () => {
   });
 
   describe('per-instance dispatcher integration', () => {
-    // Re-require after resetModules so the binding uses the fresh undici mock
+    // Re-require after resetModules so bindings use the fresh undici mock
     let enhancedFetch: typeof import('../../../src/utils/fetch').enhancedFetch;
+    let FreshRegistry: typeof InstanceRegistry;
 
     beforeEach(async () => {
       // Re-register undici mock (with Pool) to ensure availability after prior resetModules calls
       resetModulesWithUndici();
 
-      // Re-require to get fresh module binding after resetModules
+      // Re-require to get fresh module bindings after resetModules
       ({ enhancedFetch } = require('../../../src/utils/fetch'));
+      ({ InstanceRegistry: FreshRegistry } = require('../../../src/services/InstanceRegistry'));
 
-      // Reset InstanceRegistry to ensure clean state for each test
-      await InstanceRegistry.getInstance().resetWithPools();
+      // Reset fresh registry to ensure clean state for each test
+      await FreshRegistry.getInstance().resetWithPools();
     });
 
     it('should get dispatcher from registry when initialized', async () => {
       // Initialize registry (this sets isInitialized to true)
-      const registry = InstanceRegistry.getInstance();
+      const registry = FreshRegistry.getInstance();
       await registry.initialize(); // This makes isInitialized() return true
 
       // Register additional test instance
@@ -545,7 +547,7 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should proceed without dispatcher for unregistered instance', async () => {
-      const registry = InstanceRegistry.getInstance();
+      const registry = FreshRegistry.getInstance();
       await registry.initialize(); // Make isInitialized() return true
 
       mockFetch.mockResolvedValue({
@@ -567,7 +569,7 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should acquire rate limit slot when registry initialized and rate limiting enabled', async () => {
-      const registry = InstanceRegistry.getInstance();
+      const registry = FreshRegistry.getInstance();
       await registry.initialize(); // Make isInitialized() return true
 
       // Register instance with rate limiting
@@ -601,8 +603,6 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should use rateLimitBaseUrl option when provided', async () => {
-      // Use fresh InstanceRegistry from re-required module (matches what enhancedFetch sees)
-      const { InstanceRegistry: FreshRegistry } = require('../../../src/services/InstanceRegistry');
       const registry = FreshRegistry.getInstance();
       await registry.initialize();
 
@@ -635,7 +635,7 @@ describe('Fetch Utils Coverage Tests', () => {
       // Verifies that the pool pressure code path runs when the dispatcher
       // has a stats property. The actual logging is verified in fetch-config.test.ts
       // where the logger is properly mocked.
-      const registry = InstanceRegistry.getInstance();
+      const registry = FreshRegistry.getInstance();
       await registry.initialize();
 
       // Register instance and create pool

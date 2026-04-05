@@ -81,6 +81,12 @@ Closes #5
 - **CQRS pattern** - `browse_*` for queries, `manage_*` for commands
 - **Jest tests** - All features must have tests
 
+## Testing Conventions
+
+- **Jest mock hoisting is intentional** - `jest.mock()` calls are hoisted above imports by Jest's babel transform. Placing `jest.mock('module')` after `import { thing } from 'module'` is standard Jest usage, NOT a bug. Do NOT flag this as "import before mock" or "relies on hoisting" — it is the documented Jest API behavior used across all 148+ test suites in this project
+- **`jest.fn()` for partial Response mocks** - Tests mock `fetch`/`enhancedFetch` return values with partial objects (`{ ok: true, json: jest.fn() }`) cast via `as jest.Mock`. Do NOT flag missing Response properties — this is standard Jest mock pattern
+- **`undici` is mocked via `jest.mock('undici')`** - The project uses `undici.fetch()` instead of global `fetch()`. Test mocks replace the undici module, not `global.fetch`
+
 ## Build and Test Commands
 
 ```bash

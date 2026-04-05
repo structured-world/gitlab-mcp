@@ -15,14 +15,17 @@ import { logInfo, logWarn, logError, logDebug } from '../logger';
 import { enhancedFetch, type FetchWithRetryOptions } from '../utils/fetch';
 
 /**
- * Shared options for OAuth endpoint calls — no retry, no rate limiting.
- * skipAuth is NOT set: these requests either carry explicit credentials in headers
- * (Authorization: Bearer for user info/validation) or in the POST body (client_id/secret
- * for token exchange). skipAuth would strip the explicit headers.
+ * Shared options for OAuth endpoint calls — no retry, no rate limiting,
+ * and no ambient auth injection.
+ *
+ * skipAuth suppresses auto-injected credentials (PAT from env, cookies) so OAuth
+ * endpoints only receive explicitly provided auth (Bearer token in headers or
+ * client_id/secret in POST body). Caller-supplied headers are never stripped.
  */
-const OAUTH_FETCH_OPTS: Pick<FetchWithRetryOptions, 'retry' | 'rateLimit'> = {
+const OAUTH_FETCH_OPTS: Pick<FetchWithRetryOptions, 'retry' | 'rateLimit' | 'skipAuth'> = {
   retry: false,
   rateLimit: false,
+  skipAuth: true,
 };
 
 /**

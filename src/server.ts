@@ -22,6 +22,7 @@ import {
   DASHBOARD_ENABLED,
   LOG_FILTER,
   shouldSkipAccessLogRequest,
+  RESPONSE_WRITE_TIMEOUT_MS,
 } from './config';
 import { TransportMode } from './types';
 import { logInfo, logError, logDebug, logWarn } from './logger';
@@ -43,7 +44,11 @@ import {
   runWithTokenContext,
 } from './oauth/index';
 // Middleware imports
-import { oauthAuthMiddleware, rateLimiterMiddleware } from './middleware/index';
+import {
+  oauthAuthMiddleware,
+  rateLimiterMiddleware,
+  responseWriteTimeoutMiddleware,
+} from './middleware/index';
 
 // Dashboard imports
 import { dashboardHandler } from './dashboard/index.js';
@@ -432,6 +437,10 @@ export async function startServer(): Promise<void> {
       // Configure trust proxy for reverse proxy deployments
       configureTrustProxy(app);
 
+      // Response write timeout — detects zombie connections where TCP peer stopped reading.
+      // Must be registered before route handlers to intercept writeHead on all responses.
+      app.use(responseWriteTimeoutMiddleware());
+
       // Health check endpoint for load balancers (Envoy, nginx, etc.)
       // Registered BEFORE access logging middleware to avoid log spam
       // Does not require authentication or rate limiting
@@ -607,11 +616,13 @@ export async function startServer(): Promise<void> {
             ? `peer_reset:${socketError}` // ECONNRESET, EPIPE, etc.
             : res.writableFinished
               ? 'normal_close'
-              : res.locals?.heartbeatFailed
-                ? 'heartbeat_failed' // Heartbeat drain timeout destroyed the socket
-                : res.destroyed
-                  ? 'destroyed' // Other code destroyed the socket
-                  : 'client_disconnect'; // Client closed connection cleanly
+              : res.locals?.writeTimedOut
+                ? 'write_timeout' // Response write stalled — zombie connection killed
+                : res.locals?.heartbeatFailed
+                  ? 'heartbeat_failed' // Heartbeat drain timeout destroyed the socket
+                  : res.destroyed
+                    ? 'destroyed' // Other code destroyed the socket
+                    : 'client_disconnect'; // Client closed connection cleanly
 
           logInfo('SSE session disconnected', { sessionId, reason });
           connectionTracker.closeConnection(sessionId, reason);
@@ -826,11 +837,13 @@ export async function startServer(): Promise<void> {
                 ? `peer_reset:${socketError}` // ECONNRESET, EPIPE, etc.
                 : res.writableFinished
                   ? 'normal_close'
-                  : res.locals?.heartbeatFailed
-                    ? 'heartbeat_failed' // Heartbeat drain timeout destroyed the socket
-                    : res.destroyed
-                      ? 'destroyed' // Other code destroyed the socket
-                      : 'client_disconnect'; // Client closed connection cleanly
+                  : res.locals?.writeTimedOut
+                    ? 'write_timeout' // Response write stalled — zombie connection killed
+                    : res.locals?.heartbeatFailed
+                      ? 'heartbeat_failed' // Heartbeat drain timeout destroyed the socket
+                      : res.destroyed
+                        ? 'destroyed' // Other code destroyed the socket
+                        : 'client_disconnect'; // Client closed connection cleanly
 
               logInfo('StreamableHTTP GET stream disconnected', {
                 sessionId: effectiveSessionId,
@@ -868,6 +881,11 @@ export async function startServer(): Promise<void> {
           heartbeatMs: SSE_HEARTBEAT_MS,
           keepAliveTimeoutMs: KEEP_ALIVE_TIMEOUT_MS,
         });
+        if (RESPONSE_WRITE_TIMEOUT_MS > 0) {
+          logInfo('Response write timeout enabled (zombie connection detection)', {
+            responseWriteTimeoutMs: RESPONSE_WRITE_TIMEOUT_MS,
+          });
+        }
         logInfo('Clients can use either transport as needed');
       });
       break;

@@ -159,8 +159,8 @@ describe('Fetch Utils Coverage Tests', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
-            'X-Custom': 'custom-value',
+            'user-agent': 'GitLab MCP Server',
+            'x-custom': 'custom-value',
           }),
         }),
       );

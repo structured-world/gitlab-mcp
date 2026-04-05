@@ -137,10 +137,10 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
-            'Content-Type': 'application/json',
-            Accept: 'application/json',
-            'PRIVATE-TOKEN': 'test-token',
+            'user-agent': 'GitLab MCP Server',
+            'content-type': 'application/json',
+            accept: 'application/json',
+            'private-token': 'test-token',
           }),
         }),
       );
@@ -159,9 +159,9 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
-            'X-Custom-Header': 'custom-value',
-            'PRIVATE-TOKEN': 'test-token',
+            'user-agent': 'GitLab MCP Server',
+            'x-custom-header': 'custom-value',
+            'private-token': 'test-token',
           }),
         }),
       );
@@ -238,7 +238,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
+            'user-agent': 'GitLab MCP Server',
           }),
         }),
       );
@@ -352,7 +352,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
+            'user-agent': 'GitLab MCP Server',
           }),
         }),
       );
@@ -368,7 +368,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
+            'user-agent': 'GitLab MCP Server',
           }),
         }),
       );
@@ -387,7 +387,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'PRIVATE-TOKEN': 'test-token',
+            'private-token': 'test-token',
           }),
         }),
       );
@@ -408,7 +408,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
+            'user-agent': 'GitLab MCP Server',
           }),
         }),
       );
@@ -426,7 +426,7 @@ describe('Enhanced Fetch Utilities', () => {
         'https://example.com',
         expect.objectContaining({
           headers: expect.objectContaining({
-            'Content-Type': 'text/plain',
+            'content-type': 'text/plain',
           }),
         }),
       );
@@ -445,7 +445,7 @@ describe('Enhanced Fetch Utilities', () => {
         expect.objectContaining({
           method: 'DELETE',
           headers: expect.objectContaining({
-            'User-Agent': 'GitLab MCP Server',
+            'user-agent': 'GitLab MCP Server',
           }),
         }),
       );

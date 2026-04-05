@@ -539,33 +539,34 @@ async function doFetch(
     ? { 'User-Agent': DEFAULT_HEADERS['User-Agent'], Accept: DEFAULT_HEADERS.Accept }
     : { ...DEFAULT_HEADERS };
 
-  // When skipAuth is false, ambient auth is merged first, then caller headers override.
-  // Caller headers win for same-cased keys via Object.assign / Headers.forEach.
-  // This is safe because getAuthHeaders() uses canonical casing ('Authorization' or
-  // 'PRIVATE-TOKEN') and callers (GraphQLClient, NamespaceTierDetector) use the same
-  // casing — so Object.assign overwrites rather than duplicates.
-  const headers: Record<string, string> = skipAuth
-    ? { ...baseHeaders }
-    : { ...baseHeaders, ...getAuthHeaders() };
+  // Use Headers API for case-insensitive merge. This prevents duplicate auth
+  // headers when caller uses different casing (e.g., 'authorization' vs 'Authorization').
+  // Merge order: base → ambient auth (if !skipAuth) → caller headers (wins).
+  const h = new Headers(baseHeaders);
 
-  if (options.headers) {
-    if (options.headers instanceof Headers) {
-      options.headers.forEach((value, key) => {
-        headers[key] = value;
-      });
-    } else if (Array.isArray(options.headers)) {
-      for (const [key, value] of options.headers) {
-        headers[key] = value;
-      }
-    } else {
-      Object.assign(headers, options.headers);
+  if (!skipAuth) {
+    for (const [key, value] of Object.entries(getAuthHeaders())) {
+      h.set(key, value);
     }
   }
 
-  // Only inject cookie-file auth if caller didn't supply their own Cookie header
-  if (cookieHeader && !Object.keys(headers).some((k) => k.toLowerCase() === 'cookie')) {
-    headers.Cookie = cookieHeader;
+  if (options.headers) {
+    // Normalize all header formats to Headers, then merge (caller wins)
+    new Headers(options.headers as HeadersInit).forEach((value, key) => {
+      h.set(key, value);
+    });
   }
+
+  // Only inject cookie-file auth if caller didn't supply their own Cookie header
+  if (cookieHeader && !h.has('cookie')) {
+    h.set('Cookie', cookieHeader);
+  }
+
+  // Convert back to plain object for fetch options
+  const headers: Record<string, string> = {};
+  h.forEach((value, key) => {
+    headers[key] = value;
+  });
 
   const method = (options.method ?? 'GET').toUpperCase();
 
@@ -617,11 +618,12 @@ async function doFetch(
     }
 
     // Map Undici native timeout errors to structured timeout messages.
-    // Undici throws HeadersTimeoutError, BodyTimeoutError, ConnectTimeoutError
-    // with corresponding class names and messages.
+    // undici.fetch() wraps timeout errors in TypeError('fetch failed') with the
+    // real timeout error as .cause — unwrap before checking constructor name.
     if (error instanceof Error) {
-      const errName = error.constructor?.name ?? '';
-      const msg = error.message.toLowerCase();
+      const underlying = error.cause instanceof Error ? error.cause : error;
+      const errName = underlying.constructor?.name ?? '';
+      const msg = underlying.message.toLowerCase();
 
       if (errName === 'HeadersTimeoutError' || msg.includes('headers timeout')) {
         logWarn('GitLab API headers timeout', {
@@ -631,7 +633,7 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new GitLabTimeoutError('headers', HEADERS_TIMEOUT_MS, error);
+        throw new GitLabTimeoutError('headers', HEADERS_TIMEOUT_MS, underlying);
       }
       if (errName === 'BodyTimeoutError' || msg.includes('body timeout')) {
         logWarn('GitLab API body timeout', {
@@ -641,7 +643,7 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new GitLabTimeoutError('body', BODY_TIMEOUT_MS, error);
+        throw new GitLabTimeoutError('body', BODY_TIMEOUT_MS, underlying);
       }
       if (errName === 'ConnectTimeoutError' || msg.includes('connect timeout')) {
         logWarn('GitLab API connect timeout', {
@@ -651,7 +653,7 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new GitLabTimeoutError('connect', CONNECT_TIMEOUT_MS, error);
+        throw new GitLabTimeoutError('connect', CONNECT_TIMEOUT_MS, underlying);
       }
     }
 

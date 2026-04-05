@@ -210,6 +210,19 @@ describe('handlers', () => {
       callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
     });
 
+    it('should deduplicate concurrent setupHandlers calls', async () => {
+      // Call setupHandlers concurrently — the ??= guard must ensure
+      // health monitor init and state-change registration happen exactly once
+      await Promise.all([
+        setupHandlers(mockServer),
+        setupHandlers(mockServer),
+        setupHandlers(mockServer),
+      ]);
+
+      expect(mockHealthMonitor.initialize).toHaveBeenCalledTimes(1);
+      expect(mockHealthMonitor.onStateChange).toHaveBeenCalledTimes(1);
+    });
+
     it('should continue setup even if health monitor starts disconnected', async () => {
       // Simulate HealthMonitor starting in disconnected state (GitLab unreachable)
       mockHealthMonitor.getState.mockReturnValue('disconnected');

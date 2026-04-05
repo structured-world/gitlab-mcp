@@ -432,14 +432,16 @@ export async function startServer(): Promise<void> {
     case 'dual': {
       logInfo('Setting up dual transport mode (SSE + StreamableHTTP)...');
       const app = express();
+
+      // Response write timeout — detects zombie connections where TCP peer stopped reading.
+      // Registered BEFORE express.json() so that parse/size error responses (4xx from
+      // body parser) are also covered by the write timeout protection.
+      app.use(responseWriteTimeoutMiddleware());
+
       app.use(express.json());
 
       // Configure trust proxy for reverse proxy deployments
       configureTrustProxy(app);
-
-      // Response write timeout — detects zombie connections where TCP peer stopped reading.
-      // Must be registered before route handlers to intercept writeHead on all responses.
-      app.use(responseWriteTimeoutMiddleware());
 
       // Health check endpoint for load balancers (Envoy, nginx, etc.)
       // Registered BEFORE access logging middleware to avoid log spam

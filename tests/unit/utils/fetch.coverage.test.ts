@@ -38,6 +38,36 @@ jest.mock('undici', () => ({
 
 const mockFetch = require('undici').fetch as jest.Mock;
 
+/**
+ * Run a test body with temporary env var overrides, restoring originals in finally.
+ * Prevents env state leakage when tests throw.
+ */
+async function withEnv(
+  overrides: Record<string, string | undefined>,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const saved: Record<string, string | undefined> = {};
+  for (const key of Object.keys(overrides)) {
+    saved[key] = process.env[key];
+    if (overrides[key] === undefined) {
+      delete process.env[key];
+    } else {
+      process.env[key] = overrides[key];
+    }
+  }
+  try {
+    await fn();
+  } finally {
+    for (const key of Object.keys(saved)) {
+      if (saved[key] === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = saved[key];
+      }
+    }
+  }
+}
+
 /** Reset module cache and re-register undici mock for fresh require() calls */
 function resetModulesWithUndici(): void {
   jest.resetModules();
@@ -143,165 +173,92 @@ describe('Fetch Utils Coverage Tests', () => {
       );
     });
 
-    it('should handle loadGitLabCookies success case', async () => {
-      // Set environment variable to trigger cookie loading
-      const originalCookiePath = process.env.GITLAB_AUTH_COOKIE_PATH;
-      process.env.GITLAB_AUTH_COOKIE_PATH = '/fake/cookie/path';
+    it('should handle loadGitLabCookies success case', () =>
+      withEnv({ GITLAB_AUTH_COOKIE_PATH: '/fake/cookie/path' }, async () => {
+        resetModulesWithUndici();
+        const fs = require('fs');
+        fs.readFileSync.mockReturnValue(
+          '# HTTP Cookie File\n' +
+            'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\t_gitlab_session\tabc123\n' +
+            'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\tremember_token\tdef456\n',
+        );
+        mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({}),
+        });
+        const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
+        await newEnhancedFetch('https://gitlab.example.com/api/test');
+        expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
+      }));
 
-      // Reset modules to force re-import with new environment variable
-      resetModulesWithUndici();
+    it('should handle loadGitLabCookies error case', () =>
+      withEnv({ GITLAB_AUTH_COOKIE_PATH: '/fake/cookie/path' }, async () => {
+        resetModulesWithUndici();
+        const fs = require('fs');
+        fs.readFileSync.mockImplementation(() => {
+          throw new Error('File not found');
+        });
+        mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({}),
+        });
+        const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
+        await newEnhancedFetch('https://gitlab.example.com/api/test');
+        expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
+      }));
 
-      // Mock fs to simulate cookie file exists
-      const fs = require('fs');
-      fs.readFileSync.mockReturnValue(
-        '# HTTP Cookie File\n' +
-          'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\t_gitlab_session\tabc123\n' +
-          'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\tremember_token\tdef456\n',
-      );
+    it('should handle malformed cookie lines', () =>
+      withEnv({ GITLAB_AUTH_COOKIE_PATH: '/fake/cookie/path' }, async () => {
+        resetModulesWithUndici();
+        const fs = require('fs');
+        fs.readFileSync.mockReturnValue(
+          '# HTTP Cookie File\nmalformed line\n' +
+            'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\t_gitlab_session\tabc123\n' +
+            'incomplete\ttab\tseparated\n',
+        );
+        mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({}),
+        });
+        const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
+        await newEnhancedFetch('https://gitlab.example.com/api/test');
+        expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
+      }));
 
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
+    it('should handle empty cookie file', () =>
+      withEnv({ GITLAB_AUTH_COOKIE_PATH: '/fake/cookie/path' }, async () => {
+        resetModulesWithUndici();
+        const fs = require('fs');
+        fs.readFileSync.mockReturnValue('# HTTP Cookie File\n\n');
+        mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({}),
+        });
+        const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
+        await newEnhancedFetch('https://gitlab.example.com/api/test');
+        expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
+      }));
 
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-
-      // This should trigger cookie loading logic
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
-
-      // Restore original value
-      process.env.GITLAB_AUTH_COOKIE_PATH = originalCookiePath;
-    });
-
-    it('should handle loadGitLabCookies error case', async () => {
-      // Set environment variable to trigger cookie loading
-      const originalCookiePath = process.env.GITLAB_AUTH_COOKIE_PATH;
-      process.env.GITLAB_AUTH_COOKIE_PATH = '/fake/cookie/path';
-
-      // Reset modules to force re-import with new environment variable
-      resetModulesWithUndici();
-
-      // Mock fs to simulate error reading cookie file
-      const fs = require('fs');
-      fs.readFileSync.mockImplementation(() => {
-        throw new Error('File not found');
-      });
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-
-      // This should handle the cookie loading error gracefully
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
-
-      // Restore original value
-      process.env.GITLAB_AUTH_COOKIE_PATH = originalCookiePath;
-    });
-
-    it('should handle malformed cookie lines', async () => {
-      // Set environment variable to trigger cookie loading
-      const originalCookiePath = process.env.GITLAB_AUTH_COOKIE_PATH;
-      process.env.GITLAB_AUTH_COOKIE_PATH = '/fake/cookie/path';
-
-      // Reset modules to force re-import with new environment variable
-      resetModulesWithUndici();
-
-      // Mock fs to simulate malformed cookie file
-      const fs = require('fs');
-      fs.readFileSync.mockReturnValue(
-        '# HTTP Cookie File\n' +
-          'malformed line\n' +
-          'gitlab.example.com\tFALSE\t/\tTRUE\t1234567890\t_gitlab_session\tabc123\n' +
-          'incomplete\ttab\tseparated\n',
-      );
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
-
-      // Restore original value
-      process.env.GITLAB_AUTH_COOKIE_PATH = originalCookiePath;
-    });
-
-    it('should handle empty cookie file', async () => {
-      // Set environment variable to trigger cookie loading
-      const originalCookiePath = process.env.GITLAB_AUTH_COOKIE_PATH;
-      process.env.GITLAB_AUTH_COOKIE_PATH = '/fake/cookie/path';
-
-      // Reset modules to force re-import with new environment variable
-      resetModulesWithUndici();
-
-      // Mock fs to simulate empty cookie file
-      const fs = require('fs');
-      fs.readFileSync.mockReturnValue('# HTTP Cookie File\n\n');
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
-
-      // Restore original value
-      process.env.GITLAB_AUTH_COOKIE_PATH = originalCookiePath;
-    });
-
-    it('should handle cookie file with comments only', async () => {
-      // Set environment variable to trigger cookie loading
-      const originalCookiePath = process.env.GITLAB_AUTH_COOKIE_PATH;
-      process.env.GITLAB_AUTH_COOKIE_PATH = '/fake/cookie/path';
-
-      // Reset modules to force re-import with new environment variable
-      resetModulesWithUndici();
-
-      // Mock fs to simulate cookie file with only comments
-      const fs = require('fs');
-      fs.readFileSync.mockReturnValue(
-        '# HTTP Cookie File\n' + '# This is a comment\n' + '# Another comment\n',
-      );
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
-
-      // Restore original value
-      process.env.GITLAB_AUTH_COOKIE_PATH = originalCookiePath;
-    });
+    it('should handle cookie file with comments only', () =>
+      withEnv({ GITLAB_AUTH_COOKIE_PATH: '/fake/cookie/path' }, async () => {
+        resetModulesWithUndici();
+        const fs = require('fs');
+        fs.readFileSync.mockReturnValue(
+          '# HTTP Cookie File\n# This is a comment\n# Another comment\n',
+        );
+        mockFetch.mockResolvedValue({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue({}),
+        });
+        const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
+        await newEnhancedFetch('https://gitlab.example.com/api/test');
+        expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
+      }));
 
     it('should handle proxy configuration scenarios', async () => {
       // Test various proxy configurations
@@ -367,44 +324,29 @@ describe('Fetch Utils Coverage Tests', () => {
       }
     });
 
-    it('should handle CA certificate path configuration', async () => {
-      // Set environment variable to trigger CA cert loading
-      const originalCACertPath = process.env.GITLAB_CA_CERT_PATH;
-      const originalHttpProxy = process.env.HTTP_PROXY;
-      const originalHttpsProxy = process.env.HTTPS_PROXY;
-
-      process.env.GITLAB_CA_CERT_PATH = '/fake/ca/cert/path';
-      // Clear proxy variables to avoid conflicts
-      delete process.env.HTTP_PROXY;
-      delete process.env.HTTPS_PROXY;
-
-      // Reset modules to force re-import with new environment variable
-      resetModulesWithUndici();
-
-      // Mock fs to simulate CA cert file exists
-      const fs = require('fs');
-      fs.readFileSync.mockReturnValue(
-        '-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----',
-      );
-
-      mockFetch.mockResolvedValue({
-        ok: true,
-        status: 200,
-        json: jest.fn().mockResolvedValue({}),
-      });
-
-      // Re-import enhancedFetch after setting environment variable
-      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-
-      await newEnhancedFetch('https://gitlab.example.com/api/test');
-
-      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/ca/cert/path');
-
-      // Restore original values
-      process.env.GITLAB_CA_CERT_PATH = originalCACertPath;
-      process.env.HTTP_PROXY = originalHttpProxy;
-      process.env.HTTPS_PROXY = originalHttpsProxy;
-    });
+    it('should handle CA certificate path configuration', () =>
+      withEnv(
+        {
+          GITLAB_CA_CERT_PATH: '/fake/ca/cert/path',
+          HTTP_PROXY: undefined,
+          HTTPS_PROXY: undefined,
+        },
+        async () => {
+          resetModulesWithUndici();
+          const fs = require('fs');
+          fs.readFileSync.mockReturnValue(
+            '-----BEGIN CERTIFICATE-----\ntest\n-----END CERTIFICATE-----',
+          );
+          mockFetch.mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: jest.fn().mockResolvedValue({}),
+          });
+          const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
+          await newEnhancedFetch('https://gitlab.example.com/api/test');
+          expect(fs.readFileSync).toHaveBeenCalledWith('/fake/ca/cert/path');
+        },
+      ));
 
     it('should handle SOCKS4 proxy', async () => {
       const originalHttpProxy = process.env.HTTP_PROXY;

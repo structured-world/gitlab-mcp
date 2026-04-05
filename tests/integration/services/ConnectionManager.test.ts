@@ -4,6 +4,7 @@
  */
 
 import { ConnectionManager } from '../../../src/services/ConnectionManager';
+import { SchemaIntrospector } from '../../../src/services/SchemaIntrospector';
 
 describe('ConnectionManager Integration', () => {
   let manager: ConnectionManager;
@@ -63,8 +64,16 @@ describe('ConnectionManager Integration', () => {
     internals.instances.clear();
     internals.currentInstanceUrl = null;
 
+    // Spy on prototype BEFORE second init to prove cache-hit path was taken
+    // (introspectSchema must NOT be called — rehydrate() populates the cache instead)
+    const introspectSpy = jest.spyOn(SchemaIntrospector.prototype, 'introspectSchema');
+
     // Second init: hits the static cache (no GraphQL call)
     await manager.initialize();
+
+    // Cache-hit proof: introspectSchema was never called on the new instance
+    expect(introspectSpy).not.toHaveBeenCalled();
+    introspectSpy.mockRestore();
 
     // SchemaIntrospector must be rehydrated — getCachedSchema() should not be null
     const introspector = manager.getSchemaIntrospector();

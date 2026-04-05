@@ -518,6 +518,13 @@ export async function startServer(): Promise<void> {
             return;
           }
 
+          if (res.locals?.writeTimedOut) {
+            // Response write stalled — zombie connection killed by write timeout middleware.
+            // Log as error so it's distinguishable from normal completions.
+            requestTracker.closeStackWithError(requestId, 'write_timeout');
+            return;
+          }
+
           // Headers were sent but the stream ended without 'finish' firing.
           // This is typical for long-lived streaming/SSE responses where the
           // client disconnects. Treat as a normal completion and log using

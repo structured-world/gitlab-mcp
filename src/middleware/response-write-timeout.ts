@@ -18,8 +18,15 @@
  */
 
 import type { Request, Response, NextFunction } from 'express';
+import { z } from 'zod';
 import { RESPONSE_WRITE_TIMEOUT_MS } from '../config';
 import { logWarn } from '../logger';
+
+/** Validates mcp-session-id header: string, string[], or undefined → string | undefined */
+const mcpSessionIdSchema = z
+  .union([z.string(), z.array(z.string())])
+  .optional()
+  .transform((value) => (Array.isArray(value) ? value[0] : value));
 
 /** Normalize Content-Type header to lowercase string for comparison.
  *  Handles string, string[] (Node.js allows both), and undefined. */
@@ -71,14 +78,19 @@ export function responseWriteTimeoutMiddleware() {
         );
 
         if (!isSSE) {
+          // Timer starts at writeHead, not at first write(). This is intentional:
+          // MCP responses are small JSON payloads that flush in milliseconds.
+          // A 10s window from headers-sent is generous for any non-SSE response
+          // in this server. Wrapping res.write/res.end would add complexity
+          // without benefit for the MCP use case.
           writeTimer = setTimeout(() => {
             if (!res.writableFinished && !res.destroyed) {
               // Mark response so close handler can use 'write_timeout' reason
               res.locals = res.locals ?? {};
               res.locals.writeTimedOut = true;
 
-              const rawSessionId = req.headers['mcp-session-id'];
-              const sessionId = typeof rawSessionId === 'string' ? rawSessionId : rawSessionId?.[0];
+              const parsedSessionId = mcpSessionIdSchema.safeParse(req.headers['mcp-session-id']);
+              const sessionId = parsedSessionId.success ? parsedSessionId.data : undefined;
               logWarn('Response write timeout — destroying zombie connection', {
                 method: req.method,
                 path: req.path,

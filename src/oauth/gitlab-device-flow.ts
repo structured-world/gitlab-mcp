@@ -14,6 +14,15 @@ import { GitLabDeviceResponse, GitLabTokenResponse, GitLabUserInfo } from './typ
 import { logInfo, logWarn, logError, logDebug } from '../logger';
 import { enhancedFetch, type FetchWithRetryOptions } from '../utils/fetch';
 
+/** Throw a descriptive error if the GitLab OAuth response indicates failure */
+async function throwOnHttpError(response: Response, operation: string): Promise<void> {
+  if (!response.ok) {
+    const errorText = await response.text();
+    logError(`Failed to ${operation}`, { status: response.status, error: errorText });
+    throw new Error(`Failed to ${operation}: ${response.status} ${errorText}`);
+  }
+}
+
 /**
  * Shared options for OAuth endpoint calls — no retry, no rate limiting,
  * no ambient auth injection.
@@ -88,11 +97,7 @@ export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDev
     ...OAUTH_FETCH_OPTS,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    logError('Failed to initiate device flow', { status: response.status, error: errorText });
-    throw new Error(`Failed to initiate device flow: ${response.status} ${errorText}`);
-  }
+  await throwOnHttpError(response, 'initiate device flow');
 
   const data = (await response.json()) as GitLabDeviceResponse;
 
@@ -271,11 +276,7 @@ export async function refreshGitLabToken(
     ...OAUTH_FETCH_OPTS,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    logError('Failed to refresh GitLab token', { status: response.status, error: errorText });
-    throw new Error(`Failed to refresh token: ${response.status} ${errorText}`);
-  }
+  await throwOnHttpError(response, 'refresh token');
 
   const data = (await response.json()) as GitLabTokenResponse;
   logInfo('GitLab token refreshed successfully');
@@ -302,11 +303,7 @@ export async function getGitLabUser(accessToken: string): Promise<GitLabUserInfo
     ...OAUTH_FETCH_OPTS,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    logError('Failed to get GitLab user info', { status: response.status, error: errorText });
-    throw new Error(`Failed to get GitLab user info: ${response.status}`);
-  }
+  await throwOnHttpError(response, 'get GitLab user info');
 
   const user = (await response.json()) as GitLabUserInfo;
 
@@ -388,11 +385,7 @@ export async function exchangeGitLabAuthCode(
     ...OAUTH_FETCH_OPTS,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    logError('Failed to exchange GitLab auth code', { status: response.status, error: errorText });
-    throw new Error(`Failed to exchange authorization code: ${response.status} ${errorText}`);
-  }
+  await throwOnHttpError(response, 'exchange authorization code');
 
   const data = (await response.json()) as GitLabTokenResponse;
   logInfo('GitLab authorization code exchanged successfully');

@@ -38,7 +38,6 @@ jest.mock('undici', () => ({
 
 const mockFetch = require('undici').fetch as jest.Mock;
 
-/** Re-register undici mock after jest.resetModules() clears the module cache */
 /** Reset module cache and re-register undici mock for fresh require() calls */
 function resetModulesWithUndici(): void {
   jest.resetModules();

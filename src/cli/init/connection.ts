@@ -17,7 +17,9 @@ export async function testConnection(
   const apiUrl = `${baseUrl}/api/v4`;
 
   try {
-    // Test /user endpoint to verify token
+    // Test /user endpoint to verify token.
+    // Timeout is handled by enhancedFetch's Undici dispatcher (connect + headers timeouts)
+    // rather than a manual AbortController — consistent with all other fetch calls.
     const userResponse = await enhancedFetch(`${apiUrl}/user`, {
       headers: {
         'PRIVATE-TOKEN': token,

@@ -25,7 +25,9 @@ import {
 } from '../../../src/utils/fetch';
 import { InstanceRegistry } from '../../../src/services/InstanceRegistry';
 
-// Mock undici (provides fetch, Agent, ProxyAgent, Pool used across modules)
+// Mock undici — fetch.ts uses fetch/Agent/ProxyAgent directly, but Pool is also needed
+// because InstanceConnectionPool.ts (loaded transitively via InstanceRegistry) calls
+// `new undici.Pool(...)`. Without the Pool mock, per-instance dispatcher tests fail.
 jest.mock('undici', () => ({
   fetch: jest.fn(),
   Agent: jest.fn(() => ({ type: 'agent' })),
@@ -107,6 +109,23 @@ describe('Fetch Utils Coverage Tests', () => {
     });
   });
 
+  /** Run a cookie test: set env, reset modules, mock fs, call enhancedFetch, assert readFileSync */
+  async function runCookieTest(setupFs: (fs: { readFileSync: jest.Mock }) => void): Promise<void> {
+    await withEnv({ GITLAB_AUTH_COOKIE_PATH: '/fake/cookie/path' }, async () => {
+      resetModulesWithUndici();
+      const fs = require('fs');
+      setupFs(fs);
+      mockFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({}),
+      });
+      const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
+      await newEnhancedFetch('https://gitlab.example.com/api/test');
+      expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
+    });
+  }
+
   describe('enhancedFetch', () => {
     it('should propagate AbortError from caller signal without converting to timeout', async () => {
       // Caller-initiated AbortErrors should propagate as-is, NOT be converted to timeout
@@ -172,25 +191,6 @@ describe('Fetch Utils Coverage Tests', () => {
         }),
       );
     });
-
-    /** Run a cookie test: set env, reset modules, mock fs, call enhancedFetch, assert readFileSync */
-    async function runCookieTest(
-      setupFs: (fs: { readFileSync: jest.Mock }) => void,
-    ): Promise<void> {
-      await withEnv({ GITLAB_AUTH_COOKIE_PATH: '/fake/cookie/path' }, async () => {
-        resetModulesWithUndici();
-        const fs = require('fs');
-        setupFs(fs);
-        mockFetch.mockResolvedValue({
-          ok: true,
-          status: 200,
-          json: jest.fn().mockResolvedValue({}),
-        });
-        const { enhancedFetch: newEnhancedFetch } = require('../../../src/utils/fetch');
-        await newEnhancedFetch('https://gitlab.example.com/api/test');
-        expect(fs.readFileSync).toHaveBeenCalledWith('/fake/cookie/path', 'utf-8');
-      });
-    }
 
     it('should handle loadGitLabCookies success case', () =>
       runCookieTest((fs) =>

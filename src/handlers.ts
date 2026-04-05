@@ -10,10 +10,11 @@ import {
   isStructuredToolError,
   createTimeoutError,
   createConnectionFailedError,
-  parseTimeoutError,
   parseGitLabApiError,
   classifyError,
+  parseTimeoutError,
 } from './utils/error-handler';
+import { GitLabTimeoutError } from './utils/fetch';
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './logging/index';
 import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL } from './config';
 
@@ -130,11 +131,24 @@ function toStructuredError(
   }
   action ??= 'unknown';
 
-  // Check for timeout error first (before parseGitLabApiError)
-  const timeoutMs = parseTimeoutError(error.message);
-  if (timeoutMs !== null) {
+  // Check for timeout error first (before parseGitLabApiError).
+  // Primary: instanceof for type safety in production.
+  // Fallback: duck-typing by name+property for cross-module-graph cases.
+  // Last resort: parse message string (covers handler-timeout wrapper case where
+  // the original GitLabTimeoutError message is embedded in a generic Error).
+  if (
+    error instanceof GitLabTimeoutError ||
+    (error instanceof Error && error.name === 'GitLabTimeoutError' && 'timeoutMs' in error)
+  ) {
     const retryable = isIdempotentOperation(toolName);
-    return createTimeoutError(toolName, action, timeoutMs, retryable);
+    return createTimeoutError(toolName, action, (error as GitLabTimeoutError).timeoutMs, retryable);
+  }
+  if (error instanceof Error) {
+    const timeoutMs = parseTimeoutError(error.message);
+    if (timeoutMs !== null) {
+      const retryable = isIdempotentOperation(toolName);
+      return createTimeoutError(toolName, action, timeoutMs, retryable);
+    }
   }
 
   // Try to parse GitLab API error from message

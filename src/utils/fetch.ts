@@ -266,6 +266,30 @@ export function createFetchOptions(): Record<string, unknown> {
 }
 
 // ============================================================================
+// Structured Timeout Error
+// ============================================================================
+
+/** Timeout phase reported by doFetch when Undici native timeouts fire */
+export type TimeoutPhase = 'connect' | 'headers' | 'body';
+
+/**
+ * Structured timeout error thrown by doFetch instead of plain Error.
+ * Allows callers to detect timeouts via instanceof rather than string matching.
+ */
+export class GitLabTimeoutError extends Error {
+  public readonly phase: TimeoutPhase;
+  public readonly timeoutMs: number;
+
+  constructor(phase: TimeoutPhase, timeoutMs: number, cause?: Error) {
+    super(`GitLab API timeout after ${timeoutMs}ms (${phase} phase)`);
+    this.name = 'GitLabTimeoutError';
+    this.phase = phase;
+    this.timeoutMs = timeoutMs;
+    this.cause = cause;
+  }
+}
+
+// ============================================================================
 // Retry Logic
 // ============================================================================
 
@@ -405,13 +429,12 @@ function isRetryableError(error: unknown): boolean {
   const message = error.message.toLowerCase();
 
   // Caller-initiated AbortErrors are NOT retryable
-  // (doFetch converts internal timeouts to "GitLab API timeout" message)
   if (error.name === 'AbortError') {
     return false;
   }
 
-  // Internal timeout errors (converted by doFetch) are retryable
-  if (message.includes('gitlab api timeout')) {
+  // Internal timeout errors (thrown as GitLabTimeoutError by doFetch) are retryable
+  if (error instanceof GitLabTimeoutError) {
     return true;
   }
 
@@ -590,9 +613,7 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new Error(`GitLab API timeout after ${HEADERS_TIMEOUT_MS}ms (headers phase)`, {
-          cause: error,
-        });
+        throw new GitLabTimeoutError('headers', HEADERS_TIMEOUT_MS, error);
       }
       if (errName === 'BodyTimeoutError' || msg.includes('body timeout')) {
         logWarn('GitLab API body timeout', {
@@ -602,9 +623,7 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new Error(`GitLab API timeout after ${BODY_TIMEOUT_MS}ms (body phase)`, {
-          cause: error,
-        });
+        throw new GitLabTimeoutError('body', BODY_TIMEOUT_MS, error);
       }
       if (errName === 'ConnectTimeoutError' || msg.includes('connect timeout')) {
         logWarn('GitLab API connect timeout', {
@@ -614,9 +633,7 @@ async function doFetch(
           duration,
         });
         requestTracker.setGitLabResponseForCurrentRequest('timeout', duration);
-        throw new Error(`GitLab API timeout after ${CONNECT_TIMEOUT_MS}ms (connect phase)`, {
-          cause: error,
-        });
+        throw new GitLabTimeoutError('connect', CONNECT_TIMEOUT_MS, error);
       }
     }
 

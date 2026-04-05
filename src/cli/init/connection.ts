@@ -3,7 +3,7 @@
  */
 
 import { ConnectionTestResult } from './types';
-import { enhancedFetch } from '../../utils/fetch';
+import { enhancedFetch, GitLabTimeoutError } from '../../utils/fetch';
 
 /**
  * Test GitLab connection with provided credentials
@@ -84,10 +84,8 @@ export async function testConnection(
       gitlabVersion,
     };
   } catch (error) {
-    // Handle timeout — enhancedFetch maps all Undici timeout errors (connect, headers, body)
-    // to messages starting with this exact prefix in doFetch(). Using startsWith rather than
-    // includes to avoid false positives from unrelated errors mentioning "timeout".
-    if (error instanceof Error && error.message.startsWith('GitLab API timeout')) {
+    // Handle timeout — doFetch throws GitLabTimeoutError for all Undici timeout types
+    if (error instanceof GitLabTimeoutError) {
       return {
         success: false,
         error: `Connection timeout - ${instanceUrl} did not respond`,

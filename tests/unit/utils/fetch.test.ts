@@ -57,8 +57,14 @@ jest.mock('../../../src/oauth/index', () => ({
 
 // Import the actual implementation (not mocked)
 const fetchModule = jest.requireActual('../../../src/utils/fetch');
-const { enhancedFetch, createFetchOptions, DEFAULT_HEADERS, getAuthHeaders, extractBaseUrl } =
-  fetchModule;
+const {
+  enhancedFetch,
+  createFetchOptions,
+  DEFAULT_HEADERS,
+  getAuthHeaders,
+  extractBaseUrl,
+  GitLabTimeoutError,
+} = fetchModule;
 
 // Import mocked OAuth module to control behavior per test
 const { isOAuthEnabled, getTokenContext } = require('../../../src/oauth/index');
@@ -680,7 +686,7 @@ describe('Enhanced Fetch Utilities', () => {
     });
 
     it('should retry on network timeout errors', async () => {
-      const timeoutError = new Error('GitLab API timeout after 10000ms');
+      const timeoutError = new GitLabTimeoutError('headers', 10000);
       const successResponse = createMockResponse({ status: 200, ok: true });
 
       mockFetch.mockRejectedValueOnce(timeoutError).mockResolvedValueOnce(successResponse);

@@ -10,12 +10,16 @@ import {
   testConnection,
 } from '../../../../src/cli/init/connection';
 
-// Mock enhancedFetch used by testConnection
-jest.mock('../../../../src/utils/fetch', () => ({
-  enhancedFetch: jest.fn(),
-}));
+// Mock enhancedFetch but keep real GitLabTimeoutError for instanceof checks
+jest.mock('../../../../src/utils/fetch', () => {
+  const actual = jest.requireActual('../../../../src/utils/fetch');
+  return {
+    enhancedFetch: jest.fn(),
+    GitLabTimeoutError: actual.GitLabTimeoutError,
+  };
+});
 
-import { enhancedFetch } from '../../../../src/utils/fetch';
+import { enhancedFetch, GitLabTimeoutError } from '../../../../src/utils/fetch';
 const mockFetch = enhancedFetch as unknown as jest.Mock;
 
 describe('connection', () => {
@@ -234,8 +238,8 @@ describe('connection', () => {
     });
 
     it('should return timeout error for timeout errors', async () => {
-      // enhancedFetch converts timeouts to "GitLab API timeout" messages
-      const timeoutError = new Error('GitLab API timeout after 10000ms (connect phase)');
+      // enhancedFetch throws GitLabTimeoutError for all Undici timeout types
+      const timeoutError = new GitLabTimeoutError('connect', 10000);
       mockFetch.mockRejectedValueOnce(timeoutError);
 
       const result = await testConnection('https://gitlab.example.com', 'glpat-xxx');

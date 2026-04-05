@@ -358,8 +358,8 @@ function parseStrictInt(envValue: string | undefined, fallback: number, allowZer
   return parsed >= minValue ? parsed : fallback;
 }
 
-function parseTimerMs(envValue: string | undefined, fallback: number): number {
-  const parsed = parseStrictInt(envValue, fallback);
+function parseTimerMs(envValue: string | undefined, fallback: number, allowZero = false): number {
+  const parsed = parseStrictInt(envValue, fallback, allowZero);
   return Math.min(parsed, MAX_SAFE_TIMEOUT_MS);
 }
 
@@ -449,6 +449,7 @@ export const API_RETRY_MAX_DELAY_MS = parseTimerMs(process.env.GITLAB_API_RETRY_
 export const RESPONSE_WRITE_TIMEOUT_MS = parseTimerMs(
   process.env.GITLAB_RESPONSE_WRITE_TIMEOUT_MS,
   10000,
+  true, // allowZero: setting 0 disables the timeout
 );
 
 // Rate limiting configuration

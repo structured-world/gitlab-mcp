@@ -44,14 +44,18 @@ export function responseWriteTimeoutMiddleware() {
 
     // Intercept writeHead to detect when response writing begins.
     // This pattern is used by established Express middleware (morgan, compression, on-headers).
-    // writeHead has complex overloads that make precise typing impractical for monkey-patching.
-    // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-    const originalWriteHead: (...a: unknown[]) => Response = res.writeHead.bind(res);
+    const originalWriteHead = res.writeHead.bind(res) as (
+      ...a: Parameters<typeof res.writeHead>
+    ) => ReturnType<typeof res.writeHead>;
 
     (res as unknown as Record<string, unknown>).writeHead = (
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      ...args: any[]
+      ...args: Parameters<typeof res.writeHead>
     ): Response => {
+      // Call originalWriteHead FIRST so headers passed as arguments are applied
+      // (e.g., Content-Type: text/event-stream via writeHead(200, headers)).
+      // Only then can res.getHeader() return the final effective Content-Type.
+      const result = originalWriteHead(...args);
+
       // Start timer only once, and only for non-SSE responses
       if (!writeTimer) {
         const contentType = res.getHeader('content-type');
@@ -79,8 +83,7 @@ export function responseWriteTimeoutMiddleware() {
         }
       }
 
-      // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
-      return originalWriteHead(...args);
+      return result;
     };
 
     const cleanup = () => {

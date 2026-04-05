@@ -6,7 +6,7 @@
  *
  * Bug: POST responses hang for ~125s (TCP retransmit timeout) when the client
  * disconnects mid-flight. This middleware detects the stall and destroys the
- * socket after a configurable timeout (default 30s).
+ * socket after a configurable timeout (default 10s).
  */
 
 import { EventEmitter } from 'events';
@@ -199,6 +199,7 @@ describe('Response Write Timeout Middleware', () => {
   });
 
   it('handles writeHead called multiple times gracefully', () => {
+    const setTimeoutSpy = jest.spyOn(global, 'setTimeout');
     const middleware = responseWriteTimeoutMiddleware();
     const req = createMockReq();
     const res = createMockRes();
@@ -212,7 +213,10 @@ describe('Response Write Timeout Middleware', () => {
 
     jest.advanceTimersByTime(600);
 
+    // Only one timer should be registered despite two writeHead calls
+    expect(setTimeoutSpy).toHaveBeenCalledTimes(1);
     // destroy called exactly once
     expect(res.destroy).toHaveBeenCalledTimes(1);
+    setTimeoutSpy.mockRestore();
   });
 });

@@ -25,18 +25,22 @@ import {
 } from '../../../src/utils/fetch';
 import { InstanceRegistry } from '../../../src/services/InstanceRegistry';
 
-// Mock undici — fetch.ts uses fetch/Agent/ProxyAgent directly, but Pool is also needed
-// because InstanceConnectionPool.ts (loaded transitively via InstanceRegistry) calls
-// `new undici.Pool(...)`. Without the Pool mock, per-instance dispatcher tests fail.
-jest.mock('undici', () => ({
-  fetch: jest.fn(),
-  Agent: jest.fn(() => ({ type: 'agent' })),
-  ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
-  Pool: jest.fn(() => ({
-    stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
-    destroy: jest.fn().mockResolvedValue(undefined),
-  })),
-}));
+// Shared undici mock factory — single source of truth for both jest.mock and resetModulesWithUndici.
+// Pool is included because InstanceConnectionPool.ts (loaded transitively via InstanceRegistry)
+// calls `new undici.Pool(...)`. Without it, per-instance dispatcher tests fail.
+function createUndiciMock(fetchFn: jest.Mock = jest.fn()) {
+  return {
+    fetch: fetchFn,
+    Agent: jest.fn(() => ({ type: 'agent' })),
+    ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
+    Pool: jest.fn(() => ({
+      stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
+      destroy: jest.fn().mockResolvedValue(undefined),
+    })),
+  };
+}
+
+jest.mock('undici', () => createUndiciMock());
 
 const mockFetch = require('undici').fetch as jest.Mock;
 
@@ -73,15 +77,7 @@ async function withEnv(
 /** Reset module cache and re-register undici mock for fresh require() calls */
 function resetModulesWithUndici(): void {
   jest.resetModules();
-  jest.doMock('undici', () => ({
-    fetch: mockFetch,
-    Agent: jest.fn(() => ({ type: 'agent' })),
-    ProxyAgent: jest.fn(() => ({ type: 'proxy-agent' })),
-    Pool: jest.fn(() => ({
-      stats: { connected: 0, free: 0, pending: 0, queued: 0, running: 0, size: 0 },
-      destroy: jest.fn().mockResolvedValue(undefined),
-    })),
-  }));
+  jest.doMock('undici', () => createUndiciMock(mockFetch));
 }
 
 beforeEach(() => {

@@ -521,7 +521,8 @@ async function doFetch(
     }
   }
 
-  if (cookieHeader) {
+  // Only inject cookie-file auth if caller didn't supply their own Cookie header
+  if (cookieHeader && !Object.keys(headers).some((k) => k.toLowerCase() === 'cookie')) {
     headers.Cookie = cookieHeader;
   }
 

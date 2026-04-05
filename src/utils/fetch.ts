@@ -526,6 +526,11 @@ async function doFetch(
     ? { 'User-Agent': DEFAULT_HEADERS['User-Agent'], Accept: DEFAULT_HEADERS.Accept }
     : { ...DEFAULT_HEADERS };
 
+  // When skipAuth is false, ambient auth is merged first, then caller headers override.
+  // Caller headers win for same-cased keys (Object.assign / Headers.forEach).
+  // Note: case mismatch (e.g., caller sends lowercase 'authorization' while getAuthHeaders
+  // returns 'Authorization') could result in duplicate auth headers. In practice this is safe
+  // because all callers with explicit auth also set skipAuth: true, preventing any conflict.
   const headers: Record<string, string> = skipAuth
     ? { ...baseHeaders }
     : { ...baseHeaders, ...getAuthHeaders() };

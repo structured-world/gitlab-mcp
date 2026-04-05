@@ -187,6 +187,28 @@ describe('connection', () => {
       expect(result.username).toBe('testuser');
       expect(result.email).toBe('test@example.com');
       expect(result.gitlabVersion).toBe('16.5.0');
+
+      // Verify isolation flags on both /user and /version calls
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        1,
+        'https://gitlab.example.com/api/v4/user',
+        expect.objectContaining({
+          skipAuth: true,
+          retry: false,
+          rateLimit: false,
+          headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'glpat-xxx' }),
+        }),
+      );
+      expect(mockFetch).toHaveBeenNthCalledWith(
+        2,
+        'https://gitlab.example.com/api/v4/version',
+        expect.objectContaining({
+          skipAuth: true,
+          retry: false,
+          rateLimit: false,
+          headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'glpat-xxx' }),
+        }),
+      );
     });
 
     it('should return error for 401 unauthorized', async () => {

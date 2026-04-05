@@ -1202,6 +1202,7 @@ describe('handlers', () => {
       expect(parsed.tool).toBe('manage_merge_request');
       expect(parsed.action).toBe('merge');
       expect(parsed.retryable).toBe(false); // manage_* is NOT idempotent
+      expect(parsed.timeout_ms).toBe(10000);
     });
 
     it('should mark browse_* tools as idempotent for timeout errors', async () => {

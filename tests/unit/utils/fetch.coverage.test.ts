@@ -223,12 +223,12 @@ describe('Fetch Utils Coverage Tests', () => {
         ),
       ));
 
-    // These env-mutation tests intentionally use the top-level enhancedFetch import
-    // (not fresh require after resetModules). This works because createDispatcher()
-    // is called lazily on first fetch, not at import time — so env changes before the
-    // first call ARE picked up. The cachedDispatcher is also reset between tests
-    // by resetDispatcherCache() or jest.clearAllMocks().
+    // These env-mutation tests use the top-level enhancedFetch import with
+    // resetDispatcherCache() before each test to force createDispatcher() to
+    // re-read process.env. Without the reset, the cached dispatcher from a
+    // previous test would mask the env changes.
     it('should handle proxy configuration scenarios', async () => {
+      resetDispatcherCache();
       // Test various proxy configurations
       const originalHttpProxy = process.env.HTTP_PROXY;
       const originalHttpsProxy = process.env.HTTPS_PROXY;
@@ -253,6 +253,7 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should handle SOCKS proxy configuration', async () => {
+      resetDispatcherCache();
       const originalHttpProxy = process.env.HTTP_PROXY;
 
       try {
@@ -273,6 +274,7 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should handle TLS configuration scenarios', async () => {
+      resetDispatcherCache();
       const originalRejectUnauth = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
 
       try {
@@ -317,6 +319,7 @@ describe('Fetch Utils Coverage Tests', () => {
       ));
 
     it('should handle SOCKS4 proxy', async () => {
+      resetDispatcherCache();
       const originalHttpProxy = process.env.HTTP_PROXY;
 
       try {
@@ -337,6 +340,7 @@ describe('Fetch Utils Coverage Tests', () => {
     });
 
     it('should handle default HTTP proxy fallback', async () => {
+      resetDispatcherCache();
       const originalHttpProxy = process.env.HTTP_PROXY;
       const originalHttpsProxy = process.env.HTTPS_PROXY;
 

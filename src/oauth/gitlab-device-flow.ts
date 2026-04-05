@@ -325,9 +325,7 @@ export async function validateGitLabToken(accessToken: string): Promise<boolean>
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-      retry: false,
-      skipAuth: true,
-      rateLimit: false,
+      ...OAUTH_FETCH_OPTS,
     });
 
     return response.ok;

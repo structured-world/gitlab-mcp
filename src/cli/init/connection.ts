@@ -81,8 +81,8 @@ export async function testConnection(
       gitlabVersion,
     };
   } catch (error) {
-    // Handle timeout (enhancedFetch converts to "GitLab API timeout" message)
-    if (error instanceof Error && error.message.includes('timeout')) {
+    // Handle timeout (enhancedFetch maps Undici timeouts to "GitLab API timeout ..." messages)
+    if (error instanceof Error && error.message.startsWith('GitLab API timeout')) {
       return {
         success: false,
         error: `Connection timeout - ${instanceUrl} did not respond`,

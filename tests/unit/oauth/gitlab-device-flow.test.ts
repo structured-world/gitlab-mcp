@@ -444,6 +444,8 @@ describe('GitLab Device Flow Client', () => {
         'https://gitlab.example.com/api/v4/user',
         expect.objectContaining({
           method: 'HEAD',
+          retry: false,
+          rateLimit: false,
           headers: expect.objectContaining({
             Authorization: 'Bearer valid-token',
           }),

@@ -482,9 +482,14 @@ async function doFetch(
   instanceDispatcher?: unknown,
   skipAuth = false,
 ): Promise<Response> {
-  // Use per-instance dispatcher if provided, otherwise fall back to global
+  // skipAuth controls auto-injected credentials only:
+  //   - Suppresses getAuthHeaders() (OAuth Bearer / static PRIVATE-TOKEN from env)
+  //   - Suppresses loadCookieHeader() (cookie file auth)
+  // Caller-supplied headers in options.headers are NEVER stripped — they are merged
+  // after the skipAuth guard and always reach the server. This allows callers like
+  // testConnection() to pass explicit PRIVATE-TOKEN while still blocking ambient
+  // credentials from leaking into the request.
   const dispatcher = instanceDispatcher ?? getDispatcher();
-  // skipAuth also skips cookie-based auth — health probes must be fully unauthenticated
   const cookieHeader = skipAuth ? null : loadCookieHeader();
 
   // For FormData, don't set Content-Type - let fetch set it with proper boundary
@@ -508,16 +513,6 @@ async function doFetch(
       }
     } else {
       Object.assign(headers, options.headers);
-    }
-  }
-
-  // skipAuth: strip credential headers case-insensitively (RFC 7230)
-  if (skipAuth) {
-    for (const key of Object.keys(headers)) {
-      const lower = key.toLowerCase();
-      if (lower === 'authorization' || lower === 'private-token' || lower === 'cookie') {
-        delete headers[key];
-      }
     }
   }
 

@@ -22,6 +22,7 @@ import {
   DASHBOARD_ENABLED,
   LOG_FILTER,
   shouldSkipAccessLogRequest,
+  RESPONSE_WRITE_TIMEOUT_MS,
 } from './config';
 import { TransportMode } from './types';
 import { logInfo, logError, logDebug, logWarn } from './logger';
@@ -43,7 +44,11 @@ import {
   runWithTokenContext,
 } from './oauth/index';
 // Middleware imports
-import { oauthAuthMiddleware, rateLimiterMiddleware } from './middleware/index';
+import {
+  oauthAuthMiddleware,
+  rateLimiterMiddleware,
+  responseWriteTimeoutMiddleware,
+} from './middleware/index';
 
 // Dashboard imports
 import { dashboardHandler } from './dashboard/index.js';
@@ -57,6 +62,20 @@ import {
   getConnectionTracker,
   runWithRequestContextAsync,
 } from './logging/index';
+
+/** Determine why an SSE/streaming connection closed.
+ *  Shared between legacy SSE and StreamableHTTP GET close handlers. */
+function resolveCloseReason(
+  socketError: string | undefined,
+  res: express.Response,
+): import('./logging/types.js').ConnectionCloseReason {
+  if (socketError) return `peer_reset:${socketError}`;
+  if (res.writableFinished) return 'normal_close';
+  if (res.locals?.writeTimedOut) return 'write_timeout';
+  if (res.locals?.heartbeatFailed) return 'heartbeat_failed';
+  if (res.destroyed) return 'destroyed';
+  return 'client_disconnect';
+}
 
 // Clamp keepAliveTimeout to leave room for the mandatory 5s headersTimeout gap.
 // Single source of truth — used by both configureServerTimeouts() and startup log.
@@ -427,6 +446,12 @@ export async function startServer(): Promise<void> {
     case 'dual': {
       logInfo('Setting up dual transport mode (SSE + StreamableHTTP)...');
       const app = express();
+
+      // Response write timeout — detects zombie connections where TCP peer stopped reading.
+      // Registered BEFORE express.json() so that parse/size error responses (4xx from
+      // body parser) are also covered by the write timeout protection.
+      app.use(responseWriteTimeoutMiddleware());
+
       app.use(express.json());
 
       // Configure trust proxy for reverse proxy deployments
@@ -490,6 +515,13 @@ export async function startServer(): Promise<void> {
           if (!res.headersSent) {
             // Connection closed before we could send any headers: treat as abort.
             requestTracker.closeStackWithError(requestId, 'connection_closed');
+            return;
+          }
+
+          if (res.locals?.writeTimedOut) {
+            // Response write stalled — zombie connection killed by write timeout middleware.
+            // Log as error so it's distinguishable from normal completions.
+            requestTracker.closeStackWithError(requestId, 'write_timeout');
             return;
           }
 
@@ -602,16 +634,7 @@ export async function startServer(): Promise<void> {
           stopHeartbeat();
           delete sseTransports[sessionId];
 
-          // Determine disconnect reason
-          const reason: import('./logging/types.js').ConnectionCloseReason = socketError
-            ? `peer_reset:${socketError}` // ECONNRESET, EPIPE, etc.
-            : res.writableFinished
-              ? 'normal_close'
-              : res.locals?.heartbeatFailed
-                ? 'heartbeat_failed' // Heartbeat drain timeout destroyed the socket
-                : res.destroyed
-                  ? 'destroyed' // Other code destroyed the socket
-                  : 'client_disconnect'; // Client closed connection cleanly
+          const reason = resolveCloseReason(socketError, res);
 
           logInfo('SSE session disconnected', { sessionId, reason });
           connectionTracker.closeConnection(sessionId, reason);
@@ -822,15 +845,7 @@ export async function startServer(): Promise<void> {
             res.on('close', () => {
               stopHeartbeat();
 
-              const reason: import('./logging/types.js').ConnectionCloseReason = socketError
-                ? `peer_reset:${socketError}` // ECONNRESET, EPIPE, etc.
-                : res.writableFinished
-                  ? 'normal_close'
-                  : res.locals?.heartbeatFailed
-                    ? 'heartbeat_failed' // Heartbeat drain timeout destroyed the socket
-                    : res.destroyed
-                      ? 'destroyed' // Other code destroyed the socket
-                      : 'client_disconnect'; // Client closed connection cleanly
+              const reason = resolveCloseReason(socketError, res);
 
               logInfo('StreamableHTTP GET stream disconnected', {
                 sessionId: effectiveSessionId,
@@ -868,6 +883,11 @@ export async function startServer(): Promise<void> {
           heartbeatMs: SSE_HEARTBEAT_MS,
           keepAliveTimeoutMs: KEEP_ALIVE_TIMEOUT_MS,
         });
+        if (RESPONSE_WRITE_TIMEOUT_MS > 0) {
+          logInfo('Response write timeout enabled (zombie connection detection)', {
+            responseWriteTimeoutMs: RESPONSE_WRITE_TIMEOUT_MS,
+          });
+        }
         logInfo('Clients can use either transport as needed');
       });
       break;

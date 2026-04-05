@@ -99,6 +99,7 @@ The server handles GitLab connectivity issues gracefully:
 | `GITLAB_HEALTH_CHECK_INTERVAL_MS` | `60000` | Health check interval when connected |
 | `GITLAB_FAILURE_THRESHOLD` | `3` | Consecutive transient failures before disconnecting |
 | `GITLAB_TOOL_TIMEOUT_MS` | `120000` | Max time for tool/bootstrap execution before timeout |
+| `GITLAB_RESPONSE_WRITE_TIMEOUT_MS` | `10000` | Max time to flush a non-SSE response before destroying zombie connection (`0` to disable; SSE uses heartbeat) |
 
 ## Feature Flags
 

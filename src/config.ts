@@ -358,8 +358,8 @@ function parseStrictInt(envValue: string | undefined, fallback: number, allowZer
   return parsed >= minValue ? parsed : fallback;
 }
 
-function parseTimerMs(envValue: string | undefined, fallback: number): number {
-  const parsed = parseStrictInt(envValue, fallback);
+function parseTimerMs(envValue: string | undefined, fallback: number, allowZero = false): number {
+  const parsed = parseStrictInt(envValue, fallback, allowZero);
   return Math.min(parsed, MAX_SAFE_TIMEOUT_MS);
 }
 
@@ -439,6 +439,18 @@ export const API_RETRY_BASE_DELAY_MS = parseTimerMs(
   1000,
 );
 export const API_RETRY_MAX_DELAY_MS = parseTimerMs(process.env.GITLAB_API_RETRY_MAX_DELAY_MS, 4000);
+
+// Response write timeout — detects zombie connections where res.write()/res.end() stalls
+// because the downstream TCP peer (Cloudflare/Envoy/client) stopped reading.
+// If a non-SSE response doesn't finish writing within this timeout, the socket is destroyed.
+// Default 10s — well under TCP retransmit timeout (~125s). MCP tool responses are small JSON
+// payloads that flush in milliseconds on a healthy connection; 10s is generous.
+// Set to 0 to disable.
+export const RESPONSE_WRITE_TIMEOUT_MS = parseTimerMs(
+  process.env.GITLAB_RESPONSE_WRITE_TIMEOUT_MS,
+  10000,
+  true, // allowZero: setting 0 disables the timeout
+);
 
 // Rate limiting configuration
 // Per-IP rate limiting (for anonymous requests) - enabled by default

@@ -100,6 +100,7 @@ jest.mock('../../src/config', () => ({
   SSE_HEARTBEAT_MS: 30000,
   HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
   MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
+  RESPONSE_WRITE_TIMEOUT_MS: 30000,
   packageName: 'test-package',
   packageVersion: '1.0.0',
   LOG_FORMAT: 'condensed',
@@ -215,6 +216,7 @@ describe('server', () => {
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
+        RESPONSE_WRITE_TIMEOUT_MS: 30000,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -324,6 +326,7 @@ describe('server', () => {
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
+        RESPONSE_WRITE_TIMEOUT_MS: 30000,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -349,6 +352,7 @@ describe('server', () => {
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
+        RESPONSE_WRITE_TIMEOUT_MS: 30000,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -359,15 +363,34 @@ describe('server', () => {
       const { startServer: newStartServer } = await import('../../src/server');
       await newStartServer();
 
-      // Get the access logging middleware (first app.use call after json middleware)
+      // Get the access logging middleware — the one that calls shouldSkipAccessLogRequest.
+      // Skip other middleware (express.json, responseWriteTimeout) by testing with our mockReq.
       const middlewareCalls = mockApp.use.mock.calls;
-      // Find the middleware that's a function (not express.json)
-      const accessLogMiddleware = middlewareCalls.find(
-        (call: [unknown]) =>
-          typeof call[0] === 'function' && call[0] !== (mockExpress as any).json(),
-      )?.[0] as ((req: any, res: any, next: () => void) => void) | undefined;
+      const expressWithJson = mockExpress as typeof mockExpress & { json: () => unknown };
+      const mockJsonFn = expressWithJson.json();
+
+      type ProbeReq = { method: string; path: string; headers: Record<string, string> };
+      type ProbeRes = { locals: Record<string, unknown>; on: jest.Mock; writeHead?: jest.Mock };
+      type ProbeMiddleware = (req: ProbeReq, res: ProbeRes, next: jest.Mock) => void;
+
+      // Find the access log middleware: it's a plain function (not express.json, not an array path)
+      // that calls shouldSkipAccessLogRequest when invoked.
+      const accessLogMiddleware = middlewareCalls
+        .filter((call: [unknown]) => typeof call[0] === 'function' && call[0] !== mockJsonFn)
+        .map((call: [unknown]) => call[0] as ProbeMiddleware)
+        .find((fn) => {
+          // Probe: call with a mock that has writeHead (for writeTimeout middleware to not throw)
+          const probeRes = { locals: {}, on: jest.fn(), writeHead: jest.fn() };
+          const probeNext = jest.fn();
+          fn({ method: 'GET', path: '/', headers: {} }, probeRes, probeNext);
+          // The access log middleware calls shouldSkipAccessLogRequest; writeTimeout doesn't
+          return mockSkipFn.mock.calls.length > 0;
+        });
 
       expect(accessLogMiddleware).toBeDefined();
+
+      // Clear probe calls so assertions below only reflect the actual test invocation
+      mockSkipFn.mockClear();
 
       // Mock req, res, next
       const mockReq = { method: 'GET', path: '/', headers: {} };
@@ -1367,6 +1390,7 @@ describe('server', () => {
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 2_147_483_647, // MAX_SAFE_TIMEOUT_MS
         MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
+        RESPONSE_WRITE_TIMEOUT_MS: 30000,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -2380,6 +2404,7 @@ describe('server', () => {
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
+        RESPONSE_WRITE_TIMEOUT_MS: 30000,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -2423,6 +2448,7 @@ describe('server', () => {
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
+        RESPONSE_WRITE_TIMEOUT_MS: 30000,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',
@@ -2451,6 +2477,7 @@ describe('server', () => {
         SSE_HEARTBEAT_MS: 30000,
         HTTP_KEEPALIVE_TIMEOUT_MS: 620000,
         MAX_SAFE_TIMEOUT_MS: 2_147_483_647,
+        RESPONSE_WRITE_TIMEOUT_MS: 30000,
         packageName: 'test-package',
         packageVersion: '1.0.0',
         LOG_FORMAT: 'condensed',

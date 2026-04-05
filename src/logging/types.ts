@@ -72,6 +72,7 @@ export type ConnectionCloseReason =
   | 'destroyed'
   | 'normal_close'
   | 'heartbeat_failed'
+  | 'write_timeout'
   | `peer_reset:${string}`;
 
 /**

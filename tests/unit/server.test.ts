@@ -383,6 +383,9 @@ describe('server', () => {
 
       expect(accessLogMiddleware).toBeDefined();
 
+      // Clear probe calls so assertions below only reflect the actual test invocation
+      mockSkipFn.mockClear();
+
       // Mock req, res, next
       const mockReq = { method: 'GET', path: '/', headers: {} };
       const mockRes = { locals: {}, on: jest.fn() };

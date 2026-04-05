@@ -366,12 +366,18 @@ describe('server', () => {
       // Get the access logging middleware — the one that calls shouldSkipAccessLogRequest.
       // Skip other middleware (express.json, responseWriteTimeout) by testing with our mockReq.
       const middlewareCalls = mockApp.use.mock.calls;
-      const mockJsonFn = (mockExpress as any).json();
+      const expressWithJson = mockExpress as typeof mockExpress & { json: () => unknown };
+      const mockJsonFn = expressWithJson.json();
+
+      type ProbeReq = { method: string; path: string; headers: Record<string, string> };
+      type ProbeRes = { locals: Record<string, unknown>; on: jest.Mock; writeHead?: jest.Mock };
+      type ProbeMiddleware = (req: ProbeReq, res: ProbeRes, next: jest.Mock) => void;
+
       // Find the access log middleware: it's a plain function (not express.json, not an array path)
       // that calls shouldSkipAccessLogRequest when invoked.
       const accessLogMiddleware = middlewareCalls
         .filter((call: [unknown]) => typeof call[0] === 'function' && call[0] !== mockJsonFn)
-        .map((call: [unknown]) => call[0] as (req: any, res: any, next: () => void) => void)
+        .map((call: [unknown]) => call[0] as ProbeMiddleware)
         .find((fn) => {
           // Probe: call with a mock that has writeHead (for writeTimeout middleware to not throw)
           const probeRes = { locals: {}, on: jest.fn(), writeHead: jest.fn() };

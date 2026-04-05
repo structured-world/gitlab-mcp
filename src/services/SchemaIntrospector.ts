@@ -257,6 +257,17 @@ export class SchemaIntrospector {
     return safeFields;
   }
 
+  /**
+   * Populate the internal cache from externally-provided SchemaInfo.
+   * Used when ConnectionManager restores introspection data from its caches
+   * (introspectionCache or InstanceRegistry) so that callers who access
+   * the SchemaIntrospector directly (e.g. DynamicWorkItemsQuery) see the
+   * same widget/type data without a redundant GraphQL introspection call.
+   */
+  public rehydrate(schema: SchemaInfo): void {
+    this.cachedSchema = schema;
+  }
+
   public getCachedSchema(): SchemaInfo | null {
     return this.cachedSchema;
   }

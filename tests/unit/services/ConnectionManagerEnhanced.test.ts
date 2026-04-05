@@ -121,6 +121,7 @@ describe('ConnectionManager Enhanced Tests', () => {
       getAvailableWidgetTypes: jest.fn().mockReturnValue(['ASSIGNEES', 'LABELS']),
       getCachedSchema: jest.fn().mockReturnValue(mockSchemaInfo),
       getFieldsForType: jest.fn().mockReturnValue([]),
+      rehydrate: jest.fn(),
     } as unknown as jest.Mocked<SchemaIntrospector>;
     MockedSchemaIntrospector.mockImplementation(() => mockSchemaIntrospector);
 
@@ -303,6 +304,25 @@ describe('ConnectionManager Enhanced Tests', () => {
       // Should only call detectInstance/introspectSchema once total (second init used cache)
       expect(mockVersionDetector.detectInstance).toHaveBeenCalledTimes(1);
       expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalledTimes(1);
+    });
+
+    // Regression: #374 — cache-hit branches must rehydrate SchemaIntrospector
+    // so that DynamicWorkItemsQuery (which calls schemaIntrospector directly)
+    // sees the same widget/type data without a redundant GraphQL call.
+    it('should rehydrate SchemaIntrospector on introspection cache hit', async () => {
+      // First init: populates static introspectionCache via live introspection
+      await connectionManager.initialize();
+      expect(mockSchemaIntrospector.rehydrate).not.toHaveBeenCalled();
+
+      // Clear per-URL state (simulates a new connection for the same endpoint)
+      cmInternal(connectionManager).instances.clear();
+      cmInternal(connectionManager).currentInstanceUrl = null;
+
+      // Second init hits the cache — must rehydrate the new SchemaIntrospector
+      await connectionManager.initialize();
+
+      expect(mockSchemaIntrospector.rehydrate).toHaveBeenCalledTimes(1);
+      expect(mockSchemaIntrospector.rehydrate).toHaveBeenCalledWith(mockSchemaInfo);
     });
 
     it('should fetch fresh data when cache is expired', async () => {
@@ -1033,6 +1053,7 @@ describe('ConnectionManager Enhanced Tests', () => {
             typeDefinitions: new Map(),
             availableFeatures: new Set(),
           }),
+          rehydrate: jest.fn(),
         })),
       }));
 

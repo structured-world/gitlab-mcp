@@ -348,6 +348,30 @@ describe('SchemaIntrospector', () => {
       expect(introspector.getCachedSchema()).toBeNull();
     });
 
+    // Regression: #374 — rehydrate() populates internal cache from external SchemaInfo
+    // so that isWidgetTypeAvailable() / getFieldsForType() work after a cache restore.
+    it('should populate cache via rehydrate() without GraphQL call', () => {
+      expect(introspector.getCachedSchema()).toBeNull();
+
+      const externalSchema = {
+        workItemWidgetTypes: ['ASSIGNEES', 'LABELS', 'MILESTONE'],
+        typeDefinitions: new Map([
+          ['WorkItem', { name: 'WorkItem', fields: [], enumValues: null }],
+        ]),
+        availableFeatures: new Set(['ASSIGNEES', 'LABELS', 'MILESTONE']),
+      };
+
+      introspector.rehydrate(externalSchema);
+
+      expect(introspector.getCachedSchema()).toBe(externalSchema);
+      // Methods that depend on cachedSchema should work without introspectSchema()
+      expect(introspector.isWidgetTypeAvailable('ASSIGNEES')).toBe(true);
+      expect(introspector.isWidgetTypeAvailable('NONEXISTENT')).toBe(false);
+      expect(introspector.getAvailableWidgetTypes()).toEqual(['ASSIGNEES', 'LABELS', 'MILESTONE']);
+      // No GraphQL request was made
+      expect(mockGraphQLClient.request).not.toHaveBeenCalled();
+    });
+
     it('should re-introspect after cache is cleared', async () => {
       // First introspection
       mockGraphQLClient.request.mockResolvedValueOnce(mockIntrospectionResult);

@@ -59,7 +59,14 @@ export function responseWriteTimeoutMiddleware() {
       // Start timer only once, and only for non-SSE responses
       if (!writeTimer) {
         const contentType = res.getHeader('content-type');
-        const isSSE = typeof contentType === 'string' && contentType.includes('text/event-stream');
+        // Case-insensitive check — HTTP headers like "Text/Event-Stream" are valid
+        const normalizedContentType =
+          typeof contentType === 'string'
+            ? contentType.toLowerCase()
+            : Array.isArray(contentType)
+              ? contentType.join(',').toLowerCase()
+              : '';
+        const isSSE = normalizedContentType.includes('text/event-stream');
 
         if (!isSSE) {
           writeTimer = setTimeout(() => {

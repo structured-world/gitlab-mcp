@@ -154,6 +154,53 @@ describe('Response Write Timeout Middleware', () => {
     expect(res.destroy).not.toHaveBeenCalled();
   });
 
+  it('skips SSE when Content-Type is provided via writeHead headers', () => {
+    // Regression: Content-Type set via writeHead(200, {headers}) must be
+    // detected after originalWriteHead applies headers, not before.
+    const headers: Record<string, string> = {};
+    const middleware = responseWriteTimeoutMiddleware();
+    const req = createMockReq({ method: 'GET' });
+    const res = createMockRes({
+      getHeader: jest.fn((name: string) => headers[name.toLowerCase()]),
+      writeHead: jest.fn().mockImplementation(function (
+        this: Response,
+        _statusCode: number,
+        h?: Record<string, string>,
+      ) {
+        if (h) {
+          for (const [k, v] of Object.entries(h)) headers[k.toLowerCase()] = v;
+        }
+        (this as unknown as Record<string, boolean>).headersSent = true;
+        return this;
+      }),
+    });
+    const next = jest.fn();
+
+    middleware(req, res, next);
+    // SSE Content-Type only comes via writeHead args, not setHeader
+    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8' });
+
+    jest.advanceTimersByTime(60000);
+
+    expect(res.destroy).not.toHaveBeenCalled();
+  });
+
+  it('skips SSE with mixed-case Content-Type header', () => {
+    const middleware = responseWriteTimeoutMiddleware();
+    const req = createMockReq({ method: 'GET' });
+    const res = createMockRes({
+      getHeader: jest.fn().mockReturnValue('Text/Event-Stream'),
+    });
+    const next = jest.fn();
+
+    middleware(req, res, next);
+    res.writeHead(200);
+
+    jest.advanceTimersByTime(60000);
+
+    expect(res.destroy).not.toHaveBeenCalled();
+  });
+
   it('is disabled when RESPONSE_WRITE_TIMEOUT_MS is 0', () => {
     mockTimeoutMs = 0;
     const middleware = responseWriteTimeoutMiddleware();

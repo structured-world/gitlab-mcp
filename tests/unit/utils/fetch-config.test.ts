@@ -151,19 +151,7 @@ describe('Fetch Configuration Edge Cases', () => {
 
   describe('HTTP/HTTPS Proxy', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      reregisterUndiciMock();
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should log when using HTTP proxy', async () => {
@@ -238,19 +226,7 @@ describe('Fetch Configuration Edge Cases', () => {
 
   describe('TLS Verification Skip', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      reregisterUndiciMock();
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should warn when SKIP_TLS_VERIFY is true', async () => {
@@ -320,19 +296,7 @@ describe('Fetch Configuration Edge Cases', () => {
 
   describe('CA Certificate Loading', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      reregisterUndiciMock();
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should log error when CA certificate file cannot be read', async () => {
@@ -421,19 +385,7 @@ describe('Fetch Configuration Edge Cases', () => {
 
   describe('OAuth Mode Token Handling', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      reregisterUndiciMock();
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should warn when OAuth is enabled but no token context', async () => {
@@ -542,19 +494,7 @@ describe('Fetch Configuration Edge Cases', () => {
 
   describe('URL Redaction Edge Cases', () => {
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      reregisterUndiciMock();
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
 
       jest.doMock('../../../src/config', () => ({
         SKIP_TLS_VERIFY: false,
@@ -820,19 +760,7 @@ describe('Fetch Configuration Edge Cases', () => {
     // Verifies that logWarn is called when Undici pool has queued requests (stats.queued > 0)
 
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      reregisterUndiciMock();
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
 
       jest.doMock('../../../src/config', () => ({
         SKIP_TLS_VERIFY: false,
@@ -895,19 +823,7 @@ describe('Fetch Configuration Edge Cases', () => {
     // Verifies that ProxyAgent receives the same timeout options as direct Agent
 
     beforeEach(() => {
-      jest.resetModules();
-      jest.clearAllMocks();
-      mockFetch.mockResolvedValue(createMockResponse());
-
-      reregisterUndiciMock();
-
-      jest.doMock('../../../src/logger', () => ({
-        logger: mockLogger,
-        logInfo: mockLogInfo,
-        logWarn: mockLogWarn,
-        logError: mockLogError,
-        logDebug: mockLogDebug,
-      }));
+      resetAndReregisterMocks();
     });
 
     it('should pass timeout options to ProxyAgent', async () => {

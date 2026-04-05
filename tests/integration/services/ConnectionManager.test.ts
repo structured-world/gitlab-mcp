@@ -45,4 +45,35 @@ describe('ConnectionManager Integration', () => {
     expect(schemaInfo.typeDefinitions).toBeInstanceOf(Map);
     expect(schemaInfo.availableFeatures).toBeInstanceOf(Set);
   });
+
+  // Regression: #374 — after a cache-hit init, SchemaIntrospector must have
+  // its internal cache populated so that direct callers (DynamicWorkItemsQuery)
+  // can call isWidgetTypeAvailable() / getFieldsForType() without errors.
+  it('should rehydrate SchemaIntrospector on cache-hit re-initialization', async () => {
+    // First init: populates introspection cache via live GraphQL
+    await manager.initialize();
+    const widgetTypes = manager.getSchemaInfo().workItemWidgetTypes;
+    expect(widgetTypes.length).toBeGreaterThan(0);
+
+    // Clear per-URL state but keep static introspection cache
+    const internals = manager as unknown as {
+      instances: Map<string, unknown>;
+      currentInstanceUrl: string | null;
+    };
+    internals.instances.clear();
+    internals.currentInstanceUrl = null;
+
+    // Second init: hits the static cache (no GraphQL call)
+    await manager.initialize();
+
+    // SchemaIntrospector must be rehydrated — getCachedSchema() should not be null
+    const introspector = manager.getSchemaIntrospector();
+    const cached = introspector.getCachedSchema();
+    expect(cached).not.toBeNull();
+    expect(cached!.workItemWidgetTypes).toEqual(widgetTypes);
+
+    // Direct method calls must work (these would throw before #374 fix)
+    expect(introspector.isWidgetTypeAvailable(widgetTypes[0])).toBe(true);
+    expect(introspector.getAvailableWidgetTypes().length).toBeGreaterThan(0);
+  });
 });

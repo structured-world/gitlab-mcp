@@ -954,6 +954,11 @@ describe('ConnectionManager Enhanced Tests', () => {
       expect(connectionManager.getVersion()).toBe('16.5.0');
       expect(mockVersionDetector.detectInstance).toHaveBeenCalledTimes(detectCalls);
       expect(mockSchemaIntrospector.introspectSchema).toHaveBeenCalledTimes(introspectCalls);
+
+      // Regression #374: rehydrate must be called on legacy cache hit so that
+      // DynamicWorkItemsQuery can use schemaIntrospector directly
+      expect(mockSchemaIntrospector.rehydrate).toHaveBeenCalledTimes(1);
+      expect(mockSchemaIntrospector.rehydrate).toHaveBeenCalledWith(mockSchemaInfo);
     });
 
     it('should perform fresh introspection when all caches are cleared', async () => {
@@ -1097,6 +1102,13 @@ describe('ConnectionManager Enhanced Tests', () => {
       expect(manager.isWidgetAvailable('LABELS')).toBe(true);
       expect(manager.isWidgetAvailable('MILESTONE')).toBe(true);
       expect(manager.isWidgetAvailable('NONEXISTENT')).toBe(false);
+
+      // Regression #374: SchemaIntrospector.rehydrate() must be called so that
+      // direct callers (DynamicWorkItemsQuery) can use isWidgetTypeAvailable()
+      const introspector = state?.schemaIntrospector;
+      expect(introspector).toBeDefined();
+      expect(introspector.rehydrate).toHaveBeenCalledTimes(1);
+      expect(introspector.rehydrate).toHaveBeenCalledWith(mockCachedIntrospection.schemaInfo);
 
       manager.reset();
       jest.resetModules();

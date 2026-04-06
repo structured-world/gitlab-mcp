@@ -433,7 +433,9 @@ class RegistryManager {
 
   /**
    * Resolve the cache key for a given (or default) instance URL.
-   * Falls back to ConnectionManager.getCurrentInstanceUrl() → GITLAB_BASE_URL.
+   * Fallback chain: explicit URL → OAuth context → getCurrentInstanceUrl() → GITLAB_BASE_URL.
+   * @param instanceUrl - Optional explicit instance URL
+   * @returns Normalized instance URL for use as cache key
    */
   private resolveCacheUrl(instanceUrl?: string): string {
     if (instanceUrl) return normalizeInstanceUrl(instanceUrl);
@@ -454,6 +456,8 @@ class RegistryManager {
   /**
    * Resolve the per-URL cache for the given (or default) instance.
    * Builds the cache on demand when it does not exist yet.
+   * @param instanceUrl - Optional instance URL to resolve the correct per-URL cache
+   * @returns The tool lookup cache for the resolved URL
    */
   private resolveCache(instanceUrl?: string): Map<string, EnhancedToolDefinition> {
     const url = this.resolveCacheUrl(instanceUrl);
@@ -775,9 +779,13 @@ class RegistryManager {
     return cachedNames;
   }
 
-  /** True when the given (or all) instances are unreachable.
-   *  When instanceUrl is provided, checks per-URL reachability (mirrors getFilterStats).
-   *  When omitted, falls back to the global "all instances down" check. */
+  /**
+   * Check if the given (or all) instances are unreachable.
+   * When instanceUrl is provided, checks per-URL reachability.
+   * When omitted, falls back to the global "all instances down" check.
+   * @param instanceUrl - Optional instance URL for per-URL check
+   * @returns True when the instance (or all instances) are unreachable
+   */
   private isUnreachableFor(instanceUrl?: string): boolean {
     const healthMonitor = HealthMonitor.getInstance();
     if (instanceUrl) {

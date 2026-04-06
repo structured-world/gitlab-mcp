@@ -541,7 +541,7 @@ class RegistryManager {
   public getAllToolDefinitions(instanceUrl?: string): ToolDefinition[] {
     const url = this.resolveCacheUrl(instanceUrl);
     const cache = this.resolveCache(instanceUrl);
-    const unreachableMode = this.isUnreachableMode();
+    const unreachableMode = this.isUnreachableFor(url);
     // In unreachable mode, rebuild every call (transient state — don't cache
     // a context-only list that would persist after recovery)
     const cachedDefs = this.toolDefinitionsCaches.get(url);
@@ -754,7 +754,7 @@ class RegistryManager {
   public getAvailableToolNames(instanceUrl?: string): string[] {
     const url = this.resolveCacheUrl(instanceUrl);
     const cache = this.resolveCache(instanceUrl);
-    const unreachableMode = this.isUnreachableMode();
+    const unreachableMode = this.isUnreachableFor(url);
     const cachedNames = this.toolNamesCaches.get(url);
     if (cachedNames === undefined || unreachableMode) {
       const contextTools = unreachableMode ? this.registries.get('context') : null;
@@ -770,14 +770,25 @@ class RegistryManager {
     return cachedNames;
   }
 
-  /** True when monitored instances exist but none are healthy/degraded */
-  // isAnyInstanceHealthy() returns true for healthy, degraded, AND connecting states
-  // (connecting is optimistic during startup). Unreachable = all instances are
-  // disconnected or failed (no healthy/degraded/connecting).
-  // HealthMonitor.getInstance() is a lazy singleton — never throws.
-  // getMonitoredInstances/isAnyInstanceHealthy return safe defaults.
-  private isUnreachableMode(): boolean {
+  /** True when the given (or all) instances are unreachable.
+   *  When instanceUrl is provided, checks per-URL reachability (mirrors getFilterStats).
+   *  When omitted, falls back to the global "all instances down" check. */
+  private isUnreachableFor(instanceUrl?: string): boolean {
     const healthMonitor = HealthMonitor.getInstance();
+    if (instanceUrl) {
+      try {
+        // isInstanceReachable returns false for 'connecting', but we treat
+        // connecting as reachable (optimistic during startup/reconnect)
+        return (
+          !healthMonitor.isInstanceReachable(instanceUrl) &&
+          healthMonitor.getState(instanceUrl) !== 'connecting'
+        );
+      } catch {
+        // HealthMonitor not initialized or URL not tracked — assume reachable
+        return false;
+      }
+    }
+    // Global fallback: all instances down
     return (
       healthMonitor.getMonitoredInstances().length > 0 && !healthMonitor.isAnyInstanceHealthy()
     );
@@ -835,34 +846,8 @@ class RegistryManager {
    * Get filter statistics showing how tools were filtered
    * Used by whoami action to explain tool availability
    */
-  // SonarCloud may flag complexity here. The per-URL reachability branch adds
-  // necessary branching; aggregateFilterCounters already extracts the loop.
-  // Further splitting would scatter the single-method invariant (total = available + filtered).
   public getFilterStats(instanceUrl?: string): FilterStats {
-    // Per-URL reachability when a specific instance is requested; otherwise
-    // fall back to the global "all instances down" check.
-    let unreachableMode: boolean;
-    if (instanceUrl !== undefined) {
-      try {
-        const hm = HealthMonitor.getInstance();
-        // isInstanceReachable returns false for 'connecting', but we treat
-        // connecting as reachable here (consistent with isUnreachableMode)
-        // to avoid reporting context-only stats during startup/reconnect.
-        unreachableMode =
-          !hm.isInstanceReachable(instanceUrl) && hm.getState(instanceUrl) !== 'connecting';
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.includes('not initialized') && !msg.includes('No instance')) {
-          logWarn('Unexpected error checking per-instance reachability', {
-            error: msg,
-            instanceUrl,
-          });
-        }
-        unreachableMode = false; // assume reachable on expected init errors
-      }
-    } else {
-      unreachableMode = this.isUnreachableMode();
-    }
+    const unreachableMode = this.isUnreachableFor(instanceUrl);
     const contextTools = unreachableMode ? this.registries.get('context') : null;
 
     // Count total tools — in unreachable mode, only context tools are in scope

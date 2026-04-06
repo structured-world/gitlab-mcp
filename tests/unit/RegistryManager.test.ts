@@ -1337,6 +1337,8 @@ describe('RegistryManager', () => {
         'https://gitlab.example.com',
       ]);
       mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(false);
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitorInstance.getState.mockReturnValue('disconnected');
 
       resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
@@ -1347,6 +1349,8 @@ describe('RegistryManager', () => {
 
       // Flip to healthy — second call should re-evaluate and expand back to full set
       mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitorInstance.getState.mockReturnValue('healthy');
 
       const names2 = registryManager.getAvailableToolNames();
       expect(names2).toContain('core_tool_1');
@@ -1438,11 +1442,13 @@ describe('RegistryManager', () => {
 
   describe('disconnected mode filtering', () => {
     it('should only expose context tools when all instances are disconnected', () => {
-      // Simulate all instances disconnected
+      // Simulate all instances disconnected — per-URL reachability check
       mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
         'https://gitlab.example.com',
       ]);
       mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(false);
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitorInstance.getState.mockReturnValue('disconnected');
 
       // Reset RegistryManager to trigger cache rebuild
       resetRegistryManagerSingleton();
@@ -1460,6 +1466,8 @@ describe('RegistryManager', () => {
       // Restore
       mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
       mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitorInstance.getState.mockReturnValue('healthy');
     });
 
     it('should expose all tools when health monitor not yet initialized', () => {

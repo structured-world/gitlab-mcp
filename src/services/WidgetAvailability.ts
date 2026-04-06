@@ -158,7 +158,10 @@ export class WidgetAvailability {
    * Returns the first unavailable widget parameter, or null if all are available.
    *
    * @param params - Object with parameter names as keys (only defined/present params checked)
-   * @param instanceUrl - Optional instance URL to validate against (defaults to current instance)
+   * @param instanceUrl - Optional instance URL to validate against. When omitted,
+   *   falls back to ConnectionManager.currentInstanceUrl. Callers in request context
+   *   (e.g. workitems handler) should pass the per-request URL to avoid cross-instance
+   *   leakage in concurrent OAuth traffic.
    * @returns WidgetValidationFailure for the first unavailable parameter, or null if all valid
    */
   public static validateWidgetParams(

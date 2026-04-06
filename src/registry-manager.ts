@@ -948,7 +948,8 @@ class RegistryManager {
     } catch (err) {
       // Fail-close: return the last successful FilterStats for this URL so
       // the total = available + filtered invariant is preserved. If no prior
-      // stats exist (cold start), return zeros.
+      // stats exist, return a conservative snapshot (available=0, all tools
+      // attributed to filteredByScopes) to maintain the invariant.
       logError('Unexpected error loading instance context for filter stats; using cached stats', {
         error: err instanceof Error ? err.message : String(err),
         instanceUrl: url,

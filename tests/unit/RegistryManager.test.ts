@@ -1652,6 +1652,34 @@ describe('RegistryManager', () => {
         expect.objectContaining({ error: expect.stringContaining('Unexpected DB crash') }),
       );
     });
+
+    it('should NOT preserve cache after healthy→pre-init→unexpected failure sequence', () => {
+      // Step 1: Build a verified healthy cache
+      registryManager = buildHealthyCache();
+      expect(registryManager.getAvailableToolNames().length).toBeGreaterThan(0);
+
+      // Step 2: Simulate ConnectionManager going away (expected init error)
+      // This rebuilds with empty context → permissive cache, URL un-verified
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('ConnectionManager not initialized');
+        },
+        getTokenScopeInfo: () => {
+          throw new Error('ConnectionManager not initialized');
+        },
+      });
+      registryManager.refreshCache();
+
+      // Step 3: Now an unexpected error on next refresh — the live cache is
+      // permissive (from step 2), so it must NOT be preserved
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('Unexpected failure after pre-init');
+        },
+      });
+
+      expect(() => registryManager.refreshCache()).toThrow('Unexpected failure after pre-init');
+    });
   });
 
   describe('disconnected mode filtering', () => {

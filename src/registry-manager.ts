@@ -494,12 +494,6 @@ class RegistryManager {
       throw err instanceof Error ? err : new Error(String(err));
     }
 
-    // Mark URL as verified once we have a real context — pre-init caches
-    // (built before ConnectionManager is ready) must not be preserved on failure.
-    if (ctx.instanceInfo) {
-      this.verifiedContextUrls.add(url);
-    }
-
     // Build into a new map and swap atomically — prevents a concurrent
     // refreshCache from clearing the live cache between hasToolHandler()
     // and executeTool() in an in-flight request.
@@ -518,6 +512,15 @@ class RegistryManager {
     // to the old map via getTool() keep working; new requests see the
     // updated cache for this URL
     this.toolLookupCaches.set(url, newCache);
+
+    // Track whether this cache was built with real context. Pre-init caches
+    // (built before ConnectionManager is ready) must not be preserved on
+    // failure. Updated AFTER swap so the flag describes the live cache.
+    if (ctx.instanceInfo) {
+      this.verifiedContextUrls.add(url);
+    } else {
+      this.verifiedContextUrls.delete(url);
+    }
 
     logDebug('Registry manager built cache after filtering', {
       toolCount: newCache.size,
@@ -950,11 +953,15 @@ class RegistryManager {
         error: err instanceof Error ? err.message : String(err),
         instanceUrl: url,
       });
+      // Fallback: cached stats from last successful run, or a conservative
+      // object that reports all tools as filtered (available=0) while still
+      // reflecting the real total so whoami doesn't show totalToolCount: 0.
+      const filteredTotal = totalTools;
       return (
         this.filterStatsCaches.get(url) ?? {
           available: 0,
-          total: 0,
-          filteredByScopes: 0,
+          total: filteredTotal,
+          filteredByScopes: filteredTotal,
           filteredByReadOnly: 0,
           filteredByTier: 0,
           filteredByDeniedRegex: 0,

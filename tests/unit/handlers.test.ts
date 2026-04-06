@@ -782,6 +782,16 @@ describe('handlers', () => {
       expect(mockConnectionManager.ensureIntrospected).not.toHaveBeenCalled();
       expect(mockHealthMonitor.reportSuccess).not.toHaveBeenCalled();
       expect(mockHealthMonitor.reportError).not.toHaveBeenCalled();
+      // Per-URL cache resolution: instanceUrl threaded through registry calls
+      expect(mockRegistryManager.hasToolHandler).toHaveBeenCalledWith(
+        'manage_context',
+        'https://gitlab.example.com',
+      );
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'manage_context',
+        { action: 'whoami' },
+        'https://gitlab.example.com',
+      );
 
       // Restore
       mockConnectionManager.isConnected.mockReturnValue(true);
@@ -1652,6 +1662,9 @@ describe('handlers', () => {
       expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(oauthUrl);
       expect(mockHealthMonitor.isInstanceReachable).toHaveBeenCalledWith(oauthUrl);
       expect(mockHealthMonitor.reportSuccess).toHaveBeenCalledWith(oauthUrl);
+      // Per-URL cache resolution: instanceUrl threaded through registry calls
+      expect(mockRegistryManager.hasToolHandler).toHaveBeenCalledWith('test_tool', oauthUrl);
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith('test_tool', {}, oauthUrl);
 
       // Restore
       mockConnectionManager.isConnected.mockReturnValue(true);

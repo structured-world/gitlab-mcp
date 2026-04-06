@@ -36,6 +36,7 @@ import {
   getIterationsReadOnlyToolNames,
 } from './entities/iterations/registry';
 import {
+  GITLAB_BASE_URL,
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
   GITLAB_CROSS_REFS,
@@ -72,7 +73,6 @@ import {
 } from './utils/schema-utils';
 import { resolveRelatedReferences, stripRelatedSection } from './utils/description-utils';
 import { normalizeInstanceUrl } from './utils/url';
-import { GITLAB_BASE_URL } from './config';
 
 /**
  * Central registry manager that aggregates tools from all entity registries
@@ -447,19 +447,16 @@ class RegistryManager {
 
   /**
    * Resolve the per-URL cache for the given (or default) instance.
-   * Falls back to any available cache if the requested URL has no cache yet.
+   * Builds the cache on demand when it does not exist yet.
    */
   private resolveCache(instanceUrl?: string): Map<string, EnhancedToolDefinition> {
     const url = this.resolveCacheUrl(instanceUrl);
-    const cache = this.toolLookupCaches.get(url);
-    if (cache) return cache;
-
-    // Fall back to any available cache (e.g. during startup before any
-    // instance-specific cache is built)
-    for (const c of this.toolLookupCaches.values()) {
-      return c;
+    let cache = this.toolLookupCaches.get(url);
+    if (!cache) {
+      this.buildToolLookupCache(url);
+      cache = this.toolLookupCaches.get(url);
     }
-    return new Map();
+    return cache ?? new Map<string, EnhancedToolDefinition>();
   }
 
   private buildToolLookupCache(instanceUrl?: string): void {

@@ -1373,6 +1373,7 @@ describe('RegistryManager', () => {
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
           getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
         });
       }
     });

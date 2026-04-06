@@ -259,9 +259,11 @@ export async function setupHandlers(server: Server): Promise<void> {
     logInfo('Skipping connection initialization - no authentication configured');
   }
   // List tools handler
-  // TODO: pass per-session instanceUrl to getAllToolDefinitions() so multi-instance
-  // OAuth sessions see instance-specific tool lists. Requires per-session instance
-  // tracking in SessionManager + RequestHandlerExtra.sessionId resolution (#398).
+  // getAllToolDefinitions() resolves the effective instance URL from OAuth token
+  // context when called without arguments, so authenticated multi-instance sessions
+  // already receive instance-specific tool lists. Remaining limitation:
+  // unauthenticated tools/list requests fall back to default/global instance
+  // because there is no per-session token context to infer an instance from (#398).
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     logInfo('ListToolsRequest received');
 

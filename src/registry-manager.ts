@@ -298,7 +298,8 @@ class RegistryManager {
    *   cross-instance leakage when called from per-URL init/state-change events.
    */
   /** Load instance context (tier/version/scopes) for cache build and stats.
-   *  Returns undefined fields when connection is not initialized. */
+   *  Returns undefined fields when connection is not initialized.
+   *  @throws on unexpected errors (anything other than expected init errors). */
   private loadInstanceContext(instanceUrl?: string): {
     instanceInfo?: { tier: GitLabTier; version: string };
     tokenScopes?: GitLabScope[];
@@ -485,8 +486,11 @@ class RegistryManager {
 
     // A prior cache-miss failure may have seeded stale derived caches from the
     // temporary empty Map returned by resolveCache(); drop them before swapping.
+    // filterStatsCaches is cleared here (not in invalidateCaches) so the last
+    // good snapshot survives if this rebuild was triggered by a failed refresh.
     this.toolDefinitionsCaches.delete(url);
     this.toolNamesCaches.delete(url);
+    this.filterStatsCaches.delete(url);
 
     // Atomic per-URL swap — in-flight requests that captured a reference
     // to the old map via getTool() keep working; new requests see the
@@ -506,7 +510,9 @@ class RegistryManager {
     const url = this.resolveCacheUrl(instanceUrl);
     this.toolDefinitionsCaches.delete(url);
     this.toolNamesCaches.delete(url);
-    this.filterStatsCaches.delete(url);
+    // filterStatsCaches is intentionally NOT cleared here — it is preserved
+    // until buildToolLookupCache succeeds, so getFilterStats can fall back to
+    // the last good snapshot if the rebuild fails mid-way.
     // readOnlyToolsCache is derived from registries + config flags (USE_*),
     // not from instance URL — no need to clear on per-URL refresh.
     this.buildToolLookupCache(url);
@@ -905,7 +911,7 @@ class RegistryManager {
       return (
         this.filterStatsCaches.get(url) ?? {
           available: 0,
-          total: totalTools,
+          total: 0,
           filteredByScopes: 0,
           filteredByReadOnly: 0,
           filteredByTier: 0,

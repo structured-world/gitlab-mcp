@@ -540,7 +540,8 @@ class RegistryManager {
 
   /**
    * Get all tool definitions for a specific instance URL - cached per URL.
-   * @param instanceUrl - Optional instance URL (defaults to current instance)
+   * @param instanceUrl - Optional instance URL. When omitted, resolves via
+   *   OAuth request context → getCurrentInstanceUrl() → GITLAB_BASE_URL
    */
   public getAllToolDefinitions(instanceUrl?: string): ToolDefinition[] {
     // url (resolved) is used as cache key — always non-undefined.
@@ -757,7 +758,8 @@ class RegistryManager {
 
   /**
    * Get all available tool names for a specific instance URL - cached per URL.
-   * @param instanceUrl - Optional instance URL (defaults to current instance)
+   * @param instanceUrl - Optional instance URL. When omitted, resolves via
+   *   OAuth request context → getCurrentInstanceUrl() → GITLAB_BASE_URL
    */
   public getAvailableToolNames(instanceUrl?: string): string[] {
     // See getAllToolDefinitions for url vs instanceUrl rationale

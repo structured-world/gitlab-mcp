@@ -91,6 +91,11 @@ class RegistryManager {
   private readonly toolDefinitionsCaches = new Map<string, ToolDefinition[]>();
   private readonly toolNamesCaches = new Map<string, string[]>();
   private readonly filterStatsCaches = new Map<string, FilterStats>();
+  // URLs where loadInstanceContext has returned a populated instanceInfo at
+  // least once. Caches built before ConnectionManager is ready (pre-init) are
+  // permissive (no tier/scope filtering) and must NOT be preserved on refresh
+  // failure — only verified caches should be kept as "last known good".
+  private readonly verifiedContextUrls = new Set<string>();
 
   // Tool description overrides from environment variables
   private descriptionOverrides: Map<string, string> = new Map();
@@ -458,10 +463,13 @@ class RegistryManager {
     try {
       ctx = this.loadInstanceContext(url);
     } catch (err) {
-      if (this.toolLookupCaches.has(url)) {
-        // Fail-close during refresh: preserve the previous cache instead of
-        // rebuilding with empty context (which would surface tools the
-        // instance cannot use).
+      if (this.verifiedContextUrls.has(url)) {
+        // Fail-close during refresh: preserve the previous verified cache
+        // instead of rebuilding with empty context (which would surface tools
+        // the instance cannot use). Pre-init caches (built before
+        // ConnectionManager was ready) are intentionally NOT preserved — they
+        // contain every tool unfiltered and should not be treated as "last
+        // known good".
         logError('Unexpected error loading instance context; preserving previous cache', {
           error: err instanceof Error ? err.message : String(err),
           instanceUrl: url,
@@ -476,6 +484,12 @@ class RegistryManager {
         instanceUrl: url,
       });
       throw err instanceof Error ? err : new Error(String(err));
+    }
+
+    // Mark URL as verified once we have a real context — pre-init caches
+    // (built before ConnectionManager is ready) must not be preserved on failure.
+    if (ctx.instanceInfo) {
+      this.verifiedContextUrls.add(url);
     }
 
     // Build into a new map and swap atomically — prevents a concurrent
@@ -893,6 +907,21 @@ class RegistryManager {
         if (contextTools && !contextTools.has(toolName)) continue;
         totalTools++;
       }
+    }
+
+    // In unreachable mode, tier/scope context is irrelevant — only context
+    // tools are shown. Skip loadInstanceContext to avoid returning stale cached
+    // stats that include non-context tools.
+    if (unreachableMode) {
+      return {
+        available: totalTools,
+        total: totalTools,
+        filteredByScopes: 0,
+        filteredByReadOnly: 0,
+        filteredByTier: 0,
+        filteredByDeniedRegex: 0,
+        filteredByActionDenial: 0,
+      };
     }
 
     // Re-run filter logic with per-URL context — uses the resolved URL

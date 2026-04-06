@@ -1619,6 +1619,39 @@ describe('RegistryManager', () => {
         expect.objectContaining({ error: expect.stringContaining('Cold start DB failure') }),
       );
     });
+
+    it('should NOT preserve pre-init cache (built before ConnectionManager was ready)', () => {
+      // Build a pre-init cache: ConnectionManager throws expected init error
+      // → loadInstanceContext returns empty context → cache is permissive (unfiltered)
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('ConnectionManager not initialized');
+        },
+        getTokenScopeInfo: () => {
+          throw new Error('ConnectionManager not initialized');
+        },
+      });
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      // Pre-init cache exists and has tools (unfiltered)
+      expect(registryManager.getAvailableToolNames().length).toBeGreaterThan(0);
+
+      // Now trigger an unexpected error on refresh — pre-init cache must NOT
+      // be preserved (it's permissive), so this should re-throw like cold start
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('Unexpected DB crash');
+        },
+      });
+
+      expect(() => registryManager.refreshCache()).toThrow('Unexpected DB crash');
+
+      expect(logError).toHaveBeenCalledWith(
+        'Unexpected error loading instance context; no previous cache available',
+        expect.objectContaining({ error: expect.stringContaining('Unexpected DB crash') }),
+      );
+    });
   });
 
   describe('disconnected mode filtering', () => {

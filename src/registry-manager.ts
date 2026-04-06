@@ -477,6 +477,14 @@ class RegistryManager {
         return;
       }
 
+      // Do not leave a permissive pre-init snapshot live after an unexpected
+      // refresh failure. Callers (e.g. handlers.ts) may catch refreshCache()
+      // and continue serving whatever is still in the per-URL caches.
+      this.toolLookupCaches.delete(url);
+      this.toolDefinitionsCaches.delete(url);
+      this.toolNamesCaches.delete(url);
+      this.filterStatsCaches.delete(url);
+
       // On cold start there is no prior cache to preserve. Fail fast so the
       // process does not silently continue with no tools available.
       logError('Unexpected error loading instance context; no previous cache available', {
@@ -910,17 +918,22 @@ class RegistryManager {
     }
 
     // In unreachable mode, tier/scope context is irrelevant — only context
-    // tools are shown. Skip loadInstanceContext to avoid returning stale cached
-    // stats that include non-context tools.
+    // tools are shown. Skip loadInstanceContext but still apply local filters
+    // (readOnly, deniedRegex, actionDenial) so stats stay consistent with
+    // the actual tool list returned by getAllToolDefinitions().
     if (unreachableMode) {
+      const { available, byReadOnly, byDeniedRegex, byActionDenial } = this.aggregateFilterCounters(
+        {},
+        contextTools,
+      );
       return {
-        available: totalTools,
+        available,
         total: totalTools,
         filteredByScopes: 0,
-        filteredByReadOnly: 0,
+        filteredByReadOnly: byReadOnly,
         filteredByTier: 0,
-        filteredByDeniedRegex: 0,
-        filteredByActionDenial: 0,
+        filteredByDeniedRegex: byDeniedRegex,
+        filteredByActionDenial: byActionDenial,
       };
     }
 

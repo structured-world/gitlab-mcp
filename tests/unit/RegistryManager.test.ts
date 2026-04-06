@@ -1533,38 +1533,38 @@ describe('RegistryManager', () => {
 
     it('should preserve previous cache when getInstanceInfo throws unexpected error', () => {
       registryManager = buildHealthyCache();
-      const toolsBefore = registryManager.getAllToolDefinitions().map((t) => t.name);
+      const toolsBefore = registryManager.getAvailableToolNames();
 
       mockConnectionManager({
         getInstanceInfo: () => {
           throw new Error('Unexpected internal error');
         },
       });
-      (registryManager as any).buildToolLookupCache();
+      registryManager.refreshCache();
 
       expect(logError).toHaveBeenCalledWith(
         'Unexpected error loading instance context; preserving previous cache',
         expect.objectContaining({ error: expect.stringContaining('Unexpected internal error') }),
       );
-      expect(registryManager.getAllToolDefinitions().map((t) => t.name)).toEqual(toolsBefore);
+      expect(registryManager.getAvailableToolNames()).toEqual(toolsBefore);
     });
 
     it('should preserve previous cache when getTokenScopeInfo throws unexpected error', () => {
       registryManager = buildHealthyCache();
-      const toolsBefore = registryManager.getAllToolDefinitions().map((t) => t.name);
+      const toolsBefore = registryManager.getAvailableToolNames();
 
       mockConnectionManager({
         getTokenScopeInfo: () => {
           throw new Error('Token scope DB crash');
         },
       });
-      (registryManager as any).buildToolLookupCache();
+      registryManager.refreshCache();
 
       expect(logError).toHaveBeenCalledWith(
         'Unexpected error loading instance context; preserving previous cache',
         expect.objectContaining({ error: expect.stringContaining('Token scope DB crash') }),
       );
-      expect(registryManager.getAllToolDefinitions().map((t) => t.name)).toEqual(toolsBefore);
+      expect(registryManager.getAvailableToolNames()).toEqual(toolsBefore);
     });
 
     it('should still swallow expected init errors (not initialized / No connection)', () => {
@@ -1583,7 +1583,7 @@ describe('RegistryManager', () => {
       expect(registryManager.getAllToolDefinitions().length).toBeGreaterThan(0);
     });
 
-    it('getFilterStats should return cached counts on unexpected error', () => {
+    it('getFilterStats should return last successful stats on unexpected error', () => {
       registryManager = buildHealthyCache();
       const statsBefore = registryManager.getFilterStats();
 
@@ -1595,11 +1595,29 @@ describe('RegistryManager', () => {
       const statsAfter = registryManager.getFilterStats();
 
       expect(logError).toHaveBeenCalledWith(
-        'Unexpected error loading instance context for filter stats; using cached counts',
+        'Unexpected error loading instance context for filter stats; using cached stats',
         expect.objectContaining({ error: expect.stringContaining('Unexpected DB failure') }),
       );
-      expect(statsAfter.available).toBe(statsBefore.available);
-      expect(statsAfter.total).toBe(statsBefore.total);
+      // Returns the exact last successful stats — all fields match, not just available/total
+      expect(statsAfter).toEqual(statsBefore);
+    });
+
+    it('should re-throw on cold start when no prior cache exists', () => {
+      // Start with a throwing ConnectionManager — no prior cache for this URL
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('Cold start DB failure');
+        },
+      });
+
+      // Cold start: no prior cache → should throw, not silently return empty
+      resetRegistryManagerSingleton();
+      expect(() => RegistryManager.getInstance()).toThrow('Cold start DB failure');
+
+      expect(logError).toHaveBeenCalledWith(
+        'Unexpected error loading instance context; no previous cache available',
+        expect.objectContaining({ error: expect.stringContaining('Cold start DB failure') }),
+      );
     });
   });
 

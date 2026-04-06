@@ -90,6 +90,7 @@ class RegistryManager {
   private readonly toolLookupCaches = new Map<string, Map<string, EnhancedToolDefinition>>();
   private readonly toolDefinitionsCaches = new Map<string, ToolDefinition[]>();
   private readonly toolNamesCaches = new Map<string, string[]>();
+  private readonly filterStatsCaches = new Map<string, FilterStats>();
 
   // Tool description overrides from environment variables
   private descriptionOverrides: Map<string, string> = new Map();
@@ -456,13 +457,24 @@ class RegistryManager {
     try {
       ctx = this.loadInstanceContext(url);
     } catch (err) {
-      // Fail-close: preserve previous cache instead of rebuilding with
-      // empty context (which would surface tools the instance cannot use).
-      logError('Unexpected error loading instance context; preserving previous cache', {
+      if (this.toolLookupCaches.has(url)) {
+        // Fail-close during refresh: preserve the previous cache instead of
+        // rebuilding with empty context (which would surface tools the
+        // instance cannot use).
+        logError('Unexpected error loading instance context; preserving previous cache', {
+          error: err instanceof Error ? err.message : String(err),
+          instanceUrl: url,
+        });
+        return;
+      }
+
+      // On cold start there is no prior cache to preserve. Fail fast so the
+      // process does not silently continue with no tools available.
+      logError('Unexpected error loading instance context; no previous cache available', {
         error: err instanceof Error ? err.message : String(err),
         instanceUrl: url,
       });
-      return;
+      throw err instanceof Error ? err : new Error(String(err));
     }
 
     // Build into a new map and swap atomically — prevents a concurrent
@@ -470,6 +482,11 @@ class RegistryManager {
     // and executeTool() in an in-flight request.
     const newCache = this.buildFilteredTools(ctx);
     this.postProcessRelatedReferences(newCache);
+
+    // A prior cache-miss failure may have seeded stale derived caches from the
+    // temporary empty Map returned by resolveCache(); drop them before swapping.
+    this.toolDefinitionsCaches.delete(url);
+    this.toolNamesCaches.delete(url);
 
     // Atomic per-URL swap — in-flight requests that captured a reference
     // to the old map via getTool() keep working; new requests see the
@@ -489,6 +506,7 @@ class RegistryManager {
     const url = this.resolveCacheUrl(instanceUrl);
     this.toolDefinitionsCaches.delete(url);
     this.toolNamesCaches.delete(url);
+    this.filterStatsCaches.delete(url);
     // readOnlyToolsCache is derived from registries + config flags (USE_*),
     // not from instance URL — no need to clear on per-URL refresh.
     this.buildToolLookupCache(url);
@@ -877,22 +895,24 @@ class RegistryManager {
     try {
       ctx = this.loadInstanceContext(url);
     } catch (err) {
-      // Fail-close: derive stats from whatever is in the current lookup cache
-      // rather than computing against empty context (which inflates 'available').
-      logError('Unexpected error loading instance context for filter stats; using cached counts', {
+      // Fail-close: return the last successful FilterStats for this URL so
+      // the total = available + filtered invariant is preserved. If no prior
+      // stats exist (cold start), return zeros.
+      logError('Unexpected error loading instance context for filter stats; using cached stats', {
         error: err instanceof Error ? err.message : String(err),
         instanceUrl: url,
       });
-      const cached = this.toolLookupCaches.get(url);
-      return {
-        available: cached?.size ?? 0,
-        total: totalTools,
-        filteredByScopes: 0,
-        filteredByReadOnly: 0,
-        filteredByTier: 0,
-        filteredByDeniedRegex: 0,
-        filteredByActionDenial: 0,
-      };
+      return (
+        this.filterStatsCaches.get(url) ?? {
+          available: 0,
+          total: totalTools,
+          filteredByScopes: 0,
+          filteredByReadOnly: 0,
+          filteredByTier: 0,
+          filteredByDeniedRegex: 0,
+          filteredByActionDenial: 0,
+        }
+      );
     }
 
     const {
@@ -904,7 +924,7 @@ class RegistryManager {
       byActionDenial: filteredByActionDenial,
     } = this.aggregateFilterCounters(ctx, contextTools);
 
-    return {
+    const stats: FilterStats = {
       available: availableTools,
       total: totalTools,
       filteredByScopes,
@@ -913,6 +933,8 @@ class RegistryManager {
       filteredByDeniedRegex,
       filteredByActionDenial,
     };
+    this.filterStatsCaches.set(url, stats);
+    return stats;
   }
 }
 

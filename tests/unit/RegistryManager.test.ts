@@ -1499,167 +1499,107 @@ describe('RegistryManager', () => {
   });
 
   describe('loadInstanceContext - fail-close on unexpected errors (#381)', () => {
-    it('should preserve previous cache when getInstanceInfo throws unexpected error', () => {
-      const { ConnectionManager } = require('../../src/services/ConnectionManager');
-      const { logError } = require('../../src/logger');
+    const { ConnectionManager } = require('../../src/services/ConnectionManager');
+    const { logError } = require('../../src/logger');
 
-      // Build an initial cache with a known good state
+    /** Mock a healthy ConnectionManager, reset singleton, return the fresh instance. */
+    function buildHealthyCache(): RegistryManager {
+      mockConnectionManager({ getInstanceInfo: () => ({ tier: 'free', version: '17.0.0' }) });
+      resetRegistryManagerSingleton();
+      return RegistryManager.getInstance();
+    }
+
+    /** Set ConnectionManager.getInstance mock with defaults for missing keys. */
+    function mockConnectionManager(overrides: {
+      getInstanceInfo?: (...args: unknown[]) => unknown;
+      getTokenScopeInfo?: (...args: unknown[]) => unknown;
+    }): void {
       ConnectionManager.getInstance.mockReturnValue({
-        getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getInstanceInfo: jest
+          .fn()
+          .mockImplementation(
+            overrides.getInstanceInfo ?? (() => ({ tier: 'free', version: '17.0.0' })),
+          ),
+        getTokenScopeInfo: jest
+          .fn()
+          .mockImplementation(overrides.getTokenScopeInfo ?? (() => null)),
         getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
-      resetRegistryManagerSingleton();
-      registryManager = RegistryManager.getInstance();
+    }
+
+    afterEach(() => {
+      mockConnectionManager({});
+    });
+
+    it('should preserve previous cache when getInstanceInfo throws unexpected error', () => {
+      registryManager = buildHealthyCache();
       const toolsBefore = registryManager.getAllToolDefinitions().map((t) => t.name);
 
-      // Now make getInstanceInfo throw an unexpected error
-      ConnectionManager.getInstance.mockReturnValue({
-        getInstanceInfo: jest.fn().mockImplementation(() => {
+      mockConnectionManager({
+        getInstanceInfo: () => {
           throw new Error('Unexpected internal error');
-        }),
-        getTokenScopeInfo: jest.fn().mockReturnValue(null),
-        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        },
       });
+      (registryManager as any).buildToolLookupCache();
 
-      try {
-        // Trigger a cache rebuild — the previous cache should be preserved
-        (registryManager as any).buildToolLookupCache();
-
-        expect(logError).toHaveBeenCalledWith(
-          'Unexpected error loading instance context; preserving previous cache',
-          expect.objectContaining({ error: expect.stringContaining('Unexpected internal error') }),
-        );
-
-        // Cache should still contain the same tools as before
-        const toolsAfter = registryManager.getAllToolDefinitions().map((t) => t.name);
-        expect(toolsAfter).toEqual(toolsBefore);
-      } finally {
-        ConnectionManager.getInstance.mockReturnValue({
-          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-          getTokenScopeInfo: jest.fn().mockReturnValue(null),
-          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-        });
-      }
+      expect(logError).toHaveBeenCalledWith(
+        'Unexpected error loading instance context; preserving previous cache',
+        expect.objectContaining({ error: expect.stringContaining('Unexpected internal error') }),
+      );
+      expect(registryManager.getAllToolDefinitions().map((t) => t.name)).toEqual(toolsBefore);
     });
 
     it('should preserve previous cache when getTokenScopeInfo throws unexpected error', () => {
-      const { ConnectionManager } = require('../../src/services/ConnectionManager');
-      const { logError } = require('../../src/logger');
-
-      // Build initial cache
-      ConnectionManager.getInstance.mockReturnValue({
-        getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-        getTokenScopeInfo: jest.fn().mockReturnValue(null),
-        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-      });
-      resetRegistryManagerSingleton();
-      registryManager = RegistryManager.getInstance();
+      registryManager = buildHealthyCache();
       const toolsBefore = registryManager.getAllToolDefinitions().map((t) => t.name);
 
-      // Now make getTokenScopeInfo throw an unexpected error
-      ConnectionManager.getInstance.mockReturnValue({
-        getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-        getTokenScopeInfo: jest.fn().mockImplementation(() => {
+      mockConnectionManager({
+        getTokenScopeInfo: () => {
           throw new Error('Token scope DB crash');
-        }),
-        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        },
       });
+      (registryManager as any).buildToolLookupCache();
 
-      try {
-        (registryManager as any).buildToolLookupCache();
-
-        expect(logError).toHaveBeenCalledWith(
-          'Unexpected error loading instance context; preserving previous cache',
-          expect.objectContaining({ error: expect.stringContaining('Token scope DB crash') }),
-        );
-
-        const toolsAfter = registryManager.getAllToolDefinitions().map((t) => t.name);
-        expect(toolsAfter).toEqual(toolsBefore);
-      } finally {
-        ConnectionManager.getInstance.mockReturnValue({
-          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-          getTokenScopeInfo: jest.fn().mockReturnValue(null),
-          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-        });
-      }
+      expect(logError).toHaveBeenCalledWith(
+        'Unexpected error loading instance context; preserving previous cache',
+        expect.objectContaining({ error: expect.stringContaining('Token scope DB crash') }),
+      );
+      expect(registryManager.getAllToolDefinitions().map((t) => t.name)).toEqual(toolsBefore);
     });
 
     it('should still swallow expected init errors (not initialized / No connection)', () => {
-      const { ConnectionManager } = require('../../src/services/ConnectionManager');
-      const { logError } = require('../../src/logger');
-
-      ConnectionManager.getInstance.mockReturnValue({
-        getInstanceInfo: jest.fn().mockImplementation(() => {
+      mockConnectionManager({
+        getInstanceInfo: () => {
           throw new Error('ConnectionManager not initialized');
-        }),
-        getTokenScopeInfo: jest.fn().mockImplementation(() => {
+        },
+        getTokenScopeInfo: () => {
           throw new Error('No connection available');
-        }),
-        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-      });
-
-      try {
-        resetRegistryManagerSingleton();
-        registryManager = RegistryManager.getInstance();
-
-        // Expected init errors should NOT trigger logError
-        expect(logError).not.toHaveBeenCalled();
-
-        // Cache should still be built (with undefined context — no tier/scope filtering)
-        const tools = registryManager.getAllToolDefinitions();
-        expect(tools.length).toBeGreaterThan(0);
-      } finally {
-        ConnectionManager.getInstance.mockReturnValue({
-          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-          getTokenScopeInfo: jest.fn().mockReturnValue(null),
-          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-        });
-      }
-    });
-
-    it('getFilterStats should return cached counts on unexpected error', () => {
-      const { ConnectionManager } = require('../../src/services/ConnectionManager');
-      const { logError } = require('../../src/logger');
-
-      // Build initial cache
-      ConnectionManager.getInstance.mockReturnValue({
-        getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-        getTokenScopeInfo: jest.fn().mockReturnValue(null),
-        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        },
       });
       resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
+
+      expect(logError).not.toHaveBeenCalled();
+      expect(registryManager.getAllToolDefinitions().length).toBeGreaterThan(0);
+    });
+
+    it('getFilterStats should return cached counts on unexpected error', () => {
+      registryManager = buildHealthyCache();
       const statsBefore = registryManager.getFilterStats();
 
-      // Now make getInstanceInfo throw an unexpected error
-      ConnectionManager.getInstance.mockReturnValue({
-        getInstanceInfo: jest.fn().mockImplementation(() => {
+      mockConnectionManager({
+        getInstanceInfo: () => {
           throw new Error('Unexpected DB failure');
-        }),
-        getTokenScopeInfo: jest.fn().mockReturnValue(null),
-        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        },
       });
+      const statsAfter = registryManager.getFilterStats();
 
-      try {
-        const statsAfter = registryManager.getFilterStats();
-
-        expect(logError).toHaveBeenCalledWith(
-          'Unexpected error loading instance context for filter stats; using cached counts',
-          expect.objectContaining({ error: expect.stringContaining('Unexpected DB failure') }),
-        );
-
-        // available should match the cached tool count (from the previous build)
-        expect(statsAfter.available).toBe(statsBefore.available);
-        // total is computed from registries directly, unaffected
-        expect(statsAfter.total).toBe(statsBefore.total);
-      } finally {
-        ConnectionManager.getInstance.mockReturnValue({
-          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-          getTokenScopeInfo: jest.fn().mockReturnValue(null),
-          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-        });
-      }
+      expect(logError).toHaveBeenCalledWith(
+        'Unexpected error loading instance context for filter stats; using cached counts',
+        expect.objectContaining({ error: expect.stringContaining('Unexpected DB failure') }),
+      );
+      expect(statsAfter.available).toBe(statsBefore.available);
+      expect(statsAfter.total).toBe(statsBefore.total);
     });
   });
 

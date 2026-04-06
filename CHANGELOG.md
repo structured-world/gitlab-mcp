@@ -4,6 +4,18 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [7.0.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.0.0...gitlab-mcp-v7.0.1) (2026-04-06)
+
+
+### Bug Fixes
+
+* rehydrate SchemaIntrospector widget cache on introspection cache hit ([#393](https://github.com/structured-world/gitlab-mcp/issues/393)) ([60de37b](https://github.com/structured-world/gitlab-mcp/commit/60de37b0f92a7353200083f45479cc5259472260)), closes [#374](https://github.com/structured-world/gitlab-mcp/issues/374)
+
+
+### Refactoring
+
+* thread instanceUrl and key caches by URL ([#396](https://github.com/structured-world/gitlab-mcp/issues/396)) ([1ec52aa](https://github.com/structured-world/gitlab-mcp/commit/1ec52aa2a10fdab3c8c985c351aa931c9cdfe0c5))
+
 ## [7.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v6.62.2...gitlab-mcp-v7.0.0) (2026-04-05)
 
 

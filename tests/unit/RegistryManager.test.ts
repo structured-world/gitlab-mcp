@@ -585,6 +585,7 @@ describe('RegistryManager', () => {
   describe('Per-URL Cache Resolution', () => {
     it('should use OAuth context URL when resolving cache without explicit instanceUrl', () => {
       const { getGitLabApiUrlFromContext } = require('../../src/oauth/token-context');
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
       const oauthUrl = 'https://oauth-instance.example.com';
       getGitLabApiUrlFromContext.mockReturnValue(oauthUrl);
 
@@ -593,13 +594,15 @@ describe('RegistryManager', () => {
         const manager = RegistryManager.getInstance();
 
         // getTool without instanceUrl should resolve via OAuth context
-        // The cache was built for the OAuth URL
         const tool = manager.getTool('core_tool_1');
         expect(tool).toBeDefined();
         expect(tool?.name).toBe('core_tool_1');
 
         // hasToolHandler should also resolve via OAuth context
         expect(manager.hasToolHandler('core_tool_1')).toBe(true);
+
+        // Verify getInstanceInfo was called with the OAuth URL, not the default
+        expect(ConnectionManager.getInstance().getInstanceInfo).toHaveBeenCalledWith(oauthUrl);
       } finally {
         getGitLabApiUrlFromContext.mockReturnValue(undefined);
       }
@@ -615,23 +618,94 @@ describe('RegistryManager', () => {
       expect(tool?.name).toBe('core_tool_1');
     });
 
-    it('should isolate caches between different instance URLs', () => {
-      resetRegistryManagerSingleton();
-      const manager = RegistryManager.getInstance();
+    it('should produce observably different caches when tier differs per URL', () => {
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
+      const { ToolAvailability } = require('../../src/services/ToolAvailability');
 
-      // Build caches for two different URLs
-      const toolA = manager.getTool('core_tool_1', 'https://instance-a.example.com');
-      const toolB = manager.getTool('core_tool_1', 'https://instance-b.example.com');
+      // URL A: free tier → labels_tool_1 is available
+      // URL B: simulate labels filtered by tier
+      ToolAvailability.isToolAvailableForInstance.mockImplementation(
+        (toolName: string, info: { tier: string }) => {
+          if (info.tier === 'premium' && toolName.includes('labels')) return false;
+          return true;
+        },
+      );
 
-      // Both should resolve (both get their own cache)
-      expect(toolA).toBeDefined();
-      expect(toolB).toBeDefined();
+      // URL A → free tier (default mock)
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockImplementation((url?: string) => {
+          if (url === 'https://instance-b.example.com') {
+            return { tier: 'premium', version: '17.0.0' };
+          }
+          return { tier: 'free', version: '17.0.0' };
+        }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+      });
 
-      // Verify names are also isolated
-      const namesA = manager.getAvailableToolNames('https://instance-a.example.com');
-      const namesB = manager.getAvailableToolNames('https://instance-b.example.com');
-      expect(namesA).toContain('core_tool_1');
-      expect(namesB).toContain('core_tool_1');
+      try {
+        resetRegistryManagerSingleton();
+        const manager = RegistryManager.getInstance();
+
+        const namesA = manager.getAvailableToolNames('https://instance-a.example.com');
+        const namesB = manager.getAvailableToolNames('https://instance-b.example.com');
+
+        // URL A (free) should have labels_tool_1
+        expect(namesA).toContain('labels_tool_1');
+        // URL B (premium with labels filtered) should NOT have labels_tool_1
+        expect(namesB).not.toContain('labels_tool_1');
+
+        // Both should have core_tool_1 (always available)
+        expect(namesA).toContain('core_tool_1');
+        expect(namesB).toContain('core_tool_1');
+      } finally {
+        ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        });
+      }
+    });
+
+    it('should scope unreachable-mode per URL, not globally', () => {
+      // Instance A is unreachable, instance B is healthy
+      // No-arg callers should see all tools (at least one instance healthy globally)
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
+        'https://instance-a.example.com',
+        'https://instance-b.example.com',
+      ]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+      mockHealthMonitorInstance.isInstanceReachable.mockImplementation(
+        (url: string) => url !== 'https://instance-a.example.com',
+      );
+      mockHealthMonitorInstance.getState.mockImplementation((url: string) =>
+        url === 'https://instance-a.example.com' ? 'disconnected' : 'healthy',
+      );
+
+      try {
+        resetRegistryManagerSingleton();
+        const manager = RegistryManager.getInstance();
+
+        // URL A (unreachable) → context-only tools
+        const namesA = manager.getAvailableToolNames('https://instance-a.example.com');
+        expect(namesA).toContain('manage_context');
+        expect(namesA).not.toContain('core_tool_1');
+
+        // URL B (healthy) → full tool set
+        const namesB = manager.getAvailableToolNames('https://instance-b.example.com');
+        expect(namesB).toContain('core_tool_1');
+        expect(namesB).toContain('manage_context');
+
+        // No-arg (global) → at least one instance healthy → full tools
+        const namesDefault = manager.getAvailableToolNames();
+        expect(namesDefault).toContain('core_tool_1');
+      } finally {
+        mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+        mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+        mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
+        mockHealthMonitorInstance.getState.mockReturnValue('healthy');
+      }
     });
   });
 

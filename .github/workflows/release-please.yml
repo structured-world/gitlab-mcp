@@ -56,6 +56,7 @@ jobs:
     name: Post-Release Publish
     runs-on: ubuntu-latest
     needs: release-please
+    environment: release  # Required for npm OIDC trusted publishing
     # Note: GitHub Actions supports hyphens in job IDs and output names with dot notation.
     # Bracket notation (needs['release-please']) is NOT required here.
     if: needs.release-please.outputs.release-created == 'true'
@@ -87,7 +88,8 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          # NO registry-url — it creates .npmrc with NODE_AUTH_TOKEN placeholder
+          # which overrides OIDC trusted publishing with an invalid token
 
       - name: Enable Corepack
         run: corepack enable
@@ -112,7 +114,12 @@ jobs:
       # Dynamic counts (README.md, package.json manifest) are updated by prepare-release.sh
       # locally for the build but NOT committed back — they'll be current in the next release PR.
 
-      # Publish to npm (idempotent — safe to rerun if later steps fail)
+      # Publish to npm via OIDC trusted publishing (no static token needed).
+      # Auth: npm trusted publishing via OIDC (id-token: write + environment: release)
+      # Configure at npmjs.com → Package Settings → Publishing Access → Trusted Publishers:
+      #   Organization: structured-world, Repository: gitlab-mcp
+      #   Workflow: release-please.yml, Environment: release
+      # Uses npm CLI (not yarn npm) — Yarn 4 doesn't support OIDC provenance.
       - name: Publish to npm
         run: |
           VERSION="${{ needs.release-please.outputs.release-version }}"
@@ -120,10 +127,7 @@ jobs:
             echo "Version ${VERSION} already published to npm; skipping."
             exit 0
           fi
-          yarn npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: true
+          npm publish --provenance --access public
 
       # Build and upload MCPB bundle
       - name: Build MCPB bundle

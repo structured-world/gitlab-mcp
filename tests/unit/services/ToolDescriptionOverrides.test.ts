@@ -53,8 +53,14 @@ jest.mock('../../../src/services/ConnectionManager', () => ({
   ConnectionManager: {
     getInstance: jest.fn().mockReturnValue({
       getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+      getTokenScopeInfo: jest.fn().mockReturnValue(null),
+      getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
     }),
   },
+}));
+
+jest.mock('../../../src/oauth/token-context', () => ({
+  getGitLabApiUrlFromContext: jest.fn().mockReturnValue(undefined),
 }));
 
 // Mock all entity registries

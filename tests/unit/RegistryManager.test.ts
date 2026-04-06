@@ -83,6 +83,7 @@ jest.mock('../../src/services/ConnectionManager', () => ({
     getInstance: jest.fn().mockReturnValue({
       getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
       getTokenScopeInfo: jest.fn().mockReturnValue(null),
+      getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
     }),
   },
 }));
@@ -104,6 +105,10 @@ jest.mock('../../src/services/HealthMonitor', () => ({
   HealthMonitor: {
     getInstance: jest.fn(() => mockHealthMonitorInstance),
   },
+}));
+
+jest.mock('../../src/oauth/token-context', () => ({
+  getGitLabApiUrlFromContext: jest.fn().mockReturnValue(undefined),
 }));
 
 jest.mock('../../src/logger', () => ({
@@ -165,6 +170,7 @@ jest.mock('../../src/config', () => ({
   get USE_ITERATIONS() {
     return process.env.USE_ITERATIONS !== 'false';
   },
+  GITLAB_BASE_URL: 'https://gitlab.example.com',
   getToolDescriptionOverrides: jest.fn(() => new Map()),
   getActionDescriptionOverrides: jest.fn(() => new Map()),
   getParamDescriptionOverrides: jest.fn(() => new Map()),
@@ -387,6 +393,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue({ scopes: ['read_user'] }),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
 
       const { isToolAvailableForScopes } = require('../../src/services/TokenScopeDetector');
@@ -406,6 +413,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
     });
 
@@ -571,6 +579,143 @@ describe('RegistryManager', () => {
       // Names should still be available after refresh
       const refreshedNames = registryManager.getAvailableToolNames();
       expect(refreshedNames.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Per-URL Cache Resolution', () => {
+    it('should resolve no-arg calls via OAuth context URL and verify it was used', () => {
+      const { getGitLabApiUrlFromContext } = require('../../src/oauth/token-context');
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
+      const { ToolAvailability } = require('../../src/services/ToolAvailability');
+      const oauthUrl = 'https://oauth-instance.example.com';
+      getGitLabApiUrlFromContext.mockReturnValue(oauthUrl);
+
+      // Make OAuth URL return premium tier → labels filtered out
+      ToolAvailability.isToolAvailableForInstance.mockImplementation(
+        (toolName: string, info: { tier: string }) => {
+          if (info.tier === 'premium' && toolName.includes('labels')) return false;
+          return true;
+        },
+      );
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockImplementation((url?: string) => {
+          if (url === oauthUrl) return { tier: 'premium', version: '17.0.0' };
+          return { tier: 'free', version: '17.0.0' };
+        }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+      });
+
+      try {
+        resetRegistryManagerSingleton();
+        const manager = RegistryManager.getInstance();
+
+        // No-arg calls should resolve via OAuth URL (premium) → no labels
+        const names = manager.getAvailableToolNames();
+        expect(names).toContain('core_tool_1');
+        expect(names).not.toContain('labels_tool_1');
+
+        // Verify getInstanceInfo was called with the OAuth URL
+        expect(ConnectionManager.getInstance().getInstanceInfo).toHaveBeenCalledWith(oauthUrl);
+      } finally {
+        getGitLabApiUrlFromContext.mockReturnValue(undefined);
+        ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        });
+      }
+    });
+
+    it('should produce observably different caches when tier differs per URL', () => {
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
+      const { ToolAvailability } = require('../../src/services/ToolAvailability');
+
+      // URL A: free tier → labels_tool_1 is available
+      // URL B: simulate labels filtered by tier
+      ToolAvailability.isToolAvailableForInstance.mockImplementation(
+        (toolName: string, info: { tier: string }) => {
+          if (info.tier === 'premium' && toolName.includes('labels')) return false;
+          return true;
+        },
+      );
+
+      // URL A → free tier (default mock)
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockImplementation((url?: string) => {
+          if (url === 'https://instance-b.example.com') {
+            return { tier: 'premium', version: '17.0.0' };
+          }
+          return { tier: 'free', version: '17.0.0' };
+        }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+      });
+
+      try {
+        resetRegistryManagerSingleton();
+        const manager = RegistryManager.getInstance();
+
+        const namesA = manager.getAvailableToolNames('https://instance-a.example.com');
+        const namesB = manager.getAvailableToolNames('https://instance-b.example.com');
+
+        // URL A (free) should have labels_tool_1
+        expect(namesA).toContain('labels_tool_1');
+        // URL B (premium with labels filtered) should NOT have labels_tool_1
+        expect(namesB).not.toContain('labels_tool_1');
+
+        // Both should have core_tool_1 (always available)
+        expect(namesA).toContain('core_tool_1');
+        expect(namesB).toContain('core_tool_1');
+      } finally {
+        ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        });
+      }
+    });
+
+    it('should scope unreachable-mode per URL, not globally', () => {
+      // Instance A is unreachable, instance B is healthy
+      // No-arg callers should see all tools (at least one instance healthy globally)
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
+        'https://instance-a.example.com',
+        'https://instance-b.example.com',
+      ]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+      mockHealthMonitorInstance.isInstanceReachable.mockImplementation(
+        (url: string) => url !== 'https://instance-a.example.com',
+      );
+      mockHealthMonitorInstance.getState.mockImplementation((url: string) =>
+        url === 'https://instance-a.example.com' ? 'disconnected' : 'healthy',
+      );
+
+      try {
+        resetRegistryManagerSingleton();
+        const manager = RegistryManager.getInstance();
+
+        // URL A (unreachable) → context-only tools
+        const namesA = manager.getAvailableToolNames('https://instance-a.example.com');
+        expect(namesA).toContain('manage_context');
+        expect(namesA).not.toContain('core_tool_1');
+
+        // URL B (healthy) → full tool set
+        const namesB = manager.getAvailableToolNames('https://instance-b.example.com');
+        expect(namesB).toContain('core_tool_1');
+        expect(namesB).toContain('manage_context');
+
+        // No-arg (global) → at least one instance healthy → full tools
+        const namesDefault = manager.getAvailableToolNames();
+        expect(namesDefault).toContain('core_tool_1');
+      } finally {
+        mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+        mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+        mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
+        mockHealthMonitorInstance.getState.mockReturnValue('healthy');
+      }
     });
   });
 
@@ -1121,6 +1266,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue({ scopes: ['read_user'] }),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
 
       // Only allow core_tool_1
@@ -1139,6 +1285,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
     });
 
@@ -1274,6 +1421,8 @@ describe('RegistryManager', () => {
         'https://gitlab.example.com',
       ]);
       mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(false);
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitorInstance.getState.mockReturnValue('disconnected');
 
       resetRegistryManagerSingleton();
       registryManager = RegistryManager.getInstance();
@@ -1284,6 +1433,8 @@ describe('RegistryManager', () => {
 
       // Flip to healthy — second call should re-evaluate and expand back to full set
       mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitorInstance.getState.mockReturnValue('healthy');
 
       const names2 = registryManager.getAvailableToolNames();
       expect(names2).toContain('core_tool_1');
@@ -1352,6 +1503,7 @@ describe('RegistryManager', () => {
           throw new Error('Unexpected internal error');
         }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
 
       try {
@@ -1366,6 +1518,7 @@ describe('RegistryManager', () => {
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
           getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
         });
       }
     });
@@ -1373,11 +1526,13 @@ describe('RegistryManager', () => {
 
   describe('disconnected mode filtering', () => {
     it('should only expose context tools when all instances are disconnected', () => {
-      // Simulate all instances disconnected
+      // Simulate all instances disconnected — per-URL reachability check
       mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
         'https://gitlab.example.com',
       ]);
       mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(false);
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitorInstance.getState.mockReturnValue('disconnected');
 
       // Reset RegistryManager to trigger cache rebuild
       resetRegistryManagerSingleton();
@@ -1395,6 +1550,8 @@ describe('RegistryManager', () => {
       // Restore
       mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
       mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitorInstance.getState.mockReturnValue('healthy');
     });
 
     it('should expose all tools when health monitor not yet initialized', () => {

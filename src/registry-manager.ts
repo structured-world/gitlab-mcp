@@ -36,6 +36,7 @@ import {
   getIterationsReadOnlyToolNames,
 } from './entities/iterations/registry';
 import {
+  GITLAB_BASE_URL,
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
   GITLAB_CROSS_REFS,
@@ -71,6 +72,8 @@ import {
   extractActionsFromSchema,
 } from './utils/schema-utils';
 import { resolveRelatedReferences, stripRelatedSection } from './utils/description-utils';
+import { normalizeInstanceUrl } from './utils/url';
+import { getGitLabApiUrlFromContext } from './oauth/token-context';
 
 /**
  * Central registry manager that aggregates tools from all entity registries
@@ -80,10 +83,13 @@ class RegistryManager {
   private static instance: RegistryManager;
   private registries: Map<string, ToolRegistry> = new Map();
 
-  // Performance optimization caches
-  private toolLookupCache: Map<string, EnhancedToolDefinition> = new Map();
-  private toolDefinitionsCache: ToolDefinition[] | null = null;
-  private toolNamesCache: string[] | null = null;
+  // Per-URL tool caches — each instance URL gets its own filtered tool map
+  // so concurrent multi-instance traffic cannot interfere (#379).
+  // Growth is bounded by the number of distinct GitLab instances (typically 1-3,
+  // never user-input-driven). No eviction needed at this scale.
+  private readonly toolLookupCaches = new Map<string, Map<string, EnhancedToolDefinition>>();
+  private readonly toolDefinitionsCaches = new Map<string, ToolDefinition[]>();
+  private readonly toolNamesCaches = new Map<string, string[]>();
 
   // Tool description overrides from environment variables
   private descriptionOverrides: Map<string, string> = new Map();
@@ -427,8 +433,47 @@ class RegistryManager {
     }
   }
 
+  /**
+   * Resolve the cache key for a given (or default) instance URL.
+   * Fallback chain: explicit URL → OAuth context → getCurrentInstanceUrl() → GITLAB_BASE_URL.
+   * @param instanceUrl - Optional explicit instance URL
+   * @returns Normalized instance URL for use as cache key
+   */
+  private resolveCacheUrl(instanceUrl?: string): string {
+    if (instanceUrl) return normalizeInstanceUrl(instanceUrl);
+    // Prefer OAuth request context URL (per-request, thread-safe) over the
+    // mutable getCurrentInstanceUrl() singleton which may belong to a different
+    // concurrent request.
+    const contextUrl = getGitLabApiUrlFromContext();
+    if (contextUrl) return normalizeInstanceUrl(contextUrl);
+    try {
+      const current = ConnectionManager.getInstance().getCurrentInstanceUrl();
+      if (current) return normalizeInstanceUrl(current);
+    } catch {
+      // ConnectionManager not initialized yet — fall through to GITLAB_BASE_URL
+    }
+    return normalizeInstanceUrl(GITLAB_BASE_URL);
+  }
+
+  /**
+   * Resolve the per-URL cache for the given (or default) instance.
+   * Builds the cache on demand when it does not exist yet.
+   * @param instanceUrl - Optional instance URL to resolve the correct per-URL cache
+   * @returns The tool lookup cache for the resolved URL
+   */
+  private resolveCache(instanceUrl?: string): Map<string, EnhancedToolDefinition> {
+    const url = this.resolveCacheUrl(instanceUrl);
+    let cache = this.toolLookupCaches.get(url);
+    if (!cache) {
+      this.buildToolLookupCache(url);
+      cache = this.toolLookupCaches.get(url);
+    }
+    return cache ?? new Map<string, EnhancedToolDefinition>();
+  }
+
   private buildToolLookupCache(instanceUrl?: string): void {
-    const ctx = this.loadInstanceContext(instanceUrl);
+    const url = this.resolveCacheUrl(instanceUrl);
+    const ctx = this.loadInstanceContext(url);
 
     // Build into a new map and swap atomically — prevents a concurrent
     // refreshCache from clearing the live cache between hasToolHandler()
@@ -436,37 +481,50 @@ class RegistryManager {
     const newCache = this.buildFilteredTools(ctx);
     this.postProcessRelatedReferences(newCache);
 
-    // Atomic swap — in-flight requests that captured a reference to the old map
-    // via getTool() keep working; new requests see the updated cache
-    this.toolLookupCache = newCache;
+    // Atomic per-URL swap — in-flight requests that captured a reference
+    // to the old map via getTool() keep working; new requests see the
+    // updated cache for this URL
+    this.toolLookupCaches.set(url, newCache);
 
     logDebug('Registry manager built cache after filtering', {
-      toolCount: this.toolLookupCache.size,
+      toolCount: newCache.size,
+      instanceUrl: url,
     });
   }
 
   /**
-   * Invalidate all caches - call when registries change
+   * Invalidate derived caches for a specific URL and rebuild lookup cache.
    */
   private invalidateCaches(instanceUrl?: string): void {
-    this.toolDefinitionsCache = null;
-    this.toolNamesCache = null;
-    this.readOnlyToolsCache = null;
-    this.buildToolLookupCache(instanceUrl);
+    const url = this.resolveCacheUrl(instanceUrl);
+    this.toolDefinitionsCaches.delete(url);
+    this.toolNamesCaches.delete(url);
+    // readOnlyToolsCache is derived from registries + config flags (USE_*),
+    // not from instance URL — no need to clear on per-URL refresh.
+    this.buildToolLookupCache(url);
   }
 
   /**
-   * Get a tool by name from any registry - O(1) lookup using cache
+   * Get a tool by name - O(1) lookup using per-URL cache.
+   * @param toolName - Tool name to look up
+   * @param instanceUrl - Optional instance URL to resolve the correct per-URL cache
    */
-  public getTool(toolName: string): EnhancedToolDefinition | null {
-    return this.toolLookupCache.get(toolName) ?? null;
+  public getTool(toolName: string, instanceUrl?: string): EnhancedToolDefinition | null {
+    return this.resolveCache(instanceUrl).get(toolName) ?? null;
   }
 
   /**
-   * Execute a tool by name
+   * Execute a tool by name.
+   * @param toolName - Tool name to execute
+   * @param args - Tool arguments
+   * @param instanceUrl - Optional instance URL to resolve the correct per-URL cache
    */
-  public async executeTool(toolName: string, args: unknown): Promise<unknown> {
-    const tool = this.getTool(toolName);
+  public async executeTool(
+    toolName: string,
+    args: unknown,
+    instanceUrl?: string,
+  ): Promise<unknown> {
+    const tool = this.getTool(toolName, instanceUrl);
     if (!tool) {
       throw new Error(`Tool '${toolName}' not found in any registry`);
     }
@@ -484,19 +542,28 @@ class RegistryManager {
   }
 
   /**
-   * Get all tool definitions (for backward compatibility with tools.ts) - cached for performance
+   * Get all tool definitions for a specific instance URL - cached per URL.
+   * @param instanceUrl - Optional instance URL. When omitted, resolves via
+   *   OAuth request context → getCurrentInstanceUrl() → GITLAB_BASE_URL
    */
-  public getAllToolDefinitions(): ToolDefinition[] {
-    const unreachableMode = this.isUnreachableMode();
+  public getAllToolDefinitions(instanceUrl?: string): ToolDefinition[] {
+    // url (resolved) is used as cache key — always non-undefined.
+    // instanceUrl (raw) is passed to isUnreachableFor — preserves undefined
+    // so that no-arg callers hit the global "all instances down" branch,
+    // while explicit-URL callers get per-instance reachability.
+    const url = this.resolveCacheUrl(instanceUrl);
+    const cache = this.resolveCache(instanceUrl);
+    const unreachableMode = this.isUnreachableFor(instanceUrl);
     // In unreachable mode, rebuild every call (transient state — don't cache
     // a context-only list that would persist after recovery)
-    if (this.toolDefinitionsCache === null || unreachableMode) {
+    const cachedDefs = this.toolDefinitionsCaches.get(url);
+    if (cachedDefs === undefined || unreachableMode) {
       const contextTools = unreachableMode ? this.registries.get('context') : null;
 
-      this.toolDefinitionsCache = [];
-      for (const tool of this.toolLookupCache.values()) {
+      const defs: ToolDefinition[] = [];
+      for (const tool of cache.values()) {
         if (contextTools && !contextTools.has(tool.name)) continue;
-        this.toolDefinitionsCache.push({
+        defs.push({
           name: tool.name,
           description: tool.description,
           inputSchema: tool.inputSchema,
@@ -505,13 +572,13 @@ class RegistryManager {
       // Don't persist cache in unreachable mode — next call after recovery
       // should see full tool list
       if (unreachableMode) {
-        const result = this.toolDefinitionsCache;
-        this.toolDefinitionsCache = null;
-        return result;
+        return defs;
       }
+      this.toolDefinitionsCaches.set(url, defs);
+      return defs;
     }
 
-    return this.toolDefinitionsCache;
+    return cachedDefs;
   }
 
   /**
@@ -684,39 +751,62 @@ class RegistryManager {
   }
 
   /**
-   * Check if a tool exists in any registry - O(1) lookup using cache
+   * Check if a tool exists in the per-URL cache - O(1) lookup.
+   * @param toolName - Tool name to check
+   * @param instanceUrl - Optional instance URL to resolve the correct per-URL cache
    */
-  public hasToolHandler(toolName: string): boolean {
-    return this.toolLookupCache.has(toolName);
+  public hasToolHandler(toolName: string, instanceUrl?: string): boolean {
+    return this.resolveCache(instanceUrl).has(toolName);
   }
 
   /**
-   * Get all available tool names - cached for performance
+   * Get all available tool names for a specific instance URL - cached per URL.
+   * @param instanceUrl - Optional instance URL. When omitted, resolves via
+   *   OAuth request context → getCurrentInstanceUrl() → GITLAB_BASE_URL
    */
-  public getAvailableToolNames(): string[] {
-    const unreachableMode = this.isUnreachableMode();
-    if (this.toolNamesCache === null || unreachableMode) {
+  public getAvailableToolNames(instanceUrl?: string): string[] {
+    // See getAllToolDefinitions for url vs instanceUrl rationale
+    const url = this.resolveCacheUrl(instanceUrl);
+    const cache = this.resolveCache(instanceUrl);
+    const unreachableMode = this.isUnreachableFor(instanceUrl);
+    const cachedNames = this.toolNamesCaches.get(url);
+    if (cachedNames === undefined || unreachableMode) {
       const contextTools = unreachableMode ? this.registries.get('context') : null;
-      this.toolNamesCache = Array.from(this.toolLookupCache.keys()).filter(
+      const names = Array.from(cache.keys()).filter(
         (name) => !contextTools || contextTools.has(name),
       );
       if (unreachableMode) {
-        const result = this.toolNamesCache;
-        this.toolNamesCache = null;
-        return result;
+        return names;
       }
+      this.toolNamesCaches.set(url, names);
+      return names;
     }
-    return this.toolNamesCache;
+    return cachedNames;
   }
 
-  /** True when monitored instances exist but none are healthy/degraded */
-  // isAnyInstanceHealthy() returns true for healthy, degraded, AND connecting states
-  // (connecting is optimistic during startup). Unreachable = all instances are
-  // disconnected or failed (no healthy/degraded/connecting).
-  // HealthMonitor.getInstance() is a lazy singleton — never throws.
-  // getMonitoredInstances/isAnyInstanceHealthy return safe defaults.
-  private isUnreachableMode(): boolean {
+  /**
+   * Check if the given (or all) instances are unreachable.
+   * When instanceUrl is provided, checks per-URL reachability.
+   * When omitted, falls back to the global "all instances down" check.
+   * @param instanceUrl - Optional instance URL for per-URL check
+   * @returns True when the instance (or all instances) are unreachable
+   */
+  private isUnreachableFor(instanceUrl?: string): boolean {
     const healthMonitor = HealthMonitor.getInstance();
+    if (instanceUrl) {
+      try {
+        // isInstanceReachable returns false for 'connecting', but we treat
+        // connecting as reachable (optimistic during startup/reconnect)
+        return (
+          !healthMonitor.isInstanceReachable(instanceUrl) &&
+          healthMonitor.getState(instanceUrl) !== 'connecting'
+        );
+      } catch {
+        // HealthMonitor not initialized or URL not tracked — assume reachable
+        return false;
+      }
+    }
+    // Global fallback: all instances down
     return (
       healthMonitor.getMonitoredInstances().length > 0 && !healthMonitor.isAnyInstanceHealthy()
     );
@@ -774,34 +864,12 @@ class RegistryManager {
    * Get filter statistics showing how tools were filtered
    * Used by whoami action to explain tool availability
    */
-  // SonarCloud may flag complexity here. The per-URL reachability branch adds
-  // necessary branching; aggregateFilterCounters already extracts the loop.
-  // Further splitting would scatter the single-method invariant (total = available + filtered).
   public getFilterStats(instanceUrl?: string): FilterStats {
-    // Per-URL reachability when a specific instance is requested; otherwise
-    // fall back to the global "all instances down" check.
-    let unreachableMode: boolean;
-    if (instanceUrl !== undefined) {
-      try {
-        const hm = HealthMonitor.getInstance();
-        // isInstanceReachable returns false for 'connecting', but we treat
-        // connecting as reachable here (consistent with isUnreachableMode)
-        // to avoid reporting context-only stats during startup/reconnect.
-        unreachableMode =
-          !hm.isInstanceReachable(instanceUrl) && hm.getState(instanceUrl) !== 'connecting';
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.includes('not initialized') && !msg.includes('No instance')) {
-          logWarn('Unexpected error checking per-instance reachability', {
-            error: msg,
-            instanceUrl,
-          });
-        }
-        unreachableMode = false; // assume reachable on expected init errors
-      }
-    } else {
-      unreachableMode = this.isUnreachableMode();
-    }
+    // See getAllToolDefinitions for url vs instanceUrl rationale:
+    // raw instanceUrl for reachability (preserves undefined → global fallback),
+    // resolved url for instance context loading (avoids currentInstanceUrl leakage).
+    const url = this.resolveCacheUrl(instanceUrl);
+    const unreachableMode = this.isUnreachableFor(instanceUrl);
     const contextTools = unreachableMode ? this.registries.get('context') : null;
 
     // Count total tools — in unreachable mode, only context tools are in scope
@@ -813,10 +881,9 @@ class RegistryManager {
       }
     }
 
-    // Re-run filter logic with per-URL context instead of reading the shared
-    // toolLookupCache — the cache reflects whichever instance last called
-    // refreshCache(), which may differ from the requested instanceUrl.
-    const ctx = this.loadInstanceContext(instanceUrl);
+    // Re-run filter logic with per-URL context — uses the resolved URL
+    // so instance info/scopes match the same URL that caches are keyed by.
+    const ctx = this.loadInstanceContext(url);
     const {
       available: availableTools,
       byReadOnly: filteredByReadOnly,

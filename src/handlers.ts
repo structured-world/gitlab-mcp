@@ -259,6 +259,11 @@ export async function setupHandlers(server: Server): Promise<void> {
     logInfo('Skipping connection initialization - no authentication configured');
   }
   // List tools handler
+  // getAllToolDefinitions() resolves the effective instance URL from OAuth token
+  // context when called without arguments, so authenticated multi-instance sessions
+  // already receive instance-specific tool lists. Remaining limitation:
+  // unauthenticated tools/list requests fall back to default/global instance
+  // because there is no per-session token context to infer an instance from (#398).
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     logInfo('ListToolsRequest received');
 
@@ -374,8 +379,7 @@ export async function setupHandlers(server: Server): Promise<void> {
     // health check, non-OAuth transport), we fall back to GITLAB_BASE_URL as the
     // default instance. This is intentional: the alternative (returning an auth
     // error) would block health monitoring and tool-list initialization. The
-    // fallback is safe because GITLAB_BASE_URL is always configured. See #379
-    // for the planned migration to explicit URL threading.
+    // fallback is safe because GITLAB_BASE_URL is always configured.
     // In static-token mode, prefer the actively selected instance URL so
     // switch_instance requests continue routing to the current instance.
     const rawInstanceUrl = isOAuthEnabled()
@@ -504,8 +508,12 @@ export async function setupHandlers(server: Server): Promise<void> {
         // refreshCache() could swap the lookup cache between the two calls. In practice
         // this is benign: executeTool() falls through with undefined and we re-enter the
         // bootstrap path below. A full atomic getTool() refactor is tracked separately.
-        if (registryManager.hasToolHandler(toolName)) {
-          const result = await registryManager.executeTool(toolName, request.params.arguments);
+        if (registryManager.hasToolHandler(toolName, effectiveInstanceUrl)) {
+          const result = await registryManager.executeTool(
+            toolName,
+            request.params.arguments,
+            effectiveInstanceUrl,
+          );
           return {
             content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
           };
@@ -538,10 +546,10 @@ export async function setupHandlers(server: Server): Promise<void> {
         // still proceed (not return CONNECTION_FAILED for a successful connection).
         bootstrapComplete = true;
 
-        // Rebuild registry cache AFTER full bootstrap (initialize + introspection)
+        // Rebuild per-URL registry cache AFTER full bootstrap (initialize + introspection)
         // so tier/version/widget availability are all populated.
-        // TODO: refreshCache mutates a singleton cache — concurrent multi-instance
-        // requests can race. Key cache by normalized URL instead (#386).
+        // Cache is keyed by normalized URL — concurrent multi-instance requests
+        // each get their own cache entry and cannot interfere (#379).
         {
           const { RegistryManager } = await import('./registry-manager');
           RegistryManager.getInstance().refreshCache(effectiveInstanceUrl);
@@ -659,10 +667,12 @@ export async function setupHandlers(server: Server): Promise<void> {
         const registryManager = RegistryManager.getInstance();
 
         // Check if tool exists and passes all filtering (applied at registry level).
-        // hasToolHandler + executeTool are not atomic — see comment above on the
-        // bootstrap fast-path for context. Here a TOCTOU miss throws, which is
-        // caught and converted to a McpError with the message below.
-        if (!registryManager.hasToolHandler(toolName)) {
+        // Uses per-URL cache so the check is against the correct instance's
+        // tier/version/scopes. hasToolHandler + executeTool are not atomic — see
+        // comment above on the bootstrap fast-path for context. Here a TOCTOU
+        // miss throws, which is caught and converted to a McpError with the
+        // message below.
+        if (!registryManager.hasToolHandler(toolName, effectiveInstanceUrl)) {
           throw new Error(`Tool '${toolName}' is not available or has been filtered out`);
         }
 
@@ -681,8 +691,12 @@ export async function setupHandlers(server: Server): Promise<void> {
           });
         }
 
-        // Execute the tool using the registry manager
-        const result = await registryManager.executeTool(toolName, request.params.arguments);
+        // Execute the tool using the registry manager (per-URL cache)
+        const result = await registryManager.executeTool(
+          toolName,
+          request.params.arguments,
+          effectiveInstanceUrl,
+        );
 
         // Report success — skip if handler already timed out (late completion
         // must not overwrite the timeout error already sent to HealthMonitor)

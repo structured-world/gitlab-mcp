@@ -539,9 +539,13 @@ class RegistryManager {
    * @param instanceUrl - Optional instance URL (defaults to current instance)
    */
   public getAllToolDefinitions(instanceUrl?: string): ToolDefinition[] {
+    // url (resolved) is used as cache key — always non-undefined.
+    // instanceUrl (raw) is passed to isUnreachableFor — preserves undefined
+    // so that no-arg callers hit the global "all instances down" branch,
+    // while explicit-URL callers get per-instance reachability.
     const url = this.resolveCacheUrl(instanceUrl);
     const cache = this.resolveCache(instanceUrl);
-    const unreachableMode = this.isUnreachableFor(url);
+    const unreachableMode = this.isUnreachableFor(instanceUrl);
     // In unreachable mode, rebuild every call (transient state — don't cache
     // a context-only list that would persist after recovery)
     const cachedDefs = this.toolDefinitionsCaches.get(url);
@@ -752,9 +756,10 @@ class RegistryManager {
    * @param instanceUrl - Optional instance URL (defaults to current instance)
    */
   public getAvailableToolNames(instanceUrl?: string): string[] {
+    // See getAllToolDefinitions for url vs instanceUrl rationale
     const url = this.resolveCacheUrl(instanceUrl);
     const cache = this.resolveCache(instanceUrl);
-    const unreachableMode = this.isUnreachableFor(url);
+    const unreachableMode = this.isUnreachableFor(instanceUrl);
     const cachedNames = this.toolNamesCaches.get(url);
     if (cachedNames === undefined || unreachableMode) {
       const contextTools = unreachableMode ? this.registries.get('context') : null;

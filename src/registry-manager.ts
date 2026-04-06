@@ -85,6 +85,8 @@ class RegistryManager {
 
   // Per-URL tool caches — each instance URL gets its own filtered tool map
   // so concurrent multi-instance traffic cannot interfere (#379).
+  // Growth is bounded by the number of distinct GitLab instances (typically 1-3,
+  // never user-input-driven). No eviction needed at this scale.
   private readonly toolLookupCaches = new Map<string, Map<string, EnhancedToolDefinition>>();
   private readonly toolDefinitionsCaches = new Map<string, ToolDefinition[]>();
   private readonly toolNamesCaches = new Map<string, string[]>();

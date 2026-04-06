@@ -499,7 +499,8 @@ class RegistryManager {
     const url = this.resolveCacheUrl(instanceUrl);
     this.toolDefinitionsCaches.delete(url);
     this.toolNamesCaches.delete(url);
-    this.readOnlyToolsCache = null;
+    // readOnlyToolsCache is derived from registries + config flags (USE_*),
+    // not from instance URL — no need to clear on per-URL refresh.
     this.buildToolLookupCache(url);
   }
 

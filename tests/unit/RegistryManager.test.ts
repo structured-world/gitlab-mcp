@@ -583,39 +583,49 @@ describe('RegistryManager', () => {
   });
 
   describe('Per-URL Cache Resolution', () => {
-    it('should use OAuth context URL when resolving cache without explicit instanceUrl', () => {
+    it('should resolve no-arg calls via OAuth context URL and verify it was used', () => {
       const { getGitLabApiUrlFromContext } = require('../../src/oauth/token-context');
       const { ConnectionManager } = require('../../src/services/ConnectionManager');
+      const { ToolAvailability } = require('../../src/services/ToolAvailability');
       const oauthUrl = 'https://oauth-instance.example.com';
       getGitLabApiUrlFromContext.mockReturnValue(oauthUrl);
+
+      // Make OAuth URL return premium tier → labels filtered out
+      ToolAvailability.isToolAvailableForInstance.mockImplementation(
+        (toolName: string, info: { tier: string }) => {
+          if (info.tier === 'premium' && toolName.includes('labels')) return false;
+          return true;
+        },
+      );
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockImplementation((url?: string) => {
+          if (url === oauthUrl) return { tier: 'premium', version: '17.0.0' };
+          return { tier: 'free', version: '17.0.0' };
+        }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+      });
 
       try {
         resetRegistryManagerSingleton();
         const manager = RegistryManager.getInstance();
 
-        // getTool without instanceUrl should resolve via OAuth context
-        const tool = manager.getTool('core_tool_1');
-        expect(tool).toBeDefined();
-        expect(tool?.name).toBe('core_tool_1');
+        // No-arg calls should resolve via OAuth URL (premium) → no labels
+        const names = manager.getAvailableToolNames();
+        expect(names).toContain('core_tool_1');
+        expect(names).not.toContain('labels_tool_1');
 
-        // hasToolHandler should also resolve via OAuth context
-        expect(manager.hasToolHandler('core_tool_1')).toBe(true);
-
-        // Verify getInstanceInfo was called with the OAuth URL, not the default
+        // Verify getInstanceInfo was called with the OAuth URL
         expect(ConnectionManager.getInstance().getInstanceInfo).toHaveBeenCalledWith(oauthUrl);
       } finally {
         getGitLabApiUrlFromContext.mockReturnValue(undefined);
+        ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        });
       }
-    });
-
-    it('should build cache on demand for unknown instance URL', () => {
-      resetRegistryManagerSingleton();
-      const manager = RegistryManager.getInstance();
-
-      // Explicit URL that hasn't been cached yet — should build on demand
-      const tool = manager.getTool('core_tool_1', 'https://new-instance.example.com');
-      expect(tool).toBeDefined();
-      expect(tool?.name).toBe('core_tool_1');
     });
 
     it('should produce observably different caches when tier differs per URL', () => {

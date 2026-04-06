@@ -852,6 +852,10 @@ class RegistryManager {
    * Used by whoami action to explain tool availability
    */
   public getFilterStats(instanceUrl?: string): FilterStats {
+    // See getAllToolDefinitions for url vs instanceUrl rationale:
+    // raw instanceUrl for reachability (preserves undefined → global fallback),
+    // resolved url for instance context loading (avoids currentInstanceUrl leakage).
+    const url = this.resolveCacheUrl(instanceUrl);
     const unreachableMode = this.isUnreachableFor(instanceUrl);
     const contextTools = unreachableMode ? this.registries.get('context') : null;
 
@@ -864,10 +868,9 @@ class RegistryManager {
       }
     }
 
-    // Re-run filter logic with per-URL context instead of reading the shared
-    // toolLookupCache — the cache reflects whichever instance last called
-    // refreshCache(), which may differ from the requested instanceUrl.
-    const ctx = this.loadInstanceContext(instanceUrl);
+    // Re-run filter logic with per-URL context — uses the resolved URL
+    // so instance info/scopes match the same URL that caches are keyed by.
+    const ctx = this.loadInstanceContext(url);
     const {
       available: availableTools,
       byReadOnly: filteredByReadOnly,

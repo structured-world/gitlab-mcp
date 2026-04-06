@@ -107,6 +107,10 @@ jest.mock('../../src/services/HealthMonitor', () => ({
   },
 }));
 
+jest.mock('../../src/oauth/token-context', () => ({
+  getGitLabApiUrlFromContext: jest.fn().mockReturnValue(undefined),
+}));
+
 jest.mock('../../src/logger', () => ({
   logger: { debug: jest.fn(), info: jest.fn(), warn: jest.fn(), error: jest.fn() },
   logInfo: jest.fn(),
@@ -575,6 +579,59 @@ describe('RegistryManager', () => {
       // Names should still be available after refresh
       const refreshedNames = registryManager.getAvailableToolNames();
       expect(refreshedNames.length).toBeGreaterThan(0);
+    });
+  });
+
+  describe('Per-URL Cache Resolution', () => {
+    it('should use OAuth context URL when resolving cache without explicit instanceUrl', () => {
+      const { getGitLabApiUrlFromContext } = require('../../src/oauth/token-context');
+      const oauthUrl = 'https://oauth-instance.example.com';
+      getGitLabApiUrlFromContext.mockReturnValue(oauthUrl);
+
+      try {
+        resetRegistryManagerSingleton();
+        const manager = RegistryManager.getInstance();
+
+        // getTool without instanceUrl should resolve via OAuth context
+        // The cache was built for the OAuth URL
+        const tool = manager.getTool('core_tool_1');
+        expect(tool).toBeDefined();
+        expect(tool?.name).toBe('core_tool_1');
+
+        // hasToolHandler should also resolve via OAuth context
+        expect(manager.hasToolHandler('core_tool_1')).toBe(true);
+      } finally {
+        getGitLabApiUrlFromContext.mockReturnValue(undefined);
+      }
+    });
+
+    it('should build cache on demand for unknown instance URL', () => {
+      resetRegistryManagerSingleton();
+      const manager = RegistryManager.getInstance();
+
+      // Explicit URL that hasn't been cached yet — should build on demand
+      const tool = manager.getTool('core_tool_1', 'https://new-instance.example.com');
+      expect(tool).toBeDefined();
+      expect(tool?.name).toBe('core_tool_1');
+    });
+
+    it('should isolate caches between different instance URLs', () => {
+      resetRegistryManagerSingleton();
+      const manager = RegistryManager.getInstance();
+
+      // Build caches for two different URLs
+      const toolA = manager.getTool('core_tool_1', 'https://instance-a.example.com');
+      const toolB = manager.getTool('core_tool_1', 'https://instance-b.example.com');
+
+      // Both should resolve (both get their own cache)
+      expect(toolA).toBeDefined();
+      expect(toolB).toBeDefined();
+
+      // Verify names are also isolated
+      const namesA = manager.getAvailableToolNames('https://instance-a.example.com');
+      const namesB = manager.getAvailableToolNames('https://instance-b.example.com');
+      expect(namesA).toContain('core_tool_1');
+      expect(namesB).toContain('core_tool_1');
     });
   });
 

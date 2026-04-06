@@ -73,6 +73,7 @@ import {
 } from './utils/schema-utils';
 import { resolveRelatedReferences, stripRelatedSection } from './utils/description-utils';
 import { normalizeInstanceUrl } from './utils/url';
+import { getGitLabApiUrlFromContext } from './oauth/token-context';
 
 /**
  * Central registry manager that aggregates tools from all entity registries
@@ -84,9 +85,9 @@ class RegistryManager {
 
   // Per-URL tool caches — each instance URL gets its own filtered tool map
   // so concurrent multi-instance traffic cannot interfere (#379).
-  private toolLookupCaches = new Map<string, Map<string, EnhancedToolDefinition>>();
-  private toolDefinitionsCaches = new Map<string, ToolDefinition[]>();
-  private toolNamesCaches = new Map<string, string[]>();
+  private readonly toolLookupCaches = new Map<string, Map<string, EnhancedToolDefinition>>();
+  private readonly toolDefinitionsCaches = new Map<string, ToolDefinition[]>();
+  private readonly toolNamesCaches = new Map<string, string[]>();
 
   // Tool description overrides from environment variables
   private descriptionOverrides: Map<string, string> = new Map();
@@ -436,6 +437,11 @@ class RegistryManager {
    */
   private resolveCacheUrl(instanceUrl?: string): string {
     if (instanceUrl) return normalizeInstanceUrl(instanceUrl);
+    // Prefer OAuth request context URL (per-request, thread-safe) over the
+    // mutable getCurrentInstanceUrl() singleton which may belong to a different
+    // concurrent request.
+    const contextUrl = getGitLabApiUrlFromContext();
+    if (contextUrl) return normalizeInstanceUrl(contextUrl);
     try {
       const current = ConnectionManager.getInstance().getCurrentInstanceUrl();
       if (current) return current;

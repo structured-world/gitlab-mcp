@@ -59,6 +59,10 @@ jest.mock('../../../src/services/ConnectionManager', () => ({
   },
 }));
 
+jest.mock('../../../src/oauth/token-context', () => ({
+  getGitLabApiUrlFromContext: jest.fn().mockReturnValue(undefined),
+}));
+
 // Mock all entity registries
 jest.mock('../../../src/entities/core/registry', () => ({
   coreToolRegistry: new Map([

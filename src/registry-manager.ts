@@ -64,7 +64,7 @@ import { HealthMonitor } from './services/HealthMonitor';
 import { isToolAvailableForScopes } from './services/TokenScopeDetector';
 import type { GitLabScope } from './services/TokenScopeDetector';
 import type { GitLabTier } from './services/GitLabVersionDetector';
-import { logDebug, logWarn } from './logger';
+import { logDebug, logError } from './logger';
 import {
   transformToolSchema,
   stripTierRestrictedParameters,
@@ -307,18 +307,7 @@ class RegistryManager {
       const info = ConnectionManager.getInstance().getInstanceInfo(instanceUrl);
       instanceInfo = { tier: info.tier, version: info.version };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Only treat "not initialized" as an expected no-op; surface unexpected errors
-      if (
-        !msg.includes('not initialized') &&
-        !msg.includes('not available') &&
-        !msg.includes('No connection')
-      ) {
-        logWarn('Unexpected error loading instance info for tool cache', {
-          error: msg,
-          instanceUrl,
-        });
-      }
+      if (!isExpectedInitError(err)) throw err;
     }
 
     let tokenScopes: GitLabScope[] | undefined;
@@ -328,18 +317,7 @@ class RegistryManager {
         tokenScopes = scopeInfo.scopes;
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Only treat "not initialized" as an expected no-op; surface unexpected errors
-      if (
-        !msg.includes('not initialized') &&
-        !msg.includes('not available') &&
-        !msg.includes('No connection')
-      ) {
-        logWarn('Unexpected error loading token scopes for tool cache', {
-          error: msg,
-          instanceUrl,
-        });
-      }
+      if (!isExpectedInitError(err)) throw err;
     }
 
     return { instanceInfo, tokenScopes };
@@ -473,7 +451,19 @@ class RegistryManager {
 
   private buildToolLookupCache(instanceUrl?: string): void {
     const url = this.resolveCacheUrl(instanceUrl);
-    const ctx = this.loadInstanceContext(url);
+
+    let ctx: ReturnType<RegistryManager['loadInstanceContext']>;
+    try {
+      ctx = this.loadInstanceContext(url);
+    } catch (err) {
+      // Fail-close: preserve previous cache instead of rebuilding with
+      // empty context (which would surface tools the instance cannot use).
+      logError('Unexpected error loading instance context; preserving previous cache', {
+        error: err instanceof Error ? err.message : String(err),
+        instanceUrl: url,
+      });
+      return;
+    }
 
     // Build into a new map and swap atomically — prevents a concurrent
     // refreshCache from clearing the live cache between hasToolHandler()
@@ -883,7 +873,28 @@ class RegistryManager {
 
     // Re-run filter logic with per-URL context — uses the resolved URL
     // so instance info/scopes match the same URL that caches are keyed by.
-    const ctx = this.loadInstanceContext(url);
+    let ctx: ReturnType<RegistryManager['loadInstanceContext']>;
+    try {
+      ctx = this.loadInstanceContext(url);
+    } catch (err) {
+      // Fail-close: derive stats from whatever is in the current lookup cache
+      // rather than computing against empty context (which inflates 'available').
+      logError('Unexpected error loading instance context for filter stats; using cached counts', {
+        error: err instanceof Error ? err.message : String(err),
+        instanceUrl: url,
+      });
+      const cached = this.toolLookupCaches.get(url);
+      return {
+        available: cached?.size ?? 0,
+        total: totalTools,
+        filteredByScopes: 0,
+        filteredByReadOnly: 0,
+        filteredByTier: 0,
+        filteredByDeniedRegex: 0,
+        filteredByActionDenial: 0,
+      };
+    }
+
     const {
       available: availableTools,
       byReadOnly: filteredByReadOnly,
@@ -903,6 +914,17 @@ class RegistryManager {
       filteredByActionDenial,
     };
   }
+}
+
+/** Return true for errors that indicate the ConnectionManager is not yet
+ *  initialised (expected during startup / before first connection). */
+function isExpectedInitError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes('not initialized') ||
+    msg.includes('not available') ||
+    msg.includes('No connection')
+  );
 }
 
 /**

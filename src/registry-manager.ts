@@ -444,7 +444,7 @@ class RegistryManager {
     if (contextUrl) return normalizeInstanceUrl(contextUrl);
     try {
       const current = ConnectionManager.getInstance().getCurrentInstanceUrl();
-      if (current) return current;
+      if (current) return normalizeInstanceUrl(current);
     } catch {
       // ConnectionManager not initialized yet — fall through to GITLAB_BASE_URL
     }
@@ -467,7 +467,7 @@ class RegistryManager {
 
   private buildToolLookupCache(instanceUrl?: string): void {
     const url = this.resolveCacheUrl(instanceUrl);
-    const ctx = this.loadInstanceContext(instanceUrl);
+    const ctx = this.loadInstanceContext(url);
 
     // Build into a new map and swap atomically — prevents a concurrent
     // refreshCache from clearing the live cache between hasToolHandler()
@@ -494,7 +494,7 @@ class RegistryManager {
     this.toolDefinitionsCaches.delete(url);
     this.toolNamesCaches.delete(url);
     this.readOnlyToolsCache = null;
-    this.buildToolLookupCache(instanceUrl);
+    this.buildToolLookupCache(url);
   }
 
   /**

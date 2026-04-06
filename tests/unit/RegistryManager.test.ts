@@ -1680,6 +1680,40 @@ describe('RegistryManager', () => {
 
       expect(() => registryManager.refreshCache()).toThrow('Unexpected failure after pre-init');
     });
+
+    it('should handle non-Error exceptions in loadInstanceContext', () => {
+      // Throw a string (not an Error instance) to cover the String(err) branch
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw 'raw string error';
+        },
+      });
+
+      resetRegistryManagerSingleton();
+      expect(() => RegistryManager.getInstance()).toThrow('raw string error');
+    });
+
+    it('getFilterStats cold-start fallback should return conservative stats', () => {
+      // Build a cache with NO prior getFilterStats call (no filterStatsCaches entry)
+      registryManager = buildHealthyCache();
+
+      // Now break loadInstanceContext — getFilterStats has never been called,
+      // so filterStatsCaches is empty → must use the conservative fallback
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('Unexpected error');
+        },
+      });
+
+      // Invalidate filterStatsCaches by clearing it (simulate fresh URL)
+      (registryManager as any).filterStatsCaches.clear();
+
+      const stats = registryManager.getFilterStats();
+      // Conservative fallback: available=0, total>0, filteredByScopes=total
+      expect(stats.available).toBe(0);
+      expect(stats.total).toBeGreaterThan(0);
+      expect(stats.filteredByScopes).toBe(stats.total);
+    });
   });
 
   describe('disconnected mode filtering', () => {

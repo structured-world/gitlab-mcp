@@ -64,7 +64,7 @@ import { HealthMonitor } from './services/HealthMonitor';
 import { isToolAvailableForScopes } from './services/TokenScopeDetector';
 import type { GitLabScope } from './services/TokenScopeDetector';
 import type { GitLabTier } from './services/GitLabVersionDetector';
-import { logDebug, logWarn } from './logger';
+import { logDebug, logError } from './logger';
 import {
   transformToolSchema,
   stripTierRestrictedParameters,
@@ -90,6 +90,12 @@ class RegistryManager {
   private readonly toolLookupCaches = new Map<string, Map<string, EnhancedToolDefinition>>();
   private readonly toolDefinitionsCaches = new Map<string, ToolDefinition[]>();
   private readonly toolNamesCaches = new Map<string, string[]>();
+  private readonly filterStatsCaches = new Map<string, FilterStats>();
+  // URLs where loadInstanceContext has returned a populated instanceInfo at
+  // least once. Caches built before ConnectionManager is ready (pre-init) are
+  // permissive (no tier/scope filtering) and must NOT be preserved on refresh
+  // failure — only verified caches should be kept as "last known good".
+  private readonly verifiedContextUrls = new Set<string>();
 
   // Tool description overrides from environment variables
   private descriptionOverrides: Map<string, string> = new Map();
@@ -297,7 +303,8 @@ class RegistryManager {
    *   cross-instance leakage when called from per-URL init/state-change events.
    */
   /** Load instance context (tier/version/scopes) for cache build and stats.
-   *  Returns undefined fields when connection is not initialized. */
+   *  Returns undefined fields when connection is not initialized.
+   *  @throws on unexpected errors (anything other than expected init errors). */
   private loadInstanceContext(instanceUrl?: string): {
     instanceInfo?: { tier: GitLabTier; version: string };
     tokenScopes?: GitLabScope[];
@@ -307,18 +314,7 @@ class RegistryManager {
       const info = ConnectionManager.getInstance().getInstanceInfo(instanceUrl);
       instanceInfo = { tier: info.tier, version: info.version };
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Only treat "not initialized" as an expected no-op; surface unexpected errors
-      if (
-        !msg.includes('not initialized') &&
-        !msg.includes('not available') &&
-        !msg.includes('No connection')
-      ) {
-        logWarn('Unexpected error loading instance info for tool cache', {
-          error: msg,
-          instanceUrl,
-        });
-      }
+      if (!isExpectedInitError(err)) throw err;
     }
 
     let tokenScopes: GitLabScope[] | undefined;
@@ -328,18 +324,7 @@ class RegistryManager {
         tokenScopes = scopeInfo.scopes;
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      // Only treat "not initialized" as an expected no-op; surface unexpected errors
-      if (
-        !msg.includes('not initialized') &&
-        !msg.includes('not available') &&
-        !msg.includes('No connection')
-      ) {
-        logWarn('Unexpected error loading token scopes for tool cache', {
-          error: msg,
-          instanceUrl,
-        });
-      }
+      if (!isExpectedInitError(err)) throw err;
     }
 
     return { instanceInfo, tokenScopes };
@@ -473,7 +458,41 @@ class RegistryManager {
 
   private buildToolLookupCache(instanceUrl?: string): void {
     const url = this.resolveCacheUrl(instanceUrl);
-    const ctx = this.loadInstanceContext(url);
+
+    let ctx: ReturnType<RegistryManager['loadInstanceContext']>;
+    try {
+      ctx = this.loadInstanceContext(url);
+    } catch (err) {
+      if (this.verifiedContextUrls.has(url)) {
+        // Fail-close during refresh: preserve the previous verified cache
+        // instead of rebuilding with empty context (which would surface tools
+        // the instance cannot use). Pre-init caches (built before
+        // ConnectionManager was ready) are intentionally NOT preserved — they
+        // contain every tool unfiltered and should not be treated as "last
+        // known good".
+        logError('Unexpected error loading instance context; preserving previous cache', {
+          error: err instanceof Error ? err.message : String(err),
+          instanceUrl: url,
+        });
+        return;
+      }
+
+      // Do not leave a permissive pre-init snapshot live after an unexpected
+      // refresh failure. Callers (e.g. handlers.ts) may catch refreshCache()
+      // and continue serving whatever is still in the per-URL caches.
+      this.toolLookupCaches.delete(url);
+      this.toolDefinitionsCaches.delete(url);
+      this.toolNamesCaches.delete(url);
+      this.filterStatsCaches.delete(url);
+
+      // On cold start there is no prior cache to preserve. Fail fast so the
+      // process does not silently continue with no tools available.
+      logError('Unexpected error loading instance context; no previous cache available', {
+        error: err instanceof Error ? err.message : String(err),
+        instanceUrl: url,
+      });
+      throw err instanceof Error ? err : new Error(String(err));
+    }
 
     // Build into a new map and swap atomically — prevents a concurrent
     // refreshCache from clearing the live cache between hasToolHandler()
@@ -481,10 +500,27 @@ class RegistryManager {
     const newCache = this.buildFilteredTools(ctx);
     this.postProcessRelatedReferences(newCache);
 
+    // A prior cache-miss failure may have seeded stale derived caches from the
+    // temporary empty Map returned by resolveCache(); drop them before swapping.
+    // filterStatsCaches is cleared here (not in invalidateCaches) so the last
+    // good snapshot survives if this rebuild was triggered by a failed refresh.
+    this.toolDefinitionsCaches.delete(url);
+    this.toolNamesCaches.delete(url);
+    this.filterStatsCaches.delete(url);
+
     // Atomic per-URL swap — in-flight requests that captured a reference
     // to the old map via getTool() keep working; new requests see the
     // updated cache for this URL
     this.toolLookupCaches.set(url, newCache);
+
+    // Track whether this cache was built with real context. Pre-init caches
+    // (built before ConnectionManager is ready) must not be preserved on
+    // failure. Updated AFTER swap so the flag describes the live cache.
+    if (ctx.instanceInfo) {
+      this.verifiedContextUrls.add(url);
+    } else {
+      this.verifiedContextUrls.delete(url);
+    }
 
     logDebug('Registry manager built cache after filtering', {
       toolCount: newCache.size,
@@ -499,6 +535,9 @@ class RegistryManager {
     const url = this.resolveCacheUrl(instanceUrl);
     this.toolDefinitionsCaches.delete(url);
     this.toolNamesCaches.delete(url);
+    // filterStatsCaches is intentionally NOT cleared here — it is preserved
+    // until buildToolLookupCache succeeds, so getFilterStats can fall back to
+    // the last good snapshot if the rebuild fails mid-way.
     // readOnlyToolsCache is derived from registries + config flags (USE_*),
     // not from instance URL — no need to clear on per-URL refresh.
     this.buildToolLookupCache(url);
@@ -881,9 +920,57 @@ class RegistryManager {
       }
     }
 
+    // In unreachable mode, tier/scope context is irrelevant — only context
+    // tools are shown. Skip loadInstanceContext but still apply local filters
+    // (readOnly, deniedRegex, actionDenial) so stats stay consistent with
+    // the actual tool list returned by getAllToolDefinitions().
+    if (unreachableMode) {
+      const { available, byReadOnly, byDeniedRegex, byActionDenial } = this.aggregateFilterCounters(
+        {},
+        contextTools,
+      );
+      return {
+        available,
+        total: totalTools,
+        filteredByScopes: 0,
+        filteredByReadOnly: byReadOnly,
+        filteredByTier: 0,
+        filteredByDeniedRegex: byDeniedRegex,
+        filteredByActionDenial: byActionDenial,
+      };
+    }
+
     // Re-run filter logic with per-URL context — uses the resolved URL
     // so instance info/scopes match the same URL that caches are keyed by.
-    const ctx = this.loadInstanceContext(url);
+    let ctx: ReturnType<RegistryManager['loadInstanceContext']>;
+    try {
+      ctx = this.loadInstanceContext(url);
+    } catch (err) {
+      // Fail-close: return the last successful FilterStats for this URL so
+      // the total = available + filtered invariant is preserved. If no prior
+      // stats exist, return a conservative snapshot (available=0, all tools
+      // attributed to filteredByScopes) to maintain the invariant.
+      logError('Unexpected error loading instance context for filter stats; using cached stats', {
+        error: err instanceof Error ? err.message : String(err),
+        instanceUrl: url,
+      });
+      // Fallback: cached stats from last successful run, or a conservative
+      // object that reports all tools as filtered (available=0) while still
+      // reflecting the real total so whoami doesn't show totalToolCount: 0.
+      const filteredTotal = totalTools;
+      return (
+        this.filterStatsCaches.get(url) ?? {
+          available: 0,
+          total: filteredTotal,
+          filteredByScopes: filteredTotal,
+          filteredByReadOnly: 0,
+          filteredByTier: 0,
+          filteredByDeniedRegex: 0,
+          filteredByActionDenial: 0,
+        }
+      );
+    }
+
     const {
       available: availableTools,
       byReadOnly: filteredByReadOnly,
@@ -893,7 +980,7 @@ class RegistryManager {
       byActionDenial: filteredByActionDenial,
     } = this.aggregateFilterCounters(ctx, contextTools);
 
-    return {
+    const stats: FilterStats = {
       available: availableTools,
       total: totalTools,
       filteredByScopes,
@@ -902,7 +989,20 @@ class RegistryManager {
       filteredByDeniedRegex,
       filteredByActionDenial,
     };
+    this.filterStatsCaches.set(url, stats);
+    return stats;
   }
+}
+
+/** Return true for errors that indicate the ConnectionManager is not yet
+ *  initialised (expected during startup / before first connection). */
+function isExpectedInitError(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return (
+    msg.includes('not initialized') ||
+    msg.includes('not available') ||
+    msg.includes('No connection')
+  );
 }
 
 /**

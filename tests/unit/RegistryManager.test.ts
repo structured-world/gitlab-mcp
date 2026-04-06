@@ -494,6 +494,10 @@ describe('RegistryManager', () => {
           getInstanceInfo: jest.fn().mockImplementation(() => {
             throw new Error('Connection not initialized');
           }),
+          getTokenScopeInfo: jest.fn().mockImplementation(() => {
+            throw new Error('Connection not initialized');
+          }),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
         });
 
         // Clear call history from beforeEach cache build before creating new instance
@@ -521,6 +525,8 @@ describe('RegistryManager', () => {
         // Restore ConnectionManager mock
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
         });
       }
     });
@@ -1492,35 +1498,221 @@ describe('RegistryManager', () => {
     });
   });
 
-  describe('loadInstanceContext - unexpected error warning (line 307)', () => {
-    it('should log warning when ConnectionManager throws an unexpected error', () => {
-      // Cover line 307: logWarn for non-"not initialized"/"No connection" errors
-      const { ConnectionManager } = require('../../src/services/ConnectionManager');
-      const { logWarn } = require('../../src/logger');
+  describe('loadInstanceContext - fail-close on unexpected errors (#381)', () => {
+    const { ConnectionManager } = require('../../src/services/ConnectionManager');
+    const { logError } = require('../../src/logger');
 
+    /** Mock a healthy ConnectionManager, reset singleton, return the fresh instance. */
+    function buildHealthyCache(): RegistryManager {
+      mockConnectionManager({ getInstanceInfo: () => ({ tier: 'free', version: '17.0.0' }) });
+      resetRegistryManagerSingleton();
+      return RegistryManager.getInstance();
+    }
+
+    /** Set ConnectionManager.getInstance mock with defaults for missing keys. */
+    function mockConnectionManager(overrides: {
+      getInstanceInfo?: (...args: unknown[]) => unknown;
+      getTokenScopeInfo?: (...args: unknown[]) => unknown;
+    }): void {
       ConnectionManager.getInstance.mockReturnValue({
-        getInstanceInfo: jest.fn().mockImplementation(() => {
-          throw new Error('Unexpected internal error');
-        }),
-        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getInstanceInfo: jest
+          .fn()
+          .mockImplementation(
+            overrides.getInstanceInfo ?? (() => ({ tier: 'free', version: '17.0.0' })),
+          ),
+        getTokenScopeInfo: jest
+          .fn()
+          .mockImplementation(overrides.getTokenScopeInfo ?? (() => null)),
         getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
+    }
 
-      try {
-        resetRegistryManagerSingleton();
-        registryManager = RegistryManager.getInstance();
+    afterEach(() => {
+      mockConnectionManager({});
+    });
 
-        expect(logWarn).toHaveBeenCalledWith(
-          'Unexpected error loading instance info for tool cache',
-          expect.objectContaining({ error: expect.stringContaining('Unexpected internal error') }),
-        );
-      } finally {
-        ConnectionManager.getInstance.mockReturnValue({
-          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-          getTokenScopeInfo: jest.fn().mockReturnValue(null),
-          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-        });
-      }
+    it('should preserve previous cache when getInstanceInfo throws unexpected error', () => {
+      registryManager = buildHealthyCache();
+      const toolsBefore = registryManager.getAvailableToolNames();
+
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('Unexpected internal error');
+        },
+      });
+      registryManager.refreshCache();
+
+      expect(logError).toHaveBeenCalledWith(
+        'Unexpected error loading instance context; preserving previous cache',
+        expect.objectContaining({ error: expect.stringContaining('Unexpected internal error') }),
+      );
+      expect(registryManager.getAvailableToolNames()).toEqual(toolsBefore);
+    });
+
+    it('should preserve previous cache when getTokenScopeInfo throws unexpected error', () => {
+      registryManager = buildHealthyCache();
+      const toolsBefore = registryManager.getAvailableToolNames();
+
+      mockConnectionManager({
+        getTokenScopeInfo: () => {
+          throw new Error('Token scope DB crash');
+        },
+      });
+      registryManager.refreshCache();
+
+      expect(logError).toHaveBeenCalledWith(
+        'Unexpected error loading instance context; preserving previous cache',
+        expect.objectContaining({ error: expect.stringContaining('Token scope DB crash') }),
+      );
+      expect(registryManager.getAvailableToolNames()).toEqual(toolsBefore);
+    });
+
+    it('should still swallow expected init errors (not initialized / No connection)', () => {
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('ConnectionManager not initialized');
+        },
+        getTokenScopeInfo: () => {
+          throw new Error('No connection available');
+        },
+      });
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      expect(logError).not.toHaveBeenCalled();
+      expect(registryManager.getAllToolDefinitions().length).toBeGreaterThan(0);
+    });
+
+    it('getFilterStats should return last successful stats on unexpected error', () => {
+      registryManager = buildHealthyCache();
+      const statsBefore = registryManager.getFilterStats();
+
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('Unexpected DB failure');
+        },
+      });
+      const statsAfter = registryManager.getFilterStats();
+
+      expect(logError).toHaveBeenCalledWith(
+        'Unexpected error loading instance context for filter stats; using cached stats',
+        expect.objectContaining({ error: expect.stringContaining('Unexpected DB failure') }),
+      );
+      // Returns the exact last successful stats — all fields match, not just available/total
+      expect(statsAfter).toEqual(statsBefore);
+    });
+
+    it('should re-throw on cold start when no prior cache exists', () => {
+      // Start with a throwing ConnectionManager — no prior cache for this URL
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('Cold start DB failure');
+        },
+      });
+
+      // Cold start: no prior cache → should throw, not silently return empty
+      resetRegistryManagerSingleton();
+      expect(() => RegistryManager.getInstance()).toThrow('Cold start DB failure');
+
+      expect(logError).toHaveBeenCalledWith(
+        'Unexpected error loading instance context; no previous cache available',
+        expect.objectContaining({ error: expect.stringContaining('Cold start DB failure') }),
+      );
+    });
+
+    it('should NOT preserve pre-init cache (built before ConnectionManager was ready)', () => {
+      // Build a pre-init cache: ConnectionManager throws expected init error
+      // → loadInstanceContext returns empty context → cache is permissive (unfiltered)
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('ConnectionManager not initialized');
+        },
+        getTokenScopeInfo: () => {
+          throw new Error('ConnectionManager not initialized');
+        },
+      });
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      // Pre-init cache exists and has tools (unfiltered)
+      expect(registryManager.getAvailableToolNames().length).toBeGreaterThan(0);
+
+      // Now trigger an unexpected error on refresh — pre-init cache must NOT
+      // be preserved (it's permissive), so this should re-throw like cold start
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('Unexpected DB crash');
+        },
+      });
+
+      expect(() => registryManager.refreshCache()).toThrow('Unexpected DB crash');
+
+      expect(logError).toHaveBeenCalledWith(
+        'Unexpected error loading instance context; no previous cache available',
+        expect.objectContaining({ error: expect.stringContaining('Unexpected DB crash') }),
+      );
+    });
+
+    it('should NOT preserve cache after healthy→pre-init→unexpected failure sequence', () => {
+      // Step 1: Build a verified healthy cache
+      registryManager = buildHealthyCache();
+      expect(registryManager.getAvailableToolNames().length).toBeGreaterThan(0);
+
+      // Step 2: Simulate ConnectionManager going away (expected init error)
+      // This rebuilds with empty context → permissive cache, URL un-verified
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('ConnectionManager not initialized');
+        },
+        getTokenScopeInfo: () => {
+          throw new Error('ConnectionManager not initialized');
+        },
+      });
+      registryManager.refreshCache();
+
+      // Step 3: Now an unexpected error on next refresh — the live cache is
+      // permissive (from step 2), so it must NOT be preserved
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('Unexpected failure after pre-init');
+        },
+      });
+
+      expect(() => registryManager.refreshCache()).toThrow('Unexpected failure after pre-init');
+    });
+
+    it('should handle non-Error exceptions in loadInstanceContext', () => {
+      // Throw a string (not an Error instance) to cover the String(err) branch
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw 'raw string error';
+        },
+      });
+
+      resetRegistryManagerSingleton();
+      expect(() => RegistryManager.getInstance()).toThrow('raw string error');
+    });
+
+    it('getFilterStats cold-start fallback should return conservative stats', () => {
+      // Build a cache with NO prior getFilterStats call (no filterStatsCaches entry)
+      registryManager = buildHealthyCache();
+
+      // Now break loadInstanceContext — getFilterStats has never been called,
+      // so filterStatsCaches is empty → must use the conservative fallback
+      mockConnectionManager({
+        getInstanceInfo: () => {
+          throw new Error('Unexpected error');
+        },
+      });
+
+      // Invalidate filterStatsCaches by clearing it (simulate fresh URL)
+      (registryManager as any).filterStatsCaches.clear();
+
+      const stats = registryManager.getFilterStats();
+      // Conservative fallback: available=0, total>0, filteredByScopes=total
+      expect(stats.available).toBe(0);
+      expect(stats.total).toBeGreaterThan(0);
+      expect(stats.filteredByScopes).toBe(stats.total);
     });
   });
 

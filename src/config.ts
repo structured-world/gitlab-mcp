@@ -419,6 +419,19 @@ export const HEALTH_CHECK_INTERVAL_MS = parseTimerMs(
 // Consecutive transient failures before transitioning to DISCONNECTED
 export const FAILURE_THRESHOLD = parseStrictInt(process.env.GITLAB_FAILURE_THRESHOLD, 3);
 
+// === Instance state cache configuration ===
+// Max number of per-URL InstanceState entries to keep in memory.
+// In high-cardinality multi-instance (OAuth SaaS) scenarios, each unique GitLab
+// URL gets its own entry. Without a bound, the map grows without limit.
+export const GITLAB_INSTANCE_CACHE_MAX = parseStrictInt(process.env.GITLAB_INSTANCE_CACHE_MAX, 100);
+
+// TTL for per-URL InstanceState entries (milliseconds).
+// Entries not accessed within this window are evicted on the next insert.
+export const GITLAB_INSTANCE_TTL_MS = parseTimerMs(
+  process.env.GITLAB_INSTANCE_TTL_MS,
+  60 * 60 * 1000, // 1 hour default
+);
+
 // === Connection pool configuration ===
 // Max HTTP connections per GitLab instance (default: 25, up from 10)
 export const POOL_MAX_CONNECTIONS = parseStrictInt(process.env.GITLAB_POOL_MAX_CONNECTIONS, 25);

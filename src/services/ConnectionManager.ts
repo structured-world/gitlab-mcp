@@ -7,7 +7,12 @@ import {
   getToolScopeRequirements,
   TokenScopeInfo,
 } from './TokenScopeDetector';
-import { GITLAB_BASE_URL, GITLAB_TOKEN } from '../config';
+import {
+  GITLAB_BASE_URL,
+  GITLAB_TOKEN,
+  GITLAB_INSTANCE_CACHE_MAX,
+  GITLAB_INSTANCE_TTL_MS,
+} from '../config';
 import { isOAuthEnabled, getGitLabApiUrlFromContext } from '../oauth/index';
 import { enhancedFetch } from '../utils/fetch';
 import { logInfo, logDebug, logError } from '../logger';
@@ -55,6 +60,103 @@ export class ConnectionManager {
    *  E.g. init(A) starts, init(B) starts, A finishes last — A must not rebind to itself. */
   private latestRequestedUrl: string | null = null;
 
+  /**
+   * Last-access timestamps for per-URL instance entries (epoch ms).
+   * Used for both TTL expiry and LRU eviction ordering.
+   */
+  private readonly instanceAccessTimes = new Map<string, number>();
+  /**
+   * Maximum number of InstanceState entries retained in memory.
+   * Configurable via GITLAB_INSTANCE_CACHE_MAX; mutable for tests.
+   * The Number.isFinite guard handles partial test mocks that omit these constants.
+   */
+  private static MAX_INSTANCES: number = Number.isFinite(GITLAB_INSTANCE_CACHE_MAX)
+    ? GITLAB_INSTANCE_CACHE_MAX
+    : 100;
+  /**
+   * Time-to-live for idle InstanceState entries (milliseconds).
+   * Entries not accessed within this window are evicted on the next insert.
+   * Configurable via GITLAB_INSTANCE_TTL_MS; mutable for tests.
+   */
+  private static INSTANCE_TTL_MS: number = Number.isFinite(GITLAB_INSTANCE_TTL_MS)
+    ? GITLAB_INSTANCE_TTL_MS
+    : 60 * 60 * 1000;
+
+  /** Update the LRU access timestamp for a cached instance URL. */
+  private touchInstance(url: string): void {
+    this.instanceAccessTimes.set(url, Date.now());
+  }
+
+  /**
+   * Remove an instance entry from all internal tracking maps.
+   * Does NOT update currentInstanceUrl — callers that evict protected entries
+   * (evictExpired / evictLRUIfOverCapacity) skip currentInstanceUrl explicitly.
+   *
+   * Also clears the corresponding introspectionCache entries so schema payloads
+   * don't accumulate for evicted URLs (both the bare-URL key and the legacy
+   * /api/graphql-suffixed key used by older cache writers).
+   */
+  private dropInstance(url: string): void {
+    this.instances.delete(url);
+    this.instanceAccessTimes.delete(url);
+    ConnectionManager.introspectionCache.delete(url);
+    ConnectionManager.introspectionCache.delete(`${url}/api/graphql`);
+  }
+
+  /**
+   * Evict all InstanceState entries whose last-access time exceeds INSTANCE_TTL_MS.
+   * Called on every new insertion to reclaim memory without a background task.
+   *
+   * Skipped entries (never evicted here):
+   *  - currentInstanceUrl — keep the active instance alive regardless of age
+   *  - URLs with an in-flight initialize or introspection promise — evicting a partially
+   *    constructed entry would orphan callers awaiting those promises
+   */
+  private evictExpired(): void {
+    const now = Date.now();
+    for (const [url, accessedAt] of this.instanceAccessTimes) {
+      if (now - accessedAt <= ConnectionManager.INSTANCE_TTL_MS) continue;
+      if (
+        url === this.currentInstanceUrl ||
+        this.initializePromises.has(url) ||
+        this.introspectionPromises.has(url)
+      )
+        continue;
+      this.dropInstance(url);
+      logDebug('Evicted expired InstanceState', { url, ageMs: now - accessedAt });
+    }
+  }
+
+  /**
+   * Evict the least-recently-used InstanceState entries until
+   * instances.size <= MAX_INSTANCES.  Called after every new insertion.
+   *
+   * Same skip rules as evictExpired: never evicts currentInstanceUrl or
+   * entries with in-flight operations.  If all remaining entries are
+   * protected the loop exits early (capacity may temporarily exceed the limit).
+   */
+  private evictLRUIfOverCapacity(): void {
+    while (this.instances.size > ConnectionManager.MAX_INSTANCES) {
+      let lruUrl: string | null = null;
+      let lruTime = Infinity;
+      for (const [url, accessedAt] of this.instanceAccessTimes) {
+        if (
+          url === this.currentInstanceUrl ||
+          this.initializePromises.has(url) ||
+          this.introspectionPromises.has(url)
+        )
+          continue;
+        if (accessedAt < lruTime) {
+          lruTime = accessedAt;
+          lruUrl = url;
+        }
+      }
+      if (!lruUrl) break; // All remaining entries are protected — cannot evict further
+      this.dropInstance(lruUrl);
+      logDebug('Evicted LRU InstanceState', { url: lruUrl });
+    }
+  }
+
   private constructor() {}
 
   public static getInstance(): ConnectionManager {
@@ -69,6 +171,9 @@ export class ConnectionManager {
     // Already initialized for this URL — nothing to do
     const existing = this.instances.get(url);
     if (existing?.isInitialized) {
+      // Update LRU timestamp: callers that re-request the same URL (e.g. HealthMonitor,
+      // per-request OAuth bootstrap) must keep the entry alive in the LRU window.
+      this.touchInstance(url);
       // Update currentInstanceUrl to the requested URL
       this.currentInstanceUrl = url;
       return;
@@ -160,6 +265,12 @@ export class ConnectionManager {
         introspectedInstanceUrl: null,
       };
       this.instances.set(baseUrl, state);
+      // Record access time and reclaim memory from idle/old entries.
+      // initializePromises.has(baseUrl) is true at this point, so the new
+      // entry is protected from immediate eviction by the skip rules.
+      this.touchInstance(baseUrl);
+      this.evictExpired();
+      this.evictLRUIfOverCapacity();
 
       // In OAuth mode, try unauthenticated version detection first
       // Many GitLab instances expose /api/v4/version without auth
@@ -296,7 +407,7 @@ export class ConnectionManager {
       // Guard: only delete if this is still OUR state entry — a concurrent retry
       // (after clearInflight) may have already replaced it with a fresh one.
       if (state && this.instances.get(baseUrl) === state) {
-        this.instances.delete(baseUrl);
+        this.dropInstance(baseUrl);
       }
       logError('Failed to initialize connection', { err: error as Error });
       throw error;
@@ -322,6 +433,10 @@ export class ConnectionManager {
     if (!state?.client || !state.versionDetector || !state.schemaIntrospector) {
       throw new Error('Connection not initialized. Call initialize() first.');
     }
+
+    // Any ensureIntrospected() call represents active use of the instance —
+    // touch LRU timestamp on all code paths once state existence is confirmed.
+    this.touchInstance(instanceUrl);
 
     // Already introspected for THIS instance - reuse cached data
     if (state.instanceInfo && state.schemaInfo && state.introspectedInstanceUrl === instanceUrl) {
@@ -469,6 +584,7 @@ export class ConnectionManager {
     // delete the entry entirely (see doInitialize catch block), so a present
     // entry always has a usable client. Individual getters (getInstanceInfo,
     // getSchemaInfo) null-check their respective fields independently.
+    this.touchInstance(url); // Update LRU access time on every read.
     return [state, url];
   }
 
@@ -508,7 +624,10 @@ export class ConnectionManager {
     // Fallback to per-URL state client
     if (targetUrl) {
       const state = this.instances.get(targetUrl);
-      if (state) return state.client;
+      if (state) {
+        this.touchInstance(targetUrl); // Keep entry alive in LRU window.
+        return state.client;
+      }
       // targetUrl resolved (explicit or from context) but not found anywhere —
       // fail fast rather than silently routing to a different instance's client.
       throw new Error(`Connection not initialized for ${targetUrl}. Call initialize() first.`);
@@ -564,6 +683,7 @@ export class ConnectionManager {
     const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) return false;
     const state = this.instances.get(url);
+    if (state) this.touchInstance(url); // Keep entry alive in LRU window.
     return state?.isInitialized ?? false;
   }
 
@@ -575,6 +695,7 @@ export class ConnectionManager {
     if (!url) return false;
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return false;
+    this.touchInstance(url); // Keep entry alive in LRU window.
     return state.instanceInfo.features[feature];
   }
 
@@ -583,6 +704,7 @@ export class ConnectionManager {
     if (!url) return 'unknown';
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return 'unknown';
+    this.touchInstance(url); // Keep entry alive in LRU window.
     return state.instanceInfo.tier;
   }
 
@@ -591,6 +713,7 @@ export class ConnectionManager {
     if (!url) return 'unknown';
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return 'unknown';
+    this.touchInstance(url); // Keep entry alive in LRU window.
     return state.instanceInfo.version;
   }
 
@@ -598,6 +721,7 @@ export class ConnectionManager {
     const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) return false;
     const state = this.instances.get(url);
+    if (state) this.touchInstance(url); // Keep entry alive in LRU window.
     // Read from schemaInfo directly — schemaIntrospector's internal cache may
     // not be populated after a cache-hit restore (only schemaInfo is copied).
     return state?.schemaInfo?.workItemWidgetTypes.includes(widgetType) ?? false;
@@ -610,6 +734,7 @@ export class ConnectionManager {
     const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) return null;
     const state = this.instances.get(url);
+    if (state) this.touchInstance(url); // Keep entry alive in LRU window.
     return state?.tokenScopeInfo ?? null;
   }
 
@@ -790,6 +915,7 @@ export class ConnectionManager {
     this.initializePromises.delete(newInstanceUrl);
     this.introspectionPromises.delete(newInstanceUrl);
     this.instances.delete(newInstanceUrl);
+    this.instanceAccessTimes.delete(newInstanceUrl);
 
     // Clear all caches for the new URL (guard: registry may not be initialized yet)
     try {
@@ -810,6 +936,7 @@ export class ConnectionManager {
       // - URL switch: keep previousUrl as the active healthy instance
       if (restorableState) {
         this.instances.set(newInstanceUrl, restorableState);
+        this.touchInstance(newInstanceUrl); // Restore access timestamp for the revived entry.
       }
       if (previousUrl && this.instances.has(previousUrl)) {
         this.currentInstanceUrl = previousUrl;
@@ -824,6 +951,7 @@ export class ConnectionManager {
       this.initializePromises.delete(previousUrl);
       this.introspectionPromises.delete(previousUrl);
       this.instances.delete(previousUrl);
+      this.instanceAccessTimes.delete(previousUrl);
     }
 
     const state = this.instances.get(newInstanceUrl);
@@ -847,6 +975,7 @@ export class ConnectionManager {
 
   public reset(): void {
     this.instances.clear();
+    this.instanceAccessTimes.clear();
     this.currentInstanceUrl = null;
     this.latestRequestedUrl = null;
     this.introspectionPromises.clear();

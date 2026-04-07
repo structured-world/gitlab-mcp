@@ -531,6 +531,38 @@ describe('handlers', () => {
       mockConnectionManager.initialize.mockResolvedValue(undefined);
     });
 
+    it('should return CONNECTION_FAILED when getClient throws after initialize succeeds', async () => {
+      // isConnected returns true so initialize() is skipped, but getClient() throws.
+      // bootstrapComplete is still false → must return structured CONNECTION_FAILED,
+      // not a generic "Bad Request: Server not initialized" string.
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.getClient.mockImplementationOnce(() => {
+        throw new Error('Connection not initialized. Call initialize() first.');
+      });
+
+      const result = await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: { action: 'list' },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      expect(parsed.tool).toBe('test_tool');
+      expect(parsed.action).toBe('list');
+      expect(parsed.instance_url).toBe('https://gitlab.example.com');
+      // Error is reported to HealthMonitor
+      expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+        expect.any(Error),
+      );
+
+      // Restore
+      mockConnectionManager.getClient.mockReturnValue({});
+    });
+
     it('should return error if tool is not available', async () => {
       mockRegistryManager.hasToolHandler.mockReturnValue(false);
 

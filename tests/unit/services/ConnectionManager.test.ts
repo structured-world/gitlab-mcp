@@ -27,10 +27,24 @@ type CMInternals = {
   instances: Map<string, InstanceState>;
   currentInstanceUrl: string | null;
   introspectionPromises: Map<string, Promise<void>>;
+  initializePromises: Map<string, Promise<void>>;
+  instanceAccessTimes: Map<string, number>;
   doIntrospection: (url: string) => Promise<void>;
+  evictExpired: () => void;
+  evictLRUIfOverCapacity: () => void;
+  touchInstance: (url: string) => void;
 };
 function internals(manager: ConnectionManager): CMInternals {
   return manager as unknown as CMInternals;
+}
+
+/** Type-safe access to ConnectionManager static fields in tests */
+type CMStatics = {
+  MAX_INSTANCES: number;
+  INSTANCE_TTL_MS: number;
+};
+function statics(): CMStatics {
+  return ConnectionManager as unknown as CMStatics;
 }
 
 /** Helper: inject per-URL InstanceState into the ConnectionManager's internal Map */
@@ -410,6 +424,211 @@ describe('ConnectionManager Unit', () => {
       // Promise should still be cleaned up (finally block)
       const promisesMap = internals(manager).introspectionPromises;
       expect(promisesMap.has('https://gitlab.fail.com')).toBe(false);
+    });
+  });
+
+  describe('instance cache eviction (TTL + LRU)', () => {
+    let manager: ConnectionManager;
+
+    /** Injects an InstanceState and manually sets its access timestamp */
+    function injectWithTime(
+      url: string,
+      accessedAt: number,
+      overrides: Partial<InstanceState> = {},
+    ): void {
+      injectInstanceState(manager, url, { isInitialized: true, ...overrides });
+      internals(manager).instanceAccessTimes.set(url, accessedAt);
+    }
+
+    beforeEach(() => {
+      manager = ConnectionManager.getInstance();
+      // Drive currentInstanceUrl to a "third-party" URL so that the injected
+      // test URLs are not protected by the currentInstanceUrl guard.
+      internals(manager).currentInstanceUrl = 'https://current.gitlab.com';
+    });
+
+    afterEach(() => {
+      // Restore static defaults that individual tests may have mutated.
+      statics().MAX_INSTANCES = 100;
+      statics().INSTANCE_TTL_MS = 60 * 60 * 1000;
+    });
+
+    describe('evictExpired', () => {
+      it('removes an entry whose access time is older than INSTANCE_TTL_MS', () => {
+        const staleUrl = 'https://stale.gitlab.com';
+        const freshUrl = 'https://fresh.gitlab.com';
+        const now = Date.now();
+
+        injectWithTime(staleUrl, 0); // epoch → always expired
+        injectWithTime(freshUrl, now);
+
+        internals(manager).evictExpired();
+
+        expect(internals(manager).instances.has(staleUrl)).toBe(false);
+        expect(internals(manager).instanceAccessTimes.has(staleUrl)).toBe(false);
+        expect(internals(manager).instances.has(freshUrl)).toBe(true);
+      });
+
+      it('does not remove a fresh entry', () => {
+        const freshUrl = 'https://nodrop.gitlab.com';
+        injectWithTime(freshUrl, Date.now());
+
+        internals(manager).evictExpired();
+
+        expect(internals(manager).instances.has(freshUrl)).toBe(true);
+      });
+
+      it('does not evict currentInstanceUrl even if expired', () => {
+        const currentUrl = 'https://current.gitlab.com';
+        // Make currentUrl the active instance and inject with epoch timestamp
+        injectInstanceState(manager, currentUrl, { isInitialized: true });
+        internals(manager).instanceAccessTimes.set(currentUrl, 0);
+        internals(manager).currentInstanceUrl = currentUrl;
+
+        internals(manager).evictExpired();
+
+        expect(internals(manager).instances.has(currentUrl)).toBe(true);
+      });
+
+      it('does not evict an entry with an in-flight initialize promise', () => {
+        const inflightUrl = 'https://inflight.gitlab.com';
+        injectWithTime(inflightUrl, 0);
+        // Register an in-flight initialize promise
+        const neverResolving = new Promise<void>(() => {});
+        internals(manager).initializePromises.set(inflightUrl, neverResolving);
+
+        internals(manager).evictExpired();
+
+        expect(internals(manager).instances.has(inflightUrl)).toBe(true);
+
+        internals(manager).initializePromises.delete(inflightUrl);
+      });
+
+      it('does not evict an entry with an in-flight introspection promise', () => {
+        const introspectingUrl = 'https://introspecting.gitlab.com';
+        injectWithTime(introspectingUrl, 0);
+        const neverResolving = new Promise<void>(() => {});
+        internals(manager).introspectionPromises.set(introspectingUrl, neverResolving);
+
+        internals(manager).evictExpired();
+
+        expect(internals(manager).instances.has(introspectingUrl)).toBe(true);
+
+        internals(manager).introspectionPromises.delete(introspectingUrl);
+      });
+    });
+
+    describe('evictLRUIfOverCapacity', () => {
+      it('evicts the least-recently-used entry when over capacity', () => {
+        statics().MAX_INSTANCES = 2;
+        const now = Date.now();
+
+        injectWithTime('https://a.gitlab.com', now - 3000); // oldest → LRU
+        injectWithTime('https://b.gitlab.com', now - 2000);
+        injectWithTime('https://c.gitlab.com', now - 1000);
+
+        internals(manager).evictLRUIfOverCapacity();
+
+        // Only 2 entries should remain; the LRU one is evicted
+        expect(internals(manager).instances.size).toBe(2);
+        expect(internals(manager).instances.has('https://a.gitlab.com')).toBe(false);
+        expect(internals(manager).instances.has('https://b.gitlab.com')).toBe(true);
+        expect(internals(manager).instances.has('https://c.gitlab.com')).toBe(true);
+      });
+
+      it('evicts multiple entries when significantly over capacity', () => {
+        statics().MAX_INSTANCES = 1;
+        const now = Date.now();
+
+        injectWithTime('https://x1.gitlab.com', now - 5000);
+        injectWithTime('https://x2.gitlab.com', now - 4000);
+        injectWithTime('https://x3.gitlab.com', now - 3000);
+
+        internals(manager).evictLRUIfOverCapacity();
+
+        expect(internals(manager).instances.size).toBe(1);
+        // Only the most recently accessed entry survives
+        expect(internals(manager).instances.has('https://x3.gitlab.com')).toBe(true);
+      });
+
+      it('does not evict currentInstanceUrl even when it is LRU', () => {
+        statics().MAX_INSTANCES = 1;
+        const now = Date.now();
+
+        const currentUrl = 'https://current-lru.gitlab.com';
+        injectWithTime(currentUrl, now - 9999); // oldest → would be LRU
+        injectWithTime('https://newer-lru.gitlab.com', now - 1000);
+        // Set currentInstanceUrl AFTER both injects (injectInstanceState overwrites it)
+        internals(manager).currentInstanceUrl = currentUrl;
+
+        internals(manager).evictLRUIfOverCapacity();
+
+        // currentInstanceUrl must survive even though it is the LRU entry
+        expect(internals(manager).instances.has(currentUrl)).toBe(true);
+      });
+
+      it('does not evict entries with in-flight promises when all are protected', () => {
+        statics().MAX_INSTANCES = 1;
+        const now = Date.now();
+
+        const urlA = 'https://prot-a.gitlab.com';
+        const urlB = 'https://prot-b.gitlab.com';
+        injectWithTime(urlA, now - 5000);
+        injectWithTime(urlB, now - 4000);
+
+        const neverResolving = new Promise<void>(() => {});
+        internals(manager).initializePromises.set(urlA, neverResolving);
+        internals(manager).initializePromises.set(urlB, neverResolving);
+
+        internals(manager).evictLRUIfOverCapacity();
+
+        // Both protected — neither should be evicted even though over capacity
+        expect(internals(manager).instances.has(urlA)).toBe(true);
+        expect(internals(manager).instances.has(urlB)).toBe(true);
+
+        internals(manager).initializePromises.delete(urlA);
+        internals(manager).initializePromises.delete(urlB);
+      });
+
+      it('does not evict when already at or below capacity', () => {
+        statics().MAX_INSTANCES = 5;
+        const now = Date.now();
+
+        injectWithTime('https://ok1.gitlab.com', now - 1000);
+        injectWithTime('https://ok2.gitlab.com', now - 2000);
+
+        internals(manager).evictLRUIfOverCapacity();
+
+        expect(internals(manager).instances.size).toBe(2);
+      });
+    });
+
+    describe('touchInstance', () => {
+      it('updates access time on resolveState (read path)', () => {
+        const url = 'https://touch.gitlab.com';
+        injectInstanceState(manager, url, { isInitialized: true });
+        internals(manager).currentInstanceUrl = url;
+
+        const before = Date.now();
+        // Accessing the instance via getClient() triggers resolveState → touchInstance
+        manager.getClient(url);
+        const after = Date.now();
+
+        const recorded = internals(manager).instanceAccessTimes.get(url)!;
+        expect(recorded).toBeGreaterThanOrEqual(before);
+        expect(recorded).toBeLessThanOrEqual(after);
+      });
+    });
+
+    describe('reset clears instanceAccessTimes', () => {
+      it('clears instanceAccessTimes on reset', () => {
+        injectWithTime('https://willreset.gitlab.com', Date.now());
+        expect(internals(manager).instanceAccessTimes.size).toBeGreaterThan(0);
+
+        manager.reset();
+
+        expect(internals(manager).instanceAccessTimes.size).toBe(0);
+      });
     });
   });
 

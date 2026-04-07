@@ -100,6 +100,8 @@ The server handles GitLab connectivity issues gracefully:
 | `GITLAB_FAILURE_THRESHOLD` | `3` | Consecutive transient failures before disconnecting |
 | `GITLAB_TOOL_TIMEOUT_MS` | `120000` | Max time for tool/bootstrap execution before timeout |
 | `GITLAB_RESPONSE_WRITE_TIMEOUT_MS` | `10000` | Max time to flush a non-SSE response before destroying zombie connection (`0` to disable; SSE uses heartbeat) |
+| `GITLAB_INSTANCE_CACHE_MAX` | `100` | Max number of per-URL instance states kept in memory (OAuth multi-tenant; LRU eviction when exceeded) |
+| `GITLAB_INSTANCE_TTL_MS` | `3600000` | TTL for idle per-URL instance states in ms; evicted on next insert (OAuth multi-tenant) |
 
 ## Feature Flags
 

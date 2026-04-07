@@ -24,6 +24,8 @@ jest.mock('../../../src/services/SchemaIntrospector');
 jest.mock('../../../src/config', () => ({
   GITLAB_BASE_URL: 'https://test-gitlab.com',
   GITLAB_TOKEN: 'test-token-123',
+  GITLAB_INSTANCE_CACHE_MAX: 100,
+  GITLAB_INSTANCE_TTL_MS: 60 * 60 * 1000,
 }));
 jest.mock('../../../src/logger', () => ({
   logger: {

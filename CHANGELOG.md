@@ -4,6 +4,13 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [7.0.2](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.0.1...gitlab-mcp-v7.0.2) (2026-04-06)
+
+
+### Refactoring
+
+* **registry:** fail-close on unexpected errors in loadInstanceContext/getFilterStats ([#399](https://github.com/structured-world/gitlab-mcp/issues/399)) ([70a5fea](https://github.com/structured-world/gitlab-mcp/commit/70a5fea115014a99d50135367a525eca5f4a98b9))
+
 ## [7.0.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.0.0...gitlab-mcp-v7.0.1) (2026-04-06)
 
 

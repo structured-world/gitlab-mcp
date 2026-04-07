@@ -176,10 +176,14 @@ function getAuthMode(): 'oauth' | 'token' | 'none' {
 function getToolCounts(): { enabled: number; total: number } {
   try {
     const registry = RegistryManager.getInstance();
-    const tools = registry.getAllToolDefinitions();
+    // Use getToolCatalog() for a stable total that is unaffected by transient
+    // connectivity state (unreachable mode would otherwise reduce the count to
+    // context-only tools, misrepresenting the registered tool set).
+    const catalogTools = registry.getToolCatalog();
+    const discoveryTools = registry.getAllToolDefinitions();
     return {
-      enabled: tools.length,
-      total: tools.length, // In current implementation, all available tools are enabled
+      enabled: discoveryTools.length,
+      total: catalogTools.length,
     };
   } catch {
     return { enabled: 0, total: 0 };

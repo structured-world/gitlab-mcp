@@ -282,6 +282,16 @@ describe('RegistryManager', () => {
       expect(defs1).toBe(defs2);
       expect(names1).toBe(names2);
     });
+
+    it('getToolCatalog should return same object as getAllToolDefinitions on healthy path', () => {
+      // On healthy instances the catalog and discovery lists are identical and
+      // share the same cached array instance (populated by whichever is called first).
+      const catalog = registryManager.getToolCatalog();
+      const discovery = registryManager.getAllToolDefinitions();
+
+      expect(catalog).toBe(discovery);
+      expect(catalog.length).toBeGreaterThan(0);
+    });
   });
 
   describe('Read-Only Mode Filtering', () => {
@@ -1448,6 +1458,38 @@ describe('RegistryManager', () => {
 
       // Restore
       mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+    });
+
+    it('getToolCatalog should return full set even in unreachable mode', () => {
+      // Regression for #377: callers that need a stable registered-tool count
+      // (e.g. dashboard metrics) must not see a reduced count during connectivity
+      // failures. getToolCatalog() bypasses the context-only filter.
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([
+        'https://gitlab.example.com',
+      ]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(false);
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitorInstance.getState.mockReturnValue('disconnected');
+
+      resetRegistryManagerSingleton();
+      registryManager = RegistryManager.getInstance();
+
+      // Discovery returns only context tools in unreachable mode
+      const discovery = registryManager.getAllToolDefinitions();
+      expect(discovery.map((t) => t.name)).toContain('manage_context');
+      expect(discovery.map((t) => t.name)).not.toContain('core_tool_1');
+
+      // Catalog always returns the full registered set
+      const catalog = registryManager.getToolCatalog();
+      expect(catalog.map((t) => t.name)).toContain('manage_context');
+      expect(catalog.map((t) => t.name)).toContain('core_tool_1');
+      expect(catalog.length).toBeGreaterThan(discovery.length);
+
+      // Restore
+      mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
+      mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
+      mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitorInstance.getState.mockReturnValue('healthy');
     });
   });
 

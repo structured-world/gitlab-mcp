@@ -64,7 +64,7 @@ export class ConnectionManager {
    * Last-access timestamps for per-URL instance entries (epoch ms).
    * Used for both TTL expiry and LRU eviction ordering.
    */
-  private instanceAccessTimes = new Map<string, number>();
+  private readonly instanceAccessTimes = new Map<string, number>();
   /**
    * Maximum number of InstanceState entries retained in memory.
    * Configurable via GITLAB_INSTANCE_CACHE_MAX; mutable for tests.
@@ -434,9 +434,12 @@ export class ConnectionManager {
       throw new Error('Connection not initialized. Call initialize() first.');
     }
 
+    // Any ensureIntrospected() call represents active use of the instance —
+    // touch LRU timestamp on all code paths once state existence is confirmed.
+    this.touchInstance(instanceUrl);
+
     // Already introspected for THIS instance - reuse cached data
     if (state.instanceInfo && state.schemaInfo && state.introspectedInstanceUrl === instanceUrl) {
-      this.touchInstance(instanceUrl); // Keep entry alive in LRU window on cache hit.
       return;
     }
 

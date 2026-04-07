@@ -4,6 +4,18 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [7.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.0.2...gitlab-mcp-v7.1.0) (2026-04-07)
+
+
+### Features
+
+* **connection:** add TTL/LRU eviction to ConnectionManager instance cache ([#404](https://github.com/structured-world/gitlab-mcp/issues/404)) ([229c92c](https://github.com/structured-world/gitlab-mcp/commit/229c92c4749bad8d339ebd8c89073ceff3bb9f08))
+
+
+### Refactoring
+
+* **registry:** split getAllToolDefinitions into catalog vs discovery APIs ([#401](https://github.com/structured-world/gitlab-mcp/issues/401)) ([b084a81](https://github.com/structured-world/gitlab-mcp/commit/b084a81b7b44eeb9a096a8054702851c7f01b830)), closes [#377](https://github.com/structured-world/gitlab-mcp/issues/377)
+
 ## [7.0.2](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.0.1...gitlab-mcp-v7.0.2) (2026-04-06)
 
 

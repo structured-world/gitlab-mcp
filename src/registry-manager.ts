@@ -621,6 +621,41 @@ class RegistryManager {
   }
 
   /**
+   * Get the full catalog of registered tool definitions for a specific instance URL,
+   * regardless of current connection health. Unlike {@link getAllToolDefinitions}, this
+   * method always returns the complete set from the tool lookup cache — it never applies
+   * the context-only filter used in unreachable mode.
+   *
+   * Use this for stable counts, metrics, and documentation where a transient connectivity
+   * issue should not reduce the reported tool count.
+   *
+   * @param instanceUrl - Optional instance URL. When omitted, resolves via
+   *   OAuth request context → getCurrentInstanceUrl() → GITLAB_BASE_URL
+   */
+  public getToolCatalog(instanceUrl?: string): ToolDefinition[] {
+    const url = this.resolveCacheUrl(instanceUrl);
+    const cache = this.resolveCache(instanceUrl);
+    const cachedDefs = this.toolDefinitionsCaches.get(url);
+    // Return the cached full-list when available (same object already stored by
+    // getAllToolDefinitions on healthy path). If the cache is absent (e.g. first
+    // call, or was cleared after an invalidation) build it now without the
+    // unreachable-mode filter and persist it so the next call is O(1).
+    if (cachedDefs !== undefined) {
+      return cachedDefs;
+    }
+    const defs: ToolDefinition[] = [];
+    for (const tool of cache.values()) {
+      defs.push({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema,
+      });
+    }
+    this.toolDefinitionsCaches.set(url, defs);
+    return defs;
+  }
+
+  /**
    * Get tool definitions without GitLab tier/version filtering (for CLI tools, documentation, etc.)
    * Dynamically checks environment filters at runtime to respect CLI-time environment variables
    * but bypasses ToolAvailability tier/version checks since no GitLab connection exists

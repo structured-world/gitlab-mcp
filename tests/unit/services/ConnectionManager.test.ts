@@ -430,14 +430,22 @@ describe('ConnectionManager Unit', () => {
   describe('instance cache eviction (TTL + LRU)', () => {
     let manager: ConnectionManager;
 
-    /** Injects an InstanceState and manually sets its access timestamp */
+    /**
+     * Injects an InstanceState with a specific access timestamp.
+     * Preserves the `currentInstanceUrl` established by `beforeEach` so eviction
+     * tests consistently exercise the unprotected TTL/LRU path — `injectInstanceState`
+     * unconditionally overwrites `currentInstanceUrl` and would otherwise silently
+     * protect the last-injected entry from eviction.
+     */
     function injectWithTime(
       url: string,
       accessedAt: number,
       overrides: Partial<InstanceState> = {},
     ): void {
+      const preservedCurrent = internals(manager).currentInstanceUrl;
       injectInstanceState(manager, url, { isInitialized: true, ...overrides });
       internals(manager).instanceAccessTimes.set(url, accessedAt);
+      internals(manager).currentInstanceUrl = preservedCurrent;
     }
 
     beforeEach(() => {
@@ -558,7 +566,7 @@ describe('ConnectionManager Unit', () => {
         const currentUrl = 'https://current-lru.gitlab.com';
         injectWithTime(currentUrl, now - 9999); // oldest → would be LRU
         injectWithTime('https://newer-lru.gitlab.com', now - 1000);
-        // Set currentInstanceUrl AFTER both injects (injectInstanceState overwrites it)
+        // Point currentInstanceUrl at the LRU entry to verify it is protected.
         internals(manager).currentInstanceUrl = currentUrl;
 
         internals(manager).evictLRUIfOverCapacity();

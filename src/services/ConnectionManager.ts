@@ -91,10 +91,16 @@ export class ConnectionManager {
    * Remove an instance entry from all internal tracking maps.
    * Does NOT update currentInstanceUrl — callers that evict protected entries
    * (evictExpired / evictLRUIfOverCapacity) skip currentInstanceUrl explicitly.
+   *
+   * Also clears the corresponding introspectionCache entries so schema payloads
+   * don't accumulate for evicted URLs (both the bare-URL key and the legacy
+   * /api/graphql-suffixed key used by older cache writers).
    */
   private dropInstance(url: string): void {
     this.instances.delete(url);
     this.instanceAccessTimes.delete(url);
+    ConnectionManager.introspectionCache.delete(url);
+    ConnectionManager.introspectionCache.delete(`${url}/api/graphql`);
   }
 
   /**
@@ -165,6 +171,9 @@ export class ConnectionManager {
     // Already initialized for this URL — nothing to do
     const existing = this.instances.get(url);
     if (existing?.isInitialized) {
+      // Update LRU timestamp: callers that re-request the same URL (e.g. HealthMonitor,
+      // per-request OAuth bootstrap) must keep the entry alive in the LRU window.
+      this.touchInstance(url);
       // Update currentInstanceUrl to the requested URL
       this.currentInstanceUrl = url;
       return;
@@ -427,6 +436,7 @@ export class ConnectionManager {
 
     // Already introspected for THIS instance - reuse cached data
     if (state.instanceInfo && state.schemaInfo && state.introspectedInstanceUrl === instanceUrl) {
+      this.touchInstance(instanceUrl); // Keep entry alive in LRU window on cache hit.
       return;
     }
 
@@ -611,7 +621,10 @@ export class ConnectionManager {
     // Fallback to per-URL state client
     if (targetUrl) {
       const state = this.instances.get(targetUrl);
-      if (state) return state.client;
+      if (state) {
+        this.touchInstance(targetUrl); // Keep entry alive in LRU window.
+        return state.client;
+      }
       // targetUrl resolved (explicit or from context) but not found anywhere —
       // fail fast rather than silently routing to a different instance's client.
       throw new Error(`Connection not initialized for ${targetUrl}. Call initialize() first.`);
@@ -667,6 +680,7 @@ export class ConnectionManager {
     const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) return false;
     const state = this.instances.get(url);
+    if (state) this.touchInstance(url); // Keep entry alive in LRU window.
     return state?.isInitialized ?? false;
   }
 
@@ -678,6 +692,7 @@ export class ConnectionManager {
     if (!url) return false;
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return false;
+    this.touchInstance(url); // Keep entry alive in LRU window.
     return state.instanceInfo.features[feature];
   }
 
@@ -686,6 +701,7 @@ export class ConnectionManager {
     if (!url) return 'unknown';
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return 'unknown';
+    this.touchInstance(url); // Keep entry alive in LRU window.
     return state.instanceInfo.tier;
   }
 
@@ -694,6 +710,7 @@ export class ConnectionManager {
     if (!url) return 'unknown';
     const state = this.instances.get(url);
     if (!state?.instanceInfo) return 'unknown';
+    this.touchInstance(url); // Keep entry alive in LRU window.
     return state.instanceInfo.version;
   }
 
@@ -701,6 +718,7 @@ export class ConnectionManager {
     const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) return false;
     const state = this.instances.get(url);
+    if (state) this.touchInstance(url); // Keep entry alive in LRU window.
     // Read from schemaInfo directly — schemaIntrospector's internal cache may
     // not be populated after a cache-hit restore (only schemaInfo is copied).
     return state?.schemaInfo?.workItemWidgetTypes.includes(widgetType) ?? false;
@@ -713,6 +731,7 @@ export class ConnectionManager {
     const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
     if (!url) return null;
     const state = this.instances.get(url);
+    if (state) this.touchInstance(url); // Keep entry alive in LRU window.
     return state?.tokenScopeInfo ?? null;
   }
 

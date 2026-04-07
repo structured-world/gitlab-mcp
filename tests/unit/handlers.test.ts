@@ -531,10 +531,10 @@ describe('handlers', () => {
       mockConnectionManager.initialize.mockResolvedValue(undefined);
     });
 
-    it('should return CONNECTION_FAILED when getClient throws after initialize succeeds', async () => {
-      // isConnected returns true so initialize() is skipped, but getClient() throws.
-      // bootstrapComplete is still false → must return structured CONNECTION_FAILED,
-      // not a generic "Bad Request: Server not initialized" string.
+    it('should return CONNECTION_FAILED on connected fast-path when getClient throws before bootstrap completes', async () => {
+      // isConnected() returns true, so initialize() is intentionally skipped here.
+      // getClient() then throws while bootstrapComplete is still false, which should
+      // produce a structured CONNECTION_FAILED response rather than a generic error string.
       mockConnectionManager.isConnected.mockReturnValue(true);
       mockConnectionManager.getClient.mockImplementationOnce(() => {
         throw new Error('Connection not initialized. Call initialize() first.');

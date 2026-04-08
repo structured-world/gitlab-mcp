@@ -274,7 +274,6 @@ async function tryManageContextFastPath(
 // Cognitive complexity is elevated but justified: bootstrapState mutations, error
 // classification, HealthMonitor reporting, and derived-state computation are tightly
 // coupled. Further extraction would add indirection without reducing conceptual complexity.
-// eslint-disable-next-line sonarjs/cognitive-complexity
 async function ensureBootstrapped(
   ctx: BootstrapContext,
 ): Promise<{ content: Array<{ type: string; text: string }>; isError: true } | undefined> {

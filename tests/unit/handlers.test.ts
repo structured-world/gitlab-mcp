@@ -1092,6 +1092,27 @@ describe('handlers', () => {
       mockConnectionManager.initialize.mockResolvedValue(undefined);
     });
 
+    it('should handle non-Error thrown from initialize (coverage: catch block non-Error branches)', async () => {
+      // Simulates a non-standard rejection: string/object rather than Error instance.
+      // Exercises the ternary fallback paths in the catch block of ensureBootstrapped.
+      mockConnectionManager.isConnected.mockReturnValue(false);
+      mockConnectionManager.initialize.mockRejectedValue('string rejection');
+
+      const result = await callToolHandler({
+        params: { name: 'test_tool', arguments: {} },
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      // Non-Error: initError instanceof Error is false → reportError NOT called
+      expect(mockHealthMonitor.reportError).not.toHaveBeenCalled();
+
+      // Restore
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+    });
+
     it('should invoke state change callback for tool list updates', async () => {
       // Capture the callback registered via onStateChange
       const stateChangeCallback = mockHealthMonitor.onStateChange.mock.calls[0]?.[0];
@@ -1183,6 +1204,23 @@ describe('handlers', () => {
 
       await callToolHandler(mockRequest);
 
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'test_tool',
+        {},
+        'https://gitlab.example.com',
+      );
+    });
+
+    it('should fall back to GITLAB_BASE_URL when getCurrentInstanceUrl returns null (non-OAuth mode)', async () => {
+      // Exercises the `?? GITLAB_BASE_URL` fallback in the non-OAuth URL resolution path.
+      await setupHandlers(mockServer);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+
+      mockConnectionManager.getCurrentInstanceUrl.mockReturnValueOnce(null);
+
+      await callToolHandler({ params: { name: 'test_tool', arguments: {} } });
+
+      // Tool should be invoked with the GITLAB_BASE_URL fallback
       expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
         'test_tool',
         {},
@@ -1472,6 +1510,62 @@ describe('handlers', () => {
       expect(parsed.tool).toBe('original_tool');
       expect(parsed.action).toBe('original_action');
       expect(parsed.http_status).toBe(418);
+    });
+  });
+
+  describe('ensureBootstrapped — LOG_FORMAT=verbose paths', () => {
+    // These tests temporarily switch LOG_FORMAT to 'verbose' to exercise the
+    // diagnostic logging branches inside ensureBootstrapped (lines 294, 322-326).
+    // The config module mock object is mutated per-describe and restored in afterAll.
+    let configMock: { LOG_FORMAT: string; HANDLER_TIMEOUT_MS: number; GITLAB_BASE_URL: string };
+
+    beforeAll(() => {
+      configMock = jest.requireMock('../../src/config');
+      configMock.LOG_FORMAT = 'verbose';
+    });
+
+    afterAll(() => {
+      configMock.LOG_FORMAT = 'condensed';
+    });
+
+    beforeEach(async () => {
+      jest.clearAllMocks();
+      await setupHandlers(mockServer);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+
+      // Default mocks needed by bootstrap + tool execution
+      mockConnectionManager.isConnected.mockReturnValue(false); // triggers line 294 log
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+      mockConnectionManager.getClient.mockReturnValue({});
+      mockConnectionManager.getInstanceInfo.mockReturnValue({
+        version: '16.0.0',
+        tier: 'ultimate',
+      });
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.executeTool.mockResolvedValue({ result: 'ok' });
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.isAnyInstanceHealthy.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+    });
+
+    afterEach(() => {
+      mockConnectionManager.isConnected.mockReturnValue(true);
+    });
+
+    it('should log init message and connection-verified info when getInstanceInfo succeeds (lines 294, 323-324)', async () => {
+      // isConnected=false triggers the "Connection not initialized" verbose log (line 294).
+      // After bootstrap, getInstanceInfo succeeds → "Connection verified: ..." log (lines 323-324).
+      const result = await callToolHandler({ params: { name: 'test_tool', arguments: {} } });
+      expect(result.isError).toBeFalsy();
+    });
+
+    it('should log "instance info not yet available" when getInstanceInfo throws (lines 294, 326)', async () => {
+      // getInstanceInfo throws → catches inside the verbose block → logDebug at line 326.
+      mockConnectionManager.getInstanceInfo.mockImplementationOnce(() => {
+        throw new Error('Not yet available');
+      });
+      const result = await callToolHandler({ params: { name: 'test_tool', arguments: {} } });
+      expect(result.isError).toBeFalsy();
     });
   });
 

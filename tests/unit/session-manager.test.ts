@@ -308,6 +308,26 @@ describe('SessionManager', () => {
       ).not.toThrow();
     });
 
+    it('should swallow notification errors when instanceUrl changes (fire-and-forget catch)', async () => {
+      manager.start();
+      const server = await manager.createSession('session-1', mockTransport as any);
+
+      // Make the notification call reject
+      (server.notification as jest.Mock).mockRejectedValueOnce(new Error('Transport closed'));
+
+      // Should not throw despite notification failure
+      expect(() =>
+        manager.setSessionInstanceUrl('session-1', 'https://other.gitlab.com'),
+      ).not.toThrow();
+
+      // Allow the fire-and-forget promise (and its catch) to settle
+      await Promise.resolve();
+      await Promise.resolve();
+
+      // URL was still updated despite notification failure
+      expect(manager.getSessionInstanceUrl('session-1')).toBe('https://other.gitlab.com');
+    });
+
     it('should return per-instance session counts from getSessionsByInstance', async () => {
       manager.start();
       await manager.createSession('session-1', mockTransport as any, 'https://a.gitlab.com');

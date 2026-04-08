@@ -179,11 +179,16 @@ export class SessionManager {
    *   re-fetches in sessions targeting unrelated instances.
    */
   async broadcastToolsListChanged(instanceUrl?: string): Promise<void> {
+    // Normalize before comparing — session.instanceUrl is always stored normalized,
+    // so the filter must also be normalized to ensure consistent matching.
+    const normalizedFilter =
+      instanceUrl !== undefined ? normalizeInstanceUrl(instanceUrl) : undefined;
+
     const promises: Promise<void>[] = [];
 
     for (const [sessionId, session] of this.sessions) {
       // Skip sessions targeting a different instance when a filter is active
-      if (instanceUrl !== undefined && session.instanceUrl !== instanceUrl) {
+      if (normalizedFilter !== undefined && session.instanceUrl !== normalizedFilter) {
         continue;
       }
       promises.push(
@@ -203,7 +208,7 @@ export class SessionManager {
     logInfo('Broadcast tools/list_changed', {
       sessionCount: this.sessions.size,
       notifiedCount: promises.length,
-      instanceUrl: instanceUrl ?? 'all',
+      instanceUrl: normalizedFilter ?? 'all',
     });
   }
 

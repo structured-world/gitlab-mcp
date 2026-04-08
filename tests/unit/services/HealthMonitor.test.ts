@@ -837,29 +837,29 @@ describe('HealthMonitor', () => {
     });
   });
 
+  /**
+   * Init monitor in healthy state (beforeEach already provides 200 fetch + v17 instance info).
+   * Used by token revocation tests that need to start from a known-healthy baseline.
+   */
+  async function initHealthy(): Promise<ReturnType<typeof HealthMonitor.getInstance>> {
+    const monitor = await initMonitor();
+    expect(monitor.getState(TEST_URL)).toBe('healthy');
+    return monitor;
+  }
+
+  /** Return the given status for /api/v4/user; 200 for all other URLs. */
+  function stubUserEndpointStatus(status: number): void {
+    mockFetch.mockImplementation((url: string) => {
+      if (url.includes('/api/v4/user')) return Promise.resolve({ status, ok: false });
+      return Promise.resolve({ status: 200, ok: true });
+    });
+  }
+
   describe('token revocation detection', () => {
     // Buffer accounts for HEALTH_CHECK_INTERVAL_MS (300ms test config) + processing
     const HEALTH_CYCLE_MS = 600;
 
-    /**
-     * Init monitor in healthy state (beforeEach already provides 200 fetch + v17 instance info).
-     * Used by tests that need to start from a known-healthy baseline.
-     */
-    async function initHealthy(): Promise<ReturnType<typeof HealthMonitor.getInstance>> {
-      const monitor = await initMonitor();
-      expect(monitor.getState(TEST_URL)).toBe('healthy');
-      return monitor;
-    }
-
-    /** Return the given status for /api/v4/user; 200 for all other URLs. */
-    function stubUserEndpointStatus(status: number): void {
-      mockFetch.mockImplementation((url: string) => {
-        if (url.includes('/api/v4/user')) return Promise.resolve({ status, ok: false });
-        return Promise.resolve({ status: 200, ok: true });
-      });
-    }
-
-    // Backward-compat alias used by several tests below
+    // Alias used by several tests below
     const stubUserEndpoint401 = (): void => stubUserEndpointStatus(401);
 
     it.each([401, 403])(

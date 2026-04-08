@@ -178,6 +178,14 @@ export function resetHandlersState(): void {
   stateChangeRegistered = false;
 }
 
+/**
+ * Register all MCP request handlers on a Server instance.
+ *
+ * Called once per session by SessionManager. Handlers are idempotent across
+ * sessions — the same logic is registered on each per-session Server instance.
+ * One-shot initialisation guards (HealthMonitor startup, state-change callback)
+ * are protected by module-level flags so they run exactly once across all sessions.
+ */
 export async function setupHandlers(server: Server): Promise<void> {
   // Check if authentication is configured before trying to initialize connection
   const { isAuthenticationConfigured } = await import('./oauth/index');

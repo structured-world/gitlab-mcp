@@ -114,6 +114,16 @@ jest.mock('../../src/logging/index', () => ({
   getCurrentRequestId: jest.fn(() => mockGetCurrentRequestId()),
 }));
 
+// Mock ContextManager — returns default context (no scope.path by default).
+// Tests that need scope.path coverage override mockContextManager.getContext directly.
+const mockContextManager = {
+  getContext: jest.fn().mockReturnValue({ readOnly: false }),
+};
+
+jest.mock('../../src/entities/context/context-manager', () => ({
+  getContextManager: jest.fn(() => mockContextManager),
+}));
+
 // Mock SessionManager — needed by the ListToolsRequestSchema and CallToolRequestSchema handlers
 // for per-session instance URL tracking (#398).
 const mockSessionManager = {
@@ -202,6 +212,9 @@ describe('handlers', () => {
     // SessionManager mock defaults for per-session instance URL tracking (#398)
     mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://gitlab.example.com');
     mockSessionManager.setSessionInstanceUrl.mockReturnValue(undefined);
+
+    // ContextManager default: no scope path (most tests don't need it)
+    mockContextManager.getContext.mockReturnValue({ readOnly: false });
   });
 
   describe('setupHandlers', () => {
@@ -2026,6 +2039,26 @@ describe('handlers', () => {
       expect(mockRequestTracker.getStack).toHaveBeenCalledWith('req-789');
       // recordError should NOT have been called (no sessionId)
       expect(mockConnectionTracker.recordError).not.toHaveBeenCalled();
+    });
+
+    it('should set context path when sessionContext.scope.path is present (line 713)', async () => {
+      // Line 713: requestTracker.setContextForCurrentRequest is called only when
+      // contextManager.getContext() returns a context with scope.path set.
+      mockContextManager.getContext.mockReturnValue({
+        scope: { path: 'groups/my-group' },
+        readOnly: false,
+      });
+
+      await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      expect(mockRequestTracker.setContextForCurrentRequest).toHaveBeenCalledWith(
+        'groups/my-group',
+      );
     });
   });
 

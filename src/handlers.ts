@@ -172,6 +172,18 @@ interface BootstrapState {
   complete: boolean;
 }
 
+/** Dependencies and per-call values passed to ensureBootstrapped. */
+interface BootstrapContext {
+  toolName: string;
+  toolArguments: Record<string, unknown> | undefined;
+  effectiveInstanceUrl: string;
+  oauthMode: boolean;
+  connectionManager: ConnectionManager;
+  healthMonitor: HealthMonitor;
+  isTimedOut: () => boolean;
+  bootstrapState: BootstrapState;
+}
+
 /**
  * Return a CONNECTION_FAILED response if the target instance is unreachable for
  * non-context tools, or null to proceed normally.
@@ -256,15 +268,18 @@ async function tryManageContextFastPath(
  * can surface it as a generic tool error rather than a false CONNECTION_FAILED.
  */
 async function ensureBootstrapped(
-  toolName: string,
-  toolArguments: Record<string, unknown> | undefined,
-  effectiveInstanceUrl: string,
-  oauthMode: boolean,
-  connectionManager: ConnectionManager,
-  healthMonitor: HealthMonitor,
-  isTimedOut: () => boolean,
-  bootstrapState: BootstrapState,
+  ctx: BootstrapContext,
 ): Promise<{ content: Array<{ type: string; text: string }>; isError: true } | undefined> {
+  const {
+    toolName,
+    toolArguments,
+    effectiveInstanceUrl,
+    oauthMode,
+    connectionManager,
+    healthMonitor,
+    isTimedOut,
+    bootstrapState,
+  } = ctx;
   bootstrapState.started = true;
   try {
     if (!connectionManager.isConnected(effectiveInstanceUrl)) {
@@ -684,16 +699,16 @@ export async function setupHandlers(server: Server): Promise<void> {
 
       // Initialize connection, verify client, and rebuild the per-URL tool cache
       const oauthMode = isOAuthEnabled();
-      const bootstrapFailure = await ensureBootstrapped(
+      const bootstrapFailure = await ensureBootstrapped({
         toolName,
         toolArguments,
         effectiveInstanceUrl,
         oauthMode,
         connectionManager,
         healthMonitor,
-        () => timedOut,
+        isTimedOut: () => timedOut,
         bootstrapState,
-      );
+      });
       if (bootstrapFailure) return bootstrapFailure;
 
       // Dynamic tool dispatch using the new registry manager

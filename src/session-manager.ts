@@ -129,6 +129,16 @@ export class SessionManager {
     if (session && session.instanceUrl !== normalizedUrl) {
       session.instanceUrl = normalizedUrl;
       logDebug('Session instance URL updated', { sessionId, instanceUrl: normalizedUrl });
+      // Notify the session so the client re-fetches the tool list for the new instance.
+      void session.server
+        .notification({ method: 'notifications/tools/list_changed' })
+        .catch((error: unknown) => {
+          logDebug('Failed to notify session of tool list change after instance URL update', {
+            sessionId,
+            instanceUrl: normalizedUrl,
+            err: error,
+          });
+        });
     }
   }
 

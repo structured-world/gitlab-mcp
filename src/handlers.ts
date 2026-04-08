@@ -267,10 +267,9 @@ async function tryManageContextFastPath(
  * Initialize the connection, verify the client, and rebuild the per-URL tool cache.
  *
  * Mutates bootstrapState to track progress for the handler-level timeout path.
- * Returns a CONNECTION_FAILED response if bootstrap fails before the connection is
- * established, or undefined on success. When initialization succeeds but a later
- * step fails (getClient / ensureIntrospected), the error is rethrown so the caller
- * can surface it as a generic tool error rather than a false CONNECTION_FAILED.
+ * Returns a CONNECTION_FAILED response when bootstrap fails (connection, client, or
+ * introspection step), or undefined on success. All errors are handled internally
+ * and surfaced as a CONNECTION_FAILED payload — none are rethrown to the caller.
  */
 async function ensureBootstrapped(
   ctx: BootstrapContext,
@@ -496,11 +495,12 @@ export async function setupHandlers(server: Server): Promise<void> {
     const { getSessionManager: getSessionMgr } = await import('./session-manager');
     const sessionMgr = getSessionMgr();
     const listToolsSessionId = extra?.sessionId;
-    // Always pass the tracked URL (or undefined) so getAllToolDefinitions can resolve via
-    // its built-in chain: OAuth request context → current instance URL → GITLAB_BASE_URL.
-    // Passing GITLAB_BASE_URL explicitly (either for unknown sessions or absent sessionId)
-    // would short-circuit this chain and return the wrong tool list for OAuth requests
-    // that have a real context URL or after an instance switch (#398).
+    // SessionManager always initialises instanceUrl on createSession(), so undefined here
+    // means the sessionId is unknown/expired (or absent). Pass it through so
+    // getAllToolDefinitions can resolve via its built-in chain: OAuth request context →
+    // current instance URL → GITLAB_BASE_URL. Substituting GITLAB_BASE_URL explicitly
+    // would short-circuit that chain and return the wrong tool list for OAuth requests
+    // with a real context URL or after an instance switch (#398).
     const sessionInstanceUrl =
       listToolsSessionId !== undefined
         ? sessionMgr.getSessionInstanceUrl(listToolsSessionId)

@@ -267,6 +267,34 @@ describe('SessionManager', () => {
       expect(manager.getSessionInstanceUrl('session-1')).toBe('https://other.gitlab.com');
     });
 
+    it('should send tools/list_changed notification when instanceUrl changes', async () => {
+      mockServer.notification.mockClear();
+      manager.start();
+      await manager.createSession('session-1', mockTransport as any);
+
+      // URL changes → notification must be sent
+      manager.setSessionInstanceUrl('session-1', 'https://other.gitlab.com');
+
+      // Allow the fire-and-forget promise to settle
+      await Promise.resolve();
+
+      expect(mockServer.notification).toHaveBeenCalledWith({
+        method: 'notifications/tools/list_changed',
+      });
+    });
+
+    it('should NOT send tools/list_changed notification when instanceUrl is unchanged', async () => {
+      manager.start();
+      await manager.createSession('session-1', mockTransport as any, 'https://a.gitlab.com');
+      mockServer.notification.mockClear();
+
+      // Same URL again → no notification
+      manager.setSessionInstanceUrl('session-1', 'https://a.gitlab.com');
+      await Promise.resolve();
+
+      expect(mockServer.notification).not.toHaveBeenCalled();
+    });
+
     it('should no-op setSessionInstanceUrl for non-existent session', () => {
       // Should not throw
       expect(() =>

@@ -421,10 +421,10 @@ describe('handlers', () => {
         expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined);
       });
 
-      it('should pass undefined to getAllToolDefinitions when session has no tracked URL (registry resolves via OAuth context chain)', async () => {
-        // Session exists but instanceUrl not yet set — pass undefined so registry can
-        // resolve via OAuth context URL → current URL → GITLAB_BASE_URL chain instead
-        // of short-circuiting with a stale GITLAB_BASE_URL fallback (#398).
+      it('should pass undefined to getAllToolDefinitions for unknown/expired sessionId (registry resolves via OAuth context chain)', async () => {
+        // SessionManager always sets instanceUrl on createSession(); undefined from
+        // getSessionInstanceUrl means the sessionId is unknown or expired. Pass it
+        // through so the registry's resolution chain is not short-circuited (#398).
         mockSessionManager.getSessionInstanceUrl.mockReturnValue(undefined);
 
         await listToolsHandler({ method: 'tools/list' }, { sessionId: 'new-sess' });

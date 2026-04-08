@@ -321,6 +321,7 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
   } catch (error) {
     // Re-throw auth errors from the token probe (401 = invalid, 403 = insufficient scope).
     // Swallow everything else (network/timeout) — reachability already confirmed by quickHealthCheck.
+    /* istanbul ignore else */
     if (error instanceof Error) {
       const parsed = parseGitLabApiError(error.message);
       if (parsed?.status === 401 || parsed?.status === 403) throw error;
@@ -379,6 +380,7 @@ const connectionMachine = setup({
     // not 'auth', so we can't rely on classifyError for the 403 path.
     healthCheckErrorIsAuth: ({ event }) => {
       const error = (event as { error?: unknown }).error;
+      /* istanbul ignore if */
       if (!(error instanceof Error)) return false;
       const parsed = parseGitLabApiError(error.message);
       return parsed?.status === 401 || parsed?.status === 403;

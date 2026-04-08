@@ -467,6 +467,28 @@ describe('handlers', () => {
       expect(mockSessionManager.setSessionInstanceUrl).not.toHaveBeenCalled();
     });
 
+    it('should persist the OAuth context URL when sessionId is present (#398)', async () => {
+      // Verifies OAuth path: when isOAuthEnabled=true and getGitLabApiUrlFromContext returns
+      // an instance URL, setSessionInstanceUrl is called with the OAuth URL (not GITLAB_BASE_URL).
+      // Regression guard: a fallback to GITLAB_BASE_URL in OAuth mode would silently break
+      // multi-tenant tool catalog filtering.
+      const oauth = await import('../../src/oauth/index');
+      const oauthUrl = 'https://oauth-instance.example.com';
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(oauthUrl);
+
+      await callToolHandler(
+        { params: { name: 'get_project', arguments: { id: 'proj-1' } } },
+        { sessionId: 'sess-oauth' },
+      );
+
+      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith('sess-oauth', oauthUrl);
+
+      // Restore defaults so subsequent tests are unaffected
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+    });
+
     it('should execute tool and return result', async () => {
       const mockRequest = {
         params: {
@@ -952,6 +974,38 @@ describe('handlers', () => {
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
       mockHealthMonitor.getState.mockReturnValue('healthy');
       mockRegistryManager.hasToolHandler.mockReturnValue(true);
+    });
+
+    it('should fall through to bootstrap when executeTool returns undefined (TOCTOU cache miss)', async () => {
+      // Regression guard for TOCTOU gap: hasToolHandler returns true but a concurrent
+      // refreshCache swaps the cache before executeTool runs → executeTool returns undefined.
+      // The fast-path must return null (fall through to bootstrap) instead of wrapping
+      // undefined as a successful {text: "undefined"} response.
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
+      mockConnectionManager.isConnected.mockReturnValue(false);
+      mockConnectionManager.initialize.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      // hasToolHandler true but executeTool returns undefined (TOCTOU: cache was replaced)
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.executeTool.mockResolvedValueOnce(undefined);
+
+      const result = await callToolHandler({
+        params: {
+          name: 'manage_context',
+          arguments: { action: 'whoami' },
+        },
+      });
+
+      // Must fall through to bootstrap → CONNECTION_FAILED (not a {text: "undefined"} response)
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
+
+      // Restore
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
     });
 
     it('should log warning and continue when refreshCache throws after bootstrap (cache isolated try/catch)', async () => {

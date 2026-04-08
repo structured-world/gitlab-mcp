@@ -253,6 +253,11 @@ async function tryManageContextFastPath(
   // bootstrap path below. A full atomic getTool() refactor is tracked separately.
   if (registryManager.hasToolHandler(toolName, effectiveInstanceUrl)) {
     const result = await registryManager.executeTool(toolName, toolArguments, effectiveInstanceUrl);
+    // If executeTool returns undefined (TOCTOU: cache was refreshed between hasToolHandler and
+    // executeTool), fall through to the bootstrap path instead of returning {text: "undefined"}.
+    if (result === undefined) {
+      return null;
+    }
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
   return null; // tool not yet cached — fall through to bootstrap

@@ -946,10 +946,16 @@ describe('HealthMonitor', () => {
       await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
       expect(monitor.getState(TEST_URL)).toBe('failed');
 
-      // Token still invalid — forceReconnect must NOT recover to healthy
+      // Exercise the fast-path: isConnected() = true skips full re-initialization
+      // and goes directly to quickHealthCheck + authenticatedTokenCheck.
+      // The 401 from the token probe must route to failed (not healthy) immediately.
+      const initCallsBefore = mockInitialize.mock.calls.length;
+      mockIsConnected.mockReturnValue(true);
       monitor.forceReconnect(TEST_URL);
       await new Promise((r) => setTimeout(r, 400));
       expect(monitor.getState(TEST_URL)).toBe('failed');
+      // Confirm fast-path was taken: initialize() must not have been called again
+      expect(mockInitialize.mock.calls.length).toBe(initCallsBefore);
     });
   });
 

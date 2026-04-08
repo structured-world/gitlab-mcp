@@ -312,7 +312,11 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
       signal: controller.signal,
       retry: false,
       rateLimit: false,
-      // skipAuth defaults to false — PRIVATE-TOKEN header injected automatically
+      // skipAuth suppresses auto-injected credentials (session cookies, getAuthHeaders()).
+      // The explicit PRIVATE-TOKEN header ensures we validate ONLY the static token —
+      // a valid session cookie must not mask a revoked token and keep the probe alive.
+      skipAuth: true,
+      headers: { 'PRIVATE-TOKEN': GITLAB_TOKEN },
     });
 
     if (response.status === 401 || response.status === 403) {

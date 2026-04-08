@@ -923,9 +923,9 @@ describe('HealthMonitor', () => {
       expect(monitor.getState(TEST_URL)).toBe('healthy');
     });
 
-    it('should recover after token replacement via forceReconnect', async () => {
-      // After detecting token revocation (→ failed), the user can replace the token
-      // and manually reconnect via forceReconnect — must recover to healthy.
+    it('should recover after forceReconnect when authenticated checks succeed again', async () => {
+      // After detecting token revocation (→ failed), a manual forceReconnect should
+      // recover to healthy once the authenticated check starts succeeding again.
       const monitor = await initHealthy();
       stubUserEndpoint401();
       await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));

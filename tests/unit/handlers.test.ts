@@ -119,6 +119,7 @@ jest.mock('../../src/logging/index', () => ({
 const mockSessionManager = {
   getSessionInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
   setSessionInstanceUrl: jest.fn(),
+  broadcastToolsListChanged: jest.fn().mockResolvedValue(undefined),
 };
 
 jest.mock('../../src/session-manager', () => ({
@@ -909,6 +910,59 @@ describe('handlers', () => {
       mockHealthMonitor.getState.mockReturnValue('healthy');
     });
 
+    it('should fall through to bootstrap when manage_context handler not yet cached (tryManageContextFastPath null path)', async () => {
+      // Line 246: tryManageContextFastPath returns null when hasToolHandler=false for manage_context.
+      // This happens when the instance is unreachable but the registry cache is not yet populated.
+      // The handler falls through to ensureBootstrapped, which returns CONNECTION_FAILED.
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockHealthMonitor.getState.mockReturnValue('disconnected');
+      mockConnectionManager.isConnected.mockReturnValue(false);
+      mockConnectionManager.initialize.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+      // hasToolHandler returns false — registry not yet cached for this URL
+      mockRegistryManager.hasToolHandler.mockReturnValue(false);
+
+      const result = await callToolHandler({
+        params: {
+          name: 'manage_context',
+          arguments: { action: 'whoami' },
+        },
+      });
+
+      // Falls through to bootstrap → bootstrap fails → CONNECTION_FAILED
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
+
+      // Restore
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+    });
+
+    it('should rethrow when refreshCache throws after bootstrapState.complete=true (line 357)', async () => {
+      // Line 357: when bootstrapState.complete is already true but refreshCache throws,
+      // ensureBootstrapped rethrows the error (not CONNECTION_FAILED). The outer handler
+      // catches it and returns a generic error response.
+      mockRegistryManager.refreshCache.mockImplementationOnce(() => {
+        throw new Error('Cache rebuild failed');
+      });
+
+      const result = await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      // Rethrown error becomes a generic tool error (not CONNECTION_FAILED)
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.error_code).toBeUndefined();
+      expect(parsed.error).toContain('Cache rebuild failed');
+    });
+
     it('should route reachable manage_context through normal bootstrap and report health', async () => {
       // When instance IS reachable, manage_context goes through full bootstrap
       // (unlike the disconnected fast-path above)
@@ -968,6 +1022,29 @@ describe('handlers', () => {
 
       // refreshCache should have been called exactly once with the instance URL
       expect(mockRegistryManager.refreshCache).toHaveBeenCalledTimes(1);
+      expect(mockRegistryManager.refreshCache).toHaveBeenCalledWith('https://gitlab.example.com');
+    });
+
+    it('should log warning when broadcastToolsListChanged rejects in state change callback (line 424)', async () => {
+      // Line 424: .catch() on broadcastToolsListChangedForStateChange when broadcast fails.
+      // The catch handler logs a warning but does not rethrow (fire-and-forget pattern).
+      const stateChangeCallback = mockHealthMonitor.onStateChange.mock.calls[0]?.[0];
+      expect(stateChangeCallback).toBeDefined();
+
+      mockSessionManager.broadcastToolsListChanged.mockRejectedValueOnce(
+        new Error('Broadcast failed'),
+      );
+      mockRegistryManager.refreshCache.mockClear();
+
+      if (stateChangeCallback) {
+        stateChangeCallback('https://gitlab.example.com', 'disconnected', 'healthy');
+        // Flush microtasks through the fire-and-forget catch path
+        await new Promise((resolve) => process.nextTick(resolve));
+        await new Promise((resolve) => process.nextTick(resolve));
+        await new Promise((resolve) => process.nextTick(resolve));
+      }
+
+      // Despite broadcast failure, refreshCache should still have been called
       expect(mockRegistryManager.refreshCache).toHaveBeenCalledWith('https://gitlab.example.com');
     });
 
@@ -1666,6 +1743,22 @@ describe('handlers', () => {
   });
 
   describe('setupHandlers - health monitor startup failure', () => {
+    it('should log warning and continue when refreshCache throws during initial setup (line 448)', async () => {
+      // Cover line 448: logWarn in catch block when initial refreshCache() call throws.
+      // setupHandlers must still succeed (handlers registered) despite cache failure.
+      resetHandlersState();
+      mockRegistryManager.refreshCache.mockImplementationOnce(() => {
+        throw new Error('Registry cache init failed');
+      });
+
+      await expect(setupHandlers(mockServer)).resolves.not.toThrow();
+      // Both handlers should still be registered despite cache failure
+      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
+
+      // Restore
+      mockRegistryManager.refreshCache.mockReturnValue(undefined);
+    });
+
     it('should reset healthMonitorStartup promise on health monitor init failure', async () => {
       // Cover lines 222-223: healthMonitorStartup = null; throw error
       mockHealthMonitor.initialize.mockRejectedValueOnce(new Error('Health monitor init failed'));

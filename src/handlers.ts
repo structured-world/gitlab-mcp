@@ -380,7 +380,7 @@ export async function setupHandlers(server: Server): Promise<void> {
   server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     // Capture instance URL early — used for both handlerWork and timeout reporting.
     // Must be resolved before Promise.race so timeout branch doesn't re-derive a
-    // potentially different URL after a concurrent switch_instance.
+    // potentially different URL after a concurrent instance change.
     const { getGitLabApiUrlFromContext: getUrlFromCtx, isOAuthEnabled } =
       await import('./oauth/index');
     // In OAuth mode, use the per-request context URL to avoid bleeding the
@@ -391,7 +391,7 @@ export async function setupHandlers(server: Server): Promise<void> {
     // error) would block health monitoring and tool-list initialization. The
     // fallback is safe because GITLAB_BASE_URL is always configured.
     // In static-token mode, prefer the actively selected instance URL so
-    // switch_instance requests continue routing to the current instance.
+    // requests continue routing to the current instance.
     const rawInstanceUrl = isOAuthEnabled()
       ? (getUrlFromCtx() ?? GITLAB_BASE_URL)
       : (ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL);
@@ -401,7 +401,7 @@ export async function setupHandlers(server: Server): Promise<void> {
     // Keep per-session instance URL in sync so ListTools requests reflect the correct
     // instance. In OAuth mode this resolves the actual instance from the token context
     // (replacing the GITLAB_BASE_URL default set at session creation). In static-token
-    // mode this is the pre-dispatch URL; switch_instance is corrected post-dispatch below.
+    // mode this is the actively selected instance URL at the time of the call.
     const callSessionId = extra?.sessionId;
     if (callSessionId) {
       const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
@@ -457,8 +457,7 @@ export async function setupHandlers(server: Server): Promise<void> {
       }
 
       // Use the instance URL captured before Promise.race (requestInstanceUrl)
-      // to ensure the entire dispatch path uses the same URL, even if a concurrent
-      // switch_instance changes getCurrentInstanceUrl mid-request.
+      // to ensure the entire dispatch path uses the same URL.
       const effectiveInstanceUrl = requestInstanceUrl;
       const connectionManager = ConnectionManager.getInstance();
 
@@ -717,26 +716,6 @@ export async function setupHandlers(server: Server): Promise<void> {
           request.params.arguments,
           effectiveInstanceUrl,
         );
-
-        // For switch_instance in static-token mode: requestInstanceUrl was captured
-        // before the tool ran and holds the old instance URL. Re-read
-        // getCurrentInstanceUrl() post-dispatch so the session immediately reflects
-        // the new instance, ensuring a tools/list_changed notification triggers
-        // ListTools with the correct catalog for the switched instance.
-        if (
-          !oauthMode &&
-          callSessionId &&
-          toolName === 'manage_context' &&
-          action === 'switch_instance'
-        ) {
-          const { getSessionManager: getPostSwitchSessionMgr } = await import('./session-manager');
-          getPostSwitchSessionMgr().setSessionInstanceUrl(
-            callSessionId,
-            normalizeInstanceUrl(
-              ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL,
-            ),
-          );
-        }
 
         // Report success — skip if handler already timed out (late completion
         // must not overwrite the timeout error already sent to HealthMonitor)

@@ -59,8 +59,8 @@ export class SessionManager {
    * Handlers are registered identically on each instance.
    *
    * @param instanceUrl - GitLab instance URL for this session. Defaults to GITLAB_BASE_URL.
-   *   In OAuth mode, this is updated on the first tool call when the token context resolves
-   *   the actual instance URL. In static-token mode, updated when switch_instance is called.
+   *   Updated on each tool call: in OAuth mode when the token context resolves the actual
+   *   instance URL; in static-token mode when ConnectionManager reflects an instance change.
    */
   async createSession(
     sessionId: string,
@@ -120,8 +120,8 @@ export class SessionManager {
   /**
    * Update the GitLab instance URL for an active session.
    * Called by the tool handler when the effective instance URL is resolved:
-   * - OAuth mode: updated on the first tool call when the token context provides the URL
-   * - Static-token mode: updated when switch_instance changes the active instance
+   * - OAuth mode: updated on each tool call when the token context provides the URL
+   * - Static-token mode: updated on each tool call from ConnectionManager's active instance
    */
   setSessionInstanceUrl(sessionId: string, url: string): void {
     const normalizedUrl = normalizeInstanceUrl(url);

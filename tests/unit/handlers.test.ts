@@ -945,68 +945,42 @@ describe('handlers', () => {
       mockHealthMonitor.getState.mockReturnValue('healthy');
     });
 
-    it('should fall through to bootstrap when manage_context handler not yet cached (tryManageContextFastPath null path)', async () => {
-      // Line 246: tryManageContextFastPath returns null when hasToolHandler=false for manage_context.
-      // This happens when the instance is unreachable but the registry cache is not yet populated.
-      // The handler falls through to ensureBootstrapped, which returns CONNECTION_FAILED.
-      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
-      mockHealthMonitor.getState.mockReturnValue('disconnected');
-      mockConnectionManager.isConnected.mockReturnValue(false);
-      mockConnectionManager.initialize.mockRejectedValueOnce(new Error('ECONNREFUSED'));
-      // hasToolHandler returns false — registry not yet cached for this URL
-      mockRegistryManager.hasToolHandler.mockReturnValue(false);
+    it.each([
+      {
+        label: 'handler not yet cached (hasToolHandler=false)',
+        hasToolHandler: false,
+        // executeTool not called — no undefined to guard against here
+        stubExecuteUndefined: false,
+      },
+      {
+        label: 'TOCTOU: executeTool returns undefined after hasToolHandler=true',
+        hasToolHandler: true,
+        // Regression guard: fast-path must return null, not {text:"undefined"}
+        stubExecuteUndefined: true,
+      },
+    ])(
+      'should fall through to bootstrap when tryManageContextFastPath returns null — $label',
+      async ({ hasToolHandler, stubExecuteUndefined }) => {
+        // Instance unreachable → tryManageContextFastPath is entered for manage_context
+        mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+        mockHealthMonitor.getState.mockReturnValue('disconnected');
+        mockConnectionManager.isConnected.mockReturnValue(false);
+        mockConnectionManager.initialize.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+        mockRegistryManager.hasToolHandler.mockReturnValue(hasToolHandler);
+        if (stubExecuteUndefined) {
+          mockRegistryManager.executeTool.mockResolvedValueOnce(undefined);
+        }
 
-      const result = await callToolHandler({
-        params: {
-          name: 'manage_context',
-          arguments: { action: 'whoami' },
-        },
-      });
+        const result = await callToolHandler({
+          params: { name: 'manage_context', arguments: { action: 'whoami' } },
+        });
 
-      // Falls through to bootstrap → bootstrap fails → CONNECTION_FAILED
-      expect(result.isError).toBe(true);
-      const parsed = JSON.parse(result.content![0].text);
-      expect(parsed.error_code).toBe('CONNECTION_FAILED');
-
-      // Restore
-      mockConnectionManager.isConnected.mockReturnValue(true);
-      mockConnectionManager.initialize.mockResolvedValue(undefined);
-      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
-      mockHealthMonitor.getState.mockReturnValue('healthy');
-      mockRegistryManager.hasToolHandler.mockReturnValue(true);
-    });
-
-    it('should fall through to bootstrap when executeTool returns undefined (TOCTOU cache miss)', async () => {
-      // Regression guard for TOCTOU gap: hasToolHandler returns true but a concurrent
-      // refreshCache swaps the cache before executeTool runs → executeTool returns undefined.
-      // The fast-path must return null (fall through to bootstrap) instead of wrapping
-      // undefined as a successful {text: "undefined"} response.
-      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
-      mockHealthMonitor.getState.mockReturnValue('disconnected');
-      mockConnectionManager.isConnected.mockReturnValue(false);
-      mockConnectionManager.initialize.mockRejectedValueOnce(new Error('ECONNREFUSED'));
-      // hasToolHandler true but executeTool returns undefined (TOCTOU: cache was replaced)
-      mockRegistryManager.hasToolHandler.mockReturnValue(true);
-      mockRegistryManager.executeTool.mockResolvedValueOnce(undefined);
-
-      const result = await callToolHandler({
-        params: {
-          name: 'manage_context',
-          arguments: { action: 'whoami' },
-        },
-      });
-
-      // Must fall through to bootstrap → CONNECTION_FAILED (not a {text: "undefined"} response)
-      expect(result.isError).toBe(true);
-      const parsed = JSON.parse(result.content![0].text);
-      expect(parsed.error_code).toBe('CONNECTION_FAILED');
-
-      // Restore
-      mockConnectionManager.isConnected.mockReturnValue(true);
-      mockConnectionManager.initialize.mockResolvedValue(undefined);
-      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
-      mockHealthMonitor.getState.mockReturnValue('healthy');
-    });
+        // Fast-path returns null → falls through to ensureBootstrapped → CONNECTION_FAILED
+        expect(result.isError).toBe(true);
+        const parsed = JSON.parse(result.content![0].text);
+        expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      },
+    );
 
     it('should log warning and continue when refreshCache throws after bootstrap (cache isolated try/catch)', async () => {
       // refreshCache is wrapped in its own try/catch — a failure must NOT abort the tool call.

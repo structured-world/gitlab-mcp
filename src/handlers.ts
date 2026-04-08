@@ -285,9 +285,16 @@ async function ensureBootstrapped(
     // so tier/version/widget availability are all populated.
     // Cache is keyed by normalized URL — concurrent multi-instance requests
     // each get their own cache entry and cannot interfere (#379).
-    {
+    // Isolated try/catch: cache rebuild is best-effort; a failure must NOT abort
+    // the tool call — the connection is already established at this point.
+    try {
       const { RegistryManager } = await import('./registry-manager');
       RegistryManager.getInstance().refreshCache(effectiveInstanceUrl);
+    } catch (cacheError) {
+      logWarn('Failed to refresh registry cache after bootstrap', {
+        instanceUrl: effectiveInstanceUrl,
+        err: cacheError as Error,
+      });
     }
     if (LOG_FORMAT === 'verbose') {
       try {
@@ -301,60 +308,53 @@ async function ensureBootstrapped(
     }
     return undefined;
   } catch (initError) {
-    // Use bootstrapComplete (not isConnected) — isConnected flips after
-    // initialize() but getClient/ensureIntrospected can still fail before
-    // bootstrapComplete is set, and those failures should return CONNECTION_FAILED.
-    if (!bootstrapState.complete) {
-      const errorCategory = initError instanceof Error ? classifyError(initError) : 'permanent';
-      // Report bootstrap failure to HealthMonitor. When the handler has already
-      // timed out, we still forward auth/permanent errors so the instance
-      // converges to `failed` instead of staying in `reconnecting` indefinitely.
-      if (initError instanceof Error) {
-        if (!isTimedOut() || errorCategory === 'auth' || errorCategory === 'permanent') {
-          healthMonitor.reportError(effectiveInstanceUrl, initError);
-        }
+    // bootstrapState.complete is always false here: refreshCache is isolated above,
+    // so the only way to reach this catch is initialize()/getClient()/ensureIntrospected()
+    // failing before bootstrapState.complete was set.
+    const errorCategory = initError instanceof Error ? classifyError(initError) : 'permanent';
+    // Report bootstrap failure to HealthMonitor. When the handler has already
+    // timed out, we still forward auth/permanent errors so the instance
+    // converges to `failed` instead of staying in `reconnecting` indefinitely.
+    if (initError instanceof Error) {
+      if (!isTimedOut() || errorCategory === 'auth' || errorCategory === 'permanent') {
+        healthMonitor.reportError(effectiveInstanceUrl, initError);
       }
-      logError(
-        `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`,
-        { instanceUrl: effectiveInstanceUrl },
-      );
-      const action =
-        toolArguments && typeof toolArguments.action === 'string'
-          ? toolArguments.action
-          : 'unknown';
-      // Use error classification together with HealthMonitor state to determine
-      // the derived connection state. For untracked URLs, getState() falls back
-      // to 'disconnected', so we must not rely on that alone — otherwise
-      // permanent/auth failures would incorrectly appear retriable.
-      const monitorState = healthMonitor.getState(effectiveInstanceUrl);
-      // Prefer explicit monitor states when available; otherwise derive from the
-      // error category: auth/permanent → failed (no auto-retry),
-      // transient/other → disconnected (retriable)
-      let derivedState: 'connecting' | 'disconnected' | 'failed';
-      if (monitorState === 'connecting' || monitorState === 'failed') {
-        derivedState = monitorState;
-      } else if (errorCategory === 'auth' || errorCategory === 'permanent') {
-        derivedState = 'failed';
-      } else {
-        derivedState = 'disconnected';
-      }
-      const connError = createConnectionFailedError(
-        toolName,
-        action,
-        effectiveInstanceUrl,
-        derivedState,
-      );
-      if (!isTimedOut()) {
-        recordEarlyReturnError(toolName, action, connError.message);
-      }
-      return {
-        content: [{ type: 'text', text: JSON.stringify(connError, null, 2) }],
-        isError: true,
-      };
     }
-    // Connected but getClient()/ensureIntrospected() failed — rethrow as
-    // generic tool error. These are NOT connection failures (initialize succeeded).
-    throw initError;
+    logError(
+      `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`,
+      { instanceUrl: effectiveInstanceUrl },
+    );
+    const action =
+      toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : 'unknown';
+    // Use error classification together with HealthMonitor state to determine
+    // the derived connection state. For untracked URLs, getState() falls back
+    // to 'disconnected', so we must not rely on that alone — otherwise
+    // permanent/auth failures would incorrectly appear retriable.
+    const monitorState = healthMonitor.getState(effectiveInstanceUrl);
+    // Prefer explicit monitor states when available; otherwise derive from the
+    // error category: auth/permanent → failed (no auto-retry),
+    // transient/other → disconnected (retriable)
+    let derivedState: 'connecting' | 'disconnected' | 'failed';
+    if (monitorState === 'connecting' || monitorState === 'failed') {
+      derivedState = monitorState;
+    } else if (errorCategory === 'auth' || errorCategory === 'permanent') {
+      derivedState = 'failed';
+    } else {
+      derivedState = 'disconnected';
+    }
+    const connError = createConnectionFailedError(
+      toolName,
+      action,
+      effectiveInstanceUrl,
+      derivedState,
+    );
+    if (!isTimedOut()) {
+      recordEarlyReturnError(toolName, action, connError.message);
+    }
+    return {
+      content: [{ type: 'text', text: JSON.stringify(connError, null, 2) }],
+      isError: true,
+    };
   }
 }
 

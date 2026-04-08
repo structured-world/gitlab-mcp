@@ -954,13 +954,14 @@ describe('handlers', () => {
       mockRegistryManager.hasToolHandler.mockReturnValue(true);
     });
 
-    it('should rethrow when refreshCache throws after bootstrapState.complete=true (line 357)', async () => {
-      // Line 357: when bootstrapState.complete is already true but refreshCache throws,
-      // ensureBootstrapped rethrows the error (not CONNECTION_FAILED). The outer handler
-      // catches it and returns a generic error response.
+    it('should log warning and continue when refreshCache throws after bootstrap (cache isolated try/catch)', async () => {
+      // refreshCache is wrapped in its own try/catch — a failure must NOT abort the tool call.
+      // The comment in ensureBootstrapped says "If it fails, the tool call should still proceed".
+      const { logWarn } = await import('../../src/logger');
       mockRegistryManager.refreshCache.mockImplementationOnce(() => {
         throw new Error('Cache rebuild failed');
       });
+      mockRegistryManager.executeTool.mockResolvedValue({ result: 'ok' });
 
       const result = await callToolHandler({
         params: {
@@ -969,11 +970,18 @@ describe('handlers', () => {
         },
       });
 
-      // Rethrown error becomes a generic tool error (not CONNECTION_FAILED)
-      expect(result.isError).toBe(true);
+      // Tool call succeeds despite refreshCache throwing
+      expect(result.isError).toBeUndefined();
       const parsed = JSON.parse(result.content![0].text);
-      expect(parsed.error_code).toBeUndefined();
-      expect(parsed.error).toContain('Cache rebuild failed');
+      expect(parsed.result).toBe('ok');
+      // Cache failure is logged as a warning, not surfaced to the user
+      expect(logWarn).toHaveBeenCalledWith(
+        'Failed to refresh registry cache after bootstrap',
+        expect.objectContaining({
+          instanceUrl: 'https://gitlab.example.com',
+          err: expect.any(Error),
+        }),
+      );
     });
 
     it('should route reachable manage_context through normal bootstrap and report health', async () => {
@@ -1041,6 +1049,7 @@ describe('handlers', () => {
     it('should log warning when broadcastToolsListChanged rejects in state change callback (line 424)', async () => {
       // Line 424: .catch() on broadcastToolsListChangedForStateChange when broadcast fails.
       // The catch handler logs a warning but does not rethrow (fire-and-forget pattern).
+      const { logWarn } = await import('../../src/logger');
       const stateChangeCallback = mockHealthMonitor.onStateChange.mock.calls[0]?.[0];
       expect(stateChangeCallback).toBeDefined();
 
@@ -1059,6 +1068,14 @@ describe('handlers', () => {
 
       // Despite broadcast failure, refreshCache should still have been called
       expect(mockRegistryManager.refreshCache).toHaveBeenCalledWith('https://gitlab.example.com');
+      // Warning must be logged so the failure is observable without crashing
+      expect(logWarn).toHaveBeenCalledWith(
+        'Failed to broadcast tools/list_changed after state change',
+        expect.objectContaining({
+          instanceUrl: 'https://gitlab.example.com',
+          err: expect.any(Error),
+        }),
+      );
     });
 
     it('should handle CONNECTION_FAILED with missing action field', async () => {
@@ -1759,6 +1776,7 @@ describe('handlers', () => {
     it('should log warning and continue when refreshCache throws during initial setup (line 448)', async () => {
       // Cover line 448: logWarn in catch block when initial refreshCache() call throws.
       // setupHandlers must still succeed (handlers registered) despite cache failure.
+      const { logWarn } = await import('../../src/logger');
       resetHandlersState();
       mockRegistryManager.refreshCache.mockImplementationOnce(() => {
         throw new Error('Registry cache init failed');
@@ -1767,6 +1785,11 @@ describe('handlers', () => {
       await expect(setupHandlers(mockServer)).resolves.not.toThrow();
       // Both handlers should still be registered despite cache failure
       expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
+      // Cache failure is logged as a warning
+      expect(logWarn).toHaveBeenCalledWith(
+        'Failed to refresh registry cache during handler setup',
+        expect.objectContaining({ err: expect.any(Error) }),
+      );
 
       // Restore
       mockRegistryManager.refreshCache.mockReturnValue(undefined);

@@ -35,7 +35,9 @@ import {
   HEALTH_CHECK_INTERVAL_MS,
   FAILURE_THRESHOLD,
   GITLAB_BASE_URL,
+  GITLAB_TOKEN,
 } from '../config';
+import { isOAuthEnabled } from '../oauth/index';
 
 // ============================================================================
 // Types
@@ -224,6 +226,12 @@ const performHealthCheck = fromPromise<{ degraded: boolean }, { instanceUrl: str
       throw new Error(`Health check failed for ${input.instanceUrl}`);
     }
 
+    // Detect mid-session token revocation in static token mode.
+    // Throws GitLab API 401 when the token is revoked → classifyError → 'auth'
+    // → healthCheckErrorIsAuth guard → '#connection.failed' (no auto-reconnect).
+    // No-op in OAuth mode (no global token) and when GITLAB_TOKEN is unset.
+    await authenticatedTokenCheck(input.instanceUrl, HEALTH_CHECK_PROBE_MS);
+
     const connectionManager = ConnectionManager.getInstance();
     return { degraded: isDegradedInstance(connectionManager, input.instanceUrl) };
   },
@@ -269,6 +277,55 @@ async function quickHealthCheck(
   }
 }
 
+/**
+ * Authenticated token validity check: HEAD /api/v4/user with the static token.
+ * Detects mid-session token revocation that the unauthenticated reachability check
+ * cannot see (401 from /api/v4/version is treated as "server alive").
+ *
+ * Only runs in static token mode — OAuth tokens are per-request context and are
+ * not available during background health checks.
+ *
+ * Throws a GitLab API 401 error when the token is revoked or expired.
+ * classifyError maps this to 'auth' → state machine transitions to 'failed',
+ * disabling auto-reconnect until the user intervenes.
+ *
+ * Network/timeout errors are swallowed: the unauthenticated check already verified
+ * reachability, so connectivity failures on this request are noise, not signal.
+ */
+async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): Promise<void> {
+  // OAuth mode: token is per-request context, unavailable during background checks
+  if (isOAuthEnabled()) return;
+  // No static token configured — nothing to validate
+  if (!GITLAB_TOKEN) return;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await enhancedFetch(`${instanceUrl}/api/v4/user`, {
+      method: 'HEAD',
+      signal: controller.signal,
+      retry: false,
+      rateLimit: false,
+      // skipAuth defaults to false — PRIVATE-TOKEN header injected automatically
+    });
+
+    if (response.status === 401) {
+      // Error message format matches parseGitLabApiError pattern so classifyError
+      // correctly returns 'auth' → state machine transitions to 'failed'.
+      throw new Error('GitLab API error: 401 Unauthorized - token revoked or expired');
+    }
+  } catch (error) {
+    // Re-throw the 401 auth error that signals token revocation.
+    // Swallow everything else (network/timeout) — reachability already confirmed by quickHealthCheck.
+    if (error instanceof Error && error.message.startsWith('GitLab API error: 401')) {
+      throw error;
+    }
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // ============================================================================
 // XState Machine Definition
 // ============================================================================
@@ -295,6 +352,11 @@ const connectionMachine = setup({
     connectErrorIsTransient: ({ event }) => {
       const error = (event as { error?: unknown }).error;
       return classifyError(error) === 'transient';
+    },
+    // Auth error during periodic health check → failed (no auto-reconnect)
+    healthCheckErrorIsAuth: ({ event }) => {
+      const error = (event as { error?: unknown }).error;
+      return classifyError(error) === 'auth';
     },
   },
   actions: {
@@ -416,10 +478,22 @@ const connectionMachine = setup({
                 actions: 'recordSuccess',
               },
             ],
-            onError: {
-              target: 'idle',
-              actions: 'recordFailure',
-            },
+            onError: [
+              {
+                // Auth error (token revoked/expired) → failed immediately, no auto-reconnect
+                guard: 'healthCheckErrorIsAuth',
+                target: '#connection.failed',
+                actions: assign({
+                  lastFailureAt: () => Date.now(),
+                  lastError: ({ event }) =>
+                    event.error instanceof Error ? event.error.message : String(event.error),
+                }),
+              },
+              {
+                target: 'idle',
+                actions: 'recordFailure',
+              },
+            ],
           },
         },
       },
@@ -469,10 +543,22 @@ const connectionMachine = setup({
                 actions: 'recordSuccess',
               },
             ],
-            onError: {
-              target: 'idle',
-              actions: 'recordFailure',
-            },
+            onError: [
+              {
+                // Auth error (token revoked/expired) → failed immediately, no auto-reconnect
+                guard: 'healthCheckErrorIsAuth',
+                target: '#connection.failed',
+                actions: assign({
+                  lastFailureAt: () => Date.now(),
+                  lastError: ({ event }) =>
+                    event.error instanceof Error ? event.error.message : String(event.error),
+                }),
+              },
+              {
+                target: 'idle',
+                actions: 'recordFailure',
+              },
+            ],
           },
         },
       },

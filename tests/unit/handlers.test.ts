@@ -453,6 +453,40 @@ describe('handlers', () => {
       expect(mockSessionManager.setSessionInstanceUrl).not.toHaveBeenCalled();
     });
 
+    it('should update session instanceUrl to post-switch URL after manage_context switch_instance (#398)', async () => {
+      // Regression: requestInstanceUrl is captured BEFORE tool execution, so a
+      // pre-dispatch-only update records the OLD URL for switch_instance. After the
+      // tool runs, ConnectionManager.getCurrentInstanceUrl() reflects the new instance;
+      // the handler must re-read it and update the session so an immediate tools/list
+      // request serves the correct catalog.
+      mockConnectionManager.getCurrentInstanceUrl.mockReturnValue('https://old.gitlab.com');
+
+      // Simulate switch_instance: during tool execution the ConnectionManager is updated
+      mockRegistryManager.executeTool.mockImplementationOnce(async () => {
+        mockConnectionManager.getCurrentInstanceUrl.mockReturnValue('https://new.gitlab.com');
+        return { success: true, current: 'https://new.gitlab.com' };
+      });
+
+      await callToolHandler(
+        {
+          params: {
+            name: 'manage_context',
+            arguments: { action: 'switch_instance', instance_url: 'https://new.gitlab.com' },
+          },
+        },
+        { sessionId: 'sess-switch' },
+      );
+
+      // The session must end up on the post-switch URL, not the pre-dispatch one
+      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenLastCalledWith(
+        'sess-switch',
+        'https://new.gitlab.com',
+      );
+
+      // Restore
+      mockConnectionManager.getCurrentInstanceUrl.mockReturnValue('https://gitlab.example.com');
+    });
+
     it('should execute tool and return result', async () => {
       const mockRequest = {
         params: {

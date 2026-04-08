@@ -401,10 +401,11 @@ export async function setupHandlers(server: Server): Promise<void> {
     // Keep per-session instance URL in sync so ListTools requests reflect the correct
     // instance. In OAuth mode this resolves the actual instance from the token context
     // (replacing the GITLAB_BASE_URL default set at session creation). In static-token
-    // mode this tracks switch_instance changes across requests.
-    if (extra?.sessionId) {
+    // mode this is the pre-dispatch URL; switch_instance is corrected post-dispatch below.
+    const callSessionId = extra?.sessionId;
+    if (callSessionId) {
       const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
-      getSessionMgrForCall().setSessionInstanceUrl(extra.sessionId, requestInstanceUrl);
+      getSessionMgrForCall().setSessionInstanceUrl(callSessionId, requestInstanceUrl);
     }
 
     // Flag to prevent late reportSuccess/reportError from a timed-out handlerWork()
@@ -716,6 +717,26 @@ export async function setupHandlers(server: Server): Promise<void> {
           request.params.arguments,
           effectiveInstanceUrl,
         );
+
+        // For switch_instance in static-token mode: requestInstanceUrl was captured
+        // before the tool ran and holds the old instance URL. Re-read
+        // getCurrentInstanceUrl() post-dispatch so the session immediately reflects
+        // the new instance, ensuring a tools/list_changed notification triggers
+        // ListTools with the correct catalog for the switched instance.
+        if (
+          !oauthMode &&
+          callSessionId &&
+          toolName === 'manage_context' &&
+          action === 'switch_instance'
+        ) {
+          const { getSessionManager: getPostSwitchSessionMgr } = await import('./session-manager');
+          getPostSwitchSessionMgr().setSessionInstanceUrl(
+            callSessionId,
+            normalizeInstanceUrl(
+              ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL,
+            ),
+          );
+        }
 
         // Report success — skip if handler already timed out (late completion
         // must not overwrite the timeout error already sent to HealthMonitor)

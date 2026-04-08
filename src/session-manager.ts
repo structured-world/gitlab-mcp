@@ -4,6 +4,7 @@ import { packageName, packageVersion, GITLAB_BASE_URL } from './config';
 import { setupHandlers } from './handlers';
 import { setDetectedSchemaMode } from './utils/schema-utils';
 import { logInfo, logWarn, logError, logDebug } from './logger';
+import { normalizeInstanceUrl } from './utils/url';
 
 /** Default session idle timeout: 30 minutes */
 const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -98,7 +99,7 @@ export class SessionManager {
       sessionId,
       createdAt: now,
       lastActivityAt: now,
-      instanceUrl: instanceUrl ?? GITLAB_BASE_URL,
+      instanceUrl: normalizeInstanceUrl(instanceUrl ?? GITLAB_BASE_URL),
     });
 
     logInfo('Session created', { sessionId, activeSessions: this.sessions.size });
@@ -123,10 +124,11 @@ export class SessionManager {
    * - Static-token mode: updated when switch_instance changes the active instance
    */
   setSessionInstanceUrl(sessionId: string, url: string): void {
+    const normalizedUrl = normalizeInstanceUrl(url);
     const session = this.sessions.get(sessionId);
-    if (session && session.instanceUrl !== url) {
-      session.instanceUrl = url;
-      logDebug('Session instance URL updated', { sessionId, instanceUrl: url });
+    if (session && session.instanceUrl !== normalizedUrl) {
+      session.instanceUrl = normalizedUrl;
+      logDebug('Session instance URL updated', { sessionId, instanceUrl: normalizedUrl });
     }
   }
 

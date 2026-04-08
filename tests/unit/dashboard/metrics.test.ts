@@ -27,6 +27,7 @@ jest.mock('../../../src/services/InstanceRegistry', () => ({
 jest.mock('../../../src/session-manager', () => ({
   getSessionManager: jest.fn(() => ({
     activeSessionCount: 0,
+    getSessionsByInstance: jest.fn(() => new Map<string, number>()),
   })),
 }));
 
@@ -394,6 +395,7 @@ describe('Dashboard Metrics', () => {
       jest.doMock('../../../src/session-manager', () => ({
         getSessionManager: jest.fn(() => ({
           activeSessionCount: 0,
+          getSessionsByInstance: jest.fn(() => new Map<string, number>()),
         })),
       }));
       jest.doMock('../../../src/registry-manager', () => ({
@@ -433,6 +435,7 @@ describe('Dashboard Metrics', () => {
       jest.doMock('../../../src/session-manager', () => ({
         getSessionManager: jest.fn(() => ({
           activeSessionCount: 0,
+          getSessionsByInstance: jest.fn(() => new Map<string, number>()),
         })),
       }));
       jest.doMock('../../../src/registry-manager', () => ({
@@ -473,13 +476,26 @@ describe('Dashboard Metrics', () => {
       expect(metrics.config.sourceDetails).toBe('/etc/gitlab-mcp/config.yaml');
     });
 
-    it('should include active session count', () => {
+    it('should include active session count and per-instance breakdown (#398)', () => {
+      // Verifies that collectMetrics() correctly wires getSessionsByInstance()
+      // into sessions.byInstance (regression: previously always returned {})
       (getSessionManager as jest.Mock).mockReturnValueOnce({
         activeSessionCount: 5,
+        getSessionsByInstance: jest.fn(
+          () =>
+            new Map<string, number>([
+              ['https://gitlab.com', 3],
+              ['https://self-managed.example.com', 2],
+            ]),
+        ),
       });
 
       const metrics = collectMetrics();
       expect(metrics.sessions.total).toBe(5);
+      expect(metrics.sessions.byInstance).toEqual({
+        'https://gitlab.com': 3,
+        'https://self-managed.example.com': 2,
+      });
     });
 
     it('should convert InstanceSummary to InstanceStatus correctly', () => {

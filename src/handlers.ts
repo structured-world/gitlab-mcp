@@ -166,6 +166,223 @@ function toStructuredError(
   );
 }
 
+/** Tracks connection bootstrap progress; shared with the handler-level timeout path. */
+interface BootstrapState {
+  started: boolean;
+  complete: boolean;
+}
+
+/** Dependencies and per-call values passed to ensureBootstrapped. */
+interface BootstrapContext {
+  toolName: string;
+  toolArguments: Record<string, unknown> | undefined;
+  effectiveInstanceUrl: string;
+  oauthMode: boolean;
+  connectionManager: ConnectionManager;
+  healthMonitor: HealthMonitor;
+  isTimedOut: () => boolean;
+  bootstrapState: BootstrapState;
+}
+
+/**
+ * Return a CONNECTION_FAILED response if the target instance is unreachable for
+ * non-context tools, or null to proceed normally.
+ *
+ * manage_context always passes through — it operates on local state and can
+ * surface the disconnected status to the caller.
+ */
+function checkUnreachableInstance(
+  toolName: string,
+  toolArguments: Record<string, unknown> | undefined,
+  effectiveInstanceUrl: string,
+  healthMonitor: HealthMonitor,
+): { content: Array<{ type: string; text: string }>; isError: true } | null {
+  if (healthMonitor.isInstanceReachable(effectiveInstanceUrl) || toolName === 'manage_context') {
+    return null;
+  }
+  const action =
+    toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : 'unknown';
+  const rawState = healthMonitor.getState(effectiveInstanceUrl);
+  let connectionState: 'connecting' | 'disconnected' | 'failed';
+  if (rawState === 'failed') {
+    connectionState = 'failed';
+  } else if (rawState === 'connecting') {
+    connectionState = 'connecting';
+  } else {
+    connectionState = 'disconnected';
+  }
+  const connError = createConnectionFailedError(
+    toolName,
+    action,
+    effectiveInstanceUrl,
+    connectionState,
+  );
+  recordEarlyReturnError(toolName, action, connError.message);
+  return { content: [{ type: 'text', text: JSON.stringify(connError, null, 2) }], isError: true };
+}
+
+/**
+ * Fast-path for manage_context when the instance is unreachable: bypass connection
+ * bootstrap and health reporting. Returns a tool response if handled, or null to
+ * fall through to the normal bootstrap path.
+ *
+ * Bypasses bootstrap intentionally — context tools mostly operate on local state
+ * (cached scopes, config, instance registry). Health reporting is skipped because
+ * the fast-path bypasses bootstrap — there is no connection lifecycle to report on.
+ */
+async function tryManageContextFastPath(
+  toolName: string,
+  toolArguments: Record<string, unknown> | undefined,
+  effectiveInstanceUrl: string,
+  healthMonitor: HealthMonitor,
+): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+  if (toolName !== 'manage_context' || healthMonitor.isInstanceReachable(effectiveInstanceUrl)) {
+    return null;
+  }
+  if (LOG_FORMAT === 'condensed') {
+    const action =
+      toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : undefined;
+    const requestTracker = getRequestTracker();
+    requestTracker.setToolForCurrentRequest(toolName, action);
+  }
+  const { RegistryManager } = await import('./registry-manager');
+  const registryManager = RegistryManager.getInstance();
+  // hasToolHandler + executeTool are not a single atomic operation — a concurrent
+  // refreshCache() could swap the lookup cache between the two calls. In practice
+  // this is benign: executeTool() falls through with undefined and we re-enter the
+  // bootstrap path below. A full atomic getTool() refactor is tracked separately.
+  if (registryManager.hasToolHandler(toolName, effectiveInstanceUrl)) {
+    const result = await registryManager.executeTool(toolName, toolArguments, effectiveInstanceUrl);
+    // If executeTool returns undefined (TOCTOU: cache was refreshed between hasToolHandler and
+    // executeTool), fall through to the bootstrap path instead of returning {text: "undefined"}.
+    if (result === undefined) {
+      return null;
+    }
+    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+  }
+  return null; // tool not yet cached — fall through to bootstrap
+}
+
+/**
+ * Initialize the connection, verify the client, and rebuild the per-URL tool cache.
+ *
+ * Mutates bootstrapState to track progress for the handler-level timeout path.
+ * Returns a CONNECTION_FAILED response when bootstrap fails (connection, client, or
+ * introspection step), or undefined on success. All errors are handled internally
+ * and surfaced as a CONNECTION_FAILED payload — none are rethrown to the caller.
+ */
+// Cognitive complexity is elevated but justified: bootstrapState mutations, error
+// classification, HealthMonitor reporting, and derived-state computation are tightly
+// coupled. Further extraction would add indirection without reducing conceptual complexity.
+async function ensureBootstrapped(
+  ctx: BootstrapContext,
+): Promise<{ content: Array<{ type: string; text: string }>; isError: true } | undefined> {
+  const {
+    toolName,
+    toolArguments,
+    effectiveInstanceUrl,
+    oauthMode,
+    connectionManager,
+    healthMonitor,
+    isTimedOut,
+    bootstrapState,
+  } = ctx;
+  bootstrapState.started = true;
+  try {
+    if (!connectionManager.isConnected(effectiveInstanceUrl)) {
+      if (LOG_FORMAT === 'verbose') {
+        logInfo('Connection not initialized, attempting to initialize...');
+      }
+      await connectionManager.initialize(effectiveInstanceUrl);
+    }
+    connectionManager.getClient(effectiveInstanceUrl);
+    if (oauthMode) {
+      await connectionManager.ensureIntrospected(effectiveInstanceUrl);
+    }
+    // Mark bootstrap complete BEFORE cache rebuild — refreshCache is local
+    // bookkeeping, not a connectivity step. If it fails, the tool call should
+    // still proceed (not return CONNECTION_FAILED for a successful connection).
+    bootstrapState.complete = true;
+    // Rebuild per-URL registry cache AFTER full bootstrap (initialize + introspection)
+    // so tier/version/widget availability are all populated.
+    // Cache is keyed by normalized URL — concurrent multi-instance requests
+    // each get their own cache entry and cannot interfere (#379).
+    // Isolated try/catch: cache rebuild is best-effort; a failure must NOT abort
+    // the tool call — the connection is already established at this point.
+    try {
+      const { RegistryManager } = await import('./registry-manager');
+      RegistryManager.getInstance().refreshCache(effectiveInstanceUrl);
+    } catch (cacheError) {
+      logWarn('Failed to refresh registry cache after bootstrap', {
+        instanceUrl: effectiveInstanceUrl,
+        err: cacheError as Error,
+      });
+    }
+    if (LOG_FORMAT === 'verbose') {
+      try {
+        const instanceInfo = connectionManager.getInstanceInfo(effectiveInstanceUrl);
+        logInfo(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
+      } catch {
+        logDebug('Connection verified but instance info not yet available', {
+          instanceUrl: effectiveInstanceUrl,
+        });
+      }
+    }
+    return undefined;
+  } catch (initError) {
+    // bootstrapState.complete is always false here: refreshCache is isolated above,
+    // so the only way to reach this catch is initialize()/getClient()/ensureIntrospected()
+    // failing before bootstrapState.complete was set.
+    const errorCategory = initError instanceof Error ? classifyError(initError) : 'permanent';
+    // Report bootstrap failure to HealthMonitor. When the handler has already
+    // timed out, we still forward auth/permanent errors so the instance
+    // converges to `failed` instead of staying in `reconnecting` indefinitely.
+    if (initError instanceof Error) {
+      if (!isTimedOut() || errorCategory === 'auth' || errorCategory === 'permanent') {
+        healthMonitor.reportError(effectiveInstanceUrl, initError);
+      }
+    }
+    logError(
+      `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`,
+      {
+        instanceUrl: effectiveInstanceUrl,
+        err: initError instanceof Error ? initError : new Error(String(initError)),
+      },
+    );
+    const action =
+      toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : 'unknown';
+    // Use error classification together with HealthMonitor state to determine
+    // the derived connection state. For untracked URLs, getState() falls back
+    // to 'disconnected', so we must not rely on that alone — otherwise
+    // permanent/auth failures would incorrectly appear retriable.
+    const monitorState = healthMonitor.getState(effectiveInstanceUrl);
+    // Prefer explicit monitor states when available; otherwise derive from the
+    // error category: auth/permanent → failed (no auto-retry),
+    // transient/other → disconnected (retriable)
+    let derivedState: 'connecting' | 'disconnected' | 'failed';
+    if (monitorState === 'connecting' || monitorState === 'failed') {
+      derivedState = monitorState;
+    } else if (errorCategory === 'auth' || errorCategory === 'permanent') {
+      derivedState = 'failed';
+    } else {
+      derivedState = 'disconnected';
+    }
+    const connError = createConnectionFailedError(
+      toolName,
+      action,
+      effectiveInstanceUrl,
+      derivedState,
+    );
+    if (!isTimedOut()) {
+      recordEarlyReturnError(toolName, action, connError.message);
+    }
+    return {
+      content: [{ type: 'text', text: JSON.stringify(connError, null, 2) }],
+      isError: true,
+    };
+  }
+}
+
 /** One-shot startup promise: health monitor init + registry refresh.
  *  Concurrent setupHandlers() calls await the same promise instead of racing. */
 let healthMonitorStartup: Promise<void> | null = null;
@@ -178,6 +395,14 @@ export function resetHandlersState(): void {
   stateChangeRegistered = false;
 }
 
+/**
+ * Register all MCP request handlers on a Server instance.
+ *
+ * Called once per session by SessionManager. Handlers are idempotent across
+ * sessions — the same logic is registered on each per-session Server instance.
+ * One-shot initialisation guards (HealthMonitor startup, state-change callback)
+ * are protected by module-level flags so they run exactly once across all sessions.
+ */
 export async function setupHandlers(server: Server): Promise<void> {
   // Check if authentication is configured before trying to initialize connection
   const { isAuthenticationConfigured } = await import('./oauth/index');
@@ -203,7 +428,9 @@ export async function setupHandlers(server: Server): Promise<void> {
             RegistryManager.getInstance().refreshCache(instanceUrl);
 
             const { getSessionManager } = await import('./session-manager');
-            await getSessionManager().broadcastToolsListChanged();
+            // Pass instanceUrl so only sessions targeting the changed instance are notified.
+            // Sessions on other instances have no tool list changes from this state transition.
+            await getSessionManager().broadcastToolsListChanged(instanceUrl);
 
             logInfo('Tool list updated after connection state change', {
               instanceUrl,
@@ -259,18 +486,39 @@ export async function setupHandlers(server: Server): Promise<void> {
     logInfo('Skipping connection initialization - no authentication configured');
   }
   // List tools handler
-  // getAllToolDefinitions() resolves the effective instance URL from OAuth token
-  // context when called without arguments, so authenticated multi-instance sessions
-  // already receive instance-specific tool lists. Remaining limitation:
-  // unauthenticated tools/list requests fall back to default/global instance
-  // because there is no per-session token context to infer an instance from (#398).
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
+  // Uses per-session instance URL tracking so each session receives the tool list
+  // filtered for its target GitLab instance (#398). The sessionId from RequestHandlerExtra
+  // resolves to the instance URL stored in SessionManager (set on session creation and
+  // kept in sync by the CallToolRequestSchema handler on every tool call).
+  server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) => {
     logInfo('ListToolsRequest received');
 
-    // Get tools from registry manager (already filtered)
+    // Resolve the instance URL for this session so the tool list reflects the
+    // correct tier/version/scope restrictions for the session's target instance.
+    const { getSessionManager: getSessionMgr } = await import('./session-manager');
+    const sessionMgr = getSessionMgr();
+    const listToolsSessionId = extra?.sessionId;
+    // SessionManager always initialises instanceUrl on createSession(), so undefined here
+    // means the sessionId is unknown/expired (or absent). Pass it through so
+    // getAllToolDefinitions can resolve via its built-in chain: OAuth request context →
+    // current instance URL → GITLAB_BASE_URL. Substituting GITLAB_BASE_URL explicitly
+    // would short-circuit that chain and return the wrong tool list for OAuth requests
+    // with a real context URL or after an instance switch (#398).
+    //
+    // NOTE: tools/list is NOT wrapped in runWithTokenContext(), so getGitLabApiUrlFromContext()
+    // returns undefined here regardless. Passing the tracked session URL is therefore
+    // correct — for static-token multi-instance it routes to the right instance, and
+    // for OAuth mode the session URL is kept in sync by the CallTool handler so it
+    // reflects the most-recently resolved OAuth context URL.
+    const sessionInstanceUrl =
+      listToolsSessionId !== undefined
+        ? sessionMgr.getSessionInstanceUrl(listToolsSessionId)
+        : undefined;
+
+    // Get tools from registry manager (already filtered by tier/version/scopes)
     const { RegistryManager } = await import('./registry-manager');
     const registryManager = RegistryManager.getInstance();
-    const tools = registryManager.getAllToolDefinitions();
+    const tools = registryManager.getAllToolDefinitions(sessionInstanceUrl);
 
     logInfo('Returning tools list', { toolCount: tools.length });
 
@@ -367,10 +615,10 @@ export async function setupHandlers(server: Server): Promise<void> {
   // using Promise.race() so the client gets a response early on hang. The underlying
   // work may continue running after the timeout fires, but late results are guarded
   // by the timedOut flag to prevent overwriting the timeout error response.
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     // Capture instance URL early — used for both handlerWork and timeout reporting.
     // Must be resolved before Promise.race so timeout branch doesn't re-derive a
-    // potentially different URL after a concurrent switch_instance.
+    // potentially different URL after a concurrent instance change.
     const { getGitLabApiUrlFromContext: getUrlFromCtx, isOAuthEnabled } =
       await import('./oauth/index');
     // In OAuth mode, use the per-request context URL to avoid bleeding the
@@ -381,22 +629,43 @@ export async function setupHandlers(server: Server): Promise<void> {
     // error) would block health monitoring and tool-list initialization. The
     // fallback is safe because GITLAB_BASE_URL is always configured.
     // In static-token mode, prefer the actively selected instance URL so
-    // switch_instance requests continue routing to the current instance.
-    const rawInstanceUrl = isOAuthEnabled()
-      ? (getUrlFromCtx() ?? GITLAB_BASE_URL)
+    // requests continue routing to the current instance.
+    const oauthEnabled = isOAuthEnabled();
+    // getGitLabApiUrlFromContext() returns string | undefined; use undefined (not null)
+    // so that strict equality checks below correctly detect "no OAuth context".
+    const oauthContextUrl = oauthEnabled ? getUrlFromCtx() : undefined;
+    const rawInstanceUrl = oauthEnabled
+      ? (oauthContextUrl ?? GITLAB_BASE_URL)
       : (ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL);
     // Normalize so CONNECTION_FAILED instance_url and HealthMonitor keys are consistent
     const requestInstanceUrl = normalizeInstanceUrl(rawInstanceUrl);
+
+    // Keep per-session instance URL in sync so ListTools requests reflect the correct
+    // instance. In OAuth mode only update when we have a real OAuth context URL —
+    // the GITLAB_BASE_URL fallback must NOT overwrite a session already pinned to a
+    // specific instance (contextless calls occur during health checks / non-OAuth
+    // transport; persisting the fallback would reset multi-tenant tool filtering).
+    // In static-token mode always track the active instance URL.
+    //
+    // NOTE: manage_context/switch_profile (OAuth) and switch_preset (static) do not
+    // need a post-dispatch re-pin here. For switch_profile, the OAuth context URL is
+    // per-request from the token — the next call will carry the new profile's URL and
+    // update the session naturally. For switch_preset, the instance URL does not change
+    // (presets change tool filtering, not the GitLab host).
+    const callSessionId = extra?.sessionId;
+    if (callSessionId && (!oauthEnabled || oauthContextUrl !== undefined)) {
+      const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
+      getSessionMgrForCall().setSessionInstanceUrl(callSessionId, requestInstanceUrl);
+    }
 
     // Flag to prevent late reportSuccess/reportError from a timed-out handlerWork()
     // overwriting the timeout signal already sent to HealthMonitor.
     let timedOut = false;
     // Tracks whether bootstrap was entered and whether it completed.
-    // bootstrapStarted: true once we enter the init/introspection path (not set
-    //   for disconnected manage_context bypass which does no GitLab I/O)
-    // bootstrapComplete: true after init + introspection succeed (before cache rebuild)
-    let bootstrapStarted = false;
-    let bootstrapComplete = false;
+    // started: true once we enter the init/introspection path (not set for the
+    //   disconnected manage_context bypass which does no GitLab I/O)
+    // complete: true after init + introspection succeed (before cache rebuild)
+    const bootstrapState: BootstrapState = { started: false, complete: false };
 
     // Create a timeout promise that rejects after HANDLER_TIMEOUT_MS
     const HANDLER_TIMEOUT_SYMBOL = Symbol('handler_timeout');
@@ -437,199 +706,45 @@ export async function setupHandlers(server: Server): Promise<void> {
       }
 
       // Use the instance URL captured before Promise.race (requestInstanceUrl)
-      // to ensure the entire dispatch path uses the same URL, even if a concurrent
-      // switch_instance changes getCurrentInstanceUrl mid-request.
+      // to ensure the entire dispatch path uses the same URL.
       const effectiveInstanceUrl = requestInstanceUrl;
       const connectionManager = ConnectionManager.getInstance();
-
-      // Check connection health — if disconnected, return structured error for non-context tools.
-      // Context tools (manage_context) are allowed through for diagnostic/context management
-      // actions (e.g., whoami, show_scope, set_scope).
       const healthMonitor = HealthMonitor.getInstance();
       const toolName = request.params.name;
-      // isInstanceReachable treats untracked URLs as reachable (first call before
-      // HealthMonitor.initialize) and healthy/degraded as reachable.
-      if (
-        !healthMonitor.isInstanceReachable(effectiveInstanceUrl) &&
-        toolName !== 'manage_context'
-      ) {
-        const action =
-          request.params.arguments && typeof request.params.arguments.action === 'string'
-            ? request.params.arguments.action
-            : 'unknown';
+      const toolArguments = request.params.arguments;
 
-        // Read state for CONNECTION_FAILED payload
-        const rawState = healthMonitor.getState(effectiveInstanceUrl);
-        let connectionState: 'connecting' | 'disconnected' | 'failed';
-        if (rawState === 'failed') {
-          connectionState = 'failed';
-        } else if (rawState === 'connecting') {
-          connectionState = 'connecting';
-        } else {
-          connectionState = 'disconnected';
-        }
-        const connError = createConnectionFailedError(
-          toolName,
-          action,
-          effectiveInstanceUrl,
-          connectionState,
-        );
+      // Early return: instance unreachable for non-context tools
+      // (isInstanceReachable treats untracked URLs as reachable before HealthMonitor.initialize)
+      const unreachableResult = checkUnreachableInstance(
+        toolName,
+        toolArguments,
+        effectiveInstanceUrl,
+        healthMonitor,
+      );
+      if (unreachableResult) return unreachableResult;
 
-        recordEarlyReturnError(toolName, action, connError.message);
+      // manage_context fast-path when disconnected: bypass bootstrap and health reporting
+      const fastPathResult = await tryManageContextFastPath(
+        toolName,
+        toolArguments,
+        effectiveInstanceUrl,
+        healthMonitor,
+      );
+      if (fastPathResult) return fastPathResult;
 
-        return {
-          content: [{ type: 'text', text: JSON.stringify(connError, null, 2) }],
-          isError: true,
-        };
-      }
-
-      // Disconnected/failed fast-path for manage_context: skip connection bootstrap
-      // and health reporting. Most context actions operate on local state (cached
-      // scopes, config, instance registry). Some actions (e.g. whoami) may attempt
-      // GitLab API calls that fail gracefully. Health reporting is skipped because
-      // the fast-path bypasses bootstrap — there's no connection lifecycle to report on.
-      if (
-        toolName === 'manage_context' &&
-        !healthMonitor.isInstanceReachable(effectiveInstanceUrl)
-      ) {
-        // Track in condensed mode so disconnected context calls appear in access logs
-        if (LOG_FORMAT === 'condensed') {
-          const action =
-            request.params.arguments && typeof request.params.arguments.action === 'string'
-              ? request.params.arguments.action
-              : undefined;
-          const requestTracker = getRequestTracker();
-          requestTracker.setToolForCurrentRequest(toolName, action);
-        }
-
-        const { RegistryManager } = await import('./registry-manager');
-        const registryManager = RegistryManager.getInstance();
-        // hasToolHandler + executeTool are not a single atomic operation — a concurrent
-        // refreshCache() could swap the lookup cache between the two calls. In practice
-        // this is benign: executeTool() falls through with undefined and we re-enter the
-        // bootstrap path below. A full atomic getTool() refactor is tracked separately.
-        if (registryManager.hasToolHandler(toolName, effectiveInstanceUrl)) {
-          const result = await registryManager.executeTool(
-            toolName,
-            request.params.arguments,
-            effectiveInstanceUrl,
-          );
-          return {
-            content: [{ type: 'text', text: JSON.stringify(result, null, 2) }],
-          };
-        }
-      }
-
-      // Check if connection is initialized - try to initialize if needed
-      bootstrapStarted = true;
+      // Initialize connection, verify client, and rebuild the per-URL tool cache
       const oauthMode = isOAuthEnabled();
-
-      try {
-        // Ensure connection is initialized for this URL (no-op if already done)
-        if (!connectionManager.isConnected(effectiveInstanceUrl)) {
-          if (LOG_FORMAT === 'verbose') {
-            logInfo('Connection not initialized, attempting to initialize...');
-          }
-          await connectionManager.initialize(effectiveInstanceUrl);
-        }
-
-        // Verify client is available for this URL
-        connectionManager.getClient(effectiveInstanceUrl);
-
-        // In OAuth mode, ensure introspection is done for the effective URL
-        if (oauthMode) {
-          await connectionManager.ensureIntrospected(effectiveInstanceUrl);
-        }
-
-        // Mark bootstrap complete BEFORE cache rebuild — refreshCache is local
-        // bookkeeping, not a connectivity step. If it fails, the tool call should
-        // still proceed (not return CONNECTION_FAILED for a successful connection).
-        bootstrapComplete = true;
-
-        // Rebuild per-URL registry cache AFTER full bootstrap (initialize + introspection)
-        // so tier/version/widget availability are all populated.
-        // Cache is keyed by normalized URL — concurrent multi-instance requests
-        // each get their own cache entry and cannot interfere (#379).
-        {
-          const { RegistryManager } = await import('./registry-manager');
-          RegistryManager.getInstance().refreshCache(effectiveInstanceUrl);
-        }
-        // Best-effort log enrichment — getInstanceInfo may throw in OAuth-deferred
-        // or degraded mode where version detection hasn't completed yet.
-        if (LOG_FORMAT === 'verbose') {
-          try {
-            const instanceInfo = connectionManager.getInstanceInfo(effectiveInstanceUrl);
-            logInfo(`Connection verified: ${instanceInfo.version} ${instanceInfo.tier}`);
-          } catch {
-            logDebug('Connection verified but instance info not yet available', {
-              instanceUrl: effectiveInstanceUrl,
-            });
-          }
-        }
-      } catch (initError) {
-        // Use bootstrapComplete (not isConnected) — isConnected flips after
-        // initialize() but getClient/ensureIntrospected can still fail before
-        // bootstrapComplete is set, and those failures should return CONNECTION_FAILED.
-        if (!bootstrapComplete) {
-          const errorCategory = initError instanceof Error ? classifyError(initError) : 'permanent';
-          // Report bootstrap failure to HealthMonitor. When the handler has already
-          // timed out, we still forward auth/permanent errors so the instance
-          // converges to `failed` instead of staying in `reconnecting` indefinitely.
-          if (initError instanceof Error) {
-            if (!timedOut || errorCategory === 'auth' || errorCategory === 'permanent') {
-              healthMonitor.reportError(effectiveInstanceUrl, initError);
-            }
-          }
-          logError(
-            `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`,
-            { instanceUrl: effectiveInstanceUrl },
-          );
-          // Return structured CONNECTION_FAILED so clients get instance_url,
-          // reconnecting status, and suggested fix (not a generic "Bad Request")
-          const action =
-            request.params.arguments && typeof request.params.arguments.action === 'string'
-              ? request.params.arguments.action
-              : 'unknown';
-          // Use error classification together with HealthMonitor state to determine
-          // the derived connection state. For untracked URLs, getState() falls back
-          // to 'disconnected', so we must not rely on that alone — otherwise
-          // permanent/auth failures would incorrectly appear retriable.
-          const monitorState = healthMonitor.getState(effectiveInstanceUrl);
-          // Prefer explicit monitor states when available; otherwise derive from
-          // the error category:
-          // - auth/permanent → failed (no auto-retry)
-          // - transient/other → disconnected (retriable)
-          let derivedState: 'connecting' | 'disconnected' | 'failed';
-          if (monitorState === 'connecting' || monitorState === 'failed') {
-            derivedState = monitorState;
-          } else if (errorCategory === 'auth' || errorCategory === 'permanent') {
-            derivedState = 'failed';
-          } else {
-            derivedState = 'disconnected';
-          }
-          const connError = createConnectionFailedError(
-            toolName,
-            action,
-            effectiveInstanceUrl,
-            derivedState,
-          );
-
-          // Skip bookkeeping if timeout already recorded the error
-          if (!timedOut) {
-            recordEarlyReturnError(toolName, action, connError.message);
-          }
-
-          return {
-            content: [{ type: 'text', text: JSON.stringify(connError, null, 2) }],
-            isError: true,
-          };
-        }
-        // Connected but getClient()/ensureIntrospected() failed — rethrow as
-        // generic tool error. These are NOT connection failures (initialize
-        // succeeded), so CONNECTION_FAILED would be misleading. The error will
-        // be caught by the outer handler and returned as a standard tool error.
-        throw initError;
-      }
+      const bootstrapFailure = await ensureBootstrapped({
+        toolName,
+        toolArguments,
+        effectiveInstanceUrl,
+        oauthMode,
+        connectionManager,
+        healthMonitor,
+        isTimedOut: () => timedOut,
+        bootstrapState,
+      });
+      if (bootstrapFailure) return bootstrapFailure;
 
       // Dynamic tool dispatch using the new registry manager
       const toolArgs = request.params.arguments;
@@ -698,6 +813,15 @@ export async function setupHandlers(server: Server): Promise<void> {
           effectiveInstanceUrl,
         );
 
+        // Guard against TOCTOU cache miss: hasToolHandler returned true but a
+        // concurrent refreshCache swapped the lookup table before executeTool ran.
+        // Re-throw so the outer catch converts it to a McpError, consistent with
+        // the explicit hasToolHandler check above. Never return JSON.stringify(undefined)
+        // which would produce an invalid MCP payload ("text: undefined").
+        if (result === undefined) {
+          throw new Error(`Tool '${toolName}' is not available or has been filtered out`);
+        }
+
         // Report success — skip if handler already timed out (late completion
         // must not overwrite the timeout error already sent to HealthMonitor)
         if (!timedOut) {
@@ -753,7 +877,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         // Only report to health monitor and clear inflight if bootstrap was
         // actually attempted (not for disconnected manage_context bypass which
         // does no GitLab I/O and shouldn't affect connection health).
-        if (bootstrapStarted && !bootstrapComplete) {
+        if (bootstrapState.started && !bootstrapState.complete) {
           // Use "timed out" so classifyError() reliably treats this as transient
           // and triggers disconnected → auto-reconnect. Use a plain Error (not
           // InitializationTimeoutError) because this is a handler-level timeout,

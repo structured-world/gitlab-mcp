@@ -1,9 +1,10 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { packageName, packageVersion } from './config';
+import { packageName, packageVersion, GITLAB_BASE_URL } from './config';
 import { setupHandlers } from './handlers';
 import { setDetectedSchemaMode } from './utils/schema-utils';
 import { logInfo, logWarn, logError, logDebug } from './logger';
+import { normalizeInstanceUrl } from './utils/url';
 
 /** Default session idle timeout: 30 minutes */
 const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -16,6 +17,8 @@ interface ManagedSession {
   sessionId: string;
   createdAt: number;
   lastActivityAt: number;
+  /** GitLab instance URL this session is targeting. Defaults to GITLAB_BASE_URL. */
+  instanceUrl: string;
 }
 
 /**
@@ -54,8 +57,16 @@ export class SessionManager {
   /**
    * Create a new per-session Server instance and connect it to the given transport.
    * Handlers are registered identically on each instance.
+   *
+   * @param instanceUrl - GitLab instance URL for this session. Defaults to GITLAB_BASE_URL.
+   *   Updated on each tool call: in OAuth mode when the token context resolves the actual
+   *   instance URL; in static-token mode when ConnectionManager reflects an instance change.
    */
-  async createSession(sessionId: string, transport: Transport): Promise<Server> {
+  async createSession(
+    sessionId: string,
+    transport: Transport,
+    instanceUrl?: string,
+  ): Promise<Server> {
     // Guard against duplicate session IDs — close existing before allocating new resources
     if (this.sessions.has(sessionId)) {
       logWarn('Duplicate sessionId detected — closing existing session', { sessionId });
@@ -88,6 +99,7 @@ export class SessionManager {
       sessionId,
       createdAt: now,
       lastActivityAt: now,
+      instanceUrl: normalizeInstanceUrl(instanceUrl ?? GITLAB_BASE_URL),
     });
 
     logInfo('Session created', { sessionId, activeSessions: this.sessions.size });
@@ -103,6 +115,51 @@ export class SessionManager {
     if (session) {
       session.lastActivityAt = Date.now();
     }
+  }
+
+  /**
+   * Update the GitLab instance URL for an active session.
+   * Called by the tool handler when the effective instance URL is resolved:
+   * - OAuth mode: updated on each tool call when the token context provides the URL
+   * - Static-token mode: updated on each tool call from ConnectionManager's active instance
+   */
+  setSessionInstanceUrl(sessionId: string, url: string): void {
+    const normalizedUrl = normalizeInstanceUrl(url);
+    const session = this.sessions.get(sessionId);
+    if (session && session.instanceUrl !== normalizedUrl) {
+      session.instanceUrl = normalizedUrl;
+      logDebug('Session instance URL updated', { sessionId, instanceUrl: normalizedUrl });
+      // Notify the session so the client re-fetches the tool list for the new instance.
+      void session.server
+        .notification({ method: 'notifications/tools/list_changed' })
+        .catch((error: unknown) => {
+          logDebug('Failed to notify session of tool list change after instance URL update', {
+            sessionId,
+            instanceUrl: normalizedUrl,
+            err: error,
+          });
+        });
+    }
+  }
+
+  /**
+   * Get the GitLab instance URL associated with a session.
+   * Returns undefined if the session does not exist.
+   */
+  getSessionInstanceUrl(sessionId: string): string | undefined {
+    return this.sessions.get(sessionId)?.instanceUrl;
+  }
+
+  /**
+   * Return a map of instance URL → session count across all active sessions.
+   * Used by the dashboard to show per-instance session distribution.
+   */
+  getSessionsByInstance(): Map<string, number> {
+    const counts = new Map<string, number>();
+    for (const session of this.sessions.values()) {
+      counts.set(session.instanceUrl, (counts.get(session.instanceUrl) ?? 0) + 1);
+    }
+    return counts;
   }
 
   /**
@@ -124,12 +181,26 @@ export class SessionManager {
   }
 
   /**
-   * Send tools/list_changed notification to ALL active sessions.
+   * Send tools/list_changed notification to active sessions.
+   *
+   * @param instanceUrl - When provided, only sessions targeting this instance are notified.
+   *   When omitted, all sessions are notified. Use the filtered form when a state change
+   *   affects only one instance (e.g. HealthMonitor state transition) to avoid spurious
+   *   re-fetches in sessions targeting unrelated instances.
    */
-  async broadcastToolsListChanged(): Promise<void> {
+  async broadcastToolsListChanged(instanceUrl?: string): Promise<void> {
+    // Normalize before comparing — session.instanceUrl is always stored normalized,
+    // so the filter must also be normalized to ensure consistent matching.
+    const normalizedFilter =
+      instanceUrl !== undefined ? normalizeInstanceUrl(instanceUrl) : undefined;
+
     const promises: Promise<void>[] = [];
 
     for (const [sessionId, session] of this.sessions) {
+      // Skip sessions targeting a different instance when a filter is active
+      if (normalizedFilter !== undefined && session.instanceUrl !== normalizedFilter) {
+        continue;
+      }
       promises.push(
         session.server
           .notification({ method: 'notifications/tools/list_changed' })
@@ -144,7 +215,11 @@ export class SessionManager {
 
     await Promise.allSettled(promises);
 
-    logInfo('Broadcast tools/list_changed to all sessions', { sessionCount: this.sessions.size });
+    logInfo('Broadcast tools/list_changed', {
+      sessionCount: this.sessions.size,
+      notifiedCount: promises.length,
+      instanceUrl: normalizedFilter ?? 'all',
+    });
   }
 
   /**

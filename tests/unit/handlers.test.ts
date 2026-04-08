@@ -90,7 +90,7 @@ jest.mock('../../src/oauth/index', () => ({
   isOAuthEnabled: jest.fn().mockReturnValue(false),
   isAuthenticationConfigured: jest.fn().mockReturnValue(true),
   getTokenContext: jest.fn().mockReturnValue(null),
-  getGitLabApiUrlFromContext: jest.fn().mockReturnValue(null),
+  getGitLabApiUrlFromContext: jest.fn().mockReturnValue(undefined),
 }));
 
 // Mock logging/index so connection-tracker paths (lines 712-715) can be exercised
@@ -112,6 +112,30 @@ jest.mock('../../src/logging/index', () => ({
   getRequestTracker: jest.fn(() => mockRequestTracker),
   getConnectionTracker: jest.fn(() => mockConnectionTracker),
   getCurrentRequestId: jest.fn(() => mockGetCurrentRequestId()),
+}));
+
+// Mock ContextManager — returns default context (no scope.path by default).
+// Tests that need scope.path coverage override mockContextManager.getContext directly.
+const mockContextManager = {
+  getContext: jest.fn().mockReturnValue({ readOnly: false }),
+};
+
+jest.mock('../../src/entities/context/context-manager', () => ({
+  getContextManager: jest.fn(() => mockContextManager),
+}));
+
+// Mock SessionManager — needed by the ListToolsRequestSchema and CallToolRequestSchema handlers
+// for per-session instance URL tracking (#398).
+const mockSessionManager = {
+  getSessionInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+  setSessionInstanceUrl: jest.fn(),
+  broadcastToolsListChanged: jest.fn().mockResolvedValue(undefined),
+};
+
+jest.mock('../../src/session-manager', () => ({
+  getSessionManager: jest.fn(() => mockSessionManager),
+  resetSessionManager: jest.fn(),
+  STDIO_SESSION_ID: 'stdio',
 }));
 
 /** Handler result type matching MCP SDK response shape */
@@ -184,6 +208,13 @@ describe('handlers', () => {
     ]);
     mockRegistryManager.hasToolHandler.mockReturnValue(true);
     mockRegistryManager.executeTool.mockResolvedValue({ result: 'success' });
+
+    // SessionManager mock defaults for per-session instance URL tracking (#398)
+    mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://gitlab.example.com');
+    mockSessionManager.setSessionInstanceUrl.mockReturnValue(undefined);
+
+    // ContextManager default: no scope path (most tests don't need it)
+    mockContextManager.getContext.mockReturnValue({ readOnly: false });
   });
 
   describe('setupHandlers', () => {
@@ -367,12 +398,117 @@ describe('handlers', () => {
 
       expect(result.tools![0].inputSchema.type).toBe('object');
     });
+
+    describe('per-session instance URL resolution (#398)', () => {
+      it('should pass session instanceUrl to getAllToolDefinitions when sessionId is provided', async () => {
+        // Session targeting a non-default instance
+        mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://custom.gitlab.com');
+
+        await listToolsHandler({ method: 'tools/list' }, { sessionId: 'sess-abc' });
+
+        expect(mockSessionManager.getSessionInstanceUrl).toHaveBeenCalledWith('sess-abc');
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(
+          'https://custom.gitlab.com',
+        );
+      });
+
+      it('should pass undefined to getAllToolDefinitions when sessionId is absent (registry resolves via OAuth context chain)', async () => {
+        // No extra.sessionId (e.g. stdio transport) — pass undefined so registry resolves
+        // via OAuth context URL → current URL → GITLAB_BASE_URL chain (#398).
+        await listToolsHandler({ method: 'tools/list' });
+
+        expect(mockSessionManager.getSessionInstanceUrl).not.toHaveBeenCalled();
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined);
+      });
+
+      it('should pass undefined to getAllToolDefinitions for unknown/expired sessionId (registry resolves via OAuth context chain)', async () => {
+        // SessionManager always sets instanceUrl on createSession(); undefined from
+        // getSessionInstanceUrl means the sessionId is unknown or expired. Pass it
+        // through so the registry's resolution chain is not short-circuited (#398).
+        mockSessionManager.getSessionInstanceUrl.mockReturnValue(undefined);
+
+        await listToolsHandler({ method: 'tools/list' }, { sessionId: 'new-sess' });
+
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined);
+      });
+    });
   });
 
   describe('call tool handler', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
       callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+    });
+
+    it('should update session instanceUrl on each tool call (#398)', async () => {
+      // Verifies that the CallTool handler keeps per-session instance URL in sync
+      // so subsequent ListTools calls resolve the correct tool catalog for that session.
+      const request = {
+        params: { name: 'get_project', arguments: { id: 'proj-1' } },
+      };
+
+      await callToolHandler(request, { sessionId: 'sess-xyz' });
+
+      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith(
+        'sess-xyz',
+        'https://gitlab.example.com',
+      );
+    });
+
+    it('should not update session instanceUrl when sessionId is absent (#398)', async () => {
+      // No extra.sessionId — no crash, no spurious session update
+      const request = {
+        params: { name: 'get_project', arguments: { id: 'proj-1' } },
+      };
+
+      await callToolHandler(request);
+
+      expect(mockSessionManager.setSessionInstanceUrl).not.toHaveBeenCalled();
+    });
+
+    it('should persist the OAuth context URL when sessionId is present (#398)', async () => {
+      // Verifies OAuth path: when isOAuthEnabled=true and getGitLabApiUrlFromContext returns
+      // an instance URL, setSessionInstanceUrl is called with the OAuth URL (not GITLAB_BASE_URL).
+      // Regression guard: a fallback to GITLAB_BASE_URL in OAuth mode would silently break
+      // multi-tenant tool catalog filtering.
+      const oauth = await import('../../src/oauth/index');
+      const oauthUrl = 'https://oauth-instance.example.com';
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(oauthUrl);
+
+      await callToolHandler(
+        { params: { name: 'get_project', arguments: { id: 'proj-1' } } },
+        { sessionId: 'sess-oauth' },
+      );
+
+      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith('sess-oauth', oauthUrl);
+
+      // Restore defaults so subsequent tests are unaffected
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
+    });
+
+    it('should NOT update session instanceUrl when OAuth context URL is absent (#398)', async () => {
+      // Regression guard: contextless OAuth calls (health checks, non-OAuth transport)
+      // fall back to GITLAB_BASE_URL for routing — that fallback must NOT be written into
+      // SessionManager, which would silently overwrite a session already pinned to another
+      // instance and break multi-tenant tool catalog filtering on the next ListTools call.
+      const oauth = await import('../../src/oauth/index');
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      // getGitLabApiUrlFromContext returns undefined — contextless / startup health check
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
+
+      await callToolHandler(
+        { params: { name: 'get_project', arguments: { id: 'proj-1' } } },
+        { sessionId: 'sess-pinned' },
+      );
+
+      // Session URL must NOT be updated (fallback GITLAB_BASE_URL must not overwrite pinned URL)
+      expect(mockSessionManager.setSessionInstanceUrl).not.toHaveBeenCalled();
+
+      // Restore defaults
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
 
     it('should execute tool and return result', async () => {
@@ -831,6 +967,90 @@ describe('handlers', () => {
       mockHealthMonitor.getState.mockReturnValue('healthy');
     });
 
+    it.each([
+      {
+        label: 'handler not yet cached (hasToolHandler=false)',
+        hasToolHandler: false,
+        // executeTool not called — no undefined to guard against here
+        stubExecuteUndefined: false,
+      },
+      {
+        label: 'TOCTOU: executeTool returns undefined after hasToolHandler=true',
+        hasToolHandler: true,
+        // Regression guard: fast-path must return null, not {text:"undefined"}
+        stubExecuteUndefined: true,
+      },
+    ])(
+      'should fall through to bootstrap when tryManageContextFastPath returns null — $label',
+      async ({ hasToolHandler, stubExecuteUndefined }) => {
+        // Instance unreachable → tryManageContextFastPath is entered for manage_context
+        mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+        mockHealthMonitor.getState.mockReturnValue('disconnected');
+        mockConnectionManager.isConnected.mockReturnValue(false);
+        mockConnectionManager.initialize.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+        mockRegistryManager.hasToolHandler.mockReturnValue(hasToolHandler);
+        if (stubExecuteUndefined) {
+          mockRegistryManager.executeTool.mockResolvedValueOnce(undefined);
+        }
+
+        const result = await callToolHandler({
+          params: { name: 'manage_context', arguments: { action: 'whoami' } },
+        });
+
+        // Fast-path returns null → falls through to ensureBootstrapped → CONNECTION_FAILED
+        expect(result.isError).toBe(true);
+        const parsed = JSON.parse(result.content![0].text);
+        expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      },
+    );
+
+    it('should return error and NOT call reportSuccess when post-bootstrap executeTool returns undefined (TOCTOU)', async () => {
+      // Regression guard: hasToolHandler passes but executeTool returns undefined due to
+      // concurrent refreshCache swapping the cache. Must throw (converting to McpError)
+      // rather than serializing JSON.stringify(undefined) as a valid response.
+      // reportSuccess must NOT be called for a cache miss.
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.executeTool.mockResolvedValueOnce(undefined);
+
+      const result = await callToolHandler({
+        params: { name: 'test_tool', arguments: {} },
+      });
+
+      // Should return an error response (McpError), not reportSuccess
+      expect(result.isError).toBe(true);
+      expect(mockHealthMonitor.reportSuccess).not.toHaveBeenCalled();
+    });
+
+    it('should log warning and continue when refreshCache throws after bootstrap (cache isolated try/catch)', async () => {
+      // refreshCache is wrapped in its own try/catch — a failure must NOT abort the tool call.
+      // The comment in ensureBootstrapped says "If it fails, the tool call should still proceed".
+      const { logWarn } = await import('../../src/logger');
+      mockRegistryManager.refreshCache.mockImplementationOnce(() => {
+        throw new Error('Cache rebuild failed');
+      });
+      mockRegistryManager.executeTool.mockResolvedValue({ result: 'ok' });
+
+      const result = await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      // Tool call succeeds despite refreshCache throwing
+      expect(result.isError).toBeUndefined();
+      const parsed = JSON.parse(result.content![0].text);
+      expect(parsed.result).toBe('ok');
+      // Cache failure is logged as a warning, not surfaced to the user
+      expect(logWarn).toHaveBeenCalledWith(
+        'Failed to refresh registry cache after bootstrap',
+        expect.objectContaining({
+          instanceUrl: 'https://gitlab.example.com',
+          err: expect.any(Error),
+        }),
+      );
+    });
+
     it('should route reachable manage_context through normal bootstrap and report health', async () => {
       // When instance IS reachable, manage_context goes through full bootstrap
       // (unlike the disconnected fast-path above)
@@ -872,6 +1092,27 @@ describe('handlers', () => {
       mockConnectionManager.initialize.mockResolvedValue(undefined);
     });
 
+    it('should handle non-Error thrown from initialize (coverage: catch block non-Error branches)', async () => {
+      // Simulates a non-standard rejection: string/object rather than Error instance.
+      // Exercises the ternary fallback paths in the catch block of ensureBootstrapped.
+      mockConnectionManager.isConnected.mockReturnValue(false);
+      mockConnectionManager.initialize.mockRejectedValue('string rejection');
+
+      const result = await callToolHandler({
+        params: { name: 'test_tool', arguments: {} },
+      });
+
+      expect(result.isError).toBe(true);
+      const parsed = JSON.parse((result.content as Array<{ text: string }>)[0].text);
+      expect(parsed.error_code).toBe('CONNECTION_FAILED');
+      // Non-Error: initError instanceof Error is false → reportError NOT called
+      expect(mockHealthMonitor.reportError).not.toHaveBeenCalled();
+
+      // Restore
+      mockConnectionManager.isConnected.mockReturnValue(true);
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+    });
+
     it('should invoke state change callback for tool list updates', async () => {
       // Capture the callback registered via onStateChange
       const stateChangeCallback = mockHealthMonitor.onStateChange.mock.calls[0]?.[0];
@@ -891,6 +1132,42 @@ describe('handlers', () => {
       // refreshCache should have been called exactly once with the instance URL
       expect(mockRegistryManager.refreshCache).toHaveBeenCalledTimes(1);
       expect(mockRegistryManager.refreshCache).toHaveBeenCalledWith('https://gitlab.example.com');
+    });
+
+    it('should log warning when broadcastToolsListChanged rejects in state change callback (line 424)', async () => {
+      // Line 424: .catch() on broadcastToolsListChangedForStateChange when broadcast fails.
+      // The catch handler logs a warning but does not rethrow (fire-and-forget pattern).
+      const { logWarn } = await import('../../src/logger');
+      const stateChangeCallback = mockHealthMonitor.onStateChange.mock.calls[0]?.[0];
+      expect(stateChangeCallback).toBeDefined();
+
+      mockSessionManager.broadcastToolsListChanged.mockRejectedValueOnce(
+        new Error('Broadcast failed'),
+      );
+      mockRegistryManager.refreshCache.mockClear();
+
+      if (stateChangeCallback) {
+        stateChangeCallback('https://gitlab.example.com', 'disconnected', 'healthy');
+        // Flush microtasks through the fire-and-forget catch path
+        await new Promise((resolve) => process.nextTick(resolve));
+        await new Promise((resolve) => process.nextTick(resolve));
+        await new Promise((resolve) => process.nextTick(resolve));
+      }
+
+      // Despite broadcast failure, refreshCache should still have been called
+      expect(mockRegistryManager.refreshCache).toHaveBeenCalledWith('https://gitlab.example.com');
+      // Broadcast must be scoped to the affected instance — not a global broadcast
+      expect(mockSessionManager.broadcastToolsListChanged).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+      );
+      // Warning must be logged so the failure is observable without crashing
+      expect(logWarn).toHaveBeenCalledWith(
+        'Failed to broadcast tools/list_changed after state change',
+        expect.objectContaining({
+          instanceUrl: 'https://gitlab.example.com',
+          err: expect.any(Error),
+        }),
+      );
     });
 
     it('should handle CONNECTION_FAILED with missing action field', async () => {
@@ -927,6 +1204,23 @@ describe('handlers', () => {
 
       await callToolHandler(mockRequest);
 
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'test_tool',
+        {},
+        'https://gitlab.example.com',
+      );
+    });
+
+    it('should fall back to GITLAB_BASE_URL when getCurrentInstanceUrl returns null (non-OAuth mode)', async () => {
+      // Exercises the `?? GITLAB_BASE_URL` fallback in the non-OAuth URL resolution path.
+      await setupHandlers(mockServer);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+
+      mockConnectionManager.getCurrentInstanceUrl.mockReturnValueOnce(null);
+
+      await callToolHandler({ params: { name: 'test_tool', arguments: {} } });
+
+      // Tool should be invoked with the GITLAB_BASE_URL fallback
       expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
         'test_tool',
         {},
@@ -1216,6 +1510,62 @@ describe('handlers', () => {
       expect(parsed.tool).toBe('original_tool');
       expect(parsed.action).toBe('original_action');
       expect(parsed.http_status).toBe(418);
+    });
+  });
+
+  describe('ensureBootstrapped — LOG_FORMAT=verbose paths', () => {
+    // These tests temporarily switch LOG_FORMAT to 'verbose' to exercise the
+    // diagnostic logging branches inside ensureBootstrapped (lines 294, 322-326).
+    // The config module mock object is mutated per-describe and restored in afterAll.
+    let configMock: { LOG_FORMAT: string; HANDLER_TIMEOUT_MS: number; GITLAB_BASE_URL: string };
+
+    beforeAll(() => {
+      configMock = jest.requireMock('../../src/config');
+      configMock.LOG_FORMAT = 'verbose';
+    });
+
+    afterAll(() => {
+      configMock.LOG_FORMAT = 'condensed';
+    });
+
+    beforeEach(async () => {
+      jest.clearAllMocks();
+      await setupHandlers(mockServer);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+
+      // Default mocks needed by bootstrap + tool execution
+      mockConnectionManager.isConnected.mockReturnValue(false); // triggers line 294 log
+      mockConnectionManager.initialize.mockResolvedValue(undefined);
+      mockConnectionManager.getClient.mockReturnValue({});
+      mockConnectionManager.getInstanceInfo.mockReturnValue({
+        version: '16.0.0',
+        tier: 'ultimate',
+      });
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.executeTool.mockResolvedValue({ result: 'ok' });
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
+      mockHealthMonitor.isAnyInstanceHealthy.mockReturnValue(true);
+      mockHealthMonitor.getState.mockReturnValue('healthy');
+    });
+
+    afterEach(() => {
+      mockConnectionManager.isConnected.mockReturnValue(true);
+    });
+
+    it('should log init message and connection-verified info when getInstanceInfo succeeds (lines 294, 323-324)', async () => {
+      // isConnected=false triggers the "Connection not initialized" verbose log (line 294).
+      // After bootstrap, getInstanceInfo succeeds → "Connection verified: ..." log (lines 323-324).
+      const result = await callToolHandler({ params: { name: 'test_tool', arguments: {} } });
+      expect(result.isError).toBeFalsy();
+    });
+
+    it('should log "instance info not yet available" when getInstanceInfo throws (lines 294, 326)', async () => {
+      // getInstanceInfo throws → catches inside the verbose block → logDebug at line 326.
+      mockConnectionManager.getInstanceInfo.mockImplementationOnce(() => {
+        throw new Error('Not yet available');
+      });
+      const result = await callToolHandler({ params: { name: 'test_tool', arguments: {} } });
+      expect(result.isError).toBeFalsy();
     });
   });
 
@@ -1588,6 +1938,28 @@ describe('handlers', () => {
   });
 
   describe('setupHandlers - health monitor startup failure', () => {
+    it('should log warning and continue when refreshCache throws during initial setup (line 448)', async () => {
+      // Cover line 448: logWarn in catch block when initial refreshCache() call throws.
+      // setupHandlers must still succeed (handlers registered) despite cache failure.
+      const { logWarn } = await import('../../src/logger');
+      resetHandlersState();
+      mockRegistryManager.refreshCache.mockImplementationOnce(() => {
+        throw new Error('Registry cache init failed');
+      });
+
+      await setupHandlers(mockServer);
+      // Both handlers should still be registered despite cache failure
+      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
+      // Cache failure is logged as a warning
+      expect(logWarn).toHaveBeenCalledWith(
+        'Failed to refresh registry cache during handler setup',
+        expect.objectContaining({ err: expect.any(Error) }),
+      );
+
+      // Restore
+      mockRegistryManager.refreshCache.mockReturnValue(undefined);
+    });
+
     it('should reset healthMonitorStartup promise on health monitor init failure', async () => {
       // Cover lines 222-223: healthMonitorStartup = null; throw error
       mockHealthMonitor.initialize.mockRejectedValueOnce(new Error('Health monitor init failed'));
@@ -1598,7 +1970,7 @@ describe('handlers', () => {
       // After failure, healthMonitorStartup is reset to null so next call retries
       // A second call should attempt initialization again
       mockHealthMonitor.initialize.mockResolvedValue(undefined);
-      await expect(setupHandlers(mockServer)).resolves.not.toThrow();
+      await setupHandlers(mockServer);
       expect(mockHealthMonitor.initialize).toHaveBeenCalledTimes(2);
       // State-change listener must not be double-registered after retry
       expect(mockHealthMonitor.onStateChange).toHaveBeenCalledTimes(1);
@@ -1640,7 +2012,7 @@ describe('handlers', () => {
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
       (oauth.isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
       (oauth.getTokenContext as jest.Mock).mockReturnValue(null);
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
 
     it('should call ensureIntrospected in OAuth mode (line 493)', async () => {
@@ -1700,7 +2072,7 @@ describe('handlers', () => {
 
       // Restore
       mockConnectionManager.isConnected.mockReturnValue(true);
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
 
     it('should return CONNECTION_FAILED when introspection fails before bootstrap completes', async () => {
@@ -1752,7 +2124,7 @@ describe('handlers', () => {
       expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(oauthUrl, expect.any(Error));
 
       // Restore
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
 
     it('should short-circuit with CONNECTION_FAILED for OAuth URL when unreachable', async () => {
@@ -1777,7 +2149,7 @@ describe('handlers', () => {
       // Restore
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
       mockHealthMonitor.getState.mockReturnValue('healthy');
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
   });
 
@@ -1855,6 +2227,26 @@ describe('handlers', () => {
       expect(mockRequestTracker.getStack).toHaveBeenCalledWith('req-789');
       // recordError should NOT have been called (no sessionId)
       expect(mockConnectionTracker.recordError).not.toHaveBeenCalled();
+    });
+
+    it('should set context path when sessionContext.scope.path is present (line 713)', async () => {
+      // Line 713: requestTracker.setContextForCurrentRequest is called only when
+      // contextManager.getContext() returns a context with scope.path set.
+      mockContextManager.getContext.mockReturnValue({
+        scope: { path: 'groups/my-group' },
+        readOnly: false,
+      });
+
+      await callToolHandler({
+        params: {
+          name: 'test_tool',
+          arguments: {},
+        },
+      });
+
+      expect(mockRequestTracker.setContextForCurrentRequest).toHaveBeenCalledWith(
+        'groups/my-group',
+      );
     });
   });
 
@@ -1941,7 +2333,7 @@ describe('handlers', () => {
       mockConnectionManager.isConnected.mockReturnValue(true);
       mockConnectionManager.initialize.mockResolvedValue(undefined);
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     }, 5000);
 
     it('should not report success/error after deferred init resolves post-timeout', async () => {

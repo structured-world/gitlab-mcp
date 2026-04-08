@@ -233,9 +233,8 @@ export function collectMetrics(): DashboardMetrics {
   const uptimeSeconds = Math.floor((Date.now() - serverStartTime) / 1000);
 
   // Session counts by instance (anonymized - just counts, no user info)
-  // Note: Current SessionManager doesn't track per-instance sessions
-  // This would require extending the architecture to track which instance each session uses
-  const sessionsByInstance: Record<string, number> = {};
+  const sessionsByInstanceMap = sessionManager.getSessionsByInstance();
+  const sessionsByInstance: Record<string, number> = Object.fromEntries(sessionsByInstanceMap);
 
   return {
     server: {

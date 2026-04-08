@@ -34,7 +34,7 @@ jobs:
       release-version: ${{ steps.release.outputs.version }}
       release-tag: ${{ steps.release.outputs.tag_name }}
       release-sha: ${{ steps.release.outputs.sha }}
-      pr-number: ${{ steps.release.outputs.pr }}
+      pr-number: ${{ steps.release.outputs.pr != '' && fromJSON(steps.release.outputs.pr).number || '' }}
 
     steps:
       - name: Generate release token

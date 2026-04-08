@@ -310,17 +310,21 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
       // skipAuth defaults to false — PRIVATE-TOKEN header injected automatically
     });
 
-    if (response.status === 401) {
-      // Error message format matches parseGitLabApiError pattern so classifyError
-      // correctly returns 'auth' → state machine transitions to 'failed'.
-      // Use "token invalid" rather than "revoked or expired" — a 401 from /api/v4/user
-      // can also indicate a wrong token value, missing scope, or other auth failure.
-      throw new Error('GitLab API error: 401 Unauthorized - token invalid');
+    if (response.status === 401 || response.status === 403) {
+      // Both 401 (invalid/revoked token) and 403 (insufficient scope) mean the configured
+      // token cannot authenticate — include the actual status for accurate log messages.
+      throw new Error(
+        `GitLab API error: ${response.status} - token invalid or lacks required scope`,
+      );
     }
   } catch (error) {
-    // Re-throw the 401 auth error from token validation.
+    // Re-throw auth errors from the token probe (401 = invalid, 403 = insufficient scope).
     // Swallow everything else (network/timeout) — reachability already confirmed by quickHealthCheck.
-    if (error instanceof Error && error.message.startsWith('GitLab API error: 401')) {
+    if (
+      error instanceof Error &&
+      (error.message.startsWith('GitLab API error: 401') ||
+        error.message.startsWith('GitLab API error: 403'))
+    ) {
       throw error;
     }
   } finally {
@@ -355,10 +359,16 @@ const connectionMachine = setup({
       const error = (event as { error?: unknown }).error;
       return classifyError(error) === 'transient';
     },
-    // Auth error during periodic health check → failed (no auto-reconnect)
+    // Auth error during periodic health check → failed (no auto-reconnect).
+    // Checks the error message directly: classifyError maps 401 → 'auth' but 403 → 'permanent',
+    // so message-based detection handles both statuses from the authenticated probe.
     healthCheckErrorIsAuth: ({ event }) => {
       const error = (event as { error?: unknown }).error;
-      return classifyError(error) === 'auth';
+      if (!(error instanceof Error)) return false;
+      return (
+        error.message.startsWith('GitLab API error: 401') ||
+        error.message.startsWith('GitLab API error: 403')
+      );
     },
   },
   actions: {

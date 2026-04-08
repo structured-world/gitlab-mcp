@@ -851,24 +851,30 @@ describe('HealthMonitor', () => {
       return monitor;
     }
 
-    /** Return 401 for /api/v4/user; 200 for all other URLs. */
-    function stubUserEndpoint401(): void {
+    /** Return the given status for /api/v4/user; 200 for all other URLs. */
+    function stubUserEndpointStatus(status: number): void {
       mockFetch.mockImplementation((url: string) => {
-        if (url.includes('/api/v4/user')) return Promise.resolve({ status: 401, ok: false });
+        if (url.includes('/api/v4/user')) return Promise.resolve({ status, ok: false });
         return Promise.resolve({ status: 200, ok: true });
       });
     }
 
-    it('should transition to failed when authenticated health check returns 401 (token revoked)', async () => {
-      // Regression test for #370: token revocation mid-session must move to failed state.
-      // Previously the health monitor stayed healthy because the unauthenticated
-      // /api/v4/version check treats 401 as "server alive" (status < 500).
-      const monitor = await initHealthy();
-      stubUserEndpoint401();
-      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
-      expect(monitor.getState(TEST_URL)).toBe('failed');
-      expect(monitor.isInstanceReachable(TEST_URL)).toBe(false);
-    });
+    // Backward-compat alias used by several tests below
+    const stubUserEndpoint401 = (): void => stubUserEndpointStatus(401);
+
+    it.each([401, 403])(
+      'should transition to failed when authenticated health check returns %i',
+      async (authStatus) => {
+        // Regression test for #370: token auth failure mid-session must move to failed state.
+        // Previously the health monitor stayed healthy because the unauthenticated
+        // /api/v4/version check treats 401/403 as "server alive" (status < 500).
+        const monitor = await initHealthy();
+        stubUserEndpointStatus(authStatus);
+        await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+        expect(monitor.getState(TEST_URL)).toBe('failed');
+        expect(monitor.isInstanceReachable(TEST_URL)).toBe(false);
+      },
+    );
 
     it('should transition from degraded to failed on token revocation', async () => {
       // Regression test for #370 in degraded path: same auth check runs from degraded state.

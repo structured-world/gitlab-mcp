@@ -342,7 +342,10 @@ async function ensureBootstrapped(
     }
     logError(
       `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`,
-      { instanceUrl: effectiveInstanceUrl },
+      {
+        instanceUrl: effectiveInstanceUrl,
+        err: initError instanceof Error ? initError : new Error(String(initError)),
+      },
     );
     const action =
       toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : 'unknown';
@@ -493,8 +496,13 @@ export async function setupHandlers(server: Server): Promise<void> {
     const { getSessionManager: getSessionMgr } = await import('./session-manager');
     const sessionMgr = getSessionMgr();
     const listToolsSessionId = extra?.sessionId;
+    // When sessionId is present, pass the tracked URL directly (may be undefined for a
+    // newly created session whose CallTool hasn't run yet). getAllToolDefinitions resolves
+    // undefined via its built-in chain: OAuth request context → current instance URL →
+    // GITLAB_BASE_URL. Passing GITLAB_BASE_URL explicitly would short-circuit this chain
+    // and return the wrong tool list for OAuth requests that have a real context URL.
     const sessionInstanceUrl = listToolsSessionId
-      ? (sessionMgr.getSessionInstanceUrl(listToolsSessionId) ?? GITLAB_BASE_URL)
+      ? sessionMgr.getSessionInstanceUrl(listToolsSessionId)
       : GITLAB_BASE_URL;
 
     // Get tools from registry manager (already filtered by tier/version/scopes)

@@ -422,15 +422,15 @@ describe('handlers', () => {
         );
       });
 
-      it('should fall back to GITLAB_BASE_URL when session has no tracked URL', async () => {
-        // Session exists but instanceUrl not yet set (getSessionInstanceUrl returns undefined)
+      it('should pass undefined to getAllToolDefinitions when session has no tracked URL (registry resolves via OAuth context chain)', async () => {
+        // Session exists but instanceUrl not yet set — pass undefined so registry can
+        // resolve via OAuth context URL → current URL → GITLAB_BASE_URL chain instead
+        // of short-circuiting with a stale GITLAB_BASE_URL fallback (#398).
         mockSessionManager.getSessionInstanceUrl.mockReturnValue(undefined);
 
         await listToolsHandler({ method: 'tools/list' }, { sessionId: 'new-sess' });
 
-        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(
-          'https://gitlab.example.com',
-        );
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined);
       });
     });
   });

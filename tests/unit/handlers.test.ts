@@ -495,7 +495,7 @@ describe('handlers', () => {
       // instance and break multi-tenant tool catalog filtering on the next ListTools call.
       const oauth = await import('../../src/oauth/index');
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
-      // getGitLabApiUrlFromContext returns null — contextless / startup health check
+      // getGitLabApiUrlFromContext returns undefined — contextless / startup health check
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
 
       await callToolHandler(

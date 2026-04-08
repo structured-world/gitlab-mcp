@@ -313,10 +313,12 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
     if (response.status === 401) {
       // Error message format matches parseGitLabApiError pattern so classifyError
       // correctly returns 'auth' → state machine transitions to 'failed'.
-      throw new Error('GitLab API error: 401 Unauthorized - token revoked or expired');
+      // Use "token invalid" rather than "revoked or expired" — a 401 from /api/v4/user
+      // can also indicate a wrong token value, missing scope, or other auth failure.
+      throw new Error('GitLab API error: 401 Unauthorized - token invalid');
     }
   } catch (error) {
-    // Re-throw the 401 auth error that signals token revocation.
+    // Re-throw the 401 auth error from token validation.
     // Swallow everything else (network/timeout) — reachability already confirmed by quickHealthCheck.
     if (error instanceof Error && error.message.startsWith('GitLab API error: 401')) {
       throw error;

@@ -68,7 +68,11 @@ jest.mock('../../../src/utils/fetch', () => ({
   enhancedFetch: (...args: unknown[]) => mockFetch(...args),
 }));
 
-// Mock config with shorter timeouts for testing
+// GITLAB_TOKEN mock value — controlled per-test to cover the !GITLAB_TOKEN early-return branch
+let mockGitLabToken: string | undefined = 'test-token';
+
+// Mock config with shorter timeouts for testing.
+// GITLAB_TOKEN uses a getter so individual tests can clear it (mockGitLabToken = undefined).
 jest.mock('../../../src/config', () => ({
   INIT_TIMEOUT_MS: 200,
   RECONNECT_BASE_DELAY_MS: 100,
@@ -76,8 +80,9 @@ jest.mock('../../../src/config', () => ({
   HEALTH_CHECK_INTERVAL_MS: 300, // Short for testing health check substates
   FAILURE_THRESHOLD: 3,
   GITLAB_BASE_URL: 'https://gitlab.example.com',
-  // Static token present — enables authenticated health checks in tests
-  GITLAB_TOKEN: 'test-token',
+  get GITLAB_TOKEN() {
+    return mockGitLabToken;
+  },
 }));
 
 // Mock isOAuthEnabled — controls authenticated health check in static vs OAuth mode
@@ -100,6 +105,7 @@ describe('HealthMonitor', () => {
     mockGetIntrospection.mockReset();
     // Default: static token mode (authenticated health check enabled)
     mockIsOAuthEnabled.mockReturnValue(false);
+    mockGitLabToken = 'test-token';
 
     HealthMonitor.resetInstance();
     mockInitialize.mockResolvedValue(undefined);
@@ -880,6 +886,31 @@ describe('HealthMonitor', () => {
       await new Promise((r) => setTimeout(r, 600));
 
       expect(monitor.getState(TEST_URL)).toBe('failed');
+    });
+
+    it('should skip authenticated check when GITLAB_TOKEN is not configured', async () => {
+      // When GITLAB_TOKEN is absent (e.g., OAuth-only deployment without a static token),
+      // the authenticated check must be skipped — there is no token to validate.
+      mockGitLabToken = undefined;
+      mockInitialize.mockResolvedValue(undefined);
+      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/api/v4/user')) {
+          // Would fail the connection if called — must NOT be called without a token
+          return Promise.resolve({ status: 401, ok: false });
+        }
+        return Promise.resolve({ status: 200, ok: true });
+      });
+
+      const monitor = await initMonitor();
+      expect(monitor.getState(TEST_URL)).toBe('healthy');
+
+      // Wait for health check interval
+      await new Promise((r) => setTimeout(r, 600));
+
+      // Authenticated check was skipped — connection stays healthy
+      expect(monitor.getState(TEST_URL)).toBe('healthy');
     });
 
     it('should not check token validity in OAuth mode', async () => {

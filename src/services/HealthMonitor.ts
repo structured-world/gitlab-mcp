@@ -25,7 +25,7 @@ import {
 import { ConnectionManager } from './ConnectionManager';
 import { normalizeInstanceUrl } from '../utils/url';
 import { InstanceRegistry } from './InstanceRegistry';
-import { classifyError, type ErrorCategory } from '../utils/error-handler';
+import { classifyError, parseGitLabApiError, type ErrorCategory } from '../utils/error-handler';
 import { enhancedFetch } from '../utils/fetch';
 import { logInfo, logWarn, logError, logDebug } from '../logger';
 import {
@@ -227,8 +227,9 @@ const performHealthCheck = fromPromise<{ degraded: boolean }, { instanceUrl: str
     }
 
     // Detect mid-session token revocation in static token mode.
-    // Throws GitLab API 401 when the token is revoked → classifyError → 'auth'
-    // → healthCheckErrorIsAuth guard → '#connection.failed' (no auto-reconnect).
+    // Throws GitLab API 401/403 when the token is invalid or lacks required scope.
+    // healthCheckErrorIsAuth guard detects these by parsing the error message
+    // and routes to '#connection.failed' (no auto-reconnect).
     // No-op in OAuth mode (no global token) and when GITLAB_TOKEN is unset.
     await authenticatedTokenCheck(input.instanceUrl, HEALTH_CHECK_PROBE_MS);
 
@@ -285,9 +286,9 @@ async function quickHealthCheck(
  * Only runs in static token mode — OAuth tokens are per-request context and are
  * not available during background health checks.
  *
- * Throws a GitLab API 401 error when the token is revoked or expired.
- * classifyError maps this to 'auth' → state machine transitions to 'failed',
- * disabling auto-reconnect until the user intervenes.
+ * Throws a GitLab API 401 or 403 error when the token is invalid, revoked,
+ * expired, or lacks the required scope. The healthCheckErrorIsAuth guard detects
+ * these by parsing the status code and transitions to 'failed' (no auto-reconnect).
  *
  * Network/timeout errors are swallowed: the unauthenticated check already verified
  * reachability, so connectivity failures on this request are noise, not signal.
@@ -320,12 +321,9 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
   } catch (error) {
     // Re-throw auth errors from the token probe (401 = invalid, 403 = insufficient scope).
     // Swallow everything else (network/timeout) — reachability already confirmed by quickHealthCheck.
-    if (
-      error instanceof Error &&
-      (error.message.startsWith('GitLab API error: 401') ||
-        error.message.startsWith('GitLab API error: 403'))
-    ) {
-      throw error;
+    if (error instanceof Error) {
+      const parsed = parseGitLabApiError(error.message);
+      if (parsed?.status === 401 || parsed?.status === 403) throw error;
     }
   } finally {
     clearTimeout(timeoutId);
@@ -375,15 +373,15 @@ const connectionMachine = setup({
       return classifyError(error) === 'transient';
     },
     // Auth error during periodic health check → failed (no auto-reconnect).
-    // Checks the error message directly: classifyError maps 401 → 'auth' but 403 → 'permanent',
-    // so message-based detection handles both statuses from the authenticated probe.
+    // Uses parseGitLabApiError to extract the status code: both 401 (invalid token)
+    // and 403 (insufficient scope) from the authenticated probe are terminal failures.
+    // Direct message parsing is used because classifyError maps 403 → 'permanent',
+    // not 'auth', so we can't rely on classifyError for the 403 path.
     healthCheckErrorIsAuth: ({ event }) => {
       const error = (event as { error?: unknown }).error;
       if (!(error instanceof Error)) return false;
-      return (
-        error.message.startsWith('GitLab API error: 401') ||
-        error.message.startsWith('GitLab API error: 403')
-      );
+      const parsed = parseGitLabApiError(error.message);
+      return parsed?.status === 401 || parsed?.status === 403;
     },
   },
   actions: {

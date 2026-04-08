@@ -936,6 +936,21 @@ describe('HealthMonitor', () => {
       await new Promise((r) => setTimeout(r, 400));
       expect(monitor.getState(TEST_URL)).toBe('healthy');
     });
+
+    it('should remain in failed state on forceReconnect when token is still revoked', async () => {
+      // Regression: forceReconnect uses the performConnect fast-path which must
+      // also call authenticatedTokenCheck. Without it, a still-revoked token could
+      // bounce failed → healthy until the next health-check interval.
+      const monitor = await initHealthy();
+      stubUserEndpoint401();
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+      expect(monitor.getState(TEST_URL)).toBe('failed');
+
+      // Token still invalid — forceReconnect must NOT recover to healthy
+      monitor.forceReconnect(TEST_URL);
+      await new Promise((r) => setTimeout(r, 400));
+      expect(monitor.getState(TEST_URL)).toBe('failed');
+    });
   });
 
   describe('periodic health checks', () => {

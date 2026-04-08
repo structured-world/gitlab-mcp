@@ -152,6 +152,10 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
         // classifyError maps this to 'transient' → disconnected → auto-reconnect.
         throw new Error(`Health check failed for ${input.instanceUrl}`);
       }
+      // Re-validate the token on reconnect, not just during steady-state polls.
+      // Without this, forceReconnect() while the token is still revoked would
+      // bounce failed → healthy until the next health-check interval.
+      await authenticatedTokenCheck(input.instanceUrl, HEALTH_CHECK_PROBE_MS);
       return { degraded: isDegradedInstance(connectionManager, input.instanceUrl) };
     }
 

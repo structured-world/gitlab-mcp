@@ -643,6 +643,12 @@ export async function setupHandlers(server: Server): Promise<void> {
     // specific instance (contextless calls occur during health checks / non-OAuth
     // transport; persisting the fallback would reset multi-tenant tool filtering).
     // In static-token mode always track the active instance URL.
+    //
+    // NOTE: manage_context/switch_profile (OAuth) and switch_preset (static) do not
+    // need a post-dispatch re-pin here. For switch_profile, the OAuth context URL is
+    // per-request from the token — the next call will carry the new profile's URL and
+    // update the session naturally. For switch_preset, the instance URL does not change
+    // (presets change tool filtering, not the GitLab host).
     const callSessionId = extra?.sessionId;
     if (callSessionId && (!oauthEnabled || oauthContextUrl !== undefined)) {
       const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');

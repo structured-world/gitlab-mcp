@@ -3,16 +3,15 @@
  * Verifies per-session Server isolation, cleanup, and broadcast behavior
  */
 
-const mockServer = {
-  connect: jest.fn().mockResolvedValue(undefined),
-  close: jest.fn().mockResolvedValue(undefined),
-  notification: jest.fn().mockResolvedValue(undefined),
-  oninitialized: null as (() => void) | null,
-  getClientVersion: jest.fn().mockReturnValue({ name: 'test-client' }),
-};
-
 jest.mock('@modelcontextprotocol/sdk/server/index.js', () => ({
-  Server: jest.fn(() => ({ ...mockServer })),
+  Server: jest.fn().mockImplementation(() => ({
+    connect: jest.fn().mockResolvedValue(undefined),
+    close: jest.fn().mockResolvedValue(undefined),
+    // Fresh spy per instance so tests can assert which server was notified
+    notification: jest.fn().mockResolvedValue(undefined),
+    oninitialized: null,
+    getClientVersion: jest.fn().mockReturnValue({ name: 'test-client' }),
+  })),
 }));
 
 jest.mock('../../src/config', () => ({
@@ -268,31 +267,38 @@ describe('SessionManager', () => {
     });
 
     it('should send tools/list_changed notification when instanceUrl changes', async () => {
-      mockServer.notification.mockClear();
       manager.start();
-      await manager.createSession('session-1', mockTransport as any);
+      const server = await manager.createSession('session-1', mockTransport as any);
 
-      // URL changes → notification must be sent
+      // URL changes → notification must be sent to this specific session's server
       manager.setSessionInstanceUrl('session-1', 'https://other.gitlab.com');
 
       // Allow the fire-and-forget promise to settle
       await Promise.resolve();
 
-      expect(mockServer.notification).toHaveBeenCalledWith({
+      expect(server.notification).toHaveBeenCalledWith({
         method: 'notifications/tools/list_changed',
       });
     });
 
     it('should NOT send tools/list_changed notification when instanceUrl is unchanged', async () => {
       manager.start();
-      await manager.createSession('session-1', mockTransport as any, 'https://a.gitlab.com');
-      mockServer.notification.mockClear();
+      const server = await manager.createSession(
+        'session-1',
+        mockTransport as any,
+        'https://a.gitlab.com',
+      );
 
       // Same URL again → no notification
       manager.setSessionInstanceUrl('session-1', 'https://a.gitlab.com');
       await Promise.resolve();
 
-      expect(mockServer.notification).not.toHaveBeenCalled();
+      // notification may have been called during connect — only check that the
+      // URL-unchanged path does NOT add an extra notification call
+      const callsBefore = (server.notification as jest.Mock).mock.calls.length;
+      manager.setSessionInstanceUrl('session-1', 'https://a.gitlab.com');
+      await Promise.resolve();
+      expect((server.notification as jest.Mock).mock.calls.length).toBe(callsBefore);
     });
 
     it('should no-op setSessionInstanceUrl for non-existent session', () => {
@@ -322,53 +328,77 @@ describe('SessionManager', () => {
   });
 
   describe('broadcastToolsListChanged — per-instance filtering (#398)', () => {
-    // NOTE: The Server mock returns `{ ...mockServer }` for each new Server(),
-    // which means all server instances share the same `notification` jest.fn()
-    // reference. We verify filtering by checking the total call count rather than
-    // per-server individual call assertions.
-
     it('should notify only sessions matching the given instanceUrl', async () => {
-      // Reset the shared notification mock before this test
-      mockServer.notification.mockClear();
-
       manager.start();
-      await manager.createSession('session-a1', mockTransport as any, 'https://a.gitlab.com');
-      await manager.createSession('session-a2', mockTransport as any, 'https://a.gitlab.com');
-      await manager.createSession('session-b', mockTransport as any, 'https://b.gitlab.com');
+      const serverA1 = await manager.createSession(
+        'session-a1',
+        mockTransport as any,
+        'https://a.gitlab.com',
+      );
+      const serverA2 = await manager.createSession(
+        'session-a2',
+        mockTransport as any,
+        'https://a.gitlab.com',
+      );
+      const serverB = await manager.createSession(
+        'session-b',
+        mockTransport as any,
+        'https://b.gitlab.com',
+      );
 
       await manager.broadcastToolsListChanged('https://a.gitlab.com');
 
-      // Only the 2 sessions targeting 'a.gitlab.com' should be notified — NOT session-b
-      expect(mockServer.notification).toHaveBeenCalledTimes(2);
-      expect(mockServer.notification).toHaveBeenCalledWith({
+      // Only sessions targeting 'a.gitlab.com' should be notified — NOT session-b
+      expect(serverA1.notification).toHaveBeenCalledWith({
+        method: 'notifications/tools/list_changed',
+      });
+      expect(serverA2.notification).toHaveBeenCalledWith({
+        method: 'notifications/tools/list_changed',
+      });
+      expect(serverB.notification).not.toHaveBeenCalledWith({
         method: 'notifications/tools/list_changed',
       });
     });
 
     it('should notify all sessions when no instanceUrl filter is provided', async () => {
-      mockServer.notification.mockClear();
-
       manager.start();
-      await manager.createSession('session-1', mockTransport as any, 'https://a.gitlab.com');
-      await manager.createSession('session-2', mockTransport as any, 'https://b.gitlab.com');
+      const server1 = await manager.createSession(
+        'session-1',
+        mockTransport as any,
+        'https://a.gitlab.com',
+      );
+      const server2 = await manager.createSession(
+        'session-2',
+        mockTransport as any,
+        'https://b.gitlab.com',
+      );
 
       await manager.broadcastToolsListChanged();
 
       // Both sessions notified when no filter
-      expect(mockServer.notification).toHaveBeenCalledTimes(2);
+      expect(server1.notification).toHaveBeenCalledWith({
+        method: 'notifications/tools/list_changed',
+      });
+      expect(server2.notification).toHaveBeenCalledWith({
+        method: 'notifications/tools/list_changed',
+      });
     });
 
     it('should no-op when no sessions match the instanceUrl filter', async () => {
-      mockServer.notification.mockClear();
-
       manager.start();
-      await manager.createSession('session-1', mockTransport as any, 'https://a.gitlab.com');
+      const server = await manager.createSession(
+        'session-1',
+        mockTransport as any,
+        'https://a.gitlab.com',
+      );
 
       await expect(
         manager.broadcastToolsListChanged('https://unrelated.gitlab.com'),
       ).resolves.toBeUndefined();
 
-      expect(mockServer.notification).not.toHaveBeenCalled();
+      expect(server.notification).not.toHaveBeenCalledWith({
+        method: 'notifications/tools/list_changed',
+      });
     });
   });
 

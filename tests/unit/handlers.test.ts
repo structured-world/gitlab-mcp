@@ -1853,7 +1853,7 @@ describe('handlers', () => {
         throw new Error('Registry cache init failed');
       });
 
-      await expect(setupHandlers(mockServer)).resolves.not.toThrow();
+      await setupHandlers(mockServer);
       // Both handlers should still be registered despite cache failure
       expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
       // Cache failure is logged as a warning
@@ -1876,7 +1876,7 @@ describe('handlers', () => {
       // After failure, healthMonitorStartup is reset to null so next call retries
       // A second call should attempt initialization again
       mockHealthMonitor.initialize.mockResolvedValue(undefined);
-      await expect(setupHandlers(mockServer)).resolves.not.toThrow();
+      await setupHandlers(mockServer);
       expect(mockHealthMonitor.initialize).toHaveBeenCalledTimes(2);
       // State-change listener must not be double-registered after retry
       expect(mockHealthMonitor.onStateChange).toHaveBeenCalledTimes(1);

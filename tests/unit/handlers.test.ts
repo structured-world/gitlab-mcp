@@ -489,6 +489,29 @@ describe('handlers', () => {
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
     });
 
+    it('should NOT update session instanceUrl when OAuth context URL is absent (#398)', async () => {
+      // Regression guard: contextless OAuth calls (health checks, non-OAuth transport)
+      // fall back to GITLAB_BASE_URL for routing — that fallback must NOT be written into
+      // SessionManager, which would silently overwrite a session already pinned to another
+      // instance and break multi-tenant tool catalog filtering on the next ListTools call.
+      const oauth = await import('../../src/oauth/index');
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      // getGitLabApiUrlFromContext returns null — contextless / startup health check
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+
+      await callToolHandler(
+        { params: { name: 'get_project', arguments: { id: 'proj-1' } } },
+        { sessionId: 'sess-pinned' },
+      );
+
+      // Session URL must NOT be updated (fallback GITLAB_BASE_URL must not overwrite pinned URL)
+      expect(mockSessionManager.setSessionInstanceUrl).not.toHaveBeenCalled();
+
+      // Restore defaults
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+    });
+
     it('should execute tool and return result', async () => {
       const mockRequest = {
         params: {
@@ -981,6 +1004,23 @@ describe('handlers', () => {
         expect(parsed.error_code).toBe('CONNECTION_FAILED');
       },
     );
+
+    it('should return error and NOT call reportSuccess when post-bootstrap executeTool returns undefined (TOCTOU)', async () => {
+      // Regression guard: hasToolHandler passes but executeTool returns undefined due to
+      // concurrent refreshCache swapping the cache. Must throw (converting to McpError)
+      // rather than serializing JSON.stringify(undefined) as a valid response.
+      // reportSuccess must NOT be called for a cache miss.
+      mockRegistryManager.hasToolHandler.mockReturnValue(true);
+      mockRegistryManager.executeTool.mockResolvedValueOnce(undefined);
+
+      const result = await callToolHandler({
+        params: { name: 'test_tool', arguments: {} },
+      });
+
+      // Should return an error response (McpError), not reportSuccess
+      expect(result.isError).toBe(true);
+      expect(mockHealthMonitor.reportSuccess).not.toHaveBeenCalled();
+    });
 
     it('should log warning and continue when refreshCache throws after bootstrap (cache isolated try/catch)', async () => {
       // refreshCache is wrapped in its own try/catch — a failure must NOT abort the tool call.

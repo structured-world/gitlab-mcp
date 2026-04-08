@@ -612,18 +612,22 @@ export async function setupHandlers(server: Server): Promise<void> {
     // fallback is safe because GITLAB_BASE_URL is always configured.
     // In static-token mode, prefer the actively selected instance URL so
     // requests continue routing to the current instance.
-    const rawInstanceUrl = isOAuthEnabled()
-      ? (getUrlFromCtx() ?? GITLAB_BASE_URL)
+    const oauthEnabled = isOAuthEnabled();
+    const oauthContextUrl = oauthEnabled ? getUrlFromCtx() : null;
+    const rawInstanceUrl = oauthEnabled
+      ? (oauthContextUrl ?? GITLAB_BASE_URL)
       : (ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL);
     // Normalize so CONNECTION_FAILED instance_url and HealthMonitor keys are consistent
     const requestInstanceUrl = normalizeInstanceUrl(rawInstanceUrl);
 
     // Keep per-session instance URL in sync so ListTools requests reflect the correct
-    // instance. In OAuth mode this resolves the actual instance from the token context
-    // (replacing the GITLAB_BASE_URL default set at session creation). In static-token
-    // mode this is the actively selected instance URL at the time of the call.
+    // instance. In OAuth mode only update when we have a real OAuth context URL —
+    // the GITLAB_BASE_URL fallback must NOT overwrite a session already pinned to a
+    // specific instance (contextless calls occur during health checks / non-OAuth
+    // transport; persisting the fallback would reset multi-tenant tool filtering).
+    // In static-token mode always track the active instance URL.
     const callSessionId = extra?.sessionId;
-    if (callSessionId) {
+    if (callSessionId && (!oauthEnabled || oauthContextUrl !== null)) {
       const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
       getSessionMgrForCall().setSessionInstanceUrl(callSessionId, requestInstanceUrl);
     }
@@ -782,6 +786,15 @@ export async function setupHandlers(server: Server): Promise<void> {
           request.params.arguments,
           effectiveInstanceUrl,
         );
+
+        // Guard against TOCTOU cache miss: hasToolHandler returned true but a
+        // concurrent refreshCache swapped the lookup table before executeTool ran.
+        // Re-throw so the outer catch converts it to a McpError, consistent with
+        // the explicit hasToolHandler check above. Never return JSON.stringify(undefined)
+        // which would produce an invalid MCP payload ("text: undefined").
+        if (result === undefined) {
+          throw new Error(`Tool '${toolName}' is not available or has been filtered out`);
+        }
 
         // Report success — skip if handler already timed out (late completion
         // must not overwrite the timeout error already sent to HealthMonitor)

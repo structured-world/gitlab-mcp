@@ -838,29 +838,34 @@ describe('HealthMonitor', () => {
   });
 
   describe('token revocation detection', () => {
+    // Buffer accounts for HEALTH_CHECK_INTERVAL_MS (300ms test config) + processing
+    const HEALTH_CYCLE_MS = 600;
+
+    /** Init monitor in healthy state with all fetch calls returning 200. */
+    async function initHealthy(): Promise<ReturnType<typeof HealthMonitor.getInstance>> {
+      mockInitialize.mockResolvedValue(undefined);
+      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+      mockFetch.mockResolvedValue({ status: 200, ok: true });
+      const monitor = await initMonitor();
+      expect(monitor.getState(TEST_URL)).toBe('healthy');
+      return monitor;
+    }
+
+    /** Configure fetch to return 401 for /api/v4/user and 200 for everything else. */
+    function stubUserEndpoint401(): void {
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/api/v4/user')) return Promise.resolve({ status: 401, ok: false });
+        return Promise.resolve({ status: 200, ok: true });
+      });
+    }
+
     it('should transition to failed when authenticated health check returns 401 (token revoked)', async () => {
       // Regression test for #370: token revocation mid-session must move to failed state.
       // Previously the health monitor stayed healthy because the unauthenticated
       // /api/v4/version check treats 401 as "server alive" (status < 500).
-      mockInitialize.mockResolvedValue(undefined);
-      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
-      mockFetch.mockResolvedValue({ status: 200, ok: true });
-
-      const monitor = await initMonitor();
-      expect(monitor.getState(TEST_URL)).toBe('healthy');
-
-      // Simulate token revocation: unauthenticated check passes, authenticated fails
-      mockFetch.mockImplementation((url: string) => {
-        if (url.includes('/api/v4/user')) {
-          return Promise.resolve({ status: 401, ok: false });
-        }
-        return Promise.resolve({ status: 200, ok: true });
-      });
-
-      // Wait for health check interval (300ms) + processing
-      await new Promise((r) => setTimeout(r, 600));
-
-      // Must transition to failed — auth error, no auto-reconnect
+      const monitor = await initHealthy();
+      stubUserEndpoint401();
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
       expect(monitor.getState(TEST_URL)).toBe('failed');
       expect(monitor.isInstanceReachable(TEST_URL)).toBe(false);
     });
@@ -870,21 +875,12 @@ describe('HealthMonitor', () => {
       mockInitialize.mockResolvedValue(undefined);
       mockGetInstanceInfo.mockReturnValue({ version: 'unknown', tier: 'free' }); // degraded
       mockFetch.mockResolvedValue({ status: 200, ok: true });
-
       const monitor = await initMonitor();
       expect(monitor.getState(TEST_URL)).toBe('degraded');
 
-      // Simulate token revocation
-      mockFetch.mockImplementation((url: string) => {
-        if (url.includes('/api/v4/user')) {
-          return Promise.resolve({ status: 401, ok: false });
-        }
-        return Promise.resolve({ status: 200, ok: true });
-      });
-
-      // Wait for degraded health check interval (min(300ms, 30000ms) = 300ms)
-      await new Promise((r) => setTimeout(r, 600));
-
+      stubUserEndpoint401();
+      // degradedCheckInterval = min(HEALTH_CHECK_INTERVAL_MS, 30000) = 300ms
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
       expect(monitor.getState(TEST_URL)).toBe('failed');
     });
 
@@ -892,49 +888,24 @@ describe('HealthMonitor', () => {
       // When GITLAB_TOKEN is absent (e.g., OAuth-only deployment without a static token),
       // the authenticated check must be skipped — there is no token to validate.
       mockGitLabToken = undefined;
+      stubUserEndpoint401(); // would fail if called — must NOT be called without a token
+      const monitor = await initMonitor();
       mockInitialize.mockResolvedValue(undefined);
       mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
-
-      mockFetch.mockImplementation((url: string) => {
-        if (url.includes('/api/v4/user')) {
-          // Would fail the connection if called — must NOT be called without a token
-          return Promise.resolve({ status: 401, ok: false });
-        }
-        return Promise.resolve({ status: 200, ok: true });
-      });
-
-      const monitor = await initMonitor();
       expect(monitor.getState(TEST_URL)).toBe('healthy');
-
-      // Wait for health check interval
-      await new Promise((r) => setTimeout(r, 600));
-
-      // Authenticated check was skipped — connection stays healthy
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
       expect(monitor.getState(TEST_URL)).toBe('healthy');
     });
 
     it('should not check token validity in OAuth mode', async () => {
       // In OAuth mode there is no global token — authenticated check must be skipped.
-      // Even if /api/v4/user returns 401, the state should remain healthy.
       mockIsOAuthEnabled.mockReturnValue(true);
+      stubUserEndpoint401(); // would fail if called — must NOT be called in OAuth mode
       mockInitialize.mockResolvedValue(undefined);
       mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
-
-      mockFetch.mockImplementation((url: string) => {
-        if (url.includes('/api/v4/user')) {
-          // Would fail the connection if called — must NOT be called in OAuth mode
-          return Promise.resolve({ status: 401, ok: false });
-        }
-        return Promise.resolve({ status: 200, ok: true });
-      });
-
       const monitor = await initMonitor();
       expect(monitor.getState(TEST_URL)).toBe('healthy');
-
-      // Wait for health check interval
-      await new Promise((r) => setTimeout(r, 600));
-
-      // Authenticated check was skipped — connection stays healthy
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
       expect(monitor.getState(TEST_URL)).toBe('healthy');
     });
 
@@ -942,51 +913,25 @@ describe('HealthMonitor', () => {
       // If the authenticated check throws a network error (not 401), it is swallowed.
       // The unauthenticated check already verified reachability, so connectivity
       // errors on the second request are noise, not signal.
-      mockInitialize.mockResolvedValue(undefined);
-      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
-      mockFetch.mockResolvedValue({ status: 200, ok: true });
-
-      const monitor = await initMonitor();
-      expect(monitor.getState(TEST_URL)).toBe('healthy');
-
+      const monitor = await initHealthy();
       mockFetch.mockImplementation((url: string) => {
-        if (url.includes('/api/v4/user')) {
-          return Promise.reject(new Error('network error'));
-        }
+        if (url.includes('/api/v4/user')) return Promise.reject(new Error('network error'));
         return Promise.resolve({ status: 200, ok: true });
       });
-
-      await new Promise((r) => setTimeout(r, 600));
-
-      // Network error on authenticated check is swallowed — connection stays healthy
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
       expect(monitor.getState(TEST_URL)).toBe('healthy');
     });
 
     it('should recover after token replacement via forceReconnect', async () => {
       // After detecting token revocation (→ failed), the user can replace the token
       // and manually reconnect via forceReconnect — must recover to healthy.
-      mockInitialize.mockResolvedValue(undefined);
-      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
-      mockFetch.mockResolvedValue({ status: 200, ok: true });
-
-      const monitor = await initMonitor();
-      expect(monitor.getState(TEST_URL)).toBe('healthy');
-
-      // Token revocation
-      mockFetch.mockImplementation((url: string) => {
-        if (url.includes('/api/v4/user')) {
-          return Promise.resolve({ status: 401, ok: false });
-        }
-        return Promise.resolve({ status: 200, ok: true });
-      });
-
-      await new Promise((r) => setTimeout(r, 600));
+      const monitor = await initHealthy();
+      stubUserEndpoint401();
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
       expect(monitor.getState(TEST_URL)).toBe('failed');
 
-      // User replaces token → all requests succeed again
       mockFetch.mockResolvedValue({ status: 200, ok: true });
       monitor.forceReconnect(TEST_URL);
-
       await new Promise((r) => setTimeout(r, 400));
       expect(monitor.getState(TEST_URL)).toBe('healthy');
     });

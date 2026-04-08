@@ -841,17 +841,17 @@ describe('HealthMonitor', () => {
     // Buffer accounts for HEALTH_CHECK_INTERVAL_MS (300ms test config) + processing
     const HEALTH_CYCLE_MS = 600;
 
-    /** Init monitor in healthy state with all fetch calls returning 200. */
+    /**
+     * Init monitor in healthy state (beforeEach already provides 200 fetch + v17 instance info).
+     * Used by tests that need to start from a known-healthy baseline.
+     */
     async function initHealthy(): Promise<ReturnType<typeof HealthMonitor.getInstance>> {
-      mockInitialize.mockResolvedValue(undefined);
-      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
-      mockFetch.mockResolvedValue({ status: 200, ok: true });
       const monitor = await initMonitor();
       expect(monitor.getState(TEST_URL)).toBe('healthy');
       return monitor;
     }
 
-    /** Configure fetch to return 401 for /api/v4/user and 200 for everything else. */
+    /** Return 401 for /api/v4/user; 200 for all other URLs. */
     function stubUserEndpoint401(): void {
       mockFetch.mockImplementation((url: string) => {
         if (url.includes('/api/v4/user')) return Promise.resolve({ status: 401, ok: false });
@@ -872,9 +872,7 @@ describe('HealthMonitor', () => {
 
     it('should transition from degraded to failed on token revocation', async () => {
       // Regression test for #370 in degraded path: same auth check runs from degraded state.
-      mockInitialize.mockResolvedValue(undefined);
       mockGetInstanceInfo.mockReturnValue({ version: 'unknown', tier: 'free' }); // degraded
-      mockFetch.mockResolvedValue({ status: 200, ok: true });
       const monitor = await initMonitor();
       expect(monitor.getState(TEST_URL)).toBe('degraded');
 
@@ -884,25 +882,23 @@ describe('HealthMonitor', () => {
       expect(monitor.getState(TEST_URL)).toBe('failed');
     });
 
-    it('should skip authenticated check when GITLAB_TOKEN is not configured', async () => {
-      // When GITLAB_TOKEN is absent (e.g., OAuth-only deployment without a static token),
-      // the authenticated check must be skipped — there is no token to validate.
-      mockGitLabToken = undefined;
-      stubUserEndpoint401(); // would fail if called — must NOT be called without a token
-      const monitor = await initMonitor();
-      mockInitialize.mockResolvedValue(undefined);
-      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
-      expect(monitor.getState(TEST_URL)).toBe('healthy');
-      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
-      expect(monitor.getState(TEST_URL)).toBe('healthy');
-    });
-
-    it('should not check token validity in OAuth mode', async () => {
-      // In OAuth mode there is no global token — authenticated check must be skipped.
-      mockIsOAuthEnabled.mockReturnValue(true);
-      stubUserEndpoint401(); // would fail if called — must NOT be called in OAuth mode
-      mockInitialize.mockResolvedValue(undefined);
-      mockGetInstanceInfo.mockReturnValue({ version: '17.0', tier: 'premium' });
+    it.each([
+      [
+        'no GITLAB_TOKEN',
+        (): void => {
+          mockGitLabToken = undefined;
+        },
+      ],
+      [
+        'OAuth mode',
+        (): void => {
+          mockIsOAuthEnabled.mockReturnValue(true);
+        },
+      ],
+    ])('should skip authenticated check in %s', async (_label, setup) => {
+      // Guard: /api/v4/user must never be called — if it is, the 401 would flip state to failed.
+      stubUserEndpoint401();
+      setup();
       const monitor = await initMonitor();
       expect(monitor.getState(TEST_URL)).toBe('healthy');
       await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
@@ -910,9 +906,8 @@ describe('HealthMonitor', () => {
     });
 
     it('should swallow network errors during authenticated check', async () => {
-      // If the authenticated check throws a network error (not 401), it is swallowed.
-      // The unauthenticated check already verified reachability, so connectivity
-      // errors on the second request are noise, not signal.
+      // Connectivity errors on the second request are noise, not signal:
+      // the unauthenticated check already verified reachability.
       const monitor = await initHealthy();
       mockFetch.mockImplementation((url: string) => {
         if (url.includes('/api/v4/user')) return Promise.reject(new Error('network error'));

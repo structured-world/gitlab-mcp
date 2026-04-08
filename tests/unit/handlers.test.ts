@@ -412,14 +412,13 @@ describe('handlers', () => {
         );
       });
 
-      it('should fall back to GITLAB_BASE_URL when sessionId is absent', async () => {
-        // No extra.sessionId provided (e.g. stdio transport before session tracking)
+      it('should pass undefined to getAllToolDefinitions when sessionId is absent (registry resolves via OAuth context chain)', async () => {
+        // No extra.sessionId (e.g. stdio transport) — pass undefined so registry resolves
+        // via OAuth context URL → current URL → GITLAB_BASE_URL chain (#398).
         await listToolsHandler({ method: 'tools/list' });
 
         expect(mockSessionManager.getSessionInstanceUrl).not.toHaveBeenCalled();
-        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(
-          'https://gitlab.example.com',
-        );
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined);
       });
 
       it('should pass undefined to getAllToolDefinitions when session has no tracked URL (registry resolves via OAuth context chain)', async () => {

@@ -496,14 +496,15 @@ export async function setupHandlers(server: Server): Promise<void> {
     const { getSessionManager: getSessionMgr } = await import('./session-manager');
     const sessionMgr = getSessionMgr();
     const listToolsSessionId = extra?.sessionId;
-    // When sessionId is present, pass the tracked URL directly (may be undefined for a
-    // newly created session whose CallTool hasn't run yet). getAllToolDefinitions resolves
-    // undefined via its built-in chain: OAuth request context → current instance URL →
-    // GITLAB_BASE_URL. Passing GITLAB_BASE_URL explicitly would short-circuit this chain
-    // and return the wrong tool list for OAuth requests that have a real context URL.
-    const sessionInstanceUrl = listToolsSessionId
-      ? sessionMgr.getSessionInstanceUrl(listToolsSessionId)
-      : GITLAB_BASE_URL;
+    // Always pass the tracked URL (or undefined) so getAllToolDefinitions can resolve via
+    // its built-in chain: OAuth request context → current instance URL → GITLAB_BASE_URL.
+    // Passing GITLAB_BASE_URL explicitly (either for unknown sessions or absent sessionId)
+    // would short-circuit this chain and return the wrong tool list for OAuth requests
+    // that have a real context URL or after an instance switch (#398).
+    const sessionInstanceUrl =
+      listToolsSessionId !== undefined
+        ? sessionMgr.getSessionInstanceUrl(listToolsSessionId)
+        : undefined;
 
     // Get tools from registry manager (already filtered by tier/version/scopes)
     const { RegistryManager } = await import('./registry-manager');

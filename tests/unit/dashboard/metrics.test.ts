@@ -27,6 +27,7 @@ jest.mock('../../../src/services/InstanceRegistry', () => ({
 jest.mock('../../../src/session-manager', () => ({
   getSessionManager: jest.fn(() => ({
     activeSessionCount: 0,
+    getSessionsByInstance: jest.fn(() => new Map<string, number>()),
   })),
 }));
 
@@ -394,6 +395,7 @@ describe('Dashboard Metrics', () => {
       jest.doMock('../../../src/session-manager', () => ({
         getSessionManager: jest.fn(() => ({
           activeSessionCount: 0,
+          getSessionsByInstance: jest.fn(() => new Map<string, number>()),
         })),
       }));
       jest.doMock('../../../src/registry-manager', () => ({
@@ -433,6 +435,7 @@ describe('Dashboard Metrics', () => {
       jest.doMock('../../../src/session-manager', () => ({
         getSessionManager: jest.fn(() => ({
           activeSessionCount: 0,
+          getSessionsByInstance: jest.fn(() => new Map<string, number>()),
         })),
       }));
       jest.doMock('../../../src/registry-manager', () => ({
@@ -476,6 +479,7 @@ describe('Dashboard Metrics', () => {
     it('should include active session count', () => {
       (getSessionManager as jest.Mock).mockReturnValueOnce({
         activeSessionCount: 5,
+        getSessionsByInstance: jest.fn(() => new Map<string, number>()),
       });
 
       const metrics = collectMetrics();

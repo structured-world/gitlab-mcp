@@ -203,7 +203,9 @@ export async function setupHandlers(server: Server): Promise<void> {
             RegistryManager.getInstance().refreshCache(instanceUrl);
 
             const { getSessionManager } = await import('./session-manager');
-            await getSessionManager().broadcastToolsListChanged();
+            // Pass instanceUrl so only sessions targeting the changed instance are notified.
+            // Sessions on other instances have no tool list changes from this state transition.
+            await getSessionManager().broadcastToolsListChanged(instanceUrl);
 
             logInfo('Tool list updated after connection state change', {
               instanceUrl,
@@ -259,18 +261,26 @@ export async function setupHandlers(server: Server): Promise<void> {
     logInfo('Skipping connection initialization - no authentication configured');
   }
   // List tools handler
-  // getAllToolDefinitions() resolves the effective instance URL from OAuth token
-  // context when called without arguments, so authenticated multi-instance sessions
-  // already receive instance-specific tool lists. Remaining limitation:
-  // unauthenticated tools/list requests fall back to default/global instance
-  // because there is no per-session token context to infer an instance from (#398).
-  server.setRequestHandler(ListToolsRequestSchema, async () => {
+  // Uses per-session instance URL tracking so each session receives the tool list
+  // filtered for its target GitLab instance (#398). The sessionId from RequestHandlerExtra
+  // resolves to the instance URL stored in SessionManager (set on session creation and
+  // kept in sync by the CallToolRequestSchema handler on every tool call).
+  server.setRequestHandler(ListToolsRequestSchema, async (_request, extra) => {
     logInfo('ListToolsRequest received');
 
-    // Get tools from registry manager (already filtered)
+    // Resolve the instance URL for this session so the tool list reflects the
+    // correct tier/version/scope restrictions for the session's target instance.
+    const { getSessionManager: getSessionMgr } = await import('./session-manager');
+    const sessionMgr = getSessionMgr();
+    const listToolsSessionId = extra?.sessionId;
+    const sessionInstanceUrl = listToolsSessionId
+      ? (sessionMgr.getSessionInstanceUrl(listToolsSessionId) ?? GITLAB_BASE_URL)
+      : GITLAB_BASE_URL;
+
+    // Get tools from registry manager (already filtered by tier/version/scopes)
     const { RegistryManager } = await import('./registry-manager');
     const registryManager = RegistryManager.getInstance();
-    const tools = registryManager.getAllToolDefinitions();
+    const tools = registryManager.getAllToolDefinitions(sessionInstanceUrl);
 
     logInfo('Returning tools list', { toolCount: tools.length });
 
@@ -367,7 +377,7 @@ export async function setupHandlers(server: Server): Promise<void> {
   // using Promise.race() so the client gets a response early on hang. The underlying
   // work may continue running after the timeout fires, but late results are guarded
   // by the timedOut flag to prevent overwriting the timeout error response.
-  server.setRequestHandler(CallToolRequestSchema, async (request) => {
+  server.setRequestHandler(CallToolRequestSchema, async (request, extra) => {
     // Capture instance URL early — used for both handlerWork and timeout reporting.
     // Must be resolved before Promise.race so timeout branch doesn't re-derive a
     // potentially different URL after a concurrent switch_instance.
@@ -387,6 +397,15 @@ export async function setupHandlers(server: Server): Promise<void> {
       : (ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL);
     // Normalize so CONNECTION_FAILED instance_url and HealthMonitor keys are consistent
     const requestInstanceUrl = normalizeInstanceUrl(rawInstanceUrl);
+
+    // Keep per-session instance URL in sync so ListTools requests reflect the correct
+    // instance. In OAuth mode this resolves the actual instance from the token context
+    // (replacing the GITLAB_BASE_URL default set at session creation). In static-token
+    // mode this tracks switch_instance changes across requests.
+    if (extra?.sessionId) {
+      const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
+      getSessionMgrForCall().setSessionInstanceUrl(extra.sessionId, requestInstanceUrl);
+    }
 
     // Flag to prevent late reportSuccess/reportError from a timed-out handlerWork()
     // overwriting the timeout signal already sent to HealthMonitor.

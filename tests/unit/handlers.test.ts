@@ -114,6 +114,19 @@ jest.mock('../../src/logging/index', () => ({
   getCurrentRequestId: jest.fn(() => mockGetCurrentRequestId()),
 }));
 
+// Mock SessionManager — needed by the ListToolsRequestSchema and CallToolRequestSchema handlers
+// for per-session instance URL tracking (#398).
+const mockSessionManager = {
+  getSessionInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+  setSessionInstanceUrl: jest.fn(),
+};
+
+jest.mock('../../src/session-manager', () => ({
+  getSessionManager: jest.fn(() => mockSessionManager),
+  resetSessionManager: jest.fn(),
+  STDIO_SESSION_ID: 'stdio',
+}));
+
 /** Handler result type matching MCP SDK response shape */
 interface HandlerResult {
   content?: Array<{ type: string; text: string }>;
@@ -184,6 +197,10 @@ describe('handlers', () => {
     ]);
     mockRegistryManager.hasToolHandler.mockReturnValue(true);
     mockRegistryManager.executeTool.mockResolvedValue({ result: 'success' });
+
+    // SessionManager mock defaults for per-session instance URL tracking (#398)
+    mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://gitlab.example.com');
+    mockSessionManager.setSessionInstanceUrl.mockReturnValue(undefined);
   });
 
   describe('setupHandlers', () => {
@@ -367,12 +384,73 @@ describe('handlers', () => {
 
       expect(result.tools![0].inputSchema.type).toBe('object');
     });
+
+    describe('per-session instance URL resolution (#398)', () => {
+      it('should pass session instanceUrl to getAllToolDefinitions when sessionId is provided', async () => {
+        // Session targeting a non-default instance
+        mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://custom.gitlab.com');
+
+        await listToolsHandler({ method: 'tools/list' }, { sessionId: 'sess-abc' });
+
+        expect(mockSessionManager.getSessionInstanceUrl).toHaveBeenCalledWith('sess-abc');
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(
+          'https://custom.gitlab.com',
+        );
+      });
+
+      it('should fall back to GITLAB_BASE_URL when sessionId is absent', async () => {
+        // No extra.sessionId provided (e.g. stdio transport before session tracking)
+        await listToolsHandler({ method: 'tools/list' });
+
+        expect(mockSessionManager.getSessionInstanceUrl).not.toHaveBeenCalled();
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(
+          'https://gitlab.example.com',
+        );
+      });
+
+      it('should fall back to GITLAB_BASE_URL when session has no tracked URL', async () => {
+        // Session exists but instanceUrl not yet set (getSessionInstanceUrl returns undefined)
+        mockSessionManager.getSessionInstanceUrl.mockReturnValue(undefined);
+
+        await listToolsHandler({ method: 'tools/list' }, { sessionId: 'new-sess' });
+
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(
+          'https://gitlab.example.com',
+        );
+      });
+    });
   });
 
   describe('call tool handler', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
       callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+    });
+
+    it('should update session instanceUrl on each tool call (#398)', async () => {
+      // Verifies that the CallTool handler keeps per-session instance URL in sync
+      // so subsequent ListTools calls resolve the correct tool catalog for that session.
+      const request = {
+        params: { name: 'get_project', arguments: { id: 'proj-1' } },
+      };
+
+      await callToolHandler(request, { sessionId: 'sess-xyz' });
+
+      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith(
+        'sess-xyz',
+        'https://gitlab.example.com',
+      );
+    });
+
+    it('should not update session instanceUrl when sessionId is absent (#398)', async () => {
+      // No extra.sessionId — no crash, no spurious session update
+      const request = {
+        params: { name: 'get_project', arguments: { id: 'proj-1' } },
+      };
+
+      await callToolHandler(request);
+
+      expect(mockSessionManager.setSessionInstanceUrl).not.toHaveBeenCalled();
     });
 
     it('should execute tool and return result', async () => {

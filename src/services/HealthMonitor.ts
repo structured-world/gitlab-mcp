@@ -336,6 +336,21 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
 // XState Machine Definition
 // ============================================================================
 
+// Shared onError handler for health-check substates (healthy.checking, degraded.checking).
+// Auth errors (401/403 from the authenticated probe) → failed, no auto-reconnect.
+// All other errors → idle via recordFailure (transient failures accumulate toward threshold).
+const healthCheckOnError = [
+  {
+    guard: 'healthCheckErrorIsAuth' as const,
+    target: '#connection.failed' as const,
+    actions: 'recordFailure' as const,
+  },
+  {
+    target: 'idle' as const,
+    actions: 'recordFailure' as const,
+  },
+] as const;
+
 const connectionMachine = setup({
   types: {
     context: {} as MachineContext,
@@ -490,22 +505,7 @@ const connectionMachine = setup({
                 actions: 'recordSuccess',
               },
             ],
-            onError: [
-              {
-                // Auth error (token revoked/expired) → failed immediately, no auto-reconnect
-                guard: 'healthCheckErrorIsAuth',
-                target: '#connection.failed',
-                actions: assign({
-                  lastFailureAt: () => Date.now(),
-                  lastError: ({ event }) =>
-                    event.error instanceof Error ? event.error.message : String(event.error),
-                }),
-              },
-              {
-                target: 'idle',
-                actions: 'recordFailure',
-              },
-            ],
+            onError: healthCheckOnError,
           },
         },
       },
@@ -555,22 +555,7 @@ const connectionMachine = setup({
                 actions: 'recordSuccess',
               },
             ],
-            onError: [
-              {
-                // Auth error (token revoked/expired) → failed immediately, no auto-reconnect
-                guard: 'healthCheckErrorIsAuth',
-                target: '#connection.failed',
-                actions: assign({
-                  lastFailureAt: () => Date.now(),
-                  lastError: ({ event }) =>
-                    event.error instanceof Error ? event.error.message : String(event.error),
-                }),
-              },
-              {
-                target: 'idle',
-                actions: 'recordFailure',
-              },
-            ],
+            onError: healthCheckOnError,
           },
         },
       },

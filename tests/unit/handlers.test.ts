@@ -90,7 +90,7 @@ jest.mock('../../src/oauth/index', () => ({
   isOAuthEnabled: jest.fn().mockReturnValue(false),
   isAuthenticationConfigured: jest.fn().mockReturnValue(true),
   getTokenContext: jest.fn().mockReturnValue(null),
-  getGitLabApiUrlFromContext: jest.fn().mockReturnValue(null),
+  getGitLabApiUrlFromContext: jest.fn().mockReturnValue(undefined),
 }));
 
 // Mock logging/index so connection-tracker paths (lines 712-715) can be exercised
@@ -485,7 +485,7 @@ describe('handlers', () => {
 
       // Restore defaults so subsequent tests are unaffected
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
 
     it('should NOT update session instanceUrl when OAuth context URL is absent (#398)', async () => {
@@ -496,7 +496,7 @@ describe('handlers', () => {
       const oauth = await import('../../src/oauth/index');
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
       // getGitLabApiUrlFromContext returns null — contextless / startup health check
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
 
       await callToolHandler(
         { params: { name: 'get_project', arguments: { id: 'proj-1' } } },
@@ -508,7 +508,7 @@ describe('handlers', () => {
 
       // Restore defaults
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
 
     it('should execute tool and return result', async () => {
@@ -1135,6 +1135,10 @@ describe('handlers', () => {
 
       // Despite broadcast failure, refreshCache should still have been called
       expect(mockRegistryManager.refreshCache).toHaveBeenCalledWith('https://gitlab.example.com');
+      // Broadcast must be scoped to the affected instance — not a global broadcast
+      expect(mockSessionManager.broadcastToolsListChanged).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+      );
       // Warning must be logged so the failure is observable without crashing
       expect(logWarn).toHaveBeenCalledWith(
         'Failed to broadcast tools/list_changed after state change',
@@ -1914,7 +1918,7 @@ describe('handlers', () => {
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
       (oauth.isAuthenticationConfigured as jest.Mock).mockReturnValue(true);
       (oauth.getTokenContext as jest.Mock).mockReturnValue(null);
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
 
     it('should call ensureIntrospected in OAuth mode (line 493)', async () => {
@@ -1974,7 +1978,7 @@ describe('handlers', () => {
 
       // Restore
       mockConnectionManager.isConnected.mockReturnValue(true);
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
 
     it('should return CONNECTION_FAILED when introspection fails before bootstrap completes', async () => {
@@ -2026,7 +2030,7 @@ describe('handlers', () => {
       expect(mockHealthMonitor.reportError).toHaveBeenCalledWith(oauthUrl, expect.any(Error));
 
       // Restore
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
 
     it('should short-circuit with CONNECTION_FAILED for OAuth URL when unreachable', async () => {
@@ -2051,7 +2055,7 @@ describe('handlers', () => {
       // Restore
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
       mockHealthMonitor.getState.mockReturnValue('healthy');
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     });
   });
 
@@ -2235,7 +2239,7 @@ describe('handlers', () => {
       mockConnectionManager.isConnected.mockReturnValue(true);
       mockConnectionManager.initialize.mockResolvedValue(undefined);
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
-      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(null);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
     }, 5000);
 
     it('should not report success/error after deferred init resolves post-timeout', async () => {

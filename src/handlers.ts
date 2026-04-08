@@ -501,6 +501,12 @@ export async function setupHandlers(server: Server): Promise<void> {
     // current instance URL → GITLAB_BASE_URL. Substituting GITLAB_BASE_URL explicitly
     // would short-circuit that chain and return the wrong tool list for OAuth requests
     // with a real context URL or after an instance switch (#398).
+    //
+    // NOTE: tools/list is NOT wrapped in runWithTokenContext(), so getGitLabApiUrlFromContext()
+    // returns undefined here regardless. Passing the tracked session URL is therefore
+    // correct — for static-token multi-instance it routes to the right instance, and
+    // for OAuth mode the session URL is kept in sync by the CallTool handler so it
+    // reflects the most-recently resolved OAuth context URL.
     const sessionInstanceUrl =
       listToolsSessionId !== undefined
         ? sessionMgr.getSessionInstanceUrl(listToolsSessionId)
@@ -622,7 +628,9 @@ export async function setupHandlers(server: Server): Promise<void> {
     // In static-token mode, prefer the actively selected instance URL so
     // requests continue routing to the current instance.
     const oauthEnabled = isOAuthEnabled();
-    const oauthContextUrl = oauthEnabled ? getUrlFromCtx() : null;
+    // getGitLabApiUrlFromContext() returns string | undefined; use undefined (not null)
+    // so that strict equality checks below correctly detect "no OAuth context".
+    const oauthContextUrl = oauthEnabled ? getUrlFromCtx() : undefined;
     const rawInstanceUrl = oauthEnabled
       ? (oauthContextUrl ?? GITLAB_BASE_URL)
       : (ConnectionManager.getInstance().getCurrentInstanceUrl() ?? GITLAB_BASE_URL);
@@ -636,7 +644,7 @@ export async function setupHandlers(server: Server): Promise<void> {
     // transport; persisting the fallback would reset multi-tenant tool filtering).
     // In static-token mode always track the active instance URL.
     const callSessionId = extra?.sessionId;
-    if (callSessionId && (!oauthEnabled || oauthContextUrl !== null)) {
+    if (callSessionId && (!oauthEnabled || oauthContextUrl !== undefined)) {
       const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
       getSessionMgrForCall().setSessionInstanceUrl(callSessionId, requestInstanceUrl);
     }

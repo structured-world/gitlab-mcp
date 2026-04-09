@@ -609,6 +609,10 @@ type StateChangeCallback = (
   to: ConnectionState,
 ) => void;
 
+/**
+ * Singleton service that manages per-instance GitLab connection health using XState state machines.
+ * Tracks connectivity state, drives automatic reconnection, and notifies listeners of state changes.
+ */
 export class HealthMonitor {
   private static instance: HealthMonitor | null = null;
   private readonly actors = new Map<string, ConnectionActor>();
@@ -618,6 +622,7 @@ export class HealthMonitor {
 
   private constructor() {}
 
+  /** Return the singleton instance, creating it on first call. */
   public static getInstance(): HealthMonitor {
     HealthMonitor.instance ??= new HealthMonitor();
     return HealthMonitor.instance;
@@ -771,6 +776,7 @@ export class HealthMonitor {
     return topLevel as ConnectionState;
   }
 
+  /** Return the current top-level state for an actor. */
   private getActorState(actor: ConnectionActor): ConnectionState {
     return this.extractState(actor.getSnapshot());
   }

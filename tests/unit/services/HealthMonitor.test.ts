@@ -871,6 +871,16 @@ describe('HealthMonitor', () => {
         const monitor = await initHealthy();
         stubUserEndpointStatus(authStatus);
         await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+        // Verify token-only probe contract: must use skipAuth + explicit PRIVATE-TOKEN header
+        // so ambient session cookies cannot mask a revoked static token.
+        expect(mockFetch).toHaveBeenCalledWith(
+          `${TEST_URL}/api/v4/user`,
+          expect.objectContaining({
+            method: 'HEAD',
+            skipAuth: true,
+            headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'test-token' }),
+          }),
+        );
         expect(monitor.getState(TEST_URL)).toBe('failed');
         expect(monitor.isInstanceReachable(TEST_URL)).toBe(false);
       },
@@ -885,6 +895,15 @@ describe('HealthMonitor', () => {
       stubUserEndpoint401();
       // degradedCheckInterval = min(HEALTH_CHECK_INTERVAL_MS, 30000) = 300ms
       await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+      // Verify token-only probe contract is enforced in the degraded path too
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${TEST_URL}/api/v4/user`,
+        expect.objectContaining({
+          method: 'HEAD',
+          skipAuth: true,
+          headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'test-token' }),
+        }),
+      );
       expect(monitor.getState(TEST_URL)).toBe('failed');
     });
 
@@ -909,6 +928,11 @@ describe('HealthMonitor', () => {
       expect(monitor.getState(TEST_URL)).toBe('healthy');
       await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
       expect(monitor.getState(TEST_URL)).toBe('healthy');
+      // Negative assertion: probe URL must not have been fetched in skip-path scenarios
+      expect(mockFetch).not.toHaveBeenCalledWith(
+        expect.stringContaining('/api/v4/user'),
+        expect.anything(),
+      );
     });
 
     it('should swallow network errors during authenticated check', async () => {
@@ -956,6 +980,15 @@ describe('HealthMonitor', () => {
       expect(monitor.getState(TEST_URL)).toBe('failed');
       // Confirm fast-path was taken: initialize() must not have been called again
       expect(mockInitialize.mock.calls.length).toBe(initCallsBefore);
+      // Verify token-only probe was invoked in the fast-path
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${TEST_URL}/api/v4/user`,
+        expect.objectContaining({
+          method: 'HEAD',
+          skipAuth: true,
+          headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'test-token' }),
+        }),
+      );
     });
   });
 

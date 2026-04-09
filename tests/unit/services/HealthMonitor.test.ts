@@ -94,7 +94,8 @@ jest.mock('../../../src/oauth/index', () => ({
 /** Return the given status for /api/v4/user; 200 for all other URLs. */
 function stubUserEndpointStatus(status: number): void {
   mockFetch.mockImplementation((url: string) => {
-    if (url.includes('/api/v4/user')) return Promise.resolve({ status, ok: false });
+    if (url.includes('/api/v4/user'))
+      return Promise.resolve({ status, ok: status >= 200 && status < 300 });
     return Promise.resolve({ status: 200, ok: true });
   });
 }

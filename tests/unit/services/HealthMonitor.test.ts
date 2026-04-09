@@ -91,6 +91,14 @@ jest.mock('../../../src/oauth/index', () => ({
   isOAuthEnabled: () => mockIsOAuthEnabled(),
 }));
 
+/** Return the given status for /api/v4/user; 200 for all other URLs. */
+function stubUserEndpointStatus(status: number): void {
+  mockFetch.mockImplementation((url: string) => {
+    if (url.includes('/api/v4/user')) return Promise.resolve({ status, ok: false });
+    return Promise.resolve({ status: 200, ok: true });
+  });
+}
+
 describe('HealthMonitor', () => {
   beforeEach(() => {
     jest.useRealTimers();
@@ -847,14 +855,6 @@ describe('HealthMonitor', () => {
     return monitor;
   }
 
-  /** Return the given status for /api/v4/user; 200 for all other URLs. */
-  function stubUserEndpointStatus(status: number): void {
-    mockFetch.mockImplementation((url: string) => {
-      if (url.includes('/api/v4/user')) return Promise.resolve({ status, ok: false });
-      return Promise.resolve({ status: 200, ok: true });
-    });
-  }
-
   describe('token revocation detection', () => {
     // Buffer accounts for HEALTH_CHECK_INTERVAL_MS (300ms test config) + processing
     const HEALTH_CYCLE_MS = 600;
@@ -929,10 +929,11 @@ describe('HealthMonitor', () => {
       await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
       expect(monitor.getState(TEST_URL)).toBe('healthy');
       // Negative assertion: probe URL must not have been fetched in skip-path scenarios
-      expect(mockFetch).not.toHaveBeenCalledWith(
-        expect.stringContaining('/api/v4/user'),
-        expect.anything(),
-      );
+      expect(
+        mockFetch.mock.calls.some(
+          ([url]) => typeof url === 'string' && url.includes('/api/v4/user'),
+        ),
+      ).toBe(false);
     });
 
     it('should swallow network errors during authenticated check', async () => {

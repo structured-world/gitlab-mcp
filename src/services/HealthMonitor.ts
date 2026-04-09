@@ -327,6 +327,12 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
         `GitLab API error: ${response.status} - token invalid or lacks required scope`,
       );
     }
+    if (!response.ok) {
+      // Non-auth, non-2xx response (e.g. 429 rate-limit, 5xx server error) — throw so
+      // the catch block can classify it as transient and swallow appropriately, rather
+      // than letting the probe silently succeed with a broken status code.
+      throw new Error(`GitLab API error: ${response.status} - authenticated health probe failed`);
+    }
   } catch (error) {
     // Re-throw auth errors from the token probe (401 = invalid, 403 = insufficient scope).
     if (error instanceof Error) {

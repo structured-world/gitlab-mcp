@@ -949,6 +949,19 @@ describe('HealthMonitor', () => {
       expect(monitor.getState(TEST_URL)).toBe('healthy');
     });
 
+    it.each([429, 500, 503])(
+      'should stay healthy when authenticated probe returns transient %i (not an auth error)',
+      async (transientStatus) => {
+        // Regression test for #370: non-auth, non-2xx responses from /api/v4/user
+        // must be classified as transient and swallowed — the instance should remain
+        // healthy because reachability was already confirmed by quickHealthCheck.
+        const monitor = await initHealthy();
+        stubUserEndpointStatus(transientStatus);
+        await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+        expect(monitor.getState(TEST_URL)).toBe('healthy');
+      },
+    );
+
     it('should recover after forceReconnect when authenticated checks succeed again', async () => {
       // After detecting token revocation (→ failed), a manual forceReconnect should
       // recover to healthy once the authenticated check starts succeeding again.

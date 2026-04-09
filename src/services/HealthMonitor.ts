@@ -294,8 +294,9 @@ async function quickHealthCheck(
  * expired, or lacks the required scope. The healthCheckErrorIsAuth guard detects
  * these by parsing the status code and transitions to 'failed' (no auto-reconnect).
  *
- * Network/timeout errors are swallowed: the unauthenticated check already verified
- * reachability, so connectivity failures on this request are noise, not signal.
+ * AbortError (our own timeout) and transient connectivity failures are swallowed:
+ * reachability was already confirmed by quickHealthCheck. Unexpected errors are
+ * logged and re-thrown so programming bugs don't silently leave the instance healthy.
  */
 async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): Promise<void> {
   // OAuth mode: token is per-request context, unavailable during background checks
@@ -328,12 +329,22 @@ async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): 
     }
   } catch (error) {
     // Re-throw auth errors from the token probe (401 = invalid, 403 = insufficient scope).
-    // Swallow everything else (network/timeout) — reachability already confirmed by quickHealthCheck.
-    /* istanbul ignore else */
     if (error instanceof Error) {
       const parsed = parseGitLabApiError(error.message);
       if (parsed?.status === 401 || parsed?.status === 403) throw error;
+
+      // Swallow our own AbortController timeout and transient connectivity failures.
+      // Reachability was already confirmed by quickHealthCheck; failures on this
+      // second request are noise, not signal.
+      if (error.name === 'AbortError' || classifyError(error) === 'transient') return;
     }
+
+    // Unexpected error (programming bug, invalid URL, etc.) — log and rethrow so it
+    // doesn't silently leave the instance healthy with a broken probe.
+    logError('Unexpected error during authenticated token health check', {
+      err: error instanceof Error ? error : new Error(String(error)),
+    });
+    throw error;
   } finally {
     clearTimeout(timeoutId);
   }

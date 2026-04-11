@@ -4,6 +4,18 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [7.2.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.1.0...gitlab-mcp-v7.2.0) (2026-04-11)
+
+
+### Features
+
+* **health:** detect token revocation via authenticated health checks ([#409](https://github.com/structured-world/gitlab-mcp/issues/409)) ([5a74f2d](https://github.com/structured-world/gitlab-mcp/commit/5a74f2db311a40839b73977dd8456796d91183dc))
+
+
+### Refactoring
+
+* **session:** per-session instance URL tracking for session-aware ListTools ([#406](https://github.com/structured-world/gitlab-mcp/issues/406)) ([5f8b9cf](https://github.com/structured-world/gitlab-mcp/commit/5f8b9cfdb014d9a42089829a06f330dd89a1f071))
+
 ## [7.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.0.2...gitlab-mcp-v7.1.0) (2026-04-07)
 
 

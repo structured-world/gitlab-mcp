@@ -88,7 +88,7 @@ The server handles GitLab connectivity issues gracefully:
 - **Bounded startup** — Server starts within `GITLAB_INIT_TIMEOUT_MS` (default 5s) regardless of GitLab availability
 - **Disconnected mode** — When GitLab is unreachable (`disconnected`/`failed` state), only the `manage_context` tool is exposed, with local actions such as `whoami`, `switch_profile`, and `set_scope` for diagnostics. During active reconnect (`connecting` state), the full tool list remains available so MCP clients don't lose their tool catalog during brief outages. MCP clients are notified of tool availability changes via `tools/list_changed`
 - **Auto-reconnect** — Exponential backoff reconnection (5s → 60s) with ±10% jitter
-- **Error classification** — Transient errors (network, 5xx, timeouts) trigger auto-reconnect. Auth/config errors at startup transition to `failed` state (no auto-reconnect). Runtime auth errors from tool calls are forwarded to `HealthMonitor.reportError()` via `classifyError()`; the remaining gap is token-revocation/403 detection (#370)
+- **Error classification** — Transient errors (network, 5xx, timeouts) trigger auto-reconnect. Auth/config errors at startup transition to `failed` state (no auto-reconnect). Mid-session token revocation is detected via an authenticated `HEAD /api/v4/user` check that runs alongside each periodic health check (static token mode only; skipped in OAuth mode). A 401 or 403 on this check transitions the instance to `failed` state immediately.
 - **Instance health monitor** — Each monitored instance URL has its own XState state machine. Untracked OAuth URLs currently pass through as reachable.
 
 | Variable | Default | Description |
@@ -100,6 +100,8 @@ The server handles GitLab connectivity issues gracefully:
 | `GITLAB_FAILURE_THRESHOLD` | `3` | Consecutive transient failures before disconnecting |
 | `GITLAB_TOOL_TIMEOUT_MS` | `120000` | Max time for tool/bootstrap execution before timeout |
 | `GITLAB_RESPONSE_WRITE_TIMEOUT_MS` | `10000` | Max time to flush a non-SSE response before destroying zombie connection (`0` to disable; SSE uses heartbeat) |
+| `GITLAB_INSTANCE_CACHE_MAX` | `100` | Max number of per-URL instance states kept in memory (OAuth multi-tenant; LRU eviction when exceeded) |
+| `GITLAB_INSTANCE_TTL_MS` | `3600000` | TTL for idle per-URL instance states in ms; evicted on next insert (OAuth multi-tenant) |
 
 ## Feature Flags
 

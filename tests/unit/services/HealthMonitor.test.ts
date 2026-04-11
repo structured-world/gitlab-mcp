@@ -68,7 +68,11 @@ jest.mock('../../../src/utils/fetch', () => ({
   enhancedFetch: (...args: unknown[]) => mockFetch(...args),
 }));
 
-// Mock config with shorter timeouts for testing
+// GITLAB_TOKEN mock value — controlled per-test to cover the !GITLAB_TOKEN early-return branch
+let mockGitLabToken: string | undefined = 'test-token';
+
+// Mock config with shorter timeouts for testing.
+// GITLAB_TOKEN uses a getter so individual tests can clear it (mockGitLabToken = undefined).
 jest.mock('../../../src/config', () => ({
   INIT_TIMEOUT_MS: 200,
   RECONNECT_BASE_DELAY_MS: 100,
@@ -76,7 +80,25 @@ jest.mock('../../../src/config', () => ({
   HEALTH_CHECK_INTERVAL_MS: 300, // Short for testing health check substates
   FAILURE_THRESHOLD: 3,
   GITLAB_BASE_URL: 'https://gitlab.example.com',
+  get GITLAB_TOKEN() {
+    return mockGitLabToken;
+  },
 }));
+
+// Mock isOAuthEnabled — controls authenticated health check in static vs OAuth mode
+const mockIsOAuthEnabled = jest.fn();
+jest.mock('../../../src/oauth/index', () => ({
+  isOAuthEnabled: () => mockIsOAuthEnabled(),
+}));
+
+/** Return the given status for /api/v4/user; 200 for all other URLs. */
+function stubUserEndpointStatus(status: number): void {
+  mockFetch.mockImplementation((url: string) => {
+    if (url.includes('/api/v4/user'))
+      return Promise.resolve({ status, ok: status >= 200 && status < 300 });
+    return Promise.resolve({ status: 200, ok: true });
+  });
+}
 
 describe('HealthMonitor', () => {
   beforeEach(() => {
@@ -90,6 +112,9 @@ describe('HealthMonitor', () => {
     mockGetCurrentInstanceUrl.mockReset();
     mockRegistryIsInitialized.mockReset();
     mockGetIntrospection.mockReset();
+    // Default: static token mode (authenticated health check enabled)
+    mockIsOAuthEnabled.mockReturnValue(false);
+    mockGitLabToken = 'test-token';
 
     HealthMonitor.resetInstance();
     mockInitialize.mockResolvedValue(undefined);
@@ -818,6 +843,167 @@ describe('HealthMonitor', () => {
       await Promise.resolve();
       // connecting is treated as healthy to avoid context-only tools during startup
       expect(monitor.isAnyInstanceHealthy()).toBe(true);
+    });
+  });
+
+  /**
+   * Init monitor in healthy state (beforeEach already provides 200 fetch + v17 instance info).
+   * Used by token revocation tests that need to start from a known-healthy baseline.
+   */
+  async function initHealthy(): Promise<ReturnType<typeof HealthMonitor.getInstance>> {
+    const monitor = await initMonitor();
+    expect(monitor.getState(TEST_URL)).toBe('healthy');
+    return monitor;
+  }
+
+  describe('token revocation detection', () => {
+    // Buffer accounts for HEALTH_CHECK_INTERVAL_MS (300ms test config) + processing
+    const HEALTH_CYCLE_MS = 600;
+
+    // Alias used by several tests below
+    const stubUserEndpoint401 = (): void => stubUserEndpointStatus(401);
+
+    it.each([401, 403])(
+      'should transition to failed when authenticated health check returns %i',
+      async (authStatus) => {
+        // Regression test for #370: token auth failure mid-session must move to failed state.
+        // Previously the health monitor stayed healthy because the unauthenticated
+        // /api/v4/version check treats 401/403 as "server alive" (status < 500).
+        const monitor = await initHealthy();
+        stubUserEndpointStatus(authStatus);
+        await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+        // Verify token-only probe contract: must use skipAuth + explicit PRIVATE-TOKEN header
+        // so ambient session cookies cannot mask a revoked static token.
+        expect(mockFetch).toHaveBeenCalledWith(
+          `${TEST_URL}/api/v4/user`,
+          expect.objectContaining({
+            method: 'HEAD',
+            skipAuth: true,
+            headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'test-token' }),
+          }),
+        );
+        expect(monitor.getState(TEST_URL)).toBe('failed');
+        expect(monitor.isInstanceReachable(TEST_URL)).toBe(false);
+      },
+    );
+
+    it('should transition from degraded to failed on token revocation', async () => {
+      // Regression test for #370 in degraded path: same auth check runs from degraded state.
+      mockGetInstanceInfo.mockReturnValue({ version: 'unknown', tier: 'free' }); // degraded
+      const monitor = await initMonitor();
+      expect(monitor.getState(TEST_URL)).toBe('degraded');
+
+      stubUserEndpoint401();
+      // degradedCheckInterval = min(HEALTH_CHECK_INTERVAL_MS, 30000) = 300ms
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+      // Verify token-only probe contract is enforced in the degraded path too
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${TEST_URL}/api/v4/user`,
+        expect.objectContaining({
+          method: 'HEAD',
+          skipAuth: true,
+          headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'test-token' }),
+        }),
+      );
+      expect(monitor.getState(TEST_URL)).toBe('failed');
+    });
+
+    it.each([
+      [
+        'no GITLAB_TOKEN',
+        (): void => {
+          mockGitLabToken = undefined;
+        },
+      ],
+      [
+        'OAuth mode',
+        (): void => {
+          mockIsOAuthEnabled.mockReturnValue(true);
+        },
+      ],
+    ])('should skip authenticated check in %s', async (_label, setup) => {
+      // Guard: /api/v4/user must never be called — if it is, the 401 would flip state to failed.
+      stubUserEndpoint401();
+      setup();
+      const monitor = await initMonitor();
+      expect(monitor.getState(TEST_URL)).toBe('healthy');
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+      expect(monitor.getState(TEST_URL)).toBe('healthy');
+      // Negative assertion: probe URL must not have been fetched in skip-path scenarios
+      expect(
+        mockFetch.mock.calls.some(
+          ([url]) => typeof url === 'string' && url.includes('/api/v4/user'),
+        ),
+      ).toBe(false);
+    });
+
+    it('should swallow network errors during authenticated check', async () => {
+      // Connectivity errors on the second request are noise, not signal:
+      // the unauthenticated check already verified reachability.
+      const monitor = await initHealthy();
+      mockFetch.mockImplementation((url: string) => {
+        if (url.includes('/api/v4/user')) return Promise.reject(new Error('network error'));
+        return Promise.resolve({ status: 200, ok: true });
+      });
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+      expect(monitor.getState(TEST_URL)).toBe('healthy');
+    });
+
+    it.each([429, 500, 503])(
+      'should stay healthy when authenticated probe returns transient %i (not an auth error)',
+      async (transientStatus) => {
+        // Regression test for #370: non-auth, non-2xx responses from /api/v4/user
+        // must be classified as transient and swallowed — the instance should remain
+        // healthy because reachability was already confirmed by quickHealthCheck.
+        const monitor = await initHealthy();
+        stubUserEndpointStatus(transientStatus);
+        await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+        expect(monitor.getState(TEST_URL)).toBe('healthy');
+      },
+    );
+
+    it('should recover after forceReconnect when authenticated checks succeed again', async () => {
+      // After detecting token revocation (→ failed), a manual forceReconnect should
+      // recover to healthy once the authenticated check starts succeeding again.
+      const monitor = await initHealthy();
+      stubUserEndpoint401();
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+      expect(monitor.getState(TEST_URL)).toBe('failed');
+
+      mockFetch.mockResolvedValue({ status: 200, ok: true });
+      monitor.forceReconnect(TEST_URL);
+      await new Promise((r) => setTimeout(r, 400));
+      expect(monitor.getState(TEST_URL)).toBe('healthy');
+    });
+
+    it('should remain in failed state on forceReconnect when token is still revoked', async () => {
+      // Regression: forceReconnect uses the performConnect fast-path which must
+      // also call authenticatedTokenCheck. Without it, a still-revoked token could
+      // bounce failed → healthy until the next health-check interval.
+      const monitor = await initHealthy();
+      stubUserEndpoint401();
+      await new Promise((r) => setTimeout(r, HEALTH_CYCLE_MS));
+      expect(monitor.getState(TEST_URL)).toBe('failed');
+
+      // Exercise the fast-path: isConnected() = true skips full re-initialization
+      // and goes directly to quickHealthCheck + authenticatedTokenCheck.
+      // The 401 from the token probe must route to failed (not healthy) immediately.
+      const initCallsBefore = mockInitialize.mock.calls.length;
+      mockIsConnected.mockReturnValue(true);
+      monitor.forceReconnect(TEST_URL);
+      await new Promise((r) => setTimeout(r, 400));
+      expect(monitor.getState(TEST_URL)).toBe('failed');
+      // Confirm fast-path was taken: initialize() must not have been called again
+      expect(mockInitialize.mock.calls.length).toBe(initCallsBefore);
+      // Verify token-only probe was invoked in the fast-path
+      expect(mockFetch).toHaveBeenCalledWith(
+        `${TEST_URL}/api/v4/user`,
+        expect.objectContaining({
+          method: 'HEAD',
+          skipAuth: true,
+          headers: expect.objectContaining({ 'PRIVATE-TOKEN': 'test-token' }),
+        }),
+      );
     });
   });
 

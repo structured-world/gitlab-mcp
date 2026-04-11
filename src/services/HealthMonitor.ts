@@ -25,7 +25,7 @@ import {
 import { ConnectionManager } from './ConnectionManager';
 import { normalizeInstanceUrl } from '../utils/url';
 import { InstanceRegistry } from './InstanceRegistry';
-import { classifyError, type ErrorCategory } from '../utils/error-handler';
+import { classifyError, parseGitLabApiError, type ErrorCategory } from '../utils/error-handler';
 import { enhancedFetch } from '../utils/fetch';
 import { logInfo, logWarn, logError, logDebug } from '../logger';
 import {
@@ -35,7 +35,9 @@ import {
   HEALTH_CHECK_INTERVAL_MS,
   FAILURE_THRESHOLD,
   GITLAB_BASE_URL,
+  GITLAB_TOKEN,
 } from '../config';
+import { isOAuthEnabled } from '../oauth/index';
 
 // ============================================================================
 // Types
@@ -150,6 +152,10 @@ const performConnect = fromPromise<{ degraded: boolean }, { instanceUrl: string 
         // classifyError maps this to 'transient' → disconnected → auto-reconnect.
         throw new Error(`Health check failed for ${input.instanceUrl}`);
       }
+      // Re-validate the token on reconnect, not just during steady-state polls.
+      // Without this, forceReconnect() while the token is still revoked would
+      // bounce failed → healthy until the next health-check interval.
+      await authenticatedTokenCheck(input.instanceUrl, HEALTH_CHECK_PROBE_MS);
       return { degraded: isDegradedInstance(connectionManager, input.instanceUrl) };
     }
 
@@ -224,6 +230,13 @@ const performHealthCheck = fromPromise<{ degraded: boolean }, { instanceUrl: str
       throw new Error(`Health check failed for ${input.instanceUrl}`);
     }
 
+    // Detect mid-session token revocation in static token mode.
+    // Throws GitLab API 401/403 when the token is invalid or lacks required scope.
+    // healthCheckErrorIsAuth guard detects these by parsing the error message
+    // and routes to '#connection.failed' (no auto-reconnect).
+    // No-op in OAuth mode (no global token) and when GITLAB_TOKEN is unset.
+    await authenticatedTokenCheck(input.instanceUrl, HEALTH_CHECK_PROBE_MS);
+
     const connectionManager = ConnectionManager.getInstance();
     return { degraded: isDegradedInstance(connectionManager, input.instanceUrl) };
   },
@@ -269,9 +282,98 @@ async function quickHealthCheck(
   }
 }
 
+/**
+ * Authenticated token validity check: HEAD /api/v4/user with the static token.
+ * Detects mid-session token revocation that the unauthenticated reachability check
+ * cannot see (401 from /api/v4/version is treated as "server alive").
+ *
+ * Only runs in static token mode — OAuth tokens are per-request context and are
+ * not available during background health checks.
+ *
+ * Throws a GitLab API 401 or 403 error when the token is invalid, revoked,
+ * expired, or lacks the required scope. The healthCheckErrorIsAuth guard detects
+ * these by parsing the status code and transitions to 'failed' (no auto-reconnect).
+ *
+ * AbortError (our own timeout) and transient connectivity failures are swallowed:
+ * reachability was already confirmed by quickHealthCheck. Unexpected errors are
+ * logged and re-thrown so programming bugs don't silently leave the instance healthy.
+ */
+async function authenticatedTokenCheck(instanceUrl: string, timeoutMs: number): Promise<void> {
+  // OAuth mode: token is per-request context, unavailable during background checks
+  if (isOAuthEnabled()) return;
+  // No static token configured — nothing to validate
+  if (!GITLAB_TOKEN) return;
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await enhancedFetch(`${instanceUrl}/api/v4/user`, {
+      method: 'HEAD',
+      signal: controller.signal,
+      retry: false,
+      rateLimit: false,
+      // skipAuth suppresses auto-injected credentials (session cookies, getAuthHeaders()).
+      // The explicit PRIVATE-TOKEN header ensures we validate ONLY the static token —
+      // a valid session cookie must not mask a revoked token and keep the probe alive.
+      skipAuth: true,
+      headers: { 'PRIVATE-TOKEN': GITLAB_TOKEN },
+    });
+
+    if (response.status === 401 || response.status === 403) {
+      // Both 401 (invalid/revoked token) and 403 (insufficient scope) mean the configured
+      // token cannot authenticate — include the actual status for accurate log messages.
+      throw new Error(
+        `GitLab API error: ${response.status} - token invalid or lacks required scope`,
+      );
+    }
+    if (!response.ok) {
+      // Non-auth, non-2xx response (e.g. 429 rate-limit, 5xx server error) — throw so
+      // the catch block can classify it as transient and swallow appropriately, rather
+      // than letting the probe silently succeed with a broken status code.
+      throw new Error(`GitLab API error: ${response.status} - authenticated health probe failed`);
+    }
+  } catch (error) {
+    // Re-throw auth errors from the token probe (401 = invalid, 403 = insufficient scope).
+    if (error instanceof Error) {
+      const parsed = parseGitLabApiError(error.message);
+      if (parsed?.status === 401 || parsed?.status === 403) throw error;
+
+      // Swallow our own AbortController timeout and transient connectivity failures.
+      // Reachability was already confirmed by quickHealthCheck; failures on this
+      // second request are noise, not signal.
+      if (error.name === 'AbortError' || classifyError(error) === 'transient') return;
+    }
+
+    // Unexpected error (programming bug, invalid URL, etc.) — log and rethrow so it
+    // doesn't silently leave the instance healthy with a broken probe.
+    logError('Unexpected error during authenticated token health check', {
+      err: error instanceof Error ? error : new Error(String(error)),
+    });
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 // ============================================================================
 // XState Machine Definition
 // ============================================================================
+
+// Shared onError handler for health-check substates (healthy.checking, degraded.checking).
+// Auth errors (401/403 from the authenticated probe) → failed, no auto-reconnect.
+// All other errors → idle via recordFailure (transient failures accumulate toward threshold).
+const healthCheckOnError = [
+  {
+    guard: 'healthCheckErrorIsAuth' as const,
+    target: '#connection.failed' as const,
+    actions: 'recordFailure' as const,
+  },
+  {
+    target: 'idle' as const,
+    actions: 'recordFailure' as const,
+  },
+] as const;
 
 const connectionMachine = setup({
   types: {
@@ -295,6 +397,18 @@ const connectionMachine = setup({
     connectErrorIsTransient: ({ event }) => {
       const error = (event as { error?: unknown }).error;
       return classifyError(error) === 'transient';
+    },
+    // Auth error during periodic health check → failed (no auto-reconnect).
+    // Uses parseGitLabApiError to extract the status code: both 401 (invalid token)
+    // and 403 (insufficient scope) from the authenticated probe are terminal failures.
+    // Direct message parsing is used because classifyError maps 403 → 'permanent',
+    // not 'auth', so we can't rely on classifyError for the 403 path.
+    healthCheckErrorIsAuth: ({ event }) => {
+      const error = (event as { error?: unknown }).error;
+      /* istanbul ignore if */
+      if (!(error instanceof Error)) return false;
+      const parsed = parseGitLabApiError(error.message);
+      return parsed?.status === 401 || parsed?.status === 403;
     },
   },
   actions: {
@@ -416,10 +530,7 @@ const connectionMachine = setup({
                 actions: 'recordSuccess',
               },
             ],
-            onError: {
-              target: 'idle',
-              actions: 'recordFailure',
-            },
+            onError: healthCheckOnError,
           },
         },
       },
@@ -469,10 +580,7 @@ const connectionMachine = setup({
                 actions: 'recordSuccess',
               },
             ],
-            onError: {
-              target: 'idle',
-              actions: 'recordFailure',
-            },
+            onError: healthCheckOnError,
           },
         },
       },
@@ -518,6 +626,10 @@ type StateChangeCallback = (
   to: ConnectionState,
 ) => void;
 
+/**
+ * Singleton service that manages per-instance GitLab connection health using XState state machines.
+ * Tracks connectivity state, drives automatic reconnection, and notifies listeners of state changes.
+ */
 export class HealthMonitor {
   private static instance: HealthMonitor | null = null;
   private readonly actors = new Map<string, ConnectionActor>();
@@ -527,6 +639,7 @@ export class HealthMonitor {
 
   private constructor() {}
 
+  /** Return the singleton instance, creating it on first call. */
   public static getInstance(): HealthMonitor {
     HealthMonitor.instance ??= new HealthMonitor();
     return HealthMonitor.instance;
@@ -680,6 +793,7 @@ export class HealthMonitor {
     return topLevel as ConnectionState;
   }
 
+  /** Return the current top-level state for an actor. */
   private getActorState(actor: ConnectionActor): ConnectionState {
     return this.extractState(actor.getSnapshot());
   }

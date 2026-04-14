@@ -134,7 +134,7 @@ jobs:
         run: ./scripts/build-mcpb.sh "${{ needs.release-please.outputs.release-version }}"
 
       - name: Upload MCPB to GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.release-please.outputs.release-tag }}
           files: gitlab-mcp-${{ needs.release-please.outputs.release-version }}.mcpb

@@ -56,9 +56,16 @@ module.exports = async () => {
   // each Jest worker can read it synchronously at setup load time, before
   // describeIfTier blocks parse.
   const tierFile = path.join(os.tmpdir(), `gitlab-mcp-detected-tier-${REPO_HASH}.json`);
-  // force:true avoids ENOENT and keeps startup resilient to Windows file locks
-  // / EPERM that could otherwise crash the whole integration run.
-  fs.rmSync(tierFile, { force: true });
+  // Best-effort cleanup: force:true suppresses ENOENT but EPERM/EACCES (Windows
+  // file locks, perms) would still throw and crash the integration run before
+  // any tests start. writeFileSync below overwrites anyway, so a failed unlink
+  // is not load-bearing — just log and proceed.
+  try {
+    fs.rmSync(tierFile, { force: true, maxRetries: 2, retryDelay: 50 });
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`⚠️  Could not remove stale tier cache (${reason}) — will overwrite`);
+  }
 
   // Bearer works for BOTH personal access tokens and OAuth tokens against
   // GitLab; PRIVATE-TOKEN would 401 on OAuth tokens and silently default to

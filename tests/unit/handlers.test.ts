@@ -539,8 +539,10 @@ describe('handlers', () => {
     });
 
     it('should NOT re-pin session URL when switch_profile resolves to same URL (#407)', async () => {
-      // No-op when new profile URL matches current session URL — avoid spurious notifications.
+      // No-op when new profile URL matches the session's currently pinned URL —
+      // avoid spurious notifications/tools/list_changed broadcasts.
       mockContextManager.getCurrentProfileUrl.mockResolvedValue('https://gitlab.example.com');
+      mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://gitlab.example.com');
 
       await callToolHandler(
         {
@@ -549,12 +551,77 @@ describe('handlers', () => {
         { sessionId: 'sess-same' },
       );
 
-      // Only the pre-dispatch call (with the request URL) should occur; no post-dispatch
-      // re-pin with a different value.
+      // Only the pre-dispatch call (with the request URL) should occur — no
+      // post-dispatch re-pin when the resolved profile URL equals the pinned URL.
       const calls = mockSessionManager.setSessionInstanceUrl.mock.calls.filter(
         (c) => c[0] === 'sess-same',
       );
-      expect(calls.every((c) => c[1] === 'https://gitlab.example.com')).toBe(true);
+      expect(calls).toHaveLength(1);
+      expect(calls[0]).toEqual(['sess-same', 'https://gitlab.example.com']);
+    });
+
+    it('should re-pin session URL when previously pinned URL differs from new profile URL even if equals request URL (#407)', async () => {
+      // Regression guard for the OAuth-no-context fallback: pre-dispatch re-pin is
+      // skipped (oauthContextUrl is undefined), so effectiveInstanceUrl is the
+      // GITLAB_BASE_URL fallback. The session is still pinned to its previous
+      // instance. resyncSessionAfterSwitchProfile must compare against the actual
+      // pinned URL (not the request fallback) so the switch is not silently dropped.
+      const oauth = await import('../../src/oauth/index');
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(true);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
+
+      // New profile resolves to the same URL as effectiveInstanceUrl (GITLAB_BASE_URL),
+      // but the session was previously pinned to a different host.
+      mockContextManager.getCurrentProfileUrl.mockResolvedValue('https://gitlab.example.com');
+      mockSessionManager.getSessionInstanceUrl.mockReturnValue(
+        'https://stale-instance.example.com',
+      );
+
+      await callToolHandler(
+        {
+          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
+        },
+        { sessionId: 'sess-fallback' },
+      );
+
+      // Must re-pin to the new profile URL even though it matches the request fallback.
+      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith(
+        'sess-fallback',
+        'https://gitlab.example.com',
+      );
+
+      // Restore defaults
+      (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
+      (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
+    });
+
+    it('should re-pin via disconnected manage_context fast-path (#407)', async () => {
+      // Coverage for the unreachable-instance fast-path: when the instance is down,
+      // tryManageContextFastPath bypasses bootstrap but still runs the re-pin so
+      // switch_profile keeps working even with a disconnected target.
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(false);
+      mockContextManager.getCurrentProfileUrl.mockResolvedValue(
+        'https://disconnected-new.example.com',
+      );
+      mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://gitlab.example.com');
+
+      await callToolHandler(
+        {
+          params: {
+            name: 'manage_context',
+            arguments: { action: 'switch_profile', profile: 'eu' },
+          },
+        },
+        { sessionId: 'sess-switch-disconnected' },
+      );
+
+      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith(
+        'sess-switch-disconnected',
+        'https://disconnected-new.example.com',
+      );
+
+      // Restore reachable default
+      mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
     });
 
     it('should NOT re-pin session URL for switch_preset action (#407)', async () => {

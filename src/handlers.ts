@@ -235,7 +235,6 @@ async function resyncSessionAfterSwitchProfile(
   toolName: string,
   toolArguments: Record<string, unknown> | undefined,
   sessionId: string | undefined,
-  currentSessionInstanceUrl: string,
 ): Promise<void> {
   if (toolName !== 'manage_context' || !sessionId) return;
   const action =
@@ -247,10 +246,17 @@ async function resyncSessionAfterSwitchProfile(
     const newProfileUrl = await getContextManager().getCurrentProfileUrl();
     if (!newProfileUrl) return;
     const normalized = normalizeInstanceUrl(newProfileUrl);
-    if (normalized === currentSessionInstanceUrl) return;
 
+    // Compare against the session's *actual* pinned URL, not the request URL:
+    // in OAuth mode without context the session is intentionally NOT pre-pinned,
+    // so comparing against the request fallback (GITLAB_BASE_URL) would skip the
+    // re-pin even when the session still holds a stale instance.
     const { getSessionManager } = await import('./session-manager');
-    getSessionManager().setSessionInstanceUrl(sessionId, normalized);
+    const sessionManager = getSessionManager();
+    const pinnedUrl = sessionManager.getSessionInstanceUrl(sessionId);
+    if (pinnedUrl && normalizeInstanceUrl(pinnedUrl) === normalized) return;
+
+    sessionManager.setSessionInstanceUrl(sessionId, normalized);
   } catch (err) {
     // Re-pin is best-effort: a load failure should not turn a successful
     // switch_profile into an error response. The next CallTool will resolve
@@ -299,7 +305,7 @@ async function tryManageContextFastPath(
     if (result === undefined) {
       return null;
     }
-    await resyncSessionAfterSwitchProfile(toolName, toolArguments, sessionId, effectiveInstanceUrl);
+    await resyncSessionAfterSwitchProfile(toolName, toolArguments, sessionId);
     return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
   }
   return null; // tool not yet cached — fall through to bootstrap
@@ -867,12 +873,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         }
 
         // Re-pin per-session instance URL if this was switch_profile (#407)
-        await resyncSessionAfterSwitchProfile(
-          toolName,
-          request.params.arguments,
-          callSessionId,
-          effectiveInstanceUrl,
-        );
+        await resyncSessionAfterSwitchProfile(toolName, request.params.arguments, callSessionId);
 
         // Report success — skip if handler already timed out (late completion
         // must not overwrite the timeout error already sent to HealthMonitor)

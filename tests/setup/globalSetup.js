@@ -77,18 +77,24 @@ module.exports = async () => {
     }
   }
 
-  // Bearer works for BOTH personal access tokens and OAuth tokens against
-  // GitLab; PRIVATE-TOKEN would 401 on OAuth tokens and silently default to
-  // 'free', incorrectly skipping Premium/Ultimate suites.
+  // Match the codebase auth convention from src/utils/fetch.ts:
+  //   OAuth mode → Authorization: Bearer <token>
+  //   PAT mode   → PRIVATE-TOKEN: <token>  (GitLab's canonical PAT header)
+  // PATs also accept Bearer, but PRIVATE-TOKEN keeps us consistent with the
+  // rest of the codebase and avoids confusion when debugging auth issues.
   // AbortController guards against a hung connection blocking suite startup
   // (Jest's per-test timeout doesn't apply in globalSetup).
+  const oauthMode = String(process.env.OAUTH_ENABLED ?? '').toLowerCase() === 'true';
+  const authHeaders = oauthMode
+    ? { Authorization: `Bearer ${process.env.GITLAB_TOKEN}` }
+    : { 'PRIVATE-TOKEN': process.env.GITLAB_TOKEN };
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(`${process.env.GITLAB_API_URL}/api/graphql`, {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
+        ...authHeaders,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ query: '{ currentLicense { plan } }' }),

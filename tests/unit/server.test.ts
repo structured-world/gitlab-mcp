@@ -1553,7 +1553,7 @@ describe('server', () => {
       // Emit drain before timeout
       const drainHandler = mockRes.once.mock.calls.find(
         (call: unknown[]) => call[0] === 'drain',
-      )?.[1] as (() => void) | undefined;
+      )?.[1];
       expect(drainHandler).toBeDefined();
       drainHandler!();
 
@@ -1607,12 +1607,12 @@ describe('server', () => {
       let socketErrorHandler: ((err: { message: string; code?: string }) => void) | null = null;
       const mockSocket = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'error') socketErrorHandler = handler as typeof socketErrorHandler;
+          if (event === 'error') socketErrorHandler = handler;
         }),
       };
       const mockRes = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         write: jest.fn().mockReturnValue(true),
@@ -1655,7 +1655,7 @@ describe('server', () => {
       let closeHandler: (() => void) | null = null;
       const mockRes = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         write: jest.fn().mockReturnValue(true),
@@ -1687,7 +1687,7 @@ describe('server', () => {
       let closeHandler: (() => void) | null = null;
       const mockRes = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         write: jest.fn().mockReturnValue(true),
@@ -1718,7 +1718,7 @@ describe('server', () => {
       let closeHandler: (() => void) | null = null;
       const mockRes = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         once: jest.fn(),
         removeListener: jest.fn(),
@@ -1876,7 +1876,7 @@ describe('server', () => {
       let socketErrorHandler: ((err: { message: string; code?: string }) => void) | null = null;
       const mockSocket = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'error') socketErrorHandler = handler as typeof socketErrorHandler;
+          if (event === 'error') socketErrorHandler = handler;
         }),
       };
       const mockReq = {
@@ -1893,7 +1893,7 @@ describe('server', () => {
         destroyed: false,
         write: jest.fn().mockReturnValue(true),
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         locals: {},
@@ -2080,12 +2080,12 @@ describe('server', () => {
       let socketErrorHandler: ((err: { message: string; code?: string }) => void) | null = null;
       const mockSocket = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'error') socketErrorHandler = handler as typeof socketErrorHandler;
+          if (event === 'error') socketErrorHandler = handler;
         }),
       };
       const mockRes = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         write: jest.fn().mockReturnValue(true),
@@ -2116,7 +2116,7 @@ describe('server', () => {
       let closeHandler: (() => void) | null = null;
       const mockRes = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         write: jest.fn().mockReturnValue(true),
@@ -2146,7 +2146,7 @@ describe('server', () => {
       let closeHandler: (() => void) | null = null;
       const mockRes = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         write: jest.fn().mockReturnValue(true),
@@ -2188,7 +2188,7 @@ describe('server', () => {
         destroyed: false,
         write: jest.fn().mockReturnValue(true),
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         locals: { heartbeatFailed: true },
@@ -2223,7 +2223,7 @@ describe('server', () => {
         destroyed: true,
         write: jest.fn().mockReturnValue(true),
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         locals: {},
@@ -2258,7 +2258,7 @@ describe('server', () => {
         destroyed: false,
         write: jest.fn().mockReturnValue(true),
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         locals: {},
@@ -2294,7 +2294,7 @@ describe('server', () => {
         destroyed: false,
         write: jest.fn().mockReturnValue(true),
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         locals: {},
@@ -2323,7 +2323,7 @@ describe('server', () => {
       let socketErrorHandler: ((err: { message: string; code?: string }) => void) | null = null;
       const mockSocket = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'error') socketErrorHandler = handler as typeof socketErrorHandler;
+          if (event === 'error') socketErrorHandler = handler;
         }),
       };
       const mockReq = { headers: {}, method: 'GET', path: '/mcp', body: {} };
@@ -2335,7 +2335,7 @@ describe('server', () => {
         destroyed: false,
         write: jest.fn().mockReturnValue(true),
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
-          if (event === 'close') closeHandler = handler as typeof closeHandler;
+          if (event === 'close') closeHandler = handler;
         }),
         removeListener: jest.fn(),
         locals: {},

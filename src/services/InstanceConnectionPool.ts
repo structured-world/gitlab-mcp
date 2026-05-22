@@ -220,7 +220,7 @@ export class InstanceConnectionPool {
         }
         return Reflect.get(target, prop, receiver) as unknown;
       },
-    }) as unknown as GraphQLClient;
+    });
 
     return clientWithAuth;
   }

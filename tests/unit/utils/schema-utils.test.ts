@@ -823,13 +823,13 @@ describe('schema-utils', () => {
     };
 
     it('should return schema unchanged when no parameters are restricted', () => {
-      const result = stripTierRestrictedParameters(flatSchemaWithParams as any, []);
+      const result = stripTierRestrictedParameters(flatSchemaWithParams, []);
 
       expect(result).toEqual(flatSchemaWithParams);
     });
 
     it('should remove restricted properties from flat schema', () => {
-      const result = stripTierRestrictedParameters(flatSchemaWithParams as any, [
+      const result = stripTierRestrictedParameters(flatSchemaWithParams, [
         'weight',
         'healthStatus',
       ]);
@@ -846,7 +846,7 @@ describe('schema-utils', () => {
     });
 
     it('should remove restricted parameters from required array', () => {
-      const result = stripTierRestrictedParameters(flatSchemaWithParams as any, ['weight']);
+      const result = stripTierRestrictedParameters(flatSchemaWithParams, ['weight']);
 
       // weight was in required, should be removed
       expect(result.required).not.toContain('weight');
@@ -857,7 +857,7 @@ describe('schema-utils', () => {
     });
 
     it('should remove restricted properties from all discriminated union branches', () => {
-      const result = stripTierRestrictedParameters(discriminatedWithParams as any, [
+      const result = stripTierRestrictedParameters(discriminatedWithParams, [
         'weight',
         'healthStatus',
       ]);
@@ -875,7 +875,7 @@ describe('schema-utils', () => {
     });
 
     it('should remove restricted params from required in discriminated union branches', () => {
-      const result = stripTierRestrictedParameters(discriminatedWithParams as any, ['weight']);
+      const result = stripTierRestrictedParameters(discriminatedWithParams, ['weight']);
 
       // Branch 0 had weight in required - should be removed
       expect(result.oneOf?.[0]?.required).not.toContain('weight');
@@ -886,7 +886,7 @@ describe('schema-utils', () => {
     it('should not mutate the original schema', () => {
       const original = JSON.parse(JSON.stringify(flatSchemaWithParams));
 
-      stripTierRestrictedParameters(flatSchemaWithParams as any, ['weight', 'healthStatus']);
+      stripTierRestrictedParameters(flatSchemaWithParams, ['weight', 'healthStatus']);
 
       // Original should remain unchanged
       expect(flatSchemaWithParams).toEqual(original);
@@ -894,9 +894,7 @@ describe('schema-utils', () => {
 
     it('should handle parameters not present in the schema gracefully', () => {
       // Restrict a param that doesn't exist in the schema - should be a no-op
-      const result = stripTierRestrictedParameters(flatSchemaWithParams as any, [
-        'nonExistentParam',
-      ]);
+      const result = stripTierRestrictedParameters(flatSchemaWithParams, ['nonExistentParam']);
 
       expect(result.properties?.action).toBeDefined();
       expect(result.properties?.weight).toBeDefined();
@@ -906,7 +904,7 @@ describe('schema-utils', () => {
       // Edge case: schema branch with no properties at all
       const noPropsSchema: TestJSONSchema = { type: 'object' };
 
-      const result = stripTierRestrictedParameters(noPropsSchema as any, ['weight']);
+      const result = stripTierRestrictedParameters(noPropsSchema, ['weight']);
 
       // Should return schema unchanged (no crash)
       expect(result.type).toBe('object');
@@ -920,7 +918,7 @@ describe('schema-utils', () => {
         required: ['action', 'weight', 'title'],
       };
 
-      const result = stripTierRestrictedParameters(schemaWithRequiredOnly as any, ['weight']);
+      const result = stripTierRestrictedParameters(schemaWithRequiredOnly, ['weight']);
 
       // required should still be filtered even without properties
       expect(result.required).toEqual(['action', 'title']);
@@ -938,7 +936,7 @@ describe('schema-utils', () => {
         },
       };
 
-      const result = stripTierRestrictedParameters(noRequiredSchema as any, ['weight']);
+      const result = stripTierRestrictedParameters(noRequiredSchema, ['weight']);
 
       // Property should be removed, no crash on missing required
       expect(result.properties?.weight).toBeUndefined();
@@ -965,7 +963,7 @@ describe('schema-utils', () => {
         ],
       };
 
-      const result = stripTierRestrictedParameters(partialBranches as any, ['weight']);
+      const result = stripTierRestrictedParameters(partialBranches, ['weight']);
 
       expect(result.oneOf?.[0]?.properties?.weight).toBeUndefined();
       expect(result.oneOf?.[0]?.properties?.action).toBeDefined();

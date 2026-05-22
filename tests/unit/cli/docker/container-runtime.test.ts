@@ -48,15 +48,15 @@ describe('container-runtime', () => {
     it('should detect Docker when docker --version succeeds', () => {
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker' && args?.[0] === '--version') {
-          return successResult('Docker version 24.0.7, build afdd53b') as any;
+          return successResult('Docker version 24.0.7, build afdd53b');
         }
         if (cmd === 'docker' && args?.[0] === 'info') {
-          return successResult('') as any;
+          return successResult('');
         }
         if (cmd === 'docker' && args?.[0] === 'compose') {
-          return successResult('Docker Compose version v2.21.0') as any;
+          return successResult('Docker Compose version v2.21.0');
         }
-        return failResult() as any;
+        return failResult();
       });
 
       const result = detectContainerRuntime();
@@ -71,18 +71,18 @@ describe('container-runtime', () => {
     it('should detect Podman when Docker is not available', () => {
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker') {
-          return failResult('command not found') as any;
+          return failResult('command not found');
         }
         if (cmd === 'podman' && args?.[0] === '--version') {
-          return successResult('podman version 4.9.3') as any;
+          return successResult('podman version 4.9.3');
         }
         if (cmd === 'podman' && args?.[0] === 'info') {
-          return successResult('') as any;
+          return successResult('');
         }
         if (cmd === 'podman' && args?.[0] === 'compose') {
-          return successResult('podman compose version 1.0.6') as any;
+          return successResult('podman compose version 1.0.6');
         }
-        return failResult() as any;
+        return failResult();
       });
 
       const result = detectContainerRuntime();
@@ -97,19 +97,19 @@ describe('container-runtime', () => {
     it('should prefer Docker over Podman when both are available', () => {
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker' && args?.[0] === '--version') {
-          return successResult('Docker version 24.0.7') as any;
+          return successResult('Docker version 24.0.7');
         }
         if (cmd === 'docker' && args?.[0] === 'info') {
-          return successResult('') as any;
+          return successResult('');
         }
         if (cmd === 'docker' && args?.[0] === 'compose') {
-          return successResult('Docker Compose version v2.21.0') as any;
+          return successResult('Docker Compose version v2.21.0');
         }
         // Podman is also available but should not be reached for runtime detection
         if (cmd === 'podman' && args?.[0] === '--version') {
-          return successResult('podman version 4.9.3') as any;
+          return successResult('podman version 4.9.3');
         }
-        return failResult() as any;
+        return failResult();
       });
 
       const result = detectContainerRuntime();
@@ -118,7 +118,7 @@ describe('container-runtime', () => {
     });
 
     it('should return unavailable runtime when no runtime is found', () => {
-      mockChildProcess.spawnSync.mockReturnValue(failResult() as any);
+      mockChildProcess.spawnSync.mockReturnValue(failResult());
 
       const result = detectContainerRuntime();
 
@@ -131,15 +131,15 @@ describe('container-runtime', () => {
     it('should detect runtime installed but daemon not running', () => {
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker' && args?.[0] === '--version') {
-          return successResult('Docker version 24.0.7') as any;
+          return successResult('Docker version 24.0.7');
         }
         if (cmd === 'docker' && args?.[0] === 'info') {
-          return failResult('Cannot connect to Docker daemon') as any;
+          return failResult('Cannot connect to Docker daemon');
         }
         if (cmd === 'docker' && args?.[0] === 'compose') {
-          return successResult('Docker Compose version v2.21.0') as any;
+          return successResult('Docker Compose version v2.21.0');
         }
-        return failResult() as any;
+        return failResult();
       });
 
       const result = detectContainerRuntime();
@@ -153,20 +153,20 @@ describe('container-runtime', () => {
     it('should detect docker-compose v1 standalone as fallback', () => {
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker' && args?.[0] === '--version') {
-          return successResult('Docker version 20.10.0') as any;
+          return successResult('Docker version 20.10.0');
         }
         if (cmd === 'docker' && args?.[0] === 'info') {
-          return successResult('') as any;
+          return successResult('');
         }
         // docker compose v2 not available
         if (cmd === 'docker' && args?.[0] === 'compose') {
-          return failResult('is not a docker command') as any;
+          return failResult('is not a docker command');
         }
         // docker-compose v1 available
         if (cmd === 'docker-compose' && args?.[0] === '--version') {
-          return successResult('docker-compose version 1.29.2') as any;
+          return successResult('docker-compose version 1.29.2');
         }
-        return failResult() as any;
+        return failResult();
       });
 
       const result = detectContainerRuntime();
@@ -177,23 +177,23 @@ describe('container-runtime', () => {
     it('should detect podman-compose standalone for podman runtime', () => {
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker') {
-          return failResult('command not found') as any;
+          return failResult('command not found');
         }
         if (cmd === 'podman' && args?.[0] === '--version') {
-          return successResult('podman version 4.9.3') as any;
+          return successResult('podman version 4.9.3');
         }
         if (cmd === 'podman' && args?.[0] === 'info') {
-          return successResult('') as any;
+          return successResult('');
         }
         // podman compose plugin not available
         if (cmd === 'podman' && args?.[0] === 'compose') {
-          return failResult() as any;
+          return failResult();
         }
         // podman-compose standalone available
         if (cmd === 'podman-compose' && args?.[0] === '--version') {
-          return successResult('podman-compose version 1.0.6') as any;
+          return successResult('podman-compose version 1.0.6');
         }
-        return failResult() as any;
+        return failResult();
       });
 
       const result = detectContainerRuntime();
@@ -205,26 +205,26 @@ describe('container-runtime', () => {
     it('should use docker-compose as cross-runtime fallback for podman', () => {
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker' && args?.[0] === '--version') {
-          return failResult() as any;
+          return failResult();
         }
         if (cmd === 'podman' && args?.[0] === '--version') {
-          return successResult('podman version 4.9.3') as any;
+          return successResult('podman version 4.9.3');
         }
         if (cmd === 'podman' && args?.[0] === 'info') {
-          return successResult('') as any;
+          return successResult('');
         }
         // No podman compose, no podman-compose
         if (cmd === 'podman' && args?.[0] === 'compose') {
-          return failResult() as any;
+          return failResult();
         }
         if (cmd === 'podman-compose') {
-          return failResult() as any;
+          return failResult();
         }
         // docker-compose v1 is available as fallback
         if (cmd === 'docker-compose' && args?.[0] === '--version') {
-          return successResult('docker-compose version 1.29.2') as any;
+          return successResult('docker-compose version 1.29.2');
         }
-        return failResult() as any;
+        return failResult();
       });
 
       const result = detectContainerRuntime();
@@ -236,13 +236,13 @@ describe('container-runtime', () => {
     it('should return null composeCmd when no compose tool found', () => {
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker' && args?.[0] === '--version') {
-          return successResult('Docker version 24.0.7') as any;
+          return successResult('Docker version 24.0.7');
         }
         if (cmd === 'docker' && args?.[0] === 'info') {
-          return successResult('') as any;
+          return successResult('');
         }
         // No compose available at all
-        return failResult() as any;
+        return failResult();
       });
 
       const result = detectContainerRuntime();
@@ -268,15 +268,15 @@ describe('container-runtime', () => {
     it('should parse version from complex version strings', () => {
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker' && args?.[0] === '--version') {
-          return successResult('Docker version 26.1.3-ce, build b72abbb') as any;
+          return successResult('Docker version 26.1.3-ce, build b72abbb');
         }
         if (cmd === 'docker' && args?.[0] === 'info') {
-          return successResult('') as any;
+          return successResult('');
         }
         if (cmd === 'docker' && args?.[0] === 'compose') {
-          return successResult('') as any;
+          return successResult('');
         }
-        return failResult() as any;
+        return failResult();
       });
 
       const result = detectContainerRuntime();
@@ -288,7 +288,7 @@ describe('container-runtime', () => {
       // docker --version succeeds, but docker info throws (e.g. permission error)
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker' && args?.[0] === '--version') {
-          return successResult('Docker version 24.0.7') as any;
+          return successResult('Docker version 24.0.7');
         }
         if (cmd === 'docker' && args?.[0] === 'info') {
           throw new Error('permission denied');
@@ -313,15 +313,15 @@ describe('container-runtime', () => {
     it('should cache the result across multiple calls', () => {
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker' && args?.[0] === '--version') {
-          return successResult('Docker version 24.0.7') as any;
+          return successResult('Docker version 24.0.7');
         }
         if (cmd === 'docker' && args?.[0] === 'info') {
-          return successResult('') as any;
+          return successResult('');
         }
         if (cmd === 'docker' && args?.[0] === 'compose') {
-          return successResult('') as any;
+          return successResult('');
         }
-        return failResult() as any;
+        return failResult();
       });
 
       const first = getContainerRuntime();
@@ -343,15 +343,15 @@ describe('container-runtime', () => {
       // First: Docker detected
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker' && args?.[0] === '--version') {
-          return successResult('Docker version 24.0.7') as any;
+          return successResult('Docker version 24.0.7');
         }
         if (cmd === 'docker' && args?.[0] === 'info') {
-          return successResult('') as any;
+          return successResult('');
         }
         if (cmd === 'docker' && args?.[0] === 'compose') {
-          return successResult('') as any;
+          return successResult('');
         }
-        return failResult() as any;
+        return failResult();
       });
 
       const first = getContainerRuntime();
@@ -361,18 +361,18 @@ describe('container-runtime', () => {
       resetRuntimeCache();
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
         if (cmd === 'docker') {
-          return failResult() as any;
+          return failResult();
         }
         if (cmd === 'podman' && args?.[0] === '--version') {
-          return successResult('podman version 4.9.3') as any;
+          return successResult('podman version 4.9.3');
         }
         if (cmd === 'podman' && args?.[0] === 'info') {
-          return successResult('') as any;
+          return successResult('');
         }
         if (cmd === 'podman' && args?.[0] === 'compose') {
-          return successResult('') as any;
+          return successResult('');
         }
-        return failResult() as any;
+        return failResult();
       });
 
       const second = getContainerRuntime();

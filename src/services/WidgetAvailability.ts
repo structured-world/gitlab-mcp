@@ -144,8 +144,7 @@ export class WidgetAvailability {
   public static getAvailableWidgets(instanceUrl?: string): WorkItemWidgetType[] {
     return Object.values(WorkItemWidgetTypes).filter(
       (widget): widget is WorkItemWidgetType =>
-        typeof widget === 'string' &&
-        this.isWidgetAvailable(widget as WorkItemWidgetType, instanceUrl),
+        typeof widget === 'string' && this.isWidgetAvailable(widget, instanceUrl),
     );
   }
 

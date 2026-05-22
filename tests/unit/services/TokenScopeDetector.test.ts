@@ -440,7 +440,7 @@ describe('TokenScopeDetector', () => {
       expect(fresh.browse_projects).toContain('api');
       // Mutating an array value shouldn't affect the original either (deep clone)
       const req2 = getToolScopeRequirements();
-      req2.browse_projects.push('read_user' as GitLabScope);
+      req2.browse_projects.push('read_user');
       const req3 = getToolScopeRequirements();
       expect(req3.browse_projects).not.toContain('read_user');
     });

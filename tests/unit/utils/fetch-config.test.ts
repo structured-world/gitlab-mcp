@@ -32,7 +32,7 @@ describe('Fetch Configuration Edge Cases', () => {
       statusText: 'OK',
       headers: new Headers(),
       redirected: false,
-      type: 'basic' as ResponseType,
+      type: 'basic',
       url: '',
       body: null,
       bodyUsed: false,

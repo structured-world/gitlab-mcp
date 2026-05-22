@@ -378,7 +378,7 @@ function determineTransportMode(): TransportMode {
   // Check for explicit stdio mode first
   if (args.includes('stdio')) {
     logInfo('Selected stdio mode (explicit argument)');
-    return 'stdio' as TransportMode;
+    return 'stdio';
   }
 
   // If PORT environment variable is present, start in dual transport mode (SSE + StreamableHTTP)
@@ -386,12 +386,12 @@ function determineTransportMode(): TransportMode {
     logInfo(
       'Selected dual transport mode (SSE + StreamableHTTP) - PORT environment variable detected',
     );
-    return 'dual' as TransportMode;
+    return 'dual';
   }
 
   // Default to stdio mode when no PORT is specified
   logInfo('Selected stdio mode (no PORT environment variable)');
-  return 'stdio' as TransportMode;
+  return 'stdio';
 }
 
 export async function startServer(): Promise<void> {

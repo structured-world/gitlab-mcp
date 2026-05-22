@@ -238,32 +238,28 @@ async function handleDeviceFlow(
 export async function pollHandler(req: Request, res: Response): Promise<void> {
   const config = loadOAuthConfig();
   if (!config) {
-    res.status(500).json({ error: 'server_error' } as DeviceFlowPollResponse);
+    res.status(500).json({ error: 'server_error' });
     return;
   }
 
   const { flow_state } = req.query as { flow_state?: string };
 
   if (!flow_state) {
-    res
-      .status(400)
-      .json({ status: 'failed', error: 'Missing flow_state' } as DeviceFlowPollResponse);
+    res.status(400).json({ status: 'failed', error: 'Missing flow_state' });
     return;
   }
 
   const flow = sessionStore.getDeviceFlow(flow_state);
 
   if (!flow) {
-    res.status(400).json({ status: 'expired', error: 'Flow not found' } as DeviceFlowPollResponse);
+    res.status(400).json({ status: 'expired', error: 'Flow not found' });
     return;
   }
 
   // Check if device flow has expired
   if (Date.now() > flow.expiresAt) {
     sessionStore.deleteDeviceFlow(flow_state);
-    res
-      .status(400)
-      .json({ status: 'expired', error: 'Device code expired' } as DeviceFlowPollResponse);
+    res.status(400).json({ status: 'expired', error: 'Device code expired' });
     return;
   }
 
@@ -332,7 +328,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
       res.json(response);
     } else {
       // Still pending
-      res.json({ status: 'pending' } as DeviceFlowPollResponse);
+      res.json({ status: 'pending' });
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -340,11 +336,11 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
     // Check for terminal errors
     if (message.includes('expired') || message.includes('denied') || message.includes('invalid')) {
       sessionStore.deleteDeviceFlow(flow_state);
-      res.json({ status: 'failed', error: message } as DeviceFlowPollResponse);
+      res.json({ status: 'failed', error: message });
     } else {
       // Transient error - report as pending
       logWarn('Device flow poll error', { err: error as Error });
-      res.json({ status: 'pending' } as DeviceFlowPollResponse);
+      res.json({ status: 'pending' });
     }
   }
 }

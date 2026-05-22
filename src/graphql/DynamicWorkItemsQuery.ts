@@ -80,10 +80,7 @@ export class DynamicWorkItemsQueryBuilder {
       }
     `;
 
-    return query as TypedDocumentNode<
-      { group: { workItems: { nodes: DynamicWorkItem[] } } },
-      { groupPath: string; types?: string[]; first?: number; after?: string }
-    >;
+    return query;
   }
 
   /**
@@ -268,9 +265,6 @@ export class DynamicWorkItemsQueryBuilder {
       }
     `;
 
-    return query as TypedDocumentNode<
-      { group: { workItems: { nodes: DynamicWorkItem[] } } },
-      { groupPath: string; first?: number; after?: string }
-    >;
+    return query;
   }
 }

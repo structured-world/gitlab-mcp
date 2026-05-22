@@ -256,7 +256,7 @@ export function toQuery<T extends Record<string, unknown>>(
 ): QueryParams {
   const result: QueryParams = {};
   for (const [key, value] of Object.entries(options)) {
-    if (!exclude.includes(key as keyof T) && value !== undefined) {
+    if (!exclude.includes(key) && value !== undefined) {
       result[key] = value as QueryParamValue | QueryParamArray;
     }
   }

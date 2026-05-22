@@ -956,9 +956,9 @@ describe('inject-tool-refs', () => {
       mockGetAllToolDefinitionsUnfiltered.mockReturnValue([]);
       mockConsoleLog = jest.spyOn(console, 'log').mockImplementation(() => undefined);
       mockConsoleError = jest.spyOn(console, 'error').mockImplementation(() => undefined);
-      mockProcessExit = jest.spyOn(process, 'exit').mockImplementation((() => {
+      mockProcessExit = jest.spyOn(process, 'exit').mockImplementation(() => {
         throw new Error('process.exit');
-      }) as never);
+      });
       mockProcessCwd = jest.spyOn(process, 'cwd').mockReturnValue('/project');
     });
 

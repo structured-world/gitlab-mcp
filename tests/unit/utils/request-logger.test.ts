@@ -41,7 +41,7 @@ describe('request-logger utils', () => {
     });
 
     it("should return 'unknown' when both ip and socket.remoteAddress are unavailable", () => {
-      const req = createMockRequest({ ip: undefined, socket: undefined as any });
+      const req = createMockRequest({ ip: undefined, socket: undefined });
       expect(getIpAddress(req)).toBe('unknown');
     });
 

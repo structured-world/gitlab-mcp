@@ -786,7 +786,7 @@ export class HealthMonitor {
   private extractState(snapshot: SnapshotFrom<typeof connectionMachine>): ConnectionState {
     const value = snapshot.value;
     if (typeof value === 'string') {
-      return value as ConnectionState;
+      return value;
     }
     // Compound state: { healthy: 'idle' } or { healthy: 'checking' }
     const topLevel = Object.keys(value)[0];

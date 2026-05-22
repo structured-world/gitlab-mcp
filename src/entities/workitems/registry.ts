@@ -318,7 +318,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             };
             // Apply state filtering (client-side since GitLab API doesn't support it reliably)
             const filteredItems = allItems.filter((item: GraphQLWorkItem) => {
-              return state.includes(item.state as 'OPEN' | 'CLOSED');
+              return state.includes(item.state);
             });
 
             // Apply simplification if requested and clean GIDs

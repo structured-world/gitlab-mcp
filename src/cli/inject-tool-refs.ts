@@ -274,7 +274,7 @@ export function main(): void {
   const allTools = registryManager.getAllToolDefinitionsUnfiltered();
   const toolSchemas = new Map<string, JsonSchemaProperty>();
   for (const tool of allTools) {
-    toolSchemas.set(tool.name, tool.inputSchema as JsonSchemaProperty);
+    toolSchemas.set(tool.name, tool.inputSchema);
   }
 
   const toolCount = allTools.length;

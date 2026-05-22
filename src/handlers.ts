@@ -42,7 +42,7 @@ function hasAction(value: unknown): value is { action: string } {
     typeof value === 'object' &&
     value !== null &&
     'action' in value &&
-    typeof (value as { action: unknown }).action === 'string'
+    typeof value.action === 'string'
   );
 }
 

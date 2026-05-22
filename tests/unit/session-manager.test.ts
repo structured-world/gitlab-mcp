@@ -82,7 +82,7 @@ describe('SessionManager', () => {
   describe('createSession', () => {
     it('should create a new Server instance per session', async () => {
       manager.start();
-      await manager.createSession('session-1', mockTransport as any);
+      await manager.createSession('session-1', mockTransport);
 
       expect(Server).toHaveBeenCalledWith(
         { name: 'test-package', version: '1.0.0' },
@@ -93,8 +93,8 @@ describe('SessionManager', () => {
 
     it('should create separate Server instances for different sessions', async () => {
       manager.start();
-      await manager.createSession('session-1', mockTransport as any);
-      await manager.createSession('session-2', mockTransport as any);
+      await manager.createSession('session-1', mockTransport);
+      await manager.createSession('session-2', mockTransport);
 
       // Two Server instances created
       expect(Server).toHaveBeenCalledTimes(2);
@@ -103,8 +103,8 @@ describe('SessionManager', () => {
 
     it('should register handlers on each new Server', async () => {
       manager.start();
-      await manager.createSession('session-1', mockTransport as any);
-      await manager.createSession('session-2', mockTransport as any);
+      await manager.createSession('session-1', mockTransport);
+      await manager.createSession('session-2', mockTransport);
 
       // setupHandlers called for each session
       expect(setupHandlers).toHaveBeenCalledTimes(2);
@@ -112,7 +112,7 @@ describe('SessionManager', () => {
 
     it('should connect the Server to the transport', async () => {
       manager.start();
-      const server = await manager.createSession('session-1', mockTransport as any);
+      const server = await manager.createSession('session-1', mockTransport);
 
       expect(server.connect).toHaveBeenCalledWith(mockTransport);
     });
@@ -121,12 +121,12 @@ describe('SessionManager', () => {
       manager.start();
 
       // Create first session and trigger oninitialized
-      const server1 = await manager.createSession('session-1', mockTransport as any);
+      const server1 = await manager.createSession('session-1', mockTransport);
       // Simulate SDK calling oninitialized
       (server1 as any).oninitialized();
 
       // Create second session and trigger oninitialized
-      const server2 = await manager.createSession('session-2', mockTransport as any);
+      const server2 = await manager.createSession('session-2', mockTransport);
       (server2 as any).oninitialized();
 
       // setDetectedSchemaMode should only be called once (from first session)
@@ -137,11 +137,11 @@ describe('SessionManager', () => {
       manager.start();
 
       // Create a session
-      const server1 = await manager.createSession('session-dup', mockTransport as any);
+      const server1 = await manager.createSession('session-dup', mockTransport);
       expect(manager.activeSessionCount).toBe(1);
 
       // Create another session with the SAME ID — should close the first
-      const server2 = await manager.createSession('session-dup', mockTransport as any);
+      const server2 = await manager.createSession('session-dup', mockTransport);
 
       // Old server should have been closed
       expect(server1.close).toHaveBeenCalled();
@@ -160,7 +160,7 @@ describe('SessionManager', () => {
   describe('touchSession', () => {
     it('should update lastActivityAt for existing session', async () => {
       manager.start();
-      await manager.createSession('session-1', mockTransport as any);
+      await manager.createSession('session-1', mockTransport);
 
       // Advance time
       jest.advanceTimersByTime(2000);
@@ -184,7 +184,7 @@ describe('SessionManager', () => {
   describe('removeSession', () => {
     it('should remove session and close its Server', async () => {
       manager.start();
-      const server = await manager.createSession('session-1', mockTransport as any);
+      const server = await manager.createSession('session-1', mockTransport);
 
       await manager.removeSession('session-1');
 
@@ -199,7 +199,7 @@ describe('SessionManager', () => {
 
     it('should handle Server.close() errors gracefully', async () => {
       manager.start();
-      const server = await manager.createSession('session-1', mockTransport as any);
+      const server = await manager.createSession('session-1', mockTransport);
       (server.close as jest.Mock).mockRejectedValueOnce(new Error('Already closed'));
 
       // Should not throw
@@ -211,8 +211,8 @@ describe('SessionManager', () => {
   describe('broadcastToolsListChanged', () => {
     it('should send notification to all active sessions', async () => {
       manager.start();
-      const server1 = await manager.createSession('session-1', mockTransport as any);
-      const server2 = await manager.createSession('session-2', mockTransport as any);
+      const server1 = await manager.createSession('session-1', mockTransport);
+      const server2 = await manager.createSession('session-2', mockTransport);
 
       await manager.broadcastToolsListChanged();
 
@@ -226,7 +226,7 @@ describe('SessionManager', () => {
 
     it('should not throw if individual notifications fail', async () => {
       manager.start();
-      const server1 = await manager.createSession('session-1', mockTransport as any);
+      const server1 = await manager.createSession('session-1', mockTransport);
       (server1.notification as jest.Mock).mockRejectedValueOnce(new Error('Disconnected'));
 
       await expect(manager.broadcastToolsListChanged()).resolves.toBeUndefined();
@@ -241,14 +241,14 @@ describe('SessionManager', () => {
   describe('per-session instance URL tracking (#398)', () => {
     it('should default instanceUrl to GITLAB_BASE_URL on session creation', async () => {
       manager.start();
-      await manager.createSession('session-1', mockTransport as any);
+      await manager.createSession('session-1', mockTransport);
 
       expect(manager.getSessionInstanceUrl('session-1')).toBe('https://gitlab.example.com');
     });
 
     it('should use provided instanceUrl on session creation', async () => {
       manager.start();
-      await manager.createSession('session-1', mockTransport as any, 'https://custom.gitlab.com');
+      await manager.createSession('session-1', mockTransport, 'https://custom.gitlab.com');
 
       expect(manager.getSessionInstanceUrl('session-1')).toBe('https://custom.gitlab.com');
     });
@@ -259,7 +259,7 @@ describe('SessionManager', () => {
 
     it('should update instanceUrl via setSessionInstanceUrl', async () => {
       manager.start();
-      await manager.createSession('session-1', mockTransport as any);
+      await manager.createSession('session-1', mockTransport);
 
       manager.setSessionInstanceUrl('session-1', 'https://other.gitlab.com');
 
@@ -268,7 +268,7 @@ describe('SessionManager', () => {
 
     it('should send tools/list_changed notification when instanceUrl changes', async () => {
       manager.start();
-      const server = await manager.createSession('session-1', mockTransport as any);
+      const server = await manager.createSession('session-1', mockTransport);
 
       // URL changes → notification must be sent to this specific session's server
       manager.setSessionInstanceUrl('session-1', 'https://other.gitlab.com');
@@ -285,7 +285,7 @@ describe('SessionManager', () => {
       manager.start();
       const server = await manager.createSession(
         'session-1',
-        mockTransport as any,
+        mockTransport,
         'https://a.gitlab.com',
       );
 
@@ -310,7 +310,7 @@ describe('SessionManager', () => {
 
     it('should swallow notification errors when instanceUrl changes (fire-and-forget catch)', async () => {
       manager.start();
-      const server = await manager.createSession('session-1', mockTransport as any);
+      const server = await manager.createSession('session-1', mockTransport);
 
       // Make the notification call reject
       (server.notification as jest.Mock).mockRejectedValueOnce(new Error('Transport closed'));
@@ -330,9 +330,9 @@ describe('SessionManager', () => {
 
     it('should return per-instance session counts from getSessionsByInstance', async () => {
       manager.start();
-      await manager.createSession('session-1', mockTransport as any, 'https://a.gitlab.com');
-      await manager.createSession('session-2', mockTransport as any, 'https://a.gitlab.com');
-      await manager.createSession('session-3', mockTransport as any, 'https://b.gitlab.com');
+      await manager.createSession('session-1', mockTransport, 'https://a.gitlab.com');
+      await manager.createSession('session-2', mockTransport, 'https://a.gitlab.com');
+      await manager.createSession('session-3', mockTransport, 'https://b.gitlab.com');
 
       const counts = manager.getSessionsByInstance();
 
@@ -352,17 +352,17 @@ describe('SessionManager', () => {
       manager.start();
       const serverA1 = await manager.createSession(
         'session-a1',
-        mockTransport as any,
+        mockTransport,
         'https://a.gitlab.com',
       );
       const serverA2 = await manager.createSession(
         'session-a2',
-        mockTransport as any,
+        mockTransport,
         'https://a.gitlab.com',
       );
       const serverB = await manager.createSession(
         'session-b',
-        mockTransport as any,
+        mockTransport,
         'https://b.gitlab.com',
       );
 
@@ -384,12 +384,12 @@ describe('SessionManager', () => {
       manager.start();
       const server1 = await manager.createSession(
         'session-1',
-        mockTransport as any,
+        mockTransport,
         'https://a.gitlab.com',
       );
       const server2 = await manager.createSession(
         'session-2',
-        mockTransport as any,
+        mockTransport,
         'https://b.gitlab.com',
       );
 
@@ -408,7 +408,7 @@ describe('SessionManager', () => {
       manager.start();
       const server = await manager.createSession(
         'session-1',
-        mockTransport as any,
+        mockTransport,
         'https://a.gitlab.com',
       );
 
@@ -425,7 +425,7 @@ describe('SessionManager', () => {
   describe('stale session cleanup', () => {
     it('should remove sessions that exceed timeout', async () => {
       manager.start();
-      await manager.createSession('session-1', mockTransport as any);
+      await manager.createSession('session-1', mockTransport);
 
       expect(manager.activeSessionCount).toBe(1);
 
@@ -442,7 +442,7 @@ describe('SessionManager', () => {
       // stdio is single-client, single-process — its lifetime is owned by the
       // client, not by the session manager's idle timeout.
       manager.start();
-      await manager.createSession(STDIO_SESSION_ID, mockTransport as any);
+      await manager.createSession(STDIO_SESSION_ID, mockTransport);
 
       expect(manager.activeSessionCount).toBe(1);
 
@@ -457,8 +457,8 @@ describe('SessionManager', () => {
     it('should remove non-stdio sessions but keep stdio session', async () => {
       // Verify that cleanup correctly targets only HTTP sessions
       manager.start();
-      await manager.createSession(STDIO_SESSION_ID, mockTransport as any);
-      await manager.createSession('http-session-1', mockTransport as any);
+      await manager.createSession(STDIO_SESSION_ID, mockTransport);
+      await manager.createSession('http-session-1', mockTransport);
 
       expect(manager.activeSessionCount).toBe(2);
 
@@ -476,14 +476,14 @@ describe('SessionManager', () => {
 
     it('should not remove sessions that are within timeout', async () => {
       manager.start();
-      await manager.createSession('session-1', mockTransport as any);
+      await manager.createSession('session-1', mockTransport);
 
       // Advance 60s (one cleanup interval) but session was just created
       // Actually, timeout is 5s so 60s > 5s, the session will be stale
       // Use a longer timeout manager for this test
       const longManager = new SessionManager(120_000); // 2 minute timeout
       longManager.start();
-      await longManager.createSession('session-long', mockTransport as any);
+      await longManager.createSession('session-long', mockTransport);
 
       jest.advanceTimersByTime(61_000); // Cleanup runs, but 61s < 120s timeout
 
@@ -495,8 +495,8 @@ describe('SessionManager', () => {
   describe('shutdown', () => {
     it('should close all sessions and stop cleanup timer', async () => {
       manager.start();
-      const server1 = await manager.createSession('session-1', mockTransport as any);
-      const server2 = await manager.createSession('session-2', mockTransport as any);
+      const server1 = await manager.createSession('session-1', mockTransport);
+      const server2 = await manager.createSession('session-2', mockTransport);
 
       await manager.shutdown();
 

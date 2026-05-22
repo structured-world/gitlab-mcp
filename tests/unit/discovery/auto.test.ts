@@ -459,7 +459,7 @@ describe('formatDiscoveryResult', () => {
         configPath: '/test/.gitlab-mcp',
         preset: {
           // scope exists but has no project/namespace/projects
-          scope: {} as { project?: string; namespace?: string; projects?: string[] },
+          scope: {},
         },
       },
     };

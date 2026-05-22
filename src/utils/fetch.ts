@@ -590,7 +590,7 @@ async function doFetch(
   const requestTracker = getRequestTracker();
 
   try {
-    const response = await undici.fetch(url, fetchOptions as RequestInit);
+    const response = await undici.fetch(url, fetchOptions);
 
     const duration = Date.now() - startTime;
     logDebug('GitLab API request completed', {

@@ -122,7 +122,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
     beforeEach(() => {
       const freeInstanceInfo: GitLabInstanceInfo = {
         version: '18.3.0',
-        tier: 'free' as GitLabTier,
+        tier: 'free',
         features: createFeatures('free'),
         detectedAt: new Date(),
       };
@@ -172,7 +172,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
     beforeEach(() => {
       const premiumInstanceInfo: GitLabInstanceInfo = {
         version: '18.3.0',
-        tier: 'premium' as GitLabTier,
+        tier: 'premium',
         features: createFeatures('premium'),
         detectedAt: new Date(),
       };
@@ -199,7 +199,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
     beforeEach(() => {
       const ultimateInstanceInfo: GitLabInstanceInfo = {
         version: '18.3.0',
-        tier: 'ultimate' as GitLabTier,
+        tier: 'ultimate',
         features: createFeatures('ultimate'),
         detectedAt: new Date(),
       };
@@ -232,7 +232,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
     it('should block tools when version is too old', () => {
       const oldInstanceInfo: GitLabInstanceInfo = {
         version: '10.0.0', // Old version
-        tier: 'ultimate' as GitLabTier,
+        tier: 'ultimate',
         features: {
           ...createFeatures('free'),
           workItems: false,
@@ -256,7 +256,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
     it('should allow tools when version meets requirements', () => {
       const modernInstanceInfo: GitLabInstanceInfo = {
         version: '18.0.0',
-        tier: 'free' as GitLabTier,
+        tier: 'free',
         features: createFeatures('free'),
         detectedAt: new Date(),
       };
@@ -277,7 +277,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
     it('should handle unknown tools gracefully', () => {
       mockInstance.getInstanceInfo.mockReturnValue({
         version: '18.3.0',
-        tier: 'ultimate' as GitLabTier,
+        tier: 'ultimate',
         features: createFeatures('ultimate'),
         detectedAt: new Date(),
       });
@@ -300,7 +300,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
       // when version is unknown, tool is available → no unavailability reason
       mockInstance.getInstanceInfo.mockReturnValue({
         version: 'unknown',
-        tier: 'free' as GitLabTier,
+        tier: 'free',
         features: createFeatures('free'),
         detectedAt: new Date(),
       });
@@ -390,7 +390,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
       beforeEach(() => {
         mockInstance.getInstanceInfo.mockReturnValue({
           version: '18.3.0',
-          tier: 'free' as GitLabTier,
+          tier: 'free',
           features: createFeatures('free'),
           detectedAt: new Date(),
         });
@@ -409,7 +409,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
       it('should block action when version is too old', () => {
         mockInstance.getInstanceInfo.mockReturnValue({
           version: '7.0.0',
-          tier: 'ultimate' as GitLabTier,
+          tier: 'ultimate',
           features: createFeatures('ultimate'),
           detectedAt: new Date(),
         });
@@ -422,7 +422,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
       it('should allow action when version meets requirements', () => {
         mockInstance.getInstanceInfo.mockReturnValue({
           version: '18.0.0',
-          tier: 'premium' as GitLabTier,
+          tier: 'premium',
           features: createFeatures('premium'),
           detectedAt: new Date(),
         });
@@ -461,7 +461,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
       beforeEach(() => {
         mockInstance.getInstanceInfo.mockReturnValue({
           version: '18.3.0',
-          tier: 'ultimate' as GitLabTier,
+          tier: 'ultimate',
           features: createFeatures('ultimate'),
           detectedAt: new Date(),
         });
@@ -487,7 +487,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
     it('should restrict premium parameters on free tier', () => {
       const freeInstanceInfo: GitLabInstanceInfo = {
         version: '17.0.0',
-        tier: 'free' as GitLabTier,
+        tier: 'free',
         features: createFeatures('free'),
         detectedAt: new Date(),
       };
@@ -503,7 +503,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
     it('should restrict only ultimate parameters on premium tier', () => {
       const premiumInstanceInfo: GitLabInstanceInfo = {
         version: '17.0.0',
-        tier: 'premium' as GitLabTier,
+        tier: 'premium',
         features: createFeatures('premium'),
         detectedAt: new Date(),
       };
@@ -519,7 +519,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
     it('should restrict nothing on ultimate tier', () => {
       const ultimateInstanceInfo: GitLabInstanceInfo = {
         version: '17.0.0',
-        tier: 'ultimate' as GitLabTier,
+        tier: 'ultimate',
         features: createFeatures('ultimate'),
         detectedAt: new Date(),
       };
@@ -533,7 +533,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
     it('should restrict parameters when version is too low', () => {
       const oldInstanceInfo: GitLabInstanceInfo = {
         version: '14.0.0',
-        tier: 'ultimate' as GitLabTier,
+        tier: 'ultimate',
         features: createFeatures('ultimate'),
         detectedAt: new Date(),
       };
@@ -549,7 +549,7 @@ describe('ToolAvailability - Tier-based Filtering', () => {
     it('should return empty array for tools without parameter requirements', () => {
       const freeInstanceInfo: GitLabInstanceInfo = {
         version: '17.0.0',
-        tier: 'free' as GitLabTier,
+        tier: 'free',
         features: createFeatures('free'),
         detectedAt: new Date(),
       };

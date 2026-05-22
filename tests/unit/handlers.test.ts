@@ -624,6 +624,26 @@ describe('handlers', () => {
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
     });
 
+    it('should re-pin when session has no pinned URL yet (#407)', async () => {
+      // Edge: first switch_profile on a fresh session (no prior pin).
+      // pinnedUrl is undefined → falsy short-circuit must skip the equality check
+      // and fall through to setSessionInstanceUrl.
+      mockContextManager.getCurrentProfileUrl.mockResolvedValue('https://new.example.com');
+      mockSessionManager.getSessionInstanceUrl.mockReturnValue(undefined);
+
+      await callToolHandler(
+        {
+          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
+        },
+        { sessionId: 'sess-fresh' },
+      );
+
+      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith(
+        'sess-fresh',
+        'https://new.example.com',
+      );
+    });
+
     it('should silently skip re-pin when getCurrentProfileUrl returns null (#407)', async () => {
       // Edge: switch_profile succeeded but no profile is active (initial state).
       // resyncSessionAfterSwitchProfile must NOT call setSessionInstanceUrl.

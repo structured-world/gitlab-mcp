@@ -276,6 +276,18 @@ export class ContextManager {
   }
 
   /**
+   * Resolve the GitLab API URL for the currently active profile, or null if
+   * no profile is active. Mirrors applicator.ts: api_url override wins over
+   * `https://{host}`. Used to proactively re-pin per-session instance URL
+   * after switch_profile (issue #407).
+   */
+  async getCurrentProfileUrl(): Promise<string | null> {
+    if (!this.currentProfileName) return null;
+    const profile = await this.profileLoader.loadProfile(this.currentProfileName);
+    return profile.api_url ?? `https://${profile.host}`;
+  }
+
+  /**
    * Switch to a different profile (OAuth mode only)
    */
   async switchProfile(profileName: string): Promise<SwitchResult> {

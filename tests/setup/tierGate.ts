@@ -28,10 +28,18 @@ import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { z } from 'zod';
 
 export type GitLabTier = 'free' | 'premium' | 'ultimate';
 
 const TIER_RANK: Record<GitLabTier, number> = { free: 0, premium: 1, ultimate: 2 };
+
+// Cache file is written by globalSetup.js across a process boundary, so treat
+// it as untrusted input and validate with Zod (project convention for any
+// external/runtime-loaded payload).
+const TierCacheSchema = z.object({
+  tier: z.enum(['free', 'premium', 'ultimate']).optional(),
+});
 
 // Mirror globalSetup.js: namespace by checkout root hash so concurrent runs
 // across worktrees (or NFS-shared tmpdirs) don't collide on the same cache file.
@@ -47,10 +55,9 @@ const TIER_FILE = path.join(os.tmpdir(), `gitlab-mcp-detected-tier-${REPO_HASH}.
 function readDetectedTier(): GitLabTier {
   try {
     if (!fs.existsSync(TIER_FILE)) return 'free';
-    const raw = JSON.parse(fs.readFileSync(TIER_FILE, 'utf8')) as { tier?: string };
-    const t = raw.tier;
-    if (t === 'ultimate' || t === 'premium' || t === 'free') return t;
-    return 'free';
+    const parsed = TierCacheSchema.safeParse(JSON.parse(fs.readFileSync(TIER_FILE, 'utf8')));
+    if (!parsed.success) return 'free';
+    return parsed.data.tier ?? 'free';
   } catch {
     return 'free';
   }

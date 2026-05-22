@@ -56,7 +56,9 @@ module.exports = async () => {
   // each Jest worker can read it synchronously at setup load time, before
   // describeIfTier blocks parse.
   const tierFile = path.join(os.tmpdir(), `gitlab-mcp-detected-tier-${REPO_HASH}.json`);
-  if (fs.existsSync(tierFile)) fs.unlinkSync(tierFile);
+  // force:true avoids ENOENT and keeps startup resilient to Windows file locks
+  // / EPERM that could otherwise crash the whole integration run.
+  fs.rmSync(tierFile, { force: true });
 
   // Bearer works for BOTH personal access tokens and OAuth tokens against
   // GitLab; PRIVATE-TOKEN would 401 on OAuth tokens and silently default to
@@ -75,7 +77,16 @@ module.exports = async () => {
       body: JSON.stringify({ query: '{ currentLicense { plan } }' }),
       signal: controller.signal,
     });
-    const data = res.ok ? await res.json() : null;
+    // Treat non-2xx and GraphQL errors as DETECTION FAILURE (caught + warned)
+    // rather than as a Free-tier response — otherwise auth/network breakage
+    // would silently skip every Premium/Ultimate suite.
+    if (!res.ok) {
+      throw new Error(`Tier detection HTTP ${res.status}: ${res.statusText}`);
+    }
+    const data = await res.json();
+    if (Array.isArray(data?.errors) && data.errors.length > 0) {
+      throw new Error(`Tier detection GraphQL error: ${data.errors[0]?.message ?? 'unknown'}`);
+    }
     const plan = (data?.data?.currentLicense?.plan ?? '').toLowerCase();
     let tier = 'free';
     if (plan.includes('ultimate') || plan.includes('gold')) tier = 'ultimate';

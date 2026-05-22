@@ -624,6 +624,43 @@ describe('handlers', () => {
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
     });
 
+    it('should silently skip re-pin when getCurrentProfileUrl returns null (#407)', async () => {
+      // Edge: switch_profile succeeded but no profile is active (initial state).
+      // resyncSessionAfterSwitchProfile must NOT call setSessionInstanceUrl.
+      mockContextManager.getCurrentProfileUrl.mockResolvedValue(null);
+
+      await callToolHandler(
+        {
+          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
+        },
+        { sessionId: 'sess-null-profile' },
+      );
+
+      const calls = mockSessionManager.setSessionInstanceUrl.mock.calls.filter(
+        (c) => c[0] === 'sess-null-profile',
+      );
+      // Only the pre-dispatch call (with the request URL) should occur.
+      expect(calls).toHaveLength(1);
+    });
+
+    it('should swallow errors from getCurrentProfileUrl without failing the request (#407)', async () => {
+      // Re-pin is best-effort: a profile-load failure must not turn a successful
+      // switch_profile into an error response.
+      mockContextManager.getCurrentProfileUrl.mockRejectedValue(new Error('profile load failed'));
+
+      const result = await callToolHandler(
+        {
+          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
+        },
+        { sessionId: 'sess-err' },
+      );
+
+      // executeTool's payload still flows back unchanged.
+      expect(result).toEqual({
+        content: [{ type: 'text', text: JSON.stringify({ result: 'success' }, null, 2) }],
+      });
+    });
+
     it('should NOT re-pin session URL for switch_preset action (#407)', async () => {
       // Only switch_profile triggers re-pin; switch_preset never changes the host.
       mockContextManager.getCurrentProfileUrl.mockResolvedValue(

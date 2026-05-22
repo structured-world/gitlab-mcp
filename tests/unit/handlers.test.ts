@@ -624,6 +624,23 @@ describe('handlers', () => {
       mockHealthMonitor.isInstanceReachable.mockReturnValue(true);
     });
 
+    it('should handle non-Error rejection from getCurrentProfileUrl gracefully (#407)', async () => {
+      // Defensive branch: re-pin catch path uses `err instanceof Error ? .message : String(err)`.
+      // Cover the String(err) side with a non-Error rejection (e.g. raw string).
+      mockContextManager.getCurrentProfileUrl.mockRejectedValue('raw string failure');
+
+      const result = await callToolHandler(
+        {
+          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
+        },
+        { sessionId: 'sess-string-err' },
+      );
+
+      expect(result).toEqual({
+        content: [{ type: 'text', text: JSON.stringify({ result: 'success' }, null, 2) }],
+      });
+    });
+
     it('should re-pin when session has no pinned URL yet (#407)', async () => {
       // Edge: first switch_profile on a fresh session (no prior pin).
       // pinnedUrl is undefined → falsy short-circuit must skip the equality check

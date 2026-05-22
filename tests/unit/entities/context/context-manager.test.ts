@@ -128,6 +128,13 @@ jest.mock('../../../../src/profiles/loader', () => ({
       if (name === 'invalid-profile') {
         return Promise.reject(new Error('Profile not found: invalid-profile'));
       }
+      if (name === 'override-api-url') {
+        return Promise.resolve({
+          host: 'gitlab.example.com',
+          api_url: 'https://api.example.com',
+          auth: { type: 'pat', token_env: 'GITLAB_TOKEN' },
+        });
+      }
       return Promise.resolve({
         host: 'gitlab.example.com',
         auth: { type: 'pat', token_env: 'GITLAB_TOKEN' },
@@ -391,6 +398,39 @@ describe('ContextManager', () => {
       await expect(manager.switchProfile('invalid-profile')).rejects.toThrow(
         "Failed to switch to profile 'invalid-profile'",
       );
+    });
+  });
+
+  describe('getCurrentProfileUrl', () => {
+    it('should return null when no profile is active', async () => {
+      ContextManager.resetInstance();
+      const manager = ContextManager.getInstance();
+
+      await expect(manager.getCurrentProfileUrl()).resolves.toBeNull();
+    });
+
+    it('should resolve URL from profile.host after switch_profile (#407)', async () => {
+      process.env.OAUTH_ENABLED = 'true';
+      ContextManager.resetInstance();
+
+      const manager = ContextManager.getInstance();
+      await manager.switchProfile('production');
+
+      await expect(manager.getCurrentProfileUrl()).resolves.toBe('https://gitlab.example.com');
+    });
+
+    it('should prefer profile.api_url over derived host URL (#407)', async () => {
+      // Regression guard: when a profile defines an explicit api_url override,
+      // getCurrentProfileUrl() must return it instead of the https://{host} fallback.
+      // This mirrors profiles/applicator.ts behavior and is required for multi-instance
+      // setups where api_url points at a separate API host.
+      process.env.OAUTH_ENABLED = 'true';
+      ContextManager.resetInstance();
+
+      const manager = ContextManager.getInstance();
+      await manager.switchProfile('override-api-url');
+
+      await expect(manager.getCurrentProfileUrl()).resolves.toBe('https://api.example.com');
     });
   });
 

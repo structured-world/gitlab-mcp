@@ -58,14 +58,22 @@ module.exports = async () => {
   const tierFile = path.join(os.tmpdir(), `gitlab-mcp-detected-tier-${REPO_HASH}.json`);
   if (fs.existsSync(tierFile)) fs.unlinkSync(tierFile);
 
+  // Bearer works for BOTH personal access tokens and OAuth tokens against
+  // GitLab; PRIVATE-TOKEN would 401 on OAuth tokens and silently default to
+  // 'free', incorrectly skipping Premium/Ultimate suites.
+  // AbortController guards against a hung connection blocking suite startup
+  // (Jest's per-test timeout doesn't apply in globalSetup).
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 10000);
   try {
     const res = await fetch(`${process.env.GITLAB_API_URL}/api/graphql`, {
       method: 'POST',
       headers: {
-        'PRIVATE-TOKEN': process.env.GITLAB_TOKEN,
+        Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ query: '{ currentLicense { plan } }' }),
+      signal: controller.signal,
     });
     const data = res.ok ? await res.json() : null;
     const plan = (data?.data?.currentLicense?.plan ?? '').toLowerCase();
@@ -78,6 +86,8 @@ module.exports = async () => {
     fs.writeFileSync(tierFile, JSON.stringify({ tier: 'free', plan: '' }));
     const reason = err instanceof Error ? err.message : String(err);
     console.warn(`⚠️  Tier detection failed (${reason}) — defaulting to free`);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
   console.log('✅ Environment validated - starting test data lifecycle chain');

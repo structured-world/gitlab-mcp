@@ -60,11 +60,21 @@ module.exports = async () => {
   // file locks, perms) would still throw and crash the integration run before
   // any tests start. writeFileSync below overwrites anyway, so a failed unlink
   // is not load-bearing — just log and proceed.
-  try {
-    fs.rmSync(tierFile, { force: true, maxRetries: 2, retryDelay: 50 });
-  } catch (err) {
-    const reason = err instanceof Error ? err.message : String(err);
-    console.warn(`⚠️  Could not remove stale tier cache (${reason}) — will overwrite`);
+  // fs.rmSync's maxRetries/retryDelay are honoured only when recursive:true,
+  // so emulate the retry window explicitly with a small backoff loop.
+  let removed = false;
+  for (let attempt = 0; attempt < 3 && !removed; attempt += 1) {
+    try {
+      fs.rmSync(tierFile, { force: true });
+      removed = true;
+    } catch (err) {
+      if (attempt === 2) {
+        const reason = err instanceof Error ? err.message : String(err);
+        console.warn(`⚠️  Could not remove stale tier cache (${reason}) — will overwrite`);
+      } else {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+    }
   }
 
   // Bearer works for BOTH personal access tokens and OAuth tokens against

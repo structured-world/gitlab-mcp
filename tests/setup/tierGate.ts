@@ -24,6 +24,7 @@
  *   });
  */
 
+import * as crypto from 'crypto';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -32,7 +33,15 @@ export type GitLabTier = 'free' | 'premium' | 'ultimate';
 
 const TIER_RANK: Record<GitLabTier, number> = { free: 0, premium: 1, ultimate: 2 };
 
-const TIER_FILE = path.join(os.tmpdir(), 'gitlab-mcp-detected-tier.json');
+// Mirror globalSetup.js: namespace by checkout root hash so concurrent runs
+// across worktrees (or NFS-shared tmpdirs) don't collide on the same cache file.
+const REPO_HASH = crypto
+  .createHash('sha1')
+  .update(path.resolve(__dirname, '../..'))
+  .digest('hex')
+  .slice(0, 12);
+
+const TIER_FILE = path.join(os.tmpdir(), `gitlab-mcp-detected-tier-${REPO_HASH}.json`);
 
 function readDetectedTier(): GitLabTier {
   try {

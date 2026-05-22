@@ -8,7 +8,17 @@
 const path = require('path');
 const fs = require('fs');
 const os = require('os');
+const crypto = require('crypto');
 const { config } = require('dotenv');
+
+// Namespace tmp artefacts by checkout root so concurrent runs across multiple
+// worktrees (or different machines sharing a tmpdir over NFS) cannot clobber
+// each other's tier-detection cache.
+const REPO_HASH = crypto
+  .createHash('sha1')
+  .update(path.resolve(__dirname, '../..'))
+  .digest('hex')
+  .slice(0, 12);
 
 module.exports = async () => {
   // Load .env.test file first (same as setupTests.ts)
@@ -44,7 +54,7 @@ module.exports = async () => {
   // skip rather than fail on Free instances. Result lives in a tmp file so
   // each Jest worker can read it synchronously at setup load time, before
   // describeIfTier blocks parse.
-  const tierFile = path.join(os.tmpdir(), 'gitlab-mcp-detected-tier.json');
+  const tierFile = path.join(os.tmpdir(), `gitlab-mcp-detected-tier-${REPO_HASH}.json`);
   if (fs.existsSync(tierFile)) fs.unlinkSync(tierFile);
 
   try {
@@ -65,7 +75,8 @@ module.exports = async () => {
     console.log(`🎫 Detected GitLab tier: ${tier}${plan ? ` (plan: ${plan})` : ''}`);
   } catch (err) {
     fs.writeFileSync(tierFile, JSON.stringify({ tier: 'free', plan: '' }));
-    console.warn(`⚠️  Tier detection failed (${err.message}) — defaulting to free`);
+    const reason = err instanceof Error ? err.message : String(err);
+    console.warn(`⚠️  Tier detection failed (${reason}) — defaulting to free`);
   }
 
   console.log('✅ Environment validated - starting test data lifecycle chain');

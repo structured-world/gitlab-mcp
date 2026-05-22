@@ -4,8 +4,10 @@
  */
 
 import { IntegrationTestHelper } from './helpers/registry-helper';
+import { describeIfTier } from '../setup/tierGate';
 
-describe('Debug Widget Assignment', () => {
+// Epics + colour widget are Premium/Ultimate features — skip on Free instances.
+describeIfTier('premium', 'Debug Widget Assignment', () => {
   let helper: IntegrationTestHelper;
 
   beforeAll(async () => {

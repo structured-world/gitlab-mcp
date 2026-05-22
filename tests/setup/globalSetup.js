@@ -40,5 +40,33 @@ module.exports = async () => {
     throw new Error(`Missing required environment variables: ${missing.join(', ')}`);
   }
 
+  // Detect GitLab tier once. Premium/Ultimate-only test suites use this to
+  // skip rather than fail on Free instances. Result lives in a tmp file so
+  // each Jest worker can read it synchronously at setup load time, before
+  // describeIfTier blocks parse.
+  const tierFile = path.join(os.tmpdir(), 'gitlab-mcp-detected-tier.json');
+  if (fs.existsSync(tierFile)) fs.unlinkSync(tierFile);
+
+  try {
+    const res = await fetch(`${process.env.GITLAB_API_URL}/api/graphql`, {
+      method: 'POST',
+      headers: {
+        'PRIVATE-TOKEN': process.env.GITLAB_TOKEN,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query: '{ currentLicense { plan } }' }),
+    });
+    const data = res.ok ? await res.json() : null;
+    const plan = (data?.data?.currentLicense?.plan ?? '').toLowerCase();
+    let tier = 'free';
+    if (plan.includes('ultimate') || plan.includes('gold')) tier = 'ultimate';
+    else if (plan.includes('premium') || plan.includes('silver')) tier = 'premium';
+    fs.writeFileSync(tierFile, JSON.stringify({ tier, plan }));
+    console.log(`🎫 Detected GitLab tier: ${tier}${plan ? ` (plan: ${plan})` : ''}`);
+  } catch (err) {
+    fs.writeFileSync(tierFile, JSON.stringify({ tier: 'free', plan: '' }));
+    console.warn(`⚠️  Tier detection failed (${err.message}) — defaulting to free`);
+  }
+
   console.log('✅ Environment validated - starting test data lifecycle chain');
 };

@@ -32,13 +32,24 @@ import { z } from 'zod';
 
 export type GitLabTier = 'free' | 'premium' | 'ultimate';
 
+/**
+ * Internal detection result. 'unknown' is a sentinel meaning globalSetup
+ * could not determine the tier (network failure / 4xx / GraphQL error).
+ * We never gate on 'unknown' — it bypasses skip logic so the suite runs
+ * and fails loudly with the real underlying error instead of producing a
+ * misleading green run with silent skips.
+ */
+type DetectedTier = GitLabTier | 'unknown';
+
 const TIER_RANK: Record<GitLabTier, number> = { free: 0, premium: 1, ultimate: 2 };
 
 // Cache file is written by globalSetup.js across a process boundary, so treat
 // it as untrusted input and validate with Zod (project convention for any
 // external/runtime-loaded payload).
 const TierCacheSchema = z.object({
-  tier: z.enum(['free', 'premium', 'ultimate']).optional(),
+  tier: z.enum(['free', 'premium', 'ultimate', 'unknown']).optional(),
+  detectionFailed: z.boolean().optional(),
+  reason: z.string().optional(),
 });
 
 // Mirror globalSetup.js: namespace by checkout root hash so concurrent runs
@@ -52,26 +63,36 @@ const REPO_HASH = crypto
 
 const TIER_FILE = path.join(os.tmpdir(), `gitlab-mcp-detected-tier-${REPO_HASH}.json`);
 
-function readDetectedTier(): GitLabTier {
+function readDetectedTier(): DetectedTier {
   try {
-    if (!fs.existsSync(TIER_FILE)) return 'free';
+    if (!fs.existsSync(TIER_FILE)) return 'unknown';
     const parsed = TierCacheSchema.safeParse(JSON.parse(fs.readFileSync(TIER_FILE, 'utf8')));
-    if (!parsed.success) return 'free';
-    return parsed.data.tier ?? 'free';
+    if (!parsed.success || !parsed.data.tier) return 'unknown';
+    return parsed.data.tier;
   } catch {
-    return 'free';
+    return 'unknown';
   }
 }
 
-const DETECTED_TIER: GitLabTier = readDetectedTier();
+const DETECTED_TIER: DetectedTier = readDetectedTier();
 
-/** Return the tier detected during globalSetup, or 'free' as fallback. */
-export function getDetectedTier(): GitLabTier {
+/**
+ * Return the tier detected during globalSetup. Returns 'unknown' when
+ * detection failed (network/auth/cache-miss) — caller can distinguish a
+ * confirmed Free instance from a failed detection.
+ */
+export function getDetectedTier(): DetectedTier {
   return DETECTED_TIER;
 }
 
-/** True if the detected tier satisfies (>=) the required tier. */
+/**
+ * True if the detected tier satisfies (>=) the required tier.
+ * When detection failed ('unknown'), returns true — we'd rather run the
+ * gated suite and fail loudly with the real error than silently skip and
+ * hide regressions behind a misleading green-with-pending run.
+ */
 export function tierSatisfies(required: GitLabTier): boolean {
+  if (DETECTED_TIER === 'unknown') return true;
   return TIER_RANK[DETECTED_TIER] >= TIER_RANK[required];
 }
 

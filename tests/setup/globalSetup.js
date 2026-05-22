@@ -101,9 +101,19 @@ module.exports = async () => {
     fs.writeFileSync(tierFile, JSON.stringify({ tier, plan }));
     console.log(`🎫 Detected GitLab tier: ${tier}${plan ? ` (plan: ${plan})` : ''}`);
   } catch (err) {
-    fs.writeFileSync(tierFile, JSON.stringify({ tier: 'free', plan: '' }));
+    // Use 'unknown' sentinel on detection failure — NOT 'free'. Silently
+    // defaulting to 'free' would skip every Premium/Ultimate suite and produce
+    // a green run that hides real regressions. tierGate.ts treats 'unknown'
+    // as "do not gate" so the suites still run; if the underlying feature is
+    // genuinely unavailable, the test fails loudly with the real API error.
     const reason = err instanceof Error ? err.message : String(err);
-    console.warn(`⚠️  Tier detection failed (${reason}) — defaulting to free`);
+    fs.writeFileSync(
+      tierFile,
+      JSON.stringify({ tier: 'unknown', plan: '', detectionFailed: true, reason }),
+    );
+    console.warn(
+      `⚠️  Tier detection failed (${reason}) — marking tier as 'unknown' (suites will run, not skip)`,
+    );
   } finally {
     clearTimeout(timeoutId);
   }

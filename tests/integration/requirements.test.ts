@@ -12,8 +12,9 @@
 
 import { IntegrationTestHelper } from './helpers/registry-helper';
 import { requireTestData } from '../setup/testConfig';
+import { describeIfTier } from '../setup/tierGate';
 
-describe('Requirements Verification - Integration Tests', () => {
+describeIfTier('ultimate', 'Requirements Verification - Integration Tests', () => {
   let helper: IntegrationTestHelper;
   let createdRequirementId: string | undefined;
   let testProjectPath: string;

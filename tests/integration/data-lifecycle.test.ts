@@ -18,6 +18,7 @@ import { GITLAB_TOKEN, GITLAB_API_URL, updateTestData, getTestData } from '../se
 import { GraphQLClient } from '../../src/graphql/client';
 import { ConnectionManager } from '../../src/services/ConnectionManager';
 import { getWorkItemTypes } from '../../src/utils/workItemTypes';
+import { itIfTier, describeIfTier } from '../setup/tierGate';
 import { gql } from 'graphql-tag';
 import { IntegrationTestHelper } from './helpers/registry-helper';
 
@@ -583,177 +584,183 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       );
     });
 
-    it('should create GROUP-level work items (Epics - depends on group)', async () => {
-      const testData = getTestData();
-      expect(testData.group?.id).toBeDefined();
-      console.log(
-        '🔧 Creating GROUP-level work items (Epics) using GraphQL with dynamic type discovery...',
-      );
+    itIfTier(
+      'premium',
+      'should create GROUP-level work items (Epics - depends on group)',
+      async () => {
+        const testData = getTestData();
+        expect(testData.group?.id).toBeDefined();
+        console.log(
+          '🔧 Creating GROUP-level work items (Epics) using GraphQL with dynamic type discovery...',
+        );
 
-      // Get work item types directly using utility function (not exposed as tool)
-      console.log('🔍 Getting work item types for group namespace using internal utility...');
-      const groupWorkItemTypes = await getWorkItemTypes(testData.group!.path);
-      console.log(
-        '📋 Available group work item types:',
-        groupWorkItemTypes.map((t) => `${t.name}(${t.id})`).join(', '),
-      );
+        // Get work item types directly using utility function (not exposed as tool)
+        console.log('🔍 Getting work item types for group namespace using internal utility...');
+        const groupWorkItemTypes = await getWorkItemTypes(testData.group!.path);
+        console.log(
+          '📋 Available group work item types:',
+          groupWorkItemTypes.map((t) => `${t.name}(${t.id})`).join(', '),
+        );
 
-      const epicType = groupWorkItemTypes.find((t) => t.name === 'Epic');
-      expect(epicType).toBeDefined();
+        const epicType = groupWorkItemTypes.find((t) => t.name === 'Epic');
+        expect(epicType).toBeDefined();
 
-      const createdGroupWorkItems: any[] = [];
+        const createdGroupWorkItems: any[] = [];
 
-      // 🚨 CRITICAL: Create diverse Epics to test with and without widgets
-      // Get created labels and milestones for widget testing
-      const labels = testData.labels || [];
-      const milestones = testData.milestones || [];
-      const user = testData.user;
+        // 🚨 CRITICAL: Create diverse Epics to test with and without widgets
+        // Get created labels and milestones for widget testing
+        const labels = testData.labels || [];
+        const milestones = testData.milestones || [];
+        const user = testData.user;
 
-      const groupWorkItemsData: Array<{
-        title: string;
-        description: string;
-        workItemType: string;
-        assigneeIds?: string[];
-        labelIds?: string[];
-        milestoneId?: string;
-      }> = [
-        {
-          title: `Test Epic (No Widgets) ${timestamp}`,
-          description: 'Test epic with no widgets - GROUP LEVEL ONLY (using handler)',
-          workItemType: 'EPIC',
-          // No assignees, labels, or milestones - tests conditional widget inclusion
-        },
-        {
-          title: `Test Epic (With Widgets) ${timestamp}`,
-          description: 'Test epic with widgets - GROUP LEVEL ONLY (using handler)',
-          workItemType: 'EPIC',
-          assigneeIds: user ? [`gid://gitlab/User/${user.id}`] : undefined,
-          labelIds: labels.length > 0 ? [labels[0].id.toString()] : undefined,
-          milestoneId: milestones.length > 0 ? milestones[0].id.toString() : undefined,
-        },
-      ];
+        const groupWorkItemsData: Array<{
+          title: string;
+          description: string;
+          workItemType: string;
+          assigneeIds?: string[];
+          labelIds?: string[];
+          milestoneId?: string;
+        }> = [
+          {
+            title: `Test Epic (No Widgets) ${timestamp}`,
+            description: 'Test epic with no widgets - GROUP LEVEL ONLY (using handler)',
+            workItemType: 'EPIC',
+            // No assignees, labels, or milestones - tests conditional widget inclusion
+          },
+          {
+            title: `Test Epic (With Widgets) ${timestamp}`,
+            description: 'Test epic with widgets - GROUP LEVEL ONLY (using handler)',
+            workItemType: 'EPIC',
+            assigneeIds: user ? [`gid://gitlab/User/${user.id}`] : undefined,
+            labelIds: labels.length > 0 ? [labels[0].id.toString()] : undefined,
+            milestoneId: milestones.length > 0 ? milestones[0].id.toString() : undefined,
+          },
+        ];
 
-      for (const workItemData of groupWorkItemsData) {
-        try {
-          console.log(`  🔧 Creating ${workItemData.workItemType} via create_work_item handler...`);
-
-          // Step 1: Create work item with basic parameters (CREATE doesn't support widgets)
-          const workItem = (await helper.createWorkItem({
-            namespace: testData.group!.path,
-            title: workItemData.title,
-            workItemType: workItemData.workItemType,
-            description: workItemData.description,
-          })) as any;
-
-          // Step 2: Add widgets iteratively if data exists for each widget type
-          console.log(
-            `    🔍 Widget check: workItem=${!!workItem}, title="${workItemData.title}", includesWithWidgets=${workItemData.title?.includes('With Widgets')}`,
-          );
-          if (workItem && workItemData.title?.includes('With Widgets')) {
-            console.log(`    🔧 Adding widgets to ${workItemData.workItemType}...`);
-
-            // Try to add assignees widget if assignee data exists
-            if (workItemData.assigneeIds && workItemData.assigneeIds.length > 0) {
-              try {
-                console.log(`    🔧 Adding assignees widget...`);
-                const assigneeUpdate = (await helper.updateWorkItem({
-                  id: workItem.id,
-                  assigneeIds: workItemData.assigneeIds,
-                })) as any;
-                if (assigneeUpdate) {
-                  console.log(`    ✅ Added assignees: ${workItemData.assigneeIds.length}`);
-                  console.log(
-                    `    🔍 Assignee update response widgets:`,
-                    assigneeUpdate.widgets?.find((w: any) => w.type === 'ASSIGNEES')?.assignees
-                      ?.nodes?.length || 0,
-                  );
-                  Object.assign(workItem, assigneeUpdate);
-                }
-              } catch (assigneeError) {
-                console.log(
-                  `    ⚠️  Could not add assignees to ${workItemData.workItemType}:`,
-                  assigneeError,
-                );
-              }
-            }
-
-            // Try to add labels widget if label data exists
-            if (workItemData.labelIds && workItemData.labelIds.length > 0) {
-              try {
-                console.log(`    🔧 Adding labels widget...`);
-                const labelUpdate = (await helper.updateWorkItem({
-                  id: workItem.id,
-                  labelIds: workItemData.labelIds,
-                })) as any;
-                if (labelUpdate) {
-                  console.log(`    ✅ Added labels: ${workItemData.labelIds.length}`);
-                  console.log(
-                    `    🔍 Label update response widgets:`,
-                    labelUpdate.widgets?.find((w: any) => w.type === 'LABELS')?.labels?.nodes
-                      ?.length || 0,
-                  );
-                  Object.assign(workItem, labelUpdate);
-                }
-              } catch (labelError) {
-                console.log(
-                  `    ⚠️  Could not add labels to ${workItemData.workItemType}:`,
-                  labelError,
-                );
-              }
-            }
-
-            // Try to add milestone widget if milestone data exists
-            if (workItemData.milestoneId) {
-              try {
-                console.log(`    🔧 Adding milestone widget...`);
-                const milestoneUpdate = (await helper.updateWorkItem({
-                  id: workItem.id,
-                  milestoneId: workItemData.milestoneId,
-                })) as any;
-                if (milestoneUpdate) {
-                  console.log(`    ✅ Added milestone: 1`);
-                  Object.assign(workItem, milestoneUpdate);
-                }
-              } catch (milestoneError) {
-                console.log(
-                  `    ⚠️  Could not add milestone to ${workItemData.workItemType}:`,
-                  milestoneError,
-                );
-              }
-            }
-          }
-
-          console.log(
-            `    🔍 Widget testing - ${workItemData.workItemType}:`,
-            workItemData.assigneeIds
-              ? `assignees: ${workItemData.assigneeIds.length}`
-              : 'no assignees',
-            workItemData.labelIds ? `labels: ${workItemData.labelIds.length}` : 'no labels',
-            workItemData.milestoneId ? 'milestone: 1' : 'no milestone',
-          );
-
-          if (workItem) {
-            createdGroupWorkItems.push(workItem);
+        for (const workItemData of groupWorkItemsData) {
+          try {
             console.log(
-              `  ✅ Created GROUP-level ${workItemData.workItemType}: ${workItem.iid} (Type: ${workItem.workItemType.name})`,
+              `  🔧 Creating ${workItemData.workItemType} via create_work_item handler...`,
             );
-          } else {
-            console.log(`  ⚠️  Handler returned null for ${workItemData.workItemType}`);
+
+            // Step 1: Create work item with basic parameters (CREATE doesn't support widgets)
+            const workItem = (await helper.createWorkItem({
+              namespace: testData.group!.path,
+              title: workItemData.title,
+              workItemType: workItemData.workItemType,
+              description: workItemData.description,
+            })) as any;
+
+            // Step 2: Add widgets iteratively if data exists for each widget type
+            console.log(
+              `    🔍 Widget check: workItem=${!!workItem}, title="${workItemData.title}", includesWithWidgets=${workItemData.title?.includes('With Widgets')}`,
+            );
+            if (workItem && workItemData.title?.includes('With Widgets')) {
+              console.log(`    🔧 Adding widgets to ${workItemData.workItemType}...`);
+
+              // Try to add assignees widget if assignee data exists
+              if (workItemData.assigneeIds && workItemData.assigneeIds.length > 0) {
+                try {
+                  console.log(`    🔧 Adding assignees widget...`);
+                  const assigneeUpdate = (await helper.updateWorkItem({
+                    id: workItem.id,
+                    assigneeIds: workItemData.assigneeIds,
+                  })) as any;
+                  if (assigneeUpdate) {
+                    console.log(`    ✅ Added assignees: ${workItemData.assigneeIds.length}`);
+                    console.log(
+                      `    🔍 Assignee update response widgets:`,
+                      assigneeUpdate.widgets?.find((w: any) => w.type === 'ASSIGNEES')?.assignees
+                        ?.nodes?.length || 0,
+                    );
+                    Object.assign(workItem, assigneeUpdate);
+                  }
+                } catch (assigneeError) {
+                  console.log(
+                    `    ⚠️  Could not add assignees to ${workItemData.workItemType}:`,
+                    assigneeError,
+                  );
+                }
+              }
+
+              // Try to add labels widget if label data exists
+              if (workItemData.labelIds && workItemData.labelIds.length > 0) {
+                try {
+                  console.log(`    🔧 Adding labels widget...`);
+                  const labelUpdate = (await helper.updateWorkItem({
+                    id: workItem.id,
+                    labelIds: workItemData.labelIds,
+                  })) as any;
+                  if (labelUpdate) {
+                    console.log(`    ✅ Added labels: ${workItemData.labelIds.length}`);
+                    console.log(
+                      `    🔍 Label update response widgets:`,
+                      labelUpdate.widgets?.find((w: any) => w.type === 'LABELS')?.labels?.nodes
+                        ?.length || 0,
+                    );
+                    Object.assign(workItem, labelUpdate);
+                  }
+                } catch (labelError) {
+                  console.log(
+                    `    ⚠️  Could not add labels to ${workItemData.workItemType}:`,
+                    labelError,
+                  );
+                }
+              }
+
+              // Try to add milestone widget if milestone data exists
+              if (workItemData.milestoneId) {
+                try {
+                  console.log(`    🔧 Adding milestone widget...`);
+                  const milestoneUpdate = (await helper.updateWorkItem({
+                    id: workItem.id,
+                    milestoneId: workItemData.milestoneId,
+                  })) as any;
+                  if (milestoneUpdate) {
+                    console.log(`    ✅ Added milestone: 1`);
+                    Object.assign(workItem, milestoneUpdate);
+                  }
+                } catch (milestoneError) {
+                  console.log(
+                    `    ⚠️  Could not add milestone to ${workItemData.workItemType}:`,
+                    milestoneError,
+                  );
+                }
+              }
+            }
+
+            console.log(
+              `    🔍 Widget testing - ${workItemData.workItemType}:`,
+              workItemData.assigneeIds
+                ? `assignees: ${workItemData.assigneeIds.length}`
+                : 'no assignees',
+              workItemData.labelIds ? `labels: ${workItemData.labelIds.length}` : 'no labels',
+              workItemData.milestoneId ? 'milestone: 1' : 'no milestone',
+            );
+
+            if (workItem) {
+              createdGroupWorkItems.push(workItem);
+              console.log(
+                `  ✅ Created GROUP-level ${workItemData.workItemType}: ${workItem.iid} (Type: ${workItem.workItemType.name})`,
+              );
+            } else {
+              console.log(`  ⚠️  Handler returned null for ${workItemData.workItemType}`);
+            }
+          } catch (error) {
+            console.log(
+              `  ⚠️  Could not create GROUP work item via handler: ${workItemData.title}`,
+              error,
+            );
           }
-        } catch (error) {
-          console.log(
-            `  ⚠️  Could not create GROUP work item via handler: ${workItemData.title}`,
-            error,
-          );
         }
-      }
 
-      // Store group work items separately
-      updateTestData({ groupWorkItems: createdGroupWorkItems });
+        // Store group work items separately
+        updateTestData({ groupWorkItems: createdGroupWorkItems });
 
-      expect(createdGroupWorkItems.length).toBeGreaterThan(0);
-      console.log(`✅ Created ${createdGroupWorkItems.length} GROUP-level work items (Epics)`);
-    });
+        expect(createdGroupWorkItems.length).toBeGreaterThan(0);
+        console.log(`✅ Created ${createdGroupWorkItems.length} GROUP-level work items (Epics)`);
+      },
+    );
 
     it('should verify work items actually have widgets (assignees, labels, milestones)', async () => {
       const testData = getTestData();
@@ -879,7 +886,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
     }, 30000);
   });
 
-  describe('🏗️ Step 5.5: Subgroup and Parent Epic Infrastructure', () => {
+  describeIfTier('premium', '🏗️ Step 5.5: Subgroup and Parent Epic Infrastructure', () => {
     it('should create subgroup (depends on main group)', async () => {
       const testData = getTestData();
       expect(testData.group?.id).toBeDefined();
@@ -1668,7 +1675,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
   });
 
   describe('🔍 Step 7: Work Items Tools Validation', () => {
-    it('should test list_work_items with group namespace (Epics)', async () => {
+    itIfTier('premium', 'should test list_work_items with group namespace (Epics)', async () => {
       const testData = getTestData();
       expect(testData.group?.id).toBeDefined();
       expect(testData.groupWorkItems?.length).toBeGreaterThan(0);
@@ -1730,7 +1737,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
       );
     });
 
-    it('should test list_work_items with type filtering', async () => {
+    itIfTier('premium', 'should test list_work_items with type filtering', async () => {
       const testData = getTestData();
       console.log('🔍 Testing list_work_items with type filtering...');
 

@@ -118,6 +118,7 @@ jest.mock('../../src/logging/index', () => ({
 // Tests that need scope.path coverage override mockContextManager.getContext directly.
 const mockContextManager = {
   getContext: jest.fn().mockReturnValue({ readOnly: false }),
+  getCurrentProfileUrl: jest.fn().mockResolvedValue(null),
 };
 
 jest.mock('../../src/entities/context/context-manager', () => ({
@@ -215,6 +216,7 @@ describe('handlers', () => {
 
     // ContextManager default: no scope path (most tests don't need it)
     mockContextManager.getContext.mockReturnValue({ readOnly: false });
+    mockContextManager.getCurrentProfileUrl.mockResolvedValue(null);
   });
 
   describe('setupHandlers', () => {
@@ -509,6 +511,69 @@ describe('handlers', () => {
       // Restore defaults
       (oauth.isOAuthEnabled as jest.Mock).mockReturnValue(false);
       (oauth.getGitLabApiUrlFromContext as jest.Mock).mockReturnValue(undefined);
+    });
+
+    it('should re-pin session URL after successful switch_profile (#407)', async () => {
+      // Regression guard: after manage_context/switch_profile, the next ListTools must
+      // see the new profile's instance URL. Without proactive re-pin, the session keeps
+      // the pre-switch URL until the next CallTool resolves the OAuth context.
+      const newProfileUrl = 'https://different-instance.example.com';
+      mockContextManager.getCurrentProfileUrl.mockResolvedValue(newProfileUrl);
+
+      await callToolHandler(
+        {
+          params: {
+            name: 'manage_context',
+            arguments: { action: 'switch_profile', profile: 'eu' },
+          },
+        },
+        { sessionId: 'sess-switch' },
+      );
+
+      // setSessionInstanceUrl is called twice: once pre-dispatch with the request URL,
+      // once post-dispatch with the resolved new-profile URL.
+      expect(mockSessionManager.setSessionInstanceUrl).toHaveBeenCalledWith(
+        'sess-switch',
+        newProfileUrl,
+      );
+    });
+
+    it('should NOT re-pin session URL when switch_profile resolves to same URL (#407)', async () => {
+      // No-op when new profile URL matches current session URL — avoid spurious notifications.
+      mockContextManager.getCurrentProfileUrl.mockResolvedValue('https://gitlab.example.com');
+
+      await callToolHandler(
+        {
+          params: { name: 'manage_context', arguments: { action: 'switch_profile', profile: 'x' } },
+        },
+        { sessionId: 'sess-same' },
+      );
+
+      // Only the pre-dispatch call (with the request URL) should occur; no post-dispatch
+      // re-pin with a different value.
+      const calls = mockSessionManager.setSessionInstanceUrl.mock.calls.filter(
+        (c) => c[0] === 'sess-same',
+      );
+      expect(calls.every((c) => c[1] === 'https://gitlab.example.com')).toBe(true);
+    });
+
+    it('should NOT re-pin session URL for switch_preset action (#407)', async () => {
+      // Only switch_profile triggers re-pin; switch_preset never changes the host.
+      mockContextManager.getCurrentProfileUrl.mockResolvedValue(
+        'https://should-not-be-used.example.com',
+      );
+
+      await callToolHandler(
+        {
+          params: {
+            name: 'manage_context',
+            arguments: { action: 'switch_preset', preset: 'readonly' },
+          },
+        },
+        { sessionId: 'sess-preset' },
+      );
+
+      expect(mockContextManager.getCurrentProfileUrl).not.toHaveBeenCalled();
     });
 
     it('should execute tool and return result', async () => {

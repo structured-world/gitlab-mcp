@@ -394,6 +394,25 @@ describe('ContextManager', () => {
     });
   });
 
+  describe('getCurrentProfileUrl', () => {
+    it('should return null when no profile is active', async () => {
+      ContextManager.resetInstance();
+      const manager = ContextManager.getInstance();
+
+      await expect(manager.getCurrentProfileUrl()).resolves.toBeNull();
+    });
+
+    it('should resolve URL from profile.host after switch_profile (#407)', async () => {
+      process.env.OAUTH_ENABLED = 'true';
+      ContextManager.resetInstance();
+
+      const manager = ContextManager.getInstance();
+      await manager.switchProfile('production');
+
+      await expect(manager.getCurrentProfileUrl()).resolves.toBe('https://gitlab.example.com');
+    });
+  });
+
   describe('setScope', () => {
     it('should set scope for a group', async () => {
       mockDetectNamespaceType.mockResolvedValue('group');

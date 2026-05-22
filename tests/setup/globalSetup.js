@@ -13,9 +13,10 @@ const { config } = require('dotenv');
 
 // Namespace tmp artefacts by checkout root so concurrent runs across multiple
 // worktrees (or different machines sharing a tmpdir over NFS) cannot clobber
-// each other's tier-detection cache.
+// each other's tier-detection cache. sha256 here is a cache-key digest, not a
+// security primitive — it just needs to be collision-resistant across paths.
 const REPO_HASH = crypto
-  .createHash('sha1')
+  .createHash('sha256')
   .update(path.resolve(__dirname, '../..'))
   .digest('hex')
   .slice(0, 12);

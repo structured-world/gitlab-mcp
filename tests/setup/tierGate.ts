@@ -35,8 +35,9 @@ const TIER_RANK: Record<GitLabTier, number> = { free: 0, premium: 1, ultimate: 2
 
 // Mirror globalSetup.js: namespace by checkout root hash so concurrent runs
 // across worktrees (or NFS-shared tmpdirs) don't collide on the same cache file.
+// sha256 here is a cache-key digest, not a security primitive.
 const REPO_HASH = crypto
-  .createHash('sha1')
+  .createHash('sha256')
   .update(path.resolve(__dirname, '../..'))
   .digest('hex')
   .slice(0, 12);

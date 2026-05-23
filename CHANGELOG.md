@@ -4,6 +4,13 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [7.3.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.2.0...gitlab-mcp-v7.3.0) (2026-05-23)
+
+
+### Features
+
+* **session:** proactive re-pin of session URL after switch_profile ([#427](https://github.com/structured-world/gitlab-mcp/issues/427)) ([6965d09](https://github.com/structured-world/gitlab-mcp/commit/6965d092daee792b44e4576290d8644f0fb90548))
+
 ## [7.2.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.1.0...gitlab-mcp-v7.2.0) (2026-04-11)
 
 

@@ -24,6 +24,7 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Read wiki pages in projects or groups. Actions: list (all pages with metadata), get (page content by slug). Related: manage_wiki to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseWikiSchema),
+      requirements: { default: { tier: 'free', minVersion: '9.0' } },
       gate: { envVar: 'USE_GITLAB_WIKI', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseWikiSchema.parse(args);
@@ -70,6 +71,7 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Create, update, or delete wiki pages. Actions: create (new page with title/content/format), update (modify content or title), delete (remove permanently). Related: browse_wiki to read pages.',
       inputSchema: z.toJSONSchema(ManageWikiSchema),
+      requirements: { default: { tier: 'free', minVersion: '9.0' } },
       gate: { envVar: 'USE_GITLAB_WIKI', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageWikiSchema.parse(args);

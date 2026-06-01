@@ -23,6 +23,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       description:
         'Find and read code snippets with versioning support. Actions: list (personal/project/public scope with filtering), get (snippet metadata or raw file content). Related: manage_snippet to create/update.',
       inputSchema: z.toJSONSchema(BrowseSnippetsSchema),
+      requirements: { default: { tier: 'free', minVersion: '8.15' } },
       gate: { envVar: 'USE_SNIPPETS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseSnippetsSchema.parse(args);
@@ -97,6 +98,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       description:
         'Create, update, or delete code snippets with multi-file support. Actions: create (new snippet with files and visibility), update (modify content/metadata, file operations), delete (remove permanently). Related: browse_snippets for discovery.',
       inputSchema: z.toJSONSchema(ManageSnippetSchema),
+      requirements: { default: { tier: 'free', minVersion: '8.15' } },
       gate: { envVar: 'USE_SNIPPETS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageSnippetSchema.parse(args);

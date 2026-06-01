@@ -58,7 +58,7 @@ import {
   USE_ITERATIONS,
   getToolDescriptionOverrides,
 } from './config';
-import { ToolAvailability } from './services/ToolAvailability';
+import { isToolAvailable, getRestrictedParameters } from './services/InstanceCapabilities';
 import { ConnectionManager } from './services/ConnectionManager';
 import { HealthMonitor } from './services/HealthMonitor';
 import { isToolAvailableForScopes } from './services/TokenScopeDetector';
@@ -349,7 +349,7 @@ class RegistryManager {
       !isContextTool &&
       ctx.instanceInfo &&
       ctx.instanceInfo.version !== 'unknown' &&
-      !ToolAvailability.isToolAvailableForInstance(toolName, ctx.instanceInfo)
+      !isToolAvailable(tool.requirements, ctx.instanceInfo)
     )
       return 'tier';
     const allActions = extractActionsFromSchema(tool.inputSchema);
@@ -376,10 +376,7 @@ class RegistryManager {
 
         // Strip tier-restricted parameters (skip when version unknown or not initialized)
         if (ctx.instanceInfo && ctx.instanceInfo.version !== 'unknown') {
-          const restrictedParams = ToolAvailability.getRestrictedParameters(
-            toolName,
-            ctx.instanceInfo,
-          );
+          const restrictedParams = getRestrictedParameters(tool.requirements, ctx.instanceInfo);
           if (restrictedParams.length > 0) {
             transformedSchema = stripTierRestrictedParameters(transformedSchema, restrictedParams);
           }
@@ -658,7 +655,7 @@ class RegistryManager {
   /**
    * Get tool definitions without GitLab tier/version filtering (for CLI tools, documentation, etc.)
    * Dynamically checks environment filters at runtime to respect CLI-time environment variables
-   * but bypasses ToolAvailability tier/version checks since no GitLab connection exists
+   * but bypasses InstanceCapabilities tier/version checks since no GitLab connection exists
    */
   public getAllToolDefinitionsTierless(): EnhancedToolDefinition[] {
     const allTools: EnhancedToolDefinition[] = [];

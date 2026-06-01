@@ -25,6 +25,14 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Inspect branches, tags, and their protection rules. Actions: list_branches, get_branch, list_tags, get_tag, list_protected_branches, get_protected_branch, list_protected_tags (protection details and access levels). Related: manage_ref to create/delete/protect, browse_commits for commit history.',
       inputSchema: z.toJSONSchema(BrowseRefsSchema),
+      requirements: {
+        default: { tier: 'free', minVersion: '8.0' },
+        actions: {
+          list_protected_branches: { tier: 'free', minVersion: '8.11' },
+          get_protected_branch: { tier: 'free', minVersion: '8.11' },
+          list_protected_tags: { tier: 'premium', minVersion: '11.3', notes: 'Protected tags' },
+        },
+      },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseRefsSchema.parse(args);
 
@@ -101,6 +109,20 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Create, delete, and protect branches and tags. Actions: create_branch (from ref), delete_branch, protect_branch (set allowed roles), unprotect_branch, update_branch_protection, create_tag (annotated or lightweight), delete_tag, protect_tag, unprotect_tag. Related: browse_refs for inspection.',
       inputSchema: z.toJSONSchema(ManageRefSchema),
+      requirements: {
+        default: { tier: 'free', minVersion: '8.0' },
+        actions: {
+          protect_branch: { tier: 'free', minVersion: '8.11' },
+          unprotect_branch: { tier: 'free', minVersion: '8.11' },
+          update_branch_protection: {
+            tier: 'free',
+            minVersion: '11.9',
+            notes: 'PATCH endpoint; code owners require Premium',
+          },
+          protect_tag: { tier: 'premium', minVersion: '11.3', notes: 'Protected tags' },
+          unprotect_tag: { tier: 'premium', minVersion: '11.3', notes: 'Protected tags' },
+        },
+      },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageRefSchema.parse(args);
 

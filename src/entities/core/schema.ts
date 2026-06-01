@@ -94,6 +94,28 @@ const UpdateProjectSchema = z.object({
   request_access_enabled: repoRequestAccessEnabledField,
   only_allow_merge_if_pipeline_succeeds: repoPipelineMergeField,
   only_allow_merge_if_all_discussions_are_resolved: repoDiscussionMergeField,
+  // Premium/Ultimate-only project attributes (stripped from the schema on Free instances).
+  issues_template: z
+    .string()
+    .optional()
+    .describe('Premium+: default description template for new issues.'),
+  merge_requests_template: z
+    .string()
+    .optional()
+    .describe('Premium+: default description template for new merge requests.'),
+  merge_pipelines_enabled: flexibleBoolean
+    .optional()
+    .describe('Premium+: enable merged results pipelines.'),
+  merge_trains_enabled: flexibleBoolean
+    .optional()
+    .describe('Premium+: enable merge trains (requires merge_pipelines_enabled).'),
+  only_allow_merge_if_all_status_checks_passed: flexibleBoolean
+    .optional()
+    .describe('Ultimate: block merge until all external status checks pass.'),
+  requirements_access_level: z
+    .enum(['disabled', 'private', 'enabled'])
+    .optional()
+    .describe('Ultimate: requirements management access level.'),
 });
 
 // --- Action: delete ---
@@ -155,6 +177,15 @@ const CreateNamespaceSchema = z.object({
     .optional()
     .describe('Branch protection level: 0=none, 1=partial, 2=full.'),
   avatar: z.string().optional().describe('Group avatar URL.'),
+  // Premium/Ultimate-only group attributes (stripped from the schema on Free instances).
+  membership_lock: z
+    .boolean()
+    .optional()
+    .describe('Premium+: prevent members from being added directly to projects in this group.'),
+  wiki_access_level: z
+    .enum(['disabled', 'private', 'enabled'])
+    .optional()
+    .describe('Premium+: group wiki access level.'),
 });
 
 // --- Action: update ---
@@ -174,6 +205,27 @@ const UpdateNamespaceSchema = z.object({
     .number()
     .optional()
     .describe('Branch protection level: 0=none, 1=partial, 2=full.'),
+  // Premium/Ultimate-only group attributes (stripped from the schema on Free instances).
+  membership_lock: z
+    .boolean()
+    .optional()
+    .describe('Premium+: prevent members from being added directly to projects in this group.'),
+  wiki_access_level: z
+    .enum(['disabled', 'private', 'enabled'])
+    .optional()
+    .describe('Premium+: group wiki access level.'),
+  ip_restriction_ranges: z
+    .string()
+    .optional()
+    .describe('Premium+: comma-separated CIDR ranges that may access the group.'),
+  allowed_email_domains_list: z
+    .string()
+    .optional()
+    .describe('Premium+: comma-separated email domains allowed for group membership.'),
+  unique_project_download_limit: z
+    .number()
+    .optional()
+    .describe('Ultimate: max unique project downloads per user before action is taken.'),
 });
 
 // --- Action: delete ---

@@ -69,14 +69,9 @@ jest.mock('../../src/entities/labels/registry', () => ({
   }));
 });
 
-jest.mock('../../src/services/ToolAvailability', () => ({
-  ToolAvailability: {
-    isToolAvailable: jest.fn(),
-    isToolAvailableForInstance: jest.fn().mockReturnValue(true),
-    getUnavailableReason: jest.fn(),
-    getRestrictedParameters: jest.fn().mockReturnValue([]),
-  },
-}));
+// Real InstanceCapabilities gating runs against each tool's `requirements`.
+// Test tools declare requirements inline to exercise version/tier/parameter
+// filtering; tools without requirements fall through the conservative gate.
 
 jest.mock('../../src/services/ConnectionManager', () => ({
   ConnectionManager: {
@@ -185,7 +180,6 @@ function resetRegistryManagerSingleton(): void {
 describe('RegistryManager', () => {
   let registryManager: RegistryManager;
   let mockConfig: any;
-  const { ToolAvailability } = require('../../src/services/ToolAvailability');
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -210,14 +204,10 @@ describe('RegistryManager', () => {
 
     // Reset default mocks
     mockConfig.getToolDescriptionOverrides = jest.fn(() => new Map());
-    ToolAvailability.isToolAvailable.mockReturnValue(true);
-    ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
-    ToolAvailability.getRestrictedParameters.mockReturnValue([]);
     mockHealthMonitorInstance.getMonitoredInstances.mockReturnValue([]);
     mockHealthMonitorInstance.isAnyInstanceHealthy.mockReturnValue(true);
     mockHealthMonitorInstance.isInstanceReachable.mockReturnValue(true);
     mockHealthMonitorInstance.getState.mockReturnValue('healthy');
-    ToolAvailability.getUnavailableReason.mockReturnValue('');
 
     registryManager = RegistryManager.getInstance();
   });
@@ -367,21 +357,15 @@ describe('RegistryManager', () => {
   });
 
   describe('Tool Availability Filtering', () => {
-    beforeEach(() => {
-      ToolAvailability.isToolAvailableForInstance.mockImplementation(
-        (name: string) => !name.includes('unavailable'),
-      );
-      ToolAvailability.getUnavailableReason.mockImplementation((name: string) =>
-        name.includes('unavailable') ? 'Not available in this GitLab version' : '',
-      );
-    });
-
     it('should filter unavailable tools', () => {
+      // ConnectionManager mock reports version 17.0.0; a tool requiring 99.0
+      // fails the real InstanceCapabilities version gate and is filtered out.
       const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
       coreRegistry.set('unavailable_tool', {
         name: 'unavailable_tool',
         description: 'Unavailable tool',
         inputSchema: { type: 'object' },
+        requirements: { default: { tier: 'free', minVersion: '99.0' } },
         handler: jest.fn(),
       });
 
@@ -443,15 +427,19 @@ describe('RegistryManager', () => {
           },
           required: ['action', 'title', 'weight'],
         },
+        // On the mocked free/17.0.0 instance both premium and ultimate params
+        // fail their tier gate, so the real stripper removes them.
+        requirements: {
+          default: { tier: 'free', minVersion: '8.0' },
+          parameters: {
+            weight: { tier: 'premium', minVersion: '15.0' },
+            healthStatus: { tier: 'ultimate', minVersion: '15.0' },
+          },
+        },
         handler: jest.fn(),
       });
 
       try {
-        // Make getRestrictedParameters return restricted params for this tool
-        ToolAvailability.getRestrictedParameters.mockImplementation((toolName: string) =>
-          toolName === 'tool_with_params' ? ['weight', 'healthStatus'] : [],
-        );
-
         resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
@@ -492,13 +480,16 @@ describe('RegistryManager', () => {
           },
           required: ['weight', 'title'],
         },
+        // weight would be stripped on a free instance, but the uninitialized
+        // connection means the registry never reaches the stripping branch.
+        requirements: {
+          default: { tier: 'free', minVersion: '8.0' },
+          parameters: { weight: { tier: 'premium', minVersion: '15.0' } },
+        },
         handler: jest.fn(),
       });
 
       try {
-        // Mock getRestrictedParameters to return restricted params (would strip if called)
-        ToolAvailability.getRestrictedParameters.mockReturnValue(['weight']);
-
         // Make ConnectionManager throw (simulating uninitialized connection)
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockImplementation(() => {
@@ -510,9 +501,6 @@ describe('RegistryManager', () => {
           getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
         });
 
-        // Clear call history from beforeEach cache build before creating new instance
-        ToolAvailability.getRestrictedParameters.mockClear();
-
         resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
@@ -521,17 +509,13 @@ describe('RegistryManager', () => {
 
         const schema = tool?.inputSchema as any;
 
-        // Parameters should NOT be stripped when connection is unavailable
-        // (getRestrictedParameters should not be called at all)
+        // Parameters should NOT be stripped when connection is unavailable —
+        // the registry guards the strip branch on initialized instance context.
         expect(schema.properties?.weight).toBeDefined();
         expect(schema.properties?.title).toBeDefined();
         expect(schema.required).toContain('weight');
-
-        // Verify getRestrictedParameters was NOT called (guard prevented it)
-        expect(ToolAvailability.getRestrictedParameters).not.toHaveBeenCalled();
       } finally {
         coreRegistry.delete('tool_with_params');
-        ToolAvailability.getRestrictedParameters.mockReturnValue([]);
         // Restore ConnectionManager mock
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
@@ -602,20 +586,17 @@ describe('RegistryManager', () => {
     it('should resolve no-arg calls via OAuth context URL and verify it was used', () => {
       const { getGitLabApiUrlFromContext } = require('../../src/oauth/token-context');
       const { ConnectionManager } = require('../../src/services/ConnectionManager');
-      const { ToolAvailability } = require('../../src/services/ToolAvailability');
+      const labelsRegistry = require('../../src/entities/labels/registry').labelsToolRegistry;
       const oauthUrl = 'https://oauth-instance.example.com';
       getGitLabApiUrlFromContext.mockReturnValue(oauthUrl);
 
-      // Make OAuth URL return premium tier → labels filtered out
-      ToolAvailability.isToolAvailableForInstance.mockImplementation(
-        (toolName: string, info: { tier: string }) => {
-          if (info.tier === 'premium' && toolName.includes('labels')) return false;
-          return true;
-        },
-      );
+      // labels_tool_1 needs >= 17.0; OAuth URL is on 16.0 → labels filtered out,
+      // exercising real version gating through the OAuth-resolved URL.
+      const labelsTool = labelsRegistry.get('labels_tool_1');
+      labelsTool.requirements = { default: { tier: 'free', minVersion: '17.0' } };
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockImplementation((url?: string) => {
-          if (url === oauthUrl) return { tier: 'premium', version: '17.0.0' };
+          if (url === oauthUrl) return { tier: 'free', version: '16.0.0' };
           return { tier: 'free', version: '17.0.0' };
         }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
@@ -626,7 +607,7 @@ describe('RegistryManager', () => {
         resetRegistryManagerSingleton();
         const manager = RegistryManager.getInstance();
 
-        // No-arg calls should resolve via OAuth URL (premium) → no labels
+        // No-arg calls should resolve via OAuth URL (16.0) → no labels
         const names = manager.getAvailableToolNames();
         expect(names).toContain('core_tool_1');
         expect(names).not.toContain('labels_tool_1');
@@ -635,7 +616,7 @@ describe('RegistryManager', () => {
         expect(ConnectionManager.getInstance().getInstanceInfo).toHaveBeenCalledWith(oauthUrl);
       } finally {
         getGitLabApiUrlFromContext.mockReturnValue(undefined);
-        ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
+        delete labelsTool.requirements;
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
           getTokenScopeInfo: jest.fn().mockReturnValue(null),
@@ -646,22 +627,17 @@ describe('RegistryManager', () => {
 
     it('should produce observably different caches when tier differs per URL', () => {
       const { ConnectionManager } = require('../../src/services/ConnectionManager');
-      const { ToolAvailability } = require('../../src/services/ToolAvailability');
+      const labelsRegistry = require('../../src/entities/labels/registry').labelsToolRegistry;
 
-      // URL A: free tier → labels_tool_1 is available
-      // URL B: simulate labels filtered by tier
-      ToolAvailability.isToolAvailableForInstance.mockImplementation(
-        (toolName: string, info: { tier: string }) => {
-          if (info.tier === 'premium' && toolName.includes('labels')) return false;
-          return true;
-        },
-      );
+      // labels_tool_1 needs >= 17.0. URL A is on 17.0 (available),
+      // URL B is on 16.0 (filtered) → caches diverge per URL.
+      const labelsTool = labelsRegistry.get('labels_tool_1');
+      labelsTool.requirements = { default: { tier: 'free', minVersion: '17.0' } };
 
-      // URL A → free tier (default mock)
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockImplementation((url?: string) => {
           if (url === 'https://instance-b.example.com') {
-            return { tier: 'premium', version: '17.0.0' };
+            return { tier: 'free', version: '16.0.0' };
           }
           return { tier: 'free', version: '17.0.0' };
         }),
@@ -676,16 +652,16 @@ describe('RegistryManager', () => {
         const namesA = manager.getAvailableToolNames('https://instance-a.example.com');
         const namesB = manager.getAvailableToolNames('https://instance-b.example.com');
 
-        // URL A (free) should have labels_tool_1
+        // URL A (17.0) should have labels_tool_1
         expect(namesA).toContain('labels_tool_1');
-        // URL B (premium with labels filtered) should NOT have labels_tool_1
+        // URL B (16.0, below requirement) should NOT have labels_tool_1
         expect(namesB).not.toContain('labels_tool_1');
 
         // Both should have core_tool_1 (always available)
         expect(namesA).toContain('core_tool_1');
         expect(namesB).toContain('core_tool_1');
       } finally {
-        ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
+        delete labelsTool.requirements;
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
           getTokenScopeInfo: jest.fn().mockReturnValue(null),
@@ -1230,24 +1206,43 @@ describe('RegistryManager', () => {
 
   describe('getFilterStats', () => {
     it('should return filter statistics with all zeros when no filters active', () => {
-      registryManager = RegistryManager.getInstance();
-      const stats = registryManager.getFilterStats();
+      // Ultimate tier + recent version so no tool is tier/version-gated, making
+      // available == total a valid expectation (e.g. premium browse_iterations
+      // would otherwise be correctly filtered on the default free instance).
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockReturnValue({ tier: 'ultimate', version: '99.0.0' }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+      });
 
-      expect(stats).toHaveProperty('available');
-      expect(stats).toHaveProperty('total');
-      expect(stats).toHaveProperty('filteredByScopes');
-      expect(stats).toHaveProperty('filteredByReadOnly');
-      expect(stats).toHaveProperty('filteredByTier');
-      expect(stats).toHaveProperty('filteredByDeniedRegex');
-      expect(stats).toHaveProperty('filteredByActionDenial');
+      try {
+        resetRegistryManagerSingleton();
+        registryManager = RegistryManager.getInstance();
+        const stats = registryManager.getFilterStats();
 
-      // With no filtering, available should equal total
-      expect(stats.available).toBe(stats.total);
-      expect(stats.filteredByScopes).toBe(0);
-      expect(stats.filteredByReadOnly).toBe(0);
-      expect(stats.filteredByTier).toBe(0);
-      expect(stats.filteredByDeniedRegex).toBe(0);
-      expect(stats.filteredByActionDenial).toBe(0);
+        expect(stats).toHaveProperty('available');
+        expect(stats).toHaveProperty('total');
+        expect(stats).toHaveProperty('filteredByScopes');
+        expect(stats).toHaveProperty('filteredByReadOnly');
+        expect(stats).toHaveProperty('filteredByTier');
+        expect(stats).toHaveProperty('filteredByDeniedRegex');
+        expect(stats).toHaveProperty('filteredByActionDenial');
+
+        // With no filtering, available should equal total
+        expect(stats.available).toBe(stats.total);
+        expect(stats.filteredByScopes).toBe(0);
+        expect(stats.filteredByReadOnly).toBe(0);
+        expect(stats.filteredByTier).toBe(0);
+        expect(stats.filteredByDeniedRegex).toBe(0);
+        expect(stats.filteredByActionDenial).toBe(0);
+      } finally {
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        });
+      }
     });
 
     it('should count tools filtered by read-only mode', () => {
@@ -1306,27 +1301,24 @@ describe('RegistryManager', () => {
     });
 
     it('should count tools filtered by tier restrictions', () => {
-      const { ToolAvailability } = require('../../src/services/ToolAvailability');
+      const labelsRegistry = require('../../src/entities/labels/registry').labelsToolRegistry;
 
-      // Make some tools unavailable due to tier (uses isToolAvailableForInstance now)
-      ToolAvailability.isToolAvailableForInstance.mockImplementation(
-        (name: string) => !name.includes('labels'),
-      );
-      ToolAvailability.getUnavailableReason.mockImplementation((name: string) =>
-        name.includes('labels') ? 'Requires Premium tier' : '',
-      );
+      // labels_tool_1 requires premium; the default mock instance is free tier,
+      // so real tier gating filters it and bumps the filteredByTier counter.
+      const labelsTool = labelsRegistry.get('labels_tool_1');
+      labelsTool.requirements = { default: { tier: 'premium', minVersion: '8.0' } };
 
-      resetRegistryManagerSingleton();
-      registryManager = RegistryManager.getInstance();
+      try {
+        resetRegistryManagerSingleton();
+        registryManager = RegistryManager.getInstance();
 
-      const stats = registryManager.getFilterStats();
+        const stats = registryManager.getFilterStats();
 
-      // labels tools should be filtered by tier
-      expect(stats.filteredByTier).toBeGreaterThan(0);
-
-      // Restore mocks
-      ToolAvailability.isToolAvailableForInstance.mockReturnValue(true);
-      ToolAvailability.getUnavailableReason.mockReturnValue('');
+        // labels tools should be filtered by tier
+        expect(stats.filteredByTier).toBeGreaterThan(0);
+      } finally {
+        delete labelsTool.requirements;
+      }
     });
 
     it('should handle multiple filters combined', () => {

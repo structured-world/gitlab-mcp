@@ -39,6 +39,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Find, list, or inspect GitLab projects. Actions: search (find by name/topic across GitLab), list (browse accessible projects or group projects), get (retrieve full project details). Related: manage_project to create/update/delete projects.',
       inputSchema: z.toJSONSchema(BrowseProjectsSchema),
+      requirements: { default: { tier: 'free', minVersion: '8.0' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseProjectsSchema.parse(args);
 
@@ -181,6 +182,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Explore GitLab groups and user namespaces. Actions: list (discover available namespaces), get (retrieve details with storage stats), verify (check if path exists). Related: manage_namespace to create/update/delete groups.',
       inputSchema: z.toJSONSchema(BrowseNamespacesSchema),
+      requirements: { default: { tier: 'free', minVersion: '9.0' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseNamespacesSchema.parse(args);
 
@@ -266,6 +268,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Explore repository commit history and diffs. Actions: list (browse commits with filters), get (retrieve commit metadata and stats), diff (view code changes). Related: browse_refs for branch/tag info.',
       inputSchema: z.toJSONSchema(BrowseCommitsSchema),
+      requirements: { default: { tier: 'free', minVersion: '8.0' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseCommitsSchema.parse(args);
 
@@ -364,6 +367,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Track GitLab activity and events. Actions: user (your activity across all projects), project (specific project activity feed). Filter by date range, action type, or target type.',
       inputSchema: z.toJSONSchema(BrowseEventsSchema),
+      requirements: { default: { tier: 'free', minVersion: '9.0' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseEventsSchema.parse(args);
 
@@ -432,6 +436,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Find GitLab users with smart pattern detection. Actions: search (find users by name/email/username with transliteration support), get (retrieve specific user by ID). Related: browse_members for project/group membership.',
       inputSchema: z.toJSONSchema(BrowseUsersSchema),
+      requirements: { default: { tier: 'free', minVersion: '8.0' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseUsersSchema.parse(args);
 
@@ -508,6 +513,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'View your GitLab todo queue (notifications requiring action). Actions: list (filter by state, action type, target type). Todos are auto-created for assignments, mentions, reviews, and pipeline failures. Related: manage_todos to mark done/restore.',
       inputSchema: z.toJSONSchema(BrowseTodosSchema),
+      requirements: { default: { tier: 'free', minVersion: '8.0' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseTodosSchema.parse(args);
 
@@ -559,6 +565,17 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Create, update, or manage GitLab projects. Actions: create (new project with settings), fork (copy existing project), update (modify settings), delete (remove permanently), archive/unarchive (toggle read-only), transfer (move to different namespace). Related: browse_projects for discovery.',
       inputSchema: z.toJSONSchema(ManageProjectSchema),
+      requirements: {
+        default: { tier: 'free', minVersion: '8.0' },
+        parameters: {
+          issues_template: { tier: 'premium' },
+          merge_requests_template: { tier: 'premium' },
+          merge_pipelines_enabled: { tier: 'premium' },
+          merge_trains_enabled: { tier: 'premium' },
+          only_allow_merge_if_all_status_checks_passed: { tier: 'ultimate' },
+          requirements_access_level: { tier: 'ultimate' },
+        },
+      },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageProjectSchema.parse(args);
 
@@ -798,6 +815,16 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Create, update, or delete GitLab groups/namespaces. Actions: create (new group with visibility/settings), update (modify group settings), delete (remove permanently). Related: browse_namespaces for discovery.',
       inputSchema: z.toJSONSchema(ManageNamespaceSchema),
+      requirements: {
+        default: { tier: 'free', minVersion: '8.0' },
+        parameters: {
+          membership_lock: { tier: 'premium' },
+          wiki_access_level: { tier: 'premium' },
+          ip_restriction_ranges: { tier: 'premium' },
+          allowed_email_domains_list: { tier: 'premium' },
+          unique_project_download_limit: { tier: 'ultimate' },
+        },
+      },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageNamespaceSchema.parse(args);
 
@@ -821,6 +848,13 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (input.default_branch_protection !== undefined)
               body.set('default_branch_protection', String(input.default_branch_protection));
             if (input.avatar) body.set('avatar', input.avatar);
+            // Premium/Ultimate attributes — GitLab ignores them on Free, and the
+            // registry strips them from the schema there, so they only reach here
+            // on a sufficiently-licensed instance.
+            if (input.membership_lock !== undefined)
+              body.set('membership_lock', String(input.membership_lock));
+            if (input.wiki_access_level !== undefined)
+              body.set('wiki_access_level', input.wiki_access_level);
 
             const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups`;
             const response = await enhancedFetch(apiUrl, {
@@ -892,6 +926,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Manage your GitLab todo queue. Actions: mark_done (complete a single todo), mark_all_done (clear entire queue), restore (undo completion). Related: browse_todos to view your todo list.',
       inputSchema: z.toJSONSchema(ManageTodosSchema),
+      requirements: { default: { tier: 'free', minVersion: '8.0' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageTodosSchema.parse(args);
 

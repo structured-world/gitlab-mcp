@@ -20,6 +20,7 @@ import { InstanceRegistry } from './InstanceRegistry';
 import { CachedIntrospection } from '../config/instances-schema';
 
 import { normalizeInstanceUrl } from '../utils/url';
+import type { InstanceCapabilities } from './InstanceCapabilities';
 
 interface CacheEntry {
   schemaInfo: SchemaInfo;
@@ -653,6 +654,28 @@ export class ConnectionManager {
       );
     }
     return state.instanceInfo;
+  }
+
+  /**
+   * Aggregate the instance's capabilities (version, tier, features, token scopes,
+   * admin status) into a single typed blob. Composes the per-signal getters so a
+   * caller can take one snapshot instead of N separate lookups.
+   *
+   * @throws when version detection has not completed for the URL (same contract
+   *   as {@link getInstanceInfo}); callers that tolerate uninitialized state
+   *   should catch and treat as "capabilities unknown".
+   */
+  public getInstanceCapabilities(instanceUrl?: string): InstanceCapabilities {
+    const info = this.getInstanceInfo(instanceUrl);
+    const scopeInfo = this.getTokenScopeInfo(instanceUrl);
+    return {
+      version: info.version,
+      tier: info.tier,
+      features: info.features,
+      scopes: scopeInfo?.scopes ?? [],
+      // isAdmin / adminModeActive remain undefined until the admin probe (#434)
+      // populates them; consumers treat undefined as fail-open.
+    };
   }
 
   public getSchemaInfo(instanceUrl?: string): SchemaInfo {

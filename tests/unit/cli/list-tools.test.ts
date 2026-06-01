@@ -4,11 +4,6 @@ const mockManager = {
   getAllToolDefinitionsUnfiltered: jest.fn(),
 };
 
-const mockGetToolRequirement = jest.fn();
-const mockGetHighestTier = jest.fn();
-const mockGetTierRestrictedActions = jest.fn();
-const mockGetActionRequirement = jest.fn();
-
 const mockConsoleLog = jest.fn();
 const mockConsoleError = jest.fn();
 const mockProcessExit = jest.fn() as unknown as jest.MockedFunction<typeof process.exit>;
@@ -19,15 +14,9 @@ jest.mock('../../../src/registry-manager', () => ({
   },
 }));
 
-jest.mock('../../../src/services/ToolAvailability', () => ({
-  ToolAvailability: {
-    getToolRequirement: (name: string, action?: string) => mockGetToolRequirement(name, action),
-    getHighestTier: (name: string) => mockGetHighestTier(name),
-    getTierRestrictedActions: (name: string, tier: string) =>
-      mockGetTierRestrictedActions(name, tier),
-    getActionRequirement: (name: string, action?: string) => mockGetActionRequirement(name, action),
-  },
-}));
+// Tier badges are derived from each tool's own `requirements` via the real
+// InstanceCapabilities helpers — no service mock needed; test tools declare
+// their requirements inline.
 
 // Mock ProfileLoader
 const mockProfileLoader = {
@@ -60,12 +49,6 @@ describe('list-tools script', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     originalArgv = process.argv;
-
-    // Reset tier requirement mocks to return defaults
-    mockGetToolRequirement.mockReturnValue(null);
-    mockGetHighestTier.mockReturnValue('free');
-    mockGetTierRestrictedActions.mockReturnValue([]);
-    mockGetActionRequirement.mockReturnValue({ tier: 'free', minVersion: '8.0' });
 
     // Reset profile loader mocks
     mockProfileLoader.listProfiles.mockResolvedValue([]);
@@ -106,6 +89,41 @@ describe('list-tools script', () => {
     await main();
 
     expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('"name": "test_tool"'));
+  });
+
+  it('applies documented requirement defaults in json output', async () => {
+    // A tool with requirements but omitted tier/minVersion must report the
+    // documented defaults (free/8.0), not 'unknown'/undefined; a tool with no
+    // requirements at all stays 'unknown'/undefined.
+    process.argv = ['node', 'list-tools.ts', '--json'];
+    mockManager.getAllToolDefinitionsTierless.mockReturnValue([
+      {
+        name: 'partial_req_tool',
+        description: 'd',
+        inputSchema: { type: 'object' },
+        requirements: { default: {} },
+      },
+      {
+        name: 'no_req_tool',
+        description: 'd',
+        inputSchema: { type: 'object' },
+      },
+    ]);
+
+    const { main } = await import('../../../src/cli/list-tools');
+    await main();
+
+    const jsonCall = mockConsoleLog.mock.calls.find(
+      (c) => typeof c[0] === 'string' && c[0].includes('partial_req_tool'),
+    );
+    const output = JSON.parse(jsonCall![0] as string);
+    const partial = output.find((t: { name: string }) => t.name === 'partial_req_tool');
+    const none = output.find((t: { name: string }) => t.name === 'no_req_tool');
+
+    expect(partial.tier).toBe('free');
+    expect(partial.minVersion).toBe('8.0');
+    expect(none.tier).toBe('unknown');
+    expect(none.minVersion).toBeUndefined();
   });
 
   it('should handle markdown format output with environment info', async () => {
@@ -300,46 +318,21 @@ describe('list-tools script', () => {
         name: 'premium_tool',
         description: 'Tool that requires premium tier',
         inputSchema: { type: 'object' },
+        requirements: { default: { tier: 'premium', minVersion: '10.0' } },
       },
       {
         name: 'ultimate_tool',
         description: 'Tool that requires ultimate tier',
         inputSchema: { type: 'object' },
+        requirements: { default: { tier: 'ultimate', minVersion: '12.0' } },
       },
       {
         name: 'free_tool',
         description: 'Tool that requires free tier',
         inputSchema: { type: 'object' },
+        requirements: { default: { tier: 'free', minVersion: '8.0' } },
       },
     ]);
-
-    // Mock tier requirements for different tools
-    mockGetToolRequirement.mockImplementation((name: string) => {
-      if (name === 'premium_tool') {
-        return { requiredTier: 'premium', minVersion: '10.0' };
-      }
-      if (name === 'ultimate_tool') {
-        return { requiredTier: 'ultimate', minVersion: '12.0' };
-      }
-      if (name === 'free_tool') {
-        return { requiredTier: 'free', minVersion: '8.0' };
-      }
-      return null;
-    });
-
-    // Mock getHighestTier for tool-level tier display
-    mockGetHighestTier.mockImplementation((name: string) => {
-      if (name === 'premium_tool') return 'premium';
-      if (name === 'ultimate_tool') return 'ultimate';
-      return 'free';
-    });
-
-    // Mock getActionRequirement for default tier check (used in mixed tier detection)
-    mockGetActionRequirement.mockImplementation((name: string) => {
-      if (name === 'premium_tool') return { tier: 'premium', minVersion: '10.0' };
-      if (name === 'ultimate_tool') return { tier: 'ultimate', minVersion: '12.0' };
-      return { tier: 'free', minVersion: '8.0' };
-    });
 
     const { main } = await import('../../../src/cli/list-tools');
     await main();
@@ -348,6 +341,28 @@ describe('list-tools script', () => {
     expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('[tier: Premium]'));
     expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('[tier: Ultimate]'));
     expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('[tier: Free]'));
+  });
+
+  it('omits the tier badge for tools without a requirements block', async () => {
+    // A tool with no requirements (e.g. local context tools) must not claim a
+    // Free tier badge — that conflicts with the json output reporting "unknown".
+    process.argv = ['node', 'list-tools.ts', '--verbose'];
+    mockManager.getAllToolDefinitionsTierless.mockReturnValue([
+      {
+        name: 'unannotated_tool',
+        description: 'no requirements',
+        inputSchema: { type: 'object' },
+      },
+    ]);
+
+    const { main } = await import('../../../src/cli/list-tools');
+    await main();
+
+    const headingCall = mockConsoleLog.mock.calls.find(
+      (c) => typeof c[0] === 'string' && c[0].includes('unannotated_tool'),
+    );
+    expect(headingCall).toBeDefined();
+    expect(headingCall![0]).not.toContain('[tier:');
   });
 
   it('should handle detail flag', async () => {
@@ -679,13 +694,14 @@ describe('list-tools script', () => {
       const { main } = await import('../../../src/cli/list-tools');
       await main();
 
-      // Check actions table (now includes Tier column)
+      // Check actions table (now includes Tier column). browse_test declares no
+      // requirements, so each action's tier is Unknown, not an assumed Free.
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('#### Actions'));
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('| `list` | Free | List items |'),
+        expect.stringContaining('| `list` | Unknown | List items |'),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('| `get` | Free | Get single item |'),
+        expect.stringContaining('| `get` | Unknown | Get single item |'),
       );
     });
 
@@ -2150,18 +2166,18 @@ describe('list-tools script', () => {
     it('should display mixed tier badge with asterisk', async () => {
       process.argv = ['node', 'list-tools.ts', '--verbose'];
 
+      // Default free tier but a premium action → highest premium ≠ default → asterisk
       mockManager.getAllToolDefinitionsTierless.mockReturnValue([
         {
           name: 'mixed_tier_tool',
           description: 'Tool with mixed tiers',
           inputSchema: { type: 'object' },
+          requirements: {
+            default: { tier: 'free', minVersion: '8.0' },
+            actions: { elevated: { tier: 'premium', minVersion: '10.0' } },
+          },
         },
       ]);
-
-      // Tool has premium as highest tier but free as default
-      mockGetHighestTier.mockReturnValue('premium');
-      mockGetActionRequirement.mockReturnValue({ tier: 'free', minVersion: '8.0' });
-      mockGetToolRequirement.mockReturnValue(null);
 
       const { main } = await import('../../../src/cli/list-tools');
       await main();

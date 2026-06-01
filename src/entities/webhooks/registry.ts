@@ -23,6 +23,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       description:
         'List and inspect webhook configurations for projects or groups. Actions: list (all webhooks with event types and status), get (webhook details by ID). Related: manage_webhook to create/update/delete/test.',
       inputSchema: z.toJSONSchema(BrowseWebhooksSchema),
+      requirements: { default: { tier: 'free', minVersion: '8.0', notes: 'Project webhooks' } },
       gate: { envVar: 'USE_WEBHOOKS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseWebhooksSchema.parse(args);
@@ -83,6 +84,14 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       description:
         'Create, update, delete, or test webhooks for event-driven automation. Actions: create (URL + event types + optional secret), update (modify settings), delete (remove), test (trigger delivery for specific event). Related: browse_webhooks for inspection.',
       inputSchema: z.toJSONSchema(ManageWebhookSchema),
+      requirements: {
+        default: { tier: 'free', minVersion: '8.0', notes: 'Project webhooks' },
+        actions: {
+          create_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
+          update_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
+          delete_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
+        },
+      },
       gate: { envVar: 'USE_WEBHOOKS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageWebhookSchema.parse(args);

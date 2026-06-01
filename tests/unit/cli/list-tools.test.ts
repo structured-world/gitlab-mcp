@@ -4,11 +4,6 @@ const mockManager = {
   getAllToolDefinitionsUnfiltered: jest.fn(),
 };
 
-const mockGetToolRequirement = jest.fn();
-const mockGetHighestTier = jest.fn();
-const mockGetTierRestrictedActions = jest.fn();
-const mockGetActionRequirement = jest.fn();
-
 const mockConsoleLog = jest.fn();
 const mockConsoleError = jest.fn();
 const mockProcessExit = jest.fn() as unknown as jest.MockedFunction<typeof process.exit>;
@@ -19,15 +14,9 @@ jest.mock('../../../src/registry-manager', () => ({
   },
 }));
 
-jest.mock('../../../src/services/ToolAvailability', () => ({
-  ToolAvailability: {
-    getToolRequirement: (name: string, action?: string) => mockGetToolRequirement(name, action),
-    getHighestTier: (name: string) => mockGetHighestTier(name),
-    getTierRestrictedActions: (name: string, tier: string) =>
-      mockGetTierRestrictedActions(name, tier),
-    getActionRequirement: (name: string, action?: string) => mockGetActionRequirement(name, action),
-  },
-}));
+// Tier badges are derived from each tool's own `requirements` via the real
+// InstanceCapabilities helpers — no service mock needed; test tools declare
+// their requirements inline.
 
 // Mock ProfileLoader
 const mockProfileLoader = {
@@ -60,12 +49,6 @@ describe('list-tools script', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     originalArgv = process.argv;
-
-    // Reset tier requirement mocks to return defaults
-    mockGetToolRequirement.mockReturnValue(null);
-    mockGetHighestTier.mockReturnValue('free');
-    mockGetTierRestrictedActions.mockReturnValue([]);
-    mockGetActionRequirement.mockReturnValue({ tier: 'free', minVersion: '8.0' });
 
     // Reset profile loader mocks
     mockProfileLoader.listProfiles.mockResolvedValue([]);
@@ -300,46 +283,21 @@ describe('list-tools script', () => {
         name: 'premium_tool',
         description: 'Tool that requires premium tier',
         inputSchema: { type: 'object' },
+        requirements: { default: { tier: 'premium', minVersion: '10.0' } },
       },
       {
         name: 'ultimate_tool',
         description: 'Tool that requires ultimate tier',
         inputSchema: { type: 'object' },
+        requirements: { default: { tier: 'ultimate', minVersion: '12.0' } },
       },
       {
         name: 'free_tool',
         description: 'Tool that requires free tier',
         inputSchema: { type: 'object' },
+        requirements: { default: { tier: 'free', minVersion: '8.0' } },
       },
     ]);
-
-    // Mock tier requirements for different tools
-    mockGetToolRequirement.mockImplementation((name: string) => {
-      if (name === 'premium_tool') {
-        return { requiredTier: 'premium', minVersion: '10.0' };
-      }
-      if (name === 'ultimate_tool') {
-        return { requiredTier: 'ultimate', minVersion: '12.0' };
-      }
-      if (name === 'free_tool') {
-        return { requiredTier: 'free', minVersion: '8.0' };
-      }
-      return null;
-    });
-
-    // Mock getHighestTier for tool-level tier display
-    mockGetHighestTier.mockImplementation((name: string) => {
-      if (name === 'premium_tool') return 'premium';
-      if (name === 'ultimate_tool') return 'ultimate';
-      return 'free';
-    });
-
-    // Mock getActionRequirement for default tier check (used in mixed tier detection)
-    mockGetActionRequirement.mockImplementation((name: string) => {
-      if (name === 'premium_tool') return { tier: 'premium', minVersion: '10.0' };
-      if (name === 'ultimate_tool') return { tier: 'ultimate', minVersion: '12.0' };
-      return { tier: 'free', minVersion: '8.0' };
-    });
 
     const { main } = await import('../../../src/cli/list-tools');
     await main();
@@ -2150,18 +2108,18 @@ describe('list-tools script', () => {
     it('should display mixed tier badge with asterisk', async () => {
       process.argv = ['node', 'list-tools.ts', '--verbose'];
 
+      // Default free tier but a premium action → highest premium ≠ default → asterisk
       mockManager.getAllToolDefinitionsTierless.mockReturnValue([
         {
           name: 'mixed_tier_tool',
           description: 'Tool with mixed tiers',
           inputSchema: { type: 'object' },
+          requirements: {
+            default: { tier: 'free', minVersion: '8.0' },
+            actions: { elevated: { tier: 'premium', minVersion: '10.0' } },
+          },
         },
       ]);
-
-      // Tool has premium as highest tier but free as default
-      mockGetHighestTier.mockReturnValue('premium');
-      mockGetActionRequirement.mockReturnValue({ tier: 'free', minVersion: '8.0' });
-      mockGetToolRequirement.mockReturnValue(null);
 
       const { main } = await import('../../../src/cli/list-tools');
       await main();

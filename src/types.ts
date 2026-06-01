@@ -29,10 +29,40 @@ export interface FeatureGate {
   defaultValue: boolean; // Default when env var is not set
 }
 
+// Tier/version/admin requirement for a tool, one of its actions, or one of its
+// parameters. All fields optional: absent tier defaults to 'free', absent
+// minVersion to '8.0', absent requiresAdmin to false. Consulted by the registry
+// (via InstanceCapabilities) to filter tools/actions/parameters that the target
+// GitLab instance cannot satisfy, instead of letting them fail at call time.
+export interface ToolRequirement {
+  tier?: 'free' | 'premium' | 'ultimate';
+  minVersion?: string;
+  /** Forward-looking gate for admin-only operations (#431/#432 soft-delete restore). */
+  requiresAdmin?: boolean;
+  notes?: string;
+}
+
+// Version/tier/admin requirements declared on a tool definition. Carries the same
+// action- and parameter-level granularity the registry needs: `default` applies
+// to the whole tool, `actions` overrides per discriminated-union action, and
+// `parameters` gates individual schema properties (stripped when unmet).
+export interface ToolRequirements {
+  default: ToolRequirement;
+  actions?: Record<string, ToolRequirement>;
+  parameters?: Record<string, ToolRequirement>;
+}
+
 // Enhanced tool definition interface that includes handler function
 export interface EnhancedToolDefinition extends ToolDefinition {
   handler: (args: unknown) => Promise<unknown>;
   gate?: FeatureGate; // Optional - tools without gate are always enabled
+  /**
+   * Version/tier/admin requirements for this tool. When the detected instance
+   * does not meet them, the registry filters the tool (or strips gated
+   * parameters) from the catalog rather than surfacing an opaque call-time API
+   * error. Tools without requirements fall through to a conservative gate.
+   */
+  requirements?: ToolRequirements;
   /**
    * Mark the tool as idempotent (safe to retry on failure).
    * If not specified, idempotency is inferred from tool name:

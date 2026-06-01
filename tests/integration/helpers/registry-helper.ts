@@ -36,7 +36,7 @@ export class IntegrationTestHelper {
     await this.connectionManager.initialize();
 
     // Force rebuild the registry cache now that ConnectionManager is initialized
-    // This is needed because RegistryManager checks ToolAvailability during cache building
+    // This is needed because RegistryManager checks InstanceCapabilities during cache building
     // which requires ConnectionManager to be initialized first
     this.registryManager.refreshCache();
 

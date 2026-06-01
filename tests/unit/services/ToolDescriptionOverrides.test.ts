@@ -39,14 +39,10 @@ jest.mock('../../../src/logger', () => ({
 
 // Note: No need to mock tools module anymore - registry manager handles read-only tools internally
 
-// Mock the ToolAvailability service
-jest.mock('../../../src/services/ToolAvailability', () => ({
-  ToolAvailability: {
-    isToolAvailable: jest.fn().mockReturnValue(true),
-    isToolAvailableForInstance: jest.fn().mockReturnValue(true),
-    getUnavailableReason: jest.fn().mockReturnValue(''),
-    getRestrictedParameters: jest.fn().mockReturnValue([]),
-  },
+// Mock the InstanceCapabilities gating helpers so tools are never filtered here
+jest.mock('../../../src/services/InstanceCapabilities', () => ({
+  isToolAvailable: jest.fn().mockReturnValue(true),
+  getRestrictedParameters: jest.fn().mockReturnValue([]),
 }));
 
 jest.mock('../../../src/services/ConnectionManager', () => ({

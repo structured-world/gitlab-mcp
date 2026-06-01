@@ -181,6 +181,12 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
       description:
         'Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), diffs (file-level changes with inline suggestions), compare (diff between any two refs), versions (list diff versions from pushes), version (get specific version with diffs). Related: manage_merge_request to create/update/merge.',
       inputSchema: z.toJSONSchema(BrowseMergeRequestsSchema),
+      requirements: {
+        default: { tier: 'free', minVersion: '8.0' },
+        actions: {
+          approvals: { tier: 'premium', minVersion: '10.6', notes: 'MR approvals' },
+        },
+      },
       gate: { envVar: 'USE_MRS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseMergeRequestsSchema.parse(args);
@@ -348,6 +354,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
       description:
         'Read discussion threads and draft review notes on merge requests. Actions: list (all threads with resolution status), drafts (unpublished draft notes), draft (single draft details). Related: manage_mr_discussion to comment, manage_draft_notes to create drafts.',
       inputSchema: z.toJSONSchema(BrowseMrDiscussionsSchema),
+      requirements: { default: { tier: 'free', minVersion: '8.0' } },
       gate: { envVar: 'USE_MRS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseMrDiscussionsSchema.parse(args);
@@ -404,6 +411,14 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
       description:
         'Create, update, merge, or approve merge requests. Actions: create (new MR from source to target), update (title/description/assignees/reviewers/labels), merge (into target branch), approve/unapprove (review approval), get_approval_state (current approvals). Related: browse_merge_requests for discovery.',
       inputSchema: z.toJSONSchema(ManageMergeRequestSchema),
+      requirements: {
+        default: { tier: 'free', minVersion: '8.0' },
+        actions: {
+          approve: { tier: 'premium', minVersion: '10.6', notes: 'MR approvals' },
+          unapprove: { tier: 'premium', minVersion: '10.6', notes: 'MR approvals' },
+          get_approval_state: { tier: 'premium', minVersion: '13.8', notes: 'MR approval state' },
+        },
+      },
       gate: { envVar: 'USE_MRS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageMergeRequestSchema.parse(args);
@@ -562,6 +577,17 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
       description:
         'Post comments, start threads, and suggest code changes on merge requests. Actions: comment (simple note), thread (line-level discussion), reply (to existing thread), update (edit note text), resolve (toggle thread resolution), suggest (code suggestion block), apply_suggestion/apply_suggestions (accept code suggestions). Related: browse_mr_discussions to read threads.',
       inputSchema: z.toJSONSchema(ManageMrDiscussionSchema),
+      requirements: {
+        default: { tier: 'free', minVersion: '8.0' },
+        actions: {
+          thread: { tier: 'free', minVersion: '11.0' },
+          reply: { tier: 'free', minVersion: '11.0' },
+          apply_suggestion: { tier: 'free', minVersion: '13.0' },
+          apply_suggestions: { tier: 'free', minVersion: '13.0' },
+          resolve: { tier: 'free', minVersion: '10.0', notes: 'Resolve discussion threads' },
+          suggest: { tier: 'free', minVersion: '10.5', notes: 'Code suggestions' },
+        },
+      },
       gate: { envVar: 'USE_MRS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageMrDiscussionSchema.parse(args);
@@ -733,6 +759,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
       description:
         "Create and manage unpublished review comments on merge requests. Actions: create (new draft), update (modify text), publish (make single draft visible), publish_all (submit entire review), delete (discard draft). Related: browse_mr_discussions action 'drafts' to list existing drafts.",
       inputSchema: z.toJSONSchema(ManageDraftNotesSchema),
+      requirements: { default: { tier: 'free', minVersion: '13.2' } },
       gate: { envVar: 'USE_MRS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageDraftNotesSchema.parse(args);

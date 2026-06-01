@@ -4,8 +4,8 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { RegistryManager } from '../registry-manager';
-import { ToolAvailability } from '../services/ToolAvailability';
-import { EnhancedToolDefinition } from '../types';
+import { getHighestTier, resolveRequirement } from '../services/InstanceCapabilities';
+import { EnhancedToolDefinition, ToolRequirements } from '../types';
 import { ProfileLoader, Preset, Profile } from '../profiles';
 
 interface JsonSchemaProperty {
@@ -308,34 +308,26 @@ function printEnvironmentInfo(): void {
  *   actions requiring a higher tier than the default. For example, a tool with
  *   default Free tier but some Premium-only actions shows "Premium*".
  */
-function getToolTierInfo(toolName: string, action?: string): string {
+function getToolTierInfo(requirements: ToolRequirements | undefined, action?: string): string {
+  const tierLabels: Record<string, string> = {
+    free: 'Free',
+    premium: 'Premium',
+    ultimate: 'Ultimate',
+  };
+
   // For action-specific queries, get exact tier
   if (action) {
-    const requirement = ToolAvailability.getToolRequirement(toolName, action);
-    if (!requirement) return '';
-
-    const tierBadge =
-      {
-        free: 'Free',
-        premium: 'Premium',
-        ultimate: 'Ultimate',
-      }[requirement.requiredTier] ?? requirement.requiredTier;
-
-    return `[tier: ${tierBadge}]`;
+    if (!requirements) return '';
+    const tier = resolveRequirement(requirements, action).tier ?? 'free';
+    return `[tier: ${tierLabels[tier] ?? tier}]`;
   }
 
   // For tool-level queries, show highest tier required by any action
-  const highestTier = ToolAvailability.getHighestTier(toolName);
-  const tierBadge =
-    {
-      free: 'Free',
-      premium: 'Premium',
-      ultimate: 'Ultimate',
-    }[highestTier] ?? highestTier;
+  const highestTier = getHighestTier(requirements);
+  const tierBadge = tierLabels[highestTier] ?? highestTier;
 
   // Mark if tool has mixed tiers (default tier differs from highest tier)
-  const toolReq = ToolAvailability.getActionRequirement(toolName);
-  const defaultTier = toolReq?.tier ?? 'free';
+  const defaultTier = requirements?.default.tier ?? 'free';
   const hasMixedTiers = highestTier !== defaultTier;
 
   if (hasMixedTiers) {
@@ -831,7 +823,7 @@ function generateExportMarkdown(
     lines.push('');
 
     for (const tool of entityTools) {
-      const tierInfo = getToolTierInfo(tool.name);
+      const tierInfo = getToolTierInfo(tool.requirements);
       const tierDisplay = tierInfo ? ` ${tierInfo}` : '';
 
       lines.push(`### ${tool.name}${tierDisplay}`);
@@ -847,7 +839,7 @@ function generateExportMarkdown(
         lines.push('| Action | Tier | Description |');
         lines.push('|--------|------|-------------|');
         for (const action of actions) {
-          const actionTierInfo = getToolTierInfo(tool.name, action.name);
+          const actionTierInfo = getToolTierInfo(tool.requirements, action.name);
           const tierDisplay = actionTierInfo.replace('[tier: ', '').replace(/]/g, '') || 'Free';
           lines.push(`| \`${action.name}\` | ${tierDisplay} | ${action.description} |`);
         }
@@ -1723,6 +1715,7 @@ export async function main() {
     name: def.name,
     description: def.description,
     inputSchema: def.inputSchema,
+    requirements: def.requirements,
   }));
 
   // Filter by entity if specified
@@ -1755,8 +1748,8 @@ export async function main() {
       const output = filteredTools.map((tool) => ({
         name: tool.name,
         description: tool.description,
-        tier: ToolAvailability.getToolRequirement(tool.name)?.requiredTier ?? 'unknown',
-        minVersion: ToolAvailability.getToolRequirement(tool.name)?.minVersion,
+        tier: tool.requirements?.default.tier ?? 'unknown',
+        minVersion: tool.requirements?.default.minVersion,
         parameters: tool.inputSchema,
       }));
       console.log(JSON.stringify(output, null, 2));
@@ -1796,7 +1789,7 @@ export async function main() {
           console.log(`## ${entity}\n`);
 
           for (const tool of entityTools) {
-            const tierInfo = getToolTierInfo(tool.name);
+            const tierInfo = getToolTierInfo(tool.requirements);
             const tierDisplay = tierInfo ? ` ${tierInfo}` : '';
             console.log(`### ${tool.name}${tierDisplay}`);
             console.log(`**Description**: ${tool.description}\n`);
@@ -1816,7 +1809,7 @@ export async function main() {
       } else {
         // Detailed view for filtered results
         for (const tool of filteredTools) {
-          const tierInfo = getToolTierInfo(tool.name);
+          const tierInfo = getToolTierInfo(tool.requirements);
           const tierDisplay = tierInfo ? ` ${tierInfo}` : '';
           console.log(`## ${tool.name}${tierDisplay}\n`);
           console.log(`**Description**: ${tool.description}\n`);

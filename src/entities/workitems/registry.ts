@@ -279,6 +279,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       description:
         'Find and inspect issues, epics, tasks, and other work items. Actions: list (groups return epics, projects return issues/tasks, filter by type/state/labels), get (by numeric ID or namespace+iid from URL path). Related: manage_work_item to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),
+      requirements: { default: { tier: 'free', minVersion: '15.0' } },
       gate: { envVar: 'USE_WORKITEMS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseWorkItemsSchema.parse(args);
@@ -400,6 +401,14 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       description:
         'Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), delete_timelog (remove a time tracking entry by its global ID), add_link/remove_link (BLOCKS/BLOCKED_BY/RELATED). Related: browse_work_items for discovery.',
       inputSchema: z.toJSONSchema(ManageWorkItemSchema),
+      requirements: {
+        default: { tier: 'free', minVersion: '15.0' },
+        parameters: {
+          weight: { tier: 'premium', minVersion: '15.0', notes: 'Work item weight widget' },
+          iterationId: { tier: 'premium', minVersion: '15.0', notes: 'Iteration widget' },
+          healthStatus: { tier: 'ultimate', minVersion: '15.0', notes: 'Health status widget' },
+        },
+      },
       gate: { envVar: 'USE_WORKITEMS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageWorkItemSchema.parse(args);

@@ -343,6 +343,28 @@ describe('list-tools script', () => {
     expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('[tier: Free]'));
   });
 
+  it('omits the tier badge for tools without a requirements block', async () => {
+    // A tool with no requirements (e.g. local context tools) must not claim a
+    // Free tier badge — that conflicts with the json output reporting "unknown".
+    process.argv = ['node', 'list-tools.ts', '--verbose'];
+    mockManager.getAllToolDefinitionsTierless.mockReturnValue([
+      {
+        name: 'unannotated_tool',
+        description: 'no requirements',
+        inputSchema: { type: 'object' },
+      },
+    ]);
+
+    const { main } = await import('../../../src/cli/list-tools');
+    await main();
+
+    const headingCall = mockConsoleLog.mock.calls.find(
+      (c) => typeof c[0] === 'string' && c[0].includes('unannotated_tool'),
+    );
+    expect(headingCall).toBeDefined();
+    expect(headingCall![0]).not.toContain('[tier:');
+  });
+
   it('should handle detail flag', async () => {
     process.argv = ['node', 'list-tools.ts', '--detail'];
 

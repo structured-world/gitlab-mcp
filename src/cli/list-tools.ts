@@ -1748,8 +1748,10 @@ export async function main() {
       const output = filteredTools.map((tool) => ({
         name: tool.name,
         description: tool.description,
-        tier: tool.requirements?.default.tier ?? 'unknown',
-        minVersion: tool.requirements?.default.minVersion,
+        // Mirror the documented ToolRequirement defaults (tier→free, minVersion→8.0)
+        // when requirements are declared; only an absent requirements block is 'unknown'.
+        tier: tool.requirements ? (tool.requirements.default.tier ?? 'free') : 'unknown',
+        minVersion: tool.requirements ? (tool.requirements.default.minVersion ?? '8.0') : undefined,
         parameters: tool.inputSchema,
       }));
       console.log(JSON.stringify(output, null, 2));

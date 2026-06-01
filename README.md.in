@@ -123,6 +123,7 @@ The server handles GitLab connectivity issues gracefully:
 | `USE_MEMBERS` | `true` | Team members |
 | `USE_SEARCH` | `true` | Cross-project search |
 | `USE_ITERATIONS` | `true` | Iteration planning (sprints) |
+| `USE_JOB_TOKEN_SCOPE` | `true` | CI/CD job token scope and allowlist |
 
 ## Contributing
 

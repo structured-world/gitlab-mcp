@@ -93,6 +93,7 @@ Enable or disable tool groups:
 | `USE_MEMBERS` | Team member tools | `true` |
 | `USE_SEARCH` | Cross-project search | `true` |
 | `USE_ITERATIONS` | Iteration planning (sprints) | `true` |
+| `USE_JOB_TOKEN_SCOPE` | CI/CD job token scope and allowlist tools | `true` |
 
 ## Server Configuration
 

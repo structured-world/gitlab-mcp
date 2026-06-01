@@ -6,7 +6,7 @@ import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { enhancedFetch } from '../../utils/fetch';
 import { logError } from '../../logger';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Pipelines tools registry - 3 CQRS tools replacing 12 individual tools
@@ -32,10 +32,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowsePipelinesSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_pipelines', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_pipelines tool`);
-        }
+        assertActionAllowed('browse_pipelines', input.action);
 
         switch (input.action) {
           case 'list': {
@@ -200,10 +197,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManagePipelineSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_pipeline', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_pipeline tool`);
-        }
+        assertActionAllowed('manage_pipeline', input.action);
 
         switch (input.action) {
           case 'create': {
@@ -327,10 +321,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManagePipelineJobSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_pipeline_job', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_pipeline_job tool`);
-        }
+        assertActionAllowed('manage_pipeline_job', input.action);
 
         switch (input.action) {
           case 'play': {

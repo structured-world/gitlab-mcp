@@ -4,7 +4,7 @@ import { ManageWikiSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { resolveNamespaceForAPI } from '../../utils/namespace';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Wiki tools registry - 2 CQRS tools replacing 5 individual tools
@@ -29,10 +29,7 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown) => {
         const input = BrowseWikiSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_wiki', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_wiki tool`);
-        }
+        assertActionAllowed('browse_wiki', input.action);
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
@@ -76,10 +73,7 @@ export const wikiToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown) => {
         const input = ManageWikiSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_wiki', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_wiki tool`);
-        }
+        assertActionAllowed('manage_wiki', input.action);
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 

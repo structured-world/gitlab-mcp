@@ -2,7 +2,8 @@ import * as z from 'zod';
 import { BrowseIntegrationsSchema } from './schema-readonly';
 import { ManageIntegrationSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
-import { getEffectiveProjectId, isActionDenied } from '../../config';
+import { getEffectiveProjectId } from '../../config';
+import { assertActionAllowed } from '../utils';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 
 /**
@@ -29,10 +30,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
       handler: async (args: unknown) => {
         const input = BrowseIntegrationsSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_integrations', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_integrations tool`);
-        }
+        assertActionAllowed('browse_integrations', input.action);
 
         const projectId = getEffectiveProjectId(input.project_id);
 
@@ -80,10 +78,7 @@ export const integrationsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
       handler: async (args: unknown) => {
         const input = ManageIntegrationSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_integration', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_integration tool`);
-        }
+        assertActionAllowed('manage_integration', input.action);
 
         const projectId = getEffectiveProjectId(input.project_id);
         const integrationSlug = input.integration;

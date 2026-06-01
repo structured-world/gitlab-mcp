@@ -4,7 +4,7 @@ import { ManageLabelSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { resolveNamespaceForAPI } from '../../utils/namespace';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Labels tools registry - 2 CQRS tools replacing 5 individual tools
@@ -29,10 +29,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
       handler: async (args: unknown) => {
         const input = BrowseLabelsSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_labels', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_labels tool`);
-        }
+        assertActionAllowed('browse_labels', input.action);
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
@@ -81,10 +78,7 @@ export const labelsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
       handler: async (args: unknown) => {
         const input = ManageLabelSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_label', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_label tool`);
-        }
+        assertActionAllowed('manage_label', input.action);
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 

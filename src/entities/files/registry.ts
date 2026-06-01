@@ -5,7 +5,7 @@ import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { enhancedFetch } from '../../utils/fetch';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 import { parseGitLabApiError } from '../../utils/error-handler';
 
 /**
@@ -31,10 +31,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
       handler: async (args: unknown) => {
         const input = BrowseFilesSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_files', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_files tool`);
-        }
+        assertActionAllowed('browse_files', input.action);
 
         switch (input.action) {
           case 'tree': {
@@ -114,10 +111,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
       handler: async (args: unknown) => {
         const input = ManageFilesSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_files', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_files tool`);
-        }
+        assertActionAllowed('manage_files', input.action);
 
         switch (input.action) {
           case 'single': {

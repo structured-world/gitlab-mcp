@@ -14,7 +14,7 @@ import {
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Response shape for MR status check before merge.
@@ -191,10 +191,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
       handler: async (args: unknown) => {
         const input = BrowseMergeRequestsSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_merge_requests', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_merge_requests tool`);
-        }
+        assertActionAllowed('browse_merge_requests', input.action);
 
         switch (input.action) {
           case 'list': {
@@ -359,10 +356,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
       handler: async (args: unknown) => {
         const input = BrowseMrDiscussionsSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_mr_discussions', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_mr_discussions tool`);
-        }
+        assertActionAllowed('browse_mr_discussions', input.action);
 
         switch (input.action) {
           case 'list': {
@@ -423,10 +417,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
       handler: async (args: unknown) => {
         const input = ManageMergeRequestSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_merge_request', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_merge_request tool`);
-        }
+        assertActionAllowed('manage_merge_request', input.action);
 
         switch (input.action) {
           case 'create': {
@@ -592,10 +583,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
       handler: async (args: unknown) => {
         const input = ManageMrDiscussionSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_mr_discussion', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_mr_discussion tool`);
-        }
+        assertActionAllowed('manage_mr_discussion', input.action);
 
         switch (input.action) {
           case 'comment': {
@@ -764,10 +752,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
       handler: async (args: unknown) => {
         const input = ManageDraftNotesSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_draft_notes', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_draft_notes tool`);
-        }
+        assertActionAllowed('manage_draft_notes', input.action);
 
         switch (input.action) {
           case 'create': {

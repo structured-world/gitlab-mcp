@@ -3,7 +3,7 @@ import { BrowseWorkItemsSchema } from './schema-readonly';
 import { ManageWorkItemSchema } from './schema';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { ConnectionManager } from '../../services/ConnectionManager';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 import { getWorkItemTypes } from '../../utils/workItemTypes';
 import {
   cleanWorkItemResponse,
@@ -284,10 +284,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseWorkItemsSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_work_items', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_work_items tool`);
-        }
+        assertActionAllowed('browse_work_items', input.action);
 
         switch (input.action) {
           case 'list': {
@@ -413,10 +410,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageWorkItemSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_work_item', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_work_item tool`);
-        }
+        assertActionAllowed('manage_work_item', input.action);
 
         switch (input.action) {
           case 'create': {

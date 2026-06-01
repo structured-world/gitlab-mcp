@@ -3,7 +3,7 @@ import { BrowseWebhooksSchema } from './schema-readonly';
 import { ManageWebhookSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Webhooks tools registry - 2 CQRS tools (discriminated union schema)
@@ -28,10 +28,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       handler: async (args: unknown) => {
         const input = BrowseWebhooksSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_webhooks', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_webhooks tool`);
-        }
+        assertActionAllowed('browse_webhooks', input.action);
 
         // Helper to determine base API path from scope
         const getBasePath = (scope: 'project' | 'group', projectId?: string, groupId?: string) => {
@@ -96,10 +93,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       handler: async (args: unknown) => {
         const input = ManageWebhookSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_webhook', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_webhook tool`);
-        }
+        assertActionAllowed('manage_webhook', input.action);
 
         // Determine base path from scope and IDs
         const getBasePath = (scope: 'project' | 'group', projectId?: string, groupId?: string) => {

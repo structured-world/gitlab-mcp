@@ -3,7 +3,7 @@ import { BrowseSnippetsSchema } from './schema-readonly';
 import { ManageSnippetSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Snippets tools registry - 2 CQRS tools replacing 5 individual tools
@@ -28,10 +28,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseSnippetsSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_snippets', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_snippets tool`);
-        }
+        assertActionAllowed('browse_snippets', input.action);
 
         switch (input.action) {
           case 'list': {
@@ -103,10 +100,7 @@ export const snippetsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageSnippetSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_snippet', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_snippet tool`);
-        }
+        assertActionAllowed('manage_snippet', input.action);
 
         switch (input.action) {
           case 'create': {

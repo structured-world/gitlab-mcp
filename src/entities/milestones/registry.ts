@@ -5,7 +5,7 @@ import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { resolveNamespaceForAPI } from '../../utils/namespace';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 // assertDefined no longer needed - discriminated union provides type safety
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Milestones tools registry - 2 CQRS tools replacing 9 individual tools
@@ -35,10 +35,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       handler: async (args: unknown) => {
         const input = BrowseMilestonesSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_milestones', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_milestones tool`);
-        }
+        assertActionAllowed('browse_milestones', input.action);
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
@@ -111,10 +108,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       handler: async (args: unknown) => {
         const input = ManageMilestoneSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_milestone', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_milestone tool`);
-        }
+        assertActionAllowed('manage_milestone', input.action);
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 

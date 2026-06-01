@@ -3,7 +3,7 @@ import { BrowseMembersSchema } from './schema-readonly';
 import { ManageMemberSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Members tools registry - 2 CQRS tools
@@ -38,10 +38,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseMembersSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_members', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_members tool`);
-        }
+        assertActionAllowed('browse_members', input.action);
 
         switch (input.action) {
           case 'list_project': {
@@ -127,10 +124,7 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageMemberSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_member', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_member tool`);
-        }
+        assertActionAllowed('manage_member', input.action);
 
         switch (input.action) {
           case 'add_to_project': {

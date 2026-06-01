@@ -4,7 +4,7 @@ import { ManageVariableSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { resolveNamespaceForAPI } from '../../utils/namespace';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Variables tools registry - 2 CQRS tools replacing 5 individual tools
@@ -29,10 +29,7 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       handler: async (args: unknown) => {
         const input = BrowseVariablesSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_variables', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_variables tool`);
-        }
+        assertActionAllowed('browse_variables', input.action);
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 
@@ -82,10 +79,7 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       handler: async (args: unknown) => {
         const input = ManageVariableSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_variable', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_variable tool`);
-        }
+        assertActionAllowed('manage_variable', input.action);
 
         const { entityType, encodedPath } = await resolveNamespaceForAPI(input.namespace);
 

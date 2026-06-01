@@ -3,7 +3,7 @@ import { BrowseRefsSchema } from './schema-readonly';
 import { ManageRefSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Refs tools registry - 2 CQRS tools
@@ -36,10 +36,7 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseRefsSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_refs', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_refs tool`);
-        }
+        assertActionAllowed('browse_refs', input.action);
 
         const encodedProjectId = encodeURIComponent(input.project_id);
 
@@ -126,10 +123,7 @@ export const refsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageRefSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_ref', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_ref tool`);
-        }
+        assertActionAllowed('manage_ref', input.action);
 
         const encodedProjectId = encodeURIComponent(input.project_id);
 

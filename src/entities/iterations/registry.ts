@@ -3,7 +3,7 @@ import * as z from 'zod';
 import { BrowseIterationsSchema } from './schema-readonly';
 import { enhancedFetch } from '../../utils/fetch';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Iterations tools registry - 1 CQRS tool
@@ -24,10 +24,7 @@ export const iterationsToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       handler: async (args: unknown) => {
         const input = BrowseIterationsSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_iterations', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_iterations tool`);
-        }
+        assertActionAllowed('browse_iterations', input.action);
 
         switch (input.action) {
           case 'list': {

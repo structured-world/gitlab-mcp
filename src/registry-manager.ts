@@ -36,6 +36,10 @@ import {
   getIterationsReadOnlyToolNames,
 } from './entities/iterations/registry';
 import {
+  jobTokenScopeToolRegistry,
+  getJobTokenScopeReadOnlyToolNames,
+} from './entities/job-token-scope/registry';
+import {
   GITLAB_BASE_URL,
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
@@ -56,6 +60,7 @@ import {
   USE_MEMBERS,
   USE_SEARCH,
   USE_ITERATIONS,
+  USE_JOB_TOKEN_SCOPE,
   getToolDescriptionOverrides,
 } from './config';
 import { isToolAvailable, getRestrictedParameters } from './services/InstanceCapabilities';
@@ -191,6 +196,10 @@ class RegistryManager {
       this.registries.set('iterations', iterationsToolRegistry);
     }
 
+    if (USE_JOB_TOKEN_SCOPE) {
+      this.registries.set('job-token-scope', jobTokenScopeToolRegistry);
+    }
+
     // All entity registries have been migrated to the new pattern!
   }
 
@@ -283,6 +292,10 @@ class RegistryManager {
 
     if (USE_ITERATIONS) {
       readOnlyTools.push(...getIterationsReadOnlyToolNames());
+    }
+
+    if (USE_JOB_TOKEN_SCOPE) {
+      readOnlyTools.push(...getJobTokenScopeReadOnlyToolNames());
     }
 
     return readOnlyTools;
@@ -683,6 +696,7 @@ class RegistryManager {
     const useMembers = process.env.USE_MEMBERS !== 'false';
     const useSearch = process.env.USE_SEARCH !== 'false';
     const useIterations = process.env.USE_ITERATIONS !== 'false';
+    const useJobTokenScope = process.env.USE_JOB_TOKEN_SCOPE !== 'false';
 
     // Build registries map based on dynamic feature flags
     const registriesToUse = new Map<string, ToolRegistry>();
@@ -710,6 +724,7 @@ class RegistryManager {
     if (useMembers) registriesToUse.set('members', membersToolRegistry);
     if (useSearch) registriesToUse.set('search', searchToolRegistry);
     if (useIterations) registriesToUse.set('iterations', iterationsToolRegistry);
+    if (useJobTokenScope) registriesToUse.set('job-token-scope', jobTokenScopeToolRegistry);
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -808,6 +823,7 @@ class RegistryManager {
       membersToolRegistry,
       searchToolRegistry,
       iterationsToolRegistry,
+      jobTokenScopeToolRegistry,
     ];
 
     for (const registry of allRegistries) {

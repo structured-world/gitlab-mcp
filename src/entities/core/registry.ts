@@ -20,7 +20,7 @@ import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { smartUserSearch, type UserSearchParams } from '../../utils/smart-user-search';
 import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Core tools registry - CQRS consolidated
@@ -43,9 +43,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseProjectsSchema.parse(args);
 
-        if (isActionDenied('browse_projects', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_projects tool`);
-        }
+        assertActionAllowed('browse_projects', input.action);
 
         switch (input.action) {
           case 'search': {
@@ -186,9 +184,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseNamespacesSchema.parse(args);
 
-        if (isActionDenied('browse_namespaces', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_namespaces tool`);
-        }
+        assertActionAllowed('browse_namespaces', input.action);
 
         switch (input.action) {
           case 'list': {
@@ -272,9 +268,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseCommitsSchema.parse(args);
 
-        if (isActionDenied('browse_commits', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_commits tool`);
-        }
+        assertActionAllowed('browse_commits', input.action);
 
         switch (input.action) {
           case 'list': {
@@ -371,9 +365,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseEventsSchema.parse(args);
 
-        if (isActionDenied('browse_events', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_events tool`);
-        }
+        assertActionAllowed('browse_events', input.action);
 
         const buildQueryParams = (opts: {
           target_type?: string;
@@ -440,9 +432,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseUsersSchema.parse(args);
 
-        if (isActionDenied('browse_users', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_users tool`);
-        }
+        assertActionAllowed('browse_users', input.action);
 
         switch (input.action) {
           case 'search': {
@@ -517,9 +507,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseTodosSchema.parse(args);
 
-        if (isActionDenied('browse_todos', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_todos tool`);
-        }
+        assertActionAllowed('browse_todos', input.action);
 
         switch (input.action) {
           case 'list': {
@@ -579,9 +567,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageProjectSchema.parse(args);
 
-        if (isActionDenied('manage_project', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_project tool`);
-        }
+        assertActionAllowed('manage_project', input.action);
 
         switch (input.action) {
           case 'create': {
@@ -828,9 +814,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageNamespaceSchema.parse(args);
 
-        if (isActionDenied('manage_namespace', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_namespace tool`);
-        }
+        assertActionAllowed('manage_namespace', input.action);
 
         switch (input.action) {
           case 'create': {
@@ -930,9 +914,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageTodosSchema.parse(args);
 
-        if (isActionDenied('manage_todos', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_todos tool`);
-        }
+        assertActionAllowed('manage_todos', input.action);
 
         switch (input.action) {
           case 'mark_done': {

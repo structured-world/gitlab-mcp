@@ -1,7 +1,7 @@
 import * as z from 'zod';
 import { BrowseSearchSchema } from './schema-readonly';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 import { gitlab, paths, toQuery } from '../../utils/gitlab-api';
 
 /**
@@ -33,10 +33,7 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseSearchSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_search', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_search tool`);
-        }
+        assertActionAllowed('browse_search', input.action);
 
         switch (input.action) {
           case 'global': {

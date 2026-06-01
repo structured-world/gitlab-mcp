@@ -3,7 +3,7 @@ import { BrowseReleasesSchema } from './schema-readonly';
 import { ManageReleaseSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Releases tools registry - 2 CQRS tools
@@ -27,10 +27,7 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseReleasesSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_releases', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for browse_releases tool`);
-        }
+        assertActionAllowed('browse_releases', input.action);
 
         const encodedProjectId = encodeURIComponent(input.project_id);
 
@@ -85,10 +82,7 @@ export const releasesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageReleaseSchema.parse(args);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_release', input.action)) {
-          throw new Error(`Action '${input.action}' is not allowed for manage_release tool`);
-        }
+        assertActionAllowed('manage_release', input.action);
 
         const encodedProjectId = encodeURIComponent(input.project_id);
 

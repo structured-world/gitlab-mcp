@@ -297,7 +297,7 @@ function printEnvironmentInfo(): void {
 /**
  * Get tier information badge for a tool or action.
  *
- * @param toolName - The tool name
+ * @param requirements - The tool's declared requirements (or undefined for none)
  * @param action - Optional action name for action-specific tier
  * @returns Tier badge string, e.g., "[tier: Premium]" or "[tier: Premium*]"
  *

@@ -91,6 +91,41 @@ describe('list-tools script', () => {
     expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('"name": "test_tool"'));
   });
 
+  it('applies documented requirement defaults in json output', async () => {
+    // A tool with requirements but omitted tier/minVersion must report the
+    // documented defaults (free/8.0), not 'unknown'/undefined; a tool with no
+    // requirements at all stays 'unknown'/undefined.
+    process.argv = ['node', 'list-tools.ts', '--json'];
+    mockManager.getAllToolDefinitionsTierless.mockReturnValue([
+      {
+        name: 'partial_req_tool',
+        description: 'd',
+        inputSchema: { type: 'object' },
+        requirements: { default: {} },
+      },
+      {
+        name: 'no_req_tool',
+        description: 'd',
+        inputSchema: { type: 'object' },
+      },
+    ]);
+
+    const { main } = await import('../../../src/cli/list-tools');
+    await main();
+
+    const jsonCall = mockConsoleLog.mock.calls.find(
+      (c) => typeof c[0] === 'string' && (c[0] as string).includes('partial_req_tool'),
+    );
+    const output = JSON.parse(jsonCall![0] as string);
+    const partial = output.find((t: { name: string }) => t.name === 'partial_req_tool');
+    const none = output.find((t: { name: string }) => t.name === 'no_req_tool');
+
+    expect(partial.tier).toBe('free');
+    expect(partial.minVersion).toBe('8.0');
+    expect(none.tier).toBe('unknown');
+    expect(none.minVersion).toBeUndefined();
+  });
+
   it('should handle markdown format output with environment info', async () => {
     process.argv = ['node', 'list-tools.ts', '--env'];
 

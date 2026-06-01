@@ -694,13 +694,14 @@ describe('list-tools script', () => {
       const { main } = await import('../../../src/cli/list-tools');
       await main();
 
-      // Check actions table (now includes Tier column)
+      // Check actions table (now includes Tier column). browse_test declares no
+      // requirements, so each action's tier is Unknown, not an assumed Free.
       expect(mockConsoleLog).toHaveBeenCalledWith(expect.stringContaining('#### Actions'));
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('| `list` | Free | List items |'),
+        expect.stringContaining('| `list` | Unknown | List items |'),
       );
       expect(mockConsoleLog).toHaveBeenCalledWith(
-        expect.stringContaining('| `get` | Free | Get single item |'),
+        expect.stringContaining('| `get` | Unknown | Get single item |'),
       );
     });
 

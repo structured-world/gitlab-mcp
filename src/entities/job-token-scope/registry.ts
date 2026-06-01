@@ -27,6 +27,11 @@ function scopeBase(projectId: number): string {
   return `projects/${projectId}/job_token_scope`;
 }
 
+// Free tier throughout; the inbound project allowlist lands in GitLab 15.9 and
+// the group allowlist in 16.0.
+const SCOPE_REQ = { tier: 'free', minVersion: '15.9' } as const;
+const GROUP_REQ = { tier: 'free', minVersion: '16.0' } as const;
+
 /**
  * CI/CD job token scope tools registry - 2 CQRS tools.
  *
@@ -48,12 +53,7 @@ export const jobTokenScopeToolRegistry: ToolRegistry = new Map<string, EnhancedT
       description:
         'Inspect a project CI/CD job token inbound access scope. Actions: get (the inbound/outbound scope toggles), list_projects (projects allowed to reach this project via CI_JOB_TOKEN), list_groups (groups on the allowlist). Related: manage_job_token_scope to change the allowlist.',
       inputSchema: z.toJSONSchema(BrowseJobTokenScopeSchema),
-      requirements: {
-        default: { tier: 'free', minVersion: '15.9' },
-        actions: {
-          list_groups: { tier: 'free', minVersion: '16.0' },
-        },
-      },
+      requirements: { default: SCOPE_REQ, actions: { list_groups: GROUP_REQ } },
       gate: { envVar: 'USE_JOB_TOKEN_SCOPE', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseJobTokenScopeSchema.parse(args);
@@ -84,11 +84,8 @@ export const jobTokenScopeToolRegistry: ToolRegistry = new Map<string, EnhancedT
         'Manage a project CI/CD job token inbound allowlist. Actions: set_enabled (turn allowlist enforcement on/off), add_project / remove_project (grant or revoke a project), add_group / remove_group (grant or revoke a group). Required to allow cross-project CI_JOB_TOKEN access once the legacy open-access mode is removed. Related: browse_job_token_scope to inspect.',
       inputSchema: z.toJSONSchema(ManageJobTokenScopeSchema),
       requirements: {
-        default: { tier: 'free', minVersion: '15.9' },
-        actions: {
-          add_group: { tier: 'free', minVersion: '16.0' },
-          remove_group: { tier: 'free', minVersion: '16.0' },
-        },
+        default: SCOPE_REQ,
+        actions: { add_group: GROUP_REQ, remove_group: GROUP_REQ },
       },
       gate: { envVar: 'USE_JOB_TOKEN_SCOPE', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {

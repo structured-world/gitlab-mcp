@@ -3,7 +3,7 @@ import { BrowseJobTokenScopeSchema } from './schema-readonly';
 import { ManageJobTokenScopeSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { isActionDenied } from '../../config';
+import { assertActionAllowed } from '../utils';
 
 /**
  * Resolve a project identifier to its numeric ID.
@@ -20,6 +20,11 @@ async function resolveProjectNumericId(projectId: string): Promise<number> {
   }
   const project = await gitlab.get<{ id: number }>(`projects/${encodeURIComponent(trimmed)}`);
   return project.id;
+}
+
+/** Base path for a project's job token scope endpoints. */
+function scopeBase(projectId: number): string {
+  return `projects/${projectId}/job_token_scope`;
 }
 
 /**
@@ -52,38 +57,18 @@ export const jobTokenScopeToolRegistry: ToolRegistry = new Map<string, EnhancedT
       gate: { envVar: 'USE_JOB_TOKEN_SCOPE', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseJobTokenScopeSchema.parse(args);
+        assertActionAllowed('browse_job_token_scope', input.action);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('browse_job_token_scope', input.action)) {
-          throw new Error(
-            `Action '${input.action}' is not allowed for browse_job_token_scope tool`,
-          );
+        const base = scopeBase(await resolveProjectNumericId(input.project_id));
+
+        if (input.action === 'get') {
+          return gitlab.get(base);
         }
 
-        const projectId = await resolveProjectNumericId(input.project_id);
-
-        switch (input.action) {
-          case 'get':
-            return gitlab.get(`projects/${projectId}/job_token_scope`);
-
-          case 'list_projects': {
-            const { action: _action, project_id: _project_id, ...pagination } = input;
-            return gitlab.get(`projects/${projectId}/job_token_scope/allowlist`, {
-              query: toQuery(pagination, []),
-            });
-          }
-
-          case 'list_groups': {
-            const { action: _action, project_id: _project_id, ...pagination } = input;
-            return gitlab.get(`projects/${projectId}/job_token_scope/groups_allowlist`, {
-              query: toQuery(pagination, []),
-            });
-          }
-
-          /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
-          default:
-            throw new Error(`Unknown action: ${(input as { action: string }).action}`);
-        }
+        // list_projects | list_groups — same shape, different allowlist endpoint
+        const suffix = input.action === 'list_projects' ? 'allowlist' : 'groups_allowlist';
+        const { action: _action, project_id: _project_id, ...pagination } = input;
+        return gitlab.get(`${base}/${suffix}`, { query: toQuery(pagination, []) });
       },
     },
   ],
@@ -108,53 +93,33 @@ export const jobTokenScopeToolRegistry: ToolRegistry = new Map<string, EnhancedT
       gate: { envVar: 'USE_JOB_TOKEN_SCOPE', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageJobTokenScopeSchema.parse(args);
+        assertActionAllowed('manage_job_token_scope', input.action);
 
-        // Runtime validation: reject denied actions even if they bypass schema filtering
-        if (isActionDenied('manage_job_token_scope', input.action)) {
-          throw new Error(
-            `Action '${input.action}' is not allowed for manage_job_token_scope tool`,
-          );
+        const base = scopeBase(await resolveProjectNumericId(input.project_id));
+
+        if (input.action === 'set_enabled') {
+          return gitlab.patch(base, { body: { enabled: input.enabled }, contentType: 'json' });
         }
 
-        const projectId = await resolveProjectNumericId(input.project_id);
+        // The remaining actions all target one of the two allowlists.
+        const isProject = input.action === 'add_project' || input.action === 'remove_project';
+        const suffix = isProject ? 'allowlist' : 'groups_allowlist';
 
-        switch (input.action) {
-          case 'set_enabled':
-            return gitlab.patch(`projects/${projectId}/job_token_scope`, {
-              body: { enabled: input.enabled },
-              contentType: 'json',
-            });
-
-          case 'add_project':
-            return gitlab.post(`projects/${projectId}/job_token_scope/allowlist`, {
-              body: { target_project_id: input.target_project_id },
-              contentType: 'json',
-            });
-
-          case 'remove_project': {
-            await gitlab.delete(
-              `projects/${projectId}/job_token_scope/allowlist/${input.target_project_id}`,
-            );
-            return { removed: true, target_project_id: input.target_project_id };
-          }
-
-          case 'add_group':
-            return gitlab.post(`projects/${projectId}/job_token_scope/groups_allowlist`, {
-              body: { target_group_id: input.target_group_id },
-              contentType: 'json',
-            });
-
-          case 'remove_group': {
-            await gitlab.delete(
-              `projects/${projectId}/job_token_scope/groups_allowlist/${input.target_group_id}`,
-            );
-            return { removed: true, target_group_id: input.target_group_id };
-          }
-
-          /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
-          default:
-            throw new Error(`Unknown action: ${(input as { action: string }).action}`);
+        if (input.action === 'add_project' || input.action === 'add_group') {
+          const body =
+            input.action === 'add_project'
+              ? { target_project_id: input.target_project_id }
+              : { target_group_id: input.target_group_id };
+          return gitlab.post(`${base}/${suffix}`, { body, contentType: 'json' });
         }
+
+        // remove_project | remove_group
+        const targetId =
+          input.action === 'remove_project' ? input.target_project_id : input.target_group_id;
+        await gitlab.delete(`${base}/${suffix}/${targetId}`);
+        return isProject
+          ? { removed: true, target_project_id: targetId }
+          : { removed: true, target_group_id: targetId };
       },
     },
   ],

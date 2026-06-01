@@ -75,6 +75,8 @@ describe('Job Token Scope Registry', () => {
         'browse_job_token_scope',
       ]);
       expect(getFilteredJobTokenScopeTools(false)).toHaveLength(2);
+      // Default (no arg) is non-read-only: both tools.
+      expect(getFilteredJobTokenScopeTools()).toHaveLength(2);
       expect(getJobTokenScopeToolDefinitions()).toHaveLength(2);
     });
 

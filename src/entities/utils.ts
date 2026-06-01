@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { isActionDenied } from '../config';
 
 const DEFAULT_NULL = process.env.DEFAULT_NULL === 'true';
 
@@ -119,4 +120,16 @@ export function validateScopeId(data: {
     return !!data.groupId;
   }
   return true;
+}
+
+/**
+ * Reject a tool action disabled via denied-actions config, even if it bypassed
+ * schema-level filtering. Shared by entity handlers so the guard is defined once.
+ *
+ * @throws Error when the action is denied for the given tool.
+ */
+export function assertActionAllowed(toolName: string, action: string): void {
+  if (isActionDenied(toolName, action)) {
+    throw new Error(`Action '${action}' is not allowed for ${toolName} tool`);
+  }
 }

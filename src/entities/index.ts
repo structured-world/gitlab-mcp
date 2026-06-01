@@ -15,6 +15,5 @@ export * from './members';
 export * from './search';
 export * from './context';
 export * from './iterations';
-export * from './job-token-scope';
 
 // All entities now use the registry pattern with embedded handlers

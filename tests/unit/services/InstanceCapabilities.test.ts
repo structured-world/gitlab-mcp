@@ -235,11 +235,12 @@ describe('shipped tool requirements (real data)', () => {
       expect(schemaJson).toContain(name);
     }
 
-    // Free strips all gated params; ultimate strips none.
+    // Free strips all gated params; ultimate strips none. Order is irrelevant,
+    // so compare as sets.
     const free = { version: '17.0.0', tier: 'free' as const };
     const ultimate = { version: '17.0.0', tier: 'ultimate' as const };
-    expect(getRestrictedParameters(tool.requirements, free).sort()).toEqual(
-      Object.keys(params).sort(),
+    expect(new Set(getRestrictedParameters(tool.requirements, free))).toEqual(
+      new Set(Object.keys(params)),
     );
     expect(getRestrictedParameters(tool.requirements, ultimate)).toEqual([]);
   });
@@ -260,9 +261,8 @@ describe('shipped tool requirements (real data)', () => {
 
     // Premium instance keeps premium params, still strips the ultimate ones.
     const premium = { version: '17.0.0', tier: 'premium' as const };
-    const stripped = getRestrictedParameters(tool.requirements, premium).sort();
-    expect(stripped).toEqual(
-      ['only_allow_merge_if_all_status_checks_passed', 'requirements_access_level'].sort(),
+    expect(new Set(getRestrictedParameters(tool.requirements, premium))).toEqual(
+      new Set(['only_allow_merge_if_all_status_checks_passed', 'requirements_access_level']),
     );
   });
 });

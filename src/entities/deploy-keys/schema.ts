@@ -27,7 +27,7 @@ const AddDeployKeySchema = z.object({
   expires_at: z
     .string()
     .optional()
-    .describe('Optional expiry as an ISO 8601 datetime (e.g. "2026-12-31T00:00:00Z").'),
+    .describe('Optional expiry date in YYYY-MM-DD format (e.g. "2026-12-31").'),
 });
 
 // --- Action: enable ---
@@ -56,11 +56,21 @@ const DeleteDeployKeySchema = z.object({
 });
 
 // --- Discriminated union combining all actions ---
-export const ManageDeployKeySchema = z.discriminatedUnion('action', [
-  AddDeployKeySchema,
-  EnableDeployKeySchema,
-  UpdateDeployKeySchema,
-  DeleteDeployKeySchema,
-]);
+export const ManageDeployKeySchema = z
+  .discriminatedUnion('action', [
+    AddDeployKeySchema,
+    EnableDeployKeySchema,
+    UpdateDeployKeySchema,
+    DeleteDeployKeySchema,
+  ])
+  // An update with no fields would send an empty body and be rejected by GitLab;
+  // require at least one updatable field.
+  .refine(
+    (data) => data.action !== 'update' || data.title !== undefined || data.can_push !== undefined,
+    {
+      message: 'update requires at least one of: title, can_push',
+      path: ['title'],
+    },
+  );
 
 export type ManageDeployKeyInput = z.infer<typeof ManageDeployKeySchema>;

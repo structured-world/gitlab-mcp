@@ -32,8 +32,9 @@ export interface FeatureGate {
 // Tier/version/admin requirement for a tool, one of its actions, or one of its
 // parameters. All fields optional: absent tier defaults to 'free', absent
 // minVersion to '8.0', absent requiresAdmin to false. Consulted by the registry
-// (via InstanceCapabilities) to filter tools/actions/parameters that the target
-// GitLab instance cannot satisfy, instead of letting them fail at call time.
+// (via InstanceCapabilities) to filter out unsupported tools and strip
+// restricted parameters, instead of letting them fail at call time. (Action-level
+// entries also drive tier-badge documentation.)
 export interface ToolRequirement {
   tier?: 'free' | 'premium' | 'ultimate';
   minVersion?: string;

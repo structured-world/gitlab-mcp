@@ -658,8 +658,8 @@ export class ConnectionManager {
 
   /**
    * Aggregate the instance's capabilities (version, tier, features, token scopes,
-   * admin status) into a single typed blob. Composes the per-signal getters so
-   * callers (registry filtering, whoami) take one snapshot instead of N lookups.
+   * admin status) into a single typed blob. Composes the per-signal getters so a
+   * caller can take one snapshot instead of N separate lookups.
    *
    * @throws when version detection has not completed for the URL (same contract
    *   as {@link getInstanceInfo}); callers that tolerate uninitialized state

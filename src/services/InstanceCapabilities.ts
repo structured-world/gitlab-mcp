@@ -124,7 +124,7 @@ export function getRestrictedParameters(
 
 /**
  * Human-readable reason a tool/action is unavailable, or null when available.
- * Used by diagnostics (whoami, list-tools) to explain filtering.
+ * Intended for diagnostics that explain why a tool was filtered.
  */
 export function getUnmetReason(
   reqs: ToolRequirements | undefined,

@@ -61,6 +61,7 @@ const FeatureFlagsSchema = z
     refs: z.boolean().optional(),
     members: z.boolean().optional(),
     search: z.boolean().optional(),
+    ci_tokens: z.boolean().optional(),
   })
   .optional();
 

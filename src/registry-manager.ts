@@ -40,6 +40,10 @@ import {
   getJobTokenScopeReadOnlyToolNames,
 } from './entities/job-token-scope/registry';
 import {
+  deployKeysToolRegistry,
+  getDeployKeysReadOnlyToolNames,
+} from './entities/deploy-keys/registry';
+import {
   GITLAB_BASE_URL,
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
@@ -60,7 +64,7 @@ import {
   USE_MEMBERS,
   USE_SEARCH,
   USE_ITERATIONS,
-  USE_JOB_TOKEN_SCOPE,
+  USE_CI_TOKENS,
   getToolDescriptionOverrides,
 } from './config';
 import { isToolAvailable, getRestrictedParameters } from './services/InstanceCapabilities';
@@ -196,8 +200,9 @@ class RegistryManager {
       this.registries.set('iterations', iterationsToolRegistry);
     }
 
-    if (USE_JOB_TOKEN_SCOPE) {
+    if (USE_CI_TOKENS) {
       this.registries.set('job-token-scope', jobTokenScopeToolRegistry);
+      this.registries.set('deploy-keys', deployKeysToolRegistry);
     }
 
     // All entity registries have been migrated to the new pattern!
@@ -294,8 +299,9 @@ class RegistryManager {
       readOnlyTools.push(...getIterationsReadOnlyToolNames());
     }
 
-    if (USE_JOB_TOKEN_SCOPE) {
+    if (USE_CI_TOKENS) {
       readOnlyTools.push(...getJobTokenScopeReadOnlyToolNames());
+      readOnlyTools.push(...getDeployKeysReadOnlyToolNames());
     }
 
     return readOnlyTools;
@@ -696,7 +702,7 @@ class RegistryManager {
     const useMembers = process.env.USE_MEMBERS !== 'false';
     const useSearch = process.env.USE_SEARCH !== 'false';
     const useIterations = process.env.USE_ITERATIONS !== 'false';
-    const useJobTokenScope = process.env.USE_JOB_TOKEN_SCOPE !== 'false';
+    const useCiTokens = process.env.USE_CI_TOKENS !== 'false';
 
     // Build registries map based on dynamic feature flags
     const registriesToUse = new Map<string, ToolRegistry>();
@@ -724,7 +730,10 @@ class RegistryManager {
     if (useMembers) registriesToUse.set('members', membersToolRegistry);
     if (useSearch) registriesToUse.set('search', searchToolRegistry);
     if (useIterations) registriesToUse.set('iterations', iterationsToolRegistry);
-    if (useJobTokenScope) registriesToUse.set('job-token-scope', jobTokenScopeToolRegistry);
+    if (useCiTokens) {
+      registriesToUse.set('job-token-scope', jobTokenScopeToolRegistry);
+      registriesToUse.set('deploy-keys', deployKeysToolRegistry);
+    }
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -824,6 +833,7 @@ class RegistryManager {
       searchToolRegistry,
       iterationsToolRegistry,
       jobTokenScopeToolRegistry,
+      deployKeysToolRegistry,
     ];
 
     for (const registry of allRegistries) {

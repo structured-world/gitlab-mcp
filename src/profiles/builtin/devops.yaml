@@ -31,3 +31,4 @@ features:
   refs: true        # Branch/tag management
   members: false    # No team management
   search: true      # Code search for debugging
+  ci_tokens: true   # Job token scope + deploy keys (CI access credentials)

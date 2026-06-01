@@ -33,6 +33,7 @@ const FEATURE_ENV_MAP: Record<string, string> = {
   refs: 'USE_REFS',
   members: 'USE_MEMBERS',
   search: 'USE_SEARCH',
+  ci_tokens: 'USE_CI_TOKENS',
 };
 
 // ============================================================================

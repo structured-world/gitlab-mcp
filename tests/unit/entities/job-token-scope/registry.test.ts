@@ -85,6 +85,11 @@ describe('Job Token Scope Registry', () => {
       expect(browse().requirements?.actions?.list_groups?.minVersion).toBe('16.0');
       expect(manage().requirements?.actions?.add_group?.minVersion).toBe('16.0');
     });
+
+    it('is gated by the shared USE_CI_TOKENS umbrella flag', () => {
+      expect(browse().gate?.envVar).toBe('USE_CI_TOKENS');
+      expect(manage().gate?.envVar).toBe('USE_CI_TOKENS');
+    });
   });
 
   describe('browse_job_token_scope', () => {

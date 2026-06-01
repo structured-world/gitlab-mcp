@@ -135,6 +135,10 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   browse_job_token_scope: ['api', 'read_api'],
   manage_job_token_scope: ['api'],
 
+  // Deploy keys
+  browse_deploy_keys: ['api', 'read_api'],
+  manage_deploy_key: ['api'],
+
   // Wiki
   browse_wiki: ['api', 'read_api'],
   manage_wiki: ['api'],

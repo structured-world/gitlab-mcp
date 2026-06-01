@@ -315,9 +315,12 @@ function getToolTierInfo(requirements: ToolRequirements | undefined, action?: st
     ultimate: 'Ultimate',
   };
 
+  // No declared requirements (e.g. local context tools) — emit no badge rather
+  // than claiming Free, consistent with the json output reporting "unknown".
+  if (!requirements) return '';
+
   // For action-specific queries, get exact tier
   if (action) {
-    if (!requirements) return '';
     const tier = resolveRequirement(requirements, action).tier ?? 'free';
     return `[tier: ${tierLabels[tier] ?? tier}]`;
   }

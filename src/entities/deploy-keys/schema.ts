@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { requiredId, flexibleBoolean } from '../utils';
+import { flexibleBoolean } from '../utils';
+import { projectIdField, keyIdField } from './schema-readonly';
 
 // ============================================================================
 // manage_deploy_key - CQRS Command Tool (discriminated union schema)
@@ -9,10 +10,6 @@ import { requiredId, flexibleBoolean } from '../utils';
 // access the repository without a user PAT. Project-level, Free tier.
 // ============================================================================
 
-const projectIdField = requiredId.describe(
-  "Project ID or URL-encoded path (e.g. 'group/project' or '123').",
-);
-const keyIdField = z.coerce.number().int().positive().describe('Numeric deploy key ID.');
 const canPushField = flexibleBoolean
   .optional()
   .describe('Whether the key may push to the repository (read/write). Default false (read-only).');

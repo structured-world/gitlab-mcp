@@ -1,7 +1,6 @@
 import {
   deployKeysToolRegistry,
   getDeployKeysReadOnlyToolNames,
-  getDeployKeysToolDefinitions,
 } from '../../../../src/entities/deploy-keys/registry';
 import { enhancedFetch } from '../../../../src/utils/fetch';
 
@@ -65,7 +64,7 @@ describe('Deploy Keys Registry', () => {
 
     it('exposes only the browse tool as read-only', () => {
       expect(getDeployKeysReadOnlyToolNames()).toEqual(['browse_deploy_keys']);
-      expect(getDeployKeysToolDefinitions()).toHaveLength(2);
+      expect(deployKeysToolRegistry.size).toBe(2);
     });
 
     it('declares the Free-tier requirement on both tools', () => {

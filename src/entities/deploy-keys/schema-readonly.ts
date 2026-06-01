@@ -9,10 +9,10 @@ import { requiredId, paginationFields } from '../utils';
 // repository access without a user PAT — used by CI/automation to clone/push.
 // ============================================================================
 
-const projectIdField = requiredId.describe(
+export const projectIdField = requiredId.describe(
   "Project ID or URL-encoded path (e.g. 'group/project' or '123').",
 );
-const keyIdField = z.coerce.number().int().positive().describe('Numeric deploy key ID.');
+export const keyIdField = z.coerce.number().int().positive().describe('Numeric deploy key ID.');
 
 // --- Action: list ---
 const ListDeployKeysSchema = z.object({

@@ -96,16 +96,7 @@ export const deployKeysToolRegistry: ToolRegistry = new Map<string, EnhancedTool
   ],
 ]);
 
-/**
- * Get read-only tool names from the registry
- */
+/** Read-only tool names from the registry (for read-only mode filtering). */
 export function getDeployKeysReadOnlyToolNames(): string[] {
   return ['browse_deploy_keys'];
-}
-
-/**
- * Get all tool definitions from the registry
- */
-export function getDeployKeysToolDefinitions(): EnhancedToolDefinition[] {
-  return Array.from(deployKeysToolRegistry.values());
 }

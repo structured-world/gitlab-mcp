@@ -843,7 +843,9 @@ function generateExportMarkdown(
         lines.push('|--------|------|-------------|');
         for (const action of actions) {
           const actionTierInfo = getToolTierInfo(tool.requirements, action.name);
-          const tierDisplay = actionTierInfo.replace('[tier: ', '').replace(/]/g, '') || 'Free';
+          // Empty badge means the tool declares no requirements: report Unknown
+          // rather than assuming Free (consistent with the json "unknown" tier).
+          const tierDisplay = actionTierInfo.replace('[tier: ', '').replace(/]/g, '') || 'Unknown';
           lines.push(`| \`${action.name}\` | ${tierDisplay} | ${action.description} |`);
         }
         lines.push('');

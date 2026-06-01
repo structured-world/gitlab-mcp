@@ -219,6 +219,52 @@ describe('shipped tool requirements (real data)', () => {
       notes: 'Burndown charts',
     });
   });
+
+  it('tier-gates the premium/ultimate group attributes on manage_namespace', () => {
+    const { coreToolRegistry } = require('../../../src/entities/core/registry');
+    const tool = coreToolRegistry.get('manage_namespace');
+    const params = tool?.requirements?.parameters;
+    expect(params?.membership_lock?.tier).toBe('premium');
+    expect(params?.wiki_access_level?.tier).toBe('premium');
+    expect(params?.unique_project_download_limit?.tier).toBe('ultimate');
+
+    // Gated params must actually exist in the tool schema — otherwise the gate
+    // is dead config that strips nothing.
+    const schemaJson = JSON.stringify(tool?.inputSchema);
+    for (const name of Object.keys(params)) {
+      expect(schemaJson).toContain(name);
+    }
+
+    // Free strips all gated params; ultimate strips none.
+    const free = { version: '17.0.0', tier: 'free' as const };
+    const ultimate = { version: '17.0.0', tier: 'ultimate' as const };
+    expect(getRestrictedParameters(tool.requirements, free).sort()).toEqual(
+      Object.keys(params).sort(),
+    );
+    expect(getRestrictedParameters(tool.requirements, ultimate)).toEqual([]);
+  });
+
+  it('tier-gates the premium/ultimate project attributes on manage_project', () => {
+    const { coreToolRegistry } = require('../../../src/entities/core/registry');
+    const tool = coreToolRegistry.get('manage_project');
+    const params = tool?.requirements?.parameters;
+    expect(params?.merge_pipelines_enabled?.tier).toBe('premium');
+    expect(params?.issues_template?.tier).toBe('premium');
+    expect(params?.requirements_access_level?.tier).toBe('ultimate');
+    expect(params?.only_allow_merge_if_all_status_checks_passed?.tier).toBe('ultimate');
+
+    const schemaJson = JSON.stringify(tool?.inputSchema);
+    for (const name of Object.keys(params)) {
+      expect(schemaJson).toContain(name);
+    }
+
+    // Premium instance keeps premium params, still strips the ultimate ones.
+    const premium = { version: '17.0.0', tier: 'premium' as const };
+    const stripped = getRestrictedParameters(tool.requirements, premium).sort();
+    expect(stripped).toEqual(
+      ['only_allow_merge_if_all_status_checks_passed', 'requirements_access_level'].sort(),
+    );
+  });
 });
 
 describe('ConnectionManager.getInstanceCapabilities', () => {

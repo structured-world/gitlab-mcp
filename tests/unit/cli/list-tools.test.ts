@@ -114,7 +114,7 @@ describe('list-tools script', () => {
     await main();
 
     const jsonCall = mockConsoleLog.mock.calls.find(
-      (c) => typeof c[0] === 'string' && (c[0] as string).includes('partial_req_tool'),
+      (c) => typeof c[0] === 'string' && c[0].includes('partial_req_tool'),
     );
     const output = JSON.parse(jsonCall![0] as string);
     const partial = output.find((t: { name: string }) => t.name === 'partial_req_tool');

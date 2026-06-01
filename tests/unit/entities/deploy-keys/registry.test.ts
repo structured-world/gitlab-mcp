@@ -169,5 +169,12 @@ describe('Deploy Keys Registry', () => {
       ).rejects.toThrow();
       expect(mockEnhancedFetch).not.toHaveBeenCalled();
     });
+
+    it('rejects an update with neither title nor can_push (empty body)', async () => {
+      await expect(
+        manage().handler({ action: 'update', project_id: '123', key_id: 9 }),
+      ).rejects.toThrow();
+      expect(mockEnhancedFetch).not.toHaveBeenCalled();
+    });
   });
 });

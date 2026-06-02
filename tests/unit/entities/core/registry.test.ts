@@ -399,6 +399,22 @@ describe('Core Registry', () => {
         expect(result).toEqual(mockApiResponse);
       });
 
+      it('should list pending-delete projects with include_deleted', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          status: 200,
+          json: jest.fn().mockResolvedValue([{ id: 9, name: 'deleted-project' }]),
+        } as any);
+
+        const tool = coreToolRegistry.get('browse_projects');
+        await tool!.handler({ action: 'list', include_deleted: true });
+
+        const calledUrl = mockEnhancedFetch.mock.calls[0][0];
+        expect(calledUrl).toContain('include_pending_delete=true');
+        // active=true would filter the deleted projects back out, so it must not be sent.
+        expect(calledUrl).not.toContain('active=true');
+      });
+
       it('should get project with action: get', async () => {
         const mockApiResponse = {
           id: 123,

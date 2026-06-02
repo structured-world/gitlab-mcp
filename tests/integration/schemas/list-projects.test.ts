@@ -88,6 +88,25 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
       }
     }, 15000);
 
+    it('should accept include_deleted and return pending-delete projects (admin)', async () => {
+      const params = { action: 'list' as const, include_deleted: true, per_page: 5 };
+
+      const paramResult = BrowseProjectsSchema.safeParse(params);
+      expect(paramResult.success).toBe(true);
+
+      if (paramResult.success) {
+        // Exercises the include_pending_delete path end-to-end against the live
+        // (admin) instance. Each returned entry is a project; whether any are
+        // pending-delete is environment-specific, so we assert shape, not count.
+        const projects = (await helper.executeTool('browse_projects', paramResult.data)) as any[];
+        expect(Array.isArray(projects)).toBe(true);
+        for (const p of projects) {
+          expect(p).toHaveProperty('id');
+        }
+        console.log(`  include_deleted returned ${projects.length} projects`);
+      }
+    }, 15000);
+
     it('should validate full project schema with simple=false', async () => {
       console.log('🔍 BrowseProjectsSchema - Testing full project schema validation');
 

@@ -81,12 +81,15 @@ describe('detectAdminStatus', () => {
     expect(mockEnhancedFetch).toHaveBeenCalledTimes(1);
   });
 
-  it('treats a missing is_admin field as non-admin', async () => {
+  it('returns null (fail-open) when is_admin is absent from /user', async () => {
+    // GitLab always includes is_admin for the current user, so a missing field
+    // means a partial/altered response - stay fail-open rather than asserting
+    // non-admin (which would gate an admin's tools off on a transient blip).
     mockEnhancedFetch.mockResolvedValueOnce(userResponse(undefined));
 
     const result = await detectAdminStatus();
 
-    expect(result).toEqual({ isAdmin: false, adminModeActive: false });
+    expect(result).toBeNull();
   });
 
   it('returns null when the request throws', async () => {

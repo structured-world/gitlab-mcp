@@ -96,4 +96,37 @@ describe('detectAdminStatus', () => {
 
     expect(result).toBeNull();
   });
+
+  it('returns null (fail-open) when /user returns an unexpected JSON shape', async () => {
+    // e.g. a proxy returns a JSON array/string instead of the user object.
+    mockEnhancedFetch.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      json: jest.fn().mockResolvedValue(['not', 'a', 'user']),
+    });
+
+    const result = await detectAdminStatus();
+
+    // Must NOT gate admin off on a parse failure - stay fail-open.
+    expect(result).toBeNull();
+  });
+
+  it('returns null (fail-open) on an indeterminate probe status (5xx)', async () => {
+    mockEnhancedFetch.mockResolvedValueOnce(userResponse(true));
+    mockEnhancedFetch.mockResolvedValueOnce({ ok: false, status: 502, json: jest.fn() });
+
+    const result = await detectAdminStatus();
+
+    // A transient 502 is not the same as a 403 elevation failure.
+    expect(result).toBeNull();
+  });
+
+  it('treats only a 403 probe as role-without-elevation', async () => {
+    mockEnhancedFetch.mockResolvedValueOnce(userResponse(true));
+    mockEnhancedFetch.mockResolvedValueOnce({ ok: false, status: 403, json: jest.fn() });
+
+    const result = await detectAdminStatus();
+
+    expect(result).toEqual({ isAdmin: true, adminModeActive: false });
+  });
 });

@@ -104,6 +104,13 @@ describe('Deploy Keys Registry', () => {
       const [url] = lastCall();
       expect(url).toBe('https://gitlab.example.com/api/v4/projects/123/deploy_keys/7');
     });
+
+    it('rejects public combined with project_id (instance-only flag)', async () => {
+      await expect(
+        browse().handler({ action: 'list', project_id: '123', public: true }),
+      ).rejects.toThrow();
+      expect(mockEnhancedFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe('manage_deploy_key', () => {

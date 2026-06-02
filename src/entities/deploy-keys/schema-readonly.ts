@@ -39,9 +39,16 @@ const GetDeployKeySchema = z.object({
 });
 
 // --- Discriminated union combining all actions ---
-export const BrowseDeployKeysSchema = z.discriminatedUnion('action', [
-  ListDeployKeysSchema,
-  GetDeployKeySchema,
-]);
+// `public` only applies to the instance-wide list (GET /deploy_keys); the
+// project-scoped endpoint rejects it, so forbid the nonsensical combination.
+export const BrowseDeployKeysSchema = z
+  .discriminatedUnion('action', [ListDeployKeysSchema, GetDeployKeySchema])
+  .refine(
+    (data) => data.action !== 'list' || data.public === undefined || data.project_id === undefined,
+    {
+      message: 'public is only valid for the instance-wide list (omit project_id)',
+      path: ['public'],
+    },
+  );
 
 export type BrowseDeployKeysInput = z.infer<typeof BrowseDeployKeysSchema>;

@@ -61,15 +61,15 @@ export async function detectAdminStatus(baseUrl?: string): Promise<AdminInfo | n
     }
 
     const parsed = UserAdminSchema.safeParse(await userResponse.json());
-    if (!parsed.success) {
-      // Unexpected shape (proxy HTML, API change). Cannot determine the role, so
-      // stay fail-open rather than gating admin tools off on a transient blip.
-      logDebug('Admin detection: /user response did not match the expected shape', { url });
+    if (!parsed.success || parsed.data.is_admin === undefined) {
+      // Unexpected shape, or is_admin absent (GitLab always includes it for the
+      // current user). Cannot determine the role, so stay fail-open rather than
+      // gating admin tools off on a partial/altered response.
+      logDebug('Admin detection: /user response missing or malformed is_admin', { url });
       return null;
     }
-    const isAdmin = parsed.data.is_admin ?? false;
 
-    if (!isAdmin) {
+    if (!parsed.data.is_admin) {
       return { isAdmin: false, adminModeActive: false };
     }
 

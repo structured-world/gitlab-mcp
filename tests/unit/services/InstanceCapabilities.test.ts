@@ -89,6 +89,17 @@ describe('meetsRequirement', () => {
     const unknown: CapabilityGate = { version: 'unknown', tier: 'free' };
     expect(meetsRequirement({ tier: 'ultimate', minVersion: '99.0' }, unknown)).toBe(true);
   });
+
+  it('still enforces the admin gate when version is unknown', () => {
+    // version-unknown fail-open covers version/tier, but admin elevation is a
+    // separate known signal: inactive elevation must still gate admin requirements.
+    const unknownNoElevation: CapabilityGate = {
+      version: 'unknown',
+      tier: 'free',
+      adminModeActive: false,
+    };
+    expect(meetsRequirement({ requiresAdmin: true }, unknownNoElevation)).toBe(false);
+  });
 });
 
 describe('isToolAvailable', () => {
@@ -131,6 +142,20 @@ describe('getRestrictedParameters', () => {
     expect(getRestrictedParameters(reqs, { version: 'unknown', tier: 'free' })).toEqual([]);
     expect(getRestrictedParameters({ default: { tier: 'free' } }, free17)).toEqual([]);
     expect(getRestrictedParameters(undefined, free17)).toEqual([]);
+  });
+
+  it('strips an admin-gated param when elevation is inactive even if version is unknown', () => {
+    const adminReqs = {
+      default: { tier: 'free' as const },
+      parameters: { include_deleted: { requiresAdmin: true } },
+    };
+    expect(
+      getRestrictedParameters(adminReqs, {
+        version: 'unknown',
+        tier: 'free',
+        adminModeActive: false,
+      }),
+    ).toContain('include_deleted');
   });
 });
 

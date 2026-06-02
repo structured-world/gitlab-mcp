@@ -473,6 +473,53 @@ describe('RegistryManager', () => {
       }
     });
 
+    it('strips admin params even when the instance version is unknown', () => {
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
+      const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
+      coreRegistry.set('tool_admin_param', {
+        name: 'tool_admin_param',
+        description: 'Tool with an admin-gated param',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: ['list'] },
+            include_deleted: { type: 'boolean' },
+          },
+          required: ['action'],
+        },
+        requirements: {
+          default: { tier: 'free', minVersion: '8.0' },
+          parameters: { include_deleted: { requiresAdmin: true } },
+        },
+        handler: jest.fn(),
+      });
+
+      try {
+        // Version unknown (detection deferred) but elevation known inactive: the
+        // admin-gated param must still be stripped (version/tier stay fail-open).
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: 'unknown' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getAdminInfo: jest.fn().mockReturnValue({ isAdmin: true, adminModeActive: false }),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        });
+        resetRegistryManagerSingleton();
+        const props = (
+          RegistryManager.getInstance().getTool('tool_admin_param')?.inputSchema as any
+        ).properties;
+        expect(props.include_deleted).toBeUndefined();
+        expect(props.action).toBeDefined();
+      } finally {
+        coreRegistry.delete('tool_admin_param');
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getAdminInfo: jest.fn().mockReturnValue(null),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        });
+      }
+    });
+
     it('should strip tier-restricted parameters from tool schema', () => {
       // Add a tool with properties to test parameter stripping
       const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;

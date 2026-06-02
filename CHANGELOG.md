@@ -4,6 +4,15 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [7.4.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.3.0...gitlab-mcp-v7.4.0) (2026-06-02)
+
+
+### Features
+
+* **ci:** add CI/CD job token scope and allowlist management ([#452](https://github.com/structured-world/gitlab-mcp/issues/452)) ([f61c308](https://github.com/structured-world/gitlab-mcp/commit/f61c308b01184e0d5ad83d15b7eb86c40cf106f3))
+* **deploy-keys:** expose deploy keys under a CI access umbrella flag ([#453](https://github.com/structured-world/gitlab-mcp/issues/453)) ([d44f419](https://github.com/structured-world/gitlab-mcp/commit/d44f4199da2ee201b9afa771c011b57062bb58af))
+* **registry:** declare tool requirements via InstanceCapabilities layer ([#449](https://github.com/structured-world/gitlab-mcp/issues/449)) ([7e6484e](https://github.com/structured-world/gitlab-mcp/commit/7e6484ecea6456e3e913d107bca70615bae37702))
+
 ## [7.3.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.2.0...gitlab-mcp-v7.3.0) (2026-05-23)
 
 

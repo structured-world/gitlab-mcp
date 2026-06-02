@@ -414,109 +414,82 @@ describe('RegistryManager', () => {
       });
     });
 
-    it('gates requiresAdmin params on active admin-mode elevation, not the role', () => {
+    // Shared fixtures for the admin-gating tests (kept DRY to avoid duplication).
+    const ADMIN_PARAM_TOOL = {
+      name: 'tool_admin_param',
+      description: 'Tool with an admin-gated param',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action: { type: 'string', enum: ['list'] },
+          include_deleted: { type: 'boolean' },
+        },
+        required: ['action'],
+      },
+      requirements: {
+        default: { tier: 'free', minVersion: '8.0' },
+        parameters: { include_deleted: { requiresAdmin: true } },
+      },
+      handler: jest.fn(),
+    };
+
+    const mockCM = (
+      version: string,
+      adminInfo: { isAdmin: boolean; adminModeActive: boolean } | null,
+    ) => {
       const { ConnectionManager } = require('../../src/services/ConnectionManager');
-      const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
-      coreRegistry.set('tool_admin_param', {
-        name: 'tool_admin_param',
-        description: 'Tool with an admin-gated param',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            action: { type: 'string', enum: ['list'] },
-            include_deleted: { type: 'boolean' },
-          },
-          required: ['action'],
-        },
-        requirements: {
-          default: { tier: 'free', minVersion: '8.0' },
-          parameters: { include_deleted: { requiresAdmin: true } },
-        },
-        handler: jest.fn(),
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getAdminInfo: jest.fn().mockReturnValue(adminInfo),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
+    };
 
-      const withAdminInfo = (adminInfo: { isAdmin: boolean; adminModeActive: boolean } | null) => {
-        ConnectionManager.getInstance.mockReturnValue({
-          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-          getTokenScopeInfo: jest.fn().mockReturnValue(null),
-          getAdminInfo: jest.fn().mockReturnValue(adminInfo),
-          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-        });
-        resetRegistryManagerSingleton();
-        return (RegistryManager.getInstance().getTool('tool_admin_param')?.inputSchema as any)
-          .properties;
-      };
+    const adminParamProps = (
+      version: string,
+      adminInfo: { isAdmin: boolean; adminModeActive: boolean } | null,
+    ) => {
+      mockCM(version, adminInfo);
+      resetRegistryManagerSingleton();
+      return (RegistryManager.getInstance().getTool('tool_admin_param')?.inputSchema as any)
+        .properties;
+    };
 
+    it('gates requiresAdmin params on active admin-mode elevation, not the role', () => {
+      const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
+      coreRegistry.set('tool_admin_param', ADMIN_PARAM_TOOL);
       try {
-        // Non-admin: stripped.
+        // Non-admin and admin-role-without-elevation both 403, so strip the param.
         expect(
-          withAdminInfo({ isAdmin: false, adminModeActive: false }).include_deleted,
+          adminParamProps('17.0.0', { isAdmin: false, adminModeActive: false }).include_deleted,
         ).toBeUndefined();
-        // Admin ROLE but admin mode NOT active: endpoint would 403, so strip it too.
         expect(
-          withAdminInfo({ isAdmin: true, adminModeActive: false }).include_deleted,
+          adminParamProps('17.0.0', { isAdmin: true, adminModeActive: false }).include_deleted,
         ).toBeUndefined();
-        // Admin with active elevation: kept.
+        // Active elevation keeps it; unprobed (OAuth/failed) fail-opens to keep it.
         expect(
-          withAdminInfo({ isAdmin: true, adminModeActive: true }).include_deleted,
+          adminParamProps('17.0.0', { isAdmin: true, adminModeActive: true }).include_deleted,
         ).toBeDefined();
-        // Unprobed (OAuth/failed): fail-open, kept.
-        expect(withAdminInfo(null).include_deleted).toBeDefined();
+        expect(adminParamProps('17.0.0', null).include_deleted).toBeDefined();
       } finally {
         coreRegistry.delete('tool_admin_param');
-        ConnectionManager.getInstance.mockReturnValue({
-          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-          getTokenScopeInfo: jest.fn().mockReturnValue(null),
-          getAdminInfo: jest.fn().mockReturnValue(null),
-          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-        });
+        mockCM('17.0.0', null);
       }
     });
 
     it('strips admin params even when the instance version is unknown', () => {
-      const { ConnectionManager } = require('../../src/services/ConnectionManager');
       const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
-      coreRegistry.set('tool_admin_param', {
-        name: 'tool_admin_param',
-        description: 'Tool with an admin-gated param',
-        inputSchema: {
-          type: 'object',
-          properties: {
-            action: { type: 'string', enum: ['list'] },
-            include_deleted: { type: 'boolean' },
-          },
-          required: ['action'],
-        },
-        requirements: {
-          default: { tier: 'free', minVersion: '8.0' },
-          parameters: { include_deleted: { requiresAdmin: true } },
-        },
-        handler: jest.fn(),
-      });
-
+      coreRegistry.set('tool_admin_param', ADMIN_PARAM_TOOL);
       try {
         // Version unknown (detection deferred) but elevation known inactive: the
         // admin-gated param must still be stripped (version/tier stay fail-open).
-        ConnectionManager.getInstance.mockReturnValue({
-          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: 'unknown' }),
-          getTokenScopeInfo: jest.fn().mockReturnValue(null),
-          getAdminInfo: jest.fn().mockReturnValue({ isAdmin: true, adminModeActive: false }),
-          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-        });
-        resetRegistryManagerSingleton();
-        const props = (
-          RegistryManager.getInstance().getTool('tool_admin_param')?.inputSchema as any
-        ).properties;
+        const props = adminParamProps('unknown', { isAdmin: true, adminModeActive: false });
         expect(props.include_deleted).toBeUndefined();
         expect(props.action).toBeDefined();
       } finally {
         coreRegistry.delete('tool_admin_param');
-        ConnectionManager.getInstance.mockReturnValue({
-          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-          getTokenScopeInfo: jest.fn().mockReturnValue(null),
-          getAdminInfo: jest.fn().mockReturnValue(null),
-          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-        });
+        mockCM('17.0.0', null);
       }
     });
 

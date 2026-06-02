@@ -98,7 +98,7 @@ Enable or disable tool groups:
 | `USE_RUNNERS` | CI runner management | `true` |
 | `USE_REGISTRY` | Container registry repositories and tags | `true` |
 | `USE_ACCESS_TOKENS` | Project/group/personal access token management | `true` |
-| `USE_AUDIT_EVENTS` | Audit events (Premium/Ultimate) | `true` |
+| `USE_AUDIT_EVENTS` | Audit events (Premium+) | `true` |
 | `USE_VULNERABILITIES` | Vulnerability management (Ultimate) | `true` |
 
 ## Server Configuration

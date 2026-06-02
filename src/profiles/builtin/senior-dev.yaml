@@ -31,6 +31,13 @@ features:
   refs: true        # Branch management
   members: false    # No team management
   search: true      # Code search
+  # GitLab 18/19 domains
+  environments: true    # Deployment visibility
+  runners: false        # Ops concern
+  registry: true        # Image inspection/cleanup
+  access_tokens: false  # Admin/security only
+  audit_events: false   # Compliance only
+  vulnerabilities: true  # Triage findings (Ultimate, tier-gated)
 
 # Block pipeline control and webhook management
 denied_actions:

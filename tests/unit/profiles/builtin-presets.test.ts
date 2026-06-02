@@ -117,6 +117,33 @@ describe('Built-in Presets', () => {
       expect(parsed.features?.refs).toBe(true);
       expect(parsed.features?.members).toBe(true);
       expect(parsed.features?.search).toBe(true);
+      // GitLab 18/19 domains
+      expect(parsed.features?.environments).toBe(true);
+      expect(parsed.features?.runners).toBe(true);
+      expect(parsed.features?.registry).toBe(true);
+      expect(parsed.features?.access_tokens).toBe(true);
+      expect(parsed.features?.audit_events).toBe(true);
+      expect(parsed.features?.vulnerabilities).toBe(true);
+    });
+
+    it('security.yaml should enable only security domains and read context', () => {
+      const filepath = path.join(builtinDir, 'security.yaml');
+      const content = fs.readFileSync(filepath, 'utf8');
+      const parsed = yaml.parse(content) as Preset;
+
+      // Security/compliance domains enabled
+      expect(parsed.features?.access_tokens).toBe(true);
+      expect(parsed.features?.audit_events).toBe(true);
+      expect(parsed.features?.vulnerabilities).toBe(true);
+      // Read context for investigation
+      expect(parsed.features?.files).toBe(true);
+      expect(parsed.features?.search).toBe(true);
+      // Not a code-ops persona
+      expect(parsed.features?.pipelines).toBe(false);
+      expect(parsed.features?.variables).toBe(false);
+      expect(parsed.features?.environments).toBe(false);
+      expect(parsed.features?.runners).toBe(false);
+      expect(parsed.features?.registry).toBe(false);
     });
 
     it('junior-dev.yaml should have pipelines disabled', () => {

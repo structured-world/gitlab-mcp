@@ -32,3 +32,10 @@ features:
   members: false    # No team management
   search: true      # Code search for debugging
   ci_tokens: true   # Job token scope + deploy keys (CI access credentials)
+  # GitLab 18/19 domains - infrastructure/ops
+  environments: true    # Deployment targets
+  runners: true         # CI runner management
+  registry: true        # Container image cleanup/audit
+  access_tokens: true   # Rotate CI/automation tokens
+  audit_events: false   # Compliance concern, not ops
+  vulnerabilities: false  # Security team concern

@@ -31,6 +31,13 @@ features:
   refs: false       # No branch management
   members: false    # No team management
   search: true      # Can search issues/MRs
+  # GitLab 18/19 domains - none (no code/infra ops)
+  environments: false
+  runners: false
+  registry: false
+  access_tokens: false
+  audit_events: false
+  vulnerabilities: false
 
 # Block code and pipeline operations
 denied_tools_regex: "^manage_(files|pipeline|variable)"

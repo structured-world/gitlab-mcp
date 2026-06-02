@@ -1,0 +1,28 @@
+description: "Security/Compliance - audit logs, vulnerability triage, token rotation; code browsing for context, no code-ops"
+read_only: false
+features:
+  # Investigation context (read)
+  files: true        # Read source for vulnerability triage
+  mrs: true          # Read MRs referenced by findings
+  workitems: true    # Read issues linked to findings
+  search: true       # Search code/issues during investigation
+  # Security and compliance domains
+  access_tokens: true   # List/rotate/revoke tokens (incident response)
+  audit_events: true    # Who did what, when (Premium+, tier-gated)
+  vulnerabilities: true  # Triage findings (Ultimate, tier-gated)
+  # Everything else off - not a code-ops persona
+  wiki: false
+  milestones: false
+  pipelines: false
+  labels: false
+  variables: false
+  webhooks: false
+  snippets: false
+  integrations: false
+  releases: false
+  refs: false
+  members: false
+  ci_tokens: false
+  environments: false
+  runners: false
+  registry: false

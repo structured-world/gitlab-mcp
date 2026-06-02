@@ -414,7 +414,7 @@ describe('RegistryManager', () => {
       });
     });
 
-    it('strips requiresAdmin params for a known non-admin and keeps them otherwise', () => {
+    it('gates requiresAdmin params on active admin-mode elevation, not the role', () => {
       const { ConnectionManager } = require('../../src/services/ConnectionManager');
       const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
       coreRegistry.set('tool_admin_param', {
@@ -435,29 +435,33 @@ describe('RegistryManager', () => {
         handler: jest.fn(),
       });
 
-      const withAdmin = (admin: boolean | null) => {
+      const withAdminInfo = (adminInfo: { isAdmin: boolean; adminModeActive: boolean } | null) => {
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
           getTokenScopeInfo: jest.fn().mockReturnValue(null),
-          getAdminInfo: jest
-            .fn()
-            .mockReturnValue(admin === null ? null : { isAdmin: admin, adminModeActive: admin }),
+          getAdminInfo: jest.fn().mockReturnValue(adminInfo),
           getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
         });
         resetRegistryManagerSingleton();
-        const props = (
-          RegistryManager.getInstance().getTool('tool_admin_param')?.inputSchema as any
-        ).properties;
-        return props;
+        return (RegistryManager.getInstance().getTool('tool_admin_param')?.inputSchema as any)
+          .properties;
       };
 
       try {
-        // Known non-admin: param stripped.
-        expect(withAdmin(false).include_deleted).toBeUndefined();
-        // Admin: param kept.
-        expect(withAdmin(true).include_deleted).toBeDefined();
-        // Unprobed (null -> isAdmin undefined): fail-open, param kept.
-        expect(withAdmin(null).include_deleted).toBeDefined();
+        // Non-admin: stripped.
+        expect(
+          withAdminInfo({ isAdmin: false, adminModeActive: false }).include_deleted,
+        ).toBeUndefined();
+        // Admin ROLE but admin mode NOT active: endpoint would 403, so strip it too.
+        expect(
+          withAdminInfo({ isAdmin: true, adminModeActive: false }).include_deleted,
+        ).toBeUndefined();
+        // Admin with active elevation: kept.
+        expect(
+          withAdminInfo({ isAdmin: true, adminModeActive: true }).include_deleted,
+        ).toBeDefined();
+        // Unprobed (OAuth/failed): fail-open, kept.
+        expect(withAdminInfo(null).include_deleted).toBeDefined();
       } finally {
         coreRegistry.delete('tool_admin_param');
         ConnectionManager.getInstance.mockReturnValue({

@@ -54,7 +54,7 @@ export const jobTokenScopeToolRegistry: ToolRegistry = new Map<string, EnhancedT
         'Inspect a project CI/CD job token inbound access scope. Actions: get (the inbound/outbound scope toggles), list_projects (projects allowed to reach this project via CI_JOB_TOKEN), list_groups (groups on the allowlist). Related: manage_job_token_scope to change the allowlist.',
       inputSchema: z.toJSONSchema(BrowseJobTokenScopeSchema),
       requirements: { default: SCOPE_REQ, actions: { list_groups: GROUP_REQ } },
-      gate: { envVar: 'USE_JOB_TOKEN_SCOPE', defaultValue: true },
+      gate: { envVar: 'USE_CI_TOKENS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseJobTokenScopeSchema.parse(args);
         assertActionAllowed('browse_job_token_scope', input.action);
@@ -87,7 +87,7 @@ export const jobTokenScopeToolRegistry: ToolRegistry = new Map<string, EnhancedT
         default: SCOPE_REQ,
         actions: { add_group: GROUP_REQ, remove_group: GROUP_REQ },
       },
-      gate: { envVar: 'USE_JOB_TOKEN_SCOPE', defaultValue: true },
+      gate: { envVar: 'USE_CI_TOKENS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageJobTokenScopeSchema.parse(args);
         assertActionAllowed('manage_job_token_scope', input.action);

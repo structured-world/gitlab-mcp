@@ -89,7 +89,7 @@ Enable or disable tool groups:
 | `USE_MEMBERS` | `true` | Team member management |
 | `USE_SEARCH` | `true` | Cross-project search |
 | `USE_ITERATIONS` | `true` | Iteration planning (sprints) |
-| `USE_JOB_TOKEN_SCOPE` | `true` | CI/CD job token scope and allowlist |
+| `USE_CI_TOKENS` | `true` | CI access credentials: job token scope and deploy keys |
 
 ## Next Steps
 

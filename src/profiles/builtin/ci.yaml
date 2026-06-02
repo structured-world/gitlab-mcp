@@ -30,6 +30,7 @@ features:
   refs: false       # No branch management
   members: false    # No team management
   search: false     # No search needed for CI
+  ci_tokens: true   # Job token scope + deploy keys (CI access credentials)
 
 # Block workflow-related operations
 denied_tools_regex: "^manage_(work_item|mr|label|milestone|wiki)"

@@ -4,6 +4,14 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [7.5.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.4.0...gitlab-mcp-v7.5.0) (2026-06-02)
+
+
+### Features
+
+* **context:** probe admin mode elevation and expose in whoami ([#459](https://github.com/structured-world/gitlab-mcp/issues/459)) ([5c163d6](https://github.com/structured-world/gitlab-mcp/commit/5c163d6cb72bb101c6e2e811d7e8bf21c2099d5c))
+* **profiles:** add six domain feature flags and a security profile ([#457](https://github.com/structured-world/gitlab-mcp/issues/457)) ([9fcc007](https://github.com/structured-world/gitlab-mcp/commit/9fcc00707db2eb19cb20aad7c1be8138de824d83))
+
 ## [7.4.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.3.0...gitlab-mcp-v7.4.0) (2026-06-02)
 
 

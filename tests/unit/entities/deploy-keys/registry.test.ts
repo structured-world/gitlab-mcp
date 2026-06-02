@@ -105,6 +105,14 @@ describe('Deploy Keys Registry', () => {
       expect(url).toBe('https://gitlab.example.com/api/v4/projects/123/deploy_keys/7');
     });
 
+    it('accepts a string boolean for public on the instance list', async () => {
+      mockOk([{ id: 1 }]);
+      await browse().handler({ action: 'list', public: 'true' });
+
+      const [url] = lastCall();
+      expect(url).toContain('public=true');
+    });
+
     it('rejects public combined with project_id (instance-only flag)', async () => {
       await expect(
         browse().handler({ action: 'list', project_id: '123', public: true }),

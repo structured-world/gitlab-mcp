@@ -82,12 +82,15 @@ export function resolveRequirement(reqs: ToolRequirements, action?: string): Too
  * undefined status (probe not landed / OAuth) is permissive.
  */
 export function meetsRequirement(req: ToolRequirement, caps: CapabilityGate): boolean {
+  // The admin gate is independent of version detection: if elevation is known
+  // inactive, the endpoint will 403 regardless of whether the version probe
+  // landed, so gate it BEFORE the version-unknown fail-open.
+  if (req.requiresAdmin && caps.adminModeActive === false) return false;
   if (caps.version === 'unknown') return true;
   if (parseVersion(caps.version) < parseVersion(req.minVersion ?? DEFAULT_MIN_VERSION)) {
     return false;
   }
   if (!isTierSufficient(caps.tier, req.tier)) return false;
-  if (req.requiresAdmin && caps.adminModeActive === false) return false;
   return true;
 }
 
@@ -103,10 +106,14 @@ export function isToolAvailable(
   caps: CapabilityGate,
   action?: string,
 ): boolean {
-  if (caps.version === 'unknown') return true;
   if (!reqs) {
-    return parseVersion(caps.version) >= parseVersion(UNKNOWN_TOOL_MIN_VERSION);
+    // Unannotated tools have no admin gate; only the conservative version floor.
+    return caps.version === 'unknown'
+      ? true
+      : parseVersion(caps.version) >= parseVersion(UNKNOWN_TOOL_MIN_VERSION);
   }
+  // Delegate to meetsRequirement so the admin gate applies even when version is
+  // unknown (it short-circuits version/tier internally).
   return meetsRequirement(resolveRequirement(reqs, action), caps);
 }
 
@@ -119,7 +126,9 @@ export function getRestrictedParameters(
   reqs: ToolRequirements | undefined,
   caps: CapabilityGate,
 ): string[] {
-  if (!reqs?.parameters || caps.version === 'unknown') return [];
+  if (!reqs?.parameters) return [];
+  // No blanket version-unknown skip: meetsRequirement still fail-opens version/tier
+  // when unknown, but an admin-gated param with inactive elevation stays restricted.
   return Object.entries(reqs.parameters)
     .filter(([, req]) => !meetsRequirement(req, caps))
     .map(([name]) => name);
@@ -134,6 +143,10 @@ export function getUnmetReason(
   caps: CapabilityGate,
   action?: string,
 ): string | null {
+  // Admin gate first — independent of version detection (see meetsRequirement).
+  if (reqs && resolveRequirement(reqs, action).requiresAdmin && caps.adminModeActive === false) {
+    return 'Requires active admin-mode elevation';
+  }
   if (caps.version === 'unknown') return null;
   if (!reqs) {
     return parseVersion(caps.version) >= parseVersion(UNKNOWN_TOOL_MIN_VERSION)
@@ -146,9 +159,6 @@ export function getUnmetReason(
   }
   if (!isTierSufficient(caps.tier, req.tier)) {
     return `Requires GitLab ${req.tier ?? DEFAULT_TIER} tier or higher, current tier is ${caps.tier}`;
-  }
-  if (req.requiresAdmin && caps.adminModeActive === false) {
-    return 'Requires active admin-mode elevation';
   }
   return null;
 }

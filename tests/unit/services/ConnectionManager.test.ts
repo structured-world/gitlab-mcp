@@ -60,6 +60,7 @@ function injectInstanceState(
     instanceInfo: null,
     schemaInfo: null,
     tokenScopeInfo: null,
+    adminInfo: null,
     isInitialized: false,
     introspectedInstanceUrl: null,
     ...overrides,
@@ -679,6 +680,62 @@ describe('ConnectionManager Unit', () => {
       expect(internals(manager).currentInstanceUrl).toBe('https://new-gitlab.com');
 
       initSpy.mockRestore();
+    });
+  });
+
+  describe('admin info and capabilities snapshot', () => {
+    let manager: ConnectionManager;
+
+    beforeEach(() => {
+      manager = ConnectionManager.getInstance();
+    });
+
+    it('getAdminInfo returns the per-instance admin status', () => {
+      injectInstanceState(manager, 'https://gitlab.example.com', {
+        adminInfo: { isAdmin: true, adminModeActive: false },
+      });
+
+      expect(manager.getAdminInfo('https://gitlab.example.com')).toEqual({
+        isAdmin: true,
+        adminModeActive: false,
+      });
+    });
+
+    it('getAdminInfo returns null when unprobed', () => {
+      injectInstanceState(manager, 'https://gitlab.example.com', { adminInfo: null });
+      expect(manager.getAdminInfo('https://gitlab.example.com')).toBeNull();
+    });
+
+    it('getInstanceCapabilities composes admin status into the snapshot', () => {
+      injectInstanceState(manager, 'https://gitlab.example.com', {
+        instanceInfo: {
+          version: '18.0.0',
+          tier: 'free',
+          features: {},
+          detectedAt: new Date(0),
+        } as unknown as InstanceState['instanceInfo'],
+        adminInfo: { isAdmin: true, adminModeActive: true },
+      });
+
+      const caps = manager.getInstanceCapabilities('https://gitlab.example.com');
+      expect(caps.isAdmin).toBe(true);
+      expect(caps.adminModeActive).toBe(true);
+    });
+
+    it('getInstanceCapabilities leaves admin fields undefined when unprobed', () => {
+      injectInstanceState(manager, 'https://gitlab.example.com', {
+        instanceInfo: {
+          version: '18.0.0',
+          tier: 'free',
+          features: {},
+          detectedAt: new Date(0),
+        } as unknown as InstanceState['instanceInfo'],
+        adminInfo: null,
+      });
+
+      const caps = manager.getInstanceCapabilities('https://gitlab.example.com');
+      expect(caps.isAdmin).toBeUndefined();
+      expect(caps.adminModeActive).toBeUndefined();
     });
   });
 });

@@ -28,6 +28,36 @@ describe('manage_context Integration Tests', () => {
     ContextManager.resetInstance();
   });
 
+  describe('action: whoami', () => {
+    it('reports admin elevation from the session probe', async () => {
+      const input = { action: 'whoami' };
+      expect(ManageContextSchema.safeParse(input).success).toBe(true);
+
+      const result = (await helper.executeTool('manage_context', input)) as {
+        user: { isAdmin?: boolean; adminModeActive?: boolean } | null;
+        warnings: string[];
+      };
+
+      expect(Array.isArray(result.warnings)).toBe(true);
+
+      // Admin status is environment-specific, so assert the SHAPE the admin probe
+      // produces rather than concrete values: when the user is resolved, the
+      // elevation flag is a boolean or undefined (unprobed/indeterminate).
+      if (result.user) {
+        const elevation = result.user.adminModeActive;
+        expect(elevation === undefined || typeof elevation === 'boolean').toBe(true);
+        // A real admin with active elevation must not also raise the elevation warning.
+        if (result.user.isAdmin === true && elevation === true) {
+          expect(result.warnings.some((w) => w.includes('admin mode is not active'))).toBe(false);
+        }
+      }
+
+      console.log(
+        `  whoami: isAdmin=${result.user?.isAdmin}, adminModeActive=${result.user?.adminModeActive}`,
+      );
+    });
+  });
+
   describe('action: show', () => {
     it('should return current session context', async () => {
       const input = { action: 'show' };

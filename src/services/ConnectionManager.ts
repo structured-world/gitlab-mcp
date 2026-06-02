@@ -7,6 +7,7 @@ import {
   getToolScopeRequirements,
   TokenScopeInfo,
 } from './TokenScopeDetector';
+import { detectAdminStatus, AdminInfo } from './AdminDetector';
 import {
   GITLAB_BASE_URL,
   GITLAB_TOKEN,
@@ -39,6 +40,12 @@ export interface InstanceState {
   instanceInfo: GitLabInstanceInfo | null;
   schemaInfo: SchemaInfo | null;
   tokenScopeInfo: TokenScopeInfo | null;
+  /**
+   * Admin role + elevation for the static token. Token-scoped like
+   * tokenScopeInfo (NOT in the per-URL introspection cache, which is shared
+   * across OAuth tenants). Stays null in OAuth mode.
+   */
+  adminInfo: AdminInfo | null;
   isInitialized: boolean;
   /** Tracks which instance URL the cached instanceInfo/schemaInfo belongs to */
   introspectedInstanceUrl: string | null;
@@ -262,6 +269,7 @@ export class ConnectionManager {
         instanceInfo: null,
         schemaInfo: null,
         tokenScopeInfo: null,
+        adminInfo: null,
         isInitialized: false,
         introspectedInstanceUrl: null,
       };
@@ -338,6 +346,10 @@ export class ConnectionManager {
       // Step 1: Detect token scopes BEFORE GraphQL introspection
       // This prevents ugly 401 stack traces when token lacks api/read_api scope
       state.tokenScopeInfo = await detectTokenScopes(baseUrl);
+
+      // Admin role + elevation probe (static-token mode only — this branch never
+      // runs under OAuth, which deferred above). Token-scoped, cached in state.
+      state.adminInfo = await detectAdminStatus(baseUrl);
 
       if (state.tokenScopeInfo) {
         // Log token scope info — derive total tools dynamically from scope requirements map
@@ -668,13 +680,15 @@ export class ConnectionManager {
   public getInstanceCapabilities(instanceUrl?: string): InstanceCapabilities {
     const info = this.getInstanceInfo(instanceUrl);
     const scopeInfo = this.getTokenScopeInfo(instanceUrl);
+    const adminInfo = this.getAdminInfo(instanceUrl);
     return {
       version: info.version,
       tier: info.tier,
       features: info.features,
       scopes: scopeInfo?.scopes ?? [],
-      // isAdmin / adminModeActive remain undefined until the admin probe (#434)
-      // populates them; consumers treat undefined as fail-open.
+      // undefined when the probe did not run (OAuth) or failed — fail-open.
+      isAdmin: adminInfo?.isAdmin,
+      adminModeActive: adminInfo?.adminModeActive,
     };
   }
 
@@ -759,6 +773,15 @@ export class ConnectionManager {
     const state = this.instances.get(url);
     if (state) this.touchInstance(url); // Keep entry alive in LRU window.
     return state?.tokenScopeInfo ?? null;
+  }
+
+  /** Admin role + elevation for the (static-token) session, or null if unprobed. */
+  public getAdminInfo(instanceUrl?: string): AdminInfo | null {
+    const url = instanceUrl ? normalizeInstanceUrl(instanceUrl) : this.currentInstanceUrl;
+    if (!url) return null;
+    const state = this.instances.get(url);
+    if (state) this.touchInstance(url); // Keep entry alive in LRU window.
+    return state?.adminInfo ?? null;
   }
 
   /**

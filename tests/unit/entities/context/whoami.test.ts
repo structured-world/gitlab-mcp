@@ -12,6 +12,7 @@ import { WhoamiResult } from '../../../../src/entities/context/types';
 const mockConnectionManager = {
   getTokenScopeInfo: jest.fn(),
   getInstanceInfo: jest.fn(),
+  getAdminInfo: jest.fn(),
   refreshTokenScopes: jest.fn(),
 };
 
@@ -122,6 +123,8 @@ describe('whoami handler', () => {
 
     // Default: no scope changes
     mockConnectionManager.refreshTokenScopes.mockResolvedValue(false);
+    // Default: admin status unprobed (OAuth/static both tolerate null)
+    mockConnectionManager.getAdminInfo.mockReturnValue(null);
   });
 
   afterAll(() => {
@@ -634,6 +637,53 @@ describe('whoami handler', () => {
       const adminRec = result.recommendations.find((r) => r.action === 'contact_admin');
       expect(adminRec).toBeDefined();
       expect(adminRec?.priority).toBe('low');
+    });
+  });
+
+  describe('whoami admin-mode elevation', () => {
+    beforeEach(() => {
+      mockEnhancedFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 1,
+          username: 'root',
+          name: 'Admin',
+          is_admin: true,
+          state: 'active',
+        }),
+      });
+    });
+
+    it('warns when admin role lacks active elevation', async () => {
+      mockConnectionManager.getAdminInfo.mockReturnValue({
+        isAdmin: true,
+        adminModeActive: false,
+      });
+
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.user?.adminModeActive).toBe(false);
+      expect(result.warnings.some((w) => w.includes('admin mode is not active'))).toBe(true);
+    });
+
+    it('does not warn when admin mode is active', async () => {
+      mockConnectionManager.getAdminInfo.mockReturnValue({
+        isAdmin: true,
+        adminModeActive: true,
+      });
+
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.user?.adminModeActive).toBe(true);
+      expect(result.warnings.some((w) => w.includes('admin mode is not active'))).toBe(false);
+    });
+
+    it('leaves adminModeActive undefined when unprobed (OAuth)', async () => {
+      mockConnectionManager.getAdminInfo.mockReturnValue(null);
+
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.user?.adminModeActive).toBeUndefined();
     });
   });
 });

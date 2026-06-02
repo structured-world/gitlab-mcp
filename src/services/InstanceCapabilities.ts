@@ -22,13 +22,14 @@ export interface InstanceCapabilities {
   /** Token scopes (api, read_api, ...). Empty when scope detection was skipped. */
   scopes: GitLabScope[];
   /**
-   * Whether the authenticated user is an instance admin.
-   * `undefined` until the admin probe (#434) populates it — treated as fail-open.
+   * Whether the authenticated user is an instance admin. `undefined` when the
+   * admin probe did not run (OAuth mode) or failed — treated as fail-open.
    */
   isAdmin?: boolean;
   /**
    * Whether GitLab admin-mode elevation is currently active for the session.
-   * `undefined` until the admin probe (#434) populates it — treated as fail-open.
+   * `undefined` when the admin probe did not run (OAuth mode) or failed.
+   * OAuth tokens cannot elevate admin mode, so it stays undefined under OAuth.
    */
   adminModeActive?: boolean;
 }

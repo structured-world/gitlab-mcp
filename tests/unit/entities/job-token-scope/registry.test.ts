@@ -4,61 +4,22 @@ import {
   getJobTokenScopeToolDefinitions,
   getFilteredJobTokenScopeTools,
 } from '../../../../src/entities/job-token-scope/registry';
-import { enhancedFetch } from '../../../../src/utils/fetch';
+import {
+  installFetchMock,
+  mockOk,
+  mockNoContent,
+  lastFetchCall as lastCall,
+  mockEnhancedFetch,
+} from '../../helpers/fetch-mock';
 
 jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
 }));
 
-const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
-
-const originalEnv = process.env;
-
-beforeAll(() => {
-  process.env = {
-    ...originalEnv,
-    GITLAB_API_URL: 'https://gitlab.example.com',
-    GITLAB_TOKEN: 'test-token-12345',
-  };
-});
-
-afterAll(() => {
-  process.env = originalEnv;
-});
-
-beforeEach(() => {
-  jest.clearAllMocks();
-  jest.resetAllMocks();
-  mockEnhancedFetch.mockReset();
-});
-
-/** Resolve enhancedFetch into an ok JSON response. */
-function mockOk(payload: unknown): void {
-  mockEnhancedFetch.mockResolvedValueOnce({
-    ok: true,
-    status: 200,
-    statusText: 'OK',
-    json: jest.fn().mockResolvedValue(payload),
-  } as unknown as Response);
-}
-
-/** Resolve enhancedFetch into a 204 No Content response (delete). */
-function mockNoContent(): void {
-  mockEnhancedFetch.mockResolvedValueOnce({
-    ok: true,
-    status: 204,
-    statusText: 'No Content',
-  } as unknown as Response);
-}
+installFetchMock();
 
 const browse = () => jobTokenScopeToolRegistry.get('browse_job_token_scope')!;
 const manage = () => jobTokenScopeToolRegistry.get('manage_job_token_scope')!;
-
-/** Last enhancedFetch call: [url, init?]. */
-function lastCall(): [string, RequestInit | undefined] {
-  const call = mockEnhancedFetch.mock.calls.at(-1)!;
-  return [call[0], call[1]];
-}
 
 describe('Job Token Scope Registry', () => {
   describe('Registry Structure', () => {

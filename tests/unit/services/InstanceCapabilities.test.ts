@@ -80,7 +80,8 @@ describe('meetsRequirement', () => {
     expect(meetsRequirement(adminReq, { ...free17, adminModeActive: false })).toBe(false);
     // Active elevation -> allowed.
     expect(meetsRequirement(adminReq, { ...free17, adminModeActive: true })).toBe(true);
-    // Undefined elevation (probe not yet landed / OAuth) is permissive (fail-open).
+    // Undefined elevation (probe did not run under OAuth, or was indeterminate) is
+    // permissive (fail-open).
     expect(meetsRequirement(adminReq, free17)).toBe(true);
   });
 

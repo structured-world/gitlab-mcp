@@ -41,8 +41,10 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       inputSchema: z.toJSONSchema(BrowseProjectsSchema),
       requirements: {
         default: { tier: 'free', minVersion: '8.0' },
-        // Listing soft-deleted projects requires admin; the registry strips this
-        // parameter when the session is a known non-admin (fail-open otherwise).
+        // Listing soft-deleted projects needs active admin-mode elevation; the
+        // registry strips this parameter when elevation is known inactive (non-admin
+        // OR admin role without elevation), and keeps it when elevated or unknown
+        // (fail-open).
         parameters: { include_deleted: { requiresAdmin: true } },
       },
       handler: async (args: unknown): Promise<unknown> => {

@@ -41,7 +41,7 @@ export interface InstanceCapabilities {
  * the gating helpers accept this narrower shape and a full InstanceCapabilities
  * satisfies it structurally.
  */
-export type CapabilityGate = Pick<InstanceCapabilities, 'version' | 'tier' | 'isAdmin'>;
+export type CapabilityGate = Pick<InstanceCapabilities, 'version' | 'tier' | 'adminModeActive'>;
 
 /** Tier hierarchy for comparison: free < premium < ultimate. */
 const TIER_ORDER: Record<string, number> = { free: 0, premium: 1, ultimate: 2 };
@@ -76,8 +76,10 @@ export function resolveRequirement(reqs: ToolRequirements, action?: string): Too
  * Check whether the instance satisfies a single requirement (version + tier +
  * admin). When the version is unknown the requirement is treated as met
  * (fail-open) so tools are not hidden before detection completes. The admin gate
- * only filters when the user is *known* not to be an admin; an undefined
- * admin status (probe not yet landed) is permissive.
+ * keys on admin-mode ELEVATION, not the role: admin-only endpoints return 403
+ * unless admin mode is active, so an admin without elevation is gated out just
+ * like a non-admin. It only filters when elevation is *known* inactive; an
+ * undefined status (probe not landed / OAuth) is permissive.
  */
 export function meetsRequirement(req: ToolRequirement, caps: CapabilityGate): boolean {
   if (caps.version === 'unknown') return true;
@@ -85,7 +87,7 @@ export function meetsRequirement(req: ToolRequirement, caps: CapabilityGate): bo
     return false;
   }
   if (!isTierSufficient(caps.tier, req.tier)) return false;
-  if (req.requiresAdmin && caps.isAdmin === false) return false;
+  if (req.requiresAdmin && caps.adminModeActive === false) return false;
   return true;
 }
 
@@ -145,8 +147,8 @@ export function getUnmetReason(
   if (!isTierSufficient(caps.tier, req.tier)) {
     return `Requires GitLab ${req.tier ?? DEFAULT_TIER} tier or higher, current tier is ${caps.tier}`;
   }
-  if (req.requiresAdmin && caps.isAdmin === false) {
-    return 'Requires instance admin privileges';
+  if (req.requiresAdmin && caps.adminModeActive === false) {
+    return 'Requires active admin-mode elevation';
   }
   return null;
 }

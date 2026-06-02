@@ -74,11 +74,13 @@ describe('meetsRequirement', () => {
     expect(meetsRequirement({}, free17)).toBe(true);
   });
 
-  it('fails an admin requirement only when the user is known not to be admin', () => {
+  it('fails an admin requirement only when admin-mode elevation is known inactive', () => {
     const adminReq = { requiresAdmin: true, minVersion: '8.0' };
-    expect(meetsRequirement(adminReq, { ...free17, isAdmin: false })).toBe(false);
-    expect(meetsRequirement(adminReq, { ...free17, isAdmin: true })).toBe(true);
-    // Undefined admin status (probe not yet landed) is permissive (fail-open).
+    // Elevation inactive (non-admin, or admin role without elevation) -> gated out.
+    expect(meetsRequirement(adminReq, { ...free17, adminModeActive: false })).toBe(false);
+    // Active elevation -> allowed.
+    expect(meetsRequirement(adminReq, { ...free17, adminModeActive: true })).toBe(true);
+    // Undefined elevation (probe not yet landed / OAuth) is permissive (fail-open).
     expect(meetsRequirement(adminReq, free17)).toBe(true);
   });
 
@@ -148,7 +150,7 @@ describe('getUnmetReason', () => {
     // restore requires 18.0 + admin; use an 18.0 instance so the admin gate is reached.
     const reason = getUnmetReason(
       reqs,
-      { version: '18.0.0', tier: 'free', isAdmin: false },
+      { version: '18.0.0', tier: 'free', adminModeActive: false },
       'restore',
     );
     expect(reason).toContain('admin');

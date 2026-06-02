@@ -325,10 +325,10 @@ class RegistryManager {
    *  Returns undefined fields when connection is not initialized.
    *  @throws on unexpected errors (anything other than expected init errors). */
   private loadInstanceContext(instanceUrl?: string): {
-    instanceInfo?: { tier: GitLabTier; version: string; isAdmin?: boolean };
+    instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
     tokenScopes?: GitLabScope[];
   } {
-    let instanceInfo: { tier: GitLabTier; version: string; isAdmin?: boolean } | undefined;
+    let instanceInfo: { tier: GitLabTier; version: string; adminModeActive?: boolean } | undefined;
     try {
       const info = ConnectionManager.getInstance().getInstanceInfo(instanceUrl);
       instanceInfo = { tier: info.tier, version: info.version };
@@ -336,15 +336,17 @@ class RegistryManager {
       if (!isExpectedInitError(err)) throw err;
     }
 
-    // Admin status (from the #434 probe) is what makes `requiresAdmin` parameter/tool
-    // gating take effect. It is a best-effort supplementary signal: any failure to read
-    // it leaves isAdmin undefined, which the requirement gate treats as fail-open — a
-    // broken admin read must never hide tools or block the whole cache build.
+    // Admin-mode elevation (from the #434 probe) is what makes `requiresAdmin`
+    // parameter/tool gating take effect. The gate keys on active elevation, not the
+    // role, because admin-only endpoints 403 without it. Best-effort: any read failure
+    // leaves it undefined, which the gate treats as fail-open — a broken admin read
+    // must never hide tools or block the whole cache build.
     if (instanceInfo) {
       try {
-        instanceInfo.isAdmin = ConnectionManager.getInstance().getAdminInfo(instanceUrl)?.isAdmin;
+        instanceInfo.adminModeActive =
+          ConnectionManager.getInstance().getAdminInfo(instanceUrl)?.adminModeActive;
       } catch {
-        // leave isAdmin undefined (fail-open)
+        // leave adminModeActive undefined (fail-open)
       }
     }
 
@@ -368,7 +370,7 @@ class RegistryManager {
     toolName: string,
     tool: EnhancedToolDefinition,
     ctx: {
-      instanceInfo?: { tier: GitLabTier; version: string; isAdmin?: boolean };
+      instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
       tokenScopes?: GitLabScope[];
     },
   ): 'readOnly' | 'deniedRegex' | 'scopes' | 'tier' | 'actionDenial' | null {
@@ -393,7 +395,7 @@ class RegistryManager {
 
   /** Filter registries and build transformed tool map (schema + description overrides). */
   private buildFilteredTools(ctx: {
-    instanceInfo?: { tier: GitLabTier; version: string; isAdmin?: boolean };
+    instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
     tokenScopes?: GitLabScope[];
   }): Map<string, EnhancedToolDefinition> {
     const result = new Map<string, EnhancedToolDefinition>();

@@ -89,6 +89,17 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
     }, 15000);
 
     it('should accept include_deleted and return pending-delete projects (admin)', async () => {
+      // include_pending_delete is admin-mode gated and 403s without active elevation,
+      // which would make this test environment-dependent. Skip unless the configured
+      // token is actually elevated (avoids flakiness on non-admin / unelevated tokens).
+      const ctx = (await helper.executeTool('manage_context', { action: 'whoami' })) as {
+        user?: { adminModeActive?: boolean };
+      };
+      if (ctx.user?.adminModeActive !== true) {
+        console.log('  Skipping include_deleted: token lacks active admin-mode elevation');
+        return;
+      }
+
       const params = { action: 'list' as const, include_deleted: true, per_page: 5 };
 
       const paramResult = BrowseProjectsSchema.safeParse(params);

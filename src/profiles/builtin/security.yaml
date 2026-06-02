@@ -1,4 +1,4 @@
-description: "Security/Compliance - audit logs, vulnerabilities, token rotation, read-only code context"
+description: "Security/Compliance - audit logs, vulnerability triage, token rotation; code browsing for context, no code-ops"
 read_only: false
 features:
   # Investigation context (read)

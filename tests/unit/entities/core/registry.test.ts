@@ -25,6 +25,10 @@ jest.mock('../../../../src/config', () => ({
 
 const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
 const mockSmartUserSearch = smartUserSearch as jest.MockedFunction<typeof smartUserSearch>;
+
+/** Queue an ok JSON response for the next enhancedFetch call. */
+const okJson = (payload: unknown) =>
+  ({ ok: true, status: 200, json: jest.fn().mockResolvedValue(payload) }) as unknown as Response;
 const mockIsActionDenied = isActionDenied as jest.MockedFunction<typeof isActionDenied>;
 
 // Mock environment variables
@@ -400,11 +404,7 @@ describe('Core Registry', () => {
       });
 
       it('should list pending-delete projects with include_deleted', async () => {
-        mockEnhancedFetch.mockResolvedValueOnce({
-          ok: true,
-          status: 200,
-          json: jest.fn().mockResolvedValue([{ id: 9, name: 'deleted-project' }]),
-        } as any);
+        mockEnhancedFetch.mockResolvedValueOnce(okJson([{ id: 9, name: 'deleted-project' }]));
 
         const tool = coreToolRegistry.get('browse_projects');
         await tool!.handler({ action: 'list', include_deleted: true });

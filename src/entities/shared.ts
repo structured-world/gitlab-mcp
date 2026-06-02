@@ -141,6 +141,12 @@ export const GitLabProjectSchema = z.object({
   ci_delete_pipelines_in_seconds: z.number().nullable().optional(),
   ci_forward_deployment_enabled: flexibleBoolean.optional(),
   ci_forward_deployment_rollback_allowed: flexibleBoolean.optional(),
+  /**
+   * @deprecated Removed from the Projects API response on GitLab 19.0+ (always
+   * absent there; hardcoded to false on 18.x). Read-only and tolerant: do not
+   * add writers, and prefer the dedicated job token scope settings endpoints
+   * (browse_job_token_scope / manage_job_token_scope) for inbound/outbound scope.
+   */
   ci_job_token_scope_enabled: flexibleBoolean.optional(),
   ci_separated_caches: flexibleBoolean.optional(),
   ci_allow_fork_pipelines_to_run_in_parent_project: flexibleBoolean.optional(),

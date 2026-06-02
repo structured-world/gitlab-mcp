@@ -78,6 +78,7 @@ jest.mock('../../src/services/ConnectionManager', () => ({
     getInstance: jest.fn().mockReturnValue({
       getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
       getTokenScopeInfo: jest.fn().mockReturnValue(null),
+      getAdminInfo: jest.fn().mockReturnValue(null),
       getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
     }),
   },
@@ -387,6 +388,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue({ scopes: ['read_user'] }),
+        getAdminInfo: jest.fn().mockReturnValue(null),
         getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
 
@@ -407,8 +409,64 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getAdminInfo: jest.fn().mockReturnValue(null),
         getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
+    });
+
+    it('strips requiresAdmin params for a known non-admin and keeps them otherwise', () => {
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
+      const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
+      coreRegistry.set('tool_admin_param', {
+        name: 'tool_admin_param',
+        description: 'Tool with an admin-gated param',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            action: { type: 'string', enum: ['list'] },
+            include_deleted: { type: 'boolean' },
+          },
+          required: ['action'],
+        },
+        requirements: {
+          default: { tier: 'free', minVersion: '8.0' },
+          parameters: { include_deleted: { requiresAdmin: true } },
+        },
+        handler: jest.fn(),
+      });
+
+      const withAdmin = (admin: boolean | null) => {
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getAdminInfo: jest
+            .fn()
+            .mockReturnValue(admin === null ? null : { isAdmin: admin, adminModeActive: admin }),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        });
+        resetRegistryManagerSingleton();
+        const props = (
+          RegistryManager.getInstance().getTool('tool_admin_param')?.inputSchema as any
+        ).properties;
+        return props;
+      };
+
+      try {
+        // Known non-admin: param stripped.
+        expect(withAdmin(false).include_deleted).toBeUndefined();
+        // Admin: param kept.
+        expect(withAdmin(true).include_deleted).toBeDefined();
+        // Unprobed (null -> isAdmin undefined): fail-open, param kept.
+        expect(withAdmin(null).include_deleted).toBeDefined();
+      } finally {
+        coreRegistry.delete('tool_admin_param');
+        ConnectionManager.getInstance.mockReturnValue({
+          getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+          getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getAdminInfo: jest.fn().mockReturnValue(null),
+          getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+        });
+      }
     });
 
     it('should strip tier-restricted parameters from tool schema', () => {

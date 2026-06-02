@@ -40,6 +40,7 @@ jest.mock('../../../src/logger', () => ({
   logDebug: jest.fn(),
 }));
 jest.mock('../../../src/services/TokenScopeDetector');
+jest.mock('../../../src/services/AdminDetector');
 jest.mock('../../../src/utils/fetch');
 
 import {
@@ -48,9 +49,11 @@ import {
   getToolScopeRequirements,
   GitLabScope,
 } from '../../../src/services/TokenScopeDetector';
+import { detectAdminStatus } from '../../../src/services/AdminDetector';
 import { enhancedFetch } from '../../../src/utils/fetch';
 
 const mockedDetectTokenScopes = detectTokenScopes as jest.MockedFunction<typeof detectTokenScopes>;
+const mockedDetectAdminStatus = detectAdminStatus as jest.MockedFunction<typeof detectAdminStatus>;
 const mockedLogTokenScopeInfo = logTokenScopeInfo as jest.MockedFunction<typeof logTokenScopeInfo>;
 const mockedGetToolScopeRequirements = getToolScopeRequirements as jest.MockedFunction<
   typeof getToolScopeRequirements
@@ -97,6 +100,8 @@ describe('ConnectionManager Enhanced Tests', () => {
 
     // Default: scope detection returns null (no scope info), so GraphQL path runs normally
     mockedDetectTokenScopes.mockResolvedValue(null);
+    // Default: admin probe returns null (unprobed) and never touches enhancedFetch
+    mockedDetectAdminStatus.mockResolvedValue(null);
     mockedGetToolScopeRequirements.mockReturnValue({});
     mockedEnhancedFetch.mockResolvedValue({ ok: false, status: 404 } as Response);
 

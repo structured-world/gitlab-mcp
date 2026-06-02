@@ -145,8 +145,15 @@ export interface WhoamiUserInfo {
   email?: string;
   /** Avatar URL */
   avatarUrl?: string;
-  /** Whether user has admin privileges */
+  /** Whether the user holds the admin role (does not imply admin endpoints work) */
   isAdmin?: boolean;
+  /**
+   * Whether admin-mode elevation is currently active, i.e. admin endpoints
+   * actually succeed. An admin role with `adminModeActive: false` still gets 403
+   * on admin endpoints (no elevation, or OAuth which cannot elevate). `undefined`
+   * when not probed (OAuth) or detection failed.
+   */
+  adminModeActive?: boolean;
   /** User account state */
   state: 'active' | 'blocked' | 'deactivated';
 }

@@ -381,10 +381,33 @@ export async function executeWhoami(): Promise<WhoamiResult> {
     Promise.resolve(buildTokenInfo()),
   ]);
 
+  // Enrich identity with admin-mode elevation from the session probe. The role
+  // flag (isAdmin) alone is misleading: an admin without active elevation still
+  // gets 403 on admin endpoints. adminModeActive stays undefined under OAuth.
+  if (userInfo) {
+    try {
+      const adminInfo = ConnectionManager.getInstance().getAdminInfo();
+      if (adminInfo) {
+        userInfo.adminModeActive = adminInfo.adminModeActive;
+      }
+    } catch {
+      // Capabilities unavailable (uninitialized) - leave role-only isAdmin.
+    }
+  }
+
   const serverInfo = buildServerInfo();
   const capabilities = buildCapabilities(tokenInfo);
   const contextInfo = buildContextInfo();
   const warnings = generateWarnings(tokenInfo, capabilities);
+
+  // Honest admin signal: role present but elevation inactive means admin tools
+  // will 403 at call time, so surface it instead of implying admin access works.
+  if (userInfo?.isAdmin && userInfo.adminModeActive === false) {
+    warnings.push(
+      'Admin role detected but admin mode is not active - admin-only endpoints will return 403. ' +
+        'Re-authenticate with admin mode enabled (OAuth tokens cannot elevate).',
+    );
+  }
   const recommendations = generateRecommendations(tokenInfo, capabilities, serverInfo);
 
   logDebug('Whoami executed', {

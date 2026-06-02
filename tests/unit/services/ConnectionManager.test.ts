@@ -60,6 +60,7 @@ function injectInstanceState(
     instanceInfo: null,
     schemaInfo: null,
     tokenScopeInfo: null,
+    adminInfo: null,
     isInitialized: false,
     introspectedInstanceUrl: null,
     ...overrides,

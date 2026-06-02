@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { requiredId, paginationFields } from '../utils';
+import { requiredId, paginationFields, flexibleBoolean } from '../utils';
 
 // ============================================================================
 // browse_deploy_keys - CQRS Query Tool (discriminated union schema)
@@ -24,8 +24,7 @@ const ListDeployKeysSchema = z.object({
   project_id: requiredId
     .optional()
     .describe('Project to list keys for. Omit to list all instance deploy keys (admin only).'),
-  public: z
-    .boolean()
+  public: flexibleBoolean
     .optional()
     .describe('Instance list only: when true, return only the public (non-sensitive) fields.'),
   ...paginationFields(),

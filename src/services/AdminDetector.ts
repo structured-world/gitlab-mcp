@@ -56,26 +56,44 @@ export async function detectAdminStatus(baseUrl?: string): Promise<AdminInfo | n
 
     if (!userResponse.ok) {
       logDebug('Admin detection: /user request failed', { status: userResponse.status, url });
+      await userResponse.body?.cancel().catch(() => {});
       return null;
     }
 
     const parsed = UserAdminSchema.safeParse(await userResponse.json());
-    const isAdmin = parsed.success ? (parsed.data.is_admin ?? false) : false;
+    if (!parsed.success) {
+      // Unexpected shape (proxy HTML, API change). Cannot determine the role, so
+      // stay fail-open rather than gating admin tools off on a transient blip.
+      logDebug('Admin detection: /user response did not match the expected shape', { url });
+      return null;
+    }
+    const isAdmin = parsed.data.is_admin ?? false;
 
     if (!isAdmin) {
       return { isAdmin: false, adminModeActive: false };
     }
 
     // Admin role confirmed. Probe a cheap admin-only listing to learn whether
-    // admin mode is actually elevated: include_pending_delete is admin-gated, so
-    // a 200 means the token can reach admin endpoints, a 403 means role without
-    // elevation (and is the expected result for OAuth admins, which cannot elevate).
+    // admin mode is actually elevated: include_pending_delete is admin-gated.
     const probe = await enhancedFetch(
       `${url}/api/v4/projects?include_pending_delete=true&per_page=1`,
       { headers: { 'PRIVATE-TOKEN': GITLAB_TOKEN, Accept: 'application/json' }, retry: false },
     );
+    const status = probe.status;
+    await probe.body?.cancel().catch(() => {});
 
-    return { isAdmin: true, adminModeActive: probe.ok };
+    // Only 200 proves elevation; 403 is the expected "role without elevation"
+    // (and the result for OAuth admins, which cannot elevate). Any other status
+    // (5xx/429/...) is an indeterminate one-shot failure - fail open with null
+    // rather than wrongly reporting elevation as inactive for the whole session.
+    if (probe.ok) {
+      return { isAdmin: true, adminModeActive: true };
+    }
+    if (status === 403) {
+      return { isAdmin: true, adminModeActive: false };
+    }
+    logDebug('Admin detection: elevation probe returned an unexpected status', { status, url });
+    return null;
   } catch (error) {
     logDebug('Admin detection failed', {
       error: error instanceof Error ? error.message : String(error),

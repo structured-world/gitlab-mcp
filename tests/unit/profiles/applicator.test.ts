@@ -66,6 +66,14 @@ describe('Profile Applicator', () => {
       'USE_REFS',
       'USE_MEMBERS',
       'USE_SEARCH',
+      'USE_CI_TOKENS',
+      // GitLab 18/19 domains
+      'USE_ENVIRONMENTS',
+      'USE_RUNNERS',
+      'USE_REGISTRY',
+      'USE_ACCESS_TOKENS',
+      'USE_AUDIT_EVENTS',
+      'USE_VULNERABILITIES',
       'GITLAB_API_HEADERS_TIMEOUT_MS',
       'SKIP_TLS_VERIFY',
       'SSL_CERT_PATH',
@@ -245,6 +253,13 @@ describe('Profile Applicator', () => {
           refs: false,
           members: true,
           search: false,
+          // GitLab 18/19 domains
+          environments: true,
+          runners: false,
+          registry: true,
+          access_tokens: false,
+          audit_events: true,
+          vulnerabilities: false,
         },
       };
 
@@ -267,6 +282,13 @@ describe('Profile Applicator', () => {
       expect(process.env.USE_REFS).toBe('false');
       expect(process.env.USE_MEMBERS).toBe('true');
       expect(process.env.USE_SEARCH).toBe('false');
+      // GitLab 18/19 domains
+      expect(process.env.USE_ENVIRONMENTS).toBe('true');
+      expect(process.env.USE_RUNNERS).toBe('false');
+      expect(process.env.USE_REGISTRY).toBe('true');
+      expect(process.env.USE_ACCESS_TOKENS).toBe('false');
+      expect(process.env.USE_AUDIT_EVENTS).toBe('true');
+      expect(process.env.USE_VULNERABILITIES).toBe('false');
 
       // All feature flags should be in appliedSettings
       expect(result.appliedSettings).toContain('USE_GITLAB_WIKI=true');

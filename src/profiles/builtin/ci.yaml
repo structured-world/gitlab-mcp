@@ -31,6 +31,13 @@ features:
   members: false    # No team management
   search: false     # No search needed for CI
   ci_tokens: true   # Job token scope + deploy keys (CI access credentials)
+  # GitLab 18/19 domains - automation
+  environments: true    # Deploy/stop environments
+  runners: true         # Ephemeral runner registration
+  registry: true        # Push/clean container images
+  access_tokens: false  # Sensitive, not for the bot
+  audit_events: false
+  vulnerabilities: false
 
 # Block workflow-related operations
 denied_tools_regex: "^manage_(work_item|mr|label|milestone|wiki)"

@@ -30,6 +30,13 @@ features:
   refs: false       # No branch management
   members: false    # No team management
   search: true      # Code search enabled
+  # GitLab 18/19 domains - none (minimal access)
+  environments: false
+  runners: false
+  registry: false
+  access_tokens: false
+  audit_events: false
+  vulnerabilities: false
 
 # Block pipeline and admin operations
 denied_tools_regex: "^manage_(pipeline|variable|webhook)"

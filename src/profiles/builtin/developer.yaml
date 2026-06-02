@@ -30,6 +30,13 @@ features:
   refs: false       # No branch protection management
   members: false    # No team management
   search: true      # Code search enabled
+  # GitLab 18/19 domains
+  environments: true    # See where their code runs
+  runners: false        # Ops concern
+  registry: false       # Ops concern
+  access_tokens: false  # Admin/security only
+  audit_events: false   # Compliance only
+  vulnerabilities: false  # Security profile
 
 # Block dangerous actions
 denied_actions:

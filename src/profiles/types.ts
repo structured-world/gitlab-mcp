@@ -62,6 +62,13 @@ const FeatureFlagsSchema = z
     members: z.boolean().optional(),
     search: z.boolean().optional(),
     ci_tokens: z.boolean().optional(),
+    // Planned GitLab 18/19 domains (one feature key per browse_*/manage_* group)
+    environments: z.boolean().optional(),
+    runners: z.boolean().optional(),
+    registry: z.boolean().optional(),
+    access_tokens: z.boolean().optional(),
+    audit_events: z.boolean().optional(),
+    vulnerabilities: z.boolean().optional(),
   })
   .optional();
 

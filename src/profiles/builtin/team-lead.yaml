@@ -31,6 +31,13 @@ features:
   refs: true        # Branch management
   members: true     # Team access management
   search: true      # Code search
+  # GitLab 18/19 domains - oversight
+  environments: true     # Deployment status
+  runners: false
+  registry: false
+  access_tokens: false
+  audit_events: true     # Who did what (Premium+, tier-gated)
+  vulnerabilities: true  # Security posture (Ultimate, tier-gated)
 
 # Block sensitive operations
 denied_actions:

@@ -28,6 +28,13 @@ features:
   refs: false      # No branch management
   members: false
   search: true     # Search code during review
+  # GitLab 18/19 domains
+  environments: true     # Context for what an MR deploys
+  runners: false
+  registry: false
+  access_tokens: false
+  audit_events: false
+  vulnerabilities: true  # Triage security findings during review (Ultimate, tier-gated)
 
 # Block infrastructure-changing actions
 denied_actions:

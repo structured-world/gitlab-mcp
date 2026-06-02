@@ -335,6 +335,14 @@ export const USE_ITERATIONS = process.env.USE_ITERATIONS !== 'false';
 // a published release, so no deployment can depend on it and a fallback would
 // only add a permanent compatibility shim for a contract that never existed.
 export const USE_CI_TOKENS = process.env.USE_CI_TOKENS !== 'false';
+// Per-domain gates for the planned GitLab 18/19 domains. Each guards one
+// browse_*/manage_* tool group so a deployment loads only the clusters it needs.
+export const USE_ENVIRONMENTS = process.env.USE_ENVIRONMENTS !== 'false';
+export const USE_RUNNERS = process.env.USE_RUNNERS !== 'false';
+export const USE_REGISTRY = process.env.USE_REGISTRY !== 'false';
+export const USE_ACCESS_TOKENS = process.env.USE_ACCESS_TOKENS !== 'false';
+export const USE_AUDIT_EVENTS = process.env.USE_AUDIT_EVENTS !== 'false';
+export const USE_VULNERABILITIES = process.env.USE_VULNERABILITIES !== 'false';
 export const HOST = process.env.HOST ?? '127.0.0.1';
 export const PORT = process.env.PORT ?? 3002;
 

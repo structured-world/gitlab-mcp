@@ -30,6 +30,13 @@ features:
   refs: true           # Branch/tag browsing
   members: true        # Team info browsing
   search: true         # Code search
+  # GitLab 18/19 domains - safe Free defaults for gitlab.com
+  environments: true     # Deployment visibility
+  runners: false         # Shared runners are not user-managed on .com
+  registry: true         # Project container registry
+  access_tokens: false   # Sensitive
+  audit_events: false    # Premium+, off by default
+  vulnerabilities: false  # Ultimate, off by default
 
 # Rate-limit friendly restrictions
 denied_actions:

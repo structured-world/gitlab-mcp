@@ -27,3 +27,10 @@ features:
   refs: true
   members: true
   search: true
+  # GitLab 18/19 domains
+  environments: true
+  runners: true
+  registry: true
+  access_tokens: true
+  audit_events: true
+  vulnerabilities: true

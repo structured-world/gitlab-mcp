@@ -94,6 +94,12 @@ Enable or disable tool groups:
 | `USE_SEARCH` | Cross-project search | `true` |
 | `USE_ITERATIONS` | Iteration planning (sprints) | `true` |
 | `USE_CI_TOKENS` | CI access credential tools: job token scope/allowlist and deploy keys | `true` |
+| `USE_ENVIRONMENTS` | Environments and deployments | `true` |
+| `USE_RUNNERS` | CI runner management | `true` |
+| `USE_REGISTRY` | Container registry repositories and tags | `true` |
+| `USE_ACCESS_TOKENS` | Project/group/personal access token management | `true` |
+| `USE_AUDIT_EVENTS` | Audit events (Premium/Ultimate) | `true` |
+| `USE_VULNERABILITIES` | Vulnerability management (Ultimate) | `true` |
 
 ## Server Configuration
 

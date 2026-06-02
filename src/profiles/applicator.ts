@@ -34,6 +34,13 @@ const FEATURE_ENV_MAP: Record<string, string> = {
   members: 'USE_MEMBERS',
   search: 'USE_SEARCH',
   ci_tokens: 'USE_CI_TOKENS',
+  // Planned GitLab 18/19 domains
+  environments: 'USE_ENVIRONMENTS',
+  runners: 'USE_RUNNERS',
+  registry: 'USE_REGISTRY',
+  access_tokens: 'USE_ACCESS_TOKENS',
+  audit_events: 'USE_AUDIT_EVENTS',
+  vulnerabilities: 'USE_VULNERABILITIES',
 };
 
 // ============================================================================

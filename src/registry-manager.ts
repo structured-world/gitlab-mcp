@@ -381,12 +381,10 @@ class RegistryManager {
     // GitLab version/tier — they are local/session tools, not GitLab API tools.
     // Skip tier filtering for tools in the context registry.
     const isContextTool = this.registries.get('context')?.has(toolName) ?? false;
-    if (
-      !isContextTool &&
-      ctx.instanceInfo &&
-      ctx.instanceInfo.version !== 'unknown' &&
-      !isToolAvailable(tool.requirements, ctx.instanceInfo)
-    )
+    // No version-unknown short-circuit here: isToolAvailable fail-opens version/tier
+    // internally when version is unknown but still enforces the admin gate, so an
+    // admin-only tool with inactive elevation is filtered even before detection lands.
+    if (!isContextTool && ctx.instanceInfo && !isToolAvailable(tool.requirements, ctx.instanceInfo))
       return 'tier';
     const allActions = extractActionsFromSchema(tool.inputSchema);
     if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) return 'actionDenial';
@@ -410,8 +408,10 @@ class RegistryManager {
 
         let transformedSchema = transformToolSchema(toolName, tool.inputSchema);
 
-        // Strip tier-restricted parameters (skip when version unknown or not initialized)
-        if (ctx.instanceInfo && ctx.instanceInfo.version !== 'unknown') {
+        // Strip restricted parameters (skip only when not initialized). When version
+        // is unknown, getRestrictedParameters fail-opens version/tier but still strips
+        // admin-gated params whose elevation is known inactive.
+        if (ctx.instanceInfo) {
           const restrictedParams = getRestrictedParameters(tool.requirements, ctx.instanceInfo);
           if (restrictedParams.length > 0) {
             transformedSchema = stripTierRestrictedParameters(transformedSchema, restrictedParams);

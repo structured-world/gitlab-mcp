@@ -118,9 +118,11 @@ export function isToolAvailable(
 }
 
 /**
- * Names of parameters that must be stripped from a tool's JSON Schema because
- * the instance tier/version does not meet their declared requirement. Empty when
- * the tool gates no parameters or the version is unknown.
+ * Names of parameters that must be stripped from a tool's JSON Schema because the
+ * instance does not meet their declared requirement. Version/tier requirements
+ * fail-open while the version is unknown, but admin-gated parameters are still
+ * stripped when admin-mode elevation is known inactive. Empty when the tool gates
+ * no parameters.
  */
 export function getRestrictedParameters(
   reqs: ToolRequirements | undefined,

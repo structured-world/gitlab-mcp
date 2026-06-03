@@ -97,6 +97,12 @@ const ListProjectsSchema = z.object({
     .optional()
     .describe('Include projects from subgroups (requires group_id).'),
   with_shared: flexibleBoolean.optional().describe('Include shared projects (requires group_id).'),
+  include_deleted: flexibleBoolean
+    .optional()
+    .describe(
+      'Include projects pending deletion (soft-deleted, within the cooldown window). Admin only: ' +
+        'lists projects scheduled for purge so they can be reviewed or restored. Ignored for group_id scope.',
+    ),
   visibility: projectVisibilityField,
   archived: projectArchivedField,
   order_by: projectOrderByField,

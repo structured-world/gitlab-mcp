@@ -74,17 +74,31 @@ describe('meetsRequirement', () => {
     expect(meetsRequirement({}, free17)).toBe(true);
   });
 
-  it('fails an admin requirement only when the user is known not to be admin', () => {
+  it('fails an admin requirement only when admin-mode elevation is known inactive', () => {
     const adminReq = { requiresAdmin: true, minVersion: '8.0' };
-    expect(meetsRequirement(adminReq, { ...free17, isAdmin: false })).toBe(false);
-    expect(meetsRequirement(adminReq, { ...free17, isAdmin: true })).toBe(true);
-    // Undefined admin status (probe not yet landed) is permissive (fail-open).
+    // Elevation inactive (non-admin, or admin role without elevation) -> gated out.
+    expect(meetsRequirement(adminReq, { ...free17, adminModeActive: false })).toBe(false);
+    // Active elevation -> allowed.
+    expect(meetsRequirement(adminReq, { ...free17, adminModeActive: true })).toBe(true);
+    // Undefined elevation (probe did not run under OAuth, or was indeterminate) is
+    // permissive (fail-open).
     expect(meetsRequirement(adminReq, free17)).toBe(true);
   });
 
   it('is permissive when the version is unknown (detection deferred)', () => {
     const unknown: CapabilityGate = { version: 'unknown', tier: 'free' };
     expect(meetsRequirement({ tier: 'ultimate', minVersion: '99.0' }, unknown)).toBe(true);
+  });
+
+  it('still enforces the admin gate when version is unknown', () => {
+    // version-unknown fail-open covers version/tier, but admin elevation is a
+    // separate known signal: inactive elevation must still gate admin requirements.
+    const unknownNoElevation: CapabilityGate = {
+      version: 'unknown',
+      tier: 'free',
+      adminModeActive: false,
+    };
+    expect(meetsRequirement({ requiresAdmin: true }, unknownNoElevation)).toBe(false);
   });
 });
 
@@ -129,6 +143,20 @@ describe('getRestrictedParameters', () => {
     expect(getRestrictedParameters({ default: { tier: 'free' } }, free17)).toEqual([]);
     expect(getRestrictedParameters(undefined, free17)).toEqual([]);
   });
+
+  it('strips an admin-gated param when elevation is inactive even if version is unknown', () => {
+    const adminReqs = {
+      default: { tier: 'free' as const },
+      parameters: { include_deleted: { requiresAdmin: true } },
+    };
+    expect(
+      getRestrictedParameters(adminReqs, {
+        version: 'unknown',
+        tier: 'free',
+        adminModeActive: false,
+      }),
+    ).toContain('include_deleted');
+  });
 });
 
 describe('getUnmetReason', () => {
@@ -148,7 +176,7 @@ describe('getUnmetReason', () => {
     // restore requires 18.0 + admin; use an 18.0 instance so the admin gate is reached.
     const reason = getUnmetReason(
       reqs,
-      { version: '18.0.0', tier: 'free', isAdmin: false },
+      { version: '18.0.0', tier: 'free', adminModeActive: false },
       'restore',
     );
     expect(reason).toContain('admin');

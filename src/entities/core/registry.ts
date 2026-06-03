@@ -39,7 +39,14 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Find, list, or inspect GitLab projects. Actions: search (find by name/topic across GitLab), list (browse accessible projects or group projects), get (retrieve full project details). Related: manage_project to create/update/delete projects.',
       inputSchema: z.toJSONSchema(BrowseProjectsSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0' } },
+      requirements: {
+        default: { tier: 'free', minVersion: '8.0' },
+        // Listing soft-deleted projects needs active admin-mode elevation; the
+        // registry strips this parameter when elevation is known inactive (non-admin
+        // OR admin role without elevation), and keeps it when elevated or unknown
+        // (fail-open).
+        parameters: { include_deleted: { requiresAdmin: true } },
+      },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseProjectsSchema.parse(args);
 
@@ -98,6 +105,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               with_programming_language,
               include_subgroups,
               with_shared,
+              include_deleted,
               visibility,
               archived,
               order_by,
@@ -132,6 +140,11 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             let apiUrl: string;
             if (group_id) {
               apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(group_id)}/projects?${queryParams}`;
+            } else if (include_deleted) {
+              // include_pending_delete returns soft-deleted projects; do NOT also send
+              // active=true, which would filter them back out (admin only).
+              queryParams.set('include_pending_delete', 'true');
+              apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
             } else {
               queryParams.set('active', 'true');
               apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;

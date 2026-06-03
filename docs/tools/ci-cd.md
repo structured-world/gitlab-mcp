@@ -20,6 +20,8 @@ Pipeline management, job control, logs, and CI/CD variable configuration.
 | `manage_pipeline_job` | Command | Play, retry, cancel individual jobs |
 | `browse_variables` | Query | List and get CI/CD variables |
 | `manage_variable` | Command | Create, update, delete variables |
+| `browse_environments` | Query | List environments and deployments |
+| `manage_environment` | Command | Create, update, stop, delete environments; update deployment status |
 
 ## browse_pipelines
 
@@ -295,6 +297,101 @@ Manage CI/CD environment variables with scoping and protection.
 | `masked` | Hidden in job logs (requires 8+ chars, specific charset) |
 | `environment_scope` | `*` for all, or specific like `production` |
 | `variable_type` | `env_var` (default) or `file` |
+
+## browse_environments
+
+Inspect environments and their deployment history. Gated by `USE_ENVIRONMENTS`.
+
+### Actions
+
+<!-- @autogen:tool browse_environments -->
+| Action | Description |
+|--------|-------------|
+| `list` | List environments for a project |
+| `get` | Get a single environment by ID, including its last deployment |
+| `list_deployments` | List deployments for a project, optionally filtered by environment |
+<!-- @autogen:end -->
+
+### Examples
+
+::: code-group
+
+```json [List environments]
+{
+  "action": "list",
+  "project_id": "my-org/api",
+  "states": "available"
+}
+```
+
+```json [Get environment]
+{
+  "action": "get",
+  "project_id": "my-org/api",
+  "environment_id": 42
+}
+```
+
+```json [List deployments]
+{
+  "action": "list_deployments",
+  "project_id": "my-org/api",
+  "environment": "production",
+  "status": "success"
+}
+```
+
+:::
+
+## manage_environment
+
+Create and control environments, and update deployment status. Deployments are
+folded into this tool rather than a separate pair. Gated by `USE_ENVIRONMENTS`.
+
+### Actions
+
+<!-- @autogen:tool manage_environment -->
+| Action | Description |
+|--------|-------------|
+| `create` | Create a new environment |
+| `update` | Update an existing environment (name cannot be changed via the API) |
+| `stop` | Stop an environment (required before it can be deleted) |
+| `delete` | Delete a stopped environment |
+| `update_deployment_status` | Update the status of a deployment. Only deployments not tied to a pipeline job can be updated. |
+<!-- @autogen:end -->
+
+### Examples
+
+::: code-group
+
+```json [Create environment]
+{
+  "action": "create",
+  "project_id": "my-org/api",
+  "name": "staging",
+  "external_url": "https://staging.example.com",
+  "tier": "staging"
+}
+```
+
+```json [Stop environment]
+{
+  "action": "stop",
+  "project_id": "my-org/api",
+  "environment_id": 42
+}
+```
+
+```json [Update deployment status]
+{
+  "action": "update_deployment_status",
+  "project_id": "my-org/api",
+  "deployment_id": 1001,
+  "status": "success"
+}
+```
+
+:::
 
 ## Related Guides
 

@@ -44,6 +44,10 @@ import {
   getDeployKeysReadOnlyToolNames,
 } from './entities/deploy-keys/registry';
 import {
+  environmentsToolRegistry,
+  getEnvironmentsReadOnlyToolNames,
+} from './entities/environments/registry';
+import {
   GITLAB_BASE_URL,
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
@@ -65,6 +69,7 @@ import {
   USE_SEARCH,
   USE_ITERATIONS,
   USE_CI_TOKENS,
+  USE_ENVIRONMENTS,
   getToolDescriptionOverrides,
 } from './config';
 import { isToolAvailable, getRestrictedParameters } from './services/InstanceCapabilities';
@@ -205,6 +210,10 @@ class RegistryManager {
       this.registries.set('deploy-keys', deployKeysToolRegistry);
     }
 
+    if (USE_ENVIRONMENTS) {
+      this.registries.set('environments', environmentsToolRegistry);
+    }
+
     // All entity registries have been migrated to the new pattern!
   }
 
@@ -302,6 +311,10 @@ class RegistryManager {
     if (USE_CI_TOKENS) {
       readOnlyTools.push(...getJobTokenScopeReadOnlyToolNames());
       readOnlyTools.push(...getDeployKeysReadOnlyToolNames());
+    }
+
+    if (USE_ENVIRONMENTS) {
+      readOnlyTools.push(...getEnvironmentsReadOnlyToolNames());
     }
 
     return readOnlyTools;
@@ -703,6 +716,7 @@ class RegistryManager {
     const useSearch = process.env.USE_SEARCH !== 'false';
     const useIterations = process.env.USE_ITERATIONS !== 'false';
     const useCiTokens = process.env.USE_CI_TOKENS !== 'false';
+    const useEnvironments = process.env.USE_ENVIRONMENTS !== 'false';
 
     // Build registries map based on dynamic feature flags
     const registriesToUse = new Map<string, ToolRegistry>();
@@ -734,6 +748,7 @@ class RegistryManager {
       registriesToUse.set('job-token-scope', jobTokenScopeToolRegistry);
       registriesToUse.set('deploy-keys', deployKeysToolRegistry);
     }
+    if (useEnvironments) registriesToUse.set('environments', environmentsToolRegistry);
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -834,6 +849,7 @@ class RegistryManager {
       iterationsToolRegistry,
       jobTokenScopeToolRegistry,
       deployKeysToolRegistry,
+      environmentsToolRegistry,
     ];
 
     for (const registry of allRegistries) {

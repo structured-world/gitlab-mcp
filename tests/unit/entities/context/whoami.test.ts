@@ -640,6 +640,52 @@ describe('whoami handler', () => {
     });
   });
 
+  describe('whoami with admin-filtered tools', () => {
+    beforeEach(() => {
+      mockConnectionManager.getInstanceInfo.mockReturnValue({
+        version: '17.5.2',
+        tier: 'free',
+        features: {},
+        detectedAt: new Date(),
+      });
+
+      mockRegistryManager.getFilterStats.mockReturnValue({
+        available: 40,
+        total: 45,
+        filteredByScopes: 0,
+        filteredByReadOnly: 0,
+        filteredByTier: 0,
+        filteredByDeniedRegex: 0,
+        filteredByActionDenial: 0,
+        filteredByAdmin: 5,
+      });
+    });
+
+    it('exposes the admin-filter count in capabilities', async () => {
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.capabilities.filteredByAdmin).toBe(5);
+      // Admin denials must NOT inflate the tier counter (the bug this guards against).
+      expect(result.capabilities.filteredByTier).toBe(0);
+    });
+
+    it('warns about inactive admin-mode elevation, not a tier upgrade', async () => {
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.warnings.some((w) => w.includes('Admin-mode elevation inactive'))).toBe(true);
+      expect(result.warnings.some((w) => w.includes('GitLab tier restrictions'))).toBe(false);
+    });
+
+    it('recommends enabling admin mode, not contacting admin for a tier upgrade', async () => {
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      const adminRec = result.recommendations.find((r) => r.action === 'enable_admin_mode');
+      expect(adminRec).toBeDefined();
+      expect(adminRec?.priority).toBe('medium');
+      expect(result.recommendations.find((r) => r.action === 'contact_admin')).toBeUndefined();
+    });
+  });
+
   describe('whoami admin-mode elevation', () => {
     beforeEach(() => {
       mockEnhancedFetch.mockResolvedValue({

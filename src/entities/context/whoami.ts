@@ -186,6 +186,7 @@ function buildCapabilities(tokenInfo: WhoamiTokenInfo | null): WhoamiCapabilitie
     filteredByTier: filterStats.filteredByTier,
     filteredByDeniedRegex: filterStats.filteredByDeniedRegex,
     filteredByActionDenial: filterStats.filteredByActionDenial,
+    filteredByAdmin: filterStats.filteredByAdmin,
   };
 }
 
@@ -255,6 +256,13 @@ function generateWarnings(
   if (capabilities.filteredByTier > 0) {
     warnings.push(
       `GitLab tier restrictions: ${capabilities.filteredByTier} tools unavailable for current tier`,
+    );
+  }
+
+  // Admin-mode elevation warning
+  if (capabilities.filteredByAdmin > 0) {
+    warnings.push(
+      `Admin-mode elevation inactive: ${capabilities.filteredByAdmin} admin-only tools unavailable`,
     );
   }
 
@@ -338,6 +346,17 @@ function generateRecommendations(
       message:
         'Some features require GitLab Premium or Ultimate. Contact your administrator for tier upgrade.',
       priority: 'low',
+    });
+  }
+
+  // Admin-mode elevation: distinct from a tier upgrade — the account already has the
+  // role, it just needs an active admin-mode session to reach admin-only endpoints.
+  if (capabilities.filteredByAdmin > 0) {
+    recommendations.push({
+      action: 'enable_admin_mode',
+      message:
+        'Some tools require an active admin-mode session. Enable admin mode for your account to use them.',
+      priority: 'medium',
     });
   }
 

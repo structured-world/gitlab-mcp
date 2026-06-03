@@ -376,7 +376,7 @@ class RegistryManager {
       instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
       tokenScopes?: GitLabScope[];
     },
-  ): 'readOnly' | 'deniedRegex' | 'scopes' | 'tier' | 'actionDenial' | null {
+  ): 'readOnly' | 'deniedRegex' | 'scopes' | 'tier' | 'admin' | 'actionDenial' | null {
     if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) return 'readOnly';
     if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) return 'deniedRegex';
     if (ctx.tokenScopes && !isToolAvailableForScopes(toolName, ctx.tokenScopes)) return 'scopes';
@@ -384,11 +384,18 @@ class RegistryManager {
     // GitLab version/tier — they are local/session tools, not GitLab API tools.
     // Skip tier filtering for tools in the context registry.
     const isContextTool = this.registries.get('context')?.has(toolName) ?? false;
-    // No version-unknown short-circuit here: isToolAvailable fail-opens version/tier
-    // internally when version is unknown but still enforces the admin gate, so an
-    // admin-only tool with inactive elevation is filtered even before detection lands.
-    if (!isContextTool && ctx.instanceInfo && !isToolAvailable(tool.requirements, ctx.instanceInfo))
-      return 'tier';
+    if (!isContextTool && ctx.instanceInfo) {
+      // Admin-mode elevation is a distinct denial from tier/version: an admin-gated
+      // tool whose elevation is known inactive 403s regardless of version/tier, and
+      // the remediation differs (elevate admin mode vs upgrade tier). Bucket it
+      // separately before the tier check so getFilterStats/whoami stay accurate.
+      if (tool.requirements?.default.requiresAdmin && ctx.instanceInfo.adminModeActive === false)
+        return 'admin';
+      // No version-unknown short-circuit: isToolAvailable fail-opens version/tier
+      // internally when version is unknown but still enforces the admin gate, so an
+      // admin-only tool with inactive elevation is filtered even before detection lands.
+      if (!isToolAvailable(tool.requirements, ctx.instanceInfo)) return 'tier';
+    }
     const allActions = extractActionsFromSchema(tool.inputSchema);
     if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) return 'actionDenial';
     return null;
@@ -943,6 +950,7 @@ class RegistryManager {
     byScopes: number;
     byTier: number;
     byActionDenial: number;
+    byAdmin: number;
   } {
     const counts = {
       available: 0,
@@ -951,6 +959,7 @@ class RegistryManager {
       byScopes: 0,
       byTier: 0,
       byActionDenial: 0,
+      byAdmin: 0,
     };
 
     const counterByReason: Record<string, keyof typeof counts> = {
@@ -959,6 +968,7 @@ class RegistryManager {
       scopes: 'byScopes',
       tier: 'byTier',
       actionDenial: 'byActionDenial',
+      admin: 'byAdmin',
     };
 
     for (const registry of this.registries.values()) {
@@ -1058,6 +1068,7 @@ class RegistryManager {
       byScopes: filteredByScopes,
       byTier: filteredByTier,
       byActionDenial: filteredByActionDenial,
+      byAdmin: filteredByAdmin,
     } = this.aggregateFilterCounters(ctx, contextTools);
 
     const stats: FilterStats = {
@@ -1068,7 +1079,7 @@ class RegistryManager {
       filteredByTier,
       filteredByDeniedRegex,
       filteredByActionDenial,
-      filteredByAdmin: 0,
+      filteredByAdmin,
     };
     this.filterStatsCaches.set(url, stats);
     return stats;

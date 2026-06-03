@@ -154,7 +154,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
             let apiUrl: string;
             if (group_id) {
-              apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(group_id)}/projects?${queryParams}`;
+              apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}/projects?${queryParams}`;
             } else if (include_deleted) {
               // include_pending_delete returns soft-deleted projects; do NOT also send
               // active=true, which would filter them back out (admin only).
@@ -911,7 +911,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               }
             });
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(group_id)}`;
+            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}`;
             const response = await enhancedFetch(apiUrl, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -928,7 +928,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'delete': {
             const { group_id } = input;
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(group_id)}`;
+            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}`;
             const response = await enhancedFetch(apiUrl, { method: 'DELETE' });
 
             if (!response.ok) {
@@ -957,7 +957,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               );
             }
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(group_id)}/restore`;
+            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}/restore`;
             const response = await enhancedFetch(apiUrl, { method: 'POST' });
 
             if (!response.ok) {

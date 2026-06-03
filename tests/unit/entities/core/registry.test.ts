@@ -8,6 +8,7 @@ import { enhancedFetch } from '../../../../src/utils/fetch';
 import { smartUserSearch } from '../../../../src/utils/smart-user-search';
 import { isActionDenied } from '../../../../src/config';
 import { ConnectionManager } from '../../../../src/services/ConnectionManager';
+import type { GitLabInstanceInfo } from '../../../../src/services/GitLabVersionDetector';
 
 // Mock the fetch function to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
@@ -2160,7 +2161,7 @@ describe('Core Registry', () => {
       it('rejects group restore on GitLab below 18.0 with a clear message', async () => {
         const spy = jest
           .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
-          .mockReturnValue({ version: '17.11.0', tier: 'free' } as never);
+          .mockReturnValue({ version: '17.11.0', tier: 'free' } as GitLabInstanceInfo);
         try {
           const tool = coreToolRegistry.get('manage_namespace');
           await expect(tool!.handler({ action: 'restore', group_id: 'old-group' })).rejects.toThrow(

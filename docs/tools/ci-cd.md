@@ -21,7 +21,7 @@ Pipeline management, job control, logs, and CI/CD variable configuration.
 | `browse_variables` | Query | List and get CI/CD variables |
 | `manage_variable` | Command | Create, update, delete variables |
 | `browse_environments` | Query | List environments and deployments |
-| `manage_environment` | Command | Create, stop, delete environments; update deployment status |
+| `manage_environment` | Command | Create, update, stop, delete environments; update deployment status |
 
 ## browse_pipelines
 

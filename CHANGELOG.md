@@ -4,6 +4,15 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [7.6.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.5.0...gitlab-mcp-v7.6.0) (2026-06-03)
+
+
+### Features
+
+* **environments:** expose Environments and Deployments ([#463](https://github.com/structured-world/gitlab-mcp/issues/463)) ([5668b61](https://github.com/structured-world/gitlab-mcp/commit/5668b61bf81e683a5c02686927b035fe18bd92a5))
+* **projects:** add restore action to manage_project ([#464](https://github.com/structured-world/gitlab-mcp/issues/464)) ([bb8b7bf](https://github.com/structured-world/gitlab-mcp/commit/bb8b7bf767056199fe22c717153ef950894d70b8))
+* **projects:** list soft-deleted projects with include_deleted ([#460](https://github.com/structured-world/gitlab-mcp/issues/460)) ([c206cb1](https://github.com/structured-world/gitlab-mcp/commit/c206cb168c93991b996772ee069f9485392f558c))
+
 ## [7.5.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.4.0...gitlab-mcp-v7.5.0) (2026-06-02)
 
 

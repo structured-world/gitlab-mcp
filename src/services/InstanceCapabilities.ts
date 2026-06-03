@@ -41,7 +41,7 @@ export interface InstanceCapabilities {
  * the gating helpers accept this narrower shape and a full InstanceCapabilities
  * satisfies it structurally.
  */
-export type CapabilityGate = Pick<InstanceCapabilities, 'version' | 'tier' | 'isAdmin'>;
+export type CapabilityGate = Pick<InstanceCapabilities, 'version' | 'tier' | 'adminModeActive'>;
 
 /** Tier hierarchy for comparison: free < premium < ultimate. */
 const TIER_ORDER: Record<string, number> = { free: 0, premium: 1, ultimate: 2 };
@@ -76,16 +76,21 @@ export function resolveRequirement(reqs: ToolRequirements, action?: string): Too
  * Check whether the instance satisfies a single requirement (version + tier +
  * admin). When the version is unknown the requirement is treated as met
  * (fail-open) so tools are not hidden before detection completes. The admin gate
- * only filters when the user is *known* not to be an admin; an undefined
- * admin status (probe not yet landed) is permissive.
+ * keys on admin-mode ELEVATION, not the role: admin-only endpoints return 403
+ * unless admin mode is active, so an admin without elevation is gated out just
+ * like a non-admin. It only filters when elevation is *known* inactive; an
+ * undefined status (probe not landed / OAuth) is permissive.
  */
 export function meetsRequirement(req: ToolRequirement, caps: CapabilityGate): boolean {
+  // The admin gate is independent of version detection: if elevation is known
+  // inactive, the endpoint will 403 regardless of whether the version probe
+  // landed, so gate it BEFORE the version-unknown fail-open.
+  if (req.requiresAdmin && caps.adminModeActive === false) return false;
   if (caps.version === 'unknown') return true;
   if (parseVersion(caps.version) < parseVersion(req.minVersion ?? DEFAULT_MIN_VERSION)) {
     return false;
   }
   if (!isTierSufficient(caps.tier, req.tier)) return false;
-  if (req.requiresAdmin && caps.isAdmin === false) return false;
   return true;
 }
 
@@ -101,23 +106,31 @@ export function isToolAvailable(
   caps: CapabilityGate,
   action?: string,
 ): boolean {
-  if (caps.version === 'unknown') return true;
   if (!reqs) {
-    return parseVersion(caps.version) >= parseVersion(UNKNOWN_TOOL_MIN_VERSION);
+    // Unannotated tools have no admin gate; only the conservative version floor.
+    return caps.version === 'unknown'
+      ? true
+      : parseVersion(caps.version) >= parseVersion(UNKNOWN_TOOL_MIN_VERSION);
   }
+  // Delegate to meetsRequirement so the admin gate applies even when version is
+  // unknown (it short-circuits version/tier internally).
   return meetsRequirement(resolveRequirement(reqs, action), caps);
 }
 
 /**
- * Names of parameters that must be stripped from a tool's JSON Schema because
- * the instance tier/version does not meet their declared requirement. Empty when
- * the tool gates no parameters or the version is unknown.
+ * Names of parameters that must be stripped from a tool's JSON Schema because the
+ * instance does not meet their declared requirement. Version/tier requirements
+ * fail-open while the version is unknown, but admin-gated parameters are still
+ * stripped when admin-mode elevation is known inactive. Empty when the tool gates
+ * no parameters.
  */
 export function getRestrictedParameters(
   reqs: ToolRequirements | undefined,
   caps: CapabilityGate,
 ): string[] {
-  if (!reqs?.parameters || caps.version === 'unknown') return [];
+  if (!reqs?.parameters) return [];
+  // No blanket version-unknown skip: meetsRequirement still fail-opens version/tier
+  // when unknown, but an admin-gated param with inactive elevation stays restricted.
   return Object.entries(reqs.parameters)
     .filter(([, req]) => !meetsRequirement(req, caps))
     .map(([name]) => name);
@@ -132,6 +145,13 @@ export function getUnmetReason(
   caps: CapabilityGate,
   action?: string,
 ): string | null {
+  // Admin gate first — independent of version detection (see meetsRequirement).
+  // adminModeActive === false covers BOTH a non-admin account (no role) and an
+  // admin without active elevation, so the wording must not assume the caller can
+  // elevate — it states the requirement, not a single fix.
+  if (reqs && resolveRequirement(reqs, action).requiresAdmin && caps.adminModeActive === false) {
+    return 'Requires administrator privileges (admin mode must be active)';
+  }
   if (caps.version === 'unknown') return null;
   if (!reqs) {
     return parseVersion(caps.version) >= parseVersion(UNKNOWN_TOOL_MIN_VERSION)
@@ -144,9 +164,6 @@ export function getUnmetReason(
   }
   if (!isTierSufficient(caps.tier, req.tier)) {
     return `Requires GitLab ${req.tier ?? DEFAULT_TIER} tier or higher, current tier is ${caps.tier}`;
-  }
-  if (req.requiresAdmin && caps.isAdmin === false) {
-    return 'Requires instance admin privileges';
   }
   return null;
 }

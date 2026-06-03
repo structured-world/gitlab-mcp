@@ -640,6 +640,107 @@ describe('whoami handler', () => {
     });
   });
 
+  describe('whoami with admin-filtered tools', () => {
+    beforeEach(() => {
+      mockConnectionManager.getInstanceInfo.mockReturnValue({
+        version: '17.5.2',
+        tier: 'free',
+        features: {},
+        detectedAt: new Date(),
+      });
+
+      mockRegistryManager.getFilterStats.mockReturnValue({
+        available: 40,
+        total: 45,
+        filteredByScopes: 0,
+        filteredByReadOnly: 0,
+        filteredByTier: 0,
+        filteredByDeniedRegex: 0,
+        filteredByActionDenial: 0,
+        filteredByAdmin: 5,
+      });
+    });
+
+    it('exposes the admin-filter count in capabilities', async () => {
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.capabilities.filteredByAdmin).toBe(5);
+      // Admin denials must NOT inflate the tier counter (the bug this guards against).
+      expect(result.capabilities.filteredByTier).toBe(0);
+    });
+
+    it('warns an admin without elevation and recommends enabling admin mode', async () => {
+      mockEnhancedFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 1,
+          username: 'root',
+          name: 'Admin',
+          is_admin: true,
+          state: 'active',
+        }),
+      });
+      mockConnectionManager.getAdminInfo.mockReturnValue({ isAdmin: true, adminModeActive: false });
+
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.warnings.some((w) => w.includes('Admin-mode elevation inactive'))).toBe(true);
+      // Admin denials must not be reported as a tier restriction.
+      expect(result.warnings.some((w) => w.includes('GitLab tier restrictions'))).toBe(false);
+      const adminRec = result.recommendations.find((r) => r.action === 'enable_admin_mode');
+      expect(adminRec).toBeDefined();
+      expect(adminRec?.priority).toBe('medium');
+      expect(result.recommendations.find((r) => r.action === 'contact_admin')).toBeUndefined();
+    });
+
+    it('tells a non-admin the tools need an admin account, with no enable-admin-mode action', async () => {
+      mockEnhancedFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 2,
+          username: 'dev',
+          name: 'Dev',
+          is_admin: false,
+          state: 'active',
+        }),
+      });
+      mockConnectionManager.getAdminInfo.mockReturnValue({
+        isAdmin: false,
+        adminModeActive: false,
+      });
+
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.warnings.some((w) => w.includes('Administrator privileges required'))).toBe(
+        true,
+      );
+      // A non-admin cannot elevate, so the wording must not imply they can.
+      expect(result.warnings.some((w) => w.includes('Admin-mode elevation inactive'))).toBe(false);
+      expect(result.recommendations.find((r) => r.action === 'enable_admin_mode')).toBeUndefined();
+    });
+
+    it('uses the admin probe role when /user omits is_admin', async () => {
+      // /user response without is_admin -> userInfo.isAdmin is undefined. The
+      // authoritative role comes from the admin probe (getAdminInfo), which says
+      // non-admin: the guidance must follow it, not treat undefined as maybe-admin.
+      mockEnhancedFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 3, username: 'svc', name: 'Service', state: 'active' }),
+      });
+      mockConnectionManager.getAdminInfo.mockReturnValue({
+        isAdmin: false,
+        adminModeActive: false,
+      });
+
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.warnings.some((w) => w.includes('Administrator privileges required'))).toBe(
+        true,
+      );
+      expect(result.recommendations.find((r) => r.action === 'enable_admin_mode')).toBeUndefined();
+    });
+  });
+
   describe('whoami admin-mode elevation', () => {
     beforeEach(() => {
       mockEnhancedFetch.mockResolvedValue({

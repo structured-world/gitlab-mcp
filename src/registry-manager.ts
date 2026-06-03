@@ -338,15 +338,32 @@ class RegistryManager {
    *  Returns undefined fields when connection is not initialized.
    *  @throws on unexpected errors (anything other than expected init errors). */
   private loadInstanceContext(instanceUrl?: string): {
-    instanceInfo?: { tier: GitLabTier; version: string };
+    instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
     tokenScopes?: GitLabScope[];
   } {
-    let instanceInfo: { tier: GitLabTier; version: string } | undefined;
+    let instanceInfo: { tier: GitLabTier; version: string; adminModeActive?: boolean } | undefined;
     try {
       const info = ConnectionManager.getInstance().getInstanceInfo(instanceUrl);
       instanceInfo = { tier: info.tier, version: info.version };
     } catch (err) {
       if (!isExpectedInitError(err)) throw err;
+    }
+
+    // Admin-mode elevation (from the #434 probe) is what makes `requiresAdmin`
+    // parameter/tool gating take effect. The gate keys on active elevation, not the
+    // role, because admin-only endpoints 403 without it. Best-effort: any read failure
+    // leaves it undefined, which the gate treats as fail-open — a broken admin read
+    // must never hide tools or block the whole cache build.
+    if (instanceInfo) {
+      try {
+        instanceInfo.adminModeActive =
+          ConnectionManager.getInstance().getAdminInfo(instanceUrl)?.adminModeActive;
+      } catch (err) {
+        // getAdminInfo is a local cache read: only an uninitialized-connection
+        // error is expected (leaves elevation undefined = fail-open). Anything
+        // else (e.g. a renamed method) is a real bug — surface it.
+        if (!isExpectedInitError(err)) throw err;
+      }
     }
 
     let tokenScopes: GitLabScope[] | undefined;
@@ -368,8 +385,11 @@ class RegistryManager {
   private getToolExclusionReason(
     toolName: string,
     tool: EnhancedToolDefinition,
-    ctx: { instanceInfo?: { tier: GitLabTier; version: string }; tokenScopes?: GitLabScope[] },
-  ): 'readOnly' | 'deniedRegex' | 'scopes' | 'tier' | 'actionDenial' | null {
+    ctx: {
+      instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
+      tokenScopes?: GitLabScope[];
+    },
+  ): 'readOnly' | 'deniedRegex' | 'scopes' | 'tier' | 'admin' | 'actionDenial' | null {
     if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) return 'readOnly';
     if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) return 'deniedRegex';
     if (ctx.tokenScopes && !isToolAvailableForScopes(toolName, ctx.tokenScopes)) return 'scopes';
@@ -377,13 +397,18 @@ class RegistryManager {
     // GitLab version/tier — they are local/session tools, not GitLab API tools.
     // Skip tier filtering for tools in the context registry.
     const isContextTool = this.registries.get('context')?.has(toolName) ?? false;
-    if (
-      !isContextTool &&
-      ctx.instanceInfo &&
-      ctx.instanceInfo.version !== 'unknown' &&
-      !isToolAvailable(tool.requirements, ctx.instanceInfo)
-    )
-      return 'tier';
+    if (!isContextTool && ctx.instanceInfo) {
+      // Admin-mode elevation is a distinct denial from tier/version: an admin-gated
+      // tool whose elevation is known inactive 403s regardless of version/tier, and
+      // the remediation differs (elevate admin mode vs upgrade tier). Bucket it
+      // separately before the tier check so getFilterStats/whoami stay accurate.
+      if (tool.requirements?.default.requiresAdmin && ctx.instanceInfo.adminModeActive === false)
+        return 'admin';
+      // No version-unknown short-circuit: isToolAvailable fail-opens version/tier
+      // internally when version is unknown but still enforces the admin gate, so an
+      // admin-only tool with inactive elevation is filtered even before detection lands.
+      if (!isToolAvailable(tool.requirements, ctx.instanceInfo)) return 'tier';
+    }
     const allActions = extractActionsFromSchema(tool.inputSchema);
     if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) return 'actionDenial';
     return null;
@@ -391,7 +416,7 @@ class RegistryManager {
 
   /** Filter registries and build transformed tool map (schema + description overrides). */
   private buildFilteredTools(ctx: {
-    instanceInfo?: { tier: GitLabTier; version: string };
+    instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
     tokenScopes?: GitLabScope[];
   }): Map<string, EnhancedToolDefinition> {
     const result = new Map<string, EnhancedToolDefinition>();
@@ -406,8 +431,10 @@ class RegistryManager {
 
         let transformedSchema = transformToolSchema(toolName, tool.inputSchema);
 
-        // Strip tier-restricted parameters (skip when version unknown or not initialized)
-        if (ctx.instanceInfo && ctx.instanceInfo.version !== 'unknown') {
+        // Strip restricted parameters (skip only when not initialized). When version
+        // is unknown, getRestrictedParameters fail-opens version/tier but still strips
+        // admin-gated params whose elevation is known inactive.
+        if (ctx.instanceInfo) {
           const restrictedParams = getRestrictedParameters(tool.requirements, ctx.instanceInfo);
           if (restrictedParams.length > 0) {
             transformedSchema = stripTierRestrictedParameters(transformedSchema, restrictedParams);
@@ -939,6 +966,7 @@ class RegistryManager {
     byScopes: number;
     byTier: number;
     byActionDenial: number;
+    byAdmin: number;
   } {
     const counts = {
       available: 0,
@@ -947,6 +975,7 @@ class RegistryManager {
       byScopes: 0,
       byTier: 0,
       byActionDenial: 0,
+      byAdmin: 0,
     };
 
     const counterByReason: Record<string, keyof typeof counts> = {
@@ -955,6 +984,7 @@ class RegistryManager {
       scopes: 'byScopes',
       tier: 'byTier',
       actionDenial: 'byActionDenial',
+      admin: 'byAdmin',
     };
 
     for (const registry of this.registries.values()) {
@@ -1011,6 +1041,7 @@ class RegistryManager {
         filteredByTier: 0,
         filteredByDeniedRegex: byDeniedRegex,
         filteredByActionDenial: byActionDenial,
+        filteredByAdmin: 0,
       };
     }
 
@@ -1041,6 +1072,7 @@ class RegistryManager {
           filteredByTier: 0,
           filteredByDeniedRegex: 0,
           filteredByActionDenial: 0,
+          filteredByAdmin: 0,
         }
       );
     }
@@ -1052,6 +1084,7 @@ class RegistryManager {
       byScopes: filteredByScopes,
       byTier: filteredByTier,
       byActionDenial: filteredByActionDenial,
+      byAdmin: filteredByAdmin,
     } = this.aggregateFilterCounters(ctx, contextTools);
 
     const stats: FilterStats = {
@@ -1062,6 +1095,7 @@ class RegistryManager {
       filteredByTier,
       filteredByDeniedRegex,
       filteredByActionDenial,
+      filteredByAdmin,
     };
     this.filterStatsCaches.set(url, stats);
     return stats;
@@ -1097,6 +1131,8 @@ export interface FilterStats {
   filteredByDeniedRegex: number;
   /** Tools filtered due to all actions being denied */
   filteredByActionDenial: number;
+  /** Tools filtered due to inactive admin-mode elevation (distinct from tier/version) */
+  filteredByAdmin: number;
 }
 
 export { RegistryManager };

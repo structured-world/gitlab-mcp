@@ -186,6 +186,7 @@ function buildCapabilities(tokenInfo: WhoamiTokenInfo | null): WhoamiCapabilitie
     filteredByTier: filterStats.filteredByTier,
     filteredByDeniedRegex: filterStats.filteredByDeniedRegex,
     filteredByActionDenial: filterStats.filteredByActionDenial,
+    filteredByAdmin: filterStats.filteredByAdmin,
   };
 }
 
@@ -209,6 +210,7 @@ function buildContextInfo(): WhoamiContextInfo {
 function generateWarnings(
   tokenInfo: WhoamiTokenInfo | null,
   capabilities: WhoamiCapabilities,
+  isAdmin: boolean | undefined,
 ): string[] {
   const warnings: string[] = [];
 
@@ -258,6 +260,18 @@ function generateWarnings(
     );
   }
 
+  // Admin-gated tools warning. filteredByAdmin > 0 means admin-mode elevation is
+  // known inactive, which happens both for a non-admin account (no role) and for an
+  // admin without active elevation. Word each case accurately: a non-admin cannot
+  // elevate, so don't tell them to.
+  if (capabilities.filteredByAdmin > 0) {
+    warnings.push(
+      isAdmin === false
+        ? `Administrator privileges required: ${capabilities.filteredByAdmin} admin-only tools unavailable for this account`
+        : `Admin-mode elevation inactive: ${capabilities.filteredByAdmin} admin-only tools unavailable`,
+    );
+  }
+
   // Denied tools regex warning
   if (capabilities.filteredByDeniedRegex > 0) {
     warnings.push(
@@ -275,6 +289,7 @@ function generateRecommendations(
   tokenInfo: WhoamiTokenInfo | null,
   capabilities: WhoamiCapabilities,
   serverInfo: WhoamiServerInfo,
+  isAdmin: boolean | undefined,
 ): WhoamiRecommendation[] {
   const recommendations: WhoamiRecommendation[] = [];
 
@@ -341,6 +356,18 @@ function generateRecommendations(
     });
   }
 
+  // Admin-mode elevation: distinct from a tier upgrade. Only suggest it when the
+  // account actually has the admin role (or the role is unknown under OAuth) — a
+  // confirmed non-admin cannot enable admin mode, so the action would be a dead end.
+  if (capabilities.filteredByAdmin > 0 && isAdmin !== false) {
+    recommendations.push({
+      action: 'enable_admin_mode',
+      message:
+        'Some tools require an active admin-mode session. If you are an instance admin, enable admin mode to use them.',
+      priority: 'medium',
+    });
+  }
+
   return recommendations;
 }
 
@@ -384,10 +411,18 @@ export async function executeWhoami(): Promise<WhoamiResult> {
   // Enrich identity with admin-mode elevation from the session probe. The role
   // flag (isAdmin) alone is misleading: an admin without active elevation still
   // gets 403 on admin endpoints. adminModeActive stays undefined under OAuth.
+  //
+  // The probe's isAdmin is the authoritative role flag for admin guidance:
+  // /user may omit is_admin (leaving userInfo.isAdmin undefined), which the
+  // guidance path would otherwise read as maybe-admin and wrongly offer admin-mode
+  // elevation to a non-admin. Prefer the probe value when present.
+  let effectiveIsAdmin = userInfo?.isAdmin;
   if (userInfo) {
     try {
       const adminInfo = ConnectionManager.getInstance().getAdminInfo();
       if (adminInfo) {
+        effectiveIsAdmin = adminInfo.isAdmin;
+        userInfo.isAdmin = adminInfo.isAdmin;
         userInfo.adminModeActive = adminInfo.adminModeActive;
       }
     } catch {
@@ -398,7 +433,7 @@ export async function executeWhoami(): Promise<WhoamiResult> {
   const serverInfo = buildServerInfo();
   const capabilities = buildCapabilities(tokenInfo);
   const contextInfo = buildContextInfo();
-  const warnings = generateWarnings(tokenInfo, capabilities);
+  const warnings = generateWarnings(tokenInfo, capabilities, effectiveIsAdmin);
 
   // Honest admin signal: role present but elevation inactive means admin tools
   // will 403 at call time, so surface it instead of implying admin access works.
@@ -408,7 +443,12 @@ export async function executeWhoami(): Promise<WhoamiResult> {
         'Re-authenticate with admin mode enabled (OAuth tokens cannot elevate).',
     );
   }
-  const recommendations = generateRecommendations(tokenInfo, capabilities, serverInfo);
+  const recommendations = generateRecommendations(
+    tokenInfo,
+    capabilities,
+    serverInfo,
+    effectiveIsAdmin,
+  );
 
   logDebug('Whoami executed', {
     hasUser: userInfo !== null,

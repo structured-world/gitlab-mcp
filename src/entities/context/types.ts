@@ -224,6 +224,8 @@ export interface WhoamiCapabilities {
   filteredByDeniedRegex: number;
   /** Tools filtered due to all actions being denied */
   filteredByActionDenial: number;
+  /** Tools filtered due to inactive admin-mode elevation */
+  filteredByAdmin: number;
 }
 
 /**
@@ -234,6 +236,7 @@ export type WhoamiRecommendationAction =
   | 'add_scope'
   | 'enable_oauth'
   | 'contact_admin'
+  | 'enable_admin_mode'
   | 'renew_token';
 
 /**

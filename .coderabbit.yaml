@@ -1,0 +1,9 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+reviews:
+  tools:
+    # Disabled: CodeRabbit cannot install ESLint in its sandbox for this repo
+    # (engines.node >=24, ESLint 10, and Yarn 4 without a package-lock), which
+    # surfaces a recurring "ESLint install failed" warning. ESLint still runs
+    # locally (yarn lint) and in CI before merge, so nothing is lost here.
+    eslint:
+      enabled: false

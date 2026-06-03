@@ -25,6 +25,7 @@ const ListEnvironmentsSchema = z.object({
   name: z.string().optional().describe('Return the environment with this exact name'),
   search: z
     .string()
+    .min(3)
     .optional()
     .describe('Return environments matching this search term (min 3 characters)'),
   states: z

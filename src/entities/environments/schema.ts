@@ -23,6 +23,7 @@ const tierField = z
   .describe('Deployment tier of the environment');
 const externalUrlField = z
   .string()
+  .url()
   .describe(
     'URL where the deployed environment can be reached (e.g., https://staging.example.com)',
   );
@@ -84,13 +85,27 @@ const UpdateDeploymentStatusSchema = z.object({
 });
 
 // --- Discriminated union combining all actions ---
-export const ManageEnvironmentSchema = z.discriminatedUnion('action', [
-  CreateEnvironmentSchema,
-  UpdateEnvironmentSchema,
-  StopEnvironmentSchema,
-  DeleteEnvironmentSchema,
-  UpdateDeploymentStatusSchema,
-]);
+export const ManageEnvironmentSchema = z
+  .discriminatedUnion('action', [
+    CreateEnvironmentSchema,
+    UpdateEnvironmentSchema,
+    StopEnvironmentSchema,
+    DeleteEnvironmentSchema,
+    UpdateDeploymentStatusSchema,
+  ])
+  // An update with no fields would send an empty body and be rejected by GitLab;
+  // require at least one updatable field.
+  .refine(
+    (data) =>
+      data.action !== 'update' ||
+      data.external_url !== undefined ||
+      data.tier !== undefined ||
+      data.description !== undefined,
+    {
+      message: 'update requires at least one of: external_url, tier, description',
+      path: ['external_url'],
+    },
+  );
 
 // ============================================================================
 // Type exports

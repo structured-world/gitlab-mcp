@@ -821,7 +821,13 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
             }
 
-            return RestoredProjectSchema.parse(await response.json());
+            const restored = RestoredProjectSchema.safeParse(await response.json());
+            if (!restored.success) {
+              throw new Error(
+                `GitLab API error: unexpected restore response shape (${restored.error.issues[0]?.message ?? 'invalid'})`,
+              );
+            }
+            return restored.data;
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

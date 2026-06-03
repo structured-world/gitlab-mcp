@@ -2016,7 +2016,9 @@ describe('Core Registry', () => {
         } as any);
 
         const tool = coreToolRegistry.get('manage_project');
-        await expect(tool!.handler({ action: 'restore', project_id: '1' })).rejects.toThrow();
+        await expect(tool!.handler({ action: 'restore', project_id: '1' })).rejects.toThrow(
+          'GitLab API error: unexpected restore response shape',
+        );
       });
     });
 

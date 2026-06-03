@@ -34,13 +34,15 @@ describe('Project Restore - GitLab Integration', () => {
 
   it('creates, soft-deletes, and restores a project', async () => {
     const name = `it-restore-${Date.now()}`;
+    // Defaults to the mandated 'test' root group; overridable for other instances.
+    const namespace = process.env.GITLAB_TEST_NAMESPACE ?? 'test';
 
     const created = (await helper.executeTool(
       'manage_project',
       ManageProjectSchema.parse({
         action: 'create',
         name,
-        namespace: 'test',
+        namespace,
         initialize_with_readme: true,
       }),
     )) as Project;
@@ -118,6 +120,9 @@ describe('Project Restore - GitLab Integration', () => {
         ManageProjectSchema.parse({ action: 'restore', project_id: String(projectId) }),
       )) as Project;
       expect(result.id).toBe(projectId);
+      // The restore response itself should already show the project is no longer
+      // marked for deletion (avoids relying solely on the follow-up GET).
+      expect(result.marked_for_deletion_on ?? null).toBeNull();
       restored = true;
 
       const afterRestore = (await helper.executeTool(

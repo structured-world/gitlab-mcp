@@ -11,7 +11,7 @@
 
 import { ManageNamespaceSchema } from '../../../src/entities/core/schema';
 import { parseVersion } from '../../../src/utils/version';
-import { IntegrationTestHelper } from '../helpers/registry-helper';
+import { IntegrationTestHelper, initIntegrationHelper } from '../helpers/registry-helper';
 
 interface Group {
   id: number;
@@ -23,11 +23,7 @@ describe('Group Restore - GitLab Integration', () => {
   let helper: IntegrationTestHelper;
 
   beforeAll(async () => {
-    if (!process.env.GITLAB_TOKEN) {
-      throw new Error('GITLAB_TOKEN environment variable is required');
-    }
-    helper = new IntegrationTestHelper();
-    await helper.initialize();
+    helper = await initIntegrationHelper();
   });
 
   it('creates, soft-deletes, and restores a group', async () => {

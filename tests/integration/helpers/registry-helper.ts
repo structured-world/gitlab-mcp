@@ -611,3 +611,17 @@ export class IntegrationTestHelper {
     return this.executeTool('manage_context', { action: 'reset' });
   }
 }
+
+/**
+ * Construct and initialize an {@link IntegrationTestHelper}, asserting the
+ * mandatory GITLAB_TOKEN is present. Shared bootstrap for integration test
+ * suites so the identical setup block is not repeated per file.
+ */
+export async function initIntegrationHelper(): Promise<IntegrationTestHelper> {
+  if (!process.env.GITLAB_TOKEN) {
+    throw new Error('GITLAB_TOKEN environment variable is required');
+  }
+  const helper = new IntegrationTestHelper();
+  await helper.initialize();
+  return helper;
+}

@@ -101,6 +101,13 @@ describe('Environments Registry', () => {
       ).rejects.toThrow();
       expect(mockEnhancedFetch).not.toHaveBeenCalled();
     });
+
+    it('rejects a search term shorter than the documented 3-character minimum', async () => {
+      await expect(
+        browse().handler({ action: 'list', project_id: '123', search: 'ab' }),
+      ).rejects.toThrow();
+      expect(mockEnhancedFetch).not.toHaveBeenCalled();
+    });
   });
 
   describe('manage_environment', () => {
@@ -222,6 +229,25 @@ describe('Environments Registry', () => {
 
     it('rejects create without a name at schema parse', async () => {
       await expect(manage().handler({ action: 'create', project_id: '123' })).rejects.toThrow();
+      expect(mockEnhancedFetch).not.toHaveBeenCalled();
+    });
+
+    it('rejects create with a non-URL external_url at schema parse', async () => {
+      await expect(
+        manage().handler({
+          action: 'create',
+          project_id: '123',
+          name: 'staging',
+          external_url: 'not-a-url',
+        }),
+      ).rejects.toThrow();
+      expect(mockEnhancedFetch).not.toHaveBeenCalled();
+    });
+
+    it('rejects an update with no updatable fields (would send an empty body)', async () => {
+      await expect(
+        manage().handler({ action: 'update', project_id: '123', environment_id: 5 }),
+      ).rejects.toThrow();
       expect(mockEnhancedFetch).not.toHaveBeenCalled();
     });
   });

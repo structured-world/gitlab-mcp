@@ -588,13 +588,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clack/core@npm:1.4.0":
-  version: 1.4.0
-  resolution: "@clack/core@npm:1.4.0"
+"@clack/core@npm:1.4.1":
+  version: 1.4.1
+  resolution: "@clack/core@npm:1.4.1"
   dependencies:
     fast-wrap-ansi: "npm:^0.2.0"
     sisteransi: "npm:^1.0.5"
-  checksum: 10c0/7d287da15943018439967b1fff83f718e87ea3a7ea7f54a549f5d3828147873acbb67a659824d84702fa3a1e709785ded9af3e5ef0ce14484fe1d484ea3415bb
+  checksum: 10c0/7e7e02f0c423c457aff9acc09f9ffbae3d2841b18f543c614b5b8eaa2c11c9f146bf68b3078d1daa4dea9d3131ccfa514edbe8d29ced18446933567188b2543c
   languageName: node
   linkType: hard
 
@@ -610,21 +610,21 @@ __metadata:
   linkType: hard
 
 "@clack/prompts@npm:^1.5.0":
-  version: 1.5.0
-  resolution: "@clack/prompts@npm:1.5.0"
+  version: 1.5.1
+  resolution: "@clack/prompts@npm:1.5.1"
   dependencies:
-    "@clack/core": "npm:1.4.0"
+    "@clack/core": "npm:1.4.1"
     fast-string-width: "npm:^3.0.2"
     fast-wrap-ansi: "npm:^0.2.0"
     sisteransi: "npm:^1.0.5"
-  checksum: 10c0/5f50c4b2c8b07c6125b75b7431b4aabdeae285e6934db7dfc11f283fc7b6ccc1ef3e812839035b92fac843523d96b80f4658f83a0e8aa10e5f6c56950adfc765
+  checksum: 10c0/423b1958d28a25703130c2dd6a236413d210446fd36e980dcf106f9165e5c579494214aaca5185269e918488c6d4f93c4de44a7dc5f902add8874486b2624c22
   languageName: node
   linkType: hard
 
 "@cloudflare/workers-types@npm:^4.20260602.1":
-  version: 4.20260602.1
-  resolution: "@cloudflare/workers-types@npm:4.20260602.1"
-  checksum: 10c0/6da2f44cf133d2e96e47f3476817abee019e604bbb0902c489093489e4391b00549fe922735aaef1e59e8c7b5afc0faa4116b8de54481ecd2c7511490ea25b38
+  version: 4.20260603.1
+  resolution: "@cloudflare/workers-types@npm:4.20260603.1"
+  checksum: 10c0/1f24fcb22a50c6af933b6e1765561407250b732576e5f70e2fc735bc0900d434014c5a23582896e2696d7d12a62a0411f69ec9aee267c07db414d5324d03d269
   languageName: node
   linkType: hard
 

@@ -580,6 +580,7 @@ describe('RegistryManager', () => {
           getTokenScopeInfo: jest.fn().mockImplementation(() => {
             throw new Error('Connection not initialized');
           }),
+          getAdminInfo: jest.fn().mockReturnValue(null),
           getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
         });
 
@@ -602,6 +603,7 @@ describe('RegistryManager', () => {
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
           getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getAdminInfo: jest.fn().mockReturnValue(null),
           getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
         });
       }
@@ -682,6 +684,7 @@ describe('RegistryManager', () => {
           return { tier: 'free', version: '17.0.0' };
         }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getAdminInfo: jest.fn().mockReturnValue(null),
         getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
 
@@ -702,6 +705,7 @@ describe('RegistryManager', () => {
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
           getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getAdminInfo: jest.fn().mockReturnValue(null),
           getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
         });
       }
@@ -724,6 +728,7 @@ describe('RegistryManager', () => {
           return { tier: 'free', version: '17.0.0' };
         }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getAdminInfo: jest.fn().mockReturnValue(null),
         getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
 
@@ -747,6 +752,7 @@ describe('RegistryManager', () => {
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
           getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getAdminInfo: jest.fn().mockReturnValue(null),
           getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
         });
       }
@@ -1295,6 +1301,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'ultimate', version: '99.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getAdminInfo: jest.fn().mockReturnValue(null),
         getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
 
@@ -1322,6 +1329,7 @@ describe('RegistryManager', () => {
         ConnectionManager.getInstance.mockReturnValue({
           getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
           getTokenScopeInfo: jest.fn().mockReturnValue(null),
+          getAdminInfo: jest.fn().mockReturnValue(null),
           getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
         });
       }
@@ -1359,6 +1367,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue({ scopes: ['read_user'] }),
+        getAdminInfo: jest.fn().mockReturnValue(null),
         getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
 
@@ -1378,6 +1387,7 @@ describe('RegistryManager', () => {
       ConnectionManager.getInstance.mockReturnValue({
         getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
         getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getAdminInfo: jest.fn().mockReturnValue(null),
         getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
     });
@@ -1639,6 +1649,7 @@ describe('RegistryManager', () => {
         getTokenScopeInfo: jest
           .fn()
           .mockImplementation(overrides.getTokenScopeInfo ?? (() => null)),
+        getAdminInfo: jest.fn().mockReturnValue(null),
         getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
       });
     }

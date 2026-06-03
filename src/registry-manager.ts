@@ -345,8 +345,11 @@ class RegistryManager {
       try {
         instanceInfo.adminModeActive =
           ConnectionManager.getInstance().getAdminInfo(instanceUrl)?.adminModeActive;
-      } catch {
-        // leave adminModeActive undefined (fail-open)
+      } catch (err) {
+        // getAdminInfo is a local cache read: only an uninitialized-connection
+        // error is expected (leaves elevation undefined = fail-open). Anything
+        // else (e.g. a renamed method) is a real bug — surface it.
+        if (!isExpectedInitError(err)) throw err;
       }
     }
 

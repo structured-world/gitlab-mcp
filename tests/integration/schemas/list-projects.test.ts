@@ -24,8 +24,8 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
   });
 
   /** Run browse_projects list and assert the result is an array of project shapes. */
-  async function listAndAssertProjectShapes(params: unknown): Promise<any[]> {
-    const projects = (await helper.executeTool('browse_projects', params)) as any[];
+  async function listAndAssertProjectShapes(params: unknown): Promise<unknown[]> {
+    const projects = (await helper.executeTool('browse_projects', params)) as unknown[];
     expect(Array.isArray(projects)).toBe(true);
     for (const p of projects) {
       expect(p).toHaveProperty('id');

@@ -564,7 +564,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: 'manage_project',
       description:
-        'Create, update, or manage GitLab projects. Actions: create (new project with settings), fork (copy existing project), update (modify settings), delete (remove permanently), archive/unarchive (toggle read-only), transfer (move to different namespace). Related: browse_projects for discovery.',
+        'Create, update, or manage GitLab projects. Actions: create (new project with settings), fork (copy existing project), update (modify settings), delete (remove permanently), restore (recover a soft-deleted project before purge), archive/unarchive (toggle read-only), transfer (move to different namespace). Related: browse_projects for discovery, including include_deleted to find restorable projects.',
       inputSchema: z.toJSONSchema(ManageProjectSchema),
       requirements: {
         default: { tier: 'free', minVersion: '8.0' },
@@ -791,6 +791,19 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
               body: body.toString(),
             });
+
+            if (!response.ok) {
+              throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+            }
+
+            return await response.json();
+          }
+
+          case 'restore': {
+            const { project_id } = input;
+
+            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/restore`;
+            const response = await enhancedFetch(apiUrl, { method: 'POST' });
 
             if (!response.ok) {
               throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);

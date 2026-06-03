@@ -669,20 +669,54 @@ describe('whoami handler', () => {
       expect(result.capabilities.filteredByTier).toBe(0);
     });
 
-    it('warns about inactive admin-mode elevation, not a tier upgrade', async () => {
+    it('warns an admin without elevation and recommends enabling admin mode', async () => {
+      mockEnhancedFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 1,
+          username: 'root',
+          name: 'Admin',
+          is_admin: true,
+          state: 'active',
+        }),
+      });
+      mockConnectionManager.getAdminInfo.mockReturnValue({ isAdmin: true, adminModeActive: false });
+
       const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
 
       expect(result.warnings.some((w) => w.includes('Admin-mode elevation inactive'))).toBe(true);
+      // Admin denials must not be reported as a tier restriction.
       expect(result.warnings.some((w) => w.includes('GitLab tier restrictions'))).toBe(false);
-    });
-
-    it('recommends enabling admin mode, not contacting admin for a tier upgrade', async () => {
-      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
-
       const adminRec = result.recommendations.find((r) => r.action === 'enable_admin_mode');
       expect(adminRec).toBeDefined();
       expect(adminRec?.priority).toBe('medium');
       expect(result.recommendations.find((r) => r.action === 'contact_admin')).toBeUndefined();
+    });
+
+    it('tells a non-admin the tools need an admin account, with no enable-admin-mode action', async () => {
+      mockEnhancedFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          id: 2,
+          username: 'dev',
+          name: 'Dev',
+          is_admin: false,
+          state: 'active',
+        }),
+      });
+      mockConnectionManager.getAdminInfo.mockReturnValue({
+        isAdmin: false,
+        adminModeActive: false,
+      });
+
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.warnings.some((w) => w.includes('Administrator privileges required'))).toBe(
+        true,
+      );
+      // A non-admin cannot elevate, so the wording must not imply they can.
+      expect(result.warnings.some((w) => w.includes('Admin-mode elevation inactive'))).toBe(false);
+      expect(result.recommendations.find((r) => r.action === 'enable_admin_mode')).toBeUndefined();
     });
   });
 

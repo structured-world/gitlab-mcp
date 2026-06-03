@@ -210,6 +210,7 @@ function buildContextInfo(): WhoamiContextInfo {
 function generateWarnings(
   tokenInfo: WhoamiTokenInfo | null,
   capabilities: WhoamiCapabilities,
+  isAdmin: boolean | undefined,
 ): string[] {
   const warnings: string[] = [];
 
@@ -259,10 +260,15 @@ function generateWarnings(
     );
   }
 
-  // Admin-mode elevation warning
+  // Admin-gated tools warning. filteredByAdmin > 0 means admin-mode elevation is
+  // known inactive, which happens both for a non-admin account (no role) and for an
+  // admin without active elevation. Word each case accurately: a non-admin cannot
+  // elevate, so don't tell them to.
   if (capabilities.filteredByAdmin > 0) {
     warnings.push(
-      `Admin-mode elevation inactive: ${capabilities.filteredByAdmin} admin-only tools unavailable`,
+      isAdmin === false
+        ? `Administrator privileges required: ${capabilities.filteredByAdmin} admin-only tools unavailable for this account`
+        : `Admin-mode elevation inactive: ${capabilities.filteredByAdmin} admin-only tools unavailable`,
     );
   }
 
@@ -283,6 +289,7 @@ function generateRecommendations(
   tokenInfo: WhoamiTokenInfo | null,
   capabilities: WhoamiCapabilities,
   serverInfo: WhoamiServerInfo,
+  isAdmin: boolean | undefined,
 ): WhoamiRecommendation[] {
   const recommendations: WhoamiRecommendation[] = [];
 
@@ -349,13 +356,14 @@ function generateRecommendations(
     });
   }
 
-  // Admin-mode elevation: distinct from a tier upgrade — the account already has the
-  // role, it just needs an active admin-mode session to reach admin-only endpoints.
-  if (capabilities.filteredByAdmin > 0) {
+  // Admin-mode elevation: distinct from a tier upgrade. Only suggest it when the
+  // account actually has the admin role (or the role is unknown under OAuth) — a
+  // confirmed non-admin cannot enable admin mode, so the action would be a dead end.
+  if (capabilities.filteredByAdmin > 0 && isAdmin !== false) {
     recommendations.push({
       action: 'enable_admin_mode',
       message:
-        'Some tools require an active admin-mode session. Enable admin mode for your account to use them.',
+        'Some tools require an active admin-mode session. If you are an instance admin, enable admin mode to use them.',
       priority: 'medium',
     });
   }
@@ -417,7 +425,7 @@ export async function executeWhoami(): Promise<WhoamiResult> {
   const serverInfo = buildServerInfo();
   const capabilities = buildCapabilities(tokenInfo);
   const contextInfo = buildContextInfo();
-  const warnings = generateWarnings(tokenInfo, capabilities);
+  const warnings = generateWarnings(tokenInfo, capabilities, userInfo?.isAdmin);
 
   // Honest admin signal: role present but elevation inactive means admin tools
   // will 403 at call time, so surface it instead of implying admin access works.
@@ -427,7 +435,12 @@ export async function executeWhoami(): Promise<WhoamiResult> {
         'Re-authenticate with admin mode enabled (OAuth tokens cannot elevate).',
     );
   }
-  const recommendations = generateRecommendations(tokenInfo, capabilities, serverInfo);
+  const recommendations = generateRecommendations(
+    tokenInfo,
+    capabilities,
+    serverInfo,
+    userInfo?.isAdmin,
+  );
 
   logDebug('Whoami executed', {
     hasUser: userInfo !== null,

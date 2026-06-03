@@ -146,8 +146,11 @@ export function getUnmetReason(
   action?: string,
 ): string | null {
   // Admin gate first — independent of version detection (see meetsRequirement).
+  // adminModeActive === false covers BOTH a non-admin account (no role) and an
+  // admin without active elevation, so the wording must not assume the caller can
+  // elevate — it states the requirement, not a single fix.
   if (reqs && resolveRequirement(reqs, action).requiresAdmin && caps.adminModeActive === false) {
-    return 'Requires active admin-mode elevation';
+    return 'Requires administrator privileges (admin mode must be active)';
   }
   if (caps.version === 'unknown') return null;
   if (!reqs) {

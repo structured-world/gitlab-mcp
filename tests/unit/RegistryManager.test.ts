@@ -1627,6 +1627,49 @@ describe('RegistryManager', () => {
     });
   });
 
+  describe('getFilterStats - admin elevation counter', () => {
+    it('counts admin-elevation denials in their own bucket, not as tier', () => {
+      const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
+      const { ConnectionManager } = require('../../src/services/ConnectionManager');
+
+      // Tool gated at the tool level on active admin-mode elevation. Version is known
+      // and tier is sufficient, so the ONLY reason it is filtered is missing elevation.
+      coreRegistry.set('manage_admin_only', {
+        name: 'manage_admin_only',
+        description: 'Tool that requires active admin-mode elevation',
+        inputSchema: {
+          type: 'object',
+          properties: { action: { type: 'string', enum: ['do_thing'] } },
+        },
+        requirements: {
+          default: { tier: 'free', minVersion: '8.0', requiresAdmin: true },
+        },
+        handler: jest.fn(),
+      });
+
+      // Admin role present but elevation inactive: admin-only endpoints would 403.
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getAdminInfo: jest.fn().mockReturnValue({ isAdmin: true, adminModeActive: false }),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+      });
+
+      try {
+        resetRegistryManagerSingleton();
+        registryManager = RegistryManager.getInstance();
+
+        const stats = registryManager.getFilterStats();
+        // Admin denial must land in its own bucket so whoami recommends elevating
+        // admin mode, not upgrading the GitLab tier.
+        expect(stats.filteredByAdmin).toBeGreaterThan(0);
+      } finally {
+        coreRegistry.delete('manage_admin_only');
+        resetRegistryManagerSingleton();
+      }
+    });
+  });
+
   describe('loadInstanceContext - fail-close on unexpected errors (#381)', () => {
     const { ConnectionManager } = require('../../src/services/ConnectionManager');
     const { logError } = require('../../src/logger');

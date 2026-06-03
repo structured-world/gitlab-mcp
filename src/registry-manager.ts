@@ -1015,6 +1015,7 @@ class RegistryManager {
         filteredByTier: 0,
         filteredByDeniedRegex: byDeniedRegex,
         filteredByActionDenial: byActionDenial,
+        filteredByAdmin: 0,
       };
     }
 
@@ -1045,6 +1046,7 @@ class RegistryManager {
           filteredByTier: 0,
           filteredByDeniedRegex: 0,
           filteredByActionDenial: 0,
+          filteredByAdmin: 0,
         }
       );
     }
@@ -1066,6 +1068,7 @@ class RegistryManager {
       filteredByTier,
       filteredByDeniedRegex,
       filteredByActionDenial,
+      filteredByAdmin: 0,
     };
     this.filterStatsCaches.set(url, stats);
     return stats;
@@ -1101,6 +1104,8 @@ export interface FilterStats {
   filteredByDeniedRegex: number;
   /** Tools filtered due to all actions being denied */
   filteredByActionDenial: number;
+  /** Tools filtered due to inactive admin-mode elevation (distinct from tier/version) */
+  filteredByAdmin: number;
 }
 
 export { RegistryManager };

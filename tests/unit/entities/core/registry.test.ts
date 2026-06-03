@@ -415,6 +415,39 @@ describe('Core Registry', () => {
         expect(calledUrl).not.toContain('active=true');
       });
 
+      it('should filter by marked_for_deletion_on date', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(okJson([{ id: 9, name: 'purging-project' }]));
+
+        const tool = coreToolRegistry.get('browse_projects');
+        await tool!.handler({
+          action: 'list',
+          include_deleted: true,
+          marked_for_deletion_on: '2026-06-10',
+        });
+
+        const calledUrl = mockEnhancedFetch.mock.calls[0][0];
+        expect(calledUrl).toContain('marked_for_deletion_on=2026-06-10');
+        expect(calledUrl).toContain('include_pending_delete=true');
+      });
+
+      it('should reject a malformed marked_for_deletion_on value at schema parse', async () => {
+        const tool = coreToolRegistry.get('browse_projects');
+        await expect(
+          tool!.handler({ action: 'list', marked_for_deletion_on: '06/10/2026' }),
+        ).rejects.toThrow();
+        expect(mockEnhancedFetch).not.toHaveBeenCalled();
+      });
+
+      it('gates marked_for_deletion_on behind the Premium tier (17.1+)', () => {
+        // Declarative parameter requirement; the registry strips it on lower
+        // tiers/older versions via the shared getRestrictedParameters machinery.
+        const tool = coreToolRegistry.get('browse_projects');
+        expect(tool!.requirements?.parameters?.marked_for_deletion_on).toEqual({
+          tier: 'premium',
+          minVersion: '17.1',
+        });
+      });
+
       it('should get project with action: get', async () => {
         const mockApiResponse = {
           id: 123,

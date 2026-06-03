@@ -446,14 +446,17 @@ describe('RegistryManager', () => {
       });
     };
 
+    type AdminParamProperties = { action?: unknown; include_deleted?: unknown };
     const adminParamProps = (
       version: string,
       adminInfo: { isAdmin: boolean; adminModeActive: boolean } | null,
-    ) => {
+    ): AdminParamProperties => {
       mockCM(version, adminInfo);
       resetRegistryManagerSingleton();
-      return (RegistryManager.getInstance().getTool('tool_admin_param')?.inputSchema as any)
-        .properties;
+      const schema = RegistryManager.getInstance().getTool('tool_admin_param')?.inputSchema as {
+        properties?: AdminParamProperties;
+      };
+      return schema.properties ?? {};
     };
 
     it('gates requiresAdmin params on active admin-mode elevation, not the role', () => {

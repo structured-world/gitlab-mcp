@@ -143,6 +143,16 @@ const TransferProjectSchema = z.object({
   namespace: z.string().describe('Target namespace ID or path to transfer to.'),
 });
 
+// --- Action: restore ---
+const RestoreProjectSchema = z.object({
+  action: z
+    .literal('restore')
+    .describe(
+      'Restore a soft-deleted project within its deletion cooldown window (default 7 days). Fails once the project has been purged. Requires project Owner or instance Administrator.',
+    ),
+  project_id: requiredId.describe('Project ID or URL-encoded path of the project to restore.'),
+});
+
 // --- Discriminated union combining all actions ---
 export const ManageProjectSchema = z.discriminatedUnion('action', [
   CreateProjectSchema,
@@ -152,6 +162,7 @@ export const ManageProjectSchema = z.discriminatedUnion('action', [
   ArchiveProjectSchema,
   UnarchiveProjectSchema,
   TransferProjectSchema,
+  RestoreProjectSchema,
 ]);
 
 // ============================================================================

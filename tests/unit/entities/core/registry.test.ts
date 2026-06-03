@@ -1976,6 +1976,50 @@ describe('Core Registry', () => {
           tool!.handler({ action: 'transfer', project_id: '1', namespace: 'invalid' }),
         ).rejects.toThrow('GitLab API error: 400 Bad Request');
       });
+
+      it('should restore a soft-deleted project', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ id: 1, marked_for_deletion_on: null }),
+        } as any);
+
+        const tool = coreToolRegistry.get('manage_project');
+        const result = await tool!.handler({
+          action: 'restore',
+          project_id: 'my-group/my-project',
+        });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/projects/my-group%2Fmy-project/restore',
+          expect.objectContaining({ method: 'POST' }),
+        );
+        expect(result).toEqual({ id: 1, marked_for_deletion_on: null });
+      });
+
+      it('should surface a 404 when the project is purged or not found', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+        } as any);
+
+        const tool = coreToolRegistry.get('manage_project');
+        await expect(tool!.handler({ action: 'restore', project_id: '1' })).rejects.toThrow(
+          'GitLab API error: 404 Not Found',
+        );
+      });
+
+      it('should reject a malformed restore response that lacks a project id', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ unexpected: 'shape' }),
+        } as any);
+
+        const tool = coreToolRegistry.get('manage_project');
+        await expect(tool!.handler({ action: 'restore', project_id: '1' })).rejects.toThrow(
+          'GitLab API error: unexpected restore response shape',
+        );
+      });
     });
 
     describe('manage_namespace Handler (update/delete)', () => {

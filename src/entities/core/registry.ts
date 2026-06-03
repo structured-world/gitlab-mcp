@@ -23,6 +23,18 @@ import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
 /**
+ * Minimal guard for the project payload returned by POST /projects/:id/restore.
+ * Validates the identifying field without coercing it (so the numeric id is
+ * returned unchanged) and passes through the rest of the project object.
+ */
+const RestoredProjectSchema = z
+  .object({
+    id: z.number().int().positive(),
+    marked_for_deletion_on: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+/**
  * Core tools registry - CQRS consolidated
  * All tools use discriminated union schema pattern.
  * TypeScript automatically narrows types in each switch case.
@@ -564,7 +576,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: 'manage_project',
       description:
-        'Create, update, or manage GitLab projects. Actions: create (new project with settings), fork (copy existing project), update (modify settings), delete (remove permanently), archive/unarchive (toggle read-only), transfer (move to different namespace). Related: browse_projects for discovery.',
+        'Create, update, or manage GitLab projects. Actions: create (new project with settings), fork (copy existing project), update (modify settings), delete (remove permanently), restore (recover a soft-deleted project before purge), archive/unarchive (toggle read-only), transfer (move to different namespace). Related: browse_projects for discovery, including include_deleted to find restorable projects.',
       inputSchema: z.toJSONSchema(ManageProjectSchema),
       requirements: {
         default: { tier: 'free', minVersion: '8.0' },
@@ -797,6 +809,25 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             }
 
             return await response.json();
+          }
+
+          case 'restore': {
+            const { project_id } = input;
+
+            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/restore`;
+            const response = await enhancedFetch(apiUrl, { method: 'POST' });
+
+            if (!response.ok) {
+              throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+            }
+
+            const restored = RestoredProjectSchema.safeParse(await response.json());
+            if (!restored.success) {
+              throw new Error(
+                `GitLab API error: unexpected restore response shape (${restored.error.issues[0]?.message ?? 'invalid'})`,
+              );
+            }
+            return restored.data;
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

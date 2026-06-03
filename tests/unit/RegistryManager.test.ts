@@ -1632,6 +1632,21 @@ describe('RegistryManager', () => {
       const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
       const { ConnectionManager } = require('../../src/services/ConnectionManager');
 
+      // Admin role present but elevation inactive: admin-only endpoints would 403.
+      // tier is 'free' / version known, so the registry already filters real
+      // premium/ultimate tools by tier — filteredByTier is non-zero on its own,
+      // hence we compare against a baseline rather than asserting an absolute 0.
+      ConnectionManager.getInstance.mockReturnValue({
+        getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
+        getTokenScopeInfo: jest.fn().mockReturnValue(null),
+        getAdminInfo: jest.fn().mockReturnValue({ isAdmin: true, adminModeActive: false }),
+        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
+      });
+
+      // Baseline without the admin tool registered.
+      resetRegistryManagerSingleton();
+      const baseline = RegistryManager.getInstance().getFilterStats();
+
       // Tool gated at the tool level on active admin-mode elevation. Version is known
       // and tier is sufficient, so the ONLY reason it is filtered is missing elevation.
       coreRegistry.set('manage_admin_only', {
@@ -1647,22 +1662,16 @@ describe('RegistryManager', () => {
         handler: jest.fn(),
       });
 
-      // Admin role present but elevation inactive: admin-only endpoints would 403.
-      ConnectionManager.getInstance.mockReturnValue({
-        getInstanceInfo: jest.fn().mockReturnValue({ tier: 'free', version: '17.0.0' }),
-        getTokenScopeInfo: jest.fn().mockReturnValue(null),
-        getAdminInfo: jest.fn().mockReturnValue({ isAdmin: true, adminModeActive: false }),
-        getCurrentInstanceUrl: jest.fn().mockReturnValue('https://gitlab.example.com'),
-      });
-
       try {
         resetRegistryManagerSingleton();
         registryManager = RegistryManager.getInstance();
 
         const stats = registryManager.getFilterStats();
-        // Admin denial must land in its own bucket so whoami recommends elevating
-        // admin mode, not upgrading the GitLab tier.
-        expect(stats.filteredByAdmin).toBeGreaterThan(0);
+        // The admin tool lands in the admin bucket so whoami recommends elevating
+        // admin mode, not upgrading the GitLab tier...
+        expect(stats.filteredByAdmin).toBe(baseline.filteredByAdmin + 1);
+        // ...and it does NOT leak into the tier counter (guards tier mis-bucketing).
+        expect(stats.filteredByTier).toBe(baseline.filteredByTier);
       } finally {
         coreRegistry.delete('manage_admin_only');
         resetRegistryManagerSingleton();

@@ -103,6 +103,14 @@ const ListProjectsSchema = z.object({
       'Include projects pending deletion (soft-deleted, within the cooldown window). Admin only: ' +
         'lists projects scheduled for purge so they can be reviewed or restored. Ignored for group_id scope.',
     ),
+  marked_for_deletion_on: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Must be an ISO date (YYYY-MM-DD)')
+    .optional()
+    .describe(
+      'Filter projects scheduled for deletion on this exact date (YYYY-MM-DD). Premium/Ultimate ' +
+        'only. Combine with include_deleted to review projects purging on a given day. Ignored for group_id scope.',
+    ),
   visibility: projectVisibilityField,
   archived: projectArchivedField,
   order_by: projectOrderByField,

@@ -118,6 +118,37 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
       }
     }, 15000);
 
+    it('should accept marked_for_deletion_on on Premium/Ultimate instances', async () => {
+      // marked_for_deletion_on is a Premium/Ultimate-gated filter (17.1+). Skip on
+      // lower tiers, where the registry strips the parameter and GitLab would reject it.
+      const ctx = (await helper.executeTool('manage_context', { action: 'whoami' })) as {
+        server?: { tier?: string };
+      };
+      if (ctx.server?.tier !== 'premium' && ctx.server?.tier !== 'ultimate') {
+        console.log(`  Skipping marked_for_deletion_on: instance tier is ${ctx.server?.tier}`);
+        return;
+      }
+
+      const params = {
+        action: 'list' as const,
+        marked_for_deletion_on: '2026-01-01',
+        per_page: 5,
+      };
+      const paramResult = BrowseProjectsSchema.safeParse(params);
+      expect(paramResult.success).toBe(true);
+
+      if (paramResult.success) {
+        // Exercises the filter end-to-end. Whether any project matches the date is
+        // environment-specific, so assert shape (an array of projects), not count.
+        const projects = (await helper.executeTool('browse_projects', paramResult.data)) as any[];
+        expect(Array.isArray(projects)).toBe(true);
+        for (const p of projects) {
+          expect(p).toHaveProperty('id');
+        }
+        console.log(`  marked_for_deletion_on returned ${projects.length} projects`);
+      }
+    }, 15000);
+
     it('should validate full project schema with simple=false', async () => {
       console.log('🔍 BrowseProjectsSchema - Testing full project schema validation');
 

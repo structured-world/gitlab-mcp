@@ -7,6 +7,7 @@ import {
 import { enhancedFetch } from '../../../../src/utils/fetch';
 import { smartUserSearch } from '../../../../src/utils/smart-user-search';
 import { isActionDenied } from '../../../../src/config';
+import { ConnectionManager } from '../../../../src/services/ConnectionManager';
 
 // Mock the fetch function to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
@@ -2110,6 +2111,50 @@ describe('Core Registry', () => {
           'https://gitlab.example.com/api/v4/groups/parent%2Fchild-group',
           expect.objectContaining({ method: 'PUT' }),
         );
+      });
+
+      it('should restore a soft-deleted group', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ id: 5, marked_for_deletion_on: null }),
+        } as any);
+
+        const tool = coreToolRegistry.get('manage_namespace');
+        const result = await tool!.handler({ action: 'restore', group_id: 'my-group' });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/my-group/restore',
+          expect.objectContaining({ method: 'POST' }),
+        );
+        expect(result).toEqual({ id: 5, marked_for_deletion_on: null });
+      });
+
+      it('should surface a 404 when the group is purged or not found', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: false,
+          status: 404,
+          statusText: 'Not Found',
+        } as any);
+
+        const tool = coreToolRegistry.get('manage_namespace');
+        await expect(tool!.handler({ action: 'restore', group_id: '1' })).rejects.toThrow(
+          'GitLab API error: 404 Not Found',
+        );
+      });
+
+      it('rejects group restore on GitLab below 18.0 with a clear message', async () => {
+        const spy = jest
+          .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+          .mockReturnValue({ version: '17.11.0', tier: 'free' } as never);
+        try {
+          const tool = coreToolRegistry.get('manage_namespace');
+          await expect(tool!.handler({ action: 'restore', group_id: 'old-group' })).rejects.toThrow(
+            'Group restore requires GitLab 18.0+',
+          );
+          expect(mockEnhancedFetch).not.toHaveBeenCalled();
+        } finally {
+          spy.mockRestore();
+        }
       });
     });
 

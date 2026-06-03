@@ -21,13 +21,16 @@ import { smartUserSearch, type UserSearchParams } from '../../utils/smart-user-s
 import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
+import { ConnectionManager } from '../../services/ConnectionManager';
+import { parseVersion } from '../../utils/version';
 
 /**
- * Minimal guard for the project payload returned by POST /projects/:id/restore.
- * Validates the identifying field without coercing it (so the numeric id is
- * returned unchanged) and passes through the rest of the project object.
+ * Minimal guard for the entity payload returned by the restore endpoints
+ * (POST /projects/:id/restore and POST /groups/:id/restore). Validates the
+ * identifying field without coercing it (so the numeric id is returned
+ * unchanged) and passes through the rest of the project/group object.
  */
-const RestoredProjectSchema = z
+const RestoredEntitySchema = z
   .object({
     id: z.number().int().positive(),
     marked_for_deletion_on: z.string().nullable().optional(),
@@ -821,7 +824,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
             }
 
-            const restored = RestoredProjectSchema.safeParse(await response.json());
+            const restored = RestoredEntitySchema.safeParse(await response.json());
             if (!restored.success) {
               throw new Error(
                 `GitLab API error: unexpected restore response shape (${restored.error.issues[0]?.message ?? 'invalid'})`,
@@ -843,7 +846,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: 'manage_namespace',
       description:
-        'Create, update, or delete GitLab groups/namespaces. Actions: create (new group with visibility/settings), update (modify group settings), delete (remove permanently). Related: browse_namespaces for discovery.',
+        'Create, update, or delete GitLab groups/namespaces. Actions: create (new group with visibility/settings), update (modify group settings), delete (remove permanently), restore (recover a soft-deleted group before purge; requires GitLab 18.0+). Related: browse_namespaces for discovery.',
       inputSchema: z.toJSONSchema(ManageNamespaceSchema),
       requirements: {
         default: { tier: 'free', minVersion: '8.0' },
@@ -933,6 +936,41 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             }
 
             return { success: true, message: `Group ${group_id} deleted` };
+          }
+
+          case 'restore': {
+            const { group_id } = input;
+
+            // Group restore landed in GitLab 18.0. The instance version is already
+            // detected at startup, so this is a cheap in-memory check (no API call).
+            // Fail-open when the version is unknown (not yet probed / connection not
+            // initialised) so we never block on a missing detection.
+            let version = 'unknown';
+            try {
+              version = ConnectionManager.getInstance().getInstanceInfo().version;
+            } catch {
+              // Connection not initialised — leave version unknown (fail-open).
+            }
+            if (version !== 'unknown' && parseVersion(version) < parseVersion('18.0')) {
+              throw new Error(
+                `Group restore requires GitLab 18.0+, but the instance is ${version}`,
+              );
+            }
+
+            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(group_id)}/restore`;
+            const response = await enhancedFetch(apiUrl, { method: 'POST' });
+
+            if (!response.ok) {
+              throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+            }
+
+            const restored = RestoredEntitySchema.safeParse(await response.json());
+            if (!restored.success) {
+              throw new Error(
+                `GitLab API error: unexpected restore response shape (${restored.error.issues[0]?.message ?? 'invalid'})`,
+              );
+            }
+            return restored.data;
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

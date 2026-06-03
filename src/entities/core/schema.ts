@@ -245,11 +245,23 @@ const DeleteNamespaceSchema = z.object({
   group_id: requiredId.describe('Group ID or URL-encoded path.'),
 });
 
+// --- Action: restore ---
+const RestoreNamespaceSchema = z.object({
+  action: z
+    .literal('restore')
+    .describe(
+      'Restore a soft-deleted group within its deletion cooldown window. Requires GitLab 18.0+ ' +
+        '(group restore GA in 18.9) and group Owner or instance Administrator.',
+    ),
+  group_id: requiredId.describe('Group ID or URL-encoded path of the group to restore.'),
+});
+
 // --- Discriminated union combining all actions ---
 export const ManageNamespaceSchema = z.discriminatedUnion('action', [
   CreateNamespaceSchema,
   UpdateNamespaceSchema,
   DeleteNamespaceSchema,
+  RestoreNamespaceSchema,
 ]);
 
 // ============================================================================

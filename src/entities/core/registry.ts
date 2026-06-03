@@ -23,6 +23,18 @@ import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
 /**
+ * Minimal guard for the project payload returned by POST /projects/:id/restore.
+ * Validates the identifying field without coercing it (so the numeric id is
+ * returned unchanged) and passes through the rest of the project object.
+ */
+const RestoredProjectSchema = z
+  .object({
+    id: z.number().int().positive(),
+    marked_for_deletion_on: z.string().nullable().optional(),
+  })
+  .passthrough();
+
+/**
  * Core tools registry - CQRS consolidated
  * All tools use discriminated union schema pattern.
  * TypeScript automatically narrows types in each switch case.
@@ -809,7 +821,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
             }
 
-            return await response.json();
+            return RestoredProjectSchema.parse(await response.json());
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

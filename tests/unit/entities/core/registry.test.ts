@@ -2008,6 +2008,16 @@ describe('Core Registry', () => {
           'GitLab API error: 404 Not Found',
         );
       });
+
+      it('should reject a malformed restore response that lacks a project id', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ unexpected: 'shape' }),
+        } as any);
+
+        const tool = coreToolRegistry.get('manage_project');
+        await expect(tool!.handler({ action: 'restore', project_id: '1' })).rejects.toThrow();
+      });
     });
 
     describe('manage_namespace Handler (update/delete)', () => {

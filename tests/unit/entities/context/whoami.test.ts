@@ -718,6 +718,27 @@ describe('whoami handler', () => {
       expect(result.warnings.some((w) => w.includes('Admin-mode elevation inactive'))).toBe(false);
       expect(result.recommendations.find((r) => r.action === 'enable_admin_mode')).toBeUndefined();
     });
+
+    it('uses the admin probe role when /user omits is_admin', async () => {
+      // /user response without is_admin -> userInfo.isAdmin is undefined. The
+      // authoritative role comes from the admin probe (getAdminInfo), which says
+      // non-admin: the guidance must follow it, not treat undefined as maybe-admin.
+      mockEnhancedFetch.mockResolvedValue({
+        ok: true,
+        json: async () => ({ id: 3, username: 'svc', name: 'Service', state: 'active' }),
+      });
+      mockConnectionManager.getAdminInfo.mockReturnValue({
+        isAdmin: false,
+        adminModeActive: false,
+      });
+
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+
+      expect(result.warnings.some((w) => w.includes('Administrator privileges required'))).toBe(
+        true,
+      );
+      expect(result.recommendations.find((r) => r.action === 'enable_admin_mode')).toBeUndefined();
+    });
   });
 
   describe('whoami admin-mode elevation', () => {

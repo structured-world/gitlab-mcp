@@ -2142,6 +2142,21 @@ describe('Core Registry', () => {
         );
       });
 
+      it('does not double-encode an already URL-encoded subgroup path on restore', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce({
+          ok: true,
+          json: jest.fn().mockResolvedValue({ id: 7 }),
+        } as any);
+
+        const tool = coreToolRegistry.get('manage_namespace');
+        await tool!.handler({ action: 'restore', group_id: 'parent%2Fchild' });
+
+        expect(mockEnhancedFetch).toHaveBeenCalledWith(
+          'https://gitlab.example.com/api/v4/groups/parent%2Fchild/restore',
+          expect.objectContaining({ method: 'POST' }),
+        );
+      });
+
       it('rejects group restore on GitLab below 18.0 with a clear message', async () => {
         const spy = jest
           .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')

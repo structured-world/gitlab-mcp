@@ -158,6 +158,10 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   // Audit events (Premium/Ultimate, read-only)
   browse_audit_events: ['api', 'read_api'],
 
+  // Vulnerabilities (Ultimate)
+  browse_vulnerabilities: ['api', 'read_api'],
+  manage_vulnerability: ['api'],
+
   // Wiki
   browse_wiki: ['api', 'read_api'],
   manage_wiki: ['api'],

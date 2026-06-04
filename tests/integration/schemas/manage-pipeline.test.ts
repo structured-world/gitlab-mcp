@@ -11,15 +11,21 @@
  * - GitLab 15.5+ for inputs support
  */
 
+import { z } from 'zod';
 import { ManagePipelineSchema } from '../../../src/entities/pipelines/schema';
 import { IntegrationTestHelper } from '../helpers/registry-helper';
 import { getTestData, buildCiConfigBase64 } from '../../setup/testConfig';
 
+// Validate the created pipeline shape instead of casting the tool's external output.
+const PipelineResponseSchema = z.object({
+  id: z.number(),
+  status: z.string(),
+  ref: z.string(),
+});
+
 /**
- * Create a pipeline via manage_pipeline and assert the returned shape. Typed
- * inputs require GitLab 15.5+; that specific version gate is tolerated (logged
- * and skipped), while any other failure surfaces. Shared by the create tests so
- * the assert/version-gate logic lives in one place.
+ * Create a pipeline via manage_pipeline and assert the returned shape. Shared by
+ * the create tests so the validate/assert logic lives in one place.
  */
 async function createPipelineAndAssert(
   helper: IntegrationTestHelper,
@@ -31,10 +37,10 @@ async function createPipelineAndAssert(
   // a real regression and must surface. (Typed inputs require 15.5+, documented in
   // the file header; on older GitLab the CI config fails to parse, which correctly
   // signals the unmet prerequisite rather than being silently skipped.)
-  const pipeline = (await helper.executeTool('manage_pipeline', params)) as Record<string, unknown>;
-  expect(pipeline).toHaveProperty('id');
-  expect(pipeline).toHaveProperty('status');
-  expect(pipeline).toHaveProperty('ref', 'main');
+  const pipeline = PipelineResponseSchema.parse(
+    await helper.executeTool('manage_pipeline', params),
+  );
+  expect(pipeline.ref).toBe('main');
   console.log(`✅ Created pipeline with ${label}: ${pipeline.id} (status: ${pipeline.status})`);
 }
 

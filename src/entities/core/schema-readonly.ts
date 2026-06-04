@@ -111,6 +111,14 @@ const ListProjectsSchema = z.object({
       'Filter projects scheduled for deletion on this exact date (YYYY-MM-DD). Premium/Ultimate ' +
         'only. Combine with include_deleted to review projects purging on a given day. Ignored for group_id scope.',
     ),
+  active: flexibleBoolean
+    .optional()
+    .describe(
+      'Filter by active status. true = exclude archived AND pending-deletion projects; ' +
+        'false = only archived/pending-deletion. Uses the native GitLab 18.5+ filter; on older ' +
+        'instances it falls back to the archived filter (pending-deletion projects are already ' +
+        'hidden from default listings). When omitted, active projects are listed as before.',
+    ),
   visibility: projectVisibilityField,
   archived: projectArchivedField,
   order_by: projectOrderByField,

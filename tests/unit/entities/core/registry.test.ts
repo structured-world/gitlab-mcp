@@ -33,6 +33,29 @@ const okJson = (payload: unknown) =>
   ({ ok: true, status: 200, json: jest.fn().mockResolvedValue(payload) }) as unknown as Response;
 const mockIsActionDenied = isActionDenied as jest.MockedFunction<typeof isActionDenied>;
 
+/** Run browse_projects `list` with the given args and return the fetched URL. */
+async function browseProjectsListUrl(args: Record<string, unknown>): Promise<string> {
+  mockEnhancedFetch.mockResolvedValueOnce(okJson([{ id: 1, name: 'project1' }]));
+  const tool = coreToolRegistry.get('browse_projects');
+  await tool!.handler({ action: 'list', ...args });
+  return mockEnhancedFetch.mock.calls[0][0];
+}
+
+/** Same as {@link browseProjectsListUrl} but with a mocked detected instance version. */
+async function browseProjectsListUrlAtVersion(
+  args: Record<string, unknown>,
+  version: string,
+): Promise<string> {
+  const spy = jest
+    .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+    .mockReturnValue({ version, tier: 'free' } as GitLabInstanceInfo);
+  try {
+    return await browseProjectsListUrl(args);
+  } finally {
+    spy.mockRestore();
+  }
+}
+
 // Mock environment variables
 const originalEnv = process.env;
 
@@ -448,6 +471,60 @@ describe('Core Registry', () => {
           tier: 'premium',
           minVersion: '17.1',
         });
+      });
+
+      it('sends the native active filter on GitLab 18.5+ (active=false)', async () => {
+        // Version unknown / uninitialised fails open to the native parameter,
+        // so the explicit active=false must reach the API verbatim.
+        const url = await browseProjectsListUrl({ active: false });
+        expect(url).toContain('active=false');
+        expect(url).not.toContain('archived=');
+      });
+
+      it('falls back to the archived filter on GitLab below 18.5', async () => {
+        // active=true => archived=false, sent server-side so pagination stays correct.
+        const url = await browseProjectsListUrlAtVersion({ active: true }, '18.0.0');
+        expect(url).toContain('archived=false');
+        expect(url).not.toContain('active=');
+      });
+
+      it('translates active=false to archived=true on GitLab below 18.5', async () => {
+        const url = await browseProjectsListUrlAtVersion({ active: false }, '18.0.0');
+        expect(url).toContain('archived=true');
+        expect(url).not.toContain('active=');
+      });
+
+      it('applies the active filter to group-scoped listing', async () => {
+        const url = await browseProjectsListUrl({ group_id: 'my-group', active: true });
+        expect(url).toContain('/api/v4/groups/my-group/projects?');
+        expect(url).toContain('active=true');
+      });
+
+      it('keeps the historical active=true default when active is omitted', async () => {
+        // Default listing on a sub-18.5 instance must NOT switch to the archived
+        // translation; the implicit default is unchanged to avoid a regression.
+        const url = await browseProjectsListUrlAtVersion({}, '18.0.0');
+        expect(url).toContain('active=true');
+        expect(url).not.toContain('archived=');
+      });
+
+      it('lets active override archived when both are passed on GitLab 18.5+', async () => {
+        // Native path: sending both active and archived makes precedence ambiguous.
+        // active must win, so the conflicting archived param is dropped.
+        const url = await browseProjectsListUrl({ active: false, archived: false });
+        expect(url).toContain('active=false');
+        expect(url).not.toContain('archived=');
+      });
+
+      it('lets active override archived on GitLab below 18.5', async () => {
+        // Fallback path: active=true => archived=false, overriding an explicit
+        // archived=true, and no stray active param is sent.
+        const url = await browseProjectsListUrlAtVersion(
+          { active: true, archived: true },
+          '18.0.0',
+        );
+        expect(url).toContain('archived=false');
+        expect(url).not.toContain('active=');
       });
 
       it('should get project with action: get', async () => {

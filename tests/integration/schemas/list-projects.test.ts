@@ -203,6 +203,40 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
       console.log('✅ BrowseProjectsSchema validates advanced filtering parameters');
     });
 
+    it('should validate the active filter parameter', async () => {
+      for (const active of [true, false]) {
+        const result = BrowseProjectsSchema.safeParse({ action: 'list' as const, active });
+        expect(result.success).toBe(true);
+        if (result.success && result.data.action === 'list') {
+          expect(result.data.active).toBe(active);
+        }
+      }
+      console.log('✅ BrowseProjectsSchema validates the active filter parameter');
+    });
+
+    it('should list active projects end-to-end (active=true)', async () => {
+      // The test instance is GitLab 18.5+, so this exercises the native `active`
+      // query parameter. The sub-18.5 archived-translation fallback cannot run
+      // against a modern live instance and is covered by unit tests.
+      const projects = await listAndAssertProjectShapes({
+        action: 'list' as const,
+        active: true,
+        per_page: 5,
+      });
+      console.log(`  active=true returned ${projects.length} projects`);
+    }, 15000);
+
+    it('should accept active=false for archived/pending-delete projects', async () => {
+      // Whether any archived/pending-delete project exists is environment-specific,
+      // so assert the result shape rather than a count.
+      const projects = await listAndAssertProjectShapes({
+        action: 'list' as const,
+        active: false,
+        per_page: 5,
+      });
+      console.log(`  active=false returned ${projects.length} projects`);
+    }, 15000);
+
     it('should handle optional parameters correctly', async () => {
       // Test with minimal required parameters (only action)
       const minimalParams = {

@@ -145,6 +145,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               with_shared,
               include_deleted,
               marked_for_deletion_on,
+              active,
               visibility,
               archived,
               order_by,
@@ -178,15 +179,49 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (!queryParams.has('simple')) queryParams.set('simple', 'true');
             if (!queryParams.has('per_page')) queryParams.set('per_page', '20');
 
+            // The native `active` query parameter landed in GitLab 18.5. On older
+            // instances translate it to the long-standing `archived` filter
+            // (active=true => archived=false), which is server-side and therefore
+            // pagination-safe. Projects pending deletion are already hidden from
+            // default listings, so this mapping matches `active` semantics. The
+            // instance version is detected at startup, so this is a cheap in-memory
+            // read; an unknown version fails open to the native parameter.
+            let activeFilterSupported = true;
+            try {
+              const version = ConnectionManager.getInstance().getInstanceInfo().version;
+              activeFilterSupported =
+                version === 'unknown' || parseVersion(version) >= parseVersion('18.5');
+            } catch {
+              // Connection not initialised — assume supported (fail-open).
+            }
+            const applyActiveFilter = (value: boolean): void => {
+              if (activeFilterSupported) {
+                // active wins over an explicit archived filter: drop archived so the
+                // request never sends both (which would make precedence ambiguous).
+                queryParams.delete('archived');
+                queryParams.set('active', String(value));
+              } else {
+                // No native active filter; translate to archived and drop any active
+                // hint so the two never coexist.
+                queryParams.delete('active');
+                queryParams.set('archived', String(!value));
+              }
+            };
+
             let apiUrl: string;
             if (group_id) {
+              if (active !== undefined) applyActiveFilter(active);
               apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}/projects?${queryParams}`;
             } else if (include_deleted) {
               // include_pending_delete returns soft-deleted projects; do NOT also send
               // active=true, which would filter them back out (admin only).
               queryParams.set('include_pending_delete', 'true');
               apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
+            } else if (active !== undefined) {
+              applyActiveFilter(active);
+              apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
             } else {
+              // Default: list active projects (historical behaviour, unchanged).
               queryParams.set('active', 'true');
               apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
             }

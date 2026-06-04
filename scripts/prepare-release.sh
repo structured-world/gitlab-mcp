@@ -21,18 +21,18 @@ VERSION="${1:?Usage: prepare-release.sh <version>}"
 # is worse than aborting and rebuilding dist. ENTITY_COUNT reads the source tree
 # (not dist), so it keeps a warn+fallback.
 TOOL_COUNT=$(node -e 'const r=require("./dist/src/registry-manager.js");console.log(r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered().length)' 2>/dev/null)
-if [ -z "$TOOL_COUNT" ]; then
+if [[ -z "$TOOL_COUNT" ]]; then
   echo "ERROR: Failed to compute TOOL_COUNT from dist/ registry; rebuild and re-run" >&2
   exit 1
 fi
 
 ENTITY_COUNT=$(node -e 'const fs=require("fs"),p=require("path");const d=p.join(process.cwd(),"src","entities");console.log(fs.readdirSync(d,{withFileTypes:true}).filter(e=>e.isDirectory()&&fs.existsSync(p.join(d,e.name,"registry.ts"))).length)' 2>/dev/null)
-if [ -z "$ENTITY_COUNT" ]; then ENTITY_COUNT=18; echo "WARNING: Using fallback ENTITY_COUNT=$ENTITY_COUNT" >&2; fi
+if [[ -z "$ENTITY_COUNT" ]]; then ENTITY_COUNT=18; echo "WARNING: Using fallback ENTITY_COUNT=$ENTITY_COUNT" >&2; fi
 
 # Read-only tools: browse_* (queries) + manage_context (read-only despite manage_ prefix)
 # Same pattern used in inject-tool-refs.ts for consistency
 READONLY_TOOL_COUNT=$(node -e 'const r=require("./dist/src/registry-manager.js");const t=r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered();console.log(t.filter(x=>x.name.startsWith("browse_")||x.name==="manage_context").length)' 2>/dev/null)
-if [ -z "$READONLY_TOOL_COUNT" ]; then
+if [[ -z "$READONLY_TOOL_COUNT" ]]; then
   echo "ERROR: Failed to compute READONLY_TOOL_COUNT from dist/ registry; rebuild and re-run" >&2
   exit 1
 fi
@@ -41,7 +41,7 @@ fi
 # with an action const, or a flat action enum). Mirrors extractActions() in
 # src/cli/inject-tool-refs.ts so README and docs report the same operation count.
 ACTION_COUNT=$(node -e 'const r=require("./dist/src/registry-manager.js");const t=r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered();let n=0;for(const x of t){const s=x.inputSchema;if(Array.isArray(s.oneOf)){for(const b of s.oneOf){if(b.properties&&b.properties.action&&typeof b.properties.action.const==="string")n++;}}else if(s.properties&&s.properties.action&&Array.isArray(s.properties.action.enum)){n+=s.properties.action.enum.filter(v=>typeof v==="string").length;}}console.log(n)' 2>/dev/null)
-if [ -z "$ACTION_COUNT" ]; then
+if [[ -z "$ACTION_COUNT" ]]; then
   echo "ERROR: Failed to compute ACTION_COUNT from dist/ registry; rebuild and re-run" >&2
   exit 1
 fi
@@ -56,7 +56,7 @@ jq --arg v "$VERSION" --arg tc "$TOOL_COUNT" \
   server.json > server.tmp && mv server.tmp server.json
 
 # Generate README.md from template (replaces fragile regex patterns)
-if [ ! -f "README.md.in" ]; then
+if [[ ! -f "README.md.in" ]]; then
   echo "ERROR: README.md.in not found" >&2
   exit 1
 fi

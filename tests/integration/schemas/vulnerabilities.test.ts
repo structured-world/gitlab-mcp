@@ -10,7 +10,11 @@
 
 import { BrowseVulnerabilitiesSchema } from '../../../src/entities/vulnerabilities/schema-readonly';
 import { ManageVulnerabilitySchema } from '../../../src/entities/vulnerabilities/schema';
-import { IntegrationTestHelper } from '../helpers/registry-helper';
+import {
+  IntegrationTestHelper,
+  initIntegrationHelper,
+  findTestProjectPath,
+} from '../helpers/registry-helper';
 import { describeIfTier } from '../../setup/tierGate';
 
 interface VulnConnection {
@@ -64,34 +68,30 @@ describe('Vulnerabilities Schema - GitLab Integration', () => {
     let testProjectPath: string | undefined;
 
     beforeAll(async () => {
-      if (!process.env.GITLAB_TOKEN) {
-        throw new Error('GITLAB_TOKEN environment variable is required');
-      }
-      helper = new IntegrationTestHelper();
-      await helper.initialize();
-
-      const projects = (await helper.listProjects({ search: 'test', per_page: 10 })) as {
-        path_with_namespace: string;
-      }[];
-      testProjectPath = projects.find((p) =>
-        p.path_with_namespace.startsWith('test/'),
-      )?.path_with_namespace;
+      helper = await initIntegrationHelper();
+      testProjectPath = await findTestProjectPath(helper);
     });
+
+    /** Run a list scope and assert it returns a (possibly empty) node array. */
+    const expectListNodes = async (
+      scope: Record<string, unknown>,
+      label: string,
+    ): Promise<void> => {
+      const result = (await helper.executeTool('browse_vulnerabilities', {
+        action: 'list',
+        first: 5,
+        ...scope,
+      })) as VulnConnection;
+      expect(Array.isArray(result.nodes)).toBe(true);
+      console.log(`  ${label} has ${result.nodes.length} vulnerabilities`);
+    };
 
     it('lists project vulnerabilities (possibly empty) for a test project', async () => {
       if (!testProjectPath) {
         console.log('No test/ project available; skipping project vulnerabilities list');
         return;
       }
-
-      const result = (await helper.executeTool('browse_vulnerabilities', {
-        action: 'list',
-        project_id: testProjectPath,
-        first: 5,
-      })) as VulnConnection;
-
-      expect(Array.isArray(result.nodes)).toBe(true);
-      console.log(`  ${testProjectPath} has ${result.nodes.length} vulnerabilities`);
+      await expectListNodes({ project_id: testProjectPath }, testProjectPath);
     }, 20000);
 
     it('lists group vulnerabilities for the test group', async () => {
@@ -100,25 +100,12 @@ describe('Vulnerabilities Schema - GitLab Integration', () => {
         return;
       }
       const groupPath = testProjectPath.split('/')[0];
-
-      const result = (await helper.executeTool('browse_vulnerabilities', {
-        action: 'list',
-        group_id: groupPath,
-        first: 5,
-      })) as VulnConnection;
-
-      expect(Array.isArray(result.nodes)).toBe(true);
-      console.log(`  group ${groupPath} has ${result.nodes.length} vulnerabilities`);
+      await expectListNodes({ group_id: groupPath }, `group ${groupPath}`);
     }, 20000);
 
     it('lists instance vulnerabilities or reports lack of access', async () => {
       try {
-        const result = (await helper.executeTool('browse_vulnerabilities', {
-          action: 'list',
-          first: 5,
-        })) as VulnConnection;
-        expect(Array.isArray(result.nodes)).toBe(true);
-        console.log(`  instance-wide list returned ${result.nodes.length} vulnerabilities`);
+        await expectListNodes({}, 'instance-wide');
       } catch (error) {
         console.log(`  instance list not available: ${(error as Error).message}`);
       }

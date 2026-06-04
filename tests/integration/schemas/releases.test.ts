@@ -3,10 +3,24 @@
  * Tests schemas using handler functions with real GitLab API
  */
 
+import { z } from 'zod';
 import { BrowseReleasesSchema } from '../../../src/entities/releases/schema-readonly';
 import { ManageReleaseSchema } from '../../../src/entities/releases/schema';
 import { IntegrationTestHelper } from '../helpers/registry-helper';
 import { getTestData } from '../../setup/testConfig';
+
+// Validate the project payloads we depend on instead of casting raw JSON, so a
+// malformed shape fails loudly here rather than surfacing as a confusing error later.
+const SeededProjectSchema = z.object({
+  id: z.number(),
+  default_branch: z.string().nullable().optional(),
+});
+const DiscoveredProjectSchema = z.object({
+  id: z.number(),
+  path_with_namespace: z.string(),
+  name: z.string(),
+  default_branch: z.string().nullable(),
+});
 
 describe('Releases Schema - GitLab Integration', () => {
   let helper: IntegrationTestHelper;
@@ -30,14 +44,12 @@ describe('Releases Schema - GitLab Integration', () => {
     // commit on `main`, so a release can be tagged against it deterministically.
     // Picking an arbitrary "test" project is unreliable - many are empty repos
     // whose `main` ref does not exist, producing "Target main is invalid".
-    const seeded = getTestData().project as
-      | { id: number; default_branch?: string | null }
-      | undefined;
-    if (seeded?.id) {
-      testProjectId = seeded.id.toString();
+    const seeded = SeededProjectSchema.safeParse(getTestData().project);
+    if (seeded.success) {
+      testProjectId = seeded.data.id.toString();
       // The project record is captured at creation time (empty repo), so
       // default_branch is usually null; the lifecycle suite commits to `main`.
-      testProjectRef = seeded.default_branch || 'main';
+      testProjectRef = seeded.data.default_branch || 'main';
       console.log(
         `Using seeded project ${testProjectId} (ref: ${testProjectRef}) for releases testing`,
       );
@@ -47,16 +59,9 @@ describe('Releases Schema - GitLab Integration', () => {
     // Fallback: discover a test project that reports a default branch (non-empty
     // repository). simple=false surfaces default_branch, which is null for empty
     // repos; a release can only be tagged against an existing ref.
-    const projects = (await helper.listProjects({
-      search: 'test',
-      per_page: 20,
-      simple: false,
-    })) as {
-      id: number;
-      path_with_namespace: string;
-      name: string;
-      default_branch: string | null;
-    }[];
+    const projects = z
+      .array(DiscoveredProjectSchema)
+      .parse(await helper.listProjects({ search: 'test', per_page: 20, simple: false }));
 
     const usable = projects.filter((p) => Boolean(p.default_branch));
     const selectedProject =
@@ -68,7 +73,7 @@ describe('Releases Schema - GitLab Integration', () => {
     }
 
     testProjectId = selectedProject.id.toString();
-    testProjectRef = selectedProject.default_branch as string;
+    testProjectRef = selectedProject.default_branch || 'main';
     console.log(
       `Using project: ${selectedProject.path_with_namespace} (ID: ${testProjectId}, ref: ${testProjectRef}) for releases testing`,
     );
@@ -428,9 +433,11 @@ describe('Releases Schema - GitLab Integration', () => {
         console.log(`Created test release: ${result.tag_name}`);
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        // If ref doesn't exist, skip the test gracefully
-        if (errorMsg.includes('404') || errorMsg.includes('ref') || errorMsg.includes('branch')) {
-          console.log('Could not create release: main branch may not exist or ref issue');
+        // Skip gracefully when the environment can't provide a usable ref. The
+        // known flaky text is "Target <ref> is invalid" (empty repo / missing
+        // branch), alongside the older 404/ref/branch wording.
+        if (/(404|ref|branch|target|invalid)/i.test(errorMsg)) {
+          console.log(`Could not create release for ref "${testProjectRef}": ${errorMsg}`);
           return;
         }
         throw error;

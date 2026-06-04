@@ -193,6 +193,10 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
             },
             body: JSON.stringify({
               branch: 'main',
+              // All initialFiles carry base64 content; without encoding GitLab
+              // defaults to "text" and stores the base64 string verbatim instead
+              // of the decoded file (e.g. an unparseable .gitlab-ci.yml).
+              encoding: 'base64',
               content: file.content,
               commit_message: file.message,
             }),

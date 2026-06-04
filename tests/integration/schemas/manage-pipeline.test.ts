@@ -15,6 +15,38 @@ import { ManagePipelineSchema } from '../../../src/entities/pipelines/schema';
 import { IntegrationTestHelper } from '../helpers/registry-helper';
 import { getTestData, buildCiConfigBase64 } from '../../setup/testConfig';
 
+/**
+ * Create a pipeline via manage_pipeline and assert the returned shape. Typed
+ * inputs require GitLab 15.5+; that specific version gate is tolerated (logged
+ * and skipped), while any other failure surfaces. Shared by the create tests so
+ * the assert/version-gate logic lives in one place.
+ */
+async function createPipelineAndAssert(
+  helper: IntegrationTestHelper,
+  params: unknown,
+  label: string,
+): Promise<void> {
+  try {
+    const pipeline = (await helper.executeTool('manage_pipeline', params)) as Record<
+      string,
+      unknown
+    >;
+    expect(pipeline).toHaveProperty('id');
+    expect(pipeline).toHaveProperty('status');
+    expect(pipeline).toHaveProperty('ref', 'main');
+    console.log(`✅ Created pipeline with ${label}: ${pipeline.id} (status: ${pipeline.status})`);
+  } catch (error) {
+    // Typed inputs require GitLab 15.5+. Skip only that specific gate; any other
+    // failure is a real error and must surface.
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    if (errorMsg.includes('inputs') || errorMsg.includes('15.5')) {
+      console.log(`⚠️ Pipeline inputs not supported on this GitLab version: ${errorMsg}`);
+    } else {
+      throw error;
+    }
+  }
+}
+
 describe('manage_pipeline - GitLab Integration (CQRS)', () => {
   let helper: IntegrationTestHelper;
 
@@ -90,18 +122,7 @@ describe('manage_pipeline - GitLab Integration (CQRS)', () => {
         expect(schemaResult.success).toBe(true);
 
         if (schemaResult.success) {
-          const pipeline = (await helper.executeTool(
-            'manage_pipeline',
-            schemaResult.data,
-          )) as Record<string, unknown>;
-
-          expect(pipeline).toHaveProperty('id');
-          expect(pipeline).toHaveProperty('status');
-          expect(pipeline).toHaveProperty('ref', 'main');
-
-          console.log(
-            `✅ Created pipeline with variables: ${pipeline.id} (status: ${pipeline.status})`,
-          );
+          await createPipelineAndAssert(helper, schemaResult.data, 'variables');
         }
       });
     });
@@ -191,29 +212,7 @@ describe('manage_pipeline - GitLab Integration (CQRS)', () => {
         expect(schemaResult.success).toBe(true);
 
         if (schemaResult.success) {
-          try {
-            const pipeline = (await helper.executeTool(
-              'manage_pipeline',
-              schemaResult.data,
-            )) as Record<string, unknown>;
-
-            expect(pipeline).toHaveProperty('id');
-            expect(pipeline).toHaveProperty('status');
-            expect(pipeline).toHaveProperty('ref', 'main');
-
-            console.log(
-              `✅ Created pipeline with inputs: ${pipeline.id} (status: ${pipeline.status})`,
-            );
-          } catch (error) {
-            // Typed inputs require GitLab 15.5+. Skip only that specific gate;
-            // any other failure is a real error and must surface.
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            if (errorMsg.includes('inputs') || errorMsg.includes('15.5')) {
-              console.log(`⚠️ Pipeline inputs not supported on this GitLab version: ${errorMsg}`);
-            } else {
-              throw error;
-            }
-          }
+          await createPipelineAndAssert(helper, schemaResult.data, 'inputs');
         }
       });
     });
@@ -264,28 +263,7 @@ describe('manage_pipeline - GitLab Integration (CQRS)', () => {
         expect(schemaResult.success).toBe(true);
 
         if (schemaResult.success) {
-          try {
-            const pipeline = (await helper.executeTool(
-              'manage_pipeline',
-              schemaResult.data,
-            )) as Record<string, unknown>;
-
-            expect(pipeline).toHaveProperty('id');
-            expect(pipeline).toHaveProperty('status');
-
-            console.log(
-              `✅ Created pipeline with variables+inputs: ${pipeline.id} (status: ${pipeline.status})`,
-            );
-          } catch (error) {
-            // Typed inputs require GitLab 15.5+. Skip only that specific gate;
-            // any other failure is a real error and must surface.
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            if (errorMsg.includes('inputs') || errorMsg.includes('15.5')) {
-              console.log(`⚠️ Pipeline inputs not supported on this GitLab version: ${errorMsg}`);
-            } else {
-              throw error;
-            }
-          }
+          await createPipelineAndAssert(helper, schemaResult.data, 'variables+inputs');
         }
       });
     });

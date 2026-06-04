@@ -38,6 +38,25 @@ const RestoredEntitySchema = z
   .passthrough();
 
 /**
+ * POST to a soft-delete restore endpoint (projects or groups) and return the
+ * validated restored entity. Shared by manage_project and manage_namespace so
+ * the restore request/validation logic lives in one place.
+ */
+async function restoreEntity(apiUrl: string): Promise<unknown> {
+  const response = await enhancedFetch(apiUrl, { method: 'POST' });
+  if (!response.ok) {
+    throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+  }
+  const restored = RestoredEntitySchema.safeParse(await response.json());
+  if (!restored.success) {
+    throw new Error(
+      `GitLab API error: unexpected restore response shape (${restored.error.issues[0]?.message ?? 'invalid'})`,
+    );
+  }
+  return restored.data;
+}
+
+/**
  * Core tools registry - CQRS consolidated
  * All tools use discriminated union schema pattern.
  * TypeScript automatically narrows types in each switch case.
@@ -823,21 +842,9 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
           case 'restore': {
             const { project_id } = input;
-
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/restore`;
-            const response = await enhancedFetch(apiUrl, { method: 'POST' });
-
-            if (!response.ok) {
-              throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
-            }
-
-            const restored = RestoredEntitySchema.safeParse(await response.json());
-            if (!restored.success) {
-              throw new Error(
-                `GitLab API error: unexpected restore response shape (${restored.error.issues[0]?.message ?? 'invalid'})`,
-              );
-            }
-            return restored.data;
+            return restoreEntity(
+              `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/restore`,
+            );
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
@@ -964,20 +971,9 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               );
             }
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}/restore`;
-            const response = await enhancedFetch(apiUrl, { method: 'POST' });
-
-            if (!response.ok) {
-              throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
-            }
-
-            const restored = RestoredEntitySchema.safeParse(await response.json());
-            if (!restored.success) {
-              throw new Error(
-                `GitLab API error: unexpected restore response shape (${restored.error.issues[0]?.message ?? 'invalid'})`,
-              );
-            }
-            return restored.data;
+            return restoreEntity(
+              `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}/restore`,
+            );
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

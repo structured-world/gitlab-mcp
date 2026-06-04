@@ -14,12 +14,17 @@ set -euo pipefail
 
 VERSION="${1:?Usage: prepare-release.sh <version>}"
 
-# Get dynamic tool counts from built registry
+# Get dynamic tool counts from the built registry.
 # Design: stderr is redirected to suppress noisy Node.js errors (module resolution, etc.)
-# If the node command fails, result is empty → triggers fallback with WARNING to stderr.
-# This ensures clean stdout for release output while surfacing fallback usage in CI logs.
+# so stdout stays clean for release output. Counts derived from dist/ FAIL the
+# release if they can't be computed — publishing stale hardcoded metrics silently
+# is worse than aborting and rebuilding dist. ENTITY_COUNT reads the source tree
+# (not dist), so it keeps a warn+fallback.
 TOOL_COUNT=$(node -e 'const r=require("./dist/src/registry-manager.js");console.log(r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered().length)' 2>/dev/null)
-if [ -z "$TOOL_COUNT" ]; then TOOL_COUNT=44; echo "WARNING: Using fallback TOOL_COUNT=$TOOL_COUNT" >&2; fi
+if [ -z "$TOOL_COUNT" ]; then
+  echo "ERROR: Failed to compute TOOL_COUNT from dist/ registry; rebuild and re-run" >&2
+  exit 1
+fi
 
 ENTITY_COUNT=$(node -e 'const fs=require("fs"),p=require("path");const d=p.join(process.cwd(),"src","entities");console.log(fs.readdirSync(d,{withFileTypes:true}).filter(e=>e.isDirectory()&&fs.existsSync(p.join(d,e.name,"registry.ts"))).length)' 2>/dev/null)
 if [ -z "$ENTITY_COUNT" ]; then ENTITY_COUNT=18; echo "WARNING: Using fallback ENTITY_COUNT=$ENTITY_COUNT" >&2; fi
@@ -27,13 +32,19 @@ if [ -z "$ENTITY_COUNT" ]; then ENTITY_COUNT=18; echo "WARNING: Using fallback E
 # Read-only tools: browse_* (queries) + manage_context (read-only despite manage_ prefix)
 # Same pattern used in inject-tool-refs.ts for consistency
 READONLY_TOOL_COUNT=$(node -e 'const r=require("./dist/src/registry-manager.js");const t=r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered();console.log(t.filter(x=>x.name.startsWith("browse_")||x.name==="manage_context").length)' 2>/dev/null)
-if [ -z "$READONLY_TOOL_COUNT" ]; then READONLY_TOOL_COUNT=24; echo "WARNING: Using fallback READONLY_TOOL_COUNT=$READONLY_TOOL_COUNT" >&2; fi
+if [ -z "$READONLY_TOOL_COUNT" ]; then
+  echo "ERROR: Failed to compute READONLY_TOOL_COUNT from dist/ registry; rebuild and re-run" >&2
+  exit 1
+fi
 
 # Total typed actions across all CQRS tools (discriminated-union oneOf branches
 # with an action const, or a flat action enum). Mirrors extractActions() in
 # src/cli/inject-tool-refs.ts so README and docs report the same operation count.
 ACTION_COUNT=$(node -e 'const r=require("./dist/src/registry-manager.js");const t=r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered();let n=0;for(const x of t){const s=x.inputSchema;if(Array.isArray(s.oneOf)){for(const b of s.oneOf){if(b.properties&&b.properties.action&&typeof b.properties.action.const==="string")n++;}}else if(s.properties&&s.properties.action&&Array.isArray(s.properties.action.enum)){n+=s.properties.action.enum.filter(v=>typeof v==="string").length;}}console.log(n)' 2>/dev/null)
-if [ -z "$ACTION_COUNT" ]; then ACTION_COUNT=193; echo "WARNING: Using fallback ACTION_COUNT=$ACTION_COUNT" >&2; fi
+if [ -z "$ACTION_COUNT" ]; then
+  echo "ERROR: Failed to compute ACTION_COUNT from dist/ registry; rebuild and re-run" >&2
+  exit 1
+fi
 
 echo "prepare-release: v${VERSION}, ${TOOL_COUNT} tools (${READONLY_TOOL_COUNT} read-only, ${ACTION_COUNT} actions), ${ENTITY_COUNT} entities"
 

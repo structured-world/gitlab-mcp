@@ -531,6 +531,39 @@ describe('Core Registry', () => {
         }
       });
 
+      it('lets active override archived when both are passed on GitLab 18.5+', async () => {
+        // Native path: sending both active and archived makes precedence ambiguous.
+        // active must win, so the conflicting archived param is dropped.
+        mockEnhancedFetch.mockResolvedValueOnce(okJson([{ id: 1, name: 'project1' }]));
+
+        const tool = coreToolRegistry.get('browse_projects');
+        await tool!.handler({ action: 'list', active: false, archived: false });
+
+        const calledUrl = mockEnhancedFetch.mock.calls[0][0];
+        expect(calledUrl).toContain('active=false');
+        expect(calledUrl).not.toContain('archived=');
+      });
+
+      it('lets active override archived on GitLab below 18.5', async () => {
+        // Fallback path: active=true => archived=false, overriding an explicit
+        // archived=true, and no stray active param is sent.
+        const spy = jest
+          .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+          .mockReturnValue({ version: '18.0.0', tier: 'free' } as GitLabInstanceInfo);
+        try {
+          mockEnhancedFetch.mockResolvedValueOnce(okJson([{ id: 1, name: 'project1' }]));
+
+          const tool = coreToolRegistry.get('browse_projects');
+          await tool!.handler({ action: 'list', active: true, archived: true });
+
+          const calledUrl = mockEnhancedFetch.mock.calls[0][0];
+          expect(calledUrl).toContain('archived=false');
+          expect(calledUrl).not.toContain('active=');
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
       it('should get project with action: get', async () => {
         const mockApiResponse = {
           id: 123,

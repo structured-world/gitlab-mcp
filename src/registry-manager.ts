@@ -53,6 +53,10 @@ import {
 } from './entities/container_registry/registry';
 import { runnersToolRegistry, getRunnersReadOnlyToolNames } from './entities/runners/registry';
 import {
+  auditEventsToolRegistry,
+  getAuditEventsReadOnlyToolNames,
+} from './entities/audit_events/registry';
+import {
   accessTokensToolRegistry,
   getAccessTokensReadOnlyToolNames,
 } from './entities/access_tokens/registry';
@@ -82,6 +86,7 @@ import {
   USE_REGISTRY,
   USE_ACCESS_TOKENS,
   USE_RUNNERS,
+  USE_AUDIT_EVENTS,
   getToolDescriptionOverrides,
 } from './config';
 import { isToolAvailable, getRestrictedParameters } from './services/InstanceCapabilities';
@@ -238,6 +243,10 @@ class RegistryManager {
       this.registries.set('runners', runnersToolRegistry);
     }
 
+    if (USE_AUDIT_EVENTS) {
+      this.registries.set('audit_events', auditEventsToolRegistry);
+    }
+
     // All entity registries have been migrated to the new pattern!
   }
 
@@ -351,6 +360,10 @@ class RegistryManager {
 
     if (USE_RUNNERS) {
       readOnlyTools.push(...getRunnersReadOnlyToolNames());
+    }
+
+    if (USE_AUDIT_EVENTS) {
+      readOnlyTools.push(...getAuditEventsReadOnlyToolNames());
     }
 
     return readOnlyTools;
@@ -783,6 +796,7 @@ class RegistryManager {
     const useRegistry = process.env.USE_REGISTRY !== 'false';
     const useAccessTokens = process.env.USE_ACCESS_TOKENS !== 'false';
     const useRunners = process.env.USE_RUNNERS !== 'false';
+    const useAuditEvents = process.env.USE_AUDIT_EVENTS !== 'false';
 
     // Build registries map based on dynamic feature flags
     const registriesToUse = new Map<string, ToolRegistry>();
@@ -818,6 +832,7 @@ class RegistryManager {
     if (useRegistry) registriesToUse.set('registry', containerRegistryToolRegistry);
     if (useAccessTokens) registriesToUse.set('access_tokens', accessTokensToolRegistry);
     if (useRunners) registriesToUse.set('runners', runnersToolRegistry);
+    if (useAuditEvents) registriesToUse.set('audit_events', auditEventsToolRegistry);
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -922,6 +937,7 @@ class RegistryManager {
       containerRegistryToolRegistry,
       accessTokensToolRegistry,
       runnersToolRegistry,
+      auditEventsToolRegistry,
     ];
 
     for (const registry of allRegistries) {

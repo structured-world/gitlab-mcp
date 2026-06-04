@@ -59,8 +59,12 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         // Listing soft-deleted projects needs active admin-mode elevation; the
         // registry strips this parameter when elevation is known inactive (non-admin
         // OR admin role without elevation), and keeps it when elevated or unknown
-        // (fail-open).
-        parameters: { include_deleted: { requiresAdmin: true } },
+        // (fail-open). marked_for_deletion_on is a Premium/Ultimate filter (17.1+);
+        // the registry strips it on lower tiers/older versions.
+        parameters: {
+          include_deleted: { requiresAdmin: true },
+          marked_for_deletion_on: { tier: 'premium', minVersion: '17.1' },
+        },
       },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseProjectsSchema.parse(args);
@@ -121,6 +125,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               include_subgroups,
               with_shared,
               include_deleted,
+              marked_for_deletion_on,
               visibility,
               archived,
               order_by,
@@ -146,6 +151,8 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (with_shared !== undefined) queryParams.set('with_shared', String(with_shared));
             if (with_programming_language)
               queryParams.set('with_programming_language', with_programming_language);
+            if (marked_for_deletion_on)
+              queryParams.set('marked_for_deletion_on', marked_for_deletion_on);
 
             if (!queryParams.has('order_by')) queryParams.set('order_by', 'created_at');
             if (!queryParams.has('sort')) queryParams.set('sort', 'desc');

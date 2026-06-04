@@ -23,6 +23,16 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
     console.log('✅ Integration test helper initialized for browse projects testing');
   });
 
+  /** Run browse_projects list and assert the result is an array of project shapes. */
+  async function listAndAssertProjectShapes(params: unknown): Promise<unknown[]> {
+    const projects = (await helper.executeTool('browse_projects', params)) as unknown[];
+    expect(Array.isArray(projects)).toBe(true);
+    for (const p of projects) {
+      expect(p).toHaveProperty('id');
+    }
+    return projects;
+  }
+
   describe('action: list', () => {
     it('should validate basic list projects parameters', async () => {
       // Test basic parameters with action discriminator (CQRS consolidation - Issue #16)
@@ -107,14 +117,36 @@ describe('BrowseProjectsSchema - GitLab 18.3 Integration', () => {
 
       if (paramResult.success) {
         // Exercises the include_pending_delete path end-to-end against the live
-        // (admin) instance. Each returned entry is a project; whether any are
-        // pending-delete is environment-specific, so we assert shape, not count.
-        const projects = (await helper.executeTool('browse_projects', paramResult.data)) as any[];
-        expect(Array.isArray(projects)).toBe(true);
-        for (const p of projects) {
-          expect(p).toHaveProperty('id');
-        }
+        // (admin) instance; whether any are pending-delete is environment-specific.
+        const projects = await listAndAssertProjectShapes(paramResult.data);
         console.log(`  include_deleted returned ${projects.length} projects`);
+      }
+    }, 15000);
+
+    it('should accept marked_for_deletion_on on Premium/Ultimate instances', async () => {
+      // marked_for_deletion_on is a Premium/Ultimate-gated filter (17.1+). Skip on
+      // lower tiers, where the registry strips the parameter and GitLab would reject it.
+      const ctx = (await helper.executeTool('manage_context', { action: 'whoami' })) as {
+        server?: { tier?: string };
+      };
+      if (ctx.server?.tier !== 'premium' && ctx.server?.tier !== 'ultimate') {
+        console.log(`  Skipping marked_for_deletion_on: instance tier is ${ctx.server?.tier}`);
+        return;
+      }
+
+      const params = {
+        action: 'list' as const,
+        marked_for_deletion_on: '2026-01-01',
+        per_page: 5,
+      };
+      const paramResult = BrowseProjectsSchema.safeParse(params);
+      expect(paramResult.success).toBe(true);
+
+      if (paramResult.success) {
+        // Exercises the filter end-to-end; whether any project matches the date is
+        // environment-specific, so assert shape, not count.
+        const projects = await listAndAssertProjectShapes(paramResult.data);
+        console.log(`  marked_for_deletion_on returned ${projects.length} projects`);
       }
     }, 15000);
 

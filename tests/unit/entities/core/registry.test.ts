@@ -450,6 +450,87 @@ describe('Core Registry', () => {
         });
       });
 
+      it('sends the native active filter on GitLab 18.5+ (active=false)', async () => {
+        // Version unknown / uninitialised fails open to the native parameter,
+        // so the explicit active=false must reach the API verbatim.
+        mockEnhancedFetch.mockResolvedValueOnce(okJson([{ id: 1, name: 'archived-project' }]));
+
+        const tool = coreToolRegistry.get('browse_projects');
+        await tool!.handler({ action: 'list', active: false });
+
+        const calledUrl = mockEnhancedFetch.mock.calls[0][0];
+        expect(calledUrl).toContain('active=false');
+        expect(calledUrl).not.toContain('archived=');
+      });
+
+      it('falls back to the archived filter on GitLab below 18.5', async () => {
+        // active=true => archived=false, sent server-side so pagination stays correct.
+        const spy = jest
+          .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+          .mockReturnValue({ version: '18.0.0', tier: 'free' } as GitLabInstanceInfo);
+        try {
+          mockEnhancedFetch.mockResolvedValueOnce(okJson([{ id: 1, name: 'project1' }]));
+
+          const tool = coreToolRegistry.get('browse_projects');
+          await tool!.handler({ action: 'list', active: true });
+
+          const calledUrl = mockEnhancedFetch.mock.calls[0][0];
+          expect(calledUrl).toContain('archived=false');
+          expect(calledUrl).not.toContain('active=');
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
+      it('translates active=false to archived=true on GitLab below 18.5', async () => {
+        const spy = jest
+          .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+          .mockReturnValue({ version: '18.0.0', tier: 'free' } as GitLabInstanceInfo);
+        try {
+          mockEnhancedFetch.mockResolvedValueOnce(okJson([{ id: 1, name: 'archived-project' }]));
+
+          const tool = coreToolRegistry.get('browse_projects');
+          await tool!.handler({ action: 'list', active: false });
+
+          const calledUrl = mockEnhancedFetch.mock.calls[0][0];
+          expect(calledUrl).toContain('archived=true');
+          expect(calledUrl).not.toContain('active=');
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
+      it('applies the active filter to group-scoped listing', async () => {
+        mockEnhancedFetch.mockResolvedValueOnce(okJson([{ id: 1, name: 'group-project' }]));
+
+        const tool = coreToolRegistry.get('browse_projects');
+        await tool!.handler({ action: 'list', group_id: 'my-group', active: true });
+
+        const calledUrl = mockEnhancedFetch.mock.calls[0][0];
+        expect(calledUrl).toContain('/api/v4/groups/my-group/projects?');
+        expect(calledUrl).toContain('active=true');
+      });
+
+      it('keeps the historical active=true default when active is omitted', async () => {
+        // Default listing on a sub-18.5 instance must NOT switch to the archived
+        // translation; the implicit default is unchanged to avoid a regression.
+        const spy = jest
+          .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+          .mockReturnValue({ version: '18.0.0', tier: 'free' } as GitLabInstanceInfo);
+        try {
+          mockEnhancedFetch.mockResolvedValueOnce(okJson([{ id: 1, name: 'project1' }]));
+
+          const tool = coreToolRegistry.get('browse_projects');
+          await tool!.handler({ action: 'list' });
+
+          const calledUrl = mockEnhancedFetch.mock.calls[0][0];
+          expect(calledUrl).toContain('active=true');
+          expect(calledUrl).not.toContain('archived=');
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
       it('should get project with action: get', async () => {
         const mockApiResponse = {
           id: 123,

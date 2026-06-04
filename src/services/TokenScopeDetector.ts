@@ -149,6 +149,9 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   manage_access_token: ['api'],
 
   // Runners
+  // ANY-match: create_runner and manage_runner are standalone GitLab scopes that
+  // enable runner registration / management on their own (no api required) - that
+  // is their whole reason to exist, so any one of these scopes surfaces the tool.
   browse_runners: ['api', 'read_api'],
   manage_runner: ['api', 'create_runner', 'manage_runner'],
 

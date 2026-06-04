@@ -51,6 +51,7 @@ import {
   containerRegistryToolRegistry,
   getContainerRegistryReadOnlyToolNames,
 } from './entities/container_registry/registry';
+import { runnersToolRegistry, getRunnersReadOnlyToolNames } from './entities/runners/registry';
 import {
   accessTokensToolRegistry,
   getAccessTokensReadOnlyToolNames,
@@ -80,6 +81,7 @@ import {
   USE_ENVIRONMENTS,
   USE_REGISTRY,
   USE_ACCESS_TOKENS,
+  USE_RUNNERS,
   getToolDescriptionOverrides,
 } from './config';
 import { isToolAvailable, getRestrictedParameters } from './services/InstanceCapabilities';
@@ -232,6 +234,10 @@ class RegistryManager {
       this.registries.set('access_tokens', accessTokensToolRegistry);
     }
 
+    if (USE_RUNNERS) {
+      this.registries.set('runners', runnersToolRegistry);
+    }
+
     // All entity registries have been migrated to the new pattern!
   }
 
@@ -341,6 +347,10 @@ class RegistryManager {
 
     if (USE_ACCESS_TOKENS) {
       readOnlyTools.push(...getAccessTokensReadOnlyToolNames());
+    }
+
+    if (USE_RUNNERS) {
+      readOnlyTools.push(...getRunnersReadOnlyToolNames());
     }
 
     return readOnlyTools;
@@ -772,6 +782,7 @@ class RegistryManager {
     const useEnvironments = process.env.USE_ENVIRONMENTS !== 'false';
     const useRegistry = process.env.USE_REGISTRY !== 'false';
     const useAccessTokens = process.env.USE_ACCESS_TOKENS !== 'false';
+    const useRunners = process.env.USE_RUNNERS !== 'false';
 
     // Build registries map based on dynamic feature flags
     const registriesToUse = new Map<string, ToolRegistry>();
@@ -806,6 +817,7 @@ class RegistryManager {
     if (useEnvironments) registriesToUse.set('environments', environmentsToolRegistry);
     if (useRegistry) registriesToUse.set('registry', containerRegistryToolRegistry);
     if (useAccessTokens) registriesToUse.set('access_tokens', accessTokensToolRegistry);
+    if (useRunners) registriesToUse.set('runners', runnersToolRegistry);
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -909,6 +921,7 @@ class RegistryManager {
       environmentsToolRegistry,
       containerRegistryToolRegistry,
       accessTokensToolRegistry,
+      runnersToolRegistry,
     ];
 
     for (const registry of allRegistries) {

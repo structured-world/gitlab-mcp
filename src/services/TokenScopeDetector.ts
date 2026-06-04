@@ -139,6 +139,10 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   browse_deploy_keys: ['api', 'read_api'],
   manage_deploy_key: ['api'],
 
+  // Container registry
+  browse_registry: ['api', 'read_api', 'read_registry'],
+  manage_registry: ['api', 'write_registry'],
+
   // Wiki
   browse_wiki: ['api', 'read_api'],
   manage_wiki: ['api'],

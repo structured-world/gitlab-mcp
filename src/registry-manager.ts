@@ -48,6 +48,10 @@ import {
   getEnvironmentsReadOnlyToolNames,
 } from './entities/environments/registry';
 import {
+  containerRegistryToolRegistry,
+  getContainerRegistryReadOnlyToolNames,
+} from './entities/container_registry/registry';
+import {
   GITLAB_BASE_URL,
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
@@ -70,6 +74,7 @@ import {
   USE_ITERATIONS,
   USE_CI_TOKENS,
   USE_ENVIRONMENTS,
+  USE_REGISTRY,
   getToolDescriptionOverrides,
 } from './config';
 import { isToolAvailable, getRestrictedParameters } from './services/InstanceCapabilities';
@@ -214,6 +219,10 @@ class RegistryManager {
       this.registries.set('environments', environmentsToolRegistry);
     }
 
+    if (USE_REGISTRY) {
+      this.registries.set('registry', containerRegistryToolRegistry);
+    }
+
     // All entity registries have been migrated to the new pattern!
   }
 
@@ -315,6 +324,10 @@ class RegistryManager {
 
     if (USE_ENVIRONMENTS) {
       readOnlyTools.push(...getEnvironmentsReadOnlyToolNames());
+    }
+
+    if (USE_REGISTRY) {
+      readOnlyTools.push(...getContainerRegistryReadOnlyToolNames());
     }
 
     return readOnlyTools;
@@ -744,6 +757,7 @@ class RegistryManager {
     const useIterations = process.env.USE_ITERATIONS !== 'false';
     const useCiTokens = process.env.USE_CI_TOKENS !== 'false';
     const useEnvironments = process.env.USE_ENVIRONMENTS !== 'false';
+    const useRegistry = process.env.USE_REGISTRY !== 'false';
 
     // Build registries map based on dynamic feature flags
     const registriesToUse = new Map<string, ToolRegistry>();
@@ -776,6 +790,7 @@ class RegistryManager {
       registriesToUse.set('deploy-keys', deployKeysToolRegistry);
     }
     if (useEnvironments) registriesToUse.set('environments', environmentsToolRegistry);
+    if (useRegistry) registriesToUse.set('registry', containerRegistryToolRegistry);
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -877,6 +892,7 @@ class RegistryManager {
       jobTokenScopeToolRegistry,
       deployKeysToolRegistry,
       environmentsToolRegistry,
+      containerRegistryToolRegistry,
     ];
 
     for (const registry of allRegistries) {

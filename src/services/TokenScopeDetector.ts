@@ -155,6 +155,9 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   browse_runners: ['api', 'read_api'],
   manage_runner: ['api', 'create_runner', 'manage_runner'],
 
+  // Audit events (Premium/Ultimate, read-only)
+  browse_audit_events: ['api', 'read_api'],
+
   // Wiki
   browse_wiki: ['api', 'read_api'],
   manage_wiki: ['api'],

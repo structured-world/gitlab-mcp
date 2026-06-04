@@ -26,25 +26,16 @@ async function createPipelineAndAssert(
   params: unknown,
   label: string,
 ): Promise<void> {
-  try {
-    const pipeline = (await helper.executeTool('manage_pipeline', params)) as Record<
-      string,
-      unknown
-    >;
-    expect(pipeline).toHaveProperty('id');
-    expect(pipeline).toHaveProperty('status');
-    expect(pipeline).toHaveProperty('ref', 'main');
-    console.log(`✅ Created pipeline with ${label}: ${pipeline.id} (status: ${pipeline.status})`);
-  } catch (error) {
-    // Typed inputs require GitLab 15.5+. Skip only that specific gate; any other
-    // failure is a real error and must surface.
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    if (errorMsg.includes('inputs') || errorMsg.includes('15.5')) {
-      console.log(`⚠️ Pipeline inputs not supported on this GitLab version: ${errorMsg}`);
-    } else {
-      throw error;
-    }
-  }
+  // No error swallowing: beforeAll re-seeds a valid spec:inputs .gitlab-ci.yml and
+  // the test instance is GitLab 15.5+, so creation must succeed. A failure here is
+  // a real regression and must surface. (Typed inputs require 15.5+, documented in
+  // the file header; on older GitLab the CI config fails to parse, which correctly
+  // signals the unmet prerequisite rather than being silently skipped.)
+  const pipeline = (await helper.executeTool('manage_pipeline', params)) as Record<string, unknown>;
+  expect(pipeline).toHaveProperty('id');
+  expect(pipeline).toHaveProperty('status');
+  expect(pipeline).toHaveProperty('ref', 'main');
+  console.log(`✅ Created pipeline with ${label}: ${pipeline.id} (status: ${pipeline.status})`);
 }
 
 describe('manage_pipeline - GitLab Integration (CQRS)', () => {

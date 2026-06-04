@@ -433,10 +433,11 @@ describe('Releases Schema - GitLab Integration', () => {
         console.log(`Created test release: ${result.tag_name}`);
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        // Skip gracefully when the environment can't provide a usable ref. The
-        // known flaky text is "Target <ref> is invalid" (empty repo / missing
-        // branch), alongside the older 404/ref/branch wording.
-        if (/(404|ref|branch|target|invalid)/i.test(errorMsg)) {
+        // Skip ONLY the specific "Target <ref> is invalid" failure, which means the
+        // chosen project's ref doesn't exist (empty repo / branch removed between
+        // selection and create) - an environment precondition, not a code defect.
+        // Any other error surfaces so real regressions aren't masked.
+        if (/target\b.+\bis invalid/i.test(errorMsg)) {
           console.log(`Could not create release for ref "${testProjectRef}": ${errorMsg}`);
           return;
         }

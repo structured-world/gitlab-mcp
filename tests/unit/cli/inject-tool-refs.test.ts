@@ -799,10 +799,11 @@ describe('inject-tool-refs', () => {
         toolCount: 44,
         entityCount: 18,
         readonlyToolCount: 24,
+        actionCount: 193,
         version: '6.43.0',
       };
       mockedFs.readFileSync.mockReturnValue(
-        'We have __TOOL_COUNT__ tools, __ENTITY_COUNT__ entities, __READONLY_TOOL_COUNT__ read-only. Version: __VERSION__',
+        'We have __TOOL_COUNT__ tools (__ACTION_COUNT__ actions), __ENTITY_COUNT__ entities, __READONLY_TOOL_COUNT__ read-only. Version: __VERSION__',
       );
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
@@ -811,7 +812,7 @@ describe('inject-tool-refs', () => {
       expect(result).toBe(true);
       expect(mockedFs.writeFileSync).toHaveBeenCalledWith(
         '/some/file.md',
-        'We have 44 tools, 18 entities, 24 read-only. Version: 6.43.0',
+        'We have 44 tools (193 actions), 18 entities, 24 read-only. Version: 6.43.0',
         'utf8',
       );
     });
@@ -821,6 +822,7 @@ describe('inject-tool-refs', () => {
         toolCount: 44,
         entityCount: 18,
         readonlyToolCount: 24,
+        actionCount: 193,
         version: '1.0.0',
       };
       mockedFs.readFileSync.mockReturnValue('No placeholders here.');
@@ -836,6 +838,7 @@ describe('inject-tool-refs', () => {
         toolCount: 44,
         entityCount: 18,
         readonlyToolCount: 24,
+        actionCount: 193,
         version: '6.43.0',
       };
       mockedFs.readFileSync.mockReturnValue(

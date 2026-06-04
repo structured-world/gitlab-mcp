@@ -29,7 +29,13 @@ if [ -z "$ENTITY_COUNT" ]; then ENTITY_COUNT=18; echo "WARNING: Using fallback E
 READONLY_TOOL_COUNT=$(node -e 'const r=require("./dist/src/registry-manager.js");const t=r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered();console.log(t.filter(x=>x.name.startsWith("browse_")||x.name==="manage_context").length)' 2>/dev/null)
 if [ -z "$READONLY_TOOL_COUNT" ]; then READONLY_TOOL_COUNT=24; echo "WARNING: Using fallback READONLY_TOOL_COUNT=$READONLY_TOOL_COUNT" >&2; fi
 
-echo "prepare-release: v${VERSION}, ${TOOL_COUNT} tools (${READONLY_TOOL_COUNT} read-only), ${ENTITY_COUNT} entities"
+# Total typed actions across all CQRS tools (discriminated-union oneOf branches
+# with an action const, or a flat action enum). Mirrors extractActions() in
+# src/cli/inject-tool-refs.ts so README and docs report the same operation count.
+ACTION_COUNT=$(node -e 'const r=require("./dist/src/registry-manager.js");const t=r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered();let n=0;for(const x of t){const s=x.inputSchema;if(Array.isArray(s.oneOf)){for(const b of s.oneOf){if(b.properties&&b.properties.action&&typeof b.properties.action.const==="string")n++;}}else if(s.properties&&s.properties.action&&Array.isArray(s.properties.action.enum)){n+=s.properties.action.enum.filter(v=>typeof v==="string").length;}}console.log(n)' 2>/dev/null)
+if [ -z "$ACTION_COUNT" ]; then ACTION_COUNT=193; echo "WARNING: Using fallback ACTION_COUNT=$ACTION_COUNT" >&2; fi
+
+echo "prepare-release: v${VERSION}, ${TOOL_COUNT} tools (${READONLY_TOOL_COUNT} read-only, ${ACTION_COUNT} actions), ${ENTITY_COUNT} entities"
 
 # Update server.json: version + description
 # Note: set -e ensures script exits on jq failure; leftover server.tmp is benign
@@ -44,6 +50,7 @@ if [ ! -f "README.md.in" ]; then
   exit 1
 fi
 sed -e "s/__TOOL_COUNT__/${TOOL_COUNT}/g" \
+    -e "s/__ACTION_COUNT__/${ACTION_COUNT}/g" \
     -e "s/__ENTITY_COUNT__/${ENTITY_COUNT}/g" \
     -e "s/__READONLY_TOOL_COUNT__/${READONLY_TOOL_COUNT}/g" \
     -e "s/__VERSION__/${VERSION}/g" \

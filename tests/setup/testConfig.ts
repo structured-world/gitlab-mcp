@@ -113,3 +113,36 @@ export const getTestGroup = () => {
   const data = requireTestData();
   return data.group;
 };
+
+/**
+ * Build a valid `.gitlab-ci.yml` (base64-encoded) used to seed test projects for
+ * pipeline tests. The `spec:inputs` header MUST be its own YAML document,
+ * separated from the job config by a `---` document separator; without it GitLab
+ * rejects the file with "Invalid configuration format". The job runs for
+ * API-triggered pipelines (so `manage_pipeline create` produces a runnable
+ * pipeline) and is manual otherwise (so commits do not auto-trigger pipelines).
+ *
+ * @param marker optional trailing comment so an overwrite always commits a change
+ *   (avoids "file unchanged" when re-seeding an already-valid project).
+ */
+export const buildCiConfigBase64 = (marker = ''): string => {
+  const yaml = `spec:
+  inputs:
+    environment:
+      type: string
+      default: test
+    debug:
+      type: boolean
+      default: false
+    count:
+      type: number
+      default: 1
+---
+test-job:
+  script: echo "Environment is $[[ inputs.environment ]]"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "api"'
+    - when: manual
+${marker ? `# ${marker}\n` : ''}`;
+  return Buffer.from(yaml).toString('base64');
+};

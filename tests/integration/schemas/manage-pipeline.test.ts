@@ -11,9 +11,38 @@
  * - GitLab 15.5+ for inputs support
  */
 
+import { z } from 'zod';
 import { ManagePipelineSchema } from '../../../src/entities/pipelines/schema';
 import { IntegrationTestHelper } from '../helpers/registry-helper';
-import { getTestData } from '../../setup/testConfig';
+import { getTestData, buildCiConfigBase64 } from '../../setup/testConfig';
+
+// Validate the created pipeline shape instead of casting the tool's external output.
+const PipelineResponseSchema = z.object({
+  id: z.number(),
+  status: z.string(),
+  ref: z.string(),
+});
+
+/**
+ * Create a pipeline via manage_pipeline and assert the returned shape. Shared by
+ * the create tests so the validate/assert logic lives in one place.
+ */
+async function createPipelineAndAssert(
+  helper: IntegrationTestHelper,
+  params: unknown,
+  label: string,
+): Promise<void> {
+  // No error swallowing: beforeAll re-seeds a valid spec:inputs .gitlab-ci.yml and
+  // the test instance is GitLab 15.5+, so creation must succeed. A failure here is
+  // a real regression and must surface. (Typed inputs require 15.5+, documented in
+  // the file header; on older GitLab the CI config fails to parse, which correctly
+  // signals the unmet prerequisite rather than being silently skipped.)
+  const pipeline = PipelineResponseSchema.parse(
+    await helper.executeTool('manage_pipeline', params),
+  );
+  expect(pipeline.ref).toBe('main');
+  console.log(`✅ Created pipeline with ${label}: ${pipeline.id} (status: ${pipeline.status})`);
+}
 
 describe('manage_pipeline - GitLab Integration (CQRS)', () => {
   let helper: IntegrationTestHelper;
@@ -27,6 +56,26 @@ describe('manage_pipeline - GitLab Integration (CQRS)', () => {
     helper = new IntegrationTestHelper();
     await helper.initialize();
     console.log('Integration test helper initialized for manage_pipeline testing');
+
+    // Ensure the shared test project has a valid .gitlab-ci.yml on main before
+    // creating pipelines. The cross-file test data may point at a project seeded
+    // by an earlier run whose CI config predates the current format, so re-seed
+    // it here (overwrite=true) to keep pipeline creation deterministic instead of
+    // depending on test-file ordering. A unique marker guarantees the overwrite
+    // always commits a change.
+    const project = getTestData().project as { id: number } | undefined;
+    if (project?.id) {
+      await helper.executeTool('manage_files', {
+        action: 'single',
+        project_id: project.id.toString(),
+        file_path: '.gitlab-ci.yml',
+        branch: 'main',
+        content: buildCiConfigBase64(`manage_pipeline fixture ${Date.now()}`),
+        encoding: 'base64',
+        commit_message: 'Refresh CI config for pipeline tests',
+        overwrite: true,
+      });
+    }
   });
 
   describe('ManagePipelineSchema - create action', () => {
@@ -70,23 +119,7 @@ describe('manage_pipeline - GitLab Integration (CQRS)', () => {
         expect(schemaResult.success).toBe(true);
 
         if (schemaResult.success) {
-          try {
-            const pipeline = (await helper.executeTool(
-              'manage_pipeline',
-              schemaResult.data,
-            )) as Record<string, unknown>;
-
-            expect(pipeline).toHaveProperty('id');
-            expect(pipeline).toHaveProperty('status');
-            expect(pipeline).toHaveProperty('ref', 'main');
-
-            console.log(
-              `✅ Created pipeline with variables: ${pipeline.id} (status: ${pipeline.status})`,
-            );
-          } catch (error) {
-            // Pipeline creation may fail if no runners or CI disabled - that's OK for schema test
-            console.log(`⚠️ Pipeline creation failed (expected if no CI): ${error}`);
-          }
+          await createPipelineAndAssert(helper, schemaResult.data, 'variables');
         }
       });
     });
@@ -176,32 +209,7 @@ describe('manage_pipeline - GitLab Integration (CQRS)', () => {
         expect(schemaResult.success).toBe(true);
 
         if (schemaResult.success) {
-          try {
-            const pipeline = (await helper.executeTool(
-              'manage_pipeline',
-              schemaResult.data,
-            )) as Record<string, unknown>;
-
-            expect(pipeline).toHaveProperty('id');
-            expect(pipeline).toHaveProperty('status');
-            expect(pipeline).toHaveProperty('ref', 'main');
-
-            console.log(
-              `✅ Created pipeline with inputs: ${pipeline.id} (status: ${pipeline.status})`,
-            );
-          } catch (error) {
-            // GitLab < 15.5 or invalid inputs spec will fail - log and continue
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            if (
-              errorMsg.includes('inputs') ||
-              errorMsg.includes('spec') ||
-              errorMsg.includes('15.5')
-            ) {
-              console.log(`⚠️ Pipeline inputs not supported on this GitLab version: ${errorMsg}`);
-            } else {
-              console.log(`⚠️ Pipeline creation failed: ${errorMsg}`);
-            }
-          }
+          await createPipelineAndAssert(helper, schemaResult.data, 'inputs');
         }
       });
     });
@@ -252,22 +260,7 @@ describe('manage_pipeline - GitLab Integration (CQRS)', () => {
         expect(schemaResult.success).toBe(true);
 
         if (schemaResult.success) {
-          try {
-            const pipeline = (await helper.executeTool(
-              'manage_pipeline',
-              schemaResult.data,
-            )) as Record<string, unknown>;
-
-            expect(pipeline).toHaveProperty('id');
-            expect(pipeline).toHaveProperty('status');
-
-            console.log(
-              `✅ Created pipeline with variables+inputs: ${pipeline.id} (status: ${pipeline.status})`,
-            );
-          } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            console.log(`⚠️ Pipeline creation failed: ${errorMsg}`);
-          }
+          await createPipelineAndAssert(helper, schemaResult.data, 'variables+inputs');
         }
       });
     });

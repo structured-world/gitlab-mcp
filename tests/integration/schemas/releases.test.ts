@@ -3,13 +3,32 @@
  * Tests schemas using handler functions with real GitLab API
  */
 
+import { z } from 'zod';
 import { BrowseReleasesSchema } from '../../../src/entities/releases/schema-readonly';
 import { ManageReleaseSchema } from '../../../src/entities/releases/schema';
 import { IntegrationTestHelper } from '../helpers/registry-helper';
+import { getTestData } from '../../setup/testConfig';
+
+// Validate the project payloads we depend on instead of casting raw JSON, so a
+// malformed shape fails loudly here rather than surfacing as a confusing error later.
+const SeededProjectSchema = z.object({
+  id: z.number(),
+  default_branch: z.string().nullable().optional(),
+});
+const DiscoveredProjectSchema = z.object({
+  id: z.number(),
+  path_with_namespace: z.string(),
+  name: z.string(),
+  default_branch: z.string().nullable(),
+});
 
 describe('Releases Schema - GitLab Integration', () => {
   let helper: IntegrationTestHelper;
   let testProjectId: string;
+  // Real branch to tag the release against. Hardcoding 'main' fails with
+  // "Target main is invalid" on projects whose default branch differs or whose
+  // repository is empty, so we seed this from the chosen project's default_branch.
+  let testProjectRef: string;
 
   beforeAll(async () => {
     const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
@@ -21,25 +40,42 @@ describe('Releases Schema - GitLab Integration', () => {
     await helper.initialize();
     console.log('Integration test helper initialized for releases testing');
 
-    // Get a test project - preferably from the test group
-    const projects = (await helper.listProjects({ search: 'test', per_page: 5 })) as {
-      id: number;
-      path_with_namespace: string;
-      name: string;
-    }[];
-
-    if (projects.length === 0) {
-      console.log('No projects available for releases testing');
+    // Prefer the project seeded by the data-lifecycle suite: it has a known
+    // commit on `main`, so a release can be tagged against it deterministically.
+    // Picking an arbitrary "test" project is unreliable - many are empty repos
+    // whose `main` ref does not exist, producing "Target main is invalid".
+    const seeded = SeededProjectSchema.safeParse(getTestData().project);
+    if (seeded.success) {
+      testProjectId = seeded.data.id.toString();
+      // The project record is captured at creation time (empty repo), so
+      // default_branch is usually null; the lifecycle suite commits to `main`.
+      testProjectRef = seeded.data.default_branch || 'main';
+      console.log(
+        `Using seeded project ${testProjectId} (ref: ${testProjectRef}) for releases testing`,
+      );
       return;
     }
 
-    // Prefer a project in the 'test' group
-    const testGroupProject = projects.find((p) => p.path_with_namespace.startsWith('test/'));
-    const selectedProject = testGroupProject ?? projects[0];
+    // Fallback: discover a test project that reports a default branch (non-empty
+    // repository). simple=false surfaces default_branch, which is null for empty
+    // repos; a release can only be tagged against an existing ref.
+    const projects = z
+      .array(DiscoveredProjectSchema)
+      .parse(await helper.listProjects({ search: 'test', per_page: 20, simple: false }));
+
+    const usable = projects.filter((p) => Boolean(p.default_branch));
+    const selectedProject =
+      usable.find((p) => p.path_with_namespace.startsWith('test/')) ?? usable[0];
+
+    if (!selectedProject) {
+      console.log('No test project with a default branch available for releases testing');
+      return;
+    }
 
     testProjectId = selectedProject.id.toString();
+    testProjectRef = selectedProject.default_branch || 'main';
     console.log(
-      `Using project: ${selectedProject.path_with_namespace} (ID: ${testProjectId}) for releases testing`,
+      `Using project: ${selectedProject.path_with_namespace} (ID: ${testProjectId}, ref: ${testProjectRef}) for releases testing`,
     );
   });
 
@@ -383,7 +419,7 @@ describe('Releases Schema - GitLab Integration', () => {
           tag_name: testTagName,
           name: `Test Release ${testTagName}`,
           description: 'Integration test release - will be deleted',
-          ref: 'main', // Create new tag from main branch
+          ref: testProjectRef, // Create new tag from the project's real default branch
         })) as {
           tag_name: string;
           name: string;
@@ -397,9 +433,12 @@ describe('Releases Schema - GitLab Integration', () => {
         console.log(`Created test release: ${result.tag_name}`);
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
-        // If ref doesn't exist, skip the test gracefully
-        if (errorMsg.includes('404') || errorMsg.includes('ref') || errorMsg.includes('branch')) {
-          console.log('Could not create release: main branch may not exist or ref issue');
+        // Skip ONLY the specific "Target <ref> is invalid" failure, which means the
+        // chosen project's ref doesn't exist (empty repo / branch removed between
+        // selection and create) - an environment precondition, not a code defect.
+        // Any other error surfaces so real regressions aren't masked.
+        if (/target\b.+\bis invalid/i.test(errorMsg)) {
+          console.log(`Could not create release for ref "${testProjectRef}": ${errorMsg}`);
           return;
         }
         throw error;

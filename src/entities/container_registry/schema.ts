@@ -10,6 +10,16 @@ import { z } from 'zod';
 // Gated behind USE_REGISTRY. Writes require the write_registry token scope.
 // ============================================================================
 
+/** True when the string compiles as a regular expression (fail fast at parse). */
+const isValidRegex = (pattern: string): boolean => {
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 // --- Shared fields ---
 // Mutations address the repository directly by its numeric ID (as returned by
 // browse_registry list_repositories); it is expanded to a global ID internally.
@@ -49,9 +59,11 @@ const DeleteTagsBulkSchema = z.object({
   name_regex_delete: z
     .string()
     .min(1)
+    .refine(isValidRegex, 'Must be a valid regular expression')
     .describe('Regex for tag names to delete (e.g., ".*" for all, "^v.+" for version tags)'),
   name_regex_keep: z
     .string()
+    .refine(isValidRegex, 'Must be a valid regular expression')
     .optional()
     .describe('Regex for tag names to always keep (takes precedence over name_regex_delete)'),
   keep_n: z.coerce

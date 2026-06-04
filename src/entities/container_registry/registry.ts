@@ -144,24 +144,31 @@ export const containerRegistryToolRegistry: ToolRegistry = new Map<string, Enhan
           }
 
           case 'get_tag': {
-            // The tags `name` filter is a substring match, so fetch candidates and
-            // select the exact name.
-            const res = await client.request(LIST_CONTAINER_REPOSITORY_TAGS, {
-              id: repositoryGid(input.repository_id),
-              name: input.tag_name,
-              first: 100,
-              after: null,
-            });
-            if (!res.containerRepository) {
-              throw new Error(`Container repository ${input.repository_id} not found`);
+            // The tags `name` filter is a substring match, so the exact tag can sit
+            // on any page of the filtered results — page through until it's found.
+            const gid = repositoryGid(input.repository_id);
+            let after: string | null = null;
+            for (;;) {
+              // Explicit type: `after` is both an input var and assigned from the
+              // result below, which defeats generic inference (circular).
+              const res: ListTagsResult = await client.request(LIST_CONTAINER_REPOSITORY_TAGS, {
+                id: gid,
+                name: input.tag_name,
+                first: 100,
+                after,
+              });
+              if (!res.containerRepository) {
+                throw new Error(`Container repository ${input.repository_id} not found`);
+              }
+              const conn = res.containerRepository.tags;
+              const tag = conn.nodes.find((t) => t.name === input.tag_name);
+              if (tag) return cleanGidsFromObject(tag);
+              if (!conn.pageInfo.hasNextPage || !conn.pageInfo.endCursor) break;
+              after = conn.pageInfo.endCursor;
             }
-            const tag = res.containerRepository.tags.nodes.find((t) => t.name === input.tag_name);
-            if (!tag) {
-              throw new Error(
-                `Tag "${input.tag_name}" not found in container repository ${input.repository_id}`,
-              );
-            }
-            return cleanGidsFromObject(tag);
+            throw new Error(
+              `Tag "${input.tag_name}" not found in container repository ${input.repository_id}`,
+            );
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
@@ -237,8 +244,12 @@ export const containerRegistryToolRegistry: ToolRegistry = new Map<string, Enhan
                 first: 100,
                 after,
               });
-              const conn = page.containerRepository?.tags;
-              if (!conn) break;
+              // A null repository means the ID is invalid / inaccessible; fail
+              // rather than reporting a misleading deleted_count: 0 success.
+              if (!page.containerRepository) {
+                throw new Error(`Container repository ${input.repository_id} not found`);
+              }
+              const conn = page.containerRepository.tags;
               tags.push(...conn.nodes);
               if (tags.length >= BULK_TAG_SCAN_CAP) {
                 tags.length = BULK_TAG_SCAN_CAP;

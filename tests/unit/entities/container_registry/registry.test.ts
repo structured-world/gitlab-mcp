@@ -142,6 +142,22 @@ describe('container registry registry', () => {
       ).rejects.toThrow('Tag "v9" not found');
     });
 
+    it('get_tag paginates past the first page to find the exact tag', async () => {
+      // First page (substring matches) lacks the exact name; it lives on page 2.
+      mockClient.request
+        .mockResolvedValueOnce(tagsPage([tag('v1.0.0-rc1'), tag('v1.0.0-rc2')], true, 'CURSOR1'))
+        .mockResolvedValueOnce(tagsPage([tag('v1.0.0')]));
+
+      const result = (await browse().handler({
+        action: 'get_tag',
+        repository_id: 5,
+        tag_name: 'v1.0.0',
+      })) as { name: string };
+
+      expect(result.name).toBe('v1.0.0');
+      expect(mockClient.request.mock.calls[1][1]).toMatchObject({ after: 'CURSOR1' });
+    });
+
     it('get_tag throws when the repository is not found', async () => {
       mockClient.request.mockResolvedValueOnce({ containerRepository: null });
       await expect(
@@ -273,6 +289,33 @@ describe('container registry registry', () => {
       })) as { deleted_count: number };
       expect(result.deleted_count).toBe(0);
       expect(mockClient.request).toHaveBeenCalledTimes(1); // only the list call
+    });
+
+    it('delete_tags_bulk throws when the repository does not exist', async () => {
+      mockClient.request.mockResolvedValueOnce({ containerRepository: null });
+      await expect(
+        manage().handler({ action: 'delete_tags_bulk', repository_id: 5, name_regex_delete: '.*' }),
+      ).rejects.toThrow('Container repository 5 not found');
+    });
+
+    it('delete_tags_bulk destroys tags in batches of 20', async () => {
+      const many = Array.from({ length: 45 }, (_, i) => tag(`v${i}`));
+      const result = await runBulk({ name_regex_delete: '^v\\d+$' }, [tagsPage(many)]);
+
+      expect(result.deleted_count).toBe(45);
+      const destroyCalls = mockClient.request.mock.calls.filter(
+        (c) => c[0] === DESTROY_CONTAINER_REPOSITORY_TAGS,
+      );
+      expect(destroyCalls.map((c) => (c[1] as { tagNames: string[] }).tagNames.length)).toEqual([
+        20, 20, 5,
+      ]);
+    });
+
+    it('rejects an invalid name_regex_delete at schema parse', async () => {
+      await expect(
+        manage().handler({ action: 'delete_tags_bulk', repository_id: 5, name_regex_delete: '[' }),
+      ).rejects.toThrow();
+      expect(mockClient.request).not.toHaveBeenCalled();
     });
 
     it('rejects an invalid older_than duration at schema parse', async () => {

@@ -196,9 +196,14 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             }
             const applyActiveFilter = (value: boolean): void => {
               if (activeFilterSupported) {
+                // active wins over an explicit archived filter: drop archived so the
+                // request never sends both (which would make precedence ambiguous).
+                queryParams.delete('archived');
                 queryParams.set('active', String(value));
               } else {
-                // active wins over an explicit archived filter on older instances.
+                // No native active filter; translate to archived and drop any active
+                // hint so the two never coexist.
+                queryParams.delete('active');
                 queryParams.set('archived', String(!value));
               }
             };

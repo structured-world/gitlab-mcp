@@ -52,6 +52,10 @@ import {
   getContainerRegistryReadOnlyToolNames,
 } from './entities/container_registry/registry';
 import {
+  accessTokensToolRegistry,
+  getAccessTokensReadOnlyToolNames,
+} from './entities/access_tokens/registry';
+import {
   GITLAB_BASE_URL,
   GITLAB_READ_ONLY_MODE,
   GITLAB_DENIED_TOOLS_REGEX,
@@ -75,6 +79,7 @@ import {
   USE_CI_TOKENS,
   USE_ENVIRONMENTS,
   USE_REGISTRY,
+  USE_ACCESS_TOKENS,
   getToolDescriptionOverrides,
 } from './config';
 import { isToolAvailable, getRestrictedParameters } from './services/InstanceCapabilities';
@@ -223,6 +228,10 @@ class RegistryManager {
       this.registries.set('registry', containerRegistryToolRegistry);
     }
 
+    if (USE_ACCESS_TOKENS) {
+      this.registries.set('access_tokens', accessTokensToolRegistry);
+    }
+
     // All entity registries have been migrated to the new pattern!
   }
 
@@ -328,6 +337,10 @@ class RegistryManager {
 
     if (USE_REGISTRY) {
       readOnlyTools.push(...getContainerRegistryReadOnlyToolNames());
+    }
+
+    if (USE_ACCESS_TOKENS) {
+      readOnlyTools.push(...getAccessTokensReadOnlyToolNames());
     }
 
     return readOnlyTools;
@@ -758,6 +771,7 @@ class RegistryManager {
     const useCiTokens = process.env.USE_CI_TOKENS !== 'false';
     const useEnvironments = process.env.USE_ENVIRONMENTS !== 'false';
     const useRegistry = process.env.USE_REGISTRY !== 'false';
+    const useAccessTokens = process.env.USE_ACCESS_TOKENS !== 'false';
 
     // Build registries map based on dynamic feature flags
     const registriesToUse = new Map<string, ToolRegistry>();
@@ -791,6 +805,7 @@ class RegistryManager {
     }
     if (useEnvironments) registriesToUse.set('environments', environmentsToolRegistry);
     if (useRegistry) registriesToUse.set('registry', containerRegistryToolRegistry);
+    if (useAccessTokens) registriesToUse.set('access_tokens', accessTokensToolRegistry);
 
     // Dynamically load description overrides
     const descOverrides = getToolDescriptionOverrides();
@@ -893,6 +908,7 @@ class RegistryManager {
       deployKeysToolRegistry,
       environmentsToolRegistry,
       containerRegistryToolRegistry,
+      accessTokensToolRegistry,
     ];
 
     for (const registry of allRegistries) {

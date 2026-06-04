@@ -4,6 +4,16 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [7.7.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.6.0...gitlab-mcp-v7.7.0) (2026-06-04)
+
+
+### Features
+
+* **container-registry:** expose Container Registry via GraphQL ([#476](https://github.com/structured-world/gitlab-mcp/issues/476)) ([5acd068](https://github.com/structured-world/gitlab-mcp/commit/5acd06815f51e241e9e7a2de228549ec50d7878a))
+* **namespaces:** add restore action to manage_namespace ([#468](https://github.com/structured-world/gitlab-mcp/issues/468)) ([2f19625](https://github.com/structured-world/gitlab-mcp/commit/2f1962550629ab64826b37692a535ef08a79fc19))
+* **projects:** filter browse_projects by marked_for_deletion_on ([#465](https://github.com/structured-world/gitlab-mcp/issues/465)) ([f8e8689](https://github.com/structured-world/gitlab-mcp/commit/f8e868966368d425390cb3d1965ae56cddafd773))
+* **projects:** support 'active' filter on browse_projects list ([#472](https://github.com/structured-world/gitlab-mcp/issues/472)) ([545c777](https://github.com/structured-world/gitlab-mcp/commit/545c777144f605e8a8b82cf7fa9a800435d31a5f))
+
 ## [7.6.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.5.0...gitlab-mcp-v7.6.0) (2026-06-03)
 
 

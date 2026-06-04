@@ -190,17 +190,19 @@ interface Placeholders {
   toolCount: number;
   entityCount: number;
   readonlyToolCount: number;
+  actionCount: number;
   version: string;
 }
 
 /**
- * Replace __TOOL_COUNT__, __ENTITY_COUNT__, __READONLY_TOOL_COUNT__, and __VERSION__ placeholders.
- * Returns true if file was modified.
+ * Replace __TOOL_COUNT__, __ENTITY_COUNT__, __READONLY_TOOL_COUNT__, __ACTION_COUNT__,
+ * and __VERSION__ placeholders. Returns true if file was modified.
  */
 function replacePlaceholders(filePath: string, placeholders: Placeholders): boolean {
   const content = fs.readFileSync(filePath, 'utf8');
   const result = content
     .replace(/__TOOL_COUNT__/g, String(placeholders.toolCount))
+    .replace(/__ACTION_COUNT__/g, String(placeholders.actionCount))
     .replace(/__ENTITY_COUNT__/g, String(placeholders.entityCount))
     .replace(/__READONLY_TOOL_COUNT__/g, String(placeholders.readonlyToolCount))
     .replace(/__VERSION__/g, placeholders.version);
@@ -284,12 +286,21 @@ export function main(): void {
   const readonlyToolCount = allTools.filter(
     (t) => t.name.startsWith('browse_') || t.name === 'manage_context',
   ).length;
+  // Total typed actions across all CQRS tools — the real count of GitLab
+  // operations behind the compact tool list.
+  const actionCount = allTools.reduce((sum, t) => sum + extractActions(t.inputSchema).length, 0);
   const version = getVersion(projectRoot);
   console.log(
-    `  Tool count: ${toolCount}, Entity count: ${entityCount}, Read-only: ${readonlyToolCount}, Version: ${version}`,
+    `  Tool count: ${toolCount}, Entity count: ${entityCount}, Read-only: ${readonlyToolCount}, Actions: ${actionCount}, Version: ${version}`,
   );
 
-  const placeholders: Placeholders = { toolCount, entityCount, readonlyToolCount, version };
+  const placeholders: Placeholders = {
+    toolCount,
+    entityCount,
+    readonlyToolCount,
+    actionCount,
+    version,
+  };
 
   // Generate docs from .in templates (*.md.in -> *.md, *.txt.in -> *.txt)
   const docsDir = path.join(projectRoot, 'docs');

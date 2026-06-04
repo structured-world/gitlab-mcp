@@ -799,10 +799,11 @@ describe('inject-tool-refs', () => {
         toolCount: 44,
         entityCount: 18,
         readonlyToolCount: 24,
+        actionCount: 193,
         version: '6.43.0',
       };
       mockedFs.readFileSync.mockReturnValue(
-        'We have __TOOL_COUNT__ tools, __ENTITY_COUNT__ entities, __READONLY_TOOL_COUNT__ read-only. Version: __VERSION__',
+        'We have __TOOL_COUNT__ tools (__ACTION_COUNT__ actions), __ENTITY_COUNT__ entities, __READONLY_TOOL_COUNT__ read-only. Version: __VERSION__',
       );
       mockedFs.writeFileSync.mockImplementation(() => undefined);
 
@@ -811,7 +812,7 @@ describe('inject-tool-refs', () => {
       expect(result).toBe(true);
       expect(mockedFs.writeFileSync).toHaveBeenCalledWith(
         '/some/file.md',
-        'We have 44 tools, 18 entities, 24 read-only. Version: 6.43.0',
+        'We have 44 tools (193 actions), 18 entities, 24 read-only. Version: 6.43.0',
         'utf8',
       );
     });
@@ -821,6 +822,7 @@ describe('inject-tool-refs', () => {
         toolCount: 44,
         entityCount: 18,
         readonlyToolCount: 24,
+        actionCount: 193,
         version: '1.0.0',
       };
       mockedFs.readFileSync.mockReturnValue('No placeholders here.');
@@ -836,6 +838,7 @@ describe('inject-tool-refs', () => {
         toolCount: 44,
         entityCount: 18,
         readonlyToolCount: 24,
+        actionCount: 193,
         version: '6.43.0',
       };
       mockedFs.readFileSync.mockReturnValue(
@@ -1211,7 +1214,7 @@ describe('inject-tool-refs', () => {
       });
 
       const templateContent =
-        '# Home\n\nWe have __TOOL_COUNT__ tools across __ENTITY_COUNT__ entities (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__';
+        '# Home\n\nWe have __TOOL_COUNT__ tools (__ACTION_COUNT__ operations) across __ENTITY_COUNT__ entities (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__';
 
       mockedFs.readFileSync.mockImplementation((filePath: fs.PathOrFileDescriptor) => {
         const pathStr = filePath.toString();
@@ -1237,10 +1240,12 @@ describe('inject-tool-refs', () => {
       expect(writeCall).toBeDefined();
       const generatedContent = writeCall![1] as string;
       expect(generatedContent).toContain('2 tools');
+      expect(generatedContent).toContain('2 operations');
       expect(generatedContent).toContain('2 entities');
       expect(generatedContent).toContain('1 read-only');
       expect(generatedContent).toContain('6.43.0');
       expect(generatedContent).not.toContain('__TOOL_COUNT__');
+      expect(generatedContent).not.toContain('__ACTION_COUNT__');
       expect(generatedContent).not.toContain('__ENTITY_COUNT__');
       expect(generatedContent).not.toContain('__READONLY_TOOL_COUNT__');
       expect(generatedContent).not.toContain('__VERSION__');
@@ -1291,7 +1296,7 @@ describe('inject-tool-refs', () => {
       });
 
       const mdTemplate =
-        '**__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types. Version: __VERSION__';
+        '**__TOOL_COUNT__ tools** (__ACTION_COUNT__ operations) across __ENTITY_COUNT__ entity types. Version: __VERSION__';
       const txtTemplate =
         '> Provides __TOOL_COUNT__ tools (__READONLY_TOOL_COUNT__ read-only). Version: __VERSION__';
 
@@ -1322,7 +1327,7 @@ describe('inject-tool-refs', () => {
       );
 
       expect(mdWrite).toBeDefined();
-      expect(mdWrite![1]).toBe('**3 tools** across 1 entity types. Version: 1.0.0');
+      expect(mdWrite![1]).toBe('**3 tools** (3 operations) across 1 entity types. Version: 1.0.0');
 
       expect(txtWrite).toBeDefined();
       expect(txtWrite![1]).toBe('> Provides 3 tools (2 read-only). Version: 1.0.0');

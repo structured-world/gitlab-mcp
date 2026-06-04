@@ -143,7 +143,8 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   browse_registry: ['api', 'read_api', 'read_registry'],
   manage_registry: ['api', 'write_registry'],
 
-  // Access tokens (personal/project/group) - REST-only, require full api scope
+  // Access tokens (personal/project/group) - REST-only:
+  // browse requires api/read_api; manage requires api.
   browse_access_tokens: ['api', 'read_api'],
   manage_access_token: ['api'],
 

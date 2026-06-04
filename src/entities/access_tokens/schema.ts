@@ -18,7 +18,7 @@ import { projectIdField, groupIdField, tokenIdField } from './schema-readonly';
 // read_repository, write_repository, read_registry, write_registry, ...). Kept
 // as strings rather than an enum so new GitLab scopes work without a code change.
 const scopesField = z
-  .array(z.string())
+  .array(z.string().trim().min(1, 'scope entries must be non-empty'))
   .min(1)
   .describe(
     "Token scopes, e.g. ['api'], ['read_repository','write_repository']. At least one required.",
@@ -32,6 +32,7 @@ const accessLevelField = z
 
 const expiresAtField = z
   .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, 'expires_at must be a YYYY-MM-DD date')
   .optional()
   .describe('Expiry date in YYYY-MM-DD format (e.g. "2026-12-31").');
 

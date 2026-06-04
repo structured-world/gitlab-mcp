@@ -182,6 +182,50 @@ describe('Access Tokens Registry', () => {
       expect(JSON.parse(init?.body as string)).toEqual({});
     });
 
+    it('rotate (group) routes to the group rotate sub-resource', async () => {
+      mockOk({ id: 7, token: 'glpat-new' });
+      await manage().handler({ action: 'rotate', token_id: 7, group_id: 'g' });
+
+      const [url, init] = lastCall();
+      expect(url).toBe('https://gitlab.example.com/api/v4/groups/g/access_tokens/7/rotate');
+      expect(init?.method).toBe('POST');
+    });
+
+    it('revoke (project) DELETEs the project token', async () => {
+      mockNoContent();
+      const result = await manage().handler({ action: 'revoke', token_id: 7, project_id: '123' });
+
+      const [url, init] = lastCall();
+      expect(url).toBe('https://gitlab.example.com/api/v4/projects/123/access_tokens/7');
+      expect(init?.method).toBe('DELETE');
+      expect(result).toEqual({ revoked: true, token_id: 7 });
+    });
+
+    it('rejects a scopes entry that is empty or whitespace-only', async () => {
+      await expect(
+        manage().handler({
+          action: 'create_project',
+          project_id: '1',
+          name: 'x',
+          scopes: ['api', '  '],
+        }),
+      ).rejects.toThrow();
+      expect(mockEnhancedFetch).not.toHaveBeenCalled();
+    });
+
+    it('rejects a malformed expires_at that is not YYYY-MM-DD', async () => {
+      await expect(
+        manage().handler({
+          action: 'create_project',
+          project_id: '1',
+          name: 'x',
+          scopes: ['api'],
+          expires_at: '2026/12/31',
+        }),
+      ).rejects.toThrow();
+      expect(mockEnhancedFetch).not.toHaveBeenCalled();
+    });
+
     it('revoke (group) DELETEs the group token and returns a confirmation', async () => {
       mockNoContent();
       const result = await manage().handler({ action: 'revoke', token_id: 7, group_id: 'g' });

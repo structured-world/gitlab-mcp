@@ -124,6 +124,7 @@ describe('Access Tokens Schema - GitLab Integration', () => {
         // Rotation issues a NEW token id; track that one for cleanup.
         tokenId = rotated.id;
         expect(typeof rotated.token).toBe('string');
+        expect(rotated._meta?.sensitive).toBe(true);
         console.log(`  rotated project token on ${testProjectPath}`);
       } catch (error) {
         console.log(`  project-token lifecycle not permitted: ${(error as Error).message}`);

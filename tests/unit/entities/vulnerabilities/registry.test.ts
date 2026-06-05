@@ -14,11 +14,17 @@ import {
 } from '../../../../src/graphql/vulnerabilities';
 
 const mockClient = { request: jest.fn() };
+const mockGetClient = jest.fn(() => mockClient);
 
 jest.mock('../../../../src/services/ConnectionManager', () => ({
   ConnectionManager: {
-    getInstance: jest.fn(() => ({ getClient: jest.fn(() => mockClient) })),
+    getInstance: jest.fn(() => ({ getClient: mockGetClient })),
   },
+}));
+
+const mockApiUrlFromContext = jest.fn<string | undefined, []>(() => undefined);
+jest.mock('../../../../src/oauth/token-context', () => ({
+  getGitLabApiUrlFromContext: () => mockApiUrlFromContext(),
 }));
 
 const browse = () => vulnerabilitiesToolRegistry.get('browse_vulnerabilities')!;
@@ -27,6 +33,9 @@ const VULN_GID = 'gid://gitlab/Vulnerability/5';
 
 beforeEach(() => {
   mockClient.request.mockReset();
+  mockGetClient.mockClear();
+  mockApiUrlFromContext.mockReset();
+  mockApiUrlFromContext.mockReturnValue(undefined);
 });
 
 describe('vulnerabilities registry', () => {
@@ -38,6 +47,13 @@ describe('vulnerabilities registry', () => {
     expect(manage().requirements?.default).toMatchObject({ tier: 'ultimate' });
     expect(browse().gate).toEqual({ envVar: 'USE_VULNERABILITIES', defaultValue: true });
     expect(manage().gate).toEqual({ envVar: 'USE_VULNERABILITIES', defaultValue: true });
+  });
+
+  it('threads the request-context instance URL into getClient (no cross-request leak)', async () => {
+    mockApiUrlFromContext.mockReturnValue('https://gitlab.example.com');
+    mockClient.request.mockResolvedValueOnce({ vulnerabilities: { nodes: [] } });
+    await browse().handler({ action: 'list' });
+    expect(mockGetClient).toHaveBeenCalledWith('https://gitlab.example.com');
   });
 
   describe('browse_vulnerabilities', () => {

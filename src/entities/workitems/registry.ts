@@ -12,6 +12,7 @@ import {
   type GitLabWorkItem,
 } from '../../utils/idConversion';
 import { WidgetAvailability } from '../../services/WidgetAvailability';
+import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
 import {
   createVersionRestrictedError,
   normalizeTier,
@@ -294,7 +295,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             // Get GraphQL client from ConnectionManager
             const connectionManager = ConnectionManager.getInstance();
-            const client = connectionManager.getClient();
+            const client = connectionManager.getClient(getGitLabApiUrlFromContext());
 
             // For the work items GraphQL query, use type names as-is (GraphQL expects enum values)
             const resolvedTypes: string[] | undefined = types;
@@ -339,7 +340,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             // Get GraphQL client from ConnectionManager
             const connectionManager = ConnectionManager.getInstance();
-            const client = connectionManager.getClient();
+            const client = connectionManager.getClient(getGitLabApiUrlFromContext());
 
             // Route to appropriate query based on input
             if (namespace !== undefined && iid !== undefined) {
@@ -460,7 +461,10 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             if (labelIds && labelIds.length > 0) {
               widgetParams.labelIds = labelIds;
             }
-            const validationFailure = WidgetAvailability.validateWidgetParams(widgetParams);
+            const validationFailure = WidgetAvailability.validateWidgetParams(
+              widgetParams,
+              getGitLabApiUrlFromContext(),
+            );
             if (validationFailure) {
               throw new StructuredToolError(
                 createVersionRestrictedError(
@@ -478,7 +482,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             // Get GraphQL client from ConnectionManager
             const connectionManager = ConnectionManager.getInstance();
-            const client = connectionManager.getClient();
+            const client = connectionManager.getClient(getGitLabApiUrlFromContext());
 
             // Convert simple type name to work item type GID
             const workItemTypes = await getWorkItemTypes(namespacePath);
@@ -751,7 +755,10 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               linkType,
               targetId,
             };
-            const validationFailure = WidgetAvailability.validateWidgetParams(widgetParams);
+            const validationFailure = WidgetAvailability.validateWidgetParams(
+              widgetParams,
+              getGitLabApiUrlFromContext(),
+            );
             if (validationFailure) {
               throw new StructuredToolError(
                 createVersionRestrictedError(
@@ -769,7 +776,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             // Get GraphQL client from ConnectionManager
             const connectionManager = ConnectionManager.getInstance();
-            const client = connectionManager.getClient();
+            const client = connectionManager.getClient(getGitLabApiUrlFromContext());
 
             // Convert simple ID to GID for API call
             const workItemGid = toGid(workItemId, 'WorkItem');
@@ -1042,7 +1049,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             // Get GraphQL client from ConnectionManager
             const connectionManager = ConnectionManager.getInstance();
-            const client = connectionManager.getClient();
+            const client = connectionManager.getClient(getGitLabApiUrlFromContext());
 
             // Convert simple ID to GID for API call
             const workItemGid = toGid(workItemId, 'WorkItem');
@@ -1067,7 +1074,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const { timelogId } = input;
 
             const connectionManager = ConnectionManager.getInstance();
-            const client = connectionManager.getClient();
+            const client = connectionManager.getClient(getGitLabApiUrlFromContext());
 
             // Ensure the timelog ID is a valid GID
             const timelogGid = toGid(timelogId, 'Timelog');
@@ -1091,7 +1098,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const { id, targetId, linkType } = input;
 
             const connectionManager = ConnectionManager.getInstance();
-            const client = connectionManager.getClient();
+            const client = connectionManager.getClient(getGitLabApiUrlFromContext());
 
             const response = await client.request(WORK_ITEM_ADD_LINKED_ITEMS, {
               input: {
@@ -1123,7 +1130,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const { id, targetId } = input;
 
             const connectionManager = ConnectionManager.getInstance();
-            const client = connectionManager.getClient();
+            const client = connectionManager.getClient(getGitLabApiUrlFromContext());
 
             // Note: GitLab API does NOT accept linkType for remove operation
             // Links are identified by source+target IDs only

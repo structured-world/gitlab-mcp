@@ -22,6 +22,7 @@ import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { ConnectionManager } from '../../services/ConnectionManager';
+import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
 import { parseVersion } from '../../utils/version';
 
 /**
@@ -188,7 +189,9 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             // read; an unknown version fails open to the native parameter.
             let activeFilterSupported = true;
             try {
-              const version = ConnectionManager.getInstance().getInstanceInfo().version;
+              const version = ConnectionManager.getInstance().getInstanceInfo(
+                getGitLabApiUrlFromContext(),
+              ).version;
               activeFilterSupported =
                 version === 'unknown' || parseVersion(version) >= parseVersion('18.5');
             } catch {
@@ -996,7 +999,9 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             // initialised) so we never block on a missing detection.
             let version = 'unknown';
             try {
-              version = ConnectionManager.getInstance().getInstanceInfo().version;
+              version = ConnectionManager.getInstance().getInstanceInfo(
+                getGitLabApiUrlFromContext(),
+              ).version;
             } catch {
               // Connection not initialised — leave version unknown (fail-open).
             }

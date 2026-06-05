@@ -5,6 +5,7 @@ import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { cleanGidsFromObject } from '../../utils/idConversion';
+import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
 import {
   LIST_CONTAINER_REPOSITORIES,
   GET_CONTAINER_REPOSITORY,
@@ -104,7 +105,7 @@ export const containerRegistryToolRegistry: ToolRegistry = new Map<string, Enhan
 
         assertActionAllowed('browse_registry', input.action);
 
-        const client = ConnectionManager.getInstance().getClient();
+        const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
 
         switch (input.action) {
           case 'list_repositories': {
@@ -196,7 +197,7 @@ export const containerRegistryToolRegistry: ToolRegistry = new Map<string, Enhan
 
         assertActionAllowed('manage_registry', input.action);
 
-        const client = ConnectionManager.getInstance().getClient();
+        const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
         const gid = repositoryGid(input.repository_id);
 
         switch (input.action) {

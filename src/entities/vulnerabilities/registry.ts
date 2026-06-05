@@ -5,6 +5,7 @@ import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { cleanGidsFromObject } from '../../utils/idConversion';
+import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
 import {
   LIST_PROJECT_VULNS,
   LIST_GROUP_VULNS,
@@ -92,7 +93,7 @@ export const vulnerabilitiesToolRegistry: ToolRegistry = new Map<string, Enhance
         const input = BrowseVulnerabilitiesSchema.parse(args);
         assertActionAllowed('browse_vulnerabilities', input.action);
 
-        const client = ConnectionManager.getInstance().getClient();
+        const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
 
         switch (input.action) {
           case 'list': {
@@ -159,7 +160,7 @@ export const vulnerabilitiesToolRegistry: ToolRegistry = new Map<string, Enhance
         const input = ManageVulnerabilitySchema.parse(args);
         assertActionAllowed('manage_vulnerability', input.action);
 
-        const client = ConnectionManager.getInstance().getClient();
+        const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
         const id = vulnerabilityGid(input.vulnerability_id);
 
         switch (input.action) {

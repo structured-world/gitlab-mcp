@@ -5,6 +5,7 @@ import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { cleanGidsFromObject } from '../../utils/idConversion';
+import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
 import { gitlab } from '../../utils/gitlab-api';
 import {
   LIST_RUNNERS,
@@ -117,7 +118,7 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
         assertActionAllowed('browse_runners', input.action);
 
-        const client = ConnectionManager.getInstance().getClient();
+        const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
 
         switch (input.action) {
           case 'list_all': {
@@ -198,7 +199,7 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
 
         assertActionAllowed('manage_runner', input.action);
 
-        const client = ConnectionManager.getInstance().getClient();
+        const client = ConnectionManager.getInstance().getClient(getGitLabApiUrlFromContext());
 
         switch (input.action) {
           case 'create_authentication_token': {

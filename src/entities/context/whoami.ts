@@ -19,6 +19,7 @@
 import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from '../../config';
 import { logInfo, logDebug } from '../../logger';
 import { isOAuthEnabled } from '../../oauth/index.js';
+import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { getTokenCreationUrl } from '../../services/TokenScopeDetector';
 import { RegistryManager } from '../../registry-manager';
@@ -142,7 +143,7 @@ function buildServerInfo(): WhoamiServerInfo {
 
   try {
     const connectionManager = ConnectionManager.getInstance();
-    const instanceInfo = connectionManager.getInstanceInfo();
+    const instanceInfo = connectionManager.getInstanceInfo(getGitLabApiUrlFromContext());
     version = instanceInfo.version;
     tier = instanceInfo.tier;
   } catch {

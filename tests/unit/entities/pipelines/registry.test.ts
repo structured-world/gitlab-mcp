@@ -1250,57 +1250,28 @@ describe('Pipelines Registry - CQRS Tools', () => {
       });
     });
 
-    describe('manage_pipeline handler - retry_job action', () => {
-      it('should retry failed job', async () => {
-        const mockJob = {
-          id: 1,
-          name: 'test',
-          status: 'running',
-        };
+    // retry_job and cancel_job share the same shape: POST jobs/:id/<verb>, no body,
+    // returns the job. Parametrized so the identical assertion block lives once.
+    describe('manage_pipeline handler - simple job actions', () => {
+      it.each([
+        { action: 'retry_job', verb: 'retry' },
+        { action: 'cancel_job', verb: 'cancel' },
+      ])('$action POSTs to jobs/:id/$verb and returns the job', async ({ action, verb }) => {
+        const mockJob = { id: 1, name: 'test', status: 'running' };
         mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as never);
 
         const tool = pipelinesToolRegistry.get('manage_pipeline')!;
-        const result = await tool.handler({
-          action: 'retry_job',
-          project_id: 'test/project',
-          job_id: '1',
-        });
+        const result = await tool.handler({ action, project_id: 'test/project', job_id: '1' });
 
         expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          'https://gitlab.example.com/api/v4/projects/test%2Fproject/jobs/1/retry',
-          {
-            method: 'POST',
-          },
+          `https://gitlab.example.com/api/v4/projects/test%2Fproject/jobs/1/${verb}`,
+          { method: 'POST' },
         );
         expect(result).toEqual(mockJob);
       });
     });
 
-    describe('manage_pipeline handler - cancel_job action', () => {
-      it('should cancel running job', async () => {
-        const mockJob = {
-          id: 1,
-          name: 'build',
-          status: 'canceled',
-        };
-        mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as never);
-
-        const tool = pipelinesToolRegistry.get('manage_pipeline')!;
-        const result = await tool.handler({
-          action: 'cancel_job',
-          project_id: 'test/project',
-          job_id: '1',
-        });
-
-        expect(mockEnhancedFetch).toHaveBeenCalledWith(
-          'https://gitlab.example.com/api/v4/projects/test%2Fproject/jobs/1/cancel',
-          {
-            method: 'POST',
-          },
-        );
-        expect(result).toEqual(mockJob);
-      });
-
+    describe('manage_pipeline handler - cancel_job force option', () => {
       it('should cancel job with force option', async () => {
         const mockJob = { id: 1, name: 'build', status: 'canceled' };
         mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as never);

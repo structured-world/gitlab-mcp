@@ -21,7 +21,9 @@ const PipelineInputValueSchema = z
 
 // ============================================================================
 // manage_pipeline - CQRS Command Tool (discriminated union schema)
-// Actions: create, retry, cancel
+// Pipeline-level actions: create, retry, cancel
+// Job-level actions: play_job, retry_job, cancel_job (folded in; the _job suffix
+// avoids colliding with the pipeline-level retry/cancel).
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -29,6 +31,7 @@ const PipelineInputValueSchema = z
 // --- Shared fields ---
 const projectIdField = requiredId.describe('Project ID or URL-encoded path');
 const pipelineIdField = requiredId.describe('The ID of the pipeline');
+const jobIdField = requiredId.describe('The ID of the job');
 
 // --- Action: create ---
 const CreatePipelineSchema = z.object({
@@ -61,26 +64,9 @@ const CancelPipelineSchema = z.object({
   pipeline_id: pipelineIdField,
 });
 
-// --- Discriminated union combining all actions ---
-export const ManagePipelineSchema = z.discriminatedUnion('action', [
-  CreatePipelineSchema,
-  RetryPipelineSchema,
-  CancelPipelineSchema,
-]);
-
-// ============================================================================
-// manage_pipeline_job - CQRS Command Tool (discriminated union schema)
-// Actions: play, retry, cancel
-// Uses z.discriminatedUnion() for type-safe action handling.
-// Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
-// ============================================================================
-
-// --- Shared fields ---
-const jobIdField = requiredId.describe('The ID of the job');
-
-// --- Action: play ---
+// --- Action: play_job ---
 const PlayJobSchema = z.object({
-  action: z.literal('play').describe('Trigger a manual job'),
+  action: z.literal('play_job').describe('Trigger a manual job'),
   project_id: projectIdField,
   job_id: jobIdField,
   job_variables_attributes: z
@@ -89,23 +75,26 @@ const PlayJobSchema = z.object({
     .describe('Variables to pass to the job'),
 });
 
-// --- Action: retry ---
+// --- Action: retry_job ---
 const RetryJobSchema = z.object({
-  action: z.literal('retry').describe('Re-run a failed/canceled job'),
+  action: z.literal('retry_job').describe('Re-run a failed/canceled job'),
   project_id: projectIdField,
   job_id: jobIdField,
 });
 
-// --- Action: cancel ---
+// --- Action: cancel_job ---
 const CancelJobSchema = z.object({
-  action: z.literal('cancel').describe('Stop a running job'),
+  action: z.literal('cancel_job').describe('Stop a running job'),
   project_id: projectIdField,
   job_id: jobIdField,
   force: z.boolean().optional().describe('Force cancellation of the job'),
 });
 
-// --- Discriminated union combining all actions ---
-export const ManagePipelineJobSchema = z.discriminatedUnion('action', [
+// --- Discriminated union combining all pipeline + job actions ---
+export const ManagePipelineSchema = z.discriminatedUnion('action', [
+  CreatePipelineSchema,
+  RetryPipelineSchema,
+  CancelPipelineSchema,
   PlayJobSchema,
   RetryJobSchema,
   CancelJobSchema,
@@ -116,4 +105,3 @@ export const ManagePipelineJobSchema = z.discriminatedUnion('action', [
 // ============================================================================
 
 export type ManagePipelineInput = z.infer<typeof ManagePipelineSchema>;
-export type ManagePipelineJobInput = z.infer<typeof ManagePipelineJobSchema>;

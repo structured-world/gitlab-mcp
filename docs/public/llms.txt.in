@@ -27,8 +27,7 @@ Optional: GITLAB_API_URL (defaults to https://gitlab.com)
 
 ## CI/CD (Pipelines)
 - browse_pipelines: List pipelines, get details, list jobs, get job details, read job logs.
-- manage_pipeline: Create (trigger), retry, cancel pipelines.
-- manage_pipeline_job: Play manual jobs, retry, cancel individual jobs.
+- manage_pipeline: Create (trigger), retry, cancel pipelines; play_job, retry_job, cancel_job for individual jobs.
 
 ## CI/CD (Variables)
 - browse_variables: List and get CI/CD variables for projects/groups.

@@ -147,8 +147,7 @@ Each tool accepts an `action` parameter selecting the specific operation.
 | Tool | Type | Description |
 |------|------|-------------|
 | `browse_pipelines` | Query | List pipelines, jobs, logs |
-| `manage_pipeline` | Command | Create, retry, cancel pipelines |
-| `manage_pipeline_job` | Command | Play, retry, cancel jobs |
+| `manage_pipeline` | Command | Create, retry, cancel pipelines; play, retry, cancel jobs |
 
 ## Tools by Use-Case
 
@@ -170,7 +169,6 @@ Which tools matter most for each role:
 | `manage_mr_discussion` | ★★★ | — | ★★★ | — |
 | `browse_pipelines` | ★★ | ★★★ | ★ | — |
 | `manage_pipeline` | ★ | ★★★ | — | — |
-| `manage_pipeline_job` | ★ | ★★★ | — | — |
 | `browse_variables` | ★ | ★★★ | — | — |
 | `manage_variable` | — | ★★★ | — | — |
 | `browse_files` | ★★★ | ★ | ★ | — |
@@ -205,7 +203,7 @@ See [role-based prompts](/prompts/by-role/developer) for workflows tailored to e
 | **Merge Requests** | `browse_merge_requests` (list, get, diffs, compare) | `manage_merge_request` (create, update, merge, approve) |
 | **Discussions** | `browse_mr_discussions` (list, drafts, draft) | `manage_mr_discussion` (comment, thread, suggest, resolve) |
 | **Pipelines** | `browse_pipelines` (list, get, jobs, logs) | `manage_pipeline` (create, retry, cancel) |
-| **Jobs** | — (via browse_pipelines) | `manage_pipeline_job` (play, retry, cancel) |
+| **Jobs** | — (via browse_pipelines) | `manage_pipeline` (play_job, retry_job, cancel_job) |
 | **Variables** | `browse_variables` (list, get) | `manage_variable` (create, update, delete) |
 | **Files** | `browse_files` (tree, content, download_attachment) | `manage_files` (single, batch, upload) |
 | **Work Items** | `browse_work_items` (list, get) | `manage_work_item` (create, update, delete) |

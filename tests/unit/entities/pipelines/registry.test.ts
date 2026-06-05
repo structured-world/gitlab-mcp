@@ -40,13 +40,13 @@ describe('Pipelines Registry - CQRS Tools', () => {
       expect(pipelinesToolRegistry instanceof Map).toBe(true);
     });
 
-    it('should contain exactly 3 CQRS tools', () => {
+    it('should contain exactly 2 CQRS tools', () => {
       const toolNames = Array.from(pipelinesToolRegistry.keys());
 
       expect(toolNames).toContain('browse_pipelines');
       expect(toolNames).toContain('manage_pipeline');
-      expect(toolNames).toContain('manage_pipeline_job');
-      expect(pipelinesToolRegistry.size).toBe(3);
+      expect(toolNames).not.toContain('manage_pipeline_job');
+      expect(pipelinesToolRegistry.size).toBe(2);
     });
 
     it('should have tools with valid structure', () => {
@@ -84,7 +84,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
       expect(tool?.inputSchema).toBeDefined();
     });
 
-    it('should have proper manage_pipeline tool', () => {
+    it('should have proper manage_pipeline tool with pipeline + job actions', () => {
       const tool = pipelinesToolRegistry.get('manage_pipeline');
 
       expect(tool).toBeDefined();
@@ -93,19 +93,15 @@ describe('Pipelines Registry - CQRS Tools', () => {
       expect(tool?.description).toContain('create');
       expect(tool?.description).toContain('retry');
       expect(tool?.description).toContain('cancel');
+      // Job-level actions folded in (the _job suffix avoids colliding with retry/cancel)
+      expect(tool?.description).toContain('play_job');
+      expect(tool?.description).toContain('retry_job');
+      expect(tool?.description).toContain('cancel_job');
       expect(tool?.inputSchema).toBeDefined();
     });
 
-    it('should have proper manage_pipeline_job tool', () => {
-      const tool = pipelinesToolRegistry.get('manage_pipeline_job');
-
-      expect(tool).toBeDefined();
-      expect(tool?.name).toBe('manage_pipeline_job');
-      expect(tool?.description).toContain('individual CI/CD jobs');
-      expect(tool?.description).toContain('play');
-      expect(tool?.description).toContain('retry');
-      expect(tool?.description).toContain('cancel');
-      expect(tool?.inputSchema).toBeDefined();
+    it('should not register a separate manage_pipeline_job tool', () => {
+      expect(pipelinesToolRegistry.get('manage_pipeline_job')).toBeUndefined();
     });
   });
 
@@ -128,7 +124,6 @@ describe('Pipelines Registry - CQRS Tools', () => {
       const readOnlyTools = getPipelinesReadOnlyToolNames();
 
       expect(readOnlyTools).not.toContain('manage_pipeline');
-      expect(readOnlyTools).not.toContain('manage_pipeline_job');
     });
 
     it('should return exactly 1 read-only tool', () => {
@@ -155,10 +150,10 @@ describe('Pipelines Registry - CQRS Tools', () => {
       expect(definitions.length).toBe(pipelinesToolRegistry.size);
     });
 
-    it('should return all 3 CQRS tools from registry', () => {
+    it('should return all 2 CQRS tools from registry', () => {
       const definitions = getPipelinesToolDefinitions();
 
-      expect(definitions.length).toBe(3);
+      expect(definitions.length).toBe(2);
     });
 
     it('should return tool definitions with proper structure', () => {
@@ -179,7 +174,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
       const allDefinitions = getPipelinesToolDefinitions();
 
       expect(allTools.length).toBe(allDefinitions.length);
-      expect(allTools.length).toBe(3);
+      expect(allTools.length).toBe(2);
     });
 
     it('should return only read-only tools in read-only mode', () => {
@@ -204,7 +199,6 @@ describe('Pipelines Registry - CQRS Tools', () => {
 
       for (const tool of readOnlyTools) {
         expect(tool.name).not.toBe('manage_pipeline');
-        expect(tool.name).not.toBe('manage_pipeline_job');
       }
     });
   });
@@ -225,7 +219,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
 
   describe('Registry Consistency', () => {
     it('should have all expected CQRS tools', () => {
-      const expectedTools = ['browse_pipelines', 'manage_pipeline', 'manage_pipeline_job'];
+      const expectedTools = ['browse_pipelines', 'manage_pipeline'];
 
       for (const toolName of expectedTools) {
         expect(pipelinesToolRegistry.has(toolName)).toBe(true);
@@ -247,7 +241,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
       const readOnlyCount = getPipelinesReadOnlyToolNames().length;
 
       expect(totalTools).toBeGreaterThan(readOnlyCount);
-      expect(totalTools).toBe(3);
+      expect(totalTools).toBe(2);
       expect(readOnlyCount).toBe(1);
     });
   });
@@ -1207,7 +1201,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
       });
     });
 
-    describe('manage_pipeline_job handler - play action', () => {
+    describe('manage_pipeline handler - play_job action', () => {
       it('should play manual job', async () => {
         const mockJob = {
           id: 1,
@@ -1216,9 +1210,9 @@ describe('Pipelines Registry - CQRS Tools', () => {
         };
         mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as never);
 
-        const tool = pipelinesToolRegistry.get('manage_pipeline_job')!;
+        const tool = pipelinesToolRegistry.get('manage_pipeline')!;
         const result = await tool.handler({
-          action: 'play',
+          action: 'play_job',
           project_id: 'test/project',
           job_id: '1',
         });
@@ -1240,9 +1234,9 @@ describe('Pipelines Registry - CQRS Tools', () => {
         const mockJob = { id: 1, name: 'deploy', status: 'running' };
         mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as never);
 
-        const tool = pipelinesToolRegistry.get('manage_pipeline_job')!;
+        const tool = pipelinesToolRegistry.get('manage_pipeline')!;
         await tool.handler({
-          action: 'play',
+          action: 'play_job',
           project_id: 'test/project',
           job_id: '1',
           job_variables_attributes: [{ key: 'ENVIRONMENT', value: 'production' }],
@@ -1256,7 +1250,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
       });
     });
 
-    describe('manage_pipeline_job handler - retry action', () => {
+    describe('manage_pipeline handler - retry_job action', () => {
       it('should retry failed job', async () => {
         const mockJob = {
           id: 1,
@@ -1265,9 +1259,9 @@ describe('Pipelines Registry - CQRS Tools', () => {
         };
         mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as never);
 
-        const tool = pipelinesToolRegistry.get('manage_pipeline_job')!;
+        const tool = pipelinesToolRegistry.get('manage_pipeline')!;
         const result = await tool.handler({
-          action: 'retry',
+          action: 'retry_job',
           project_id: 'test/project',
           job_id: '1',
         });
@@ -1282,7 +1276,7 @@ describe('Pipelines Registry - CQRS Tools', () => {
       });
     });
 
-    describe('manage_pipeline_job handler - cancel action', () => {
+    describe('manage_pipeline handler - cancel_job action', () => {
       it('should cancel running job', async () => {
         const mockJob = {
           id: 1,
@@ -1291,9 +1285,9 @@ describe('Pipelines Registry - CQRS Tools', () => {
         };
         mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as never);
 
-        const tool = pipelinesToolRegistry.get('manage_pipeline_job')!;
+        const tool = pipelinesToolRegistry.get('manage_pipeline')!;
         const result = await tool.handler({
-          action: 'cancel',
+          action: 'cancel_job',
           project_id: 'test/project',
           job_id: '1',
         });
@@ -1311,9 +1305,9 @@ describe('Pipelines Registry - CQRS Tools', () => {
         const mockJob = { id: 1, name: 'build', status: 'canceled' };
         mockEnhancedFetch.mockResolvedValueOnce(mockResponse(mockJob) as never);
 
-        const tool = pipelinesToolRegistry.get('manage_pipeline_job')!;
+        const tool = pipelinesToolRegistry.get('manage_pipeline')!;
         await tool.handler({
-          action: 'cancel',
+          action: 'cancel_job',
           project_id: 'test/project',
           job_id: '1',
           force: true,
@@ -1364,17 +1358,14 @@ describe('Pipelines Registry - CQRS Tools', () => {
         await expect(tool.handler({ action: 'retry', project_id: 'test' })).rejects.toThrow();
       });
 
-      it('should handle schema validation errors for manage_pipeline_job', async () => {
-        const tool = pipelinesToolRegistry.get('manage_pipeline_job')!;
-
-        // Missing required action
-        await expect(tool.handler({})).rejects.toThrow();
+      it('should handle schema validation errors for manage_pipeline job actions', async () => {
+        const tool = pipelinesToolRegistry.get('manage_pipeline')!;
 
         // Invalid action
         await expect(tool.handler({ action: 'invalid', job_id: '1' })).rejects.toThrow();
 
-        // Missing job_id for play
-        await expect(tool.handler({ action: 'play', project_id: 'test' })).rejects.toThrow();
+        // Missing job_id for play_job
+        await expect(tool.handler({ action: 'play_job', project_id: 'test' })).rejects.toThrow();
       });
 
       it('should handle network errors', async () => {

@@ -125,7 +125,6 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   // Pipelines
   browse_pipelines: ['api', 'read_api'],
   manage_pipeline: ['api'],
-  manage_pipeline_job: ['api'],
 
   // Variables
   browse_variables: ['api', 'read_api'],

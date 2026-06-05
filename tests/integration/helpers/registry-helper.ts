@@ -625,3 +625,21 @@ export async function initIntegrationHelper(): Promise<IntegrationTestHelper> {
   await helper.initialize();
   return helper;
 }
+
+/**
+ * Resolve a project path under the mandatory `test/` root group for read-only
+ * end-to-end checks. Returns the first `test/`-scoped project, falling back to
+ * the first project the token can see, or undefined when none exist. Shared so
+ * the identical "search test → pick test/ project" block is not repeated per file.
+ */
+export async function findTestProjectPath(
+  helper: IntegrationTestHelper,
+): Promise<string | undefined> {
+  const projects = (await helper.listProjects({ search: 'test', per_page: 10 })) as {
+    path_with_namespace: string;
+  }[];
+  return (
+    projects.find((p) => p.path_with_namespace.startsWith('test/'))?.path_with_namespace ??
+    projects[0]?.path_with_namespace
+  );
+}

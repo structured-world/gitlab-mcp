@@ -152,9 +152,9 @@ Look for:
 ```
 
 ```jsonc [Retry single job]
-// manage_pipeline_job
+// manage_pipeline
 {
-  "action": "retry",
+  "action": "retry_job",
   "project_id": "my-org/api",
   "job_id": "5678"
 }

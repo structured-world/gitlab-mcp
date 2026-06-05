@@ -16,8 +16,7 @@ Pipeline management, job control, logs, and CI/CD variable configuration.
 | Tool | Type | Purpose |
 |------|------|---------|
 | `browse_pipelines` | Query | List pipelines, jobs, view logs |
-| `manage_pipeline` | Command | Trigger, retry, cancel pipelines |
-| `manage_pipeline_job` | Command | Play, retry, cancel individual jobs |
+| `manage_pipeline` | Command | Trigger/retry/cancel pipelines; play/retry/cancel individual jobs |
 | `browse_variables` | Query | List and get CI/CD variables |
 | `manage_variable` | Command | Create, update, delete variables |
 | `browse_environments` | Query | List environments and deployments |
@@ -104,6 +103,9 @@ Trigger and control pipeline execution.
 | `create` | Trigger a new pipeline on branch/tag |
 | `retry` | Re-run a failed/canceled pipeline |
 | `cancel` | Stop a running pipeline |
+| `play_job` | Trigger a manual job |
+| `retry_job` | Re-run a failed/canceled job |
+| `cancel_job` | Stop a running job |
 <!-- @autogen:end -->
 
 ### Examples
@@ -150,6 +152,33 @@ Trigger and control pipeline execution.
 }
 ```
 
+```json [Play manual job]
+{
+  "action": "play_job",
+  "project_id": "my-org/api",
+  "job_id": "5678",
+  "job_variables_attributes": [
+    { "key": "TARGET", "value": "production" }
+  ]
+}
+```
+
+```json [Retry job]
+{
+  "action": "retry_job",
+  "project_id": "my-org/api",
+  "job_id": "5678"
+}
+```
+
+```json [Cancel job]
+{
+  "action": "cancel_job",
+  "project_id": "my-org/api",
+  "job_id": "5678"
+}
+```
+
 :::
 
 ### Pipeline Inputs (GitLab 15.5+)
@@ -191,53 +220,6 @@ Trigger with inputs:
 - **`inputs`**: Typed parameters with schema validation (requires GitLab 15.5+)
 
 You can use both in the same request if needed.
-:::
-
-## manage_pipeline_job
-
-Control individual jobs within a pipeline.
-
-### Actions
-
-<!-- @autogen:tool manage_pipeline_job -->
-| Action | Description |
-|--------|-------------|
-| `play` | Trigger a manual job |
-| `retry` | Re-run a failed/canceled job |
-| `cancel` | Stop a running job |
-<!-- @autogen:end -->
-
-### Examples
-
-::: code-group
-
-```json [Play manual job]
-{
-  "action": "play",
-  "project_id": "my-org/api",
-  "job_id": "5678",
-  "job_variables_attributes": [
-    { "key": "TARGET", "value": "production" }
-  ]
-}
-```
-
-```json [Retry job]
-{
-  "action": "retry",
-  "project_id": "my-org/api",
-  "job_id": "5678"
-}
-```
-
-```json [Cancel job]
-{
-  "action": "cancel",
-  "project_id": "my-org/api",
-  "job_id": "5678"
-}
-```
-
 :::
 
 ## browse_variables / manage_variable

@@ -381,13 +381,7 @@ const ENTITY_TOOLS: Record<string, string[]> = {
     'manage_label',
     'browse_iterations',
   ],
-  'CI/CD': [
-    'browse_pipelines',
-    'manage_pipeline',
-    'manage_pipeline_job',
-    'browse_variables',
-    'manage_variable',
-  ],
+  'CI/CD': ['browse_pipelines', 'manage_pipeline', 'browse_variables', 'manage_variable'],
   'Integrations & Content': [
     'browse_wiki',
     'manage_wiki',
@@ -1023,7 +1017,7 @@ function printEnvGatesMarkdown(
 const FEATURE_TO_TOOLS: Record<string, string[]> = {
   wiki: ['browse_wiki', 'manage_wiki'],
   milestones: ['browse_milestones', 'manage_milestone'],
-  pipelines: ['browse_pipelines', 'manage_pipeline', 'manage_pipeline_job'],
+  pipelines: ['browse_pipelines', 'manage_pipeline'],
   labels: ['browse_labels', 'manage_label'],
   mrs: [
     'browse_merge_requests',

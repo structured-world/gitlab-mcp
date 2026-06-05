@@ -1,6 +1,6 @@
 import * as z from 'zod';
 import { BrowsePipelinesSchema } from './schema-readonly';
-import { ManagePipelineSchema, ManagePipelineJobSchema } from './schema';
+import { ManagePipelineSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { enhancedFetch } from '../../utils/fetch';
@@ -9,11 +9,10 @@ import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
 /**
- * Pipelines tools registry - 3 CQRS tools replacing 12 individual tools
+ * Pipelines tools registry - 2 CQRS tools replacing 12 individual tools
  *
  * browse_pipelines (Query): list, get, jobs, triggers, job, logs
- * manage_pipeline (Command): create, retry, cancel
- * manage_pipeline_job (Command): play, retry, cancel
+ * manage_pipeline (Command): create, retry, cancel, play_job, retry_job, cancel_job
  */
 export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinition>([
   // ============================================================================
@@ -25,7 +24,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'browse_pipelines',
       description:
-        'Monitor CI/CD pipelines and read job logs. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output). Related: manage_pipeline to trigger/retry/cancel, manage_pipeline_job for individual jobs.',
+        'Monitor CI/CD pipelines and read job logs. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.',
       inputSchema: z.toJSONSchema(BrowsePipelinesSchema),
       requirements: { default: { tier: 'free', minVersion: '9.0' } },
       gate: { envVar: 'USE_PIPELINE', defaultValue: true },
@@ -190,7 +189,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
     {
       name: 'manage_pipeline',
       description:
-        'Trigger, retry, or cancel CI/CD pipelines. Actions: create (run pipeline on ref with variables or typed inputs), retry (re-run failed jobs), cancel (stop running pipeline). Related: browse_pipelines for monitoring.',
+        "Trigger, retry, or cancel CI/CD pipelines and individual jobs. Pipeline actions: create (run pipeline on ref with variables or typed inputs), retry (re-run failed jobs), cancel (stop running pipeline). Job actions: play_job (trigger a manual/delayed job with variables), retry_job (re-run a single job), cancel_job (stop a running job). Related: browse_pipelines actions 'job'/'logs' for job details.",
       inputSchema: z.toJSONSchema(ManagePipelineSchema),
       requirements: { default: { tier: 'free', minVersion: '9.0' } },
       gate: { envVar: 'USE_PIPELINE', defaultValue: true },
@@ -297,34 +296,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             );
           }
 
-          /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
-          default:
-            throw new Error(`Unknown action: ${(input as { action: string }).action}`);
-        }
-      },
-    },
-  ],
-
-  // ============================================================================
-  // manage_pipeline_job - CQRS Command Tool (discriminated union schema)
-  // TypeScript automatically narrows types in each switch case
-  // ============================================================================
-  [
-    'manage_pipeline_job',
-    {
-      name: 'manage_pipeline_job',
-      description:
-        "Control individual CI/CD jobs within a pipeline. Actions: play (trigger manual/delayed job with variables), retry (re-run single job), cancel (stop running job). Related: browse_pipelines actions 'job'/'logs' for job details.",
-      inputSchema: z.toJSONSchema(ManagePipelineJobSchema),
-      requirements: { default: { tier: 'free', minVersion: '9.0' } },
-      gate: { envVar: 'USE_PIPELINE', defaultValue: true },
-      handler: async (args: unknown): Promise<unknown> => {
-        const input = ManagePipelineJobSchema.parse(args);
-
-        assertActionAllowed('manage_pipeline_job', input.action);
-
-        switch (input.action) {
-          case 'play': {
+          case 'play_job': {
             // TypeScript knows: input has job_id (required), job_variables_attributes (optional)
             const { project_id, job_id, job_variables_attributes } = input;
             const body: Record<string, unknown> = {};
@@ -337,13 +309,13 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             });
           }
 
-          case 'retry': {
+          case 'retry_job': {
             // TypeScript knows: input has job_id (required)
             const { project_id, job_id } = input;
             return gitlab.post(`projects/${normalizeProjectId(project_id)}/jobs/${job_id}/retry`);
           }
 
-          case 'cancel': {
+          case 'cancel_job': {
             // TypeScript knows: input has job_id (required), force (optional)
             const { project_id, job_id, force } = input;
             const query = force ? { force: 'true' } : undefined;

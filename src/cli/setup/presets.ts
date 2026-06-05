@@ -46,7 +46,7 @@ export const TOOL_CATEGORIES: ToolCategory[] = [
     id: 'pipelines',
     name: 'Pipelines & CI/CD',
     description: 'Pipeline browsing, job management, triggers',
-    tools: ['browse_pipelines', 'manage_pipeline', 'manage_pipeline_job'],
+    tools: ['browse_pipelines', 'manage_pipeline'],
     defaultEnabled: true,
   },
   {

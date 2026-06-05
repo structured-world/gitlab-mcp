@@ -47,11 +47,21 @@ function listVars(input: {
   };
 }
 
-/** Throw on a non-empty GraphQL mutation `errors` array. */
-function assertNoErrors(errors: string[] | undefined): void {
-  if (errors && errors.length > 0) {
-    throw new Error(`GitLab API error: ${errors.join(', ')}`);
+/**
+ * Unwrap a mutation payload: surface a non-empty `errors` array as an error, treat
+ * a null payload as an error too (rather than silently returning undefined), and
+ * return the cleaned vulnerability on success.
+ */
+function unwrapVuln(
+  payload: { vulnerability: unknown; errors: string[] } | null | undefined,
+): unknown {
+  if (!payload) {
+    throw new Error('GitLab API error: empty mutation response');
   }
+  if (payload.errors.length > 0) {
+    throw new Error(`GitLab API error: ${payload.errors.join(', ')}`);
+  }
+  return cleanGidsFromObject(payload.vulnerability);
 }
 
 /**
@@ -159,26 +169,22 @@ export const vulnerabilitiesToolRegistry: ToolRegistry = new Map<string, Enhance
               comment: input.comment ?? null,
               dismissalReason: input.dismissal_reason ?? null,
             });
-            assertNoErrors(res.vulnerabilityDismiss?.errors);
-            return cleanGidsFromObject(res.vulnerabilityDismiss?.vulnerability);
+            return unwrapVuln(res.vulnerabilityDismiss);
           }
 
           case 'confirm': {
             const res = await client.request(CONFIRM_VULN, { id });
-            assertNoErrors(res.vulnerabilityConfirm?.errors);
-            return cleanGidsFromObject(res.vulnerabilityConfirm?.vulnerability);
+            return unwrapVuln(res.vulnerabilityConfirm);
           }
 
           case 'resolve': {
             const res = await client.request(RESOLVE_VULN, { id });
-            assertNoErrors(res.vulnerabilityResolve?.errors);
-            return cleanGidsFromObject(res.vulnerabilityResolve?.vulnerability);
+            return unwrapVuln(res.vulnerabilityResolve);
           }
 
           case 'revert': {
             const res = await client.request(REVERT_VULN, { id });
-            assertNoErrors(res.vulnerabilityRevertToDetected?.errors);
-            return cleanGidsFromObject(res.vulnerabilityRevertToDetected?.vulnerability);
+            return unwrapVuln(res.vulnerabilityRevertToDetected);
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

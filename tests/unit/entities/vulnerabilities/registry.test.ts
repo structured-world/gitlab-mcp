@@ -174,6 +174,13 @@ describe('vulnerabilities registry', () => {
       );
     });
 
+    it('throws when the mutation returns a null payload (silent-success guard)', async () => {
+      mockClient.request.mockResolvedValueOnce({ vulnerabilityConfirm: null });
+      await expect(manage().handler({ action: 'confirm', vulnerability_id: 5 })).rejects.toThrow(
+        'GitLab API error',
+      );
+    });
+
     it('coerces a string vulnerability_id to a number gid', async () => {
       mockClient.request.mockResolvedValueOnce({
         vulnerabilityConfirm: { vulnerability: {}, errors: [] },

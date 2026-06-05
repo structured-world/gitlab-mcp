@@ -4,6 +4,26 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [8.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.7.0...gitlab-mcp-v8.0.0) (2026-06-05)
+
+
+### ⚠ BREAKING CHANGES
+
+* **pipelines:** the manage_pipeline_job tool is removed. Callers must use manage_pipeline with the play_job / retry_job / cancel_job actions instead of manage_pipeline_job with play / retry / cancel.
+
+### Features
+
+* **access-tokens:** expose personal/project/group token management ([#478](https://github.com/structured-world/gitlab-mcp/issues/478)) ([509bc03](https://github.com/structured-world/gitlab-mcp/commit/509bc034ea7118a385430315da06b9cec4dccfa8))
+* **audit-events:** expose instance/group/project audit events ([#480](https://github.com/structured-world/gitlab-mcp/issues/480)) ([50b951c](https://github.com/structured-world/gitlab-mcp/commit/50b951ce78c5917f333513e1661003df4083434b)), closes [#439](https://github.com/structured-world/gitlab-mcp/issues/439)
+* **pipelines:** fold manage_pipeline_job into manage_pipeline ([#485](https://github.com/structured-world/gitlab-mcp/issues/485)) ([ed53eea](https://github.com/structured-world/gitlab-mcp/commit/ed53eeac7e7479d0588c6c46c9e7759eb374f2ba))
+* **runners:** expose CI runner management via GraphQL ([#477](https://github.com/structured-world/gitlab-mcp/issues/477)) ([a9aefc3](https://github.com/structured-world/gitlab-mcp/commit/a9aefc3771bf44dfb76c522dffe708116d2569ca))
+* **vulnerabilities:** expose Vulnerability Management via GraphQL ([#481](https://github.com/structured-world/gitlab-mcp/issues/481)) ([cebd310](https://github.com/structured-world/gitlab-mcp/commit/cebd310b87e904bf8dc05b78efebbacf16706d79))
+
+
+### Refactoring
+
+* **entities:** thread request-context instanceUrl through handler call sites ([#482](https://github.com/structured-world/gitlab-mcp/issues/482)) ([283e56b](https://github.com/structured-world/gitlab-mcp/commit/283e56bd4a0629f1660d20e4e8d0eb9577376eab)), closes [#397](https://github.com/structured-world/gitlab-mcp/issues/397)
+
 ## [7.7.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v7.6.0...gitlab-mcp-v7.7.0) (2026-06-04)
 
 

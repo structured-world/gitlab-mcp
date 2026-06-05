@@ -35,6 +35,7 @@ jobs:
       release-tag: ${{ steps.release.outputs.tag_name }}
       release-sha: ${{ steps.release.outputs.sha }}
       pr-number: ${{ steps.release.outputs.pr != '' && fromJSON(steps.release.outputs.pr).number || '' }}
+      pr-branch: ${{ steps.release.outputs.pr != '' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
 
     steps:
       - name: Generate release token
@@ -216,7 +217,82 @@ jobs:
       - name: Publish to MCP Registry
         run: ./mcp-publisher publish
 
-  # Job 3: Summary
+  # Job 3: Sync generated metadata into the open release PR
+  # When release-please updates (not merges) the release PR, regenerate the
+  # dynamic artifacts (package.json MCP manifest + tool counts, README counts,
+  # server.json description) and commit them onto the PR branch so the committed
+  # state always matches what will be published — alongside the version bump and
+  # CHANGELOG that already live on that branch.
+  #
+  # Loop-safe: this pushes to the release PR branch, and the workflow only triggers
+  # on push to main, so the commit never re-triggers the workflow. release-please
+  # may rebuild its PR branch on the next push to main; this job re-runs then and
+  # re-applies the metadata, so the PR is current whenever it is merged.
+  sync-release-pr:
+    name: Sync generated metadata into release PR
+    runs-on: ubuntu-latest
+    needs: release-please
+    if: needs.release-please.outputs.pr-number != '' && needs.release-please.outputs.release-created != 'true'
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Generate release token
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Checkout release PR branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.release-please.outputs.pr-branch }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install Yarn
+        run: corepack prepare yarn@4.12.0 --activate
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: yarn prisma generate
+
+      - name: Build project
+        run: yarn build
+
+      # release-please already bumped package.json version on the PR branch;
+      # use it so README/server.json counts carry the pending release version.
+      - name: Regenerate dynamic metadata
+        run: ./scripts/prepare-release.sh "$(jq -r .version package.json)"
+
+      - name: Commit regenerated metadata to the release PR
+        run: |
+          git config user.name "structured-world-releaser[bot]"
+          git config user.email "structured-world-releaser[bot]@users.noreply.github.com"
+          # Only the committed dynamic artifacts. .semantic-release-version is a
+          # release-time-only file and must not be committed.
+          git add package.json README.md server.json
+          if git diff --cached --quiet; then
+            echo "No metadata drift; nothing to commit."
+          else
+            git commit -m "chore: sync generated tool metadata"
+            git push origin "HEAD:${{ needs.release-please.outputs.pr-branch }}"
+          fi
+
+  # Job 4: Summary
   summary:
     name: Release Summary
     runs-on: ubuntu-latest

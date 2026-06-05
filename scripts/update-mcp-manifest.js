@@ -13,8 +13,8 @@
  * The script also updates mcp.description with the current tool count.
  */
 
-const fs = require("fs");
-const path = require("path");
+const fs = require('fs');
+const path = require('path');
 
 /**
  * Read all input from stdin
@@ -22,16 +22,16 @@ const path = require("path");
  */
 function readStdin() {
   return new Promise((resolve, reject) => {
-    let data = "";
-    process.stdin.setEncoding("utf8");
-    process.stdin.on("readable", () => {
+    let data = '';
+    process.stdin.setEncoding('utf8');
+    process.stdin.on('readable', () => {
       let chunk;
       while ((chunk = process.stdin.read()) !== null) {
         data += chunk;
       }
     });
-    process.stdin.on("end", () => resolve(data));
-    process.stdin.on("error", reject);
+    process.stdin.on('end', () => resolve(data));
+    process.stdin.on('error', reject);
   });
 }
 
@@ -43,53 +43,68 @@ function readStdin() {
 function extractCategory(toolName) {
   // Map tool prefixes/patterns to categories
   const categoryMap = {
-    browse_projects: "Projects",
-    manage_project: "Projects",
-    browse_namespaces: "Projects",
-    manage_namespace: "Projects",
-    browse_commits: "Repository",
-    browse_events: "Activity",
-    browse_users: "Users",
-    browse_todos: "Activity",
-    manage_todos: "Activity",
-    browse_merge_requests: "Merge Requests",
-    browse_mr_discussions: "Merge Requests",
-    manage_merge_request: "Merge Requests",
-    manage_mr_discussion: "Merge Requests",
-    manage_draft_notes: "Merge Requests",
-    browse_files: "Repository",
-    manage_files: "Repository",
-    browse_milestones: "Planning",
-    manage_milestone: "Planning",
-    browse_pipelines: "CI/CD",
-    manage_pipeline: "CI/CD",
-    manage_pipeline_job: "CI/CD",
-    browse_variables: "CI/CD",
-    manage_variable: "CI/CD",
-    browse_wiki: "Content",
-    manage_wiki: "Content",
-    browse_work_items: "Planning",
-    manage_work_item: "Planning",
-    browse_labels: "Planning",
-    manage_label: "Planning",
-    browse_snippets: "Content",
-    manage_snippet: "Content",
-    browse_webhooks: "Integrations",
-    manage_webhook: "Integrations",
-    browse_integrations: "Integrations",
-    manage_integration: "Integrations",
-    browse_releases: "Releases",
-    manage_release: "Releases",
-    browse_refs: "Repository",
-    manage_ref: "Repository",
-    browse_members: "Access",
-    manage_member: "Access",
-    browse_search: "Discovery",
-    browse_iterations: "Planning",
-    manage_context: "Session",
+    browse_projects: 'Projects',
+    manage_project: 'Projects',
+    browse_namespaces: 'Projects',
+    manage_namespace: 'Projects',
+    browse_commits: 'Repository',
+    browse_events: 'Activity',
+    browse_users: 'Users',
+    browse_todos: 'Activity',
+    manage_todos: 'Activity',
+    browse_merge_requests: 'Merge Requests',
+    browse_mr_discussions: 'Merge Requests',
+    manage_merge_request: 'Merge Requests',
+    manage_mr_discussion: 'Merge Requests',
+    manage_draft_notes: 'Merge Requests',
+    browse_files: 'Repository',
+    manage_files: 'Repository',
+    browse_milestones: 'Planning',
+    manage_milestone: 'Planning',
+    browse_pipelines: 'CI/CD',
+    manage_pipeline: 'CI/CD',
+    manage_pipeline_job: 'CI/CD',
+    browse_variables: 'CI/CD',
+    manage_variable: 'CI/CD',
+    browse_job_token_scope: 'CI/CD',
+    manage_job_token_scope: 'CI/CD',
+    browse_deploy_keys: 'CI/CD',
+    manage_deploy_key: 'CI/CD',
+    browse_environments: 'CI/CD',
+    manage_environment: 'CI/CD',
+    browse_runners: 'CI/CD',
+    manage_runner: 'CI/CD',
+    browse_registry: 'CI/CD',
+    manage_registry: 'CI/CD',
+    browse_access_tokens: 'Access',
+    manage_access_token: 'Access',
+    browse_audit_events: 'Security',
+    browse_vulnerabilities: 'Security',
+    manage_vulnerability: 'Security',
+    browse_wiki: 'Content',
+    manage_wiki: 'Content',
+    browse_work_items: 'Planning',
+    manage_work_item: 'Planning',
+    browse_labels: 'Planning',
+    manage_label: 'Planning',
+    browse_snippets: 'Content',
+    manage_snippet: 'Content',
+    browse_webhooks: 'Integrations',
+    manage_webhook: 'Integrations',
+    browse_integrations: 'Integrations',
+    manage_integration: 'Integrations',
+    browse_releases: 'Releases',
+    manage_release: 'Releases',
+    browse_refs: 'Repository',
+    manage_ref: 'Repository',
+    browse_members: 'Access',
+    manage_member: 'Access',
+    browse_search: 'Discovery',
+    browse_iterations: 'Planning',
+    manage_context: 'Session',
   };
 
-  return categoryMap[toolName] || "General";
+  return categoryMap[toolName] || 'General';
 }
 
 /**
@@ -98,7 +113,7 @@ function extractCategory(toolName) {
  * @returns {boolean}
  */
 function isReadOnly(toolName) {
-  return toolName.startsWith("browse_") || toolName === "manage_context";
+  return toolName.startsWith('browse_') || toolName === 'manage_context';
 }
 
 /**
@@ -108,7 +123,7 @@ function isReadOnly(toolName) {
  */
 function transformTool(tool) {
   // Normalize tier: "unknown" means tool has no tier requirement, treat as "free"
-  const tier = tool.tier && tool.tier !== "unknown" ? tool.tier : "free";
+  const tier = tool.tier && tool.tier !== 'unknown' ? tool.tier : 'free';
 
   return {
     name: tool.name,
@@ -125,10 +140,10 @@ function transformTool(tool) {
  * @returns {string} - First sentence or truncated description
  */
 function truncateDescription(description) {
-  if (!description) return "";
+  if (!description) return '';
 
   // Remove "Related:" section
-  const relatedIndex = description.indexOf("Related:");
+  const relatedIndex = description.indexOf('Related:');
   let clean = relatedIndex > 0 ? description.substring(0, relatedIndex).trim() : description;
 
   // Take first sentence
@@ -139,14 +154,14 @@ function truncateDescription(description) {
 
   // Truncate if too long
   if (clean.length > 200) {
-    return clean.substring(0, 197) + "...";
+    return clean.substring(0, 197) + '...';
   }
 
   return clean;
 }
 
 async function main() {
-  const packageJsonPath = path.resolve(process.cwd(), "package.json");
+  const packageJsonPath = path.resolve(process.cwd(), 'package.json');
 
   // Read tools from stdin
   let toolsJson;
@@ -154,27 +169,27 @@ async function main() {
     const input = await readStdin();
     if (!input.trim()) {
       console.error(
-        "Error: No input received. Usage: yarn list-tools --json | node scripts/update-mcp-manifest.js"
+        'Error: No input received. Usage: yarn list-tools --json | node scripts/update-mcp-manifest.js',
       );
       process.exit(1);
     }
     toolsJson = JSON.parse(input);
   } catch (error) {
-    console.error("Error parsing tools JSON:", error.message);
+    console.error('Error parsing tools JSON:', error.message);
     process.exit(1);
   }
 
   if (!Array.isArray(toolsJson)) {
-    console.error("Error: Expected array of tools");
+    console.error('Error: Expected array of tools');
     process.exit(1);
   }
 
   // Read package.json
   let pkg;
   try {
-    pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+    pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
   } catch (error) {
-    console.error("Error reading package.json:", error.message);
+    console.error('Error reading package.json:', error.message);
     process.exit(1);
   }
 
@@ -204,24 +219,24 @@ async function main() {
 
   // Write updated package.json
   try {
-    fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + "\n");
+    fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + '\n');
   } catch (error) {
-    console.error("Error writing package.json:", error.message);
+    console.error('Error writing package.json:', error.message);
     process.exit(1);
   }
 
   console.log(
-    `MCP manifest updated: ${transformedTools.length} tools (${readOnlyCount} read-only), ${entityCount} categories`
+    `MCP manifest updated: ${transformedTools.length} tools (${readOnlyCount} read-only), ${entityCount} categories`,
   );
   console.log(
-    "Categories:",
+    'Categories:',
     Object.entries(categoryCounts)
       .map(([k, v]) => `${k}(${v})`)
-      .join(", ")
+      .join(', '),
   );
 }
 
 main().catch((error) => {
-  console.error("Fatal error:", error);
+  console.error('Fatal error:', error);
   process.exit(1);
 });

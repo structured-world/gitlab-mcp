@@ -567,7 +567,7 @@ describe('server', () => {
       };
       const mockRes = {
         json: jest.fn(),
-        status: jest.fn(() => mockRes),
+        status: jest.fn().mockReturnThis(),
       };
 
       // Mock transport with error
@@ -625,7 +625,7 @@ describe('server', () => {
         body: { test: 'data' },
       };
       const mockRes = {
-        status: jest.fn(() => mockRes),
+        status: jest.fn().mockReturnThis(),
         json: jest.fn(),
         headersSent: false,
       };
@@ -660,7 +660,7 @@ describe('server', () => {
         body: { test: 'data' },
       };
       const mockRes = {
-        status: jest.fn(() => mockRes),
+        status: jest.fn().mockReturnThis(),
         json: jest.fn(),
         headersSent: false,
         locals: {},
@@ -696,7 +696,7 @@ describe('server', () => {
         body: { test: 'data' },
       };
       const mockRes = {
-        status: jest.fn(() => mockRes),
+        status: jest.fn().mockReturnThis(),
         json: jest.fn(),
         headersSent: false,
         locals: {},
@@ -739,7 +739,7 @@ describe('server', () => {
         body: { jsonrpc: '2.0', method: 'initialize', id: 1 },
       };
       const mockRes = {
-        status: jest.fn(() => mockRes),
+        status: jest.fn().mockReturnThis(),
         json: jest.fn(),
         headersSent: false,
         locals: {},
@@ -767,7 +767,7 @@ describe('server', () => {
         body: { jsonrpc: '2.0', method: 'tools/list', id: 1 },
       };
       const mockRes = {
-        status: jest.fn(() => mockRes),
+        status: jest.fn().mockReturnThis(),
         json: jest.fn(),
         headersSent: false,
         locals: {},
@@ -805,7 +805,7 @@ describe('server', () => {
         body: { method: 'test' },
       };
       const mockRes = {
-        status: jest.fn(() => mockRes),
+        status: jest.fn().mockReturnThis(),
         json: jest.fn(),
         headersSent: true, // Headers already sent (streaming in progress)
       };
@@ -834,7 +834,7 @@ describe('server', () => {
         body: { method: 'initialize' },
       };
       const mockRes = {
-        status: jest.fn(() => mockRes),
+        status: jest.fn().mockReturnThis(),
         json: jest.fn(),
         headersSent: true, // Simulate headers already sent
         locals: {},
@@ -947,7 +947,7 @@ describe('server', () => {
         body: { method: 'initialize' },
       };
       const mockRes = {
-        status: jest.fn(() => mockRes),
+        status: jest.fn().mockReturnThis(),
         json: jest.fn(),
         headersSent: false,
         locals: {},
@@ -2515,7 +2515,7 @@ describe('server', () => {
         };
         const mockRes = {
           json: jest.fn(),
-          status: jest.fn(() => mockRes),
+          status: jest.fn().mockReturnThis(),
           headersSent: false,
         };
 
@@ -2540,7 +2540,7 @@ describe('server', () => {
         };
         const mockRes = {
           json: jest.fn(),
-          status: jest.fn(() => mockRes),
+          status: jest.fn().mockReturnThis(),
         };
 
         await messagesHandler(mockReq, mockRes);
@@ -2560,7 +2560,7 @@ describe('server', () => {
         };
         const mockRes = {
           json: jest.fn(),
-          status: jest.fn(() => mockRes),
+          status: jest.fn().mockReturnThis(),
         };
 
         await messagesHandler(mockReq, mockRes);

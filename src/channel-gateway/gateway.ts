@@ -21,15 +21,11 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { Interceptor } from './interceptor';
 import { formatEvent } from './format';
+import { forwardWithPolicy, isReadCall } from './forwarding';
 import type { WatchEvent } from './watch';
 
 /** Claude Code channel push method (Channels research preview). */
 const CHANNEL_NOTIFICATION = 'notifications/claude/channel';
-
-/** A tool call is a read (safe to retry after reconnect) by name prefix. */
-function isReadCall(name: string): boolean {
-  return name.startsWith('browse_') || name.startsWith('get_') || name.startsWith('list_');
-}
 
 export interface GatewayConfig {
   /** Executable to launch the downstream gitlab-mcp (e.g. `node`). */
@@ -42,6 +38,10 @@ export interface GatewayConfig {
   pollMs?: number;
   /** Max backoff between reconnect attempts in ms (default 30s). */
   maxBackoffMs?: number;
+  /** Max calls buffered while the downstream link is down (default 100). */
+  maxQueued?: number;
+  /** How long a buffered call waits for reconnect before failing (default 30s). */
+  connectTimeoutMs?: number;
   /** Gateway server name (becomes the channel `source` attribute). */
   name?: string;
   /** Gateway server version. */
@@ -56,6 +56,7 @@ export class ChannelGateway {
   private connected = false;
   private reconnecting = false;
   private closing = false;
+  private pendingWaiters = 0;
 
   constructor(private readonly config: GatewayConfig) {
     this.server = new Server(
@@ -141,29 +142,43 @@ export class ChannelGateway {
     });
   }
 
-  /** Await a live downstream link (used before a retryable read). */
-  private async ensureConnected(): Promise<void> {
-    const deadline = Date.now() + (this.config.maxBackoffMs ?? 30_000);
-    while (!this.connected && !this.closing && Date.now() < deadline) {
-      await this.sleep(100);
+  /**
+   * Await a live downstream link, bounded. Enforces `maxQueued` (backpressure)
+   * and a connect timeout so a permanently-down downstream fails calls instead
+   * of hanging or buffering without limit.
+   */
+  private async waitForConnection(): Promise<void> {
+    if (this.connected) return;
+    const maxQueued = this.config.maxQueued ?? 100;
+    if (this.pendingWaiters >= maxQueued) {
+      throw new Error(`downstream unavailable: request buffer full (${maxQueued})`);
+    }
+    this.pendingWaiters++;
+    try {
+      const deadline = Date.now() + (this.config.connectTimeoutMs ?? 30_000);
+      while (!this.connected && !this.closing && Date.now() < deadline) {
+        await this.sleep(100);
+      }
+      if (!this.connected) {
+        throw new Error('downstream unavailable: reconnect timed out');
+      }
+    } finally {
+      this.pendingWaiters--;
     }
   }
 
-  /**
-   * Forward one call to the downstream. Reads are retried once after a reconnect
-   * (idempotent); writes are never blind-retried (double-execution risk) and
-   * surface the error to the agent.
-   */
-  private async forward(name: string, args: unknown): Promise<unknown> {
-    try {
-      return await this.callDownstream(name, args);
-    } catch (err) {
-      if (isReadCall(name) && !this.closing) {
-        await this.ensureConnected();
-        return await this.callDownstream(name, args);
-      }
-      throw err;
-    }
+  /** Forward one call under the read-safe / write-no-retry + bounded-buffer policy. */
+  private forward(name: string, args: unknown): Promise<unknown> {
+    return forwardWithPolicy(
+      {
+        isRead: isReadCall,
+        isConnected: () => this.connected,
+        waitForConnection: () => this.waitForConnection(),
+        call: (n, a) => this.callDownstream(n, a),
+      },
+      name,
+      args,
+    );
   }
 
   private async callDownstream(name: string, args: unknown): Promise<unknown> {

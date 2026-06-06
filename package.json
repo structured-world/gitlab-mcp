@@ -12,7 +12,7 @@
   "description": "Advanced GitLab MCP server",
   "mcp": {
     "name": "GitLab MCP Server",
-    "description": "Advanced GitLab MCP server - 44 tools across 13 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes",
+    "description": "Advanced GitLab MCP server - 58 tools across 14 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes",
     "repository": "https://github.com/structured-world/gitlab-mcp",
     "homepage": "https://gitlab-mcp.sw.foundation",
     "author": "Dmitry Prudnikov",
@@ -230,14 +230,7 @@
       },
       {
         "name": "manage_pipeline",
-        "description": "Trigger, retry, or cancel CI/CD pipelines.",
-        "category": "CI/CD",
-        "tier": "free",
-        "readOnly": false
-      },
-      {
-        "name": "manage_pipeline_job",
-        "description": "Control individual CI/CD jobs within a pipeline.",
+        "description": "Trigger, retry, or cancel CI/CD pipelines and individual jobs.",
         "category": "CI/CD",
         "tier": "free",
         "readOnly": false
@@ -381,6 +374,111 @@
         "category": "Planning",
         "tier": "free",
         "readOnly": true
+      },
+      {
+        "name": "browse_job_token_scope",
+        "description": "Inspect a project CI/CD job token inbound access scope.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_job_token_scope",
+        "description": "Manage a project CI/CD job token inbound allowlist.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_deploy_keys",
+        "description": "List and inspect deploy keys (SSH keys granting repo access to CI/automation).",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_deploy_key",
+        "description": "Add, enable, update, or remove project deploy keys.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_environments",
+        "description": "Inspect project environments and their deployments.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_environment",
+        "description": "Create and control project environments and deployment status.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_registry",
+        "description": "Inspect the GitLab Container Registry.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_registry",
+        "description": "Delete GitLab Container Registry repositories and tags.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_access_tokens",
+        "description": "Inspect access tokens (CI/automation credentials).",
+        "category": "Access",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_access_token",
+        "description": "Create, rotate, or revoke access tokens.",
+        "category": "Access",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_runners",
+        "description": "Inspect CI runners.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_runner",
+        "description": "Register and control CI runners.",
+        "category": "CI/CD",
+        "tier": "free",
+        "readOnly": false
+      },
+      {
+        "name": "browse_audit_events",
+        "description": "Inspect audit events: the immutable record of who did what, when.",
+        "category": "Security",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "browse_vulnerabilities",
+        "description": "Inspect security vulnerabilities (Ultimate).",
+        "category": "Security",
+        "tier": "free",
+        "readOnly": true
+      },
+      {
+        "name": "manage_vulnerability",
+        "description": "Drive the vulnerability state machine (Ultimate).",
+        "category": "Security",
+        "tier": "free",
+        "readOnly": false
       }
     ]
   },

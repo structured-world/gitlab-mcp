@@ -91,6 +91,84 @@ jobs:
           path: dist/
           retention-days: 1
 
+  # Job: keep generated metadata (README counts, server.json description,
+  # package.json MCP manifest) in sync on main. README.md is a committed file
+  # GitHub renders from the repo, so it must physically hold current counts —
+  # unlike the docs site, which regenerates an ephemeral Pages artifact on every
+  # deploy. Counts come from the built registry via prepare-release.sh.
+  #
+  # Runs ONLY on push to main (never on PRs). Reconciles against the actual
+  # post-merge state, so it self-heals regardless of merge order. Pushes ONLY
+  # when there is real drift (git diff guard) — empty/no-op pushes never happen.
+  # The commit carries [skip ci], so the sync push never re-triggers this
+  # workflow or release-please: no loop.
+  sync-metadata:
+    name: Sync generated metadata
+    runs-on: ubuntu-latest
+    needs: [quality-checks]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    permissions:
+      contents: write
+
+    steps:
+      # App token (not GITHUB_TOKEN) so the push can bypass branch protection on
+      # main. Same releaser app used by release-please.yml.
+      - name: Generate release token
+        uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ secrets.RELEASER_APP_ID }}
+          private-key: ${{ secrets.RELEASER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+
+      - name: Checkout main
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+
+      - name: Enable Corepack
+        run: corepack enable
+
+      - name: Install Yarn
+        run: corepack prepare yarn@4.12.0 --activate
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: yarn prisma generate
+
+      - name: Build project
+        run: yarn build
+
+      # Use the currently released version from package.json (release-please bumps
+      # it only inside the release PR), so server.json version does not spuriously
+      # drift here — only the tool/action/entity counts can change.
+      - name: Regenerate metadata
+        run: ./scripts/prepare-release.sh "$(jq -r .version package.json)"
+
+      # Push ONLY on real drift. .semantic-release-version is release-time-only
+      # (gitignored) and never staged.
+      - name: Commit and push on drift
+        run: |
+          git config user.name "structured-world-releaser[bot]"
+          git config user.email "structured-world-releaser[bot]@users.noreply.github.com"
+          git add README.md server.json package.json
+          if git diff --cached --quiet; then
+            echo "No metadata drift; nothing to push."
+            exit 0
+          fi
+          git commit -m "chore: sync generated metadata [skip ci]"
+          git push origin HEAD:main
+
   # Legacy required status check - reports quality-checks result for branch protection
   # Added to support migration from old "Lint, Test & Build" ruleset requirement
   expected-status:

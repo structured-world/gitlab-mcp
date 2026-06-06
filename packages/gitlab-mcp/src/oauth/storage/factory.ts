@@ -7,7 +7,6 @@
 import { SessionStorageBackend, StorageConfig } from './types';
 import { MemoryStorageBackend } from './memory';
 import { FileStorageBackend } from './file';
-import { PostgreSQLStorageBackend } from './postgresql';
 import { logInfo } from '../../logger';
 
 /**
@@ -66,7 +65,7 @@ function createFileBackend(config?: StorageConfig): FileStorageBackend {
   });
 }
 
-function createPostgreSQLBackend(): PostgreSQLStorageBackend {
+function createPostgreSQLBackend(): SessionStorageBackend {
   // Prisma uses OAUTH_STORAGE_POSTGRESQL_URL or DATABASE_URL from environment
   const connectionString = process.env.OAUTH_STORAGE_POSTGRESQL_URL ?? process.env.DATABASE_URL;
 
@@ -77,9 +76,25 @@ function createPostgreSQLBackend(): PostgreSQLStorageBackend {
     );
   }
 
-  logInfo('Using PostgreSQL session storage (via Prisma)');
+  // The PostgreSQL backend ships as the optional @structured-world/gitlab-mcp-db
+  // package (it carries Prisma). It is loaded lazily so the default install does
+  // not pull Prisma or a postgres driver. Same require pattern as the optional
+  // undici load elsewhere in core.
+  let mod: { PostgreSQLStorageBackend: new () => SessionStorageBackend };
+  try {
+    mod = require('@structured-world/gitlab-mcp-db') as {
+      PostgreSQLStorageBackend: new () => SessionStorageBackend;
+    };
+  } catch {
+    throw new Error(
+      "PostgreSQL storage requires the optional '@structured-world/gitlab-mcp-db' package. " +
+        'Install it with: npm install @structured-world/gitlab-mcp-db',
+    );
+  }
 
-  return new PostgreSQLStorageBackend();
+  logInfo('Using PostgreSQL session storage (via @structured-world/gitlab-mcp-db)');
+
+  return new mod.PostgreSQLStorageBackend();
 }
 
 /**

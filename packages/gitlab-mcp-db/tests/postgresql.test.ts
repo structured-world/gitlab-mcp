@@ -1,14 +1,14 @@
-import {
+import type {
   OAuthSession,
   DeviceFlowState,
   AuthCodeFlowState,
   AuthorizationCode,
-} from '../../../../src/oauth/types';
-import { PostgreSQLStorageBackend } from '../../../../src/oauth/storage/postgresql';
+} from '@structured-world/gitlab-mcp/storage-contract';
+import { PostgreSQLStorageBackend } from '../src/postgresql';
 
 let mockPrisma: any;
 
-jest.mock('../../../../generated/prisma/client', () => ({
+jest.mock('../generated/prisma/client', () => ({
   PrismaClient: jest.fn(() => mockPrisma),
 }));
 

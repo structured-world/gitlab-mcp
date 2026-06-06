@@ -45,7 +45,6 @@ export {
   validateStorageConfig,
   MemoryStorageBackend,
   FileStorageBackend,
-  PostgreSQLStorageBackend,
   STORAGE_DATA_VERSION,
 } from './storage';
 export type {

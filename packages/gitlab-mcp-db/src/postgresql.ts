@@ -11,14 +11,15 @@
  * - Automatic cleanup of expired entries
  */
 
-import {
+import type {
   OAuthSession,
   DeviceFlowState as DeviceFlowStateType,
   AuthCodeFlowState as AuthCodeFlowStateType,
   AuthorizationCode as AuthorizationCodeType,
-} from '../types';
-import { SessionStorageBackend, SessionStorageStats } from './types';
-import { logInfo, logError, logDebug } from '../../logger';
+  SessionStorageBackend,
+  SessionStorageStats,
+} from '@structured-world/gitlab-mcp/storage-contract';
+import { logInfo, logError, logDebug } from './logger';
 
 /**
  * Explicit interfaces for Prisma model results.
@@ -149,7 +150,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   async initialize(): Promise<void> {
     try {
       // Dynamic import Prisma client to avoid initialization if not used
-      const prismaModule = (await import('../../../generated/prisma/client')) as unknown as {
+      const prismaModule = (await import('../generated/prisma/client')) as unknown as {
         PrismaClient: new (opts: Record<string, unknown>) => GenericPrismaClient;
       };
 

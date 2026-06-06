@@ -86,6 +86,29 @@ describe('detectWatchable', () => {
     expect(detectWatchable('1947', r)).toEqual({ kind: 'job', projectId: '1947', id: 42 });
   });
 
+  it('detects a non-final deployment by environment + deployable markers', () => {
+    // A deployment also has ref/sha, so the deployment markers must win.
+    const r = {
+      id: 7,
+      status: 'running',
+      ref: 'main',
+      sha: 'abc',
+      environment: { name: 'prod' },
+      deployable: { id: 9 },
+    };
+    expect(detectWatchable('1947', r)).toEqual({ kind: 'deployment', projectId: '1947', id: 7 });
+  });
+
+  it('returns null for an already-terminal deployment', () => {
+    const r = { id: 7, status: 'success', environment: { name: 'prod' }, deployable: { id: 9 } };
+    expect(detectWatchable('1947', r)).toBeNull();
+  });
+
+  it('treats a blocked deployment as non-final (watchable)', () => {
+    const r = { id: 7, status: 'blocked', environment: { name: 'prod' }, deployable: { id: 9 } };
+    expect(detectWatchable('1947', r)).toEqual({ kind: 'deployment', projectId: '1947', id: 7 });
+  });
+
   it('returns null for an already-terminal pipeline (no watch needed)', () => {
     const r = { id: 1397, status: 'success', ref: 'main' };
     expect(detectWatchable('1947', r)).toBeNull();

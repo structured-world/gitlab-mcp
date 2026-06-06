@@ -14,6 +14,12 @@ const JobSchema = z.object({
   status: z.string(),
 });
 
+const DeploymentSchema = z.object({
+  id: z.number(),
+  status: z.string(),
+  environment: z.object({ name: z.string() }).optional(),
+});
+
 /** MCP tool results wrap JSON in a text content block; unwrap it, else pass through. */
 export function parseToolResult(result: unknown): unknown {
   if (result && typeof result === 'object' && 'content' in result) {
@@ -38,6 +44,29 @@ export function parseJobs(result: unknown): JobState[] {
   for (const item of data) {
     const parsed = JobSchema.safeParse(item);
     if (parsed.success) out.push(parsed.data);
+  }
+  return out;
+}
+
+/**
+ * Parse a deployments list into pseudo-jobs the watch core can treat uniformly:
+ * one JobState per deployment, named by its environment. Lets a deployment be
+ * watched with the same aggregate/diff/terminal machinery as a pipeline.
+ */
+export function parseDeployments(result: unknown): JobState[] {
+  const data = parseToolResult(result);
+  if (!Array.isArray(data)) return [];
+  const out: JobState[] = [];
+  for (const item of data) {
+    const parsed = DeploymentSchema.safeParse(item);
+    if (parsed.success) {
+      out.push({
+        id: parsed.data.id,
+        name: parsed.data.environment?.name ?? `deployment-${parsed.data.id}`,
+        stage: 'deploy',
+        status: parsed.data.status,
+      });
+    }
   }
   return out;
 }

@@ -99,5 +99,6 @@ downstream gitlab-mcp, so the usual gitlab-mcp variables (`GITLAB_TOKEN`,
 
 - Delivery requires a running session; a dead session is not woken.
 - Custom-channel support is dev-only during the Channels research preview.
-- The watch covers pipelines and single jobs; deployment resources are not yet
-  watched.
+- Watches cover pipelines, single jobs, and deployments. A deployment is
+  re-queried through the project's deployment list (there is no single-deployment
+  read), so a watched deployment is matched by id within that list.

@@ -1,7 +1,12 @@
 /**
  * Unit tests for the channel-gateway format adapters (issue #483).
  */
-import { formatEvent, parseJobs, parseToolResult } from '../../../src/channel-gateway/format';
+import {
+  formatEvent,
+  parseDeployments,
+  parseJobs,
+  parseToolResult,
+} from '../../../src/channel-gateway/format';
 import type { WatchEvent } from '../../../src/channel-gateway/watch';
 
 describe('parseToolResult', () => {
@@ -40,6 +45,30 @@ describe('parseJobs', () => {
 
   it('returns empty for a non-array result', () => {
     expect(parseJobs({ id: 1, status: 'running' })).toEqual([]);
+  });
+});
+
+describe('parseDeployments', () => {
+  it('projects each deployment into a pseudo-job named by environment', () => {
+    const deployments = [
+      { id: 9, status: 'running', environment: { name: 'prod' } },
+      { id: 8, status: 'success', environment: { name: 'staging' } },
+    ];
+    const mcp = { content: [{ type: 'text', text: JSON.stringify(deployments) }] };
+    expect(parseDeployments(mcp)).toEqual([
+      { id: 9, name: 'prod', stage: 'deploy', status: 'running' },
+      { id: 8, name: 'staging', stage: 'deploy', status: 'success' },
+    ]);
+  });
+
+  it('falls back to a synthetic name when environment is absent', () => {
+    expect(parseDeployments([{ id: 5, status: 'running' }])).toEqual([
+      { id: 5, name: 'deployment-5', stage: 'deploy', status: 'running' },
+    ]);
+  });
+
+  it('returns empty for a non-array result', () => {
+    expect(parseDeployments({ id: 1 })).toEqual([]);
   });
 });
 

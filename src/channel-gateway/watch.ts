@@ -9,9 +9,12 @@
  */
 
 /** CI resource kinds the gateway knows how to watch. */
-export type CiResourceKind = 'pipeline' | 'job';
+export type CiResourceKind = 'pipeline' | 'job' | 'deployment';
 
-/** Job statuses that mean "still in flight" — a watch keeps polling while any present. */
+/**
+ * Statuses that mean "still in flight" — a watch keeps polling while any is
+ * present. `blocked` covers a deployment waiting on a manual approval gate.
+ */
 export const NON_FINAL: ReadonlySet<string> = new Set([
   'created',
   'pending',
@@ -19,12 +22,14 @@ export const NON_FINAL: ReadonlySet<string> = new Set([
   'waiting_for_resource',
   'preparing',
   'scheduled',
+  'blocked',
 ]);
 
 /** Terminal status sets per resource kind (GitLab CI vocabulary). */
 export const TERMINAL: Record<CiResourceKind, ReadonlySet<string>> = {
   pipeline: new Set(['success', 'failed', 'canceled', 'skipped']),
   job: new Set(['success', 'failed', 'canceled', 'skipped', 'manual']),
+  deployment: new Set(['success', 'failed', 'canceled', 'skipped']),
 };
 
 /** A resource to watch: kind + the project and id needed to re-query it. */
@@ -109,8 +114,10 @@ export function detectWatchable(projectId: string, result: unknown): WatchTarget
     const id = r.id;
     const status = r.status;
     if (typeof id === 'number' && typeof status === 'string') {
-      const looksPipeline = 'ref' in r || 'sha' in r || 'source' in r;
-      const kind: CiResourceKind = looksPipeline ? 'pipeline' : 'stage' in r ? 'job' : 'pipeline';
+      // Deployment carries environment + deployable; job carries stage;
+      // pipeline carries ref/sha/source. Check most-specific first.
+      const kind: CiResourceKind =
+        'environment' in r && 'deployable' in r ? 'deployment' : 'stage' in r ? 'job' : 'pipeline';
       if (!TERMINAL[kind].has(status)) return { kind, projectId, id };
     }
   }

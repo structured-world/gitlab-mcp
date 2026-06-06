@@ -124,6 +124,59 @@ describe('Interceptor', () => {
     await tick();
   });
 
+  it('arms a deployment watch and polls it via list_deployments', async () => {
+    const deploySeq = [
+      [{ id: 7, status: 'running', environment: { name: 'prod' } }],
+      [{ id: 7, status: 'success', environment: { name: 'prod' } }],
+    ];
+    let di = 0;
+    const forward = jest.fn((name: string, args: unknown): Promise<unknown> => {
+      const action = (args as { action?: string }).action;
+      // The originating call returns a single deployment object (watchable).
+      if (name === 'browse_environments' && action === 'get')
+        return Promise.resolve(
+          mcp({
+            id: 7,
+            status: 'running',
+            ref: 'main',
+            environment: { name: 'prod' },
+            deployable: { id: 9 },
+          }),
+        );
+      if (name === 'browse_environments' && action === 'list_deployments')
+        return Promise.resolve(mcp(deploySeq[Math.min(di++, deploySeq.length - 1)]));
+      return Promise.resolve(mcp({}));
+    });
+
+    const events: WatchEvent[] = [];
+    let resolveDone: () => void = () => {};
+    const finished = new Promise<void>((r) => (resolveDone = r));
+    const interceptor = new Interceptor({
+      forward,
+      emit: (e) => {
+        events.push(e);
+        if (e.terminal) resolveDone();
+      },
+      pollMs: 1,
+    });
+
+    await interceptor.handleCall('browse_environments', {
+      action: 'get',
+      project_id: '1947',
+      environment_id: 3,
+    });
+    expect(interceptor.activeWatches).toBe(1);
+
+    await finished;
+    expect(events.some((e) => e.terminal && e.pipelineState === 'success')).toBe(true);
+    expect(forward).toHaveBeenCalledWith(
+      'browse_environments',
+      expect.objectContaining({ action: 'list_deployments' }),
+    );
+    await tick();
+    expect(interceptor.activeWatches).toBe(0);
+  });
+
   it('shutdown cancels active watches', async () => {
     const interceptor = new Interceptor({
       forward: pipelineThenJobs('running'),

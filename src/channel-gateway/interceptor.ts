@@ -12,7 +12,7 @@ import {
   type WatchEvent,
   type WatchTarget,
 } from './watch';
-import { parseJobs, parseToolResult } from './format';
+import { parseDeployments, parseJobs, parseToolResult } from './format';
 
 /** Injected I/O: downstream forwarding and channel delivery. */
 export interface InterceptorDeps {
@@ -55,8 +55,21 @@ export class Interceptor {
     return this.watches.size;
   }
 
-  /** Re-query the jobs of a watched pipeline through the same downstream path. */
+  /**
+   * Re-query a watched resource through the same downstream path, normalized to
+   * JobState[]. Pipelines poll their jobs; deployments poll the deployment list
+   * and project the watched id into a single pseudo-job.
+   */
   private async pollJobs(target: WatchTarget): Promise<JobState[]> {
+    if (target.kind === 'deployment') {
+      const result = await this.deps.forward('browse_environments', {
+        action: 'list_deployments',
+        project_id: target.projectId,
+        order_by: 'id',
+        sort: 'desc',
+      });
+      return parseDeployments(result).filter((d) => d.id === target.id);
+    }
     const result = await this.deps.forward('browse_pipelines', {
       action: 'jobs',
       project_id: target.projectId,

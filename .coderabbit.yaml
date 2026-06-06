@@ -1,5 +1,47 @@
 # yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: 'en-US'
 reviews:
+  profile: 'assertive'
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: true
+  assess_linked_issues: true
+  related_issues: true
+  related_prs: true
+  suggested_labels: true
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+    base_branches: ['main']
+    ignore_title_keywords: ['WIP', 'DO NOT MERGE']
+  path_instructions:
+    - path: 'src/**/*.ts'
+      instructions: |
+        TypeScript strict mode is on. No `any` — define proper interfaces.
+        No eslint-disable comments — fix the underlying issue with typing.
+        Validate external data (API responses, user input, config) with Zod at boundaries.
+        MCP agentic design: one tool call = one complete task; hide API limitations from the agent.
+    - path: 'src/entities/**/registry.ts'
+      instructions: |
+        Entity registries are the CQRS tool implementations (browse_*/manage_* pairs).
+        Verify Zod discriminated-union schema validation on every action.
+        Tool descriptions must be agent-focused (WHAT not HOW) — no GraphQL/REST internals.
+        Typed GraphQL responses (TypedDocumentNode) are trusted; Zod is for input + untyped REST.
+    - path: 'tests/unit/**'
+      instructions: |
+        Tests must validate real behavior, not just pass. No weakened assertions.
+        No fixed dynamic values (IDs, IIDs, timestamps) — assert structure/types or store created IDs.
+    - path: 'tests/integration/**'
+      instructions: |
+        Integration tests follow the data-lifecycle pattern: create in dependency order,
+        clean up in reverse (best-effort try/catch). Use the test/ root group only.
+        Tier-gated suites use describeIfTier(...). No destructive ops against real data.
+    - path: 'docs/**'
+      instructions: |
+        Check documentation accuracy against current code. Edit the .in templates,
+        not the generated outputs. Verify code examples are valid.
   tools:
     # Disabled: CodeRabbit cannot install ESLint in its sandbox for this repo
     # (engines.node >=24, ESLint 10, and Yarn 4 without a package-lock), which
@@ -7,3 +49,44 @@ reviews:
     # locally (yarn lint) and in CI before merge, so nothing is lost here.
     eslint:
       enabled: false
+    markdownlint:
+      enabled: true
+    github-checks:
+      enabled: true
+      timeout_ms: 120000
+chat:
+  auto_reply: true
+knowledge_base:
+  learnings:
+    scope: auto
+  issues:
+    scope: auto
+  pull_requests:
+    scope: auto
+  code_guidelines:
+    enabled: true
+    filePatterns:
+      - '.github/copilot-instructions.md'
+      - 'CONTRIBUTING.md'
+issue_enrichment:
+  labeling:
+    auto_apply_labels: true
+    labeling_instructions:
+      - label: 'bug'
+        instructions: 'Code defect, incorrect behavior'
+      - label: 'enhancement'
+        instructions: 'New feature, new MCP tool, new capability'
+      - label: 'performance'
+        instructions: 'Optimization, caching, reduced latency'
+      - label: 'refactor'
+        instructions: 'Code restructuring without behavior change'
+      - label: 'test'
+        instructions: 'New tests, test infrastructure, coverage'
+      - label: 'ci'
+        instructions: 'CI/CD workflows, Docker, release automation'
+      - label: 'upstream-sync'
+        instructions: 'Upstream synchronization and cherry-picks'
+      - label: 'upstream-candidate'
+        instructions: 'Can be contributed back to zereight upstream'
+      - label: 'fork-only'
+        instructions: 'Structured World specific, not for upstream'

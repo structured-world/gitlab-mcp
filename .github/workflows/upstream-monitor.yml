@@ -1,0 +1,70 @@
+# Upstream Monitor — weekly intelligence on zereight/gitlab-mcp
+#
+# This fork is heavily diverged (different version scheme, different feature set,
+# published as @structured-world/gitlab-mcp). It is NEVER auto-merged. This
+# workflow only WATCHES upstream and opens a digest issue when there is new
+# activity, so a human can decide what to cherry-pick / port.
+
+name: Upstream Monitor
+
+on:
+  schedule:
+    - cron: '0 8 * * 1' # weekly, Monday 08:00 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: upstream-monitor
+  cancel-in-progress: false
+
+jobs:
+  digest:
+    name: Upstream digest
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/zereight/gitlab-mcp.git
+          git fetch --no-tags upstream main
+          git fetch upstream 'refs/tags/*:refs/tags/upstream-*' || true
+
+      - name: Generate digest
+        id: digest
+        run: |
+          node scripts/upstream-digest.mjs 7 > digest.json
+          echo "has_activity=$(node -e 'process.stdout.write(String(require("./digest.json").hasActivity))')" >> "$GITHUB_OUTPUT"
+          node -e 'process.stdout.write(require("./digest.json").title)' > digest-title.txt
+          node -e 'process.stdout.write(require("./digest.json").body)' > digest-body.md
+
+      - name: Open digest issue
+        if: steps.digest.outputs.has_activity == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create upstream-digest --color 0e8a16 \
+            --description "Weekly upstream activity digest (monitor-only)" 2>/dev/null || true
+          gh issue create \
+            --title "$(cat digest-title.txt)" \
+            --body-file digest-body.md \
+            --label upstream-digest
+
+      - name: No activity
+        if: steps.digest.outputs.has_activity != 'true'
+        run: echo "No new upstream commits in the last 7 days; no digest issue created."

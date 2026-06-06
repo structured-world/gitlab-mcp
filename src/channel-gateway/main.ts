@@ -12,6 +12,7 @@
  *                 "args": ["dist/src/channel-gateway/main.js"] } } }
  *   launch:     claude --dangerously-load-development-channels server:gitlab-ci
  */
+import { join } from 'node:path';
 import { ChannelGateway } from './gateway';
 
 /** Drop undefined-valued env entries so the child gets a clean string map. */
@@ -22,9 +23,11 @@ function cleanEnv(env: NodeJS.ProcessEnv): Record<string, string> {
 }
 
 async function main(): Promise<void> {
-  const args = (process.env.GATEWAY_DOWNSTREAM_ARGS ?? 'dist/src/main.js stdio')
-    .split(' ')
-    .filter(Boolean);
+  // Resolve the downstream gitlab-mcp relative to this file so the gateway runs
+  // from any working directory (a channel is launched with an arbitrary cwd).
+  const args = process.env.GATEWAY_DOWNSTREAM_ARGS
+    ? process.env.GATEWAY_DOWNSTREAM_ARGS.split(' ').filter(Boolean)
+    : [join(__dirname, '..', 'main.js'), 'stdio'];
 
   const gateway = new ChannelGateway({
     downstreamCommand: process.env.GATEWAY_DOWNSTREAM_COMMAND ?? 'node',

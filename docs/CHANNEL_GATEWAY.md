@@ -43,37 +43,58 @@ exponential backoff; reads (`browse_*` / `get_*` / `list_*`) are retried once
 after a reconnect because they are idempotent, while writes (`manage_*`) are
 never blind-retried to avoid double execution.
 
-## Setup
+## Run Claude Code with the gateway
 
-Build first so `dist/` exists:
+Three steps: build, register the channel, launch Claude Code with it enabled.
+
+### 1. Build
 
 ```bash
 yarn build
 ```
 
-Register the gateway as a channel in `.mcp.json` (project-level or
-`~/.claude.json`):
+This produces `dist/src/channel-gateway/main.js`. The gateway resolves the
+downstream gitlab-mcp relative to itself, so it runs from any working directory;
+you only point Claude Code at this one file.
+
+### 2. Register the channel in `.mcp.json`
+
+Add the gateway to a project-level `.mcp.json` or to `~/.claude.json`. Use an
+absolute path to the built entry point so it resolves regardless of where Claude
+Code is launched:
 
 ```json
 {
   "mcpServers": {
     "gitlab-ci": {
       "command": "node",
-      "args": ["dist/src/channel-gateway/main.js"],
+      "args": ["/absolute/path/to/gitlab-mcp/dist/src/channel-gateway/main.js"],
       "env": {
         "GITLAB_API_URL": "https://gitlab.example.com",
-        "GITLAB_TOKEN": "<token>"
+        "GITLAB_TOKEN": "<token>",
+        "GATEWAY_POLL_MS": "10000"
       }
     }
   }
 }
 ```
 
-Then launch Claude Code with the channel enabled:
+For OAuth deployments, pass the OAuth variables here instead of `GITLAB_TOKEN`
+(the gateway forwards its environment to the downstream gitlab-mcp unchanged).
+
+### 3. Launch Claude Code
 
 ```bash
 claude --dangerously-load-development-channels server:gitlab-ci
 ```
+
+`--dangerously-load-development-channels` is required while custom channels are
+in the Channels research preview; `server:gitlab-ci` matches the key under
+`mcpServers` above. The session now has the full gitlab-mcp tool catalog AND
+receives CI events as they happen.
+
+> Convenience: `yarn channel-gateway` runs the same entry point directly (for a
+> smoke check or to drive it from another launcher).
 
 Events arrive in the session as `<channel source="gitlab-ci" ...>` tags, e.g.:
 

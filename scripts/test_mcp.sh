@@ -41,12 +41,15 @@ if [ "$DEBUG" = "1" ]; then
     echo ""
 fi
 
-# Run MCP and send commands
-node -r source-map-support/register \
-     -r ts-node/register \
-     --experimental-specifier-resolution=node \
-     --experimental-print-required-tla \
-     src/main.ts stdio < "$TEMP_INPUT"
+# Run MCP and send commands.
+# Use the compiled dist build: ts-node cannot resolve the project's .js ESM
+# import specifiers at runtime, so we run the emitted JavaScript instead.
+if [ ! -f dist/src/main.js ]; then
+    echo "dist/src/main.js missing - run 'yarn build' first" >&2
+    rm -f "$TEMP_INPUT"
+    exit 1
+fi
+node dist/src/main.js stdio < "$TEMP_INPUT"
 
 # Remove temp file
 rm -f "$TEMP_INPUT"

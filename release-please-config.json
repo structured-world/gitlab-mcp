@@ -10,8 +10,7 @@
       "components": ["gitlab-mcp-monorepo", "gitlab-mcp", "gitlab-mcp-db"]
     },
     {
-      "type": "node-workspace",
-      "updatePeerDependencies": true
+      "type": "node-workspace"
     }
   ],
   "changelog-sections": [

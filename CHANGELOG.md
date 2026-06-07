@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.0.2](https://github.com/structured-world/gitlab-mcp/compare/v9.0.1...v9.0.2) (2026-06-07)
+
+
+### Bug Fixes
+
+* **release:** restore db package.json after publish ([#514](https://github.com/structured-world/gitlab-mcp/issues/514)) ([beb173c](https://github.com/structured-world/gitlab-mcp/commit/beb173c4ba58b3ba9d9768ffff5be786ae1c1825)), closes [#513](https://github.com/structured-world/gitlab-mcp/issues/513)
+
 ## [9.0.1](https://github.com/structured-world/gitlab-mcp/compare/v9.0.0...v9.0.1) (2026-06-07)
 
 

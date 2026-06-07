@@ -14,7 +14,7 @@
     "prisma:generate": "prisma generate",
     "build": "prisma generate && tsc -p tsconfig.json",
     "test": "jest",
-    "postinstall": "test -f prisma/schema.prisma && prisma generate || true"
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^7.8.0"

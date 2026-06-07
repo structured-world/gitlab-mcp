@@ -76,6 +76,9 @@ jobs:
       - name: Build optional db package
         run: yarn workspace @structured-world/gitlab-mcp-db build
 
+      - name: Run optional db package tests
+        run: yarn workspace @structured-world/gitlab-mcp-db test
+
       - name: Validate TOOLS.md generation
         run: yarn list-tools --export --toc > /dev/null
         working-directory: packages/gitlab-mcp

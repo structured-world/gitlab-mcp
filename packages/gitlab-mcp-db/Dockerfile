@@ -8,7 +8,9 @@
 #   docker build -f packages/gitlab-mcp-db/Dockerfile \
 #     --build-arg CORE_IMAGE=gitlab-mcp:latest -t gitlab-mcp-db .
 
-ARG CORE_IMAGE=gitlab-mcp:latest
+# Required — pass the exact core image to layer on (no mutable `latest` default,
+# so builds stay reproducible). e.g. ghcr.io/structured-world/gitlab-mcp:8.0.0
+ARG CORE_IMAGE
 
 # ============================================================================
 # DB BUILD STAGE - Build the db package and resolve its production deps

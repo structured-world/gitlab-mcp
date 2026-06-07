@@ -34,9 +34,9 @@ cd "$BUNDLE_DIR"
 # Note: we need peer dependencies (zod is required by @modelcontextprotocol/sdk).
 # Core carries no Prisma — the PostgreSQL backend ships separately as
 # @structured-world/gitlab-mcp-db, so this lightweight bundle stays Prisma-free.
-if ! npm install --omit=dev --ignore-scripts 2>/dev/null; then
-  echo "Warning: npm install --omit=dev failed; continuing bundle build" >&2
-fi
+# Fail the build if dependencies can't be resolved — a partial install would
+# produce a broken bundle. set -e (top of script) aborts on a non-zero exit.
+npm install --omit=dev --ignore-scripts
 
 # Remove dev-only tooling that may slip in as a transitive peer
 rm -rf "$BUNDLE_DIR/node_modules/typescript" 2>/dev/null || true
@@ -89,9 +89,13 @@ if [ "$WITH_DB" = "true" ]; then
   cp -r "$DB_DIR/dist" "$DB_MODULE/dist"
   cp -r "$DB_DIR/generated" "$DB_MODULE/generated"
   cp "$DB_DIR/package.json" "$DB_MODULE/package.json"
-  if [ -d "$REPO_ROOT/node_modules/@prisma" ]; then
-    cp -r "$REPO_ROOT/node_modules/@prisma" "$BUNDLE_DIR/node_modules/@prisma"
+  # @prisma/client runtime is required for the full bundle — fail if absent
+  # rather than silently shipping a db package that can't load Prisma.
+  if [ ! -d "$REPO_ROOT/node_modules/@prisma" ]; then
+    echo "Error: @prisma/client not found at $REPO_ROOT/node_modules/@prisma; cannot build the full bundle" >&2
+    exit 1
   fi
+  cp -r "$REPO_ROOT/node_modules/@prisma" "$BUNDLE_DIR/node_modules/@prisma"
   # Strip source maps / declarations the db package does not need at runtime
   find "$DB_MODULE" \( -name "*.js.map" -o -name "*.d.ts" \) -type f -exec rm -f {} + 2>/dev/null || true
   OUTPUT_NAME="gitlab-mcp-db-${VERSION}.mcpb"

@@ -63,7 +63,7 @@ services:
       - PORT=3002
       - HOST=0.0.0.0
       - OAUTH_STORAGE_TYPE=postgresql
-      - DATABASE_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp
+      - OAUTH_STORAGE_POSTGRESQL_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp
       - OAUTH_SESSION_SECRET=${SESSION_SECRET}
       - GITLAB_API_URL=${GITLAB_API_URL:-https://gitlab.com}
       - GITLAB_TOKEN=${GITLAB_TOKEN}

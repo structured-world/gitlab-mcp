@@ -55,7 +55,7 @@ docker run -d --name gitlab-mcp \
   -e HOST=0.0.0.0 \
   -e OAUTH_ENABLED=true \
   -e OAUTH_STORAGE_TYPE=postgresql \
-  -e DATABASE_URL="postgresql://gitlab_mcp:your_secure_password@db-host:5432/gitlab_mcp" \
+  -e OAUTH_STORAGE_POSTGRESQL_URL="postgresql://gitlab_mcp:your_secure_password@db-host:5432/gitlab_mcp" \
   -e OAUTH_SESSION_SECRET="$(openssl rand -hex 32)" \
   -e GITLAB_API_URL=https://gitlab.com \
   -e OAUTH_CLIENT_ID=your_oauth_app_id \
@@ -83,7 +83,7 @@ docker run -d --name gitlab-mcp \
 | `PORT` | Yes | Internal HTTP port |
 | `OAUTH_ENABLED` | Yes | Set to `true` to enable per-user OAuth (required for the database backend) |
 | `OAUTH_STORAGE_TYPE` | Yes | Set to `postgresql` to use the database backend (requires the `gitlab-mcp-db` image) |
-| `DATABASE_URL` | Yes | PostgreSQL connection string (`OAUTH_STORAGE_POSTGRESQL_URL` is also accepted) |
+| `OAUTH_STORAGE_POSTGRESQL_URL` | Yes | PostgreSQL connection string (`DATABASE_URL` is also accepted as a fallback) |
 | `OAUTH_SESSION_SECRET` | Yes | Secret for session encryption |
 | `OAUTH_CLIENT_ID` | Yes | GitLab OAuth Application ID |
 | `OAUTH_CLIENT_SECRET` | No | GitLab OAuth Application Secret (only for confidential apps; PKCE public apps omit it) |
@@ -119,9 +119,9 @@ For high-availability deployments:
 
 ## Security Notes
 
-- Store `DATABASE_URL` and secrets in environment variables, never in docker-compose.yml
+- Store `OAUTH_STORAGE_POSTGRESQL_URL` and secrets in environment variables, never in docker-compose.yml
 - Use a dedicated database user with minimal privileges
-- Enable SSL for the PostgreSQL connection: `?sslmode=require` in DATABASE_URL
+- Enable SSL for the PostgreSQL connection: `?sslmode=require` in the connection string
 - Rotate `OAUTH_SESSION_SECRET` periodically (invalidates existing sessions)
 
 ## See Also

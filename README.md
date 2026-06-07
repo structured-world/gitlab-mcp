@@ -8,6 +8,13 @@ Advanced GitLab MCP server — 58 CQRS tools exposing 230 GitLab operations acro
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 
+## Packages
+
+This is a monorepo with two npm packages:
+
+- **[`@structured-world/gitlab-mcp`](https://www.npmjs.com/package/@structured-world/gitlab-mcp)** — the MCP server. In-memory and file OAuth-session storage, no database dependency. This is all most users need.
+- **[`@structured-world/gitlab-mcp-db`](https://www.npmjs.com/package/@structured-world/gitlab-mcp-db)** — optional PostgreSQL/Prisma OAuth-session backend for running multiple replicas behind a load balancer. Enable it with `OAUTH_STORAGE_TYPE=postgresql`; see the [PostgreSQL deployment guide](https://gitlab-mcp.sw.foundation/deployment/docker-postgres) for the full setup.
+
 ## Quick Start
 
 ```json

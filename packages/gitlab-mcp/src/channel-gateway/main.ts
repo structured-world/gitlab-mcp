@@ -22,6 +22,21 @@ function cleanEnv(env: NodeJS.ProcessEnv): Record<string, string> {
   return out;
 }
 
+/** Smallest poll interval we accept; below this a watch would hammer the API. */
+const MIN_POLL_MS = 1_000;
+const DEFAULT_POLL_MS = 10_000;
+
+/**
+ * Parse GATEWAY_POLL_MS into a sane interval. An unset / non-numeric / out-of-range
+ * value falls back to the default rather than arming a watch with a NaN, zero, or
+ * negative interval (which would busy-loop or never fire).
+ */
+function parsePollMs(raw: string | undefined): number {
+  if (raw === undefined) return DEFAULT_POLL_MS;
+  const n = Number(raw);
+  return Number.isFinite(n) && n >= MIN_POLL_MS ? n : DEFAULT_POLL_MS;
+}
+
 async function main(): Promise<void> {
   // Resolve the downstream gitlab-mcp relative to this file so the gateway runs
   // from any working directory (a channel is launched with an arbitrary cwd).
@@ -33,7 +48,7 @@ async function main(): Promise<void> {
     downstreamCommand: process.env.GATEWAY_DOWNSTREAM_COMMAND ?? 'node',
     downstreamArgs: args,
     downstreamEnv: cleanEnv(process.env),
-    pollMs: Number(process.env.GATEWAY_POLL_MS) || 10_000,
+    pollMs: parsePollMs(process.env.GATEWAY_POLL_MS),
   });
 
   const stop = (): void => {

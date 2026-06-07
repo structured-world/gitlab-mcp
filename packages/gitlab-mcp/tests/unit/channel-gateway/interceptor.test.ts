@@ -177,6 +177,34 @@ describe('Interceptor', () => {
     expect(interceptor.activeWatches).toBe(0);
   });
 
+  it('ends the watch without crashing when a poll fails', async () => {
+    // The arming call succeeds (running pipeline), but the first jobs poll
+    // rejects. The detached watch must drain that error (no unhandled rejection)
+    // and deregister itself rather than tear the process down.
+    const stderr = jest.spyOn(process.stderr, 'write').mockReturnValue(true);
+    const forward = jest.fn((name: string, args: unknown): Promise<unknown> => {
+      const action = (args as { action?: string }).action;
+      if (name === 'browse_pipelines' && action === 'get')
+        return Promise.resolve(mcp({ id: 1397, status: 'running', ref: 'main' }));
+      if (name === 'browse_pipelines' && action === 'jobs')
+        return Promise.reject(new Error('downstream gone'));
+      return Promise.resolve(mcp({}));
+    });
+    const interceptor = new Interceptor({ forward, emit: () => {}, pollMs: 1 });
+
+    await interceptor.handleCall('browse_pipelines', {
+      action: 'get',
+      project_id: '1947',
+      pipeline_id: 1397,
+    });
+    expect(interceptor.activeWatches).toBe(1);
+
+    await tick(); // let the poll fire and reject
+    expect(interceptor.activeWatches).toBe(0); // watch ended on the poll error
+    expect(stderr).toHaveBeenCalledWith(expect.stringContaining('poll error'));
+    stderr.mockRestore();
+  });
+
   it('shutdown cancels active watches', async () => {
     const interceptor = new Interceptor({
       forward: pipelineThenJobs('running'),

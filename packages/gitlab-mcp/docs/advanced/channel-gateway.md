@@ -107,7 +107,7 @@ receives CI events as they happen.
 
 Events arrive in the session as `<channel source="gitlab-ci" ...>` tags, e.g.:
 
-```
+```text
 <channel source="gitlab-ci" pipeline_id="1397" state="success" terminal="true">
 Pipeline #1397 (project test/ci-watch-poc) finished: success. Jobs: build:success test-a:success test-b:success deploy:success
 </channel>
@@ -115,9 +115,11 @@ Pipeline #1397 (project test/ci-watch-poc) finished: success. Jobs: build:succes
 
 ## Configuration
 
-The gateway inherits its environment from its own process and passes it to the
-downstream gitlab-mcp, so the usual gitlab-mcp variables (`GITLAB_TOKEN`,
-`GITLAB_API_URL`, `USE_*` gates, OAuth settings) apply. Gateway-specific knobs:
+The gateway forwards its own environment to the downstream gitlab-mcp (only
+unset values are dropped), so the usual gitlab-mcp variables (`GITLAB_API_URL`,
+`USE_*` gates, and either a static `GITLAB_TOKEN` or the OAuth settings) apply.
+For an OAuth deployment, provide the OAuth variables here instead of a static
+`GITLAB_TOKEN`. Gateway-specific knobs:
 
 | Variable | Default | Purpose |
 |----------|---------|---------|
@@ -129,6 +131,8 @@ downstream gitlab-mcp, so the usual gitlab-mcp variables (`GITLAB_TOKEN`,
 
 - Delivery requires a running session; a dead session is not woken.
 - Custom-channel support is dev-only during the Channels research preview.
-- Watches cover pipelines, single jobs, and deployments. A deployment is
-  re-queried through the project's deployment list (there is no single-deployment
-  read), so a watched deployment is matched by id within that list.
+- Watches cover pipelines and deployments. A single job is not watched on its
+  own (its id is a job id, not a pipeline id); watch its pipeline instead. A
+  deployment is re-queried through the project's deployment list (there is no
+  single-deployment read), so a watched deployment is matched by id within that
+  list.

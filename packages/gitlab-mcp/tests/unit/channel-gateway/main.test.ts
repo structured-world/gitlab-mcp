@@ -17,6 +17,11 @@ const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms)
 
 describe('channel-gateway entry point', () => {
   const origEnv = process.env;
+  // Snapshot the signal listeners that exist BEFORE a test runs (jest's own,
+  // node's) so teardown can remove only the handlers main.ts registered, rather
+  // than wiping the process's signal handlers wholesale.
+  let sigintBefore: ReturnType<typeof process.listeners<'SIGINT'>>;
+  let sigtermBefore: ReturnType<typeof process.listeners<'SIGTERM'>>;
 
   beforeEach(() => {
     jest.clearAllMocks();
@@ -24,12 +29,16 @@ describe('channel-gateway entry point', () => {
     delete process.env.GATEWAY_DOWNSTREAM_ARGS;
     delete process.env.GATEWAY_DOWNSTREAM_COMMAND;
     delete process.env.GATEWAY_POLL_MS;
+    sigintBefore = process.listeners('SIGINT');
+    sigtermBefore = process.listeners('SIGTERM');
   });
 
   afterEach(() => {
     process.env = origEnv;
-    process.removeAllListeners('SIGINT');
-    process.removeAllListeners('SIGTERM');
+    for (const l of process.listeners('SIGINT'))
+      if (!sigintBefore.includes(l)) process.removeListener('SIGINT', l);
+    for (const l of process.listeners('SIGTERM'))
+      if (!sigtermBefore.includes(l)) process.removeListener('SIGTERM', l);
   });
 
   it('launches the gateway with the default downstream and a clean env', async () => {
@@ -65,4 +74,18 @@ describe('channel-gateway entry point', () => {
     expect(cfg.downstreamArgs).toEqual(['server.js', 'stdio']);
     expect(cfg.pollMs).toBe(2500);
   });
+
+  it.each(['abc', '-5', '0', '500', ''])(
+    'falls back to the default poll interval for invalid GATEWAY_POLL_MS=%p',
+    async (raw) => {
+      // NaN / non-positive / sub-minimum values must not arm a busy-looping or
+      // never-firing watch — they fall back to the 10s default.
+      process.env.GATEWAY_POLL_MS = raw;
+      await jest.isolateModulesAsync(async () => {
+        await import('../../../src/channel-gateway/main');
+      });
+      await wait(0);
+      expect(mockGatewayCtor.mock.calls[0][0].pollMs).toBe(10_000);
+    },
+  );
 });

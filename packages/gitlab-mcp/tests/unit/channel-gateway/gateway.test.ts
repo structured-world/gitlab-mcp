@@ -64,6 +64,8 @@ const baseConfig: GatewayConfig = {
 const callTool = (name: string, args: Record<string, unknown> = {}): Promise<unknown> =>
   mockServerHandlers.get(CallToolRequestSchema)!({ params: { name, arguments: args } });
 
+const listTools = (): Promise<unknown> => mockServerHandlers.get(ListToolsRequestSchema)!({});
+
 const wait = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms));
 
 describe('ChannelGateway', () => {
@@ -209,6 +211,59 @@ describe('ChannelGateway', () => {
     const gw = new ChannelGateway({ ...baseConfig, maxQueued: 0 });
     expect(gw).toBeInstanceOf(ChannelGateway);
     await expect(callTool('browse_projects')).rejects.toThrow(/buffer full/);
+  });
+
+  it('routes ListTools through the reconnect policy (not straight to a dead client)', async () => {
+    // Never started -> downstream down. A catalog read must honour the same
+    // bounded buffer as CallTool; with maxQueued 0 it fails the same way rather
+    // than throwing against an unconnected client.
+    const gw = new ChannelGateway({ ...baseConfig, maxQueued: 0 });
+    expect(gw).toBeInstanceOf(ChannelGateway);
+    await expect(listTools()).rejects.toThrow(/buffer full/);
+    expect(mockClientListTools).not.toHaveBeenCalled();
+  });
+
+  it('replays ListTools once the downstream link comes back', async () => {
+    const tools = [{ name: 'browse_projects' }];
+    mockClientListTools.mockResolvedValue({ tools });
+    // Short connect timeout, room to buffer one waiter.
+    const gw = new ChannelGateway({ ...baseConfig, connectTimeoutMs: 500, maxQueued: 5 });
+    const pending = listTools();
+    // Bring the link up after the call has started waiting.
+    await gw.start();
+    await expect(pending).resolves.toEqual({ tools });
+  });
+
+  it('does not revive the link if stop() lands during the connect handshake', async () => {
+    let resolveConnect: () => void = () => {};
+    mockClientConnect.mockImplementation(() => new Promise<void>((r) => (resolveConnect = r)));
+    const gw = new ChannelGateway({ ...baseConfig, connectTimeoutMs: 20, maxQueued: 1 });
+    const started = gw.start(); // hangs on the pending connect
+    await Promise.resolve();
+    await gw.stop(); // closing flips true while connect is still pending
+    resolveConnect(); // connect resolves AFTER stop()
+    await started;
+
+    // The just-opened transport is torn down and the link is never marked live,
+    // so a subsequent call fails rather than running against a revived session.
+    await expect(callTool('browse_projects')).rejects.toThrow();
+    expect(mockTransportClose).toHaveBeenCalled();
+  });
+
+  it('stops cleanly while the downstream connect is backing off', async () => {
+    jest.useFakeTimers();
+    try {
+      mockClientConnect.mockRejectedValue(new Error('refused')); // never connects
+      const gw = new ChannelGateway(baseConfig);
+      const started = gw.start();
+      // Let the first attempt reject and enter the backoff sleep.
+      await Promise.resolve();
+      await gw.stop(); // sets closing; the backoff loop must bail, not spin forever
+      await jest.advanceTimersByTimeAsync(1000);
+      await expect(started).resolves.toBeUndefined();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('rejects calls when the downstream reconnect times out', async () => {

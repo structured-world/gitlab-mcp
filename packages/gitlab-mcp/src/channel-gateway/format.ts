@@ -24,7 +24,7 @@ const DeploymentSchema = z.object({
 export function parseToolResult(result: unknown): unknown {
   if (result && typeof result === 'object' && 'content' in result) {
     const content = (result as { content?: Array<{ type?: string; text?: string }> }).content;
-    const text = content?.find((c) => c.type === 'text')?.text;
+    const text = Array.isArray(content) ? content.find((c) => c.type === 'text')?.text : undefined;
     if (typeof text === 'string') {
       try {
         return JSON.parse(text);
@@ -79,14 +79,19 @@ export function parseDeployments(result: unknown): JobState[] {
 export function formatEvent(event: WatchEvent): { content: string; meta: Record<string, string> } {
   const { target, pipelineState, jobs, transitions, terminal } = event;
   const jobsLine = jobs.map((j) => `${j.name}:${j.status}`).join(' ');
+  // A deployment is watched through the same job machinery, but the channel
+  // message and meta key must name it for what it is, not as a pipeline.
+  const label = target.kind === 'deployment' ? 'Deployment' : 'Pipeline';
+  const idKey = target.kind === 'deployment' ? 'deployment_id' : 'pipeline_id';
   const content = terminal
-    ? `Pipeline #${target.id} (project ${target.projectId}) finished: ${pipelineState}. Jobs: ${jobsLine}`
-    : `Pipeline #${target.id} (project ${target.projectId}) ${transitions
+    ? `${label} #${target.id} (project ${target.projectId}) finished: ${pipelineState}. Jobs: ${jobsLine}`
+    : `${label} #${target.id} (project ${target.projectId}) ${transitions
         .map((t) => `${t.name} ${t.from ?? 'new'}->${t.to}`)
         .join(', ')}. Now: ${jobsLine}`;
   const meta: Record<string, string> = {
-    pipeline_id: String(target.id),
+    [idKey]: String(target.id),
     project_id: target.projectId,
+    kind: target.kind,
     state: pipelineState,
     terminal: String(terminal),
   };

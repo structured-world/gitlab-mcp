@@ -100,7 +100,19 @@ export class ChannelGateway {
 
   private registerHandlers(): void {
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
-      const { tools } = await this.client.listTools();
+      // The catalog read must honour the same reconnect/buffer policy as
+      // CallTool: a ListTools that lands mid-reconnect should wait for the
+      // link (bounded) and replay once, not throw against a dead client.
+      const { tools } = (await forwardWithPolicy(
+        {
+          isRead: () => true, // listing the catalog is an idempotent read
+          isConnected: () => this.connected,
+          waitForConnection: () => this.waitForConnection(),
+          call: () => this.client.listTools(),
+        },
+        'tools/list',
+        undefined,
+      )) as Awaited<ReturnType<Client['listTools']>>;
       return { tools };
     });
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -114,6 +126,8 @@ export class ChannelGateway {
     const maxBackoff = this.config.maxBackoffMs ?? 30_000;
     let backoff = 500;
     for (;;) {
+      // stop() may have landed while we were backing off: don't open a new link.
+      if (this.closing) return;
       try {
         this.transport = new StdioClientTransport({
           command: this.config.downstreamCommand,
@@ -123,6 +137,12 @@ export class ChannelGateway {
         this.transport.onclose = (): void => this.handleDownstreamClose();
         this.client = this.newClient();
         await this.client.connect(this.transport);
+        if (this.closing) {
+          // stop() arrived during the connect handshake: tear the just-opened
+          // link back down instead of reviving a session the caller closed.
+          await this.transport.close().catch(() => {});
+          return;
+        }
         this.connected = true;
         // Only on a reconnect (not the initial connect): announce link restored.
         if (this.reconnecting) this.notifyLink('restored');

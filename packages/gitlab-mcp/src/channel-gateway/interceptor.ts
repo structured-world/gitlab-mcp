@@ -47,6 +47,11 @@ export class Interceptor {
     this.watches = new WatchManager({
       pollJobs: (t) => this.pollJobs(t),
       emit: deps.emit,
+      onError: (t, error) => {
+        process.stderr.write(
+          `[channel-gateway] watch ${WatchManager.key(t)} stopped on poll error: ${String(error)}\n`,
+        );
+      },
     });
   }
 
@@ -87,7 +92,17 @@ export class Interceptor {
     const result = await this.deps.forward(name, args);
     const target = detectWatchable(extractProjectId(args), parseToolResult(result));
     if (target && !this.watches.has(target)) {
-      void this.watches.watch(target, { pollMs: this.pollMs, maxDurationMs: this.maxDurationMs });
+      // Detached: the watch outlives this call. Poll failures are already drained
+      // through onError inside the watch; this .catch is the last-resort net for
+      // anything else (e.g. an emit throwing) so a background watch can never
+      // surface as an unhandled rejection and crash the gateway.
+      this.watches
+        .watch(target, { pollMs: this.pollMs, maxDurationMs: this.maxDurationMs })
+        .catch((error: unknown) => {
+          process.stderr.write(
+            `[channel-gateway] watch ${WatchManager.key(target)} failed: ${String(error)}\n`,
+          );
+        });
     }
     return result;
   }

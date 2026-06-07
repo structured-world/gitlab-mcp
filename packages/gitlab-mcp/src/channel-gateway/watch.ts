@@ -114,11 +114,21 @@ export function detectWatchable(projectId: string, result: unknown): WatchTarget
     const id = r.id;
     const status = r.status;
     if (typeof id === 'number' && typeof status === 'string') {
-      // Deployment carries environment + deployable; job carries stage;
-      // pipeline carries ref/sha/source. Check most-specific first.
-      const kind: CiResourceKind =
-        'environment' in r && 'deployable' in r ? 'deployment' : 'stage' in r ? 'job' : 'pipeline';
-      if (!TERMINAL[kind].has(status)) return { kind, projectId, id };
+      // Only two kinds are re-queryable from an id: a deployment (polled via
+      // its environment's deployments) and a pipeline (polled via its jobs).
+      // A bare job is intentionally NOT watchable here — its id is a job id,
+      // not a pipeline id, and the poller re-queries by pipeline id, so a job
+      // would be polled as if it were a pipeline. Watch the job's pipeline
+      // instead. Requiring pipeline markers (ref/sha/source) also keeps a
+      // generic `{id, status}` object from arming a false-positive watch.
+      const isDeployment = 'environment' in r && 'deployable' in r;
+      const isPipeline = 'ref' in r || 'sha' in r || 'source' in r;
+      const kind: CiResourceKind | null = isDeployment
+        ? 'deployment'
+        : isPipeline
+          ? 'pipeline'
+          : null;
+      if (kind && !TERMINAL[kind].has(status)) return { kind, projectId, id };
     }
   }
   return null;
@@ -130,6 +140,12 @@ export interface WatchDeps {
   pollJobs: (target: WatchTarget) => Promise<JobState[]>;
   /** Deliver an event to the channel. */
   emit: (event: WatchEvent) => void;
+  /**
+   * Sink for a poll failure. A background watch must never reject (it is run
+   * detached), so a failed `pollJobs` ends the watch and is reported here
+   * instead of becoming an unhandled rejection. Defaults to a no-op.
+   */
+  onError?: (target: WatchTarget, error: unknown) => void;
   /** Sleep helper (overridable in tests). */
   sleep?: (ms: number) => Promise<void>;
   /** Clock (overridable in tests). */
@@ -159,6 +175,7 @@ export class WatchManager {
     this.deps = {
       sleep: defaultSleep,
       now: () => Date.now(),
+      onError: () => {},
       ...deps,
     };
   }
@@ -211,7 +228,15 @@ export class WatchManager {
     let prev = new Map<string, string>();
 
     while (!signal.aborted) {
-      const jobs = await this.deps.pollJobs(target);
+      let jobs: JobState[];
+      try {
+        jobs = await this.deps.pollJobs(target);
+      } catch (error) {
+        // A poll failure (downstream lost, transient API error) must not crash
+        // the process via an unhandled rejection — report it and end the watch.
+        this.deps.onError(target, error);
+        return;
+      }
       const pipelineState = aggregateState(jobs);
       const transitions = diffJobs(prev, jobs);
       const terminal = isTerminal(pipelineState);

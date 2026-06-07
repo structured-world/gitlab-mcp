@@ -81,9 +81,18 @@ describe('detectWatchable', () => {
     expect(detectWatchable('1947', r)).toEqual({ kind: 'pipeline', projectId: '1947', id: 1397 });
   });
 
-  it('detects a non-final job by the stage marker', () => {
+  it('does not watch a bare job: its id is a job id, not a pipeline id', () => {
+    // A job carries a stage but no pipeline markers (ref/sha/source). Arming it
+    // would re-query its job id as if it were a pipeline id; the job's pipeline
+    // is watched instead.
     const r = { id: 42, status: 'running', stage: 'test', name: 'test-a' };
-    expect(detectWatchable('1947', r)).toEqual({ kind: 'job', projectId: '1947', id: 42 });
+    expect(detectWatchable('1947', r)).toBeNull();
+  });
+
+  it('does not watch a generic {id,status} lacking pipeline markers', () => {
+    // Guards against a false-positive watch on any object that merely carries a
+    // numeric id and a status string but is not a pipeline (no ref/sha/source).
+    expect(detectWatchable('1947', { id: 99, status: 'running' })).toBeNull();
   });
 
   it('detects a non-final deployment by environment + deployable markers', () => {
@@ -258,5 +267,21 @@ describe('WatchManager', () => {
     });
     await mgr.watch(target, { pollMs: 1 });
     expect(mgr.size).toBe(0);
+  });
+
+  it('ends the watch via onError when a poll rejects, without rejecting', async () => {
+    // A detached background watch must never reject (that would be an unhandled
+    // rejection): a failed poll routes through onError and ends the watch.
+    const errors: unknown[] = [];
+    const mgr = new WatchManager({
+      pollJobs: () => Promise.reject(new Error('downstream gone')),
+      emit: () => {},
+      sleep: () => Promise.resolve(),
+      onError: (_t, e) => errors.push(e),
+    });
+    await expect(mgr.watch(target, { pollMs: 1 })).resolves.toBeUndefined();
+    expect(errors).toHaveLength(1);
+    expect((errors[0] as Error).message).toBe('downstream gone');
+    expect(mgr.size).toBe(0); // deregistered after the failed poll
   });
 });

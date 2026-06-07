@@ -23,6 +23,14 @@ describe('parseToolResult', () => {
   it('passes through a plain object unchanged', () => {
     expect(parseToolResult({ id: 1 })).toEqual({ id: 1 });
   });
+
+  it('passes through when content is present but not an array', () => {
+    // Some results carry a `content` field that is an object/string, not the MCP
+    // content-block array. Probing it with .find() would throw; it must pass
+    // through unchanged instead.
+    expect(parseToolResult({ content: { foo: 'bar' } })).toEqual({ content: { foo: 'bar' } });
+    expect(parseToolResult({ content: 'plain' })).toEqual({ content: 'plain' });
+  });
 });
 
 describe('parseJobs', () => {
@@ -92,6 +100,7 @@ describe('formatEvent', () => {
     expect(meta).toEqual({
       pipeline_id: '1397',
       project_id: 'test/ci-watch-poc',
+      kind: 'pipeline',
       state: 'running',
       terminal: 'false',
     });
@@ -107,6 +116,22 @@ describe('formatEvent', () => {
     expect(content).toContain('finished: success');
     expect(meta.terminal).toBe('true');
     expect(meta.state).toBe('success');
+  });
+
+  it('labels a deployment as a deployment, not a pipeline', () => {
+    // A deployment rides the same job machinery; the message and meta id key must
+    // name it correctly rather than mislabel it "Pipeline #.../pipeline_id".
+    const { content, meta } = formatEvent({
+      ...base,
+      target: { kind: 'deployment', projectId: 'test/ci-watch-poc', id: 7 },
+      pipelineState: 'success',
+      terminal: true,
+      transitions: [],
+    });
+    expect(content).toContain('Deployment #7');
+    expect(content).not.toContain('Pipeline #7');
+    expect(meta).toMatchObject({ deployment_id: '7', kind: 'deployment' });
+    expect(meta).not.toHaveProperty('pipeline_id');
   });
 
   it('only uses identifier meta keys', () => {

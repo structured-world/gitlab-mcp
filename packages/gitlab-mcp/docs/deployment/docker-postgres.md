@@ -11,6 +11,14 @@ head:
 
 Run GitLab MCP with an external PostgreSQL database for OAuth session persistence and multi-instance support.
 
+::: tip PostgreSQL ships in a separate image
+The default `gitlab-mcp` image uses in-memory or file storage and does **not**
+include PostgreSQL (keeping it lightweight). The PostgreSQL backend lives in the
+optional `gitlab-mcp-db` image, layered on top of the core image — it adds the
+Prisma-based backend. Use `ghcr.io/structured-world/gitlab-mcp-db` and set
+`OAUTH_STORAGE_TYPE=postgresql` to enable it.
+:::
+
 ## When to Use
 
 - Production deployments with OAuth
@@ -38,10 +46,14 @@ GRANT ALL PRIVILEGES ON DATABASE gitlab_mcp TO gitlab_mcp;
 
 ### 2. Run the Container
 
+Use the `gitlab-mcp-db` image (it carries the PostgreSQL backend) and set
+`OAUTH_STORAGE_TYPE=postgresql`:
+
 ```bash
 docker run -d --name gitlab-mcp \
   -e PORT=3002 \
   -e HOST=0.0.0.0 \
+  -e OAUTH_STORAGE_TYPE=postgresql \
   -e DATABASE_URL="postgresql://gitlab_mcp:your_secure_password@db-host:5432/gitlab_mcp" \
   -e OAUTH_SESSION_SECRET="$(openssl rand -hex 32)" \
   -e GITLAB_API_URL=https://gitlab.com \
@@ -49,7 +61,7 @@ docker run -d --name gitlab-mcp \
   -e OAUTH_CLIENT_SECRET=your_oauth_app_secret \
   -e OAUTH_REDIRECT_URI=http://localhost:3333/oauth/callback \
   -p 3333:3002 \
-  ghcr.io/structured-world/gitlab-mcp:latest
+  ghcr.io/structured-world/gitlab-mcp-db:latest
 ```
 
 ### 3. Configure Clients
@@ -70,7 +82,8 @@ docker run -d --name gitlab-mcp \
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `PORT` | Yes | Internal HTTP port |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `OAUTH_STORAGE_TYPE` | Yes | Set to `postgresql` to use the database backend (requires the `gitlab-mcp-db` image) |
+| `DATABASE_URL` | Yes | PostgreSQL connection string (`OAUTH_STORAGE_POSTGRESQL_URL` is also accepted) |
 | `OAUTH_SESSION_SECRET` | Yes | Secret for session encryption |
 | `OAUTH_CLIENT_ID` | Yes | GitLab OAuth Application ID |
 | `OAUTH_CLIENT_SECRET` | Yes | GitLab OAuth Application Secret |

@@ -53,13 +53,16 @@ docker compose up -d
 ```yaml
 services:
   gitlab-mcp:
-    image: ghcr.io/structured-world/gitlab-mcp:latest
+    # The gitlab-mcp-db image carries the PostgreSQL backend (layered on the
+    # core gitlab-mcp image). The core image alone has no PostgreSQL support.
+    image: ghcr.io/structured-world/gitlab-mcp-db:latest
     restart: unless-stopped
     ports:
       - "3333:3002"
     environment:
       - PORT=3002
       - HOST=0.0.0.0
+      - OAUTH_STORAGE_TYPE=postgresql
       - DATABASE_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp
       - OAUTH_SESSION_SECRET=${SESSION_SECRET}
       - GITLAB_API_URL=${GITLAB_API_URL:-https://gitlab.com}

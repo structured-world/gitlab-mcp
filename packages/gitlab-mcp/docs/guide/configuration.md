@@ -138,6 +138,27 @@ See [TLS/HTTPS Configuration](/advanced/tls) for detailed setup guides.
 
 See [OAuth Authentication](/security/oauth) for setup guide.
 
+## Session Storage
+
+OAuth sessions can be kept in memory, in a file, or in PostgreSQL.
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `OAUTH_STORAGE_TYPE` | `memory`, `file`, or `postgresql` | `memory` |
+| `OAUTH_STORAGE_FILE_PATH` | Path for `file` storage | `./data/oauth-sessions.json` |
+| `OAUTH_STORAGE_POSTGRESQL_URL` | PostgreSQL connection string (or `DATABASE_URL`) | — |
+
+- **`memory`** (default) — fastest, zero footprint; sessions are lost on restart
+  and not shared between replicas.
+- **`file`** — single-instance persistence across restarts.
+- **`postgresql`** — persistent, multi-instance. Requires the optional
+  `@structured-world/gitlab-mcp-db` package (or the `gitlab-mcp-db` Docker image),
+  which carries the Prisma-based backend. The default `gitlab-mcp` package/image
+  does not include PostgreSQL — selecting `postgresql` without the db package
+  fails with a clear error telling you to install it.
+
+See [Docker + PostgreSQL](/deployment/docker-postgres) for a full deployment.
+
 ## Schema Configuration
 
 | Variable | Description | Default |

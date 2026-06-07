@@ -53,7 +53,7 @@ You MUST select `api` scope for full functionality. Without it, most tools will 
 
 | Scope | Required? | What it enables |
 |-------|-----------|-----------------|
-| `api` | **YES** | All 43 scope-gated tools (projects, MRs, issues, pipelines, etc.) |
+| `api` | **YES** | All scope-gated tools (projects, MRs, issues, pipelines, etc.) |
 | `read_user` | Recommended | User info display, avatar, email |
 | `read_api` | Alternative | Read-only access (use with `GITLAB_READ_ONLY_MODE=true`) |
 | `read_repository` | Optional | File content access (covered by `api`) |

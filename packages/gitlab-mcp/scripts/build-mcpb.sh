@@ -14,14 +14,14 @@ DB_DIR="$REPO_ROOT/packages/gitlab-mcp-db"
 # Select the full variant with MCPB_WITH_DB=true.
 WITH_DB="${MCPB_WITH_DB:-false}"
 
-if [ "$WITH_DB" = "true" ]; then
+if [[ "$WITH_DB" == "true" ]]; then
   echo "Building MCPB bundle v${VERSION} (full, with gitlab-mcp-db)..."
 else
   echo "Building MCPB bundle v${VERSION} (core, lightweight)..."
 fi
 
 # 1. Copy built dist/ to bundle
-if [ ! -d "$PROJECT_DIR/dist" ]; then
+if [[ ! -d "$PROJECT_DIR/dist" ]]; then
   echo "Error: dist/ not found. Run 'yarn build' before building MCPB bundle." >&2
   exit 1
 fi
@@ -47,7 +47,7 @@ ENTITY_COUNT=$(node -e "const fs=require('fs'),p=require('path'),d='$PROJECT_DIR
 sed -e "s/{{VERSION}}/$VERSION/g" -e "s/{{TOOL_COUNT}}/$TOOL_COUNT/g" -e "s/{{ENTITY_COUNT}}/$ENTITY_COUNT/g" "$PROJECT_DIR/mcpb/manifest.json.template" > "$BUNDLE_DIR/manifest.json"
 
 # 5. Copy icon
-if [ -f "$PROJECT_DIR/mcpb/icon.png" ]; then
+if [[ -f "$PROJECT_DIR/mcpb/icon.png" ]]; then
   cp "$PROJECT_DIR/mcpb/icon.png" "$BUNDLE_DIR/icon.png"
 fi
 
@@ -82,7 +82,7 @@ find "$BUNDLE_DIR/dist" -name "*.js.map" -type f -exec rm -f {} + 2>/dev/null ||
 # Installed as a real node module (with its self-contained generated Prisma
 # client) plus @prisma/client runtime, mirroring the layered Docker image.
 OUTPUT_NAME="gitlab-mcp-${VERSION}.mcpb"
-if [ "$WITH_DB" = "true" ]; then
+if [[ "$WITH_DB" == "true" ]]; then
   ( cd "$REPO_ROOT" && yarn workspace @structured-world/gitlab-mcp-db build > /dev/null )
   DB_MODULE="$BUNDLE_DIR/node_modules/@structured-world/gitlab-mcp-db"
   mkdir -p "$DB_MODULE"
@@ -91,7 +91,7 @@ if [ "$WITH_DB" = "true" ]; then
   cp "$DB_DIR/package.json" "$DB_MODULE/package.json"
   # @prisma/client runtime is required for the full bundle — fail if absent
   # rather than silently shipping a db package that can't load Prisma.
-  if [ ! -d "$REPO_ROOT/node_modules/@prisma" ]; then
+  if [[ ! -d "$REPO_ROOT/node_modules/@prisma" ]]; then
     echo "Error: @prisma/client not found at $REPO_ROOT/node_modules/@prisma; cannot build the full bundle" >&2
     exit 1
   fi

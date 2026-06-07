@@ -72,20 +72,24 @@ function writeJsonConfig(configPath: string, config: McpJsonConfig): void {
 }
 
 /**
- * Install to Claude Desktop (JSON config)
+ * Shared install logic for clients configured via a JSON file with an
+ * `mcpServers` map (Claude Desktop, Cursor, Windsurf, Cline, Roo Code). Each
+ * public installer delegates here with its client id and not-available message;
+ * the body is otherwise identical, so it lives in one place.
  */
-export function installClaudeDesktop(
+function installJsonConfigClient(
+  client: InstallableClient,
   serverConfig: McpServerConfig,
-  force: boolean = false,
+  force: boolean,
+  unavailableError: string,
 ): InstallResult {
-  const client: InstallableClient = 'claude-desktop';
   const configPath = getConfigPath(client);
 
   if (!configPath) {
     return {
       client,
       success: false,
-      error: 'Claude Desktop config path not available for this platform',
+      error: unavailableError,
     };
   }
 
@@ -140,6 +144,21 @@ export function installClaudeDesktop(
       error: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+/**
+ * Install to Claude Desktop (JSON config)
+ */
+export function installClaudeDesktop(
+  serverConfig: McpServerConfig,
+  force: boolean = false,
+): InstallResult {
+  return installJsonConfigClient(
+    'claude-desktop',
+    serverConfig,
+    force,
+    'Claude Desktop config path not available for this platform',
+  );
 }
 
 /**
@@ -237,68 +256,12 @@ export function installCursor(
   serverConfig: McpServerConfig,
   force: boolean = false,
 ): InstallResult {
-  const client: InstallableClient = 'cursor';
-  const configPath = getConfigPath(client);
-
-  if (!configPath) {
-    return {
-      client,
-      success: false,
-      error: 'Cursor config path not available for this platform',
-    };
-  }
-
-  const expandedPath = expandPath(configPath);
-
-  try {
-    // Create backup if config exists
-    let backupPath: string | undefined;
-    if (existsSync(expandedPath)) {
-      const backupResult = createBackup({ configPath: expandedPath });
-      if (backupResult.created) {
-        backupPath = backupResult.backupPath;
-      }
-    }
-
-    // Read existing config
-    const config = readJsonConfig(expandedPath);
-    const wasAlreadyConfigured =
-      config.mcpServers?.gitlab !== undefined || config.mcpServers?.['gitlab-mcp'] !== undefined;
-
-    if (wasAlreadyConfigured && !force) {
-      return {
-        client,
-        success: false,
-        error: 'gitlab-mcp is already configured. Use --force to overwrite.',
-        wasAlreadyConfigured: true,
-        configPath: expandedPath,
-      };
-    }
-
-    // Add/update gitlab server
-    config.mcpServers ??= {};
-    config.mcpServers.gitlab = buildServerEntry(serverConfig);
-
-    // Remove old name if exists
-    delete config.mcpServers['gitlab-mcp'];
-
-    // Write config
-    writeJsonConfig(expandedPath, config);
-
-    return {
-      client,
-      success: true,
-      backupPath,
-      configPath: expandedPath,
-      wasAlreadyConfigured,
-    };
-  } catch (error) {
-    return {
-      client,
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  return installJsonConfigClient(
+    'cursor',
+    serverConfig,
+    force,
+    'Cursor config path not available for this platform',
+  );
 }
 
 /**
@@ -380,136 +343,24 @@ export function installWindsurf(
   serverConfig: McpServerConfig,
   force: boolean = false,
 ): InstallResult {
-  const client: InstallableClient = 'windsurf';
-  const configPath = getConfigPath(client);
-
-  if (!configPath) {
-    return {
-      client,
-      success: false,
-      error: 'Windsurf config path not available for this platform',
-    };
-  }
-
-  const expandedPath = expandPath(configPath);
-
-  try {
-    // Create backup if config exists
-    let backupPath: string | undefined;
-    if (existsSync(expandedPath)) {
-      const backupResult = createBackup({ configPath: expandedPath });
-      if (backupResult.created) {
-        backupPath = backupResult.backupPath;
-      }
-    }
-
-    // Read existing config
-    const config = readJsonConfig(expandedPath);
-    const wasAlreadyConfigured =
-      config.mcpServers?.gitlab !== undefined || config.mcpServers?.['gitlab-mcp'] !== undefined;
-
-    if (wasAlreadyConfigured && !force) {
-      return {
-        client,
-        success: false,
-        error: 'gitlab-mcp is already configured. Use --force to overwrite.',
-        wasAlreadyConfigured: true,
-        configPath: expandedPath,
-      };
-    }
-
-    // Add/update gitlab server
-    config.mcpServers ??= {};
-    config.mcpServers.gitlab = buildServerEntry(serverConfig);
-
-    // Remove old name if exists
-    delete config.mcpServers['gitlab-mcp'];
-
-    // Write config
-    writeJsonConfig(expandedPath, config);
-
-    return {
-      client,
-      success: true,
-      backupPath,
-      configPath: expandedPath,
-      wasAlreadyConfigured,
-    };
-  } catch (error) {
-    return {
-      client,
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  return installJsonConfigClient(
+    'windsurf',
+    serverConfig,
+    force,
+    'Windsurf config path not available for this platform',
+  );
 }
 
 /**
  * Install to Cline (JSON config)
  */
 export function installCline(serverConfig: McpServerConfig, force: boolean = false): InstallResult {
-  const client: InstallableClient = 'cline';
-  const configPath = getConfigPath(client);
-
-  if (!configPath) {
-    return {
-      client,
-      success: false,
-      error: 'Cline config path not available for this platform',
-    };
-  }
-
-  const expandedPath = expandPath(configPath);
-
-  try {
-    // Create backup if config exists
-    let backupPath: string | undefined;
-    if (existsSync(expandedPath)) {
-      const backupResult = createBackup({ configPath: expandedPath });
-      if (backupResult.created) {
-        backupPath = backupResult.backupPath;
-      }
-    }
-
-    // Read existing config
-    const config = readJsonConfig(expandedPath);
-    const wasAlreadyConfigured =
-      config.mcpServers?.gitlab !== undefined || config.mcpServers?.['gitlab-mcp'] !== undefined;
-
-    if (wasAlreadyConfigured && !force) {
-      return {
-        client,
-        success: false,
-        error: 'gitlab-mcp is already configured. Use --force to overwrite.',
-        wasAlreadyConfigured: true,
-        configPath: expandedPath,
-      };
-    }
-
-    // Add/update gitlab server
-    config.mcpServers ??= {};
-    config.mcpServers.gitlab = buildServerEntry(serverConfig);
-
-    // Remove old name if exists
-    delete config.mcpServers['gitlab-mcp'];
-
-    // Write config
-    writeJsonConfig(expandedPath, config);
-
-    return {
-      client,
-      success: true,
-      backupPath,
-      configPath: expandedPath,
-      wasAlreadyConfigured,
-    };
-  } catch (error) {
-    return {
-      client,
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  return installJsonConfigClient(
+    'cline',
+    serverConfig,
+    force,
+    'Cline config path not available for this platform',
+  );
 }
 
 /**
@@ -519,68 +370,12 @@ export function installRooCode(
   serverConfig: McpServerConfig,
   force: boolean = false,
 ): InstallResult {
-  const client: InstallableClient = 'roo-code';
-  const configPath = getConfigPath(client);
-
-  if (!configPath) {
-    return {
-      client,
-      success: false,
-      error: 'Roo Code config path not available for this platform',
-    };
-  }
-
-  const expandedPath = expandPath(configPath);
-
-  try {
-    // Create backup if config exists
-    let backupPath: string | undefined;
-    if (existsSync(expandedPath)) {
-      const backupResult = createBackup({ configPath: expandedPath });
-      if (backupResult.created) {
-        backupPath = backupResult.backupPath;
-      }
-    }
-
-    // Read existing config
-    const config = readJsonConfig(expandedPath);
-    const wasAlreadyConfigured =
-      config.mcpServers?.gitlab !== undefined || config.mcpServers?.['gitlab-mcp'] !== undefined;
-
-    if (wasAlreadyConfigured && !force) {
-      return {
-        client,
-        success: false,
-        error: 'gitlab-mcp is already configured. Use --force to overwrite.',
-        wasAlreadyConfigured: true,
-        configPath: expandedPath,
-      };
-    }
-
-    // Add/update gitlab server
-    config.mcpServers ??= {};
-    config.mcpServers.gitlab = buildServerEntry(serverConfig);
-
-    // Remove old name if exists
-    delete config.mcpServers['gitlab-mcp'];
-
-    // Write config
-    writeJsonConfig(expandedPath, config);
-
-    return {
-      client,
-      success: true,
-      backupPath,
-      configPath: expandedPath,
-      wasAlreadyConfigured,
-    };
-  } catch (error) {
-    return {
-      client,
-      success: false,
-      error: error instanceof Error ? error.message : String(error),
-    };
-  }
+  return installJsonConfigClient(
+    'roo-code',
+    serverConfig,
+    force,
+    'Roo Code config path not available for this platform',
+  );
 }
 
 /**

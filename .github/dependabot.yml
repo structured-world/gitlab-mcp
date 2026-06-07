@@ -1,7 +1,10 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
-    directory: "/"
+    directories:
+      - "/"
+      - "/packages/gitlab-mcp"
+      - "/packages/gitlab-mcp-db"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10

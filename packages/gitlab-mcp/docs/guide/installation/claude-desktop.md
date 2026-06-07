@@ -1,0 +1,59 @@
+---
+title: Claude Desktop MCPB Installation
+description: "Install GitLab MCP Server as a Claude Desktop extension with one-click MCPB bundle. Includes token configuration, read-only mode setup, and manual installation alternatives."
+head:
+  - - meta
+    - name: keywords
+      content: claude desktop, mcpb extension, gitlab mcp install, one-click install, mcp configuration
+---
+
+# Claude Desktop MCPB Installation
+
+Install GitLab MCP as a Claude Desktop Extension with one click.
+
+## One-Click Install
+
+Download the latest bundle and open it:
+
+<a href="/downloads/gitlab-mcp-8.0.0.mcpb" class="vp-button brand" download>
+  Download gitlab-mcp-8.0.0.mcpb
+</a>
+
+Or drag-and-drop the `.mcpb` file into your Claude Desktop window.
+
+## What Happens
+
+1. Claude Desktop shows the extension details
+2. You enter your GitLab token and instance URL
+3. The extension installs locally — no external services needed
+4. All 58 tools become available in your Claude conversations
+
+## Configuration
+
+During installation, you'll be prompted for:
+
+| Setting | Required | Description |
+|---------|----------|-------------|
+| GitLab Token | Yes | [Personal Access Token](/guide/authentication#pat) with `api` + `read_user` scopes |
+| GitLab URL | No | Instance URL (default: `https://gitlab.com`) |
+| Read-Only Mode | No | Disable all write operations |
+
+## Manual Installation
+
+If you prefer manual setup, use the [npm method](/guide/installation/npm) or [JSON configuration](/clients/claude-desktop) instead.
+
+## Updating
+
+When a new version is released, download the latest `.mcpb` from the
+<a href="/downloads/gitlab-mcp-8.0.0.mcpb" download>documentation site</a> or the
+[GitHub releases page](https://github.com/structured-world/gitlab-mcp/releases).
+
+## Advanced Configuration
+
+The MCPB bundle exposes three core settings via `user_config`. For advanced environment variables (`GITLAB_DENIED_ACTIONS`, `GITLAB_TOOL_*`, `USE_*` flags), use [manual JSON configuration](/clients/claude-desktop) or see the [Customization guide](/advanced/customization).
+
+## Troubleshooting
+
+- **"Node.js version too old"** — Ensure Claude Desktop is updated to the latest version
+- **Extension doesn't appear** — Restart Claude Desktop after installation
+- **Token errors** — Verify your token has `api` and `read_user` scopes

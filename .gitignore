@@ -55,3 +55,6 @@ docs/public/llms.txt
 # VitePress
 docs/.vitepress/dist
 docs/.vitepress/cache
+generated
+builds/
+.nx/

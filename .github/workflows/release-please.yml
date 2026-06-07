@@ -141,13 +141,12 @@ jobs:
           # Plain `npm publish` (used for OIDC provenance) does not understand the
           # workspace: protocol, so it would otherwise ship an invalid range.
           jq --arg v "^${VERSION}" '
-            def resolve_ws:
-              if . then with_entries(
-                if (.value | type == "string") and (.value | startswith("workspace:"))
-                then .value = $v else . end) else . end;
-            .dependencies |= resolve_ws
-            | .devDependencies |= resolve_ws
-            | .peerDependencies |= resolve_ws
+            def resolve_ws: with_entries(
+              if (.value | type == "string") and (.value | startswith("workspace:"))
+              then .value = $v else . end);
+            (if (.dependencies | type) == "object" then .dependencies |= resolve_ws else . end)
+            | (if (.devDependencies | type) == "object" then .devDependencies |= resolve_ws else . end)
+            | (if (.peerDependencies | type) == "object" then .peerDependencies |= resolve_ws else . end)
           ' package.json > package.json.tmp && mv package.json.tmp package.json
           npm publish --provenance --access public
 

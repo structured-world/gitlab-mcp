@@ -200,6 +200,31 @@ describe('install installers', () => {
       );
     });
 
+    it('should fail when the claude CLI command is not configured', async () => {
+      // Guard branch: CLIENT_METADATA['claude-code'].cliCommand is normally set,
+      // so override it via an isolated module to exercise the not-configured path.
+      await jest.isolateModulesAsync(async () => {
+        jest.doMock('../../../../src/cli/install/types', () => {
+          const actual = jest.requireActual<typeof import('../../../../src/cli/install/types')>(
+            '../../../../src/cli/install/types',
+          );
+          return {
+            ...actual,
+            CLIENT_METADATA: {
+              ...actual.CLIENT_METADATA,
+              'claude-code': { ...actual.CLIENT_METADATA['claude-code'], cliCommand: undefined },
+            },
+          };
+        });
+        const isolated = await import('../../../../src/cli/install/installers');
+        const result = isolated.installToClient('claude-code', mockServerConfig);
+
+        expect(result.success).toBe(false);
+        expect(result.error).toBe('Claude Code CLI command not configured');
+        expect(mockChildProcess.spawnSync).not.toHaveBeenCalled();
+      });
+    });
+
     it('should fail if claude command fails', () => {
       mockChildProcess.spawnSync.mockReturnValue({
         status: 1,

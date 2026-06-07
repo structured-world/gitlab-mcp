@@ -39,6 +39,7 @@ jobs:
 
       - name: Run ESLint
         run: yarn lint
+        working-directory: packages/gitlab-mcp
 
   # Conventional commits validation
   commits:
@@ -80,17 +81,16 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: yarn prisma generate
-
-      - name: Build project
+      - name: Build all packages
         run: yarn build
 
       - name: Run tests
         run: yarn test
+        working-directory: packages/gitlab-mcp
 
       - name: Type check
         run: yarn tsc --noEmit
+        working-directory: packages/gitlab-mcp
 
   # Coverage report - only on Node 22
   coverage:
@@ -116,20 +116,18 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: yarn prisma generate
-
-      - name: Build project
+      - name: Build all packages
         run: yarn build
 
       - name: Run tests with coverage
         run: yarn test:cov
+        working-directory: packages/gitlab-mcp
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage/lcov.info
+          files: ./packages/gitlab-mcp/coverage/lcov.info
           fail_ci_if_error: false
 
   # Code quality checks

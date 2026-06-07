@@ -55,17 +55,27 @@ jq --arg v "$VERSION" --arg tc "$TOOL_COUNT" \
   '.version = $v | .packages[0].version = $v | .description = "GitLab MCP server with " + $tc + " tools for projects, MRs, pipelines, and more"' \
   server.json > server.tmp && mv server.tmp server.json
 
-# Generate README.md from template (replaces fragile regex patterns)
+# Generate README.md from the template for each location it ships to. __REPO_BASE__
+# is substituted with the path from that README's directory to the repo root, so the
+# repo-relative links (LICENSE, CONTRIBUTING, assets) resolve from every location:
+#   packages/gitlab-mcp/README.md (npm package page) -> base ../..
+#   <repo root>/README.md          (GitHub repo page) -> base .
 if [[ ! -f "README.md.in" ]]; then
   echo "ERROR: README.md.in not found" >&2
   exit 1
 fi
-sed -e "s/__TOOL_COUNT__/${TOOL_COUNT}/g" \
-    -e "s/__ACTION_COUNT__/${ACTION_COUNT}/g" \
-    -e "s/__ENTITY_COUNT__/${ENTITY_COUNT}/g" \
-    -e "s/__READONLY_TOOL_COUNT__/${READONLY_TOOL_COUNT}/g" \
-    -e "s/__VERSION__/${VERSION}/g" \
-    README.md.in > README.md
+render_readme() {
+  # $1 = output path, $2 = relative path from that README's directory to the repo root
+  sed -e "s/__TOOL_COUNT__/${TOOL_COUNT}/g" \
+      -e "s/__ACTION_COUNT__/${ACTION_COUNT}/g" \
+      -e "s/__ENTITY_COUNT__/${ENTITY_COUNT}/g" \
+      -e "s/__READONLY_TOOL_COUNT__/${READONLY_TOOL_COUNT}/g" \
+      -e "s/__VERSION__/${VERSION}/g" \
+      -e "s|__REPO_BASE__|$2|g" \
+      README.md.in > "$1"
+}
+render_readme README.md ../..
+render_readme ../../README.md .
 
 # Update MCP manifest tools list in package.json
 # Uses the list-tools CLI to get full tool definitions and transforms them for manifest

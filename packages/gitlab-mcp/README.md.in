@@ -1,6 +1,6 @@
 # Advanced GitLab MCP server
 
-[![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage](https://codecov.io/gh/structured-world/gitlab-mcp/graph/badge.svg)](https://codecov.io/gh/structured-world/gitlab-mcp) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://gitlab-mcp.sw.foundation/coverage/)
+[![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](__REPO_BASE__/LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage](https://codecov.io/gh/structured-world/gitlab-mcp/graph/badge.svg)](https://codecov.io/gh/structured-world/gitlab-mcp) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://gitlab-mcp.sw.foundation/coverage/)
 
 Advanced GitLab MCP server — __TOOL_COUNT__ CQRS tools exposing __ACTION_COUNT__ GitLab operations across __ENTITY_COUNT__ entity types. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, so the agent sees only what the connected instance actually supports.
 
@@ -154,13 +154,13 @@ The server handles GitLab connectivity issues gracefully:
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and PR guidelines.
+See [CONTRIBUTING.md](__REPO_BASE__/CONTRIBUTING.md) for development setup, testing, and PR guidelines.
 
 ## Support the Project
 
 <div align="center">
 
-![USDT TRC-20 Donation QR Code](assets/usdt-qr.svg)
+![USDT TRC-20 Donation QR Code](__REPO_BASE__/packages/gitlab-mcp/assets/usdt-qr.svg)
 
 USDT (TRC-20): `TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA`
 
@@ -168,6 +168,6 @@ USDT (TRC-20): `TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA`
 
 ## License
 
-Apache License 2.0 — see [LICENSE](LICENSE) for details.
+Apache License 2.0 — see [LICENSE](__REPO_BASE__/LICENSE) for details.
 
-Based on [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp) (MIT). See [LICENSE.MIT](LICENSE.MIT).
+Based on [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp) (MIT). See [LICENSE.MIT](__REPO_BASE__/LICENSE.MIT).

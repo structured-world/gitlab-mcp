@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.0.2](https://github.com/structured-world/gitlab-mcp/compare/v9.0.1...v9.0.2) (2026-06-07)
+
+
+### Bug Fixes
+
+* **release:** restore db package.json after publish ([#514](https://github.com/structured-world/gitlab-mcp/issues/514)) ([beb173c](https://github.com/structured-world/gitlab-mcp/commit/beb173c4ba58b3ba9d9768ffff5be786ae1c1825)), closes [#513](https://github.com/structured-world/gitlab-mcp/issues/513)
+
+## [9.0.1](https://github.com/structured-world/gitlab-mcp/compare/v9.0.0...v9.0.1) (2026-06-07)
+
+
+### Bug Fixes
+
+* **db:** add repository field for npm provenance ([#507](https://github.com/structured-world/gitlab-mcp/issues/507)) ([bc52381](https://github.com/structured-world/gitlab-mcp/commit/bc52381b861b45cf2cc19ed8662c99293289ed05)), closes [#506](https://github.com/structured-world/gitlab-mcp/issues/506)
+* **release:** resolve workspace: deps before publishing db to npm ([#512](https://github.com/structured-world/gitlab-mcp/issues/512)) ([946652b](https://github.com/structured-world/gitlab-mcp/commit/946652bac837043d54bb41fbe09882aee9a8191c))
+
 ## [9.0.0](https://github.com/structured-world/gitlab-mcp/compare/v8.0.0...v9.0.0) (2026-06-07)
 
 

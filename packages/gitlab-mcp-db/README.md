@@ -1,10 +1,10 @@
 # Advanced GitLab MCP server
 
-[![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](__REPO_BASE__/LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage](https://codecov.io/gh/structured-world/gitlab-mcp/graph/badge.svg)](https://codecov.io/gh/structured-world/gitlab-mcp) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://gitlab-mcp.sw.foundation/coverage/)
+[![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](../../LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage](https://codecov.io/gh/structured-world/gitlab-mcp/graph/badge.svg)](https://codecov.io/gh/structured-world/gitlab-mcp) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://gitlab-mcp.sw.foundation/coverage/)
 
-Advanced GitLab MCP server — __TOOL_COUNT__ CQRS tools exposing __ACTION_COUNT__ GitLab operations across __ENTITY_COUNT__ entity types. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, so the agent sees only what the connected instance actually supports.
+Advanced GitLab MCP server — 58 CQRS tools exposing 230 GitLab operations across 26 entity types. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, so the agent sees only what the connected instance actually supports.
 
-[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-__VERSION__.mcpb)
+[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-9.0.0.mcpb)
 [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 [![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
 
@@ -36,7 +36,7 @@ This is a monorepo with two npm packages:
 
 ## Highlights
 
-- **__TOOL_COUNT__ tools** across __ENTITY_COUNT__ entity types — projects, merge requests, pipelines, work items, wiki, and more
+- **58 tools** across 26 entity types — projects, merge requests, pipelines, work items, wiki, and more
 - **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
 - **Connection resilience** — Bounded startup, auto-reconnect with exponential backoff, disconnected mode when GitLab is unreachable
 - **Multi-instance support** — Connect to GitLab.com, self-managed, and self-hosted instances with per-instance OAuth and rate limiting
@@ -51,8 +51,8 @@ This is a monorepo with two npm packages:
 
 GitLab exposes hundreds of API operations. Giving each its own MCP tool floods an
 agent's context; a thin API wrapper pushes that complexity back onto the agent. This
-server takes a third path: __TOOL_COUNT__ CQRS tools, each holding several typed
-actions, expose __ACTION_COUNT__ operations across __ENTITY_COUNT__ entity types.
+server takes a third path: 58 CQRS tools, each holding several typed
+actions, expose 230 operations across 26 entity types.
 
 - `browse_*` tools are read-only queries; `manage_*` tools are writes.
 - Sub-resources fold into actions rather than new tools — `browse_pipelines` covers
@@ -77,7 +77,7 @@ Full documentation is available at **[gitlab-mcp.sw.foundation](https://gitlab-m
 | [Installation](https://gitlab-mcp.sw.foundation/guide/installation/npm) | npm, Docker, VS Code, Codex |
 | [Configuration](https://gitlab-mcp.sw.foundation/guide/configuration) | Environment variables, feature flags |
 | [Multi-Instance](https://gitlab-mcp.sw.foundation/guide/multi-instance) | Connect to multiple GitLab instances |
-| [Tool Reference](https://gitlab-mcp.sw.foundation/tools/) | All __TOOL_COUNT__ tools with parameters |
+| [Tool Reference](https://gitlab-mcp.sw.foundation/tools/) | All 58 tools with parameters |
 | [OAuth Setup](https://gitlab-mcp.sw.foundation/security/oauth) | Team authentication with Claude |
 | [TLS/HTTPS](https://gitlab-mcp.sw.foundation/advanced/tls) | Production deployment with SSL |
 | [Customization](https://gitlab-mcp.sw.foundation/advanced/customization) | Tool descriptions, action filtering |
@@ -161,13 +161,13 @@ The server handles GitLab connectivity issues gracefully:
 
 ## Contributing
 
-See [CONTRIBUTING.md](__REPO_BASE__/CONTRIBUTING.md) for development setup, testing, and PR guidelines.
+See [CONTRIBUTING.md](../../CONTRIBUTING.md) for development setup, testing, and PR guidelines.
 
 ## Support the Project
 
 <div align="center">
 
-![USDT TRC-20 Donation QR Code](__REPO_BASE__/packages/gitlab-mcp/assets/usdt-qr.svg)
+![USDT TRC-20 Donation QR Code](../../packages/gitlab-mcp/assets/usdt-qr.svg)
 
 USDT (TRC-20): `TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA`
 
@@ -175,6 +175,6 @@ USDT (TRC-20): `TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA`
 
 ## License
 
-Apache License 2.0 — see [LICENSE](__REPO_BASE__/LICENSE) for details.
+Apache License 2.0 — see [LICENSE](../../LICENSE) for details.
 
-Based on [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp) (MIT). See [LICENSE.MIT](__REPO_BASE__/LICENSE.MIT).
+Based on [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp) (MIT). See [LICENSE.MIT](../../LICENSE.MIT).

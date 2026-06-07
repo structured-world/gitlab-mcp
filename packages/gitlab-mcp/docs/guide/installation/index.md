@@ -33,6 +33,16 @@ See [Setup Wizard](/guide/installation/wizard) for a detailed walkthrough.
 | [Codex](/guide/installation/codex) | OpenAI Codex CLI users | Direct integration |
 | [Manual](/guide/installation/manual) | Custom setups, advanced users | Full control |
 
+## Optional: PostgreSQL session backend
+
+The server ships as two npm packages. The core `@structured-world/gitlab-mcp` package
+(installed above) uses in-memory or file OAuth-session storage and needs no database.
+For multiple replicas behind a load balancer, the optional
+[`@structured-world/gitlab-mcp-db`](https://www.npmjs.com/package/@structured-world/gitlab-mcp-db)
+package persists OAuth sessions in PostgreSQL — enable it with
+`OAUTH_STORAGE_TYPE=postgresql`. See the
+[PostgreSQL deployment guide](/deployment/docker-postgres) for setup.
+
 ## Prerequisites
 
 - **Node.js >= 24.0.0** (for npm/npx methods)

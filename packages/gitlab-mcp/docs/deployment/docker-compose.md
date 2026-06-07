@@ -62,11 +62,17 @@ services:
     environment:
       - PORT=3002
       - HOST=0.0.0.0
-      - OAUTH_STORAGE_TYPE=postgresql
-      - DATABASE_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp
+      # The PostgreSQL backend persists OAuth sessions, so this bundle runs in
+      # OAuth mode (per-user auth) — not static-token mode. Register a GitLab
+      # OAuth application and set OAUTH_CLIENT_ID; see the OAuth guide linked below.
+      - OAUTH_ENABLED=true
+      - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
+      # Only needed for confidential OAuth apps; harmless (empty) for PKCE public apps.
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
       - OAUTH_SESSION_SECRET=${SESSION_SECRET}
+      - OAUTH_STORAGE_TYPE=postgresql
+      - OAUTH_STORAGE_POSTGRESQL_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp
       - GITLAB_API_URL=${GITLAB_API_URL:-https://gitlab.com}
-      - GITLAB_TOKEN=${GITLAB_TOKEN}
     depends_on:
       postgres:
         condition: service_healthy
@@ -98,15 +104,11 @@ Create a `.env` file alongside docker-compose.yml:
 # Required
 POSTGRES_PASSWORD=your_secure_database_password
 SESSION_SECRET=your_64_char_hex_secret
-GITLAB_TOKEN=glpat-xxxxxxxxxxxxxxxxxxxx
+OAUTH_CLIENT_ID=your_gitlab_oauth_app_id
 
 # Optional
 GITLAB_API_URL=https://gitlab.com
-
-# OAuth (optional)
-OAUTH_CLIENT_ID=your_app_id
-OAUTH_CLIENT_SECRET=your_app_secret
-OAUTH_REDIRECT_URI=http://localhost:3333/oauth/callback
+OAUTH_CLIENT_SECRET=your_app_secret   # only for confidential OAuth apps; PKCE public apps omit it
 ```
 
 Generate a session secret:
@@ -114,6 +116,14 @@ Generate a session secret:
 ```bash
 openssl rand -hex 32
 ```
+
+::: tip OAuth setup
+This bundle authenticates each user with their own GitLab identity and stores their
+sessions in PostgreSQL. Register a GitLab OAuth application to get `OAUTH_CLIENT_ID`,
+and serve the server over HTTPS in production — see
+[OAuth Authentication](/security/oauth) for the full walkthrough. For a single static
+token without a database, use [Docker standalone](/deployment/docker-standalone) instead.
+:::
 
 ## Management
 

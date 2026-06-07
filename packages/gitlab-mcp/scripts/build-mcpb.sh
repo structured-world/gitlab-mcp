@@ -5,8 +5,20 @@ VERSION="${1:-$(node -p "require('./package.json').version")}"
 BUNDLE_DIR="$(mktemp -d)"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+REPO_ROOT="$(cd "$PROJECT_DIR/../.." && pwd)"
+DB_DIR="$REPO_ROOT/packages/gitlab-mcp-db"
 
-echo "Building MCPB bundle v${VERSION}..."
+# Two publishable variants, same server, different footprint:
+#   core (default) -> gitlab-mcp-<v>.mcpb        (lightweight, no Prisma)
+#   full           -> gitlab-mcp-db-<v>.mcpb     (bundles the optional db backend)
+# Select the full variant with MCPB_WITH_DB=true.
+WITH_DB="${MCPB_WITH_DB:-false}"
+
+if [ "$WITH_DB" = "true" ]; then
+  echo "Building MCPB bundle v${VERSION} (full, with gitlab-mcp-db)..."
+else
+  echo "Building MCPB bundle v${VERSION} (core, lightweight)..."
+fi
 
 # 1. Copy built dist/ to bundle
 if [ ! -d "$PROJECT_DIR/dist" ]; then
@@ -66,8 +78,27 @@ find "$BUNDLE_DIR/node_modules" -name "doc" -type d ! -path "*/yaml/*" -exec rm 
 rm -f "$BUNDLE_DIR/dist/tsconfig.build.tsbuildinfo"
 find "$BUNDLE_DIR/dist" -name "*.js.map" -type f -exec rm -f {} + 2>/dev/null || true
 
+# 6b. Full variant: add the optional db backend so core can lazily load it.
+# Installed as a real node module (with its self-contained generated Prisma
+# client) plus @prisma/client runtime, mirroring the layered Docker image.
+OUTPUT_NAME="gitlab-mcp-${VERSION}.mcpb"
+if [ "$WITH_DB" = "true" ]; then
+  ( cd "$REPO_ROOT" && yarn workspace @structured-world/gitlab-mcp-db build > /dev/null )
+  DB_MODULE="$BUNDLE_DIR/node_modules/@structured-world/gitlab-mcp-db"
+  mkdir -p "$DB_MODULE"
+  cp -r "$DB_DIR/dist" "$DB_MODULE/dist"
+  cp -r "$DB_DIR/generated" "$DB_MODULE/generated"
+  cp "$DB_DIR/package.json" "$DB_MODULE/package.json"
+  if [ -d "$REPO_ROOT/node_modules/@prisma" ]; then
+    cp -r "$REPO_ROOT/node_modules/@prisma" "$BUNDLE_DIR/node_modules/@prisma"
+  fi
+  # Strip source maps / declarations the db package does not need at runtime
+  find "$DB_MODULE" \( -name "*.js.map" -o -name "*.d.ts" \) -type f -exec rm -f {} + 2>/dev/null || true
+  OUTPUT_NAME="gitlab-mcp-db-${VERSION}.mcpb"
+fi
+
 # 7. Create .mcpb (ZIP archive)
-OUTPUT="$PROJECT_DIR/gitlab-mcp-${VERSION}.mcpb"
+OUTPUT="$PROJECT_DIR/$OUTPUT_NAME"
 cd "$BUNDLE_DIR"
 zip -r "$OUTPUT" . -x "*.DS_Store" > /dev/null
 

@@ -18,22 +18,16 @@ cp -r "$PROJECT_DIR/dist" "$BUNDLE_DIR/dist"
 # 2. Install production dependencies into bundle
 cp "$PROJECT_DIR/package.json" "$BUNDLE_DIR/"
 cd "$BUNDLE_DIR"
-# Use npm for production install (simpler for bundling, no yarn PnP)
-# Note: We need peer dependencies (zod is required by @modelcontextprotocol/sdk)
-# but we skip optional peer deps to avoid large packages like prisma CLI
+# Use npm for production install (simpler for bundling, no yarn PnP).
+# Note: we need peer dependencies (zod is required by @modelcontextprotocol/sdk).
+# Core carries no Prisma — the PostgreSQL backend ships separately as
+# @structured-world/gitlab-mcp-db, so this lightweight bundle stays Prisma-free.
 if ! npm install --omit=dev --ignore-scripts 2>/dev/null; then
   echo "Warning: npm install --omit=dev failed; continuing bundle build" >&2
 fi
 
-# Remove optional peer dependencies that are not needed at runtime
-# (prisma CLI is only needed for migrations, not runtime)
-rm -rf "$BUNDLE_DIR/node_modules/prisma" 2>/dev/null || true
+# Remove dev-only tooling that may slip in as a transitive peer
 rm -rf "$BUNDLE_DIR/node_modules/typescript" 2>/dev/null || true
-
-# 3. Copy prisma schema (needed for runtime migrations)
-if [ -d "$PROJECT_DIR/prisma" ]; then
-  cp -r "$PROJECT_DIR/prisma" "$BUNDLE_DIR/prisma"
-fi
 
 # 4. Generate manifest from template
 TOOL_COUNT=$(node -e "const r=require('$PROJECT_DIR/dist/src/registry-manager.js');console.log(r.RegistryManager.getInstance().getAllToolDefinitionsUnfiltered().length)" 2>/dev/null || echo 44)

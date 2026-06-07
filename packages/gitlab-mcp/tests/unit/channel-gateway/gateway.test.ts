@@ -169,6 +169,25 @@ describe('ChannelGateway', () => {
     expect(mockClientConnect).toHaveBeenCalledTimes(2);
   });
 
+  it('emits link-health channel events on link loss and restore', async () => {
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    mockServerNotification.mockClear();
+
+    mockTransportInstance.onclose!(); // link lost -> reconnect (mock connect resolves) -> restored
+    await wait(10);
+
+    const linkStates = mockServerNotification.mock.calls
+      .map(
+        ([msg]: [{ method: string; params?: { meta?: { kind?: string; state?: string } } }]) => msg,
+      )
+      .filter((m) => m.method === 'notifications/claude/channel' && m.params?.meta?.kind === 'link')
+      .map((m) => m.params!.meta!.state);
+    expect(linkStates).toEqual(['lost', 'restored']);
+
+    await gw.stop();
+  });
+
   it('retries the downstream connection with backoff', async () => {
     jest.useFakeTimers();
     try {

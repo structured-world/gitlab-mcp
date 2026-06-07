@@ -124,6 +124,8 @@ export class ChannelGateway {
         this.client = this.newClient();
         await this.client.connect(this.transport);
         this.connected = true;
+        // Only on a reconnect (not the initial connect): announce link restored.
+        if (this.reconnecting) this.notifyLink('restored');
         return;
       } catch {
         if (this.closing) return;
@@ -137,6 +139,9 @@ export class ChannelGateway {
     this.connected = false;
     if (this.closing || this.reconnecting) return;
     this.reconnecting = true;
+    // Link health as a signal: tell the session the downstream dropped so the
+    // agent knows in-flight reads will retry and writes will surface errors.
+    this.notifyLink('lost');
     void this.connectDownstream().finally(() => {
       this.reconnecting = false;
     });
@@ -193,6 +198,18 @@ export class ChannelGateway {
     const { content, meta } = formatEvent(event);
     // Custom Channels method, carried by the SDK's open notification shape.
     void this.server.notification({ method: CHANNEL_NOTIFICATION, params: { content, meta } });
+  }
+
+  /** Push a downstream link-health change into the session as a <channel> event. */
+  private notifyLink(state: 'lost' | 'restored'): void {
+    const content =
+      state === 'lost'
+        ? 'gitlab-mcp link lost - reconnecting; reads will retry, writes will surface errors'
+        : 'gitlab-mcp link restored';
+    void this.server.notification({
+      method: CHANNEL_NOTIFICATION,
+      params: { content, meta: { kind: 'link', state } },
+    });
   }
 
   private sleep(ms: number): Promise<void> {

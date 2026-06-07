@@ -53,7 +53,7 @@ You MUST select `api` scope for full functionality. Without it, most tools will 
 
 | Scope | Required? | What it enables |
 |-------|-----------|-----------------|
-| `api` | **YES** | All 43 scope-gated tools (projects, MRs, issues, pipelines, etc.) |
+| `api` | **YES** | All __TOOL_COUNT__ scope-gated tools (projects, MRs, issues, pipelines, etc.) |
 | `read_user` | Recommended | User info display, avatar, email |
 | `read_api` | Alternative | Read-only access (use with `GITLAB_READ_ONLY_MODE=true`) |
 | `read_repository` | Optional | File content access (covered by `api`) |
@@ -64,7 +64,7 @@ You MUST select `api` scope for full functionality. Without it, most tools will 
 **Minimum for read-only:** `read_api` + `read_user`
 
 ::: warning Common mistake
-Selecting only `read_user` gives access to just 2 of 43 tools (user search and events only).
+Selecting only `read_user` gives access to just 2 of __TOOL_COUNT__ tools (user search and events only).
 GraphQL API is completely blocked without `api` or `read_api`.
 :::
 
@@ -108,7 +108,7 @@ With full access (`api` + `read_user`):
 
 With limited access (`read_user` only):
 ```
-[INFO] Token "gitlab-mcp" has limited scopes - 2 of 43 scope-gated tools available
+[INFO] Token "gitlab-mcp" has limited scopes - 2 of __TOOL_COUNT__ scope-gated tools available
 [INFO] GraphQL introspection skipped (requires 'api' or 'read_api' scope)
 [INFO] For full functionality, create a token with 'api' scope:
        https://gitlab.com/-/user_settings/personal_access_tokens?name=gitlab-mcp&scopes=api%2Cread_user
@@ -157,7 +157,7 @@ Click **Save application** and copy the **Application ID**.
 # Required
 OAUTH_ENABLED=true
 OAUTH_SESSION_SECRET=$(openssl rand -base64 32)
-GITLAB_OAUTH_CLIENT_ID=your-application-id
+OAUTH_CLIENT_ID=your-application-id
 GITLAB_API_URL=https://gitlab.com
 
 # Server
@@ -172,7 +172,7 @@ HOST=0.0.0.0
 docker run -d --name gitlab-mcp \
   -e OAUTH_ENABLED=true \
   -e OAUTH_SESSION_SECRET="$(openssl rand -base64 32)" \
-  -e GITLAB_OAUTH_CLIENT_ID=your-app-id \
+  -e OAUTH_CLIENT_ID=your-app-id \
   -e GITLAB_API_URL=https://gitlab.com \
   -e PORT=3333 \
   -p 3333:3333 \
@@ -203,7 +203,7 @@ See [OAuth details](/security/oauth) for full flow documentation.
 
 Your token is missing `api` or `read_api` scope. The server will show which scopes are detected:
 ```
-[INFO] Token "mcp" has limited scopes - 2 of 43 scope-gated tools available
+[INFO] Token "mcp" has limited scopes - 2 of __TOOL_COUNT__ scope-gated tools available
 [INFO] GraphQL introspection skipped (requires 'api' or 'read_api' scope)
 ```
 

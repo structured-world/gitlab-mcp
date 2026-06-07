@@ -2,7 +2,7 @@
  * OAuth Configuration for gitlab-mcp
  *
  * Handles OAuth mode detection and configuration validation.
- * Uses Zod for runtime validation per CLAUDE.md standards.
+ * Uses Zod for runtime validation of external (env-sourced) configuration.
  */
 
 import { z } from 'zod';
@@ -18,7 +18,7 @@ const OAuthConfigSchema = z.object({
   /** Secret for signing MCP JWT tokens (minimum 32 characters) */
   sessionSecret: z.string().min(32, 'OAUTH_SESSION_SECRET must be at least 32 characters'),
   /** GitLab OAuth application client ID */
-  gitlabClientId: z.string().min(1, 'GITLAB_OAUTH_CLIENT_ID is required'),
+  gitlabClientId: z.string().min(1, 'OAUTH_CLIENT_ID is required'),
   /** GitLab OAuth application client secret (optional, for confidential apps) */
   gitlabClientSecret: z.string().optional(),
   /** OAuth scopes to request from GitLab */
@@ -64,13 +64,13 @@ export function loadOAuthConfig(): OAuthConfig | null {
     return null;
   }
 
-  // Use safeParse per CLAUDE.md Zod standards
+  // safeParse (not parse) so invalid config surfaces as a handled error path
   const result = OAuthConfigSchema.safeParse({
     enabled: true as const,
     sessionSecret: process.env.OAUTH_SESSION_SECRET,
-    gitlabClientId: process.env.GITLAB_OAUTH_CLIENT_ID,
-    gitlabClientSecret: process.env.GITLAB_OAUTH_CLIENT_SECRET,
-    gitlabScopes: process.env.GITLAB_OAUTH_SCOPES ?? 'api,read_user',
+    gitlabClientId: process.env.OAUTH_CLIENT_ID,
+    gitlabClientSecret: process.env.OAUTH_CLIENT_SECRET,
+    gitlabScopes: process.env.OAUTH_SCOPES ?? 'api,read_user',
     tokenTtl: parseInt(process.env.OAUTH_TOKEN_TTL ?? '3600', 10),
     refreshTokenTtl: parseInt(process.env.OAUTH_REFRESH_TOKEN_TTL ?? '604800', 10),
     devicePollInterval: parseInt(process.env.OAUTH_DEVICE_POLL_INTERVAL ?? '5', 10),

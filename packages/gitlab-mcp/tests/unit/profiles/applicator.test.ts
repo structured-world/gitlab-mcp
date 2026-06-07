@@ -39,8 +39,8 @@ describe('Profile Applicator', () => {
     const profileEnvVars = [
       'GITLAB_API_URL',
       'GITLAB_TOKEN',
-      'GITLAB_OAUTH_CLIENT_ID',
-      'GITLAB_OAUTH_CLIENT_SECRET',
+      'OAUTH_CLIENT_ID',
+      'OAUTH_CLIENT_SECRET',
       'OAUTH_ENABLED',
       'GITLAB_AUTH_COOKIE_PATH',
       'GITLAB_READ_ONLY_MODE',
@@ -150,8 +150,8 @@ describe('Profile Applicator', () => {
       const { applyProfile } = await import('../../../src/profiles/applicator');
       await applyProfile(profile, 'oauth-profile');
 
-      expect(process.env.GITLAB_OAUTH_CLIENT_ID).toBe('client-id');
-      expect(process.env.GITLAB_OAUTH_CLIENT_SECRET).toBe('client-secret');
+      expect(process.env.OAUTH_CLIENT_ID).toBe('client-id');
+      expect(process.env.OAUTH_CLIENT_SECRET).toBe('client-secret');
       expect(process.env.OAUTH_ENABLED).toBe('true');
     });
 

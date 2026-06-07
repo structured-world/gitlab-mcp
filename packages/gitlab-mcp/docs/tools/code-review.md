@@ -34,6 +34,8 @@ Find and inspect merge requests.
 | `get` | Get single MR by IID or branch name |
 | `diffs` | Get file changes/diffs for an MR |
 | `compare` | Compare two branches or commits |
+| `versions` | List all diff versions of an MR (each push creates a version) |
+| `version` | Get specific MR diff version with file changes |
 <!-- @autogen:end -->
 
 ### Examples

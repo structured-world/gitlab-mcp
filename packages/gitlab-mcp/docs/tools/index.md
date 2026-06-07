@@ -224,7 +224,7 @@ See [role-based prompts](/prompts/by-role/developer) for workflows tailored to e
 
 For complete parameter documentation, action matrices, and example requests, see the auto-generated [Full API Reference](/tools/api-reference).
 
-Generate locally (from the `packages/gitlab-mcp` directory):
+Generate locally:
 
 ```bash
 yarn list-tools --export --toc > docs/tools/api-reference.md

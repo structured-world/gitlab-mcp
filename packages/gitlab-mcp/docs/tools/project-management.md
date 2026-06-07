@@ -91,6 +91,7 @@ Time tracking: when available, `browse_work_items` returns a `TIME_TRACKING` wid
 | `create` | Create a new work item |
 | `update` | Update an existing work item |
 | `delete` | Delete a work item |
+| `delete_timelog` | Delete a time tracking entry from a work item |
 | `add_link` | Add a relationship link between two work items |
 | `remove_link` | Remove a relationship link between two work items |
 <!-- @autogen:end -->

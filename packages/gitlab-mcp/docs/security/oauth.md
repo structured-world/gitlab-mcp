@@ -48,7 +48,7 @@ The redirect URI is used by Claude.ai Custom Connectors (Authorization Code Flow
 # Required for OAuth mode
 OAUTH_ENABLED=true
 OAUTH_SESSION_SECRET=your-minimum-32-character-secret-key
-GITLAB_OAUTH_CLIENT_ID=your-gitlab-application-id
+OAUTH_CLIENT_ID=your-gitlab-application-id
 GITLAB_API_URL=https://your-gitlab-instance.com
 
 # Server configuration
@@ -56,8 +56,8 @@ PORT=3000
 HOST=0.0.0.0
 
 # Optional OAuth settings
-GITLAB_OAUTH_CLIENT_SECRET=your-secret    # Required only if GitLab app is confidential
-GITLAB_OAUTH_SCOPES=api,read_user          # Default scopes
+OAUTH_CLIENT_SECRET=your-secret    # Required only if GitLab app is confidential
+OAUTH_SCOPES=api,read_user          # Default scopes
 OAUTH_TOKEN_TTL=3600                       # Token lifetime (seconds)
 OAUTH_REFRESH_TOKEN_TTL=604800             # Refresh token lifetime (seconds)
 OAUTH_DEVICE_POLL_INTERVAL=5               # Device flow poll interval (seconds)
@@ -73,7 +73,7 @@ docker run -d \
   --name gitlab-mcp \
   -e OAUTH_ENABLED=true \
   -e OAUTH_SESSION_SECRET="$(openssl rand -base64 32)" \
-  -e GITLAB_OAUTH_CLIENT_ID=your-app-id \
+  -e OAUTH_CLIENT_ID=your-app-id \
   -e GITLAB_API_URL=https://gitlab.example.com \
   -e PORT=3000 \
   -p 3000:3000 \
@@ -208,7 +208,7 @@ When OAuth is enabled:
 **"OAuth not configured" error**
 - Ensure `OAUTH_ENABLED=true` is set
 - Verify `OAUTH_SESSION_SECRET` is at least 32 characters
-- Check `GITLAB_OAUTH_CLIENT_ID` is correct
+- Check `OAUTH_CLIENT_ID` is correct
 
 **Device code not accepted**
 - Verify GitLab version is 17.1 or later

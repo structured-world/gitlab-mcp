@@ -26,9 +26,9 @@ describe('OAuth Configuration', () => {
     // Clear all OAuth-related env vars
     delete process.env.OAUTH_ENABLED;
     delete process.env.OAUTH_SESSION_SECRET;
-    delete process.env.GITLAB_OAUTH_CLIENT_ID;
-    delete process.env.GITLAB_OAUTH_CLIENT_SECRET;
-    delete process.env.GITLAB_OAUTH_SCOPES;
+    delete process.env.OAUTH_CLIENT_ID;
+    delete process.env.OAUTH_CLIENT_SECRET;
+    delete process.env.OAUTH_SCOPES;
     delete process.env.OAUTH_TOKEN_TTL;
     delete process.env.OAUTH_REFRESH_TOKEN_TTL;
     delete process.env.OAUTH_DEVICE_POLL_INTERVAL;
@@ -56,7 +56,7 @@ describe('OAuth Configuration', () => {
 
     it('should throw error when OAUTH_ENABLED but missing required fields', async () => {
       process.env.OAUTH_ENABLED = 'true';
-      // Missing OAUTH_SESSION_SECRET and GITLAB_OAUTH_CLIENT_ID
+      // Missing OAUTH_SESSION_SECRET and OAUTH_CLIENT_ID
 
       const { loadOAuthConfig } = await import('../../../src/oauth/config');
       expect(() => loadOAuthConfig()).toThrow('Invalid OAuth configuration');
@@ -65,7 +65,7 @@ describe('OAuth Configuration', () => {
     it('should throw error when session secret is too short', async () => {
       process.env.OAUTH_ENABLED = 'true';
       process.env.OAUTH_SESSION_SECRET = 'short'; // Less than 32 chars
-      process.env.GITLAB_OAUTH_CLIENT_ID = 'test-client-id';
+      process.env.OAUTH_CLIENT_ID = 'test-client-id';
 
       const { loadOAuthConfig } = await import('../../../src/oauth/config');
       expect(() => loadOAuthConfig()).toThrow('Invalid OAuth configuration');
@@ -74,7 +74,7 @@ describe('OAuth Configuration', () => {
     it('should return valid config when all required fields are present', async () => {
       process.env.OAUTH_ENABLED = 'true';
       process.env.OAUTH_SESSION_SECRET = 'a'.repeat(32); // Exactly 32 chars
-      process.env.GITLAB_OAUTH_CLIENT_ID = 'test-client-id';
+      process.env.OAUTH_CLIENT_ID = 'test-client-id';
 
       const { loadOAuthConfig } = await import('../../../src/oauth/config');
       const config = loadOAuthConfig();
@@ -88,7 +88,7 @@ describe('OAuth Configuration', () => {
     it('should use default values for optional fields', async () => {
       process.env.OAUTH_ENABLED = 'true';
       process.env.OAUTH_SESSION_SECRET = 'a'.repeat(32);
-      process.env.GITLAB_OAUTH_CLIENT_ID = 'test-client-id';
+      process.env.OAUTH_CLIENT_ID = 'test-client-id';
 
       const { loadOAuthConfig } = await import('../../../src/oauth/config');
       const config = loadOAuthConfig();
@@ -103,9 +103,9 @@ describe('OAuth Configuration', () => {
     it('should use custom values when provided', async () => {
       process.env.OAUTH_ENABLED = 'true';
       process.env.OAUTH_SESSION_SECRET = 'a'.repeat(32);
-      process.env.GITLAB_OAUTH_CLIENT_ID = 'test-client-id';
-      process.env.GITLAB_OAUTH_CLIENT_SECRET = 'test-secret';
-      process.env.GITLAB_OAUTH_SCOPES = 'api,read_user,write_repository';
+      process.env.OAUTH_CLIENT_ID = 'test-client-id';
+      process.env.OAUTH_CLIENT_SECRET = 'test-secret';
+      process.env.OAUTH_SCOPES = 'api,read_user,write_repository';
       process.env.OAUTH_TOKEN_TTL = '7200';
       process.env.OAUTH_REFRESH_TOKEN_TTL = '1209600';
       process.env.OAUTH_DEVICE_POLL_INTERVAL = '10';
@@ -125,7 +125,7 @@ describe('OAuth Configuration', () => {
     it('should cache config after first load', async () => {
       process.env.OAUTH_ENABLED = 'true';
       process.env.OAUTH_SESSION_SECRET = 'a'.repeat(32);
-      process.env.GITLAB_OAUTH_CLIENT_ID = 'test-client-id';
+      process.env.OAUTH_CLIENT_ID = 'test-client-id';
 
       const { loadOAuthConfig, resetOAuthConfigCache } = await import('../../../src/oauth/config');
 
@@ -178,7 +178,7 @@ describe('OAuth Configuration', () => {
     it('should return true when valid OAuth config is loaded', async () => {
       process.env.OAUTH_ENABLED = 'true';
       process.env.OAUTH_SESSION_SECRET = 'a'.repeat(32);
-      process.env.GITLAB_OAUTH_CLIENT_ID = 'test-client-id';
+      process.env.OAUTH_CLIENT_ID = 'test-client-id';
 
       const { loadOAuthConfig, isOAuthEnabled, resetOAuthConfigCache } =
         await import('../../../src/oauth/config');
@@ -193,7 +193,7 @@ describe('OAuth Configuration', () => {
     it('should return OAuth mode description when OAuth is enabled', async () => {
       process.env.OAUTH_ENABLED = 'true';
       process.env.OAUTH_SESSION_SECRET = 'a'.repeat(32);
-      process.env.GITLAB_OAUTH_CLIENT_ID = 'test-client-id';
+      process.env.OAUTH_CLIENT_ID = 'test-client-id';
 
       const { loadOAuthConfig, getAuthModeDescription, resetOAuthConfigCache } =
         await import('../../../src/oauth/config');

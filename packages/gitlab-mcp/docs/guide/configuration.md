@@ -128,9 +128,9 @@ See [TLS/HTTPS Configuration](/advanced/tls) for detailed setup guides.
 |----------|-------------|---------|
 | `OAUTH_ENABLED` | Enable OAuth mode | `false` |
 | `OAUTH_SESSION_SECRET` | Session secret (min 32 chars) | — |
-| `GITLAB_OAUTH_CLIENT_ID` | GitLab OAuth application ID | — |
-| `GITLAB_OAUTH_CLIENT_SECRET` | Client secret (if confidential app) | — |
-| `GITLAB_OAUTH_SCOPES` | OAuth scopes | `api,read_user` |
+| `OAUTH_CLIENT_ID` | GitLab OAuth application ID | — |
+| `OAUTH_CLIENT_SECRET` | Client secret (if confidential app) | — |
+| `OAUTH_SCOPES` | OAuth scopes | `api,read_user` |
 | `OAUTH_TOKEN_TTL` | Token lifetime in seconds | `3600` |
 | `OAUTH_REFRESH_TOKEN_TTL` | Refresh token lifetime in seconds | `604800` |
 | `OAUTH_DEVICE_POLL_INTERVAL` | Device flow poll interval | `5` |

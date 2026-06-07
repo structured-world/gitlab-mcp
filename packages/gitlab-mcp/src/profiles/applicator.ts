@@ -123,16 +123,16 @@ export async function applyProfile(
       if (profile.auth.client_id_env) {
         const clientId = process.env[profile.auth.client_id_env];
         if (clientId) {
-          process.env.GITLAB_OAUTH_CLIENT_ID = clientId;
-          appliedSettings.push(`GITLAB_OAUTH_CLIENT_ID=<from ${profile.auth.client_id_env}>`);
+          process.env.OAUTH_CLIENT_ID = clientId;
+          appliedSettings.push(`OAUTH_CLIENT_ID=<from ${profile.auth.client_id_env}>`);
         }
       }
       if (profile.auth.client_secret_env) {
         const clientSecret = process.env[profile.auth.client_secret_env];
         if (clientSecret) {
-          process.env.GITLAB_OAUTH_CLIENT_SECRET = clientSecret;
+          process.env.OAUTH_CLIENT_SECRET = clientSecret;
           appliedSettings.push(
-            `GITLAB_OAUTH_CLIENT_SECRET=<from ${profile.auth.client_secret_env}>`,
+            `OAUTH_CLIENT_SECRET=<from ${profile.auth.client_secret_env}>`,
           );
         }
       }

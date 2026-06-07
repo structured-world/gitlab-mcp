@@ -57,3 +57,4 @@ docs/.vitepress/dist
 docs/.vitepress/cache
 generated
 builds/
+.nx/

@@ -176,11 +176,30 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Build Docker image
+      # Single-platform + load: the db image is FROM the core image, which must
+      # exist locally; the release workflow does the multi-platform push.
+      - name: Build core Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
+          file: ./packages/gitlab-mcp/Dockerfile
+          platforms: linux/amd64
           push: false
+          load: true
           tags: gitlab-mcp:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build db Docker image layered on core
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./packages/gitlab-mcp-db/Dockerfile
+          build-args: |
+            CORE_IMAGE=gitlab-mcp:test
+          platforms: linux/amd64
+          push: false
+          load: true
+          tags: gitlab-mcp-db:test
           cache-from: type=gha
           cache-to: type=gha,mode=max

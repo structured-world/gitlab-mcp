@@ -168,7 +168,7 @@ jobs:
         with:
           tag_name: ${{ needs.release-please.outputs.release-tag }}
           files: |
-            packages/gitlab-mcp/gitlab-mcp-*.mcpb
+            packages/gitlab-mcp/gitlab-mcp-[0-9]*.mcpb
             packages/gitlab-mcp/gitlab-mcp-db-*.mcpb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

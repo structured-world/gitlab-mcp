@@ -131,9 +131,7 @@ export async function applyProfile(
         const clientSecret = process.env[profile.auth.client_secret_env];
         if (clientSecret) {
           process.env.OAUTH_CLIENT_SECRET = clientSecret;
-          appliedSettings.push(
-            `OAUTH_CLIENT_SECRET=<from ${profile.auth.client_secret_env}>`,
-          );
+          appliedSettings.push(`OAUTH_CLIENT_SECRET=<from ${profile.auth.client_secret_env}>`);
         }
       }
       process.env.OAUTH_ENABLED = 'true';

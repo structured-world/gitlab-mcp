@@ -14,7 +14,7 @@
     "prisma:generate": "prisma generate",
     "build": "prisma generate && tsc -p tsconfig.json",
     "test": "jest",
-    "postinstall": "if [ -f prisma/schema.prisma ]; then prisma generate; fi"
+    "postinstall": "node -e \"if (require('fs').existsSync('prisma/schema.prisma')) require('child_process').execSync('prisma generate', { stdio: 'inherit' })\""
   },
   "dependencies": {
     "@prisma/client": "^7.8.0"

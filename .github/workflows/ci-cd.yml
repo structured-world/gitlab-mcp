@@ -445,8 +445,12 @@ jobs:
 
       - name: Test Docker images
         run: |
-          # Core lives in the in-job registry (pulled on run).
-          docker run --rm -e GITLAB_TOKEN=test_token localhost:5000/${{ env.IMAGE_NAME }}:test --version || echo "Core version check passed"
+          # Use --entrypoint node + a self-exiting script: the default entrypoint
+          # starts a long-lived server (it ignores --version and never exits, so
+          # `docker run ... --version` would hang). Core lives in the in-job
+          # registry (pulled on run); the db image was loaded to the host daemon.
+          docker run --rm --entrypoint node localhost:5000/${{ env.IMAGE_NAME }}:test \
+            -e "const fs=require('fs'); if (!fs.existsSync('/app/dist/src/main.js')) process.exit(1); console.log('core image ok')"
           # The layered image must resolve the optional db backend at runtime.
           docker run --rm --entrypoint node ${{ env.IMAGE_NAME }}-db:test \
             -e "if (typeof require('@structured-world/gitlab-mcp-db').PostgreSQLStorageBackend !== 'function') process.exit(1); console.log('db backend resolves')"

@@ -58,8 +58,9 @@ jq --arg v "$VERSION" --arg tc "$TOOL_COUNT" \
 # Generate README.md from the template for each location it ships to. __REPO_BASE__
 # is substituted with the path from that README's directory to the repo root, so the
 # repo-relative links (LICENSE, CONTRIBUTING, assets) resolve from every location:
-#   packages/gitlab-mcp/README.md (npm package page) -> base ../..
-#   <repo root>/README.md          (GitHub repo page) -> base .
+#   packages/gitlab-mcp/README.md    (npm core page)    -> base ../..
+#   <repo root>/README.md            (GitHub repo page)  -> base .
+#   packages/gitlab-mcp-db/README.md (npm db page)       -> base ../..
 if [[ ! -f "README.md.in" ]]; then
   echo "ERROR: README.md.in not found" >&2
   exit 1
@@ -76,6 +77,7 @@ render_readme() {
 }
 render_readme README.md ../..
 render_readme ../../README.md .
+render_readme ../gitlab-mcp-db/README.md ../..
 
 # Update MCP manifest tools list in package.json
 # Uses the list-tools CLI to get full tool definitions and transforms them for manifest

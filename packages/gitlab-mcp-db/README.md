@@ -1,0 +1,173 @@
+# Advanced GitLab MCP server
+
+[![npm version](https://img.shields.io/npm/v/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![npm downloads](https://img.shields.io/npm/dm/@structured-world/gitlab-mcp)](https://www.npmjs.com/package/@structured-world/gitlab-mcp) [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](../../LICENSE) [![Release](https://github.com/structured-world/gitlab-mcp/workflows/Release/badge.svg)](https://github.com/structured-world/gitlab-mcp/actions) [![Coverage](https://codecov.io/gh/structured-world/gitlab-mcp/graph/badge.svg)](https://codecov.io/gh/structured-world/gitlab-mcp) [![Coverage Report](https://img.shields.io/badge/Coverage-Live%20Report-brightgreen?logo=github)](https://gitlab-mcp.sw.foundation/coverage/)
+
+Advanced GitLab MCP server — 58 CQRS tools exposing 230 GitLab operations across 26 entity types. The tool catalog and parameters are filtered to each instance's GitLab version, tier, and token scopes, so the agent sees only what the connected instance actually supports.
+
+[![Install in Claude Desktop](https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge)](https://gitlab-mcp.sw.foundation/downloads/gitlab-mcp-9.0.0.mcpb)
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
+[![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
+
+## Quick Start
+
+```json
+{
+  "mcpServers": {
+    "gitlab": {
+      "command": "npx",
+      "args": ["-y", "@structured-world/gitlab-mcp"],
+      "env": {
+        "GITLAB_TOKEN": "your_gitlab_token",
+        "GITLAB_API_URL": "https://gitlab.com"
+      }
+    }
+  }
+}
+```
+
+**Requirements:** Node.js >= 24
+
+## Highlights
+
+- **58 tools** across 26 entity types — projects, merge requests, pipelines, work items, wiki, and more
+- **CQRS architecture** — `browse_*` for queries, `manage_*` for commands
+- **Connection resilience** — Bounded startup, auto-reconnect with exponential backoff, disconnected mode when GitLab is unreachable
+- **Multi-instance support** — Connect to GitLab.com, self-managed, and self-hosted instances with per-instance OAuth and rate limiting
+- **Multiple transports** — stdio, SSE, StreamableHTTP
+- **OAuth 2.1** — Per-user authentication via Claude Custom Connector
+- **Read-only mode** — Safe operation for production environments
+- **Auto-discovery** — Detects GitLab config from git remotes
+- **Fine-grained control** — Enable/disable tool groups, filter actions, customize descriptions
+- **Docker support** — `ghcr.io/structured-world/gitlab-mcp:latest`
+
+## Tool model
+
+GitLab exposes hundreds of API operations. Giving each its own MCP tool floods an
+agent's context; a thin API wrapper pushes that complexity back onto the agent. This
+server takes a third path: 58 CQRS tools, each holding several typed
+actions, expose 230 operations across 26 entity types.
+
+- `browse_*` tools are read-only queries; `manage_*` tools are writes.
+- Sub-resources fold into actions rather than new tools — `browse_pipelines` covers
+  pipelines, jobs, and logs in a single tool.
+- The tool list, actions, and parameters are resolved at schema-generation time
+  against GitLab version, tier, token scopes, admin-mode, feature flags, and profiles.
+
+Examples:
+
+- `browse_pipelines` — list, get, jobs, job, logs, triggers
+- `manage_pipeline` — create, retry, cancel
+- `browse_environments` — list, get, list_deployments
+- `manage_environment` — create, update, stop, delete, update_deployment_status
+- `browse_deploy_keys` / `manage_deploy_key` — list, get / add, enable, update, delete
+
+## Documentation
+
+Full documentation is available at **[gitlab-mcp.sw.foundation](https://gitlab-mcp.sw.foundation)**
+
+| Section | Description |
+|---------|-------------|
+| [Installation](https://gitlab-mcp.sw.foundation/guide/installation/npm) | npm, Docker, VS Code, Codex |
+| [Configuration](https://gitlab-mcp.sw.foundation/guide/configuration) | Environment variables, feature flags |
+| [Multi-Instance](https://gitlab-mcp.sw.foundation/guide/multi-instance) | Connect to multiple GitLab instances |
+| [Tool Reference](https://gitlab-mcp.sw.foundation/tools/) | All 58 tools with parameters |
+| [OAuth Setup](https://gitlab-mcp.sw.foundation/security/oauth) | Team authentication with Claude |
+| [TLS/HTTPS](https://gitlab-mcp.sw.foundation/advanced/tls) | Production deployment with SSL |
+| [Customization](https://gitlab-mcp.sw.foundation/advanced/customization) | Tool descriptions, action filtering |
+| [CLI Tools](https://gitlab-mcp.sw.foundation/cli/list-tools) | Browse and export tool documentation |
+
+### Auto-generated Tool Reference
+
+For the complete tool reference with parameters:
+
+```bash
+# View locally
+yarn list-tools --detail
+
+# Generate documentation
+yarn list-tools --export --toc > docs/tools/api-reference.md
+```
+
+See the [Full API Reference](https://gitlab-mcp.sw.foundation/tools/api-reference) for the auto-generated tool documentation.
+
+## Docker
+
+```bash
+# HTTP mode
+docker run -e PORT=3002 -e GITLAB_TOKEN=your_token -p 3333:3002 \
+  ghcr.io/structured-world/gitlab-mcp:latest
+
+# stdio mode
+docker run -i --rm -e GITLAB_TOKEN=your_token \
+  ghcr.io/structured-world/gitlab-mcp:latest
+```
+
+## Connection Resilience
+
+The server handles GitLab connectivity issues gracefully:
+
+- **Bounded startup** — Server starts within `GITLAB_INIT_TIMEOUT_MS` (default 5s) regardless of GitLab availability
+- **Disconnected mode** — When GitLab is unreachable (`disconnected`/`failed` state), only the `manage_context` tool is exposed, with local actions such as `whoami`, `switch_profile`, and `set_scope` for diagnostics. During active reconnect (`connecting` state), the full tool list remains available so MCP clients don't lose their tool catalog during brief outages. MCP clients are notified of tool availability changes via `tools/list_changed`
+- **Auto-reconnect** — Exponential backoff reconnection (5s → 60s) with ±10% jitter
+- **Error classification** — Transient errors (network, 5xx, timeouts) trigger auto-reconnect. Auth/config errors at startup transition to `failed` state (no auto-reconnect). Mid-session token revocation is detected via an authenticated `HEAD /api/v4/user` check that runs alongside each periodic health check (static token mode only; skipped in OAuth mode). A 401 or 403 on this check transitions the instance to `failed` state immediately.
+- **Instance health monitor** — Each monitored instance URL has its own XState state machine. Untracked OAuth URLs currently pass through as reachable.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GITLAB_INIT_TIMEOUT_MS` | `5000` | Max time to wait for GitLab during startup |
+| `GITLAB_RECONNECT_BASE_DELAY_MS` | `5000` | Initial reconnect delay (doubles each attempt) |
+| `GITLAB_RECONNECT_MAX_DELAY_MS` | `60000` | Maximum reconnect delay |
+| `GITLAB_HEALTH_CHECK_INTERVAL_MS` | `60000` | Health check interval when connected |
+| `GITLAB_FAILURE_THRESHOLD` | `3` | Consecutive transient failures before disconnecting |
+| `GITLAB_TOOL_TIMEOUT_MS` | `120000` | Max time for tool/bootstrap execution before timeout |
+| `GITLAB_RESPONSE_WRITE_TIMEOUT_MS` | `10000` | Max time to flush a non-SSE response before destroying zombie connection (`0` to disable; SSE uses heartbeat) |
+| `GITLAB_INSTANCE_CACHE_MAX` | `100` | Max number of per-URL instance states kept in memory (OAuth multi-tenant; LRU eviction when exceeded) |
+| `GITLAB_INSTANCE_TTL_MS` | `3600000` | TTL for idle per-URL instance states in ms; evicted on next insert (OAuth multi-tenant) |
+
+## Feature Flags
+
+| Flag | Default | Tools Enabled |
+|------|---------|---------------|
+| `USE_LABELS` | `true` | Label management |
+| `USE_MRS` | `true` | Merge requests |
+| `USE_FILES` | `true` | File operations |
+| `USE_VARIABLES` | `true` | CI/CD variables |
+| `USE_WORKITEMS` | `true` | Issues, epics, tasks |
+| `USE_WEBHOOKS` | `true` | Webhook management |
+| `USE_SNIPPETS` | `true` | Code snippets |
+| `USE_INTEGRATIONS` | `true` | 50+ integrations |
+| `USE_GITLAB_WIKI` | `true` | Wiki pages |
+| `USE_MILESTONE` | `true` | Milestones |
+| `USE_PIPELINE` | `true` | Pipelines & CI/CD |
+| `USE_RELEASES` | `true` | Release management |
+| `USE_REFS` | `true` | Branch & tag management |
+| `USE_MEMBERS` | `true` | Team members |
+| `USE_SEARCH` | `true` | Cross-project search |
+| `USE_ITERATIONS` | `true` | Iteration planning (sprints) |
+| `USE_CI_TOKENS` | `true` | CI access credentials: job token scope and deploy keys |
+| `USE_ENVIRONMENTS` | `true` | Environments and deployments |
+| `USE_RUNNERS` | `true` | CI runner management |
+| `USE_REGISTRY` | `true` | Container registry repositories and tags |
+| `USE_ACCESS_TOKENS` | `true` | Project/group/personal access token management |
+| `USE_AUDIT_EVENTS` | `true` | Audit events (Premium+) |
+| `USE_VULNERABILITIES` | `true` | Vulnerability management (Ultimate) |
+
+## Contributing
+
+See [CONTRIBUTING.md](../../CONTRIBUTING.md) for development setup, testing, and PR guidelines.
+
+## Support the Project
+
+<div align="center">
+
+![USDT TRC-20 Donation QR Code](../../packages/gitlab-mcp/assets/usdt-qr.svg)
+
+USDT (TRC-20): `TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA`
+
+</div>
+
+## License
+
+Apache License 2.0 — see [LICENSE](../../LICENSE) for details.
+
+Based on [zereight/gitlab-mcp](https://github.com/zereight/gitlab-mcp) (MIT). See [LICENSE.MIT](../../LICENSE.MIT).

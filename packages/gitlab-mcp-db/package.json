@@ -1,6 +1,6 @@
 {
   "name": "@structured-world/gitlab-mcp-db",
-  "version": "9.0.1",
+  "version": "9.1.0",
   "description": "Optional PostgreSQL/Prisma OAuth-storage backend for @structured-world/gitlab-mcp",
   "license": "Apache-2.0",
   "repository": {

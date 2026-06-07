@@ -5,6 +5,9 @@
   "group-pull-request-title-pattern": "chore: release ${version}",
   "plugins": [
     {
+      "type": "node-workspace"
+    },
+    {
       "type": "linked-versions",
       "groupName": "gitlab-mcp",
       "components": ["gitlab-mcp-monorepo", "gitlab-mcp", "gitlab-mcp-db"]

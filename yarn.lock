@@ -2110,18 +2110,17 @@ __metadata:
   resolution: "@structured-world/gitlab-mcp-db@workspace:packages/gitlab-mcp-db"
   dependencies:
     "@prisma/client": "npm:^7.8.0"
+    "@structured-world/gitlab-mcp": "workspace:^"
     "@types/jest": "npm:^30.0.0"
     "@types/node": "npm:^25.9.2"
     jest: "npm:^30.4.2"
     prisma: "npm:^7.8.0"
     ts-jest: "npm:^29.4.11"
     typescript: "npm:^6.0.0"
-  peerDependencies:
-    "@structured-world/gitlab-mcp": "workspace:^"
   languageName: unknown
   linkType: soft
 
-"@structured-world/gitlab-mcp@workspace:packages/gitlab-mcp":
+"@structured-world/gitlab-mcp@workspace:^, @structured-world/gitlab-mcp@workspace:packages/gitlab-mcp":
   version: 0.0.0-use.local
   resolution: "@structured-world/gitlab-mcp@workspace:packages/gitlab-mcp"
   dependencies:

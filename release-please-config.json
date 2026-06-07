@@ -8,6 +8,10 @@
       "type": "linked-versions",
       "groupName": "gitlab-mcp",
       "components": ["gitlab-mcp-monorepo", "gitlab-mcp", "gitlab-mcp-db"]
+    },
+    {
+      "type": "node-workspace",
+      "updatePeerDependencies": true
     }
   ],
   "changelog-sections": [

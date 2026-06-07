@@ -52,14 +52,13 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: yarn prisma generate
-
       - name: Run linting
         run: yarn lint
+        working-directory: packages/gitlab-mcp
 
       - name: Run tests with coverage
         run: yarn test:cov
+        working-directory: packages/gitlab-mcp
         env:
           CI: true
 
@@ -67,14 +66,19 @@ jobs:
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage/lcov.info
+          files: ./packages/gitlab-mcp/coverage/lcov.info
           fail_ci_if_error: false
 
-      - name: Build project
+      - name: Build core project
         run: yarn build
+        working-directory: packages/gitlab-mcp
+
+      - name: Build optional db package
+        run: yarn workspace @structured-world/gitlab-mcp-db build
 
       - name: Validate TOOLS.md generation
         run: yarn list-tools --export --toc > /dev/null
+        working-directory: packages/gitlab-mcp
 
       - name: Validate MCPB manifest template
         run: |
@@ -83,12 +87,13 @@ jobs:
           # Validate required MCPB fields
           echo "$MANIFEST" | jq -e '.manifest_version and .name and .version and .server.entry_point and .server.mcp_config.command' > /dev/null
           echo "Manifest template is valid (JSON + required fields)"
+        working-directory: packages/gitlab-mcp
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
           name: build-artifacts
-          path: dist/
+          path: packages/gitlab-mcp/dist/
           retention-days: 1
 
   # Job: keep generated metadata (README counts, server.json description,
@@ -143,21 +148,21 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: yarn prisma generate
-
-      - name: Build project
+      - name: Build core
         run: yarn build
+        working-directory: packages/gitlab-mcp
 
       # Use the currently released version from package.json (release-please bumps
       # it only inside the release PR), so server.json version does not spuriously
       # drift here — only the tool/action/entity counts can change.
       - name: Regenerate metadata
         run: ./scripts/prepare-release.sh "$(jq -r .version package.json)"
+        working-directory: packages/gitlab-mcp
 
       # Push ONLY on real drift. .semantic-release-version is release-time-only
       # (gitignored) and never staged.
       - name: Commit and push on drift
+        working-directory: packages/gitlab-mcp
         run: |
           git config user.name "structured-world-releaser[bot]"
           git config user.email "structured-world-releaser[bot]@users.noreply.github.com"

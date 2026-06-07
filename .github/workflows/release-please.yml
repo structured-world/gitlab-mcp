@@ -101,15 +101,13 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: yarn prisma generate
-
-      - name: Build project
+      - name: Build all packages
         run: yarn build
 
       # Update dynamic artifacts (tool counts in server.json, README.md, package.json manifest)
       - name: Run prepare-release script
         run: ./scripts/prepare-release.sh "${{ needs.release-please.outputs.release-version }}"
+        working-directory: packages/gitlab-mcp
 
       # Note: server.json version is updated by release-please extra-files.
       # Dynamic counts (README.md, package.json manifest) are updated by prepare-release.sh
@@ -121,24 +119,41 @@ jobs:
       #   Organization: structured-world, Repository: gitlab-mcp
       #   Workflow: release-please.yml, Environment: release
       # Uses npm CLI (not yarn npm) — Yarn 4 doesn't support OIDC provenance.
-      - name: Publish to npm
+      - name: Publish core to npm
+        working-directory: packages/gitlab-mcp
         run: |
-          VERSION="${{ needs.release-please.outputs.release-version }}"
+          VERSION="$(jq -r .version package.json)"
           if npm view "@structured-world/gitlab-mcp@${VERSION}" version >/dev/null 2>&1; then
-            echo "Version ${VERSION} already published to npm; skipping."
+            echo "Core ${VERSION} already published to npm; skipping."
             exit 0
           fi
           npm publish --provenance --access public
 
-      # Build and upload MCPB bundle
-      - name: Build MCPB bundle
-        run: ./scripts/build-mcpb.sh "${{ needs.release-please.outputs.release-version }}"
+      - name: Publish db package to npm
+        working-directory: packages/gitlab-mcp-db
+        run: |
+          VERSION="$(jq -r .version package.json)"
+          if npm view "@structured-world/gitlab-mcp-db@${VERSION}" version >/dev/null 2>&1; then
+            echo "Db ${VERSION} already published to npm; skipping."
+            exit 0
+          fi
+          npm publish --provenance --access public
 
-      - name: Upload MCPB to GitHub Release
+      # Build and upload both MCPB bundles (lightweight core + full with db)
+      - name: Build MCPB bundles
+        working-directory: packages/gitlab-mcp
+        run: |
+          VERSION="$(jq -r .version package.json)"
+          ./scripts/build-mcpb.sh "$VERSION"
+          MCPB_WITH_DB=true ./scripts/build-mcpb.sh "$VERSION"
+
+      - name: Upload MCPB bundles to GitHub Release
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.release-please.outputs.release-tag }}
-          files: gitlab-mcp-${{ needs.release-please.outputs.release-version }}.mcpb
+          files: |
+            packages/gitlab-mcp/gitlab-mcp-*.mcpb
+            packages/gitlab-mcp/gitlab-mcp-db-*.mcpb
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
@@ -153,22 +168,29 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract Docker metadata
+      # Per-package versions (monorepo versions are independent).
+      - name: Read package versions
+        id: versions
+        run: |
+          echo "core=$(jq -r .version packages/gitlab-mcp/package.json)" >> "$GITHUB_OUTPUT"
+          echo "db=$(jq -r .version packages/gitlab-mcp-db/package.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Extract core Docker metadata
         id: meta
         uses: docker/metadata-action@v6
         with:
           images: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=raw,value=${{ needs.release-please.outputs.release-version }}
+            type=raw,value=${{ steps.versions.outputs.core }}
             type=raw,value=latest
-            type=semver,pattern={{major}}.{{minor}},value=${{ needs.release-please.outputs.release-version }}
-            type=semver,pattern={{major}},value=${{ needs.release-please.outputs.release-version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.versions.outputs.core }}
+            type=semver,pattern={{major}},value=${{ steps.versions.outputs.core }}
 
-      - name: Build and push Docker image
+      - name: Build and push core Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile
+          file: ./packages/gitlab-mcp/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
@@ -176,7 +198,33 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            VERSION=${{ needs.release-please.outputs.release-version }}
+            VERSION=${{ steps.versions.outputs.core }}
+
+      - name: Extract db Docker metadata
+        id: meta-db
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}-db
+          tags: |
+            type=raw,value=${{ steps.versions.outputs.db }}
+            type=raw,value=latest
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.versions.outputs.db }}
+            type=semver,pattern={{major}},value=${{ steps.versions.outputs.db }}
+
+      # Layered on the core image just pushed; reuses its cached layers.
+      - name: Build and push db Docker image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./packages/gitlab-mcp-db/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta-db.outputs.tags }}
+          labels: ${{ steps.meta-db.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          build-args: |
+            CORE_IMAGE=${{ env.GHCR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.versions.outputs.core }}
 
       # Publish to MCP Registry
       - name: Install mcp-publisher
@@ -195,8 +243,9 @@ jobs:
       # Note: .packages append is safe for reruns — server.json is checked out
       # fresh from the release tag each time, so no duplicate entries accumulate.
       - name: Add MCPB entry to server.json
+        working-directory: packages/gitlab-mcp
         run: |
-          VERSION="${{ needs.release-please.outputs.release-version }}"
+          VERSION="$(jq -r .version package.json)"
           MCPB_FILE="gitlab-mcp-${VERSION}.mcpb"
           MCPB_URL="https://github.com/${{ github.repository }}/releases/download/${{ needs.release-please.outputs.release-tag }}/${MCPB_FILE}"
           SHA256=$(openssl dgst -sha256 "${MCPB_FILE}" | awk '{print $NF}')
@@ -211,11 +260,15 @@ jobs:
           echo "Final server.json:"
           cat server.json
 
+      # mcp-publisher reads server.json from the working directory; the binary
+      # was extracted to the workspace root.
       - name: Authenticate to MCP Registry (OIDC)
-        run: ./mcp-publisher login github-oidc
+        working-directory: packages/gitlab-mcp
+        run: $GITHUB_WORKSPACE/mcp-publisher login github-oidc
 
       - name: Publish to MCP Registry
-        run: ./mcp-publisher publish
+        working-directory: packages/gitlab-mcp
+        run: $GITHUB_WORKSPACE/mcp-publisher publish
 
   # Job 3: Sync generated metadata into the open release PR
   # When release-please updates (not merges) the release PR, regenerate the
@@ -267,18 +320,17 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: yarn prisma generate
-
-      - name: Build project
+      - name: Build all packages
         run: yarn build
 
       # release-please already bumped package.json version on the PR branch;
       # use it so README/server.json counts carry the pending release version.
       - name: Regenerate dynamic metadata
         run: ./scripts/prepare-release.sh "$(jq -r .version package.json)"
+        working-directory: packages/gitlab-mcp
 
       - name: Commit regenerated metadata to the release PR
+        working-directory: packages/gitlab-mcp
         run: |
           git config user.name "structured-world-releaser[bot]"
           git config user.email "structured-world-releaser[bot]@users.noreply.github.com"

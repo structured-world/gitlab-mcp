@@ -1,0 +1,48 @@
+---
+title: GitLab MCP Server Introduction
+description: "Complete introduction to GitLab MCP Server — advanced MCP server providing AI agents with comprehensive GitLab API access. Features CQRS architecture, multi-instance support, OAuth, and tier detection."
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp introduction, mcp server features, cqrs architecture, gitlab api tools, model context protocol
+---
+
+# GitLab MCP Server Introduction
+
+Advanced GitLab MCP server providing AI agents with comprehensive access to the GitLab API.
+
+## Features
+
+- **58 tools** across 26 entity types covering the full GitLab API
+- **CQRS pattern** — `browse_*` for read operations, `manage_*` for writes
+- **Multi-instance** — Connect to multiple GitLab instances with per-instance OAuth and rate limiting
+- **Multiple transports** — stdio, SSE, and StreamableHTTP
+- **OAuth 2.1** — Per-user authentication for teams via Claude Custom Connector
+- **Read-only mode** — Safe operation for production environments
+- **Auto-discovery** — Detects GitLab config from git remotes
+- **Fine-grained control** — Enable/disable tool groups, filter actions, customize descriptions
+- **Tier detection** — Automatically enables features based on your GitLab tier (per-namespace on gitlab.com)
+
+## Requirements
+
+- **Node.js** >= 24.0.0 (required for native fetch with Undici dispatcher pattern)
+- **GitLab** — Compatible with GitLab.com and self-hosted instances
+
+## Architecture
+
+The server uses a **CQRS (Command Query Responsibility Segregation)** pattern:
+
+| Pattern | Prefix | Purpose | Example |
+|---------|--------|---------|---------|
+| Query | `browse_*` | Read-only operations | `browse_merge_requests` |
+| Command | `manage_*` | Write operations | `manage_merge_request` |
+
+Each tool accepts an `action` parameter that selects the specific operation. This consolidates what would be many individual tools into a manageable set optimized for AI context windows.
+
+## Next Steps
+
+- [Quick Start](/guide/quick-start) — Get running in under a minute
+- [Installation](/guide/installation/npm) — Detailed setup for your platform
+- [Configuration](/guide/configuration) — Environment variables and options
+- [Multi-Instance](/guide/multi-instance) — Connect to multiple GitLab instances
+- [Tool Reference](/tools/) — Complete list of available tools

@@ -67,6 +67,8 @@ services:
       # OAuth application and set OAUTH_CLIENT_ID; see the OAuth guide linked below.
       - OAUTH_ENABLED=true
       - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
+      # Only needed for confidential OAuth apps; harmless (empty) for PKCE public apps.
+      - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
       - OAUTH_SESSION_SECRET=${SESSION_SECRET}
       - OAUTH_STORAGE_TYPE=postgresql
       - OAUTH_STORAGE_POSTGRESQL_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp

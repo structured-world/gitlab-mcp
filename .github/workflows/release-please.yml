@@ -140,6 +140,10 @@ jobs:
           # Resolve any Yarn workspace: specifier to the real (lockstep) version.
           # Plain `npm publish` (used for OIDC provenance) does not understand the
           # workspace: protocol, so it would otherwise ship an invalid range.
+          # Restore package.json afterwards so the resolved range does not leak into
+          # later steps (the Docker build runs `yarn install --immutable` over the
+          # same tree, and a workspace:^ -> ^x.y.z drift fails the immutable check).
+          cp package.json package.json.orig
           jq --arg v "^${VERSION}" '
             def resolve_ws: with_entries(
               if (.value | type == "string") and (.value | startswith("workspace:"))
@@ -149,6 +153,7 @@ jobs:
             | (if (.peerDependencies | type) == "object" then .peerDependencies |= resolve_ws else . end)
           ' package.json > package.json.tmp && mv package.json.tmp package.json
           npm publish --provenance --access public
+          mv package.json.orig package.json
 
       # Build and upload both MCPB bundles (lightweight core + full with db)
       - name: Build MCPB bundles

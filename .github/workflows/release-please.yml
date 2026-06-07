@@ -30,10 +30,14 @@ jobs:
       pull-requests: write
 
     outputs:
-      release-created: ${{ steps.release.outputs.release_created }}
-      release-version: ${{ steps.release.outputs.version }}
-      release-tag: ${{ steps.release.outputs.tag_name }}
-      release-sha: ${{ steps.release.outputs.sha }}
+      # No root (".") component, so there are no bare release_created/version/tag
+      # outputs. Trigger on releases_created (any component) and take the
+      # version/tag from the core gitlab-mcp package (the two packages are
+      # version-locked, so its tag is the release reference for checkout + assets).
+      release-created: ${{ steps.release.outputs.releases_created }}
+      release-version: ${{ steps.release.outputs['packages/gitlab-mcp--version'] }}
+      release-tag: ${{ steps.release.outputs['packages/gitlab-mcp--tag_name'] }}
+      release-sha: ${{ steps.release.outputs['packages/gitlab-mcp--sha'] }}
       pr-number: ${{ steps.release.outputs.pr != '' && fromJSON(steps.release.outputs.pr).number || '' }}
       pr-branch: ${{ steps.release.outputs.pr != '' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
 

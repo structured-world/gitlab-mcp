@@ -7,7 +7,7 @@
     {
       "type": "linked-versions",
       "groupName": "gitlab-mcp",
-      "components": ["gitlab-mcp", "gitlab-mcp-db"]
+      "components": ["gitlab-mcp-monorepo", "gitlab-mcp", "gitlab-mcp-db"]
     }
   ],
   "changelog-sections": [
@@ -24,6 +24,11 @@
     { "type": "chore", "section": "Chores", "hidden": true }
   ],
   "packages": {
+    ".": {
+      "component": "gitlab-mcp-monorepo",
+      "include-component-in-tag": false,
+      "changelog-path": "CHANGELOG.md"
+    },
     "packages/gitlab-mcp": {
       "component": "gitlab-mcp",
       "changelog-path": "CHANGELOG.md",

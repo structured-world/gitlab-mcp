@@ -30,10 +30,14 @@ jobs:
       pull-requests: write
 
     outputs:
-      release-created: ${{ steps.release.outputs.release_created }}
-      release-version: ${{ steps.release.outputs.version }}
-      release-tag: ${{ steps.release.outputs.tag_name }}
-      release-sha: ${{ steps.release.outputs.sha }}
+      # No root (".") component, so there are no bare release_created/version/tag
+      # outputs. Trigger on releases_created (any component) and take the
+      # version/tag from the core gitlab-mcp package (the two packages are
+      # version-locked, so its tag is the release reference for checkout + assets).
+      release-created: ${{ steps.release.outputs.releases_created }}
+      release-version: ${{ steps.release.outputs['packages/gitlab-mcp--version'] }}
+      release-tag: ${{ steps.release.outputs['packages/gitlab-mcp--tag_name'] }}
+      release-sha: ${{ steps.release.outputs['packages/gitlab-mcp--sha'] }}
       pr-number: ${{ steps.release.outputs.pr != '' && fromJSON(steps.release.outputs.pr).number || '' }}
       pr-branch: ${{ steps.release.outputs.pr != '' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
 
@@ -51,6 +55,20 @@ jobs:
         id: release
         with:
           token: ${{ steps.app-token.outputs.token }}
+
+      # release-please cannot put the version in a combined multi-package PR title
+      # without a root "." component, and that component breaks lockstep on
+      # root-only changes. Set the title from the gitlab-mcp version instead -- the
+      # packages are version-locked, so it is the single release version.
+      - name: Put the release version in the combined PR title
+        if: steps.release.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}
+          PR_BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+        run: |
+          VERSION="$(gh api "repos/${{ github.repository }}/contents/packages/gitlab-mcp/package.json?ref=${PR_BRANCH}" --jq '.content' | base64 -d | jq -r .version)"
+          gh pr edit "$PR_NUMBER" --title "chore: release ${VERSION}"
 
   # Job 2: Post-release — update artifacts, publish everywhere
   post-release:

@@ -39,6 +39,7 @@ jobs:
 
       - name: Run ESLint
         run: yarn lint
+        working-directory: packages/gitlab-mcp
 
   # Conventional commits validation
   commits:
@@ -80,17 +81,19 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: yarn prisma generate
-
-      - name: Build project
+      - name: Build all packages
         run: yarn build
 
-      - name: Run tests
+      - name: Run core tests
         run: yarn test
+        working-directory: packages/gitlab-mcp
+
+      - name: Run optional db package tests
+        run: yarn workspace @structured-world/gitlab-mcp-db test
 
       - name: Type check
         run: yarn tsc --noEmit
+        working-directory: packages/gitlab-mcp
 
   # Coverage report - only on Node 22
   coverage:
@@ -116,20 +119,18 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: yarn prisma generate
-
-      - name: Build project
+      - name: Build all packages
         run: yarn build
 
       - name: Run tests with coverage
         run: yarn test:cov
+        working-directory: packages/gitlab-mcp
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage/lcov.info
+          files: ./packages/gitlab-mcp/coverage/lcov.info
           fail_ci_if_error: false
 
   # Code quality checks
@@ -171,18 +172,49 @@ jobs:
     name: Docker Build
     runs-on: ubuntu-latest
 
+    # Local registry so the db image can be built `FROM` the just-built core
+    # image. The buildx `docker-container` builder is isolated from the host
+    # docker daemon, so a `--load`ed core image is NOT visible to the db build
+    # (it would try to pull gitlab-mcp:test from docker.io and fail). Push core
+    # to this in-job registry and reference it via localhost:5000; the builder
+    # reaches it via driver-opts network=host.
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+
     steps:
       - name: Checkout
         uses: actions/checkout@v6
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+        with:
+          driver-opts: network=host
 
-      - name: Build Docker image
+      # Core is pushed to the in-job registry so the db image can resolve it via
+      # FROM. Single-platform; the release workflow does the docker.io push.
+      - name: Build core Docker image
         uses: docker/build-push-action@v7
         with:
           context: .
+          file: ./packages/gitlab-mcp/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: localhost:5000/gitlab-mcp:test
+          cache-from: type=gha,scope=core
+          cache-to: type=gha,mode=max,scope=core
+
+      - name: Build db Docker image layered on core
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./packages/gitlab-mcp-db/Dockerfile
+          build-args: |
+            CORE_IMAGE=localhost:5000/gitlab-mcp:test
+          platforms: linux/amd64
           push: false
-          tags: gitlab-mcp:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: gitlab-mcp-db:test
+          cache-from: type=gha,scope=db
+          cache-to: type=gha,mode=max,scope=db

@@ -1,0 +1,73 @@
+---
+layout: home
+titleTemplate: false
+description: "Advanced GitLab MCP server with 58 tools across 26 entity types"
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp, model context protocol, gitlab api, ai agent, mcp server, gitlab automation, claude desktop
+
+hero:
+  name: GitLab MCP server
+  tagline: Connect AI agents to GitLab with 58 tools across 26 entity types
+  image:
+    src: /logo-hero.png
+    alt: GitLab MCP Logo
+  actions:
+    - theme: brand
+      text: Get Started
+      link: /guide/
+    - theme: alt
+      text: Prompt Library
+      link: /prompts/
+    - theme: alt
+      text: Tool Reference
+      link: /tools/
+
+features:
+  - icon: "\U0001F527"
+    title: 58 Tools, 26 Entities
+    details: Complete GitLab API coverage — projects, merge requests, pipelines, work items, wikis, and more.
+  - icon: "\U0001F517"
+    title: Multi-Instance Support
+    details: Connect to multiple GitLab instances with per-instance OAuth, rate limiting, and tier detection.
+  - icon: "\U0001F512"
+    title: OAuth 2.1 & Read-Only Mode
+    details: Per-user authentication via Claude Custom Connector or static tokens with granular access control.
+  - icon: "\U0001F680"
+    title: CQRS Architecture
+    details: Consolidated action-based tools — browse_* for queries, manage_* for commands. Optimized for AI context windows.
+  - icon: "\U0001F310"
+    title: Multiple Transports
+    details: stdio, SSE, and StreamableHTTP. Docker, npx, or direct Node.js. Auto-discovery from git remotes.
+---
+
+## One-Click Install
+
+<a href="/downloads/gitlab-mcp-8.0.0.mcpb" download><img src="https://img.shields.io/badge/Claude_Desktop-Install_Extension-F97316?style=for-the-badge&logoColor=white" alt="Install in Claude Desktop"></a>
+[![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_MCP_Server-007ACC?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
+[![Install in VS Code Insiders](https://img.shields.io/badge/VS_Code_Insiders-Install_MCP_Server-24bfa5?style=for-the-badge&logo=visualstudiocode&logoColor=white)](vscode-insiders:mcp/install?%7B%22name%22%3A%22gitlab-mcp%22%2C%22command%22%3A%22npx%22%2C%22args%22%3A%5B%22-y%22%2C%22%40structured-world%2Fgitlab-mcp%22%5D%7D)
+
+::: warning After one-click install
+You must configure `GITLAB_TOKEN` in your MCP client settings before the server can connect. See the [Installation Guide](/guide/installation/npm) for token setup.
+:::
+
+## Quick Start
+
+::: tip Prerequisites
+Create a [GitLab Personal Access Token](/guide/authentication#pat) with `api,read_user` scopes (or `read_api,read_user` for read-only mode) and export it:
+```bash
+export GITLAB_TOKEN="glpat-xxxxxxxxxxxxxxxxxxxx"
+```
+:::
+
+```bash
+npx @structured-world/gitlab-mcp
+```
+
+For self-hosted GitLab, also set `GITLAB_API_URL`:
+```bash
+export GITLAB_API_URL="https://your-gitlab.example.com"
+```
+
+See the [Installation Guide](/guide/installation/npm) for detailed setup instructions.

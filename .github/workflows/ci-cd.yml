@@ -52,14 +52,13 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: yarn prisma generate
-
       - name: Run linting
         run: yarn lint
+        working-directory: packages/gitlab-mcp
 
       - name: Run tests with coverage
         run: yarn test:cov
+        working-directory: packages/gitlab-mcp
         env:
           CI: true
 
@@ -67,14 +66,22 @@ jobs:
         uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
-          files: ./coverage/lcov.info
+          files: ./packages/gitlab-mcp/coverage/lcov.info
           fail_ci_if_error: false
 
-      - name: Build project
+      - name: Build core project
         run: yarn build
+        working-directory: packages/gitlab-mcp
+
+      - name: Build optional db package
+        run: yarn workspace @structured-world/gitlab-mcp-db build
+
+      - name: Run optional db package tests
+        run: yarn workspace @structured-world/gitlab-mcp-db test
 
       - name: Validate TOOLS.md generation
         run: yarn list-tools --export --toc > /dev/null
+        working-directory: packages/gitlab-mcp
 
       - name: Validate MCPB manifest template
         run: |
@@ -83,12 +90,13 @@ jobs:
           # Validate required MCPB fields
           echo "$MANIFEST" | jq -e '.manifest_version and .name and .version and .server.entry_point and .server.mcp_config.command' > /dev/null
           echo "Manifest template is valid (JSON + required fields)"
+        working-directory: packages/gitlab-mcp
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
           name: build-artifacts
-          path: dist/
+          path: packages/gitlab-mcp/dist/
           retention-days: 1
 
   # Job: keep generated metadata (README counts, server.json description,
@@ -143,21 +151,21 @@ jobs:
       - name: Install dependencies
         run: yarn install --frozen-lockfile
 
-      - name: Generate Prisma client
-        run: yarn prisma generate
-
-      - name: Build project
+      - name: Build core
         run: yarn build
+        working-directory: packages/gitlab-mcp
 
       # Use the currently released version from package.json (release-please bumps
       # it only inside the release PR), so server.json version does not spuriously
       # drift here — only the tool/action/entity counts can change.
       - name: Regenerate metadata
         run: ./scripts/prepare-release.sh "$(jq -r .version package.json)"
+        working-directory: packages/gitlab-mcp
 
       # Push ONLY on real drift. .semantic-release-version is release-time-only
       # (gitignored) and never staged.
       - name: Commit and push on drift
+        working-directory: packages/gitlab-mcp
         run: |
           git config user.name "structured-world-releaser[bot]"
           git config user.email "structured-world-releaser[bot]@users.noreply.github.com"
@@ -198,6 +206,19 @@ jobs:
       contents: read
       pull-requests: read   # For review thread check on PRs
       security-events: read # For checking CodeQL alert states
+
+    # Local registry so the db image can be built `FROM` the just-built
+    # core image. The buildx `docker-container` builder is isolated from
+    # the host docker daemon, so a `--load`ed core image is NOT visible to
+    # the db build (it would try to pull `structured-world/gitlab-mcp:test`
+    # from docker.io and fail). Pushing core to this in-job registry and
+    # referencing it via `localhost:5000` is the canonical chained-image
+    # pattern; the builder reaches it via `driver-opts: network=host`.
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
 
     steps:
       - name: Check for unresolved review threads
@@ -391,22 +412,51 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+        with:
+          # Host network so the builder can reach the in-job registry at
+          # localhost:5000 (to push core and pull it for the db FROM).
+          driver-opts: network=host
 
-      - name: Build Docker image (test only, no push)
+      # PR test build (single-platform, no docker.io push). Core is pushed
+      # to the in-job registry so the db image can resolve it via FROM; the
+      # release workflow does the multi-platform docker.io push.
+      - name: Build core Docker image (test only)
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
-          file: ./Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: false
-          tags: ${{ env.IMAGE_NAME }}:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          file: ./packages/gitlab-mcp/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: localhost:5000/${{ env.IMAGE_NAME }}:test
+          cache-from: type=gha,scope=core
+          cache-to: type=gha,mode=max,scope=core
 
-      - name: Test Docker image
+      - name: Build db Docker image layered on core (test only)
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./packages/gitlab-mcp-db/Dockerfile
+          build-args: |
+            CORE_IMAGE=localhost:5000/${{ env.IMAGE_NAME }}:test
+          platforms: linux/amd64
+          # Load the layered image into the host daemon for the run-test below.
+          load: true
+          tags: ${{ env.IMAGE_NAME }}-db:test
+          cache-from: type=gha,scope=db
+          cache-to: type=gha,mode=max,scope=db
+
+      - name: Test Docker images
         run: |
-          docker run --rm -e GITLAB_TOKEN=test_token ${{ env.IMAGE_NAME }}:test --version || echo "Version check passed"
+          # Use --entrypoint node + a self-exiting script: the default entrypoint
+          # starts a long-lived server (it ignores --version and never exits, so
+          # `docker run ... --version` would hang). Core lives in the in-job
+          # registry (pulled on run); the db image was loaded to the host daemon.
+          docker run --rm --entrypoint node localhost:5000/${{ env.IMAGE_NAME }}:test \
+            -e "const fs=require('fs'); if (!fs.existsSync('/app/dist/src/main.js')) process.exit(1); console.log('core image ok')"
+          # The layered image must resolve the optional db backend at runtime.
+          docker run --rm --entrypoint node ${{ env.IMAGE_NAME }}-db:test \
+            -e "if (typeof require('@structured-world/gitlab-mcp-db').PostgreSQLStorageBackend !== 'function') process.exit(1); console.log('db backend resolves')"
 
   # Job 3: Summary
   summary:

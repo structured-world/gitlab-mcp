@@ -1,7 +1,6 @@
 node_modules
 .DS_Store
 build
-builds/
 dist
 .env
 .env.local
@@ -56,3 +55,6 @@ docs/public/llms.txt
 # VitePress
 docs/.vitepress/dist
 docs/.vitepress/cache
+generated
+builds/
+.nx/

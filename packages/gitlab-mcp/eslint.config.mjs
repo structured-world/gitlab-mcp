@@ -35,6 +35,27 @@ export default [
     },
   },
   {
+    // ESM scripts (e.g. scripts/*.mjs) — module source with Node.js globals.
+    files: ['**/*.mjs'],
+    languageOptions: {
+      sourceType: 'module',
+      globals: {
+        process: 'readonly',
+        console: 'readonly',
+        URL: 'readonly',
+        Buffer: 'readonly',
+        fetch: 'readonly',
+        setTimeout: 'readonly',
+        clearTimeout: 'readonly',
+        setInterval: 'readonly',
+        clearInterval: 'readonly',
+      },
+    },
+    rules: {
+      'no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
+    },
+  },
+  {
     files: ['**/*.ts'],
     ignores: ['**/__tests__/**/*.ts', '**/*.test.ts', '**/*.spec.ts', 'tests/**/*.ts'],
     languageOptions: {

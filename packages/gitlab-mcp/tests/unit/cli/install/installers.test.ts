@@ -9,6 +9,7 @@ import {
   generateConfigPreview,
 } from '../../../../src/cli/install/installers';
 import { McpServerConfig } from '../../../../src/cli/init/types';
+import { CLIENT_METADATA } from '../../../../src/cli/install/types';
 import * as fs from 'fs';
 import * as childProcess from 'child_process';
 
@@ -200,29 +201,21 @@ describe('install installers', () => {
       );
     });
 
-    it('should fail when the claude CLI command is not configured', async () => {
-      // Guard branch: CLIENT_METADATA['claude-code'].cliCommand is normally set,
-      // so override it via an isolated module to exercise the not-configured path.
-      await jest.isolateModulesAsync(async () => {
-        jest.doMock('../../../../src/cli/install/types', () => {
-          const actual = jest.requireActual<typeof import('../../../../src/cli/install/types')>(
-            '../../../../src/cli/install/types',
-          );
-          return {
-            ...actual,
-            CLIENT_METADATA: {
-              ...actual.CLIENT_METADATA,
-              'claude-code': { ...actual.CLIENT_METADATA['claude-code'], cliCommand: undefined },
-            },
-          };
-        });
-        const isolated = await import('../../../../src/cli/install/installers');
-        const result = isolated.installToClient('claude-code', mockServerConfig);
+    it('should fail when the claude CLI command is not configured', () => {
+      // Guard branch: cliCommand is normally set, so clear it on the shared
+      // metadata for this call only (the property is optional). Mutating the
+      // real object keeps coverage on the same module instance the suite uses.
+      const original = CLIENT_METADATA['claude-code'].cliCommand;
+      CLIENT_METADATA['claude-code'].cliCommand = undefined;
+      try {
+        const result = installToClient('claude-code', mockServerConfig);
 
         expect(result.success).toBe(false);
         expect(result.error).toBe('Claude Code CLI command not configured');
         expect(mockChildProcess.spawnSync).not.toHaveBeenCalled();
-      });
+      } finally {
+        CLIENT_METADATA['claude-code'].cliCommand = original;
+      }
     });
 
     it('should fail if claude command fails', () => {

@@ -56,6 +56,20 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
 
+      # release-please cannot put the version in a combined multi-package PR title
+      # without a root "." component, and that component breaks lockstep on
+      # root-only changes. Set the title from the gitlab-mcp version instead -- the
+      # packages are version-locked, so it is the single release version.
+      - name: Put the release version in the combined PR title
+        if: steps.release.outputs.pr != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}
+          PR_BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+        run: |
+          VERSION="$(gh api "repos/${{ github.repository }}/contents/packages/gitlab-mcp/package.json?ref=${PR_BRANCH}" --jq '.content' | base64 -d | jq -r .version)"
+          gh pr edit "$PR_NUMBER" --title "chore: release ${VERSION}"
+
   # Job 2: Post-release — update artifacts, publish everywhere
   post-release:
     name: Post-Release Publish

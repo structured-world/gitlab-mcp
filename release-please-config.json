@@ -34,7 +34,7 @@
     },
     "packages/gitlab-mcp": {
       "component": "gitlab-mcp",
-      "changelog-path": "CHANGELOG.md",
+      "skip-changelog": true,
       "bump-minor-pre-major": false,
       "bump-patch-for-minor-pre-major": false,
       "extra-files": [
@@ -44,7 +44,7 @@
     },
     "packages/gitlab-mcp-db": {
       "component": "gitlab-mcp-db",
-      "changelog-path": "CHANGELOG.md",
+      "skip-changelog": true,
       "bump-minor-pre-major": false,
       "bump-patch-for-minor-pre-major": false
     }

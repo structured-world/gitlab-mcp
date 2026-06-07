@@ -1,3 +1,12 @@
+---
+title: Channel Gateway (CI watch + completion notifications)
+description: "Local channel-gateway for Claude Code that re-exposes the GitLab MCP catalog and pushes CI pipeline/job state changes into the session as channel events. Watches running pipelines and notifies on completion."
+head:
+  - - meta
+    - name: keywords
+      content: gitlab mcp channel gateway, ci watch, pipeline notifications, claude code channels, completion notifications
+---
+
 # Channel Gateway (CI watch + completion notifications)
 
 The channel gateway is a local front door for a Claude Code session that

@@ -437,6 +437,7 @@ export default defineConfig({
             { text: "Federation Architecture", link: "/advanced/federation" },
             { text: "Tier Detection", link: "/advanced/tier-detection" },
             { text: "Context Switching", link: "/advanced/context-switching" },
+            { text: "Channel Gateway (CI watch)", link: "/advanced/channel-gateway" },
           ],
         },
       ],

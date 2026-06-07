@@ -77,7 +77,8 @@ describe('ChannelGateway', () => {
   });
 
   it('registers ListTools and CallTool handlers on construction', () => {
-    new ChannelGateway(baseConfig);
+    const gw = new ChannelGateway(baseConfig);
+    expect(gw).toBeInstanceOf(ChannelGateway);
     expect(mockServerHandlers.has(ListToolsRequestSchema)).toBe(true);
     expect(mockServerHandlers.has(CallToolRequestSchema)).toBe(true);
   });
@@ -186,12 +187,14 @@ describe('ChannelGateway', () => {
 
   it('rejects calls when the request buffer is full (backpressure)', async () => {
     // Never started -> downstream not connected; maxQueued 0 fails immediately.
-    new ChannelGateway({ ...baseConfig, maxQueued: 0 });
+    const gw = new ChannelGateway({ ...baseConfig, maxQueued: 0 });
+    expect(gw).toBeInstanceOf(ChannelGateway);
     await expect(callTool('browse_projects')).rejects.toThrow(/buffer full/);
   });
 
   it('rejects calls when the downstream reconnect times out', async () => {
-    new ChannelGateway({ ...baseConfig, connectTimeoutMs: 30, maxQueued: 5 });
+    const gw = new ChannelGateway({ ...baseConfig, connectTimeoutMs: 30, maxQueued: 5 });
+    expect(gw).toBeInstanceOf(ChannelGateway);
     await expect(callTool('browse_projects')).rejects.toThrow(/timed out/);
   });
 });

@@ -3,14 +3,14 @@
 # Quick MCP tester - sends init sequence + payload from $1
 set -e
 
-if [ -z "$1" ]; then
+if [[ -z "$1" ]]; then
     echo "Usage: $0 'tool_params'"
     echo "Example: $0 '{\"name\": \"list_work_items\", \"arguments\": {\"namespacePath\": \"test\"}}'"
     exit 1
 fi
 
 # Load environment variables from .env.test
-if [ -f .env.test ]; then
+if [[ -f .env.test ]]; then
     set -a
     source .env.test
     set +a
@@ -20,7 +20,7 @@ fi
 export SSE=false
 
 # Debug output (enable with DEBUG=1)
-if [ "$DEBUG" = "1" ]; then
+if [[ "$DEBUG" == "1" ]]; then
     echo "🚀 Starting MCP stdio with test environment..."
 fi
 
@@ -34,7 +34,7 @@ cat > "$TEMP_INPUT" << EOF
 $PAYLOAD
 EOF
 
-if [ "$DEBUG" = "1" ]; then
+if [[ "$DEBUG" == "1" ]]; then
     echo "📤 Sending:"
     echo "  Init sequence + payload"
     echo "  Payload: $PAYLOAD"

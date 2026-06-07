@@ -1,7 +1,7 @@
 #!/bin/bash
 git fetch
 
-if [ -z "$1" ]; then
+if [[ -z "$1" ]]; then
   echo "Error: docker user name required."
   exit 1
 fi
@@ -22,9 +22,9 @@ echo "  package.json                 : $version_package"
 echo "  package-lock.json            : $version_package_lock"
 echo "  package-lock.packages[\"\"]   : $version_package_lock_version"
 
-if [ "$BASE_VERSION" = "$version_package" ] &&
-   [ "$BASE_VERSION" = "$version_package_lock" ] &&
-   [ "$BASE_VERSION" = "$version_package_lock_version" ]; then
+if [[ "$BASE_VERSION" == "$version_package" ]] &&
+   [[ "$BASE_VERSION" == "$version_package_lock" ]] &&
+   [[ "$BASE_VERSION" == "$version_package_lock_version" ]]; then
   echo "✅ version check ok"
 else
   echo "❌ invalid version"

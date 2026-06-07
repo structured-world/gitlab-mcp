@@ -65,6 +65,9 @@ jobs:
         id: relpr
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # This job has no checkout; without GH_REPO, gh falls back to local git
+          # detection and fails with "not a git repository".
+          GH_REPO: ${{ github.repository }}
         run: |
           BRANCH="release-please--branches--${{ github.ref_name }}"
           NUMBER="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
@@ -84,6 +87,8 @@ jobs:
         if: steps.relpr.outputs.number != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          # Same as above: no checkout in this job, so gh needs the repo explicitly.
+          GH_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ steps.relpr.outputs.number }}
           PR_BRANCH: ${{ steps.relpr.outputs.branch }}
         run: |

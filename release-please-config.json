@@ -2,6 +2,17 @@
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
   "release-type": "node",
   "separate-pull-requests": false,
+  "group-pull-request-title-pattern": "chore: release ${version}",
+  "plugins": [
+    {
+      "type": "node-workspace"
+    },
+    {
+      "type": "linked-versions",
+      "groupName": "gitlab-mcp",
+      "components": ["gitlab-mcp-monorepo", "gitlab-mcp", "gitlab-mcp-db"]
+    }
+  ],
   "changelog-sections": [
     { "type": "feat", "section": "Features" },
     { "type": "fix", "section": "Bug Fixes" },
@@ -16,6 +27,11 @@
     { "type": "chore", "section": "Chores", "hidden": true }
   ],
   "packages": {
+    ".": {
+      "component": "gitlab-mcp-monorepo",
+      "include-component-in-tag": false,
+      "changelog-path": "CHANGELOG.md"
+    },
     "packages/gitlab-mcp": {
       "component": "gitlab-mcp",
       "changelog-path": "CHANGELOG.md",
@@ -29,8 +45,8 @@
     "packages/gitlab-mcp-db": {
       "component": "gitlab-mcp-db",
       "changelog-path": "CHANGELOG.md",
-      "bump-minor-pre-major": true,
-      "bump-patch-for-minor-pre-major": true
+      "bump-minor-pre-major": false,
+      "bump-patch-for-minor-pre-major": false
     }
   }
 }

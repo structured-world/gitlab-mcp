@@ -1,8 +1,13 @@
 {
   "name": "@structured-world/gitlab-mcp-db",
-  "version": "8.0.0",
+  "version": "9.0.0",
   "description": "Optional PostgreSQL/Prisma OAuth-storage backend for @structured-world/gitlab-mcp",
   "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/structured-world/gitlab-mcp",
+    "directory": "packages/gitlab-mcp-db"
+  },
   "type": "commonjs",
   "main": "./dist/src/index.js",
   "types": "./dist/src/index.d.ts",
@@ -21,14 +26,12 @@
     "prisma": "^7.8.0"
   },
   "devDependencies": {
+    "@structured-world/gitlab-mcp": "workspace:^",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.9.2",
     "jest": "^30.4.2",
     "ts-jest": "^29.4.11",
     "typescript": "^6.0.0"
-  },
-  "peerDependencies": {
-    "@structured-world/gitlab-mcp": "workspace:^"
   },
   "publishConfig": {
     "access": "public"

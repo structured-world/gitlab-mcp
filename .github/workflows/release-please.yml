@@ -38,8 +38,8 @@ jobs:
       release-version: ${{ steps.release.outputs['packages/gitlab-mcp--version'] }}
       release-tag: ${{ steps.release.outputs['packages/gitlab-mcp--tag_name'] }}
       release-sha: ${{ steps.release.outputs['packages/gitlab-mcp--sha'] }}
-      pr-number: ${{ steps.release.outputs.pr != '' && fromJSON(steps.release.outputs.pr).number || '' }}
-      pr-branch: ${{ steps.release.outputs.pr != '' && fromJSON(steps.release.outputs.pr).headBranchName || '' }}
+      pr-number: ${{ steps.relpr.outputs.number }}
+      pr-branch: ${{ steps.relpr.outputs.branch }}
 
     steps:
       - name: Generate release token
@@ -56,16 +56,36 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
 
-      # release-please cannot put the version in a combined multi-package PR title
-      # without a root "." component, and that component breaks lockstep on
+      # Without a root (".") component, release-please-action does not populate the
+      # aggregate `pr` output -- only per-package ones -- so the release PR must be
+      # resolved by its deterministic branch instead. The branch is empty when no
+      # release PR is open (e.g. right after a release merges, or a commit that
+      # produces no release), which downstream steps treat as "nothing to do".
+      - name: Resolve the open release PR
+        id: relpr
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          BRANCH="release-please--branches--${{ github.ref_name }}"
+          NUMBER="$(gh pr list --head "$BRANCH" --state open --json number --jq '.[0].number // empty')"
+          if [ -n "$NUMBER" ]; then
+            echo "number=$NUMBER" >> "$GITHUB_OUTPUT"
+            echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+          else
+            echo "number=" >> "$GITHUB_OUTPUT"
+            echo "branch=" >> "$GITHUB_OUTPUT"
+          fi
+
+      # release-please cannot inject the version into a combined multi-package PR
+      # title without a root "." component, and that component breaks lockstep on
       # root-only changes. Set the title from the gitlab-mcp version instead -- the
       # packages are version-locked, so it is the single release version.
       - name: Put the release version in the combined PR title
-        if: steps.release.outputs.pr != ''
+        if: steps.relpr.outputs.number != ''
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
-          PR_NUMBER: ${{ fromJSON(steps.release.outputs.pr).number }}
-          PR_BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
+          PR_NUMBER: ${{ steps.relpr.outputs.number }}
+          PR_BRANCH: ${{ steps.relpr.outputs.branch }}
         run: |
           VERSION="$(gh api "repos/${{ github.repository }}/contents/packages/gitlab-mcp/package.json?ref=${PR_BRANCH}" --jq '.content' | base64 -d | jq -r .version)"
           gh pr edit "$PR_NUMBER" --title "chore: release ${VERSION}"

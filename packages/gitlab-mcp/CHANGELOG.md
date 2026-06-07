@@ -4,6 +4,13 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [9.0.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v9.0.0...gitlab-mcp-v9.0.1) (2026-06-07)
+
+
+### Chores
+
+* **gitlab-mcp:** Synchronize gitlab-mcp versions
+
 ## [9.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v8.0.0...gitlab-mcp-v9.0.0) (2026-06-07)
 
 

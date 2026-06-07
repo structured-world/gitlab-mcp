@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.0.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v9.0.0...gitlab-mcp-db-v9.0.1) (2026-06-07)
+
+
+### Bug Fixes
+
+* **db:** add repository field for npm provenance ([#507](https://github.com/structured-world/gitlab-mcp/issues/507)) ([bc52381](https://github.com/structured-world/gitlab-mcp/commit/bc52381b861b45cf2cc19ed8662c99293289ed05)), closes [#506](https://github.com/structured-world/gitlab-mcp/issues/506)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 9.0.1
+
 ## [9.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v8.0.0...gitlab-mcp-db-v9.0.0) (2026-06-07)
 
 

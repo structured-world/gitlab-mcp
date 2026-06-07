@@ -204,6 +204,19 @@ jobs:
       pull-requests: read   # For review thread check on PRs
       security-events: read # For checking CodeQL alert states
 
+    # Local registry so the db image can be built `FROM` the just-built
+    # core image. The buildx `docker-container` builder is isolated from
+    # the host docker daemon, so a `--load`ed core image is NOT visible to
+    # the db build (it would try to pull `structured-world/gitlab-mcp:test`
+    # from docker.io and fail). Pushing core to this in-job registry and
+    # referencing it via `localhost:5000` is the canonical chained-image
+    # pattern; the builder reaches it via `driver-opts: network=host`.
+    services:
+      registry:
+        image: registry:2
+        ports:
+          - 5000:5000
+
     steps:
       - name: Check for unresolved review threads
         if: github.event_name == 'pull_request'
@@ -396,40 +409,44 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
+        with:
+          # Host network so the builder can reach the in-job registry at
+          # localhost:5000 (to push core and pull it for the db FROM).
+          driver-opts: network=host
 
-      # Single-platform + load for the PR test: the db image is FROM the core
-      # image, which must exist locally; multi-platform builds cannot be loaded.
-      # The release workflow does the multi-platform push.
-      - name: Build core Docker image (test only, no push)
+      # PR test build (single-platform, no docker.io push). Core is pushed
+      # to the in-job registry so the db image can resolve it via FROM; the
+      # release workflow does the multi-platform docker.io push.
+      - name: Build core Docker image (test only)
         id: build
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./packages/gitlab-mcp/Dockerfile
           platforms: linux/amd64
-          push: false
-          load: true
-          tags: ${{ env.IMAGE_NAME }}:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          push: true
+          tags: localhost:5000/${{ env.IMAGE_NAME }}:test
+          cache-from: type=gha,scope=core
+          cache-to: type=gha,mode=max,scope=core
 
-      - name: Build db Docker image layered on core (test only, no push)
+      - name: Build db Docker image layered on core (test only)
         uses: docker/build-push-action@v7
         with:
           context: .
           file: ./packages/gitlab-mcp-db/Dockerfile
           build-args: |
-            CORE_IMAGE=${{ env.IMAGE_NAME }}:test
+            CORE_IMAGE=localhost:5000/${{ env.IMAGE_NAME }}:test
           platforms: linux/amd64
-          push: false
+          # Load the layered image into the host daemon for the run-test below.
           load: true
           tags: ${{ env.IMAGE_NAME }}-db:test
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=gha,scope=db
+          cache-to: type=gha,mode=max,scope=db
 
       - name: Test Docker images
         run: |
-          docker run --rm -e GITLAB_TOKEN=test_token ${{ env.IMAGE_NAME }}:test --version || echo "Core version check passed"
+          # Core lives in the in-job registry (pulled on run).
+          docker run --rm -e GITLAB_TOKEN=test_token localhost:5000/${{ env.IMAGE_NAME }}:test --version || echo "Core version check passed"
           # The layered image must resolve the optional db backend at runtime.
           docker run --rm --entrypoint node ${{ env.IMAGE_NAME }}-db:test \
             -e "if (typeof require('@structured-world/gitlab-mcp-db').PostgreSQLStorageBackend !== 'function') process.exit(1); console.log('db backend resolves')"

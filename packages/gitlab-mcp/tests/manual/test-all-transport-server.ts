@@ -14,7 +14,7 @@ import {
   TransportMode,
   checkHealthEndpoint,
   HOST,
-} from './utils/server-launcher.js';
+} from '../utils/server-launcher.js';
 import { StdioTestClient } from './clients/stdio-client.js';
 import { SSETestClient } from './clients/sse-client.js';
 import { StreamableHTTPTestClient } from './clients/streamable-http-client.js';

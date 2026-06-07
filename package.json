@@ -1,6 +1,6 @@
 {
   "name": "gitlab-mcp-monorepo",
-  "version": "0.0.0",
+  "version": "9.0.0",
   "private": true,
   "description": "Monorepo root for @structured-world/gitlab-mcp and its optional packages",
   "packageManager": "yarn@4.13.0",

@@ -8,9 +8,11 @@
 #   docker build -f packages/gitlab-mcp-db/Dockerfile \
 #     --build-arg CORE_IMAGE=gitlab-mcp:latest -t gitlab-mcp-db .
 
-# Required — pass the exact core image to layer on (no mutable `latest` default,
-# so builds stay reproducible). e.g. ghcr.io/structured-world/gitlab-mcp:8.0.0
-ARG CORE_IMAGE
+# Core image to layer on. The default keeps the Dockerfile valid and buildable
+# standalone; CI and the release pipeline always override it with the exact,
+# version-pinned core image via --build-arg (e.g.
+# ghcr.io/structured-world/gitlab-mcp:8.0.0) so published builds stay reproducible.
+ARG CORE_IMAGE=ghcr.io/structured-world/gitlab-mcp:latest
 
 # ============================================================================
 # DB BUILD STAGE - Build the db package and resolve its production deps

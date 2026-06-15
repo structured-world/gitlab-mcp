@@ -396,6 +396,13 @@ jobs:
       - name: Sync root package.json version
         run: |
           VERSION="$(jq -r .version packages/gitlab-mcp/package.json)"
+          # jq -r prints the literal "null" (exit 0) when .version is absent, which
+          # set -e does not catch -- guard so a missing version fails loud instead
+          # of committing "version": "null" into the root package.json.
+          if [ -z "$VERSION" ] || [ "$VERSION" = "null" ]; then
+            echo "Error: no version in packages/gitlab-mcp/package.json" >&2
+            exit 1
+          fi
           jq --arg v "$VERSION" '.version = $v' package.json > package.json.tmp
           mv package.json.tmp package.json
 

@@ -388,14 +388,26 @@ jobs:
         run: ./scripts/prepare-release.sh "$(jq -r .version package.json)"
         working-directory: packages/gitlab-mcp
 
+      # release-please does not manage the monorepo root package.json (the root
+      # "." component was removed in #519 because it broke lockstep, #518), so its
+      # version field would otherwise drift behind the packages. Mirror the locked
+      # release version into it here, on the same PR branch, so the merged root
+      # version always matches the published packages.
+      - name: Sync root package.json version
+        run: |
+          VERSION="$(jq -r .version packages/gitlab-mcp/package.json)"
+          jq --arg v "$VERSION" '.version = $v' package.json > package.json.tmp
+          mv package.json.tmp package.json
+
       - name: Commit regenerated metadata to the release PR
         working-directory: packages/gitlab-mcp
         run: |
           git config user.name "structured-world-releaser[bot]"
           git config user.email "structured-world-releaser[bot]@users.noreply.github.com"
           # Only the committed dynamic artifacts. .semantic-release-version is a
-          # release-time-only file and must not be committed.
-          git add package.json README.md server.json
+          # release-time-only file and must not be committed. The root
+          # package.json (../../) carries the mirrored release version.
+          git add package.json README.md server.json ../../package.json
           if git diff --cached --quiet; then
             echo "No metadata drift; nothing to commit."
           else

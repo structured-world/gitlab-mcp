@@ -561,7 +561,7 @@
     "@clack/prompts": "^1.5.1",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "express": "^5.2.1",
-    "graphql": "^16.14.2",
+    "graphql": "^17.0.0",
     "graphql-tag": "^2.12.6",
     "open": "^11.0.0",
     "picomatch": "^4.0.4",

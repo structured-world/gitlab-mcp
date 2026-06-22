@@ -186,12 +186,12 @@ export interface ListRunnerJobsResult {
 }
 export interface ListRunnerJobsVars {
   id: string;
-  statuses?: string | null;
+  statuses?: string[] | null;
   first?: number | null;
   after?: string | null;
 }
 export const LIST_RUNNER_JOBS: TypedDocumentNode<ListRunnerJobsResult, ListRunnerJobsVars> = gql`
-  query ListRunnerJobs($id: CiRunnerID!, $statuses: CiJobStatus, $first: Int, $after: String) {
+  query ListRunnerJobs($id: CiRunnerID!, $statuses: [CiJobStatus!], $first: Int, $after: String) {
     runner(id: $id) {
       id
       jobs(statuses: $statuses, first: $first, after: $after) {

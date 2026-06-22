@@ -115,7 +115,10 @@ describe('runners registry', () => {
       await browse().handler({ action: 'list_jobs', runner_id: 7, statuses: 'FAILED' });
       const [doc, vars] = mockClient.request.mock.calls[0];
       expect(doc).toBe(LIST_RUNNER_JOBS);
-      expect(vars).toMatchObject({ id: RUNNER_GID, statuses: 'FAILED' });
+      // GitLab's jobs(statuses:) argument is [CiJobStatus!], so a single status
+      // filter must be wrapped in a list. Sending the bare enum makes GitLab reject
+      // the query with "List dimension mismatch on variable $statuses".
+      expect(vars).toMatchObject({ id: RUNNER_GID, statuses: ['FAILED'] });
     });
 
     it('list_jobs throws when the runner is missing', async () => {

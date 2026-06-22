@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.1.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v9.1.0...gitlab-mcp-db-v9.1.1) (2026-06-22)
+
+
+### Bug Fixes
+
+* **runners:** send job status filter as a GitLab list argument ([#536](https://github.com/structured-world/gitlab-mcp/issues/536)) ([c1b37f9](https://github.com/structured-world/gitlab-mcp/commit/c1b37f98cb95f56dae750fc5ef273ca8832c5823))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 9.1.1
+
 ## [9.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v9.0.1...gitlab-mcp-db-v9.1.0) (2026-06-07)
 
 

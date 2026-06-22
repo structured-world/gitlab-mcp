@@ -414,7 +414,11 @@ jobs:
           # Only the committed dynamic artifacts. .semantic-release-version is a
           # release-time-only file and must not be committed. The root
           # package.json (../../) carries the mirrored release version.
-          git add package.json README.md server.json ../../package.json
+          # prepare-release.sh renders the README to all three shipping locations
+          # (core npm page, GitHub repo landing, db npm page) -- stage every one so
+          # the public counts/version never drift between them. Missing the root and
+          # db READMEs here previously left them stuck a release behind the core page.
+          git add package.json README.md server.json ../../README.md ../../package.json ../gitlab-mcp-db/README.md
           if git diff --cached --quiet; then
             echo "No metadata drift; nothing to commit."
           else

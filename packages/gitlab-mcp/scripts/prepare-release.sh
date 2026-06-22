@@ -48,11 +48,15 @@ fi
 
 echo "prepare-release: v${VERSION}, ${TOOL_COUNT} tools (${READONLY_TOOL_COUNT} read-only, ${ACTION_COUNT} actions), ${ENTITY_COUNT} entities"
 
-# Update server.json: version + description
+# Update server.json: version + description.
+# The description is the public marketing line shown on the MCP Registry listing,
+# so it mirrors the README hero sentence (tools / operations / entity types) instead
+# of a generic blurb. The MCP Registry schema caps description at 100 chars; this
+# phrasing stays well under that even with 3-digit counts.
 # Note: set -e ensures script exits on jq failure; leftover server.tmp is benign
 # (gitignored, cleaned by next successful run, doesn't affect release)
-jq --arg v "$VERSION" --arg tc "$TOOL_COUNT" \
-  '.version = $v | .packages[0].version = $v | .description = "GitLab MCP server with " + $tc + " tools for projects, MRs, pipelines, and more"' \
+jq --arg v "$VERSION" --arg tc "$TOOL_COUNT" --arg ac "$ACTION_COUNT" --arg ec "$ENTITY_COUNT" \
+  '.version = $v | .packages[0].version = $v | .description = $tc + " CQRS tools exposing " + $ac + " GitLab operations across " + $ec + " entity types"' \
   server.json > server.tmp && mv server.tmp server.json
 
 # Generate README.md from the template for each location it ships to. __REPO_BASE__

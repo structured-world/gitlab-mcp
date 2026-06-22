@@ -93,22 +93,24 @@ const ListRunnerJobsSchema = z.object({
   action: z.literal('list_jobs').describe('List jobs that have run on a runner'),
   runner_id: runnerIdField,
   statuses: z
-    .enum([
-      'CREATED',
-      'PENDING',
-      'RUNNING',
-      'FAILED',
-      'SUCCESS',
-      'CANCELED',
-      'SKIPPED',
-      'MANUAL',
-      'SCHEDULED',
-      'WAITING_FOR_RESOURCE',
-      'PREPARING',
-      'CANCELING',
-    ])
+    .array(
+      z.enum([
+        'CREATED',
+        'PENDING',
+        'RUNNING',
+        'FAILED',
+        'SUCCESS',
+        'CANCELED',
+        'SKIPPED',
+        'MANUAL',
+        'SCHEDULED',
+        'WAITING_FOR_RESOURCE',
+        'PREPARING',
+        'CANCELING',
+      ]),
+    )
     .optional()
-    .describe('Filter jobs by status'),
+    .describe('Filter jobs by one or more statuses (e.g. ["FAILED", "CANCELED"])'),
   first: firstField,
   after: afterField,
 });

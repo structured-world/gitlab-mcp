@@ -112,13 +112,18 @@ describe('runners registry', () => {
 
     it('list_jobs queries the runner jobs connection', async () => {
       mockClient.request.mockResolvedValueOnce({ runner: { id: RUNNER_GID, jobs: { nodes: [] } } });
-      await browse().handler({ action: 'list_jobs', runner_id: 7, statuses: 'FAILED' });
+      await browse().handler({
+        action: 'list_jobs',
+        runner_id: 7,
+        statuses: ['FAILED', 'CANCELED'],
+      });
       const [doc, vars] = mockClient.request.mock.calls[0];
       expect(doc).toBe(LIST_RUNNER_JOBS);
-      // GitLab's jobs(statuses:) argument is [CiJobStatus!], so a single status
-      // filter must be wrapped in a list. Sending the bare enum makes GitLab reject
-      // the query with "List dimension mismatch on variable $statuses".
-      expect(vars).toMatchObject({ id: RUNNER_GID, statuses: ['FAILED'] });
+      // GitLab's jobs(statuses:) argument is [CiJobStatus!]; the schema takes a
+      // list so callers can filter by several statuses at once. Declaring the
+      // variable as a bare enum made GitLab reject the query with
+      // "List dimension mismatch on variable $statuses".
+      expect(vars).toMatchObject({ id: RUNNER_GID, statuses: ['FAILED', 'CANCELED'] });
     });
 
     it('list_jobs throws when the runner is missing', async () => {

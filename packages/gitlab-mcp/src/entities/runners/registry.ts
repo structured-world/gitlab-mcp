@@ -164,7 +164,7 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
           case 'list_jobs': {
             const res = await client.request(LIST_RUNNER_JOBS, {
               id: runnerGid(input.runner_id),
-              statuses: input.statuses ? [input.statuses] : null,
+              statuses: input.statuses ?? null,
               first: input.first ?? 20,
               after: input.after ?? null,
             });

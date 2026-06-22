@@ -14,7 +14,7 @@
     "diff": "4.0.4",
     "esbuild": ">=0.28.1",
     "tmp": ">=0.2.7",
-    "form-data": ">=4.0.6"
+    "form-data": "^4.0.6"
   },
   "scripts": {
     "build": "nx run-many -t build",

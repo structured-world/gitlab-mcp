@@ -450,13 +450,13 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clack/core@npm:1.4.1":
-  version: 1.4.1
-  resolution: "@clack/core@npm:1.4.1"
+"@clack/core@npm:1.4.2":
+  version: 1.4.2
+  resolution: "@clack/core@npm:1.4.2"
   dependencies:
     fast-wrap-ansi: "npm:^0.2.0"
     sisteransi: "npm:^1.0.5"
-  checksum: 10c0/7e7e02f0c423c457aff9acc09f9ffbae3d2841b18f543c614b5b8eaa2c11c9f146bf68b3078d1daa4dea9d3131ccfa514edbe8d29ced18446933567188b2543c
+  checksum: 10c0/390a0c650dbd4c406029e32fd6a0b704bad3a172cab96e77989a1d376ddeee5f4b0500edb093375b202ae35acfc94fbd2fb11fe3ad9e47724acae4b7ff1d68b6
   languageName: node
   linkType: hard
 
@@ -471,22 +471,22 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@clack/prompts@npm:^1.5.1":
-  version: 1.5.1
-  resolution: "@clack/prompts@npm:1.5.1"
+"@clack/prompts@npm:^1.6.0":
+  version: 1.6.0
+  resolution: "@clack/prompts@npm:1.6.0"
   dependencies:
-    "@clack/core": "npm:1.4.1"
+    "@clack/core": "npm:1.4.2"
     fast-string-width: "npm:^3.0.2"
     fast-wrap-ansi: "npm:^0.2.0"
     sisteransi: "npm:^1.0.5"
-  checksum: 10c0/423b1958d28a25703130c2dd6a236413d210446fd36e980dcf106f9165e5c579494214aaca5185269e918488c6d4f93c4de44a7dc5f902add8874486b2624c22
+  checksum: 10c0/b288a1085ce75a06a739f4907b38187d9b3121a53e4a86541383df3e2348276fa00903a5d2220d7b2c821a55b81ad11af9cadb3760e3212dac27fe2001555ab1
   languageName: node
   linkType: hard
 
-"@cloudflare/workers-types@npm:^4.20260616.1":
-  version: 4.20260616.1
-  resolution: "@cloudflare/workers-types@npm:4.20260616.1"
-  checksum: 10c0/ce02ec49826740e35de0c22c45b4fe18e819a890c26c17261f81a1de5f7b7e59824182bff4775ce50b6614d5cd468d1b1393b76956467404ba62f69aaa3305d8
+"@cloudflare/workers-types@npm:^4.20260621.1":
+  version: 4.20260621.1
+  resolution: "@cloudflare/workers-types@npm:4.20260621.1"
+  checksum: 10c0/5f220aa5feff5b4e20dc549b82f80740c0daa25cb001e8d8a5aac51ab2aba1123096276ec880887c6fd37cc396beb43ebe4ab3c23ae32d31993fa2230c1e4ed7
   languageName: node
   linkType: hard
 
@@ -2136,7 +2136,7 @@ __metadata:
     "@prisma/client": "npm:^7.8.0"
     "@structured-world/gitlab-mcp": "workspace:^"
     "@types/jest": "npm:^30.0.0"
-    "@types/node": "npm:^25.9.3"
+    "@types/node": "npm:^25.9.4"
     jest: "npm:^30.4.2"
     prisma: "npm:^7.8.0"
     ts-jest: "npm:^29.4.11"
@@ -2148,15 +2148,15 @@ __metadata:
   version: 0.0.0-use.local
   resolution: "@structured-world/gitlab-mcp@workspace:packages/gitlab-mcp"
   dependencies:
-    "@clack/prompts": "npm:^1.5.1"
-    "@cloudflare/workers-types": "npm:^4.20260616.1"
+    "@clack/prompts": "npm:^1.6.0"
+    "@cloudflare/workers-types": "npm:^4.20260621.1"
     "@eslint/js": "npm:^10.0.1"
     "@graphql-typed-document-node/core": "npm:^3.2.0"
     "@modelcontextprotocol/sdk": "npm:^1.29.0"
     "@structured-world/vue-privacy": "npm:^1.10.0"
     "@types/express": "npm:^5.0.6"
     "@types/jest": "npm:^30.0.0"
-    "@types/node": "npm:^25.9.3"
+    "@types/node": "npm:^25.9.4"
     "@types/picomatch": "npm:^4.0.3"
     "@typescript-eslint/eslint-plugin": "npm:^8.61.1"
     "@typescript-eslint/parser": "npm:^8.61.1"
@@ -2166,8 +2166,8 @@ __metadata:
     eslint: "npm:^10.5.0"
     eslint-plugin-prettier: "npm:^5.5.6"
     express: "npm:^5.2.1"
-    graphql: "npm:^16.14.2"
-    graphql-tag: "npm:^2.12.6"
+    graphql: "npm:^17.0.0"
+    graphql-tag: "npm:^2.12.7"
     jest: "npm:^30.4.2"
     open: "npm:^11.0.0"
     picomatch: "npm:^4.0.4"
@@ -2460,12 +2460,12 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@types/node@npm:^25.9.3":
-  version: 25.9.3
-  resolution: "@types/node@npm:25.9.3"
+"@types/node@npm:^25.9.4":
+  version: 25.9.4
+  resolution: "@types/node@npm:25.9.4"
   dependencies:
     undici-types: "npm:>=7.24.0 <7.24.7"
-  checksum: 10c0/72d3aece9d42c2c641bcd3f3cb2dc2828b4bd384dfcbd910c404b8859a68bd69d50c4769ce7defd4ff5e049768e23e615f09407ea2cbbb5f44b90d75a7c6b8ca
+  checksum: 10c0/4b19670ef5dbefa836a2d4a9ed0b5ac6befbc0844bfdd12833234ff8fa68da1f65e6362d2ef87acf7e7da9d6ff649bf81c454d12e802b7e7fa9246a15c0edcf6
   languageName: node
   linkType: hard
 
@@ -5224,21 +5224,21 @@ __metadata:
   languageName: node
   linkType: hard
 
-"graphql-tag@npm:^2.12.6":
-  version: 2.12.6
-  resolution: "graphql-tag@npm:2.12.6"
+"graphql-tag@npm:^2.12.7":
+  version: 2.12.7
+  resolution: "graphql-tag@npm:2.12.7"
   dependencies:
     tslib: "npm:^2.1.0"
   peerDependencies:
-    graphql: ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0
-  checksum: 10c0/7763a72011bda454ed8ff1a0d82325f43ca6478e4ce4ab8b7910c4c651dd00db553132171c04d80af5d5aebf1ef6a8a9fd53ccfa33b90ddc00aa3d4be6114419
+    graphql: ^0.9.0 || ^0.10.0 || ^0.11.0 || ^0.12.0 || ^0.13.0 || ^14.0.0 || ^15.0.0 || ^16.0.0 || ^17.0.0
+  checksum: 10c0/c5b973b6b0477d3f734a0df7ebea2061790e268774d7fea310fde64820c1686c3b43f3e7262e4224d689917f42ae8e84c67f32772c003c308d38896ed960c5ec
   languageName: node
   linkType: hard
 
-"graphql@npm:^16.14.2":
-  version: 16.14.2
-  resolution: "graphql@npm:16.14.2"
-  checksum: 10c0/a95a96961eaff55cc9fe9d31fae6f33499ac988b972d07ea5085024cb1333f515b902f376e7393a5489aa82200a8aff3eb96580e4d1b69d702ed19b6eb1ce97a
+"graphql@npm:^17.0.0":
+  version: 17.0.1
+  resolution: "graphql@npm:17.0.1"
+  checksum: 10c0/95e4766eefa97bbc37cb4452527d24e12068f170e03c564611a3911f30a77361dfcfbdbfeea00f643c82585c02312c1f41ba6a6263049996d279c49951454980
   languageName: node
   linkType: hard
 

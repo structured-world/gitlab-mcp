@@ -558,11 +558,11 @@
     "build:mcpb": "./scripts/build-mcpb.sh"
   },
   "dependencies": {
-    "@clack/prompts": "^1.5.1",
+    "@clack/prompts": "^1.6.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "express": "^5.2.1",
-    "graphql": "^16.14.2",
-    "graphql-tag": "^2.12.6",
+    "graphql": "^17.0.0",
+    "graphql-tag": "^2.12.7",
     "open": "^11.0.0",
     "picomatch": "^4.0.4",
     "pino": "^10.3.1",
@@ -574,13 +574,13 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260616.1",
+    "@cloudflare/workers-types": "^4.20260621.1",
     "@eslint/js": "^10.0.1",
     "@graphql-typed-document-node/core": "^3.2.0",
     "@structured-world/vue-privacy": "^1.10.0",
     "@types/express": "^5.0.6",
     "@types/jest": "^30.0.0",
-    "@types/node": "^25.9.3",
+    "@types/node": "^25.9.4",
     "@types/picomatch": "^4.0.3",
     "@typescript-eslint/eslint-plugin": "^8.61.1",
     "@typescript-eslint/parser": "^8.61.1",

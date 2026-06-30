@@ -22,6 +22,6 @@
     "lint": "nx run-many -t lint"
   },
   "devDependencies": {
-    "nx": "^23.0.0"
+    "nx": "^23.0.1"
   }
 }

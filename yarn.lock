@@ -483,10 +483,10 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@cloudflare/workers-types@npm:^4.20260623.1":
-  version: 4.20260623.1
-  resolution: "@cloudflare/workers-types@npm:4.20260623.1"
-  checksum: 10c0/efa544e34bbd236ba8f8deaca1db855063fbd5dde7ffa350e9c62535482f1bf6e23c78b90db70451fee44a5576d8dfc5764f821148883041f4e8465c5ad7a6aa
+"@cloudflare/workers-types@npm:^5.20260707.1":
+  version: 5.20260707.1
+  resolution: "@cloudflare/workers-types@npm:5.20260707.1"
+  checksum: 10c0/2d15a64e9ab83b9a120516d54965790b72b5d07de1f8e03ea5b9bfe300a4b8b5ab3c7915d3fa85010762f50aeb7a97b11038077d0aea329448a83ea7f25071f2
   languageName: node
   linkType: hard
 
@@ -2149,7 +2149,7 @@ __metadata:
   resolution: "@structured-world/gitlab-mcp@workspace:packages/gitlab-mcp"
   dependencies:
     "@clack/prompts": "npm:^1.6.0"
-    "@cloudflare/workers-types": "npm:^4.20260623.1"
+    "@cloudflare/workers-types": "npm:^5.20260707.1"
     "@eslint/js": "npm:^10.0.1"
     "@graphql-typed-document-node/core": "npm:^3.2.0"
     "@modelcontextprotocol/sdk": "npm:^1.29.0"

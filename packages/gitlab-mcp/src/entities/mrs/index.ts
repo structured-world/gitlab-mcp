@@ -21,13 +21,11 @@ const isReadOnly = process.env.GITLAB_READONLY === 'true';
 const mrsToolsFromRegistry = getFilteredMrsTools(isReadOnly);
 
 // Convert enhanced tool definitions to regular tool definitions for backward compatibility
-export const mrsTools: ToolDefinition[] = mrsToolsFromRegistry.map(
-  (tool): ToolDefinition => ({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-  }),
-);
+export const mrsTools: ToolDefinition[] = mrsToolsFromRegistry.map((tool): ToolDefinition => ({
+  name: tool.name,
+  description: tool.description,
+  inputSchema: tool.inputSchema,
+}));
 
 // Export read-only tool names for backward compatibility
 export const mrsReadOnlyTools = getMrsReadOnlyToolNames();

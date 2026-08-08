@@ -27,13 +27,7 @@ export interface ContainerRuntimeInfo {
  * Docker container status
  */
 export type ContainerStatus =
-  | 'running'
-  | 'stopped'
-  | 'paused'
-  | 'restarting'
-  | 'created'
-  | 'exited'
-  | 'dead';
+  'running' | 'stopped' | 'paused' | 'restarting' | 'created' | 'exited' | 'dead';
 
 /**
  * Docker container info

@@ -62,7 +62,8 @@ export const LOG_DESTINATION: 'stdout' | 'stderr' = (() => {
  * - %time  - Timestamp [HH:MM:SS.mmm]
  * - %level - Log level (INFO, WARN, ERROR, DEBUG)
  * - %name  - Logger name (gitlab-mcp)
- * - %msg   - Log message with structured data
+ * - %msg   - Log message with structured data. Always rendered: a log line
+ *   without its message is useless, so omitting %msg does not suppress it
  *
  * Presets:
  * - "%msg" (minimal/default) - Message only, for daemonized environments where

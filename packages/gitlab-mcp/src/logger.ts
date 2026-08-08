@@ -26,6 +26,31 @@ const isTestEnv = process.env.NODE_ENV === 'test' || process.env.JEST_WORKER_ID 
 export const LOG_JSON = process.env.LOG_JSON === 'true';
 
 /**
+ * Whether the server runs on the stdio transport.
+ *
+ * Mirrors determineTransportMode() in server.ts (kept inline to avoid a circular
+ * import): explicit `stdio` argument, or no PORT environment variable.
+ */
+const isStdioTransport = process.argv.slice(2).includes('stdio') || !process.env.PORT;
+
+/**
+ * Resolved log destination stream.
+ *
+ * In stdio transport mode stdout carries MCP JSON-RPC frames, so logs are ALWAYS
+ * written to stderr regardless of configuration (MCP spec requirement).
+ *
+ * In HTTP mode (PORT set) the default preserves the container-friendly convention:
+ * pino-pretty output goes to stderr, LOG_JSON (NDJSON) output goes to stdout for
+ * log-driver ingestion. Set LOG_DESTINATION=stdout|stderr to override.
+ */
+export const LOG_DESTINATION: 'stdout' | 'stderr' = (() => {
+  if (isStdioTransport) return 'stderr';
+  const configured = process.env.LOG_DESTINATION;
+  if (configured === 'stdout' || configured === 'stderr') return configured;
+  return LOG_JSON ? 'stdout' : 'stderr';
+})();
+
+/**
  * Log format pattern using nginx-style tokens.
  *
  * Available tokens:
@@ -46,23 +71,6 @@ export const LOG_JSON = process.env.LOG_JSON === 'true';
 export const LOG_FORMAT = process.env.LOG_FORMAT ?? '%msg';
 
 /**
- * Convert LOG_FORMAT tokens to pino-pretty messageFormat template.
- *
- * Transforms nginx-style tokens to pino-pretty placeholders:
- * - %time  → {time}
- * - %level → {levelLabel}
- * - %name  → {name}
- * - %msg   → {msg}
- */
-function convertToPinoFormat(format: string): string {
-  return format
-    .replace(/%time/g, '{time}')
-    .replace(/%level/g, '{levelLabel}')
-    .replace(/%name/g, '{name}')
-    .replace(/%msg/g, '{msg}');
-}
-
-/**
  * Determine which fields to include based on LOG_FORMAT tokens.
  */
 function getIgnoredFields(format: string): string {
@@ -76,27 +84,28 @@ function getIgnoredFields(format: string): string {
 }
 
 /**
- * Build pino-pretty options based on LOG_FORMAT
+ * Build pino-pretty options based on LOG_FORMAT.
+ *
+ * Format tokens control field VISIBILITY via the `ignore` list; rendering uses
+ * pino-pretty's standard `[time] LEVEL (name): msg` prefix. A custom
+ * messageFormat must NOT be set here: transport options cross a worker-thread
+ * boundary, so template placeholders like {levelLabel} do not resolve, and the
+ * standard prefix would be rendered twice.
  */
-function buildPrettyOptions(format: string): Record<string, unknown> {
-  const baseOptions = {
-    destination: 2, // stderr - keeps stdout clean for CLI tools (list-tools --export)
-  };
-
+export function buildPrettyOptions(format: string): Record<string, unknown> {
   const hasTime = format.includes('%time');
-  const pinoFormat = convertToPinoFormat(format);
-  const ignored = getIgnoredFields(format);
 
   // Minimal format (just %msg) - no colors, pure message output
   const isMinimal = format.trim() === '%msg';
 
   return {
-    ...baseOptions,
+    // In stdio mode stdout carries JSON-RPC frames; stderr also keeps stdout
+    // clean for CLI tools (list-tools --export)
+    destination: LOG_DESTINATION === 'stdout' ? 1 : 2,
     colorize: !isMinimal,
     translateTime: hasTime ? 'HH:MM:ss.l' : false,
-    ignore: ignored,
-    messageFormat: pinoFormat,
-    hideObject: true, // Hide the JSON object, use messageFormat only
+    ignore: getIgnoredFields(format),
+    hideObject: true, // Structured data is folded into msg by logInfo/logWarn/logError
   };
 }
 
@@ -106,20 +115,34 @@ export const createLogger = (name?: string) => {
     level: process.env.LOG_LEVEL ?? 'info',
   };
 
-  // JSON mode: raw pino output (no pretty printing) for log aggregators
-  // Plain mode: pino-pretty for human-readable output
-  // Test mode: skip transport to avoid Jest worker thread leak
-  if (!isTestEnv && !LOG_JSON) {
-    options.transport = {
-      target: 'pino-pretty',
-      options: buildPrettyOptions(LOG_FORMAT),
-    };
+  // Test mode: no transport and no explicit stream to avoid Jest worker thread leak
+  if (isTestEnv) {
+    return pino(options);
   }
 
+  // JSON mode: raw pino output (no pretty printing) for log aggregators,
+  // routed to the resolved destination (stderr in stdio mode - issue #563)
+  if (LOG_JSON) {
+    return pino(options, LOG_DESTINATION === 'stdout' ? process.stdout : process.stderr);
+  }
+
+  // Plain mode: pino-pretty for human-readable output
+  options.transport = {
+    target: 'pino-pretty',
+    options: buildPrettyOptions(LOG_FORMAT),
+  };
   return pino(options);
 };
 
 export const logger = createLogger('gitlab-mcp');
+
+// LOG_DESTINATION=stdout cannot be honored on the stdio transport: stdout is
+// reserved for MCP JSON-RPC frames. Tell the operator instead of silently obeying.
+if (isStdioTransport && process.env.LOG_DESTINATION === 'stdout') {
+  logger.warn(
+    'LOG_DESTINATION=stdout is ignored in stdio mode: stdout is reserved for JSON-RPC, logs go to stderr',
+  );
+}
 
 /**
  * Format data object as key=value pairs for plain text logging.

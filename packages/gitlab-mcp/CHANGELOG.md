@@ -4,6 +4,13 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [9.1.2](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v9.1.1...gitlab-mcp-v9.1.2) (2026-08-08)
+
+
+### Bug Fixes
+
+* **logging:** never write logs to stdout in stdio mode ([#571](https://github.com/structured-world/gitlab-mcp/issues/571)) ([2e8e836](https://github.com/structured-world/gitlab-mcp/commit/2e8e83633fe5a27236f7a3bce7066b0238da5ad8))
+
 ## [9.1.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v9.1.0...gitlab-mcp-v9.1.1) (2026-06-22)
 
 

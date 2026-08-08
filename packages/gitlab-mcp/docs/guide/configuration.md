@@ -173,7 +173,7 @@ See [Customization](/advanced/customization) for schema mode details.
 |----------|---------|-------------|
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `LOG_JSON` | `false` | Output logs as JSON (NDJSON) for log aggregators |
-| `LOG_FORMAT` | `%msg` | Plain-text line layout. Tokens control which fields appear: `%time`, `%level`, `%name`, `%msg` (e.g. `[%time] %level (%name): %msg`) |
+| `LOG_FORMAT` | `%msg` | Which fields appear in plain-text logs: `%time`, `%level`, `%name`, `%msg`. Tokens toggle field visibility only; the line always renders in pino-pretty's fixed `[time] LEVEL (name): msg` order (e.g. `[%time] %level (%name): %msg` enables all fields) |
 | `LOG_DESTINATION` | auto | `stdout` or `stderr`. HTTP mode only; see [Log Destinations](#log-destinations-stdout-vs-stderr) |
 | `LOG_FILTER` | Claude Code filter | JSON array of filter rules to skip access logging |
 

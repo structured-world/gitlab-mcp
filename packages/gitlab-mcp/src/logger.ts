@@ -53,6 +53,11 @@ export const LOG_DESTINATION: 'stdout' | 'stderr' = (() => {
 /**
  * Log format pattern using nginx-style tokens.
  *
+ * Tokens are VISIBILITY switches: a field is rendered only when its token is
+ * present. The line layout itself is fixed to pino-pretty's standard
+ * `[time] LEVEL (name): msg` order; token position and surrounding literals
+ * are not honored.
+ *
  * Available tokens:
  * - %time  - Timestamp [HH:MM:SS.mmm]
  * - %level - Log level (INFO, WARN, ERROR, DEBUG)
@@ -121,7 +126,7 @@ export const createLogger = (name?: string) => {
   }
 
   // JSON mode: raw pino output (no pretty printing) for log aggregators,
-  // routed to the resolved destination (stderr in stdio mode - issue #563)
+  // routed to the resolved destination (always stderr in stdio mode)
   if (LOG_JSON) {
     return pino(options, LOG_DESTINATION === 'stdout' ? process.stdout : process.stderr);
   }

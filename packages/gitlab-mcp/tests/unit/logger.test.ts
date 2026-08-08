@@ -416,7 +416,7 @@ describe('logger', () => {
     });
   });
 
-  describe('log destination (issue #563)', () => {
+  describe('log destination', () => {
     // These tests verify that stdout is never polluted with log lines in stdio
     // transport mode: stdout carries MCP JSON-RPC frames, logs must go to stderr.
     const makeLogger = () => ({
@@ -512,6 +512,23 @@ describe('logger', () => {
       };
       expect(options.transport?.target).toBe('pino-pretty');
       expect(options.transport?.options.destination).toBe(2);
+    });
+
+    it('honors LOG_DESTINATION=stdout for the pretty transport in HTTP mode', async () => {
+      delete process.env.LOG_JSON;
+      process.env.PORT = '3000';
+      process.env.LOG_DESTINATION = 'stdout';
+
+      const pinoMock = jest.fn((..._args: unknown[]) => makeLogger());
+      jest.doMock('pino', () => ({ pino: pinoMock }));
+
+      await import('../../src/logger');
+
+      const options = pinoMock.mock.calls[0][0] as {
+        transport?: { target: string; options: Record<string, unknown> };
+      };
+      expect(options.transport?.target).toBe('pino-pretty');
+      expect(options.transport?.options.destination).toBe(1);
     });
   });
 

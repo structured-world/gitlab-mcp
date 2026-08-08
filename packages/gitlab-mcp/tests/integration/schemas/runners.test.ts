@@ -36,7 +36,7 @@ describe('Runners Schema - GitLab Integration', () => {
         { action: 'list_project', project_id: 'g/p', paused: false },
         { action: 'list_group', group_id: 'g', tag_list: ['linux'] },
         { action: 'get', runner_id: 1 },
-        { action: 'list_jobs', runner_id: 1, statuses: 'FAILED' },
+        { action: 'list_jobs', runner_id: 1, statuses: ['FAILED', 'CANCELED'] },
       ]) {
         expect(BrowseRunnersSchema.safeParse(params).success).toBe(true);
       }

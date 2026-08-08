@@ -416,6 +416,169 @@ describe('logger', () => {
     });
   });
 
+  describe('log destination', () => {
+    // These tests verify that stdout is never polluted with log lines in stdio
+    // transport mode: stdout carries MCP JSON-RPC frames, logs must go to stderr.
+    const makeLogger = () => ({
+      info: mockInfo,
+      warn: mockWarn,
+      error: mockError,
+      debug: mockDebug,
+    });
+
+    let savedJestWorkerId: string | undefined;
+    let savedNodeEnv: string | undefined;
+
+    beforeEach(() => {
+      // Escape the test-env guard so createLogger takes the production path.
+      // pino is mocked, so no real transport/worker threads are created.
+      savedJestWorkerId = process.env.JEST_WORKER_ID;
+      savedNodeEnv = process.env.NODE_ENV;
+      delete process.env.JEST_WORKER_ID;
+      process.env.NODE_ENV = 'production';
+      delete process.env.PORT;
+      delete process.env.LOG_DESTINATION;
+      delete process.env.LOG_FORMAT;
+    });
+
+    afterEach(() => {
+      if (savedJestWorkerId !== undefined) process.env.JEST_WORKER_ID = savedJestWorkerId;
+      if (savedNodeEnv !== undefined) process.env.NODE_ENV = savedNodeEnv;
+      else delete process.env.NODE_ENV;
+      delete process.env.PORT;
+      delete process.env.LOG_DESTINATION;
+      delete process.env.LOG_FORMAT;
+    });
+
+    it('routes JSON logs to stderr in stdio mode (no PORT)', async () => {
+      process.env.LOG_JSON = 'true';
+
+      const pinoMock = jest.fn((..._args: unknown[]) => makeLogger());
+      jest.doMock('pino', () => ({ pino: pinoMock }));
+
+      await import('../../src/logger');
+
+      expect(pinoMock).toHaveBeenCalled();
+      expect(pinoMock.mock.calls[0][1]).toBe(process.stderr);
+    });
+
+    it('routes JSON logs to stdout in HTTP mode (PORT set) by default', async () => {
+      process.env.LOG_JSON = 'true';
+      process.env.PORT = '3000';
+
+      const pinoMock = jest.fn((..._args: unknown[]) => makeLogger());
+      jest.doMock('pino', () => ({ pino: pinoMock }));
+
+      await import('../../src/logger');
+
+      expect(pinoMock.mock.calls[0][1]).toBe(process.stdout);
+    });
+
+    it('honors LOG_DESTINATION=stderr for JSON logs in HTTP mode', async () => {
+      process.env.LOG_JSON = 'true';
+      process.env.PORT = '3000';
+      process.env.LOG_DESTINATION = 'stderr';
+
+      const pinoMock = jest.fn((..._args: unknown[]) => makeLogger());
+      jest.doMock('pino', () => ({ pino: pinoMock }));
+
+      await import('../../src/logger');
+
+      expect(pinoMock.mock.calls[0][1]).toBe(process.stderr);
+    });
+
+    it('forces stderr in stdio mode even when LOG_DESTINATION=stdout', async () => {
+      process.env.LOG_JSON = 'true';
+      process.env.LOG_DESTINATION = 'stdout';
+
+      const pinoMock = jest.fn((..._args: unknown[]) => makeLogger());
+      jest.doMock('pino', () => ({ pino: pinoMock }));
+
+      await import('../../src/logger');
+
+      expect(pinoMock.mock.calls[0][1]).toBe(process.stderr);
+    });
+
+    it('pretty transport writes to stderr (fd 2) in stdio mode', async () => {
+      delete process.env.LOG_JSON;
+
+      const pinoMock = jest.fn((..._args: unknown[]) => makeLogger());
+      jest.doMock('pino', () => ({ pino: pinoMock }));
+
+      await import('../../src/logger');
+
+      const options = pinoMock.mock.calls[0][0] as {
+        transport?: { target: string; options: Record<string, unknown> };
+      };
+      expect(options.transport?.target).toBe('pino-pretty');
+      expect(options.transport?.options.destination).toBe(2);
+    });
+
+    it('honors LOG_DESTINATION=stdout for the pretty transport in HTTP mode', async () => {
+      delete process.env.LOG_JSON;
+      process.env.PORT = '3000';
+      process.env.LOG_DESTINATION = 'stdout';
+
+      const pinoMock = jest.fn((..._args: unknown[]) => makeLogger());
+      jest.doMock('pino', () => ({ pino: pinoMock }));
+
+      await import('../../src/logger');
+
+      const options = pinoMock.mock.calls[0][0] as {
+        transport?: { target: string; options: Record<string, unknown> };
+      };
+      expect(options.transport?.target).toBe('pino-pretty');
+      expect(options.transport?.options.destination).toBe(1);
+    });
+  });
+
+  describe('buildPrettyOptions (LOG_FORMAT rendering)', () => {
+    // Regression: messageFormat duplicated the pino-pretty standard prefix and
+    // rendered "{levelLabel}" as "undefined". The format tokens must control
+    // field visibility via `ignore` only, never re-render the prefix.
+    it('minimal %msg format ignores time, level, and name without colors', async () => {
+      jest.doMock('pino', () => ({
+        pino: jest.fn(() => ({
+          info: mockInfo,
+          warn: mockWarn,
+          error: mockError,
+          debug: mockDebug,
+        })),
+      }));
+
+      const { buildPrettyOptions } = await import('../../src/logger');
+      const opts = buildPrettyOptions('%msg');
+
+      expect(opts.colorize).toBe(false);
+      expect(opts.translateTime).toBe(false);
+      expect(opts.messageFormat).toBeUndefined();
+      expect(String(opts.ignore).split(',')).toEqual(
+        expect.arrayContaining(['time', 'level', 'name']),
+      );
+    });
+
+    it('full format keeps time, level, and name and does not duplicate the prefix', async () => {
+      jest.doMock('pino', () => ({
+        pino: jest.fn(() => ({
+          info: mockInfo,
+          warn: mockWarn,
+          error: mockError,
+          debug: mockDebug,
+        })),
+      }));
+
+      const { buildPrettyOptions } = await import('../../src/logger');
+      const opts = buildPrettyOptions('[%time] %level (%name): %msg');
+
+      expect(opts.messageFormat).toBeUndefined();
+      expect(opts.translateTime).toBe('HH:MM:ss.l');
+      const ignored = String(opts.ignore).split(',');
+      expect(ignored).not.toContain('time');
+      expect(ignored).not.toContain('level');
+      expect(ignored).not.toContain('name');
+    });
+  });
+
   describe('truncateId', () => {
     it('should truncate long IDs to first4..last4 format', async () => {
       jest.doMock('pino', () => ({

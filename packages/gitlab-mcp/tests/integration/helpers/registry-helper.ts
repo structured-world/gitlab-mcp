@@ -80,13 +80,7 @@ export class IntegrationTestHelper {
       archived?: boolean;
       visibility?: 'public' | 'internal' | 'private';
       order_by?:
-        | 'id'
-        | 'name'
-        | 'path'
-        | 'created_at'
-        | 'updated_at'
-        | 'last_activity_at'
-        | 'similarity';
+        'id' | 'name' | 'path' | 'created_at' | 'updated_at' | 'last_activity_at' | 'similarity';
       sort?: 'asc' | 'desc';
       search?: string;
       simple?: boolean;
@@ -103,13 +97,7 @@ export class IntegrationTestHelper {
       with_programming_language?: string;
       visibility?: 'public' | 'internal' | 'private';
       order_by?:
-        | 'id'
-        | 'name'
-        | 'path'
-        | 'created_at'
-        | 'updated_at'
-        | 'last_activity_at'
-        | 'similarity';
+        'id' | 'name' | 'path' | 'created_at' | 'updated_at' | 'last_activity_at' | 'similarity';
       sort?: 'asc' | 'desc';
       per_page?: number;
       page?: number;
@@ -540,11 +528,7 @@ export class IntegrationTestHelper {
       | 'review_requested';
     state?: 'pending' | 'done';
     type?:
-      | 'Issue'
-      | 'MergeRequest'
-      | 'Epic'
-      | 'DesignManagement::Design'
-      | 'AlertManagement::Alert';
+      'Issue' | 'MergeRequest' | 'Epic' | 'DesignManagement::Design' | 'AlertManagement::Alert';
     project_id?: number;
     group_id?: number;
     author_id?: number;

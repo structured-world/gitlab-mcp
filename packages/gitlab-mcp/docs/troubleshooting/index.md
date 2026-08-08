@@ -30,6 +30,7 @@ Solutions for common issues with GitLab MCP.
 | "No clients detected" | Client not installed or not detected | [Clients](/troubleshooting/clients) |
 | Server not appearing in client | Config file issue | [Clients](/troubleshooting/clients#config-not-loaded) |
 | Docker container won't start | Port conflict or missing env vars | [Docker](/troubleshooting/docker) |
+| "Failed to parse JSONRPC message" spam on startup | Outdated build from stale npx cache logging to stdout | [Clients](/troubleshooting/clients#jsonrpc-parse-errors) |
 | Tools not available | Feature flags or read-only mode | [Connection](/troubleshooting/connection#tools-missing) |
 
 ## General Steps

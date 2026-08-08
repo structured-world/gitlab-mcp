@@ -166,6 +166,36 @@ Find your npx path: `which npx`
 - **Settings location**: Inside VS Code extension storage
 - **Update path**: If extension ID changes, config path changes too
 
+## Startup Log Spam {#jsonrpc-parse-errors}
+
+### "Failed to parse JSONRPC message from server"
+
+**Symptom**: On startup the MCP client prints a burst of parse errors such as:
+
+```
+Failed to parse JSONRPC message from server
+pydantic_core._pydantic_core.ValidationError: 1 validation error for JSONRPCMessage
+  Invalid JSON: expected value at line 1 column 5
+```
+
+**Cause**: The server version being launched writes log lines to stdout, which the
+MCP stdio protocol reserves for JSON-RPC frames. Current releases always log to
+stderr in stdio mode; this symptom means an outdated package build is running,
+usually from a stale `npx` cache (`npx -y` reuses a previously downloaded version).
+
+**Fix**:
+```bash
+# Clear the npx cache so the latest release is fetched
+# (cache lives in ~/.npm/_npx)
+npm cache clean --force
+
+# Or pin the latest release explicitly in your client config
+npx -y @structured-world/gitlab-mcp@latest
+```
+
+See [Log Destinations](/guide/configuration#log-destinations-stdout-vs-stderr) for
+how log output is routed per transport mode.
+
 ## Permission Issues
 
 ### "EACCES: permission denied"

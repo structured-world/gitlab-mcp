@@ -85,14 +85,7 @@ export type WorkItemState = 'OPEN' | 'CLOSED';
 
 // Work Item Type enum - defines all available work item types
 export type WorkItemTypeEnum =
-  | 'EPIC'
-  | 'ISSUE'
-  | 'TASK'
-  | 'INCIDENT'
-  | 'TEST_CASE'
-  | 'REQUIREMENT'
-  | 'OBJECTIVE'
-  | 'KEY_RESULT';
+  'EPIC' | 'ISSUE' | 'TASK' | 'INCIDENT' | 'TEST_CASE' | 'REQUIREMENT' | 'OBJECTIVE' | 'KEY_RESULT';
 
 // Work Item Widget Type constants
 export const WorkItemWidgetTypes = {

@@ -173,7 +173,28 @@ See [Customization](/advanced/customization) for schema mode details.
 |----------|---------|-------------|
 | `LOG_LEVEL` | `info` | Log level: `debug`, `info`, `warn`, `error` |
 | `LOG_JSON` | `false` | Output logs as JSON (NDJSON) for log aggregators |
+| `LOG_FORMAT` | `%msg` | Which fields appear in plain-text logs: `%time`, `%level`, `%name`. Tokens toggle field visibility only; the line always renders in pino-pretty's fixed `[time] LEVEL (name): msg` order, and the message itself is always included regardless of `%msg` (e.g. `[%time] %level (%name): %msg` enables all fields) |
+| `LOG_DESTINATION` | auto | `stdout` or `stderr`. HTTP mode only; see [Log Destinations](#log-destinations-stdout-vs-stderr) |
 | `LOG_FILTER` | Claude Code filter | JSON array of filter rules to skip access logging |
+
+### Log Destinations (stdout vs stderr)
+
+Where log lines are written depends on the transport mode:
+
+| Mode | Plain text (default) | `LOG_JSON=true` |
+|------|----------------------|-----------------|
+| stdio (no `PORT`) | stderr (always) | stderr (always) |
+| HTTP (`PORT` set) | stderr | stdout |
+
+**In stdio mode all logs always go to stderr.** stdout is reserved for MCP JSON-RPC
+protocol frames ([MCP spec](https://modelcontextprotocol.io/specification/basic/transports#stdio)),
+so any log line on stdout would corrupt the client connection. `LOG_DESTINATION` is
+ignored in stdio mode.
+
+In HTTP mode the defaults follow the container convention: JSON logs go to stdout for
+log-driver ingestion, human-readable logs go to stderr. Set `LOG_DESTINATION=stdout`
+or `LOG_DESTINATION=stderr` to override. Docker's `docker logs` and journald capture
+both streams either way.
 
 ### Plain Text Mode (default)
 

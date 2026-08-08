@@ -21,13 +21,11 @@ const isReadOnly = process.env.GITLAB_READONLY === 'true';
 const wikiToolsFromRegistry = getFilteredWikiTools(isReadOnly);
 
 // Convert enhanced tool definitions to regular tool definitions for backward compatibility
-export const wikiTools: ToolDefinition[] = wikiToolsFromRegistry.map(
-  (tool): ToolDefinition => ({
-    name: tool.name,
-    description: tool.description,
-    inputSchema: tool.inputSchema,
-  }),
-);
+export const wikiTools: ToolDefinition[] = wikiToolsFromRegistry.map((tool): ToolDefinition => ({
+  name: tool.name,
+  description: tool.description,
+  inputSchema: tool.inputSchema,
+}));
 
 // Export read-only tool names for backward compatibility
 export const wikiReadOnlyTools = getWikiReadOnlyToolNames();

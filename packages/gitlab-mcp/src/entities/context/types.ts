@@ -125,11 +125,7 @@ export type { ProfileInfo };
  * Token type classification
  */
 export type WhoamiTokenType =
-  | 'personal_access_token'
-  | 'project_access_token'
-  | 'group_access_token'
-  | 'oauth'
-  | 'unknown';
+  'personal_access_token' | 'project_access_token' | 'group_access_token' | 'oauth' | 'unknown';
 
 /**
  * User identity information

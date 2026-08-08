@@ -18,11 +18,7 @@ import { normalizeInstanceUrl } from '../utils/url';
  * GitLab token types that can be detected
  */
 export type GitLabTokenType =
-  | 'personal_access_token'
-  | 'project_access_token'
-  | 'group_access_token'
-  | 'oauth'
-  | 'unknown';
+  'personal_access_token' | 'project_access_token' | 'group_access_token' | 'oauth' | 'unknown';
 
 /**
  * Known GitLab token scopes

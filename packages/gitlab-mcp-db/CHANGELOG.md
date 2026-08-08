@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.1.2](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v9.1.1...gitlab-mcp-db-v9.1.2) (2026-08-08)
+
+
+### Bug Fixes
+
+* **logging:** never write logs to stdout in stdio mode ([#571](https://github.com/structured-world/gitlab-mcp/issues/571)) ([2e8e836](https://github.com/structured-world/gitlab-mcp/commit/2e8e83633fe5a27236f7a3bce7066b0238da5ad8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 9.1.2
+
 ## [9.1.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v9.1.0...gitlab-mcp-db-v9.1.1) (2026-06-22)
 
 

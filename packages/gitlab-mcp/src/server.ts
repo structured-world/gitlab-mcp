@@ -832,9 +832,13 @@ export async function startServer(): Promise<void> {
           //   POST - the reply stream for a JSON-RPC request, open until the tool
           //          finishes; a slow tool leaves it silent for minutes
           // Responses that carry no stream (202 for notifications, plain JSON) are
-          // already ended by handleRequest, which is what this check screens out —
-          // the SSE content type cannot be read back, since writeHead does not
-          // expose headers to getHeader().
+          // already ended by handleRequest, so writableEnded alone separates the two
+          // without having to look at headers.
+          //
+          // These streams also survive the response write timeout: that middleware
+          // reads the content type back after writeHead, and Node serves it from the
+          // header cache because Express has already called setHeader on every
+          // response. (Node bypasses the cache only when setHeader was never called.)
           if (!res.writableEnded) {
             const streamKind = req.method === 'GET' ? 'GET' : 'POST';
             const stopHeartbeat = startSseHeartbeat(res, effectiveSessionId);

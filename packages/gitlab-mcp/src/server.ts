@@ -822,8 +822,17 @@ export async function startServer(): Promise<void> {
             await handleWithContext(transport);
           }
 
-          // Start SSE heartbeat for GET requests (long-lived SSE streams)
-          if (req.method === 'GET' && !res.writableEnded) {
+          // Start SSE heartbeat on every response the transport left open.
+          // Two kinds of stream end up here, and both need keepalives:
+          //   GET  - the standalone notification stream, open for the session's life
+          //   POST - the reply stream for a JSON-RPC request, open until the tool
+          //          finishes; a slow tool leaves it silent for minutes
+          // Responses that carry no stream (202 for notifications, plain JSON) are
+          // already ended by handleRequest, which is what this check screens out —
+          // the SSE content type cannot be read back, since writeHead does not
+          // expose headers to getHeader().
+          if (!res.writableEnded) {
+            const streamKind = req.method === 'GET' ? 'GET' : 'POST';
             const stopHeartbeat = startSseHeartbeat(res, effectiveSessionId);
 
             // Track socket errors for disconnect reason logging.
@@ -833,8 +842,9 @@ export async function startServer(): Promise<void> {
             if (socket) {
               socket.on('error', (err: NodeJS.ErrnoException) => {
                 socketError = err.code ?? err.message;
-                logWarn('StreamableHTTP GET socket error', {
+                logWarn('StreamableHTTP SSE socket error', {
                   sessionId: effectiveSessionId,
+                  streamKind,
                   error: err.message,
                   code: err.code,
                   reason: 'socket_error',
@@ -847,8 +857,9 @@ export async function startServer(): Promise<void> {
 
               const reason = resolveCloseReason(socketError, res);
 
-              logInfo('StreamableHTTP GET stream disconnected', {
+              logInfo('StreamableHTTP SSE stream disconnected', {
                 sessionId: effectiveSessionId,
+                streamKind,
                 reason,
               });
             });

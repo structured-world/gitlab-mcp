@@ -1336,7 +1336,7 @@ describe('server', () => {
       expect(mockRes.write).not.toHaveBeenCalled();
     });
 
-    it('should NOT start heartbeat for POST requests to StreamableHTTP endpoint', async () => {
+    it('should NOT start heartbeat for POST requests whose response already ended', async () => {
       process.env.PORT = '3000';
       await startServer();
 
@@ -1365,6 +1365,45 @@ describe('server', () => {
       // No heartbeat for POST requests
       jest.advanceTimersByTime(30000);
       expect(mockRes.write).not.toHaveBeenCalled();
+    });
+
+    // A StreamableHTTP POST carrying a JSON-RPC request is answered over an SSE
+    // stream that stays open for as long as the tool runs. Without keepalives that
+    // stream is silent, and proxies on the path cut it well before a slow tool
+    // finishes (observed: a 100s idle cut killing calls at ~125s).
+    it('should start SSE heartbeat for POST requests answered over an open SSE stream', async () => {
+      process.env.PORT = '3000';
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+
+      const mockReq = {
+        headers: {},
+        method: 'POST',
+        path: '/mcp',
+        body: { method: 'tools/call' },
+      };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: true,
+        writableEnded: false, // SSE stream stays open until the tool result is ready
+        destroyed: false,
+        write: jest.fn().mockReturnValue(true),
+        on: jest.fn(),
+        locals: {},
+        socket: { on: jest.fn() },
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.write).toHaveBeenCalledWith(': ping\n\n');
+
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.write).toHaveBeenCalledTimes(2);
     });
 
     it('should configure HTTP server timeouts for SSE streaming', async () => {
@@ -1907,7 +1946,7 @@ describe('server', () => {
       socketErrorHandler!({ message: 'read EPIPE', code: 'EPIPE' });
 
       expect(mockLogWarn).toHaveBeenCalledWith(
-        'StreamableHTTP GET socket error',
+        'StreamableHTTP SSE socket error',
         expect.objectContaining({
           error: 'read EPIPE',
           code: 'EPIPE',
@@ -1918,7 +1957,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'peer_reset:EPIPE' }),
       );
     });
@@ -2200,7 +2239,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'heartbeat_failed' }),
       );
     });
@@ -2235,7 +2274,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'destroyed' }),
       );
     });
@@ -2270,7 +2309,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'client_disconnect' }),
       );
     });
@@ -2306,7 +2345,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'normal_close' }),
       );
     });
@@ -2349,7 +2388,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'peer_reset:connection reset' }),
       );
     });

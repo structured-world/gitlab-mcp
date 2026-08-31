@@ -614,24 +614,28 @@ export async function startServer(): Promise<void> {
         const stopHeartbeat = startSseHeartbeat(res, sessionId);
 
         // Track socket errors for disconnect reason logging.
-        // Listener is not explicitly removed — socket destruction on close GCs all listeners.
+        // The listener comes back off when the response closes: a keep-alive socket
+        // outlives the response it served, so an attached listener would survive into
+        // whatever request reuses that socket next.
         let socketError: string | undefined;
         const socket = res.socket;
-        if (socket) {
-          socket.on('error', (err: NodeJS.ErrnoException) => {
-            socketError = err.code ?? err.message;
-            logWarn('SSE socket error', {
-              sessionId,
-              error: err.message,
-              code: err.code,
-              reason: 'socket_error',
-            });
+        const onSocketError = (err: NodeJS.ErrnoException) => {
+          socketError = err.code ?? err.message;
+          logWarn('SSE socket error', {
+            sessionId,
+            error: err.message,
+            code: err.code,
+            reason: 'socket_error',
           });
+        };
+        if (socket) {
+          socket.on('error', onSocketError);
         }
 
         // Clean up session when client disconnects
         res.on('close', () => {
           stopHeartbeat();
+          socket?.removeListener('error', onSocketError);
           delete sseTransports[sessionId];
 
           const reason = resolveCloseReason(socketError, res);
@@ -836,24 +840,30 @@ export async function startServer(): Promise<void> {
             const stopHeartbeat = startSseHeartbeat(res, effectiveSessionId);
 
             // Track socket errors for disconnect reason logging.
-            // Listener is not explicitly removed — socket destruction on close GCs all listeners.
+            // The listener must come back off when the response closes: a keep-alive
+            // socket serves many POST requests in a row and finishing a response does
+            // not destroy it, so leaving the listener attached piles up one closure per
+            // request until Node warns about a leak and every stale closure re-logs the
+            // same error under a long-dead session.
             let socketError: string | undefined;
             const socket = res.socket;
-            if (socket) {
-              socket.on('error', (err: NodeJS.ErrnoException) => {
-                socketError = err.code ?? err.message;
-                logWarn('StreamableHTTP SSE socket error', {
-                  sessionId: effectiveSessionId,
-                  streamKind,
-                  error: err.message,
-                  code: err.code,
-                  reason: 'socket_error',
-                });
+            const onSocketError = (err: NodeJS.ErrnoException) => {
+              socketError = err.code ?? err.message;
+              logWarn('StreamableHTTP SSE socket error', {
+                sessionId: effectiveSessionId,
+                streamKind,
+                error: err.message,
+                code: err.code,
+                reason: 'socket_error',
               });
+            };
+            if (socket) {
+              socket.on('error', onSocketError);
             }
 
             res.on('close', () => {
               stopHeartbeat();
+              socket?.removeListener('error', onSocketError);
 
               const reason = resolveCloseReason(socketError, res);
 

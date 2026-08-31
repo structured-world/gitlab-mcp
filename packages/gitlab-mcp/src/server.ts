@@ -614,24 +614,28 @@ export async function startServer(): Promise<void> {
         const stopHeartbeat = startSseHeartbeat(res, sessionId);
 
         // Track socket errors for disconnect reason logging.
-        // Listener is not explicitly removed — socket destruction on close GCs all listeners.
+        // The listener comes back off when the response closes: a keep-alive socket
+        // outlives the response it served, so an attached listener would survive into
+        // whatever request reuses that socket next.
         let socketError: string | undefined;
         const socket = res.socket;
-        if (socket) {
-          socket.on('error', (err: NodeJS.ErrnoException) => {
-            socketError = err.code ?? err.message;
-            logWarn('SSE socket error', {
-              sessionId,
-              error: err.message,
-              code: err.code,
-              reason: 'socket_error',
-            });
+        const onSocketError = (err: NodeJS.ErrnoException) => {
+          socketError = err.code ?? err.message;
+          logWarn('SSE socket error', {
+            sessionId,
+            error: err.message,
+            code: err.code,
+            reason: 'socket_error',
           });
+        };
+        if (socket) {
+          socket.on('error', onSocketError);
         }
 
         // Clean up session when client disconnects
         res.on('close', () => {
           stopHeartbeat();
+          socket?.removeListener('error', onSocketError);
           delete sseTransports[sessionId];
 
           const reason = resolveCloseReason(socketError, res);
@@ -822,33 +826,54 @@ export async function startServer(): Promise<void> {
             await handleWithContext(transport);
           }
 
-          // Start SSE heartbeat for GET requests (long-lived SSE streams)
-          if (req.method === 'GET' && !res.writableEnded) {
+          // Start SSE heartbeat on every response the transport left open.
+          // Two kinds of stream end up here, and both need keepalives:
+          //   GET  - the standalone notification stream, open for the session's life
+          //   POST - the reply stream for a JSON-RPC request, open until the tool
+          //          finishes; a slow tool leaves it silent for minutes
+          // Responses that carry no stream (202 for notifications, plain JSON) are
+          // already ended by handleRequest, so writableEnded alone separates the two
+          // without having to look at headers.
+          //
+          // These streams also survive the response write timeout: that middleware
+          // reads the content type back after writeHead, and Node serves it from the
+          // header cache because Express has already called setHeader on every
+          // response. (Node bypasses the cache only when setHeader was never called.)
+          if (!res.writableEnded) {
+            const streamKind = req.method === 'GET' ? 'GET' : 'POST';
             const stopHeartbeat = startSseHeartbeat(res, effectiveSessionId);
 
             // Track socket errors for disconnect reason logging.
-            // Listener is not explicitly removed — socket destruction on close GCs all listeners.
+            // The listener must come back off when the response closes: a keep-alive
+            // socket serves many POST requests in a row and finishing a response does
+            // not destroy it, so leaving the listener attached piles up one closure per
+            // request until Node warns about a leak and every stale closure re-logs the
+            // same error under a long-dead session.
             let socketError: string | undefined;
             const socket = res.socket;
-            if (socket) {
-              socket.on('error', (err: NodeJS.ErrnoException) => {
-                socketError = err.code ?? err.message;
-                logWarn('StreamableHTTP GET socket error', {
-                  sessionId: effectiveSessionId,
-                  error: err.message,
-                  code: err.code,
-                  reason: 'socket_error',
-                });
+            const onSocketError = (err: NodeJS.ErrnoException) => {
+              socketError = err.code ?? err.message;
+              logWarn('StreamableHTTP SSE socket error', {
+                sessionId: effectiveSessionId,
+                streamKind,
+                error: err.message,
+                code: err.code,
+                reason: 'socket_error',
               });
+            };
+            if (socket) {
+              socket.on('error', onSocketError);
             }
 
             res.on('close', () => {
               stopHeartbeat();
+              socket?.removeListener('error', onSocketError);
 
               const reason = resolveCloseReason(socketError, res);
 
-              logInfo('StreamableHTTP GET stream disconnected', {
+              logInfo('StreamableHTTP SSE stream disconnected', {
                 sessionId: effectiveSessionId,
+                streamKind,
                 reason,
               });
             });

@@ -862,7 +862,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         locals: {},
       };
 
@@ -1128,7 +1128,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
       };
 
       await sseHandler({}, mockRes);
@@ -1151,7 +1151,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
       };
 
       await sseHandler({}, mockRes);
@@ -1180,7 +1180,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         locals: {},
       };
 
@@ -1211,7 +1211,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
       };
 
       await sseHandler({}, mockRes);
@@ -1247,7 +1247,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         on: jest.fn(),
         locals: {},
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
       };
 
       await mcpHandler(mockReq, mockRes);
@@ -1282,7 +1282,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         on: jest.fn(),
         locals: {},
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
       };
 
       await mcpHandler(mockReq, mockRes);
@@ -1322,7 +1322,7 @@ describe('server', () => {
         }),
         removeListener: jest.fn(),
         locals: {},
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
       };
 
       await mcpHandler(mockReq, mockRes);
@@ -1336,7 +1336,7 @@ describe('server', () => {
       expect(mockRes.write).not.toHaveBeenCalled();
     });
 
-    it('should NOT start heartbeat for POST requests to StreamableHTTP endpoint', async () => {
+    it('should NOT start heartbeat for POST requests whose response already ended', async () => {
       process.env.PORT = '3000';
       await startServer();
 
@@ -1365,6 +1365,45 @@ describe('server', () => {
       // No heartbeat for POST requests
       jest.advanceTimersByTime(30000);
       expect(mockRes.write).not.toHaveBeenCalled();
+    });
+
+    // A StreamableHTTP POST carrying a JSON-RPC request is answered over an SSE
+    // stream that stays open for as long as the tool runs. Without keepalives that
+    // stream is silent, and proxies on the path cut it well before a slow tool
+    // finishes (observed: a 100s idle cut killing calls at ~125s).
+    it('should start SSE heartbeat for POST requests answered over an open SSE stream', async () => {
+      process.env.PORT = '3000';
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+
+      const mockReq = {
+        headers: {},
+        method: 'POST',
+        path: '/mcp',
+        body: { method: 'tools/call' },
+      };
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: true,
+        writableEnded: false, // SSE stream stays open until the tool result is ready
+        destroyed: false,
+        write: jest.fn().mockReturnValue(true),
+        on: jest.fn(),
+        locals: {},
+        socket: { on: jest.fn(), removeListener: jest.fn() },
+      };
+
+      await mcpHandler(mockReq, mockRes);
+
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.write).toHaveBeenCalledWith(': ping\n\n');
+
+      jest.advanceTimersByTime(30000);
+      expect(mockRes.write).toHaveBeenCalledTimes(2);
     });
 
     it('should configure HTTP server timeouts for SSE streaming', async () => {
@@ -1489,7 +1528,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         destroy: mockDestroy,
         locals: {},
       };
@@ -1539,7 +1578,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         destroy: jest.fn(),
         locals: {},
       };
@@ -1570,6 +1609,117 @@ describe('server', () => {
       expect(mockRes.write).toHaveBeenCalledTimes(2);
     });
 
+    // A keep-alive socket serves many POST requests in a row, and a finished
+    // ServerResponse does not destroy it. Each request must therefore take its
+    // socket listener back off, or the listeners pile up until Node warns about
+    // a leak and every stale closure re-logs the same error.
+    it('should remove the POST socket error listener when the response closes', async () => {
+      process.env.PORT = '3000';
+      await startServer();
+
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+
+      const errorListeners: Array<(err: NodeJS.ErrnoException) => void> = [];
+      const sharedSocket = {
+        on: jest.fn((event: string, handler: (err: NodeJS.ErrnoException) => void) => {
+          if (event === 'error') errorListeners.push(handler);
+        }),
+        removeListener: jest.fn((event: string, handler: (err: NodeJS.ErrnoException) => void) => {
+          if (event !== 'error') return;
+          const idx = errorListeners.indexOf(handler);
+          if (idx >= 0) errorListeners.splice(idx, 1);
+        }),
+      };
+
+      const makeResponse = () => {
+        let closeHandler: (() => void) | undefined;
+        const res = {
+          status: jest.fn().mockReturnThis(),
+          json: jest.fn(),
+          headersSent: true,
+          writableEnded: false,
+          destroyed: false,
+          write: jest.fn().mockReturnValue(true),
+          on: jest.fn((event: string, handler: () => void) => {
+            if (event === 'close') closeHandler = handler;
+          }),
+          removeListener: jest.fn(),
+          locals: {},
+          socket: sharedSocket,
+        };
+        return { res, close: () => closeHandler?.() };
+      };
+
+      const postRequest = {
+        headers: {},
+        method: 'POST',
+        path: '/mcp',
+        body: { method: 'tools/call' },
+      };
+
+      const first = makeResponse();
+      await mcpHandler(postRequest, first.res);
+      first.close();
+
+      const second = makeResponse();
+      await mcpHandler(postRequest, second.res);
+
+      // The finished request must not leave its listener on the shared socket.
+      expect(errorListeners).toHaveLength(1);
+
+      // And a later socket error must be reported once, not once per past request.
+      mockLogWarn.mockClear();
+      const err: NodeJS.ErrnoException = Object.assign(new Error('reset'), { code: 'ECONNRESET' });
+      [...errorListeners].forEach((handler) => handler(err));
+      expect(mockLogWarn).toHaveBeenCalledTimes(1);
+    });
+
+    // Same contract on the legacy transport: a keep-alive socket outlives the
+    // response it served, so the listener must not survive into the next request
+    // that reuses that socket.
+    it('should remove the /sse socket error listener when the response closes', async () => {
+      process.env.PORT = '3000';
+      await startServer();
+
+      const sseHandler = mockApp.get.mock.calls.find((call: unknown[]) => call[0] === '/sse')[1];
+
+      let registered: ((err: NodeJS.ErrnoException) => void) | undefined;
+      let removed: ((err: NodeJS.ErrnoException) => void) | undefined;
+      const mockSocket = {
+        on: jest.fn((event: string, handler: (err: NodeJS.ErrnoException) => void) => {
+          if (event === 'error') registered = handler;
+        }),
+        removeListener: jest.fn((event: string, handler: (err: NodeJS.ErrnoException) => void) => {
+          if (event === 'error') removed = handler;
+        }),
+      };
+
+      let closeHandler: (() => void) | undefined;
+      const mockRes = {
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        end: jest.fn(),
+        headersSent: false,
+        writableEnded: false,
+        destroyed: false,
+        write: jest.fn().mockReturnValue(true),
+        on: jest.fn((event: string, handler: () => void) => {
+          if (event === 'close') closeHandler = handler;
+        }),
+        removeListener: jest.fn(),
+        locals: {},
+        socket: mockSocket,
+      };
+
+      await sseHandler({ headers: {}, method: 'GET', path: '/sse', query: {} }, mockRes);
+      closeHandler!();
+
+      expect(registered).toBeDefined();
+      expect(removed).toBe(registered);
+    });
+
     it('should set heartbeat_failed flag on res.locals before destroying socket', async () => {
       process.env.PORT = '3000';
       await startServer();
@@ -1583,7 +1733,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         destroy: jest.fn(),
         locals: {},
       };
@@ -1609,6 +1759,7 @@ describe('server', () => {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
           if (event === 'error') socketErrorHandler = handler;
         }),
+        removeListener: jest.fn(),
       };
       const mockRes = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
@@ -1662,7 +1813,7 @@ describe('server', () => {
         writableEnded: false,
         writableFinished: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         locals: {},
       };
 
@@ -1694,7 +1845,7 @@ describe('server', () => {
         writableEnded: false,
         writableFinished: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         locals: {},
       };
 
@@ -1726,7 +1877,7 @@ describe('server', () => {
         writableEnded: false,
         writableFinished: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         destroy: jest.fn(),
         locals: {},
       };
@@ -1765,7 +1916,7 @@ describe('server', () => {
         }),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         locals: {},
       };
 
@@ -1799,7 +1950,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         locals: {},
       };
 
@@ -1839,7 +1990,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(false),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         locals: {},
       };
 
@@ -1878,6 +2029,7 @@ describe('server', () => {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
           if (event === 'error') socketErrorHandler = handler;
         }),
+        removeListener: jest.fn(),
       };
       const mockReq = {
         headers: {},
@@ -1907,7 +2059,7 @@ describe('server', () => {
       socketErrorHandler!({ message: 'read EPIPE', code: 'EPIPE' });
 
       expect(mockLogWarn).toHaveBeenCalledWith(
-        'StreamableHTTP GET socket error',
+        'StreamableHTTP SSE socket error',
         expect.objectContaining({
           error: 'read EPIPE',
           code: 'EPIPE',
@@ -1918,7 +2070,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'peer_reset:EPIPE' }),
       );
     });
@@ -1936,7 +2088,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         destroy: jest.fn(),
         locals: {},
       };
@@ -1966,7 +2118,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         locals: {},
       };
 
@@ -1993,7 +2145,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         locals: {},
       };
 
@@ -2021,7 +2173,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         destroy: mockDestroy,
         locals: {},
       };
@@ -2054,7 +2206,7 @@ describe('server', () => {
         }),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         locals: {},
       };
 
@@ -2082,6 +2234,7 @@ describe('server', () => {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
           if (event === 'error') socketErrorHandler = handler;
         }),
+        removeListener: jest.fn(),
       };
       const mockRes = {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
@@ -2153,7 +2306,7 @@ describe('server', () => {
         writableEnded: false,
         writableFinished: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         locals: {},
       };
 
@@ -2192,7 +2345,7 @@ describe('server', () => {
         }),
         removeListener: jest.fn(),
         locals: { heartbeatFailed: true },
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
       };
 
       await mcpHandler(mockReq, mockRes);
@@ -2200,7 +2353,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'heartbeat_failed' }),
       );
     });
@@ -2227,7 +2380,7 @@ describe('server', () => {
         }),
         removeListener: jest.fn(),
         locals: {},
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
       };
 
       await mcpHandler(mockReq, mockRes);
@@ -2235,7 +2388,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'destroyed' }),
       );
     });
@@ -2262,7 +2415,7 @@ describe('server', () => {
         }),
         removeListener: jest.fn(),
         locals: {},
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
       };
 
       await mcpHandler(mockReq, mockRes);
@@ -2270,7 +2423,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'client_disconnect' }),
       );
     });
@@ -2298,7 +2451,7 @@ describe('server', () => {
         }),
         removeListener: jest.fn(),
         locals: {},
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
       };
 
       await mcpHandler(mockReq, mockRes);
@@ -2306,7 +2459,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'normal_close' }),
       );
     });
@@ -2325,6 +2478,7 @@ describe('server', () => {
         on: jest.fn((event: string, handler: (...args: unknown[]) => void) => {
           if (event === 'error') socketErrorHandler = handler;
         }),
+        removeListener: jest.fn(),
       };
       const mockReq = { headers: {}, method: 'GET', path: '/mcp', body: {} };
       const mockRes = {
@@ -2349,7 +2503,7 @@ describe('server', () => {
       closeHandler!();
 
       expect(mockLogInfo).toHaveBeenCalledWith(
-        'StreamableHTTP GET stream disconnected',
+        'StreamableHTTP SSE stream disconnected',
         expect.objectContaining({ reason: 'peer_reset:connection reset' }),
       );
     });
@@ -2368,7 +2522,7 @@ describe('server', () => {
         write: jest.fn().mockReturnValue(true),
         writableEnded: false,
         destroyed: false,
-        socket: { on: jest.fn() },
+        socket: { on: jest.fn(), removeListener: jest.fn() },
         destroy: mockDestroy,
         locals: undefined as Record<string, unknown> | undefined,
       };

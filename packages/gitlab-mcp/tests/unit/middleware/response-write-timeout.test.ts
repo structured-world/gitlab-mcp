@@ -10,6 +10,7 @@
  */
 
 import { EventEmitter } from 'node:events';
+import { IncomingMessage, ServerResponse } from 'node:http';
 import type { Request, Response } from 'express';
 
 // Default timeout for tests — overridden per-test via jest.mock
@@ -158,6 +159,30 @@ describe('Response Write Timeout Middleware', () => {
       const { getHeader, writeHead } = createWriteHeadWithHeaders();
       const { res } = setupMiddleware({ method: 'GET' }, { getHeader, writeHead });
       res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8' });
+      jest.advanceTimersByTime(60000);
+      expect(res.destroy).not.toHaveBeenCalled();
+    });
+
+    // The SSE check above reads the content type back with getHeader() after the
+    // transport wrote it through writeHead(). Node only serves that value back when
+    // setHeader() was called at least once beforehand - otherwise writeHead bypasses
+    // the header cache entirely. Express always sets X-Powered-By, so the cache is
+    // always populated here, but the mocks above cannot show that. This exercises a
+    // real ServerResponse to pin the semantics the middleware depends on.
+    it('skips SSE on a real ServerResponse, as Express leaves it', () => {
+      const middleware = responseWriteTimeoutMiddleware();
+      const res = new ServerResponse(new IncomingMessage(null as never)) as unknown as Response &
+        EventEmitter;
+      res.locals = {};
+      res.destroy = jest.fn();
+
+      // Express sets this on every response before any handler runs.
+      res.setHeader('X-Powered-By', 'Express');
+      middleware(createMockReq(), res, jest.fn());
+
+      res.writeHead(200, { 'Content-Type': 'text/event-stream' });
+      expect(res.getHeader('content-type')).toBe('text/event-stream');
+
       jest.advanceTimersByTime(60000);
       expect(res.destroy).not.toHaveBeenCalled();
     });

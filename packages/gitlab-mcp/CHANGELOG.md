@@ -4,6 +4,13 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [9.1.3](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v9.1.2...gitlab-mcp-v9.1.3) (2026-08-31)
+
+
+### Bug Fixes
+
+* **transport:** keep POST SSE streams alive during long tool calls ([#582](https://github.com/structured-world/gitlab-mcp/issues/582)) ([fcbd519](https://github.com/structured-world/gitlab-mcp/commit/fcbd5195534152fa1eb81aca80935e3c9c5417e8))
+
 ## [9.1.2](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v9.1.1...gitlab-mcp-v9.1.2) (2026-08-08)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [9.1.3](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v9.1.2...gitlab-mcp-db-v9.1.3) (2026-08-31)
+
+
+### Chores
+
+* **gitlab-mcp-db:** Synchronize gitlab-mcp versions
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 9.1.3
+
 ## [9.1.2](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v9.1.1...gitlab-mcp-db-v9.1.2) (2026-08-08)
 
 

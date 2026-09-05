@@ -171,7 +171,7 @@ CMD ["sse"]
 # ============================================================================
 LABEL org.opencontainers.image.title="GitLab MCP Server"
 LABEL org.opencontainers.image.description="Advanced GitLab MCP server"
-LABEL org.opencontainers.image.vendor="sw.foundation"
+LABEL org.opencontainers.image.vendor="Dmitry Prudnikov"
 LABEL org.opencontainers.image.authors="Dmitry Prudnikov <mail@polaz.com>"
 LABEL org.opencontainers.image.url="https://github.com/structured-world/gitlab-mcp"
 LABEL org.opencontainers.image.documentation="https://github.com/structured-world/gitlab-mcp/blob/main/README.md"

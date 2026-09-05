@@ -65,17 +65,14 @@ jobs:
       # approval is left to the repository's stale-review dismissal, which is
       # the setting that exists for it.
       #
-      # A rerun is not a push. Rerunning a Dependabot run leaves `actor` as
-      # dependabot and makes `triggering_actor` whoever asked, the same shape a
-      # foreign push has, except that nothing moved. Only a first attempt is a
-      # real event, and only a real event can have moved anything; without that
-      # check a maintainer rerunning checks would disarm the auto-merge
-      # Dependabot armed, with nothing to arm it again.
+      # `github.actor` is who caused the event, and a rerun keeps it: rerunning
+      # a Dependabot run leaves `actor` as dependabot with `triggering_actor`
+      # set to whoever asked, and rerunning a foreign-push run keeps the pusher
+      # in `actor`. So the actor alone says whether the head moved under
+      # someone else, on the first attempt and on every rerun alike; a failed
+      # first attempt is retried into the same branch, not skipped.
       - name: Disarm auto-merge when someone else moved the head
-        if: >-
-          github.run_attempt == 1
-          && (github.actor != 'dependabot[bot]'
-              || github.triggering_actor != 'dependabot[bot]')
+        if: github.actor != 'dependabot[bot]'
         # The head is checked because disarming has no precondition of its own:
         # `--match-head-commit` maps to `expectedHeadOid`, which the mutation
         # behind `--disable-auto` does not take. Without the check, a slow run
@@ -109,11 +106,13 @@ jobs:
       # No token passed: the action's `github-token` already defaults to
       # `github.token`, which the permissions block above scopes to reading the
       # pull request.
+      # Keyed on the event actor, not on who pressed rerun: a maintainer
+      # rerunning a failed Dependabot run must be able to restore the approval
+      # and auto-merge, and both are bound to the head SHA below, so the rerun
+      # cannot approve anything Dependabot did not push.
       - name: Dependabot metadata
         id: metadata
-        if: >-
-          github.actor == 'dependabot[bot]'
-          && github.triggering_actor == 'dependabot[bot]'
+        if: github.actor == 'dependabot[bot]'
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.1
 
       # The metadata step is skipped for a foreign push, so its outputs are

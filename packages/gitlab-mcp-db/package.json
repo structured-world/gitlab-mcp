@@ -22,14 +22,14 @@
     "postinstall": "node -e \"if (require('fs').existsSync('prisma/schema.prisma')) require('child_process').execSync('prisma generate', { stdio: 'inherit' })\""
   },
   "dependencies": {
-    "@prisma/client": "^7.9.1",
-    "prisma": "^7.9.1"
+    "@prisma/client": "^7.10.0",
+    "prisma": "^7.10.0"
   },
   "devDependencies": {
     "@structured-world/gitlab-mcp": "workspace:^",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.9.5",
-    "jest": "^30.4.2",
+    "jest": "^30.5.1",
     "ts-jest": "^29.4.12",
     "typescript": "^6.0.3"
   },

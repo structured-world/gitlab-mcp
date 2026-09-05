@@ -89,4 +89,4 @@ issue_enrichment:
       - label: 'upstream-candidate'
         instructions: 'Can be contributed back to zereight upstream'
       - label: 'fork-only'
-        instructions: 'Structured World specific, not for upstream'
+        instructions: 'Specific to this fork, not for upstream'

@@ -3,6 +3,7 @@
   "version": "9.1.4",
   "description": "Optional PostgreSQL/Prisma OAuth-storage backend for @structured-world/gitlab-mcp",
   "license": "Apache-2.0",
+  "author": "Dmitry Prudnikov <mail@polaz.com>",
   "repository": {
     "type": "git",
     "url": "https://github.com/structured-world/gitlab-mcp",

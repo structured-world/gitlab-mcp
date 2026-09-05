@@ -4,6 +4,13 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [9.1.4](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v9.1.3...gitlab-mcp-v9.1.4) (2026-09-05)
+
+
+### Bug Fixes
+
+* **package:** ship LICENSE and NOTICE in the npm tarball ([#592](https://github.com/structured-world/gitlab-mcp/issues/592)) ([14c5480](https://github.com/structured-world/gitlab-mcp/commit/14c5480c7ce9dde15991b275c5ef1393ac98d8ea))
+
 ## [9.1.3](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v9.1.2...gitlab-mcp-v9.1.3) (2026-08-31)
 
 

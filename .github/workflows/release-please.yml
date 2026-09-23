@@ -56,6 +56,24 @@ jobs:
         with:
           token: ${{ steps.app-token.outputs.token }}
 
+      # The packages are version-locked and the core release already carries both
+      # MCPB bundles, so the db GitHub release only duplicates it. Its tag must stay:
+      # release-please locates the previous db release by that tag (skip-github-release
+      # would not create one, leaving the next release without a base), so delete the
+      # release object alone and mark the core release as latest.
+      - name: Drop the duplicate db GitHub release
+        if: steps.release.outputs['packages/gitlab-mcp-db--tag_name'] != ''
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          GH_REPO: ${{ github.repository }}
+          DB_TAG: ${{ steps.release.outputs['packages/gitlab-mcp-db--tag_name'] }}
+          CORE_TAG: ${{ steps.release.outputs['packages/gitlab-mcp--tag_name'] }}
+        run: |
+          gh release delete "$DB_TAG" --yes
+          if [ -n "$CORE_TAG" ]; then
+            gh release edit "$CORE_TAG" --latest
+          fi
+
       # Without a root (".") component, release-please-action does not populate the
       # aggregate `pr` output -- only per-package ones -- so the release PR must be
       # resolved by its deterministic branch instead. The branch is empty when no
@@ -323,11 +341,11 @@ jobs:
       # was extracted to the workspace root.
       - name: Authenticate to MCP Registry (OIDC)
         working-directory: packages/gitlab-mcp
-        run: $GITHUB_WORKSPACE/mcp-publisher login github-oidc
+        run: '"$GITHUB_WORKSPACE/mcp-publisher" login github-oidc'
 
       - name: Publish to MCP Registry
         working-directory: packages/gitlab-mcp
-        run: $GITHUB_WORKSPACE/mcp-publisher publish
+        run: '"$GITHUB_WORKSPACE/mcp-publisher" publish'
 
   # Job 3: Sync generated metadata into the open release PR
   # When release-please updates (not merges) the release PR, regenerate the
@@ -437,23 +455,25 @@ jobs:
     steps:
       - name: Summary
         run: |
-          echo "## Release Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
+          {
+            echo "## Release Summary"
+            echo ""
 
-          if [[ "${{ needs.release-please.outputs.release-created }}" == "true" ]]; then
-            echo "🚀 New version released: v${{ needs.release-please.outputs.release-version }}" >> $GITHUB_STEP_SUMMARY
+            if [[ "${{ needs.release-please.outputs.release-created }}" == "true" ]]; then
+              echo "🚀 New version released: v${{ needs.release-please.outputs.release-version }}"
 
-            if [[ "${{ needs.post-release.result }}" == "success" ]]; then
-              echo "✅ All publish steps completed" >> $GITHUB_STEP_SUMMARY
-              echo "📦 npm: @structured-world/gitlab-mcp@${{ needs.release-please.outputs.release-version }}" >> $GITHUB_STEP_SUMMARY
-              echo "🐳 Docker: ghcr.io/${{ env.IMAGE_NAME }}:${{ needs.release-please.outputs.release-version }}" >> $GITHUB_STEP_SUMMARY
-              echo "📦 MCPB: gitlab-mcp-${{ needs.release-please.outputs.release-version }}.mcpb" >> $GITHUB_STEP_SUMMARY
-              echo "🌐 MCP Registry: io.github.structured-world/gitlab-mcp" >> $GITHUB_STEP_SUMMARY
+              if [[ "${{ needs.post-release.result }}" == "success" ]]; then
+                echo "✅ All publish steps completed"
+                echo "📦 npm: @structured-world/gitlab-mcp@${{ needs.release-please.outputs.release-version }}"
+                echo "🐳 Docker: ghcr.io/${{ env.IMAGE_NAME }}:${{ needs.release-please.outputs.release-version }}"
+                echo "📦 MCPB: gitlab-mcp-${{ needs.release-please.outputs.release-version }}.mcpb"
+                echo "🌐 MCP Registry: io.github.structured-world/gitlab-mcp"
+              else
+                echo "❌ Post-release publish failed"
+              fi
+            elif [[ -n "${{ needs.release-please.outputs.pr-number }}" ]]; then
+              echo "📋 Release PR updated: #${{ needs.release-please.outputs.pr-number }}"
             else
-              echo "❌ Post-release publish failed" >> $GITHUB_STEP_SUMMARY
+              echo "ℹ️ No release-worthy changes detected"
             fi
-          elif [[ -n "${{ needs.release-please.outputs.pr-number }}" ]]; then
-            echo "📋 Release PR updated: #${{ needs.release-please.outputs.pr-number }}" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "ℹ️ No release-worthy changes detected" >> $GITHUB_STEP_SUMMARY
-          fi
+          } >> "$GITHUB_STEP_SUMMARY"

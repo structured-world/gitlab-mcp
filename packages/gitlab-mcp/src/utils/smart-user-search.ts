@@ -1,3 +1,4 @@
+import * as z from 'zod';
 import { enhancedFetch } from './fetch';
 import { transliterate } from 'transliteration';
 import { instanceAtLeast } from '../entities/instance-version';
@@ -100,11 +101,13 @@ export function analyzeQuery(query: string): QueryPattern {
   };
 }
 
-interface ListedUser {
-  state?: string;
-  /** Exposed only in the full user entity (administrators); absent otherwise. */
-  bot?: boolean;
-}
+const ListedUsersSchema = z.array(
+  z.looseObject({
+    state: z.string().optional(),
+    /** Exposed only in the full user entity (administrators); absent otherwise. */
+    bot: z.boolean().optional(),
+  }),
+);
 
 /**
  * GET /users with the user-type filters GitLab added in 17.3 (humans,
@@ -128,8 +131,13 @@ export async function fetchUsers(params: Record<string, unknown>): Promise<unkno
   if (!response.ok) {
     throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
   }
-  const body = (await response.json()) as unknown;
-  const users = Array.isArray(body) ? (body as ListedUser[]) : [];
+  const parsed = ListedUsersSchema.safeParse(await response.json());
+  if (!parsed.success) {
+    throw new Error(
+      `GitLab API error: unexpected users response (${parsed.error.issues[0]?.message ?? 'invalid'})`,
+    );
+  }
+  const users = parsed.data;
   if (native) return users;
 
   if (exclude_humans && users.some((user) => user.bot === undefined)) {
@@ -149,8 +157,13 @@ export async function fetchUsers(params: Record<string, unknown>): Promise<unkno
  * Make GitLab Users API call with given parameters
  */
 async function callUsersAPI(params: UserSearchParams): Promise<unknown[]> {
-  // Add common defaults for better results
-  return fetchUsers({ active: true, humans: true, ...params });
+  // Default to active humans, unless the caller excludes exactly those: the
+  // default and the exclusion together can only return nothing.
+  return fetchUsers({
+    ...(params.exclude_active ? {} : { active: true }),
+    ...(params.exclude_humans ? {} : { humans: true }),
+    ...params,
+  });
 }
 
 /**
@@ -162,7 +175,6 @@ export async function smartUserSearch(
 ): Promise<SmartSearchResult> {
   const pattern = analyzeQuery(query);
   const searchPhases: Array<{ phase: string; params: UserSearchParams; resultCount: number }> = [];
-  let users: unknown[] = [];
   let totalApiCalls = 0;
 
   // Phase 1: Targeted search based on detected pattern
@@ -179,16 +191,39 @@ export async function smartUserSearch(
       break;
   }
 
-  try {
-    users = await callUsersAPI(targetParams);
+  // A failed call propagates: an empty result would claim nobody matched.
+  let users = await callUsersAPI(targetParams);
+  totalApiCalls++;
+  searchPhases.push({
+    phase: `targeted-${pattern.type}`,
+    params: targetParams,
+    resultCount: users.length,
+  });
+
+  // If we found users, return early
+  if (users.length > 0) {
+    return {
+      users,
+      searchMetadata: {
+        query,
+        pattern,
+        searchPhases,
+        totalApiCalls,
+      },
+    };
+  }
+
+  // Phase 2: Broad search fallback if targeted search returned empty
+  if (pattern.type !== 'name') {
+    const broadParams = { search: pattern.originalQuery, ...additionalParams };
+    users = await callUsersAPI(broadParams);
     totalApiCalls++;
     searchPhases.push({
-      phase: `targeted-${pattern.type}`,
-      params: targetParams,
+      phase: 'broad-search',
+      params: broadParams,
       resultCount: users.length,
     });
 
-    // If we found users, return early
     if (users.length > 0) {
       return {
         users,
@@ -200,45 +235,18 @@ export async function smartUserSearch(
         },
       };
     }
+  }
 
-    // Phase 2: Broad search fallback if targeted search returned empty
-    if (pattern.type !== 'name') {
-      const broadParams = { search: pattern.originalQuery, ...additionalParams };
-      users = await callUsersAPI(broadParams);
-      totalApiCalls++;
-      searchPhases.push({
-        phase: 'broad-search',
-        params: broadParams,
-        resultCount: users.length,
-      });
-
-      if (users.length > 0) {
-        return {
-          users,
-          searchMetadata: {
-            query,
-            pattern,
-            searchPhases,
-            totalApiCalls,
-          },
-        };
-      }
-    }
-
-    // Phase 3: Transliteration search if query has Cyrillic and no results yet
-    if (pattern.hasTransliteration && pattern.transliteratedQuery) {
-      const translitParams = { search: pattern.transliteratedQuery, ...additionalParams };
-      users = await callUsersAPI(translitParams);
-      totalApiCalls++;
-      searchPhases.push({
-        phase: 'transliteration',
-        params: translitParams,
-        resultCount: users.length,
-      });
-    }
-  } catch (error) {
-    // Log error but don't fail completely - return empty result with metadata
-    console.error('Smart user search error:', error);
+  // Phase 3: Transliteration search if query has Cyrillic and no results yet
+  if (pattern.hasTransliteration && pattern.transliteratedQuery) {
+    const translitParams = { search: pattern.transliteratedQuery, ...additionalParams };
+    users = await callUsersAPI(translitParams);
+    totalApiCalls++;
+    searchPhases.push({
+      phase: 'transliteration',
+      params: translitParams,
+      resultCount: users.length,
+    });
   }
 
   return {

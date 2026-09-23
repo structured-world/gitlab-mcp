@@ -70,10 +70,12 @@ describe('fetchUsers user-type filters', () => {
     expect(sentUrl().searchParams.get('username')).toBe('alice');
   });
 
-  it('treats a non-list body as no users when emulating filters', async () => {
-    nativeUserFilters = false;
+  it('rejects a body that is not a user list instead of reporting no users', async () => {
+    // A proxy page or error object answered with 200 must not read as "no match".
     respond({ message: 'unexpected' });
-    expect(await fetchUsers({ humans: true })).toEqual([]);
+    await expect(fetchUsers({ humans: true })).rejects.toThrow(
+      'GitLab API error: unexpected users response',
+    );
   });
 
   it('emulates humans on older instances: project bots server-side, other bots client-side', async () => {
@@ -335,14 +337,35 @@ describe('smart-user-search utilities', () => {
       expect(mockEnhancedFetch).toHaveBeenCalledWith(expect.stringContaining('humans=true'));
     });
 
-    it('should handle API errors gracefully', async () => {
+    it('propagates API errors instead of reporting no users', async () => {
+      // An empty result would tell the caller nobody matched when the search failed.
       mockEnhancedFetch.mockRejectedValueOnce(new Error('Network error'));
 
-      const result = await smartUserSearch('ivan');
+      await expect(smartUserSearch('ivan')).rejects.toThrow('Network error');
+    });
 
-      expect(result.users).toEqual([]);
-      expect(result.searchMetadata.totalApiCalls).toBe(0);
-      expect(result.searchMetadata.searchPhases).toHaveLength(0);
+    it('propagates the refusal to filter bot users on older instances', async () => {
+      nativeUserFilters = false;
+      mockEnhancedFetch.mockResolvedValueOnce(
+        mockApiResponse([{ id: 1, username: 'ivan', state: 'active' }]),
+      );
+
+      await expect(smartUserSearch('ivan', { exclude_humans: true })).rejects.toThrow(
+        'Filtering to bot users needs GitLab 17.3+',
+      );
+    });
+
+    it('drops each default that contradicts the requested exclusion', async () => {
+      // active=true with exclude_active, or humans=true with exclude_humans,
+      // can only ever return nothing.
+      mockEnhancedFetch.mockResolvedValueOnce(mockApiResponse([{ id: 1, username: 'ivan' }]));
+      await smartUserSearch('ivan', { exclude_active: true, exclude_humans: true });
+
+      const sent = new URL(mockEnhancedFetch.mock.calls[0][0]).searchParams;
+      expect(sent.has('active')).toBe(false);
+      expect(sent.has('humans')).toBe(false);
+      expect(sent.get('exclude_active')).toBe('true');
+      expect(sent.get('exclude_humans')).toBe('true');
     });
 
     it('should include default filters for better results', async () => {

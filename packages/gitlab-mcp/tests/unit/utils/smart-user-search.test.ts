@@ -63,6 +63,19 @@ describe('fetchUsers user-type filters', () => {
     expect(sentUrl().searchParams.get('humans')).toBe('true');
   });
 
+  it('does not send parameters left undefined', async () => {
+    respond([users[0]]);
+    await fetchUsers({ username: 'alice', search: undefined });
+    expect(sentUrl().searchParams.has('search')).toBe(false);
+    expect(sentUrl().searchParams.get('username')).toBe('alice');
+  });
+
+  it('treats a non-list body as no users when emulating filters', async () => {
+    nativeUserFilters = false;
+    respond({ message: 'unexpected' });
+    expect(await fetchUsers({ humans: true })).toEqual([]);
+  });
+
   it('emulates humans on older instances: project bots server-side, other bots client-side', async () => {
     nativeUserFilters = false;
     respond(users);

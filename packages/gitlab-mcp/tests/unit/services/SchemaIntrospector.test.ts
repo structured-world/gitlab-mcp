@@ -126,6 +126,47 @@ describe('SchemaIntrospector', () => {
       expect(introspector.getCachedSchema()).toBe(schema);
     });
 
+    it('indexes fields by their named type and arguments, and input object fields', async () => {
+      // Documents are adapted to this index, so wrapped types must resolve to the
+      // named type and mutation inputs must list their fields.
+      mockGraphQLClient.request.mockResolvedValueOnce({
+        __schema: {
+          types: [
+            {
+              name: 'Namespace',
+              kind: 'OBJECT',
+              fields: [
+                {
+                  name: 'workItems',
+                  args: [{ name: 'types' }],
+                  type: {
+                    name: null,
+                    kind: 'NON_NULL',
+                    ofType: { name: 'WorkItemConnection', kind: 'OBJECT' },
+                  },
+                },
+              ],
+            },
+            {
+              name: 'WorkItemCreateInput',
+              kind: 'INPUT_OBJECT',
+              inputFields: [{ name: 'labelsWidget' }],
+            },
+            { name: 'WorkItemState', kind: 'ENUM', enumValues: [{ name: 'OPEN' }] },
+          ],
+        },
+      });
+
+      const index = (await introspector.introspectSchema()).fieldIndex!;
+
+      const workItems = index.get('Namespace')!.get('workItems')!;
+      expect(workItems.type).toBe('WorkItemConnection');
+      expect([...workItems.args]).toEqual(['types']);
+      expect(index.get('WorkItemCreateInput')!.has('labelsWidget')).toBe(true);
+      // Types without fields still exist in the index.
+      expect(index.get('WorkItemState')!.size).toBe(0);
+    });
+
     it('should return cached schema on subsequent calls', async () => {
       mockGraphQLClient.request.mockResolvedValueOnce(mockIntrospectionResult);
 

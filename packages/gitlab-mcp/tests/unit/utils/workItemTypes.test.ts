@@ -5,6 +5,14 @@ import { ConnectionManager } from '../../../src/services/ConnectionManager';
 jest.mock('../../../src/services/ConnectionManager');
 jest.mock('../../../src/graphql/workItems', () => ({
   GET_WORK_ITEM_TYPES: 'GET_WORK_ITEM_TYPES_QUERY',
+  GET_PROJECT_OR_GROUP_WORK_ITEM_TYPES: 'GET_PROJECT_OR_GROUP_WORK_ITEM_TYPES_QUERY',
+}));
+
+// Whether the simulated schema has Namespace.workItemTypes. A plain variable so
+// resetAllMocks below cannot clear it.
+let namespaceWorkItemTypes = true;
+jest.mock('../../../src/entities/instance-version', () => ({
+  graphqlSupports: () => namespaceWorkItemTypes,
 }));
 
 const mockClient = {
@@ -23,6 +31,40 @@ describe('workItemTypes utils', () => {
     // Mock ConnectionManager.getInstance()
     mockGetInstance.mockReturnValue({
       getClient: () => mockClient,
+    });
+    namespaceWorkItemTypes = true;
+  });
+
+  describe('getWorkItemTypes on instances without Namespace.workItemTypes', () => {
+    const types = [{ id: 'gid://gitlab/WorkItems::Type/2', name: 'Issue' }];
+
+    beforeEach(() => {
+      namespaceWorkItemTypes = false;
+    });
+
+    it('reads the types from the project', async () => {
+      mockClient.request.mockResolvedValue({ project: { workItemTypes: { nodes: types } } });
+
+      const result = await getWorkItemTypes('grp/proj');
+
+      expect(mockClient.request).toHaveBeenCalledWith(
+        'GET_PROJECT_OR_GROUP_WORK_ITEM_TYPES_QUERY',
+        { namespacePath: 'grp/proj' },
+      );
+      expect(result).toEqual(types);
+    });
+
+    it('reads the types from the group when the path is not a project', async () => {
+      mockClient.request.mockResolvedValue({
+        project: null,
+        group: { workItemTypes: { nodes: types } },
+      });
+      expect(await getWorkItemTypes('grp')).toEqual(types);
+    });
+
+    it('returns no types when the path is neither', async () => {
+      mockClient.request.mockResolvedValue({ project: null, group: null });
+      expect(await getWorkItemTypes('missing')).toEqual([]);
     });
   });
 

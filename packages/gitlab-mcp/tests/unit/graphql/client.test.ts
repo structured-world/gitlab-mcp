@@ -51,6 +51,39 @@ describe('GraphQLClient', () => {
     });
   });
 
+  describe('schema adaptation', () => {
+    it('sends the document adapted to the provided schema, with only its variables', async () => {
+      mockEnhancedFetch.mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: jest.fn().mockResolvedValue({ data: {} }),
+      } as unknown as Response);
+      const field = (type: string) => ({ type, args: new Set<string>() });
+      client.setSchemaIndexProvider(
+        () =>
+          new Map([
+            ['Query', new Map([['project', field('Project')]])],
+            ['Project', new Map([['id', field('ID')]])],
+          ]),
+      );
+      const doc = gql`
+        query Q($id: ID!, $since: String) {
+          project(fullPath: $id) {
+            id
+            releasedAt(since: $since) @optional
+          }
+        }
+      `;
+
+      await client.request(doc, { id: 'grp/proj', since: '2026-01-01' });
+
+      const body = JSON.parse(mockEnhancedFetch.mock.calls[0][1]!.body as string);
+      expect(body.query).not.toContain('releasedAt');
+      expect(body.query).not.toContain('@optional');
+      expect(body.variables).toEqual({ id: 'grp/proj' });
+    });
+  });
+
   describe('request method', () => {
     it('should make successful GraphQL request', async () => {
       const mockData = {

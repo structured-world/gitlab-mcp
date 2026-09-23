@@ -141,6 +141,14 @@ describe('runners registry', () => {
             status: 'online',
             paused: false,
           },
+          // A runner without a description never matches a search.
+          {
+            id: 9,
+            description: null,
+            runner_type: 'project_type',
+            status: null,
+            paused: false,
+          },
         ]);
 
         const res = (await browse().handler({

@@ -415,6 +415,23 @@ describe('Webhooks Registry', () => {
       }
     });
 
+    it('rejects group-only event fields on project webhooks', async () => {
+      // The project hooks API has no project_events/subgroup_events and would
+      // silently ignore them while reporting success.
+      for (const field of ['project_events', 'subgroup_events']) {
+        await expect(
+          webhooksToolRegistry.get('manage_webhook')!.handler({
+            action: 'create',
+            scope: 'project',
+            projectId: 'p',
+            url: 'https://example.com/hook',
+            [field]: true,
+          }),
+        ).rejects.toThrow(`${field} applies to group webhooks only`);
+      }
+      expect(mockEnhancedFetch).not.toHaveBeenCalled();
+    });
+
     it('should require url for create action', async () => {
       const tool = webhooksToolRegistry.get('manage_webhook');
       expect(tool).toBeDefined();

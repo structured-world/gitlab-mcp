@@ -116,6 +116,14 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
 
         assertActionAllowed('manage_webhook', input.action);
         assertGroupHooksAvailable(input.scope);
+        // The project hooks API has no such events and would ignore them silently.
+        if (input.scope === 'project' && (input.action === 'create' || input.action === 'update')) {
+          for (const field of ['project_events', 'subgroup_events'] as const) {
+            if (input[field] !== undefined) {
+              throw new Error(`${field} applies to group webhooks only`);
+            }
+          }
+        }
 
         // Determine base path from scope and IDs
         const getBasePath = (scope: 'project' | 'group', projectId?: string, groupId?: string) => {

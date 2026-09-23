@@ -388,6 +388,33 @@ describe('Webhooks Registry', () => {
       }
     });
 
+    it('refuses group webhooks on GitLab Free without calling GitLab', async () => {
+      // Group hooks are a Premium feature; project hooks stay available on Free.
+      const spy = jest
+        .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+        .mockReturnValue({ version: '18.0.0', tier: 'free' } as GitLabInstanceInfo);
+      try {
+        await expect(
+          webhooksToolRegistry.get('manage_webhook')!.handler({
+            action: 'create',
+            scope: 'group',
+            groupId: 'g',
+            url: 'https://example.com/hook',
+          }),
+        ).rejects.toThrow('Group webhooks require GitLab Premium');
+        await expect(
+          webhooksToolRegistry.get('browse_webhooks')!.handler({
+            action: 'list',
+            scope: 'group',
+            groupId: 'g',
+          }),
+        ).rejects.toThrow('Group webhooks require GitLab Premium');
+        expect(mockEnhancedFetch).not.toHaveBeenCalled();
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
     it('should require url for create action', async () => {
       const tool = webhooksToolRegistry.get('manage_webhook');
       expect(tool).toBeDefined();

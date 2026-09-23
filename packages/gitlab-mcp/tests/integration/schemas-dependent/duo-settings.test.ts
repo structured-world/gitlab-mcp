@@ -55,6 +55,14 @@ function expectAppliedOrReported(
   }
 }
 
+/** The offered settings as they were before the test, for restoring the fixture. */
+function originalValues(
+  offered: string[],
+  before: Record<string, unknown>,
+): Record<string, boolean> {
+  return Object.fromEntries(offered.map((name) => [name, before[name] === true]));
+}
+
 describe('GitLab Duo settings - GitLab Integration', () => {
   let helper: IntegrationTestHelper;
 
@@ -79,15 +87,28 @@ describe('GitLab Duo settings - GitLab Integration', () => {
     const before = await getProject();
     const requested = Object.fromEntries(offered.map((name) => [name, before[name] !== true]));
 
-    const updated = (await helper.executeTool(
-      'manage_project',
-      ManageProjectSchema.parse({ action: 'update', project_id: projectId, ...requested }),
-    )) as Entity;
-    console.log(
-      `Project Duo settings not applied on this instance: ${JSON.stringify(updated.not_applied ?? [])}`,
-    );
+    try {
+      const updated = (await helper.executeTool(
+        'manage_project',
+        ManageProjectSchema.parse({ action: 'update', project_id: projectId, ...requested }),
+      )) as Entity;
+      console.log(
+        `Project Duo settings not applied on this instance: ${JSON.stringify(updated.not_applied ?? [])}`,
+      );
 
-    expectAppliedOrReported(requested, updated, await getProject());
+      expectAppliedOrReported(requested, updated, await getProject());
+    } finally {
+      // The project is a shared fixture: later tests must not inherit, say,
+      // automatic Duo reviews on their merge requests.
+      await helper.executeTool(
+        'manage_project',
+        ManageProjectSchema.parse({
+          action: 'update',
+          project_id: projectId,
+          ...originalValues(offered, before),
+        }),
+      );
+    }
   }, 60000);
 
   it('applies or reports group automatic Duo code review', async () => {
@@ -110,14 +131,26 @@ describe('GitLab Duo settings - GitLab Integration', () => {
     const before = await getGroup();
     const requested = Object.fromEntries(offered.map((name) => [name, before[name] !== true]));
 
-    const updated = (await helper.executeTool(
-      'manage_namespace',
-      ManageNamespaceSchema.parse({ action: 'update', group_id: groupId, ...requested }),
-    )) as Entity;
-    console.log(
-      `Group Duo settings not applied on this instance: ${JSON.stringify(updated.not_applied ?? [])}`,
-    );
+    try {
+      const updated = (await helper.executeTool(
+        'manage_namespace',
+        ManageNamespaceSchema.parse({ action: 'update', group_id: groupId, ...requested }),
+      )) as Entity;
+      console.log(
+        `Group Duo settings not applied on this instance: ${JSON.stringify(updated.not_applied ?? [])}`,
+      );
 
-    expectAppliedOrReported(requested, updated, await getGroup());
+      expectAppliedOrReported(requested, updated, await getGroup());
+    } finally {
+      // Group settings cascade to every test project; restore them.
+      await helper.executeTool(
+        'manage_namespace',
+        ManageNamespaceSchema.parse({
+          action: 'update',
+          group_id: groupId,
+          ...originalValues(offered, before),
+        }),
+      );
+    }
   }, 60000);
 });

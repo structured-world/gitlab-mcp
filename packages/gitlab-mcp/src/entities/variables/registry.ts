@@ -74,7 +74,11 @@ export const variablesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       description:
         'Create, update, or delete CI/CD variables with environment scoping. Actions: create (key + value, set scope/protection/masking), update (modify value or settings), delete (remove permanently). Related: browse_variables for discovery.',
       inputSchema: z.toJSONSchema(ManageVariableSchema),
-      requirements: { default: { tier: 'free' } },
+      requirements: {
+        default: { tier: 'free' },
+        // Older instances ignore it and still report success.
+        parameters: { description: { tier: 'free', minVersion: '16.2' } },
+      },
       gate: { envVar: 'USE_VARIABLES', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageVariableSchema.parse(args);

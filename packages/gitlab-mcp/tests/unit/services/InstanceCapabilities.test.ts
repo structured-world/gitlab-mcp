@@ -261,7 +261,10 @@ describe('shipped tool requirements (real data)', () => {
     // rest are emulated in the handlers.
     ['files', 'browse_files', 'download_attachment', undefined, '17.4'],
     ['webhooks', 'manage_webhook', 'test', undefined, '16.11'],
+    ['webhooks', 'manage_webhook', undefined, 'name', '17.1'],
+    ['webhooks', 'manage_webhook', undefined, 'description', '17.1'],
     ['webhooks', 'manage_webhook', undefined, 'feature_flag_events', '17.5'],
+    ['variables', 'manage_variable', undefined, 'description', '16.2'],
     ['webhooks', 'manage_webhook', undefined, 'project_events', '18.2'],
     ['pipelines', 'manage_pipeline', undefined, 'inputs', '17.10'],
     ['workitems', 'manage_work_item', 'add_link', undefined, '16.4'],

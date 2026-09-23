@@ -92,6 +92,8 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
           test: { tier: 'free', minVersion: '16.11' },
         },
         parameters: {
+          name: { tier: 'free', minVersion: '17.1' },
+          description: { tier: 'free', minVersion: '17.1' },
           emoji_events: { tier: 'free', minVersion: '16.2' },
           resource_access_token_events: { tier: 'free', minVersion: '16.10' },
           member_events: { tier: 'free', minVersion: '16.11' },

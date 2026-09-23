@@ -172,7 +172,7 @@ const RestoreProjectSchema = z.object({
   action: z
     .literal('restore')
     .describe(
-      'Restore a soft-deleted project within its deletion cooldown window (default 7 days). Fails once the project has been purged. Requires project Owner or instance Administrator.',
+      'Restore a soft-deleted project within its deletion cooldown window (default 7 days). Fails once the project has been purged. On GitLab Free needs 18.0+. Requires project Owner or instance Administrator.',
     ),
   project_id: requiredId.describe('Project ID or URL-encoded path of the project to restore.'),
 });
@@ -281,7 +281,7 @@ const RestoreNamespaceSchema = z.object({
     .literal('restore')
     .describe(
       'Restore a soft-deleted group within its deletion cooldown window. On GitLab Free needs ' +
-        '17.11+. Requires group Owner or instance Administrator.',
+        '18.0+. Requires group Owner or instance Administrator.',
     ),
   group_id: requiredId.describe('Group ID or URL-encoded path of the group to restore.'),
 });

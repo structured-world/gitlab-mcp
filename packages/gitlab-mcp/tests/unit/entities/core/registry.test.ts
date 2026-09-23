@@ -2169,14 +2169,15 @@ describe('Core Registry', () => {
         expect(result).toEqual({ id: 1, marked_for_deletion_on: null });
       });
 
-      it('refuses project restore on GitLab Free before 17.11 but allows it on Premium', async () => {
-        // Free (CE) got the restore endpoint in 17.11; Premium had it before 16.0.
+      it('refuses project restore on GitLab Free before 18.0 but allows it on Premium', async () => {
+        // Free 17.11 has the route, but it answers 404 unless a disabled-by-default
+        // development flag is on; 18.0 made delayed deletion unconditional on Free.
         const spy = jest.spyOn(ConnectionManager.getInstance(), 'getInstanceInfo');
         try {
-          spy.mockReturnValue({ version: '17.10.0', tier: 'free' } as GitLabInstanceInfo);
+          spy.mockReturnValue({ version: '17.11.0', tier: 'free' } as GitLabInstanceInfo);
           const tool = coreToolRegistry.get('manage_project');
           await expect(tool!.handler({ action: 'restore', project_id: '1' })).rejects.toThrow(
-            'Project restore on GitLab Free requires GitLab 17.11+',
+            'Project restore on GitLab Free requires GitLab 18.0+',
           );
           expect(mockEnhancedFetch).not.toHaveBeenCalled();
 
@@ -2351,19 +2352,20 @@ describe('Core Registry', () => {
         );
       });
 
-      it('refuses group restore on GitLab Free before 17.11 but allows Premium and later Free', async () => {
-        // Premium (EE) had group restore before 16.0; Free (CE) got the route in 17.11.
+      it('refuses group restore on GitLab Free before 18.0 but allows Premium and later Free', async () => {
+        // Premium had group restore before 16.0; on Free it works from 18.0 (17.11
+        // answers 404 unless a disabled-by-default development flag is on).
         const spy = jest.spyOn(ConnectionManager.getInstance(), 'getInstanceInfo');
         try {
           const tool = coreToolRegistry.get('manage_namespace');
-          spy.mockReturnValue({ version: '17.10.0', tier: 'free' } as GitLabInstanceInfo);
+          spy.mockReturnValue({ version: '17.11.0', tier: 'free' } as GitLabInstanceInfo);
           await expect(tool!.handler({ action: 'restore', group_id: 'old-group' })).rejects.toThrow(
-            'Group restore on GitLab Free requires GitLab 17.11+',
+            'Group restore on GitLab Free requires GitLab 18.0+',
           );
           expect(mockEnhancedFetch).not.toHaveBeenCalled();
 
           for (const info of [
-            { version: '17.11.0', tier: 'free' },
+            { version: '18.0.0', tier: 'free' },
             { version: '17.0.0', tier: 'premium' },
           ]) {
             spy.mockReturnValue(info as GitLabInstanceInfo);

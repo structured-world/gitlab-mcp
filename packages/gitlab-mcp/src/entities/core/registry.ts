@@ -884,9 +884,11 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
           case 'restore': {
             const { project_id } = input;
-            // Premium had project restore before the supported floor; Free got it in 17.11.
+            // Premium had project restore before the supported floor. On Free the
+            // 17.11 route answers 404 unless a disabled-by-default development flag
+            // is on; 18.0 made delayed deletion unconditional there.
             if (currentInstance()?.tier === 'free') {
-              assertInstanceAtLeast('17.11', 'Project restore on GitLab Free');
+              assertInstanceAtLeast('18.0', 'Project restore on GitLab Free');
             }
             return restoreEntity(
               `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/restore`,
@@ -906,7 +908,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: 'manage_namespace',
       description:
-        'Create, update, or delete GitLab groups/namespaces. Actions: create (new group with visibility/settings), update (modify group settings, including automatic GitLab Duo code review cascading to subgroups and projects; a Duo setting GitLab could not apply is listed in not_applied with what it requires), delete (remove permanently), restore (recover a soft-deleted group before purge; on GitLab Free needs 17.11+). Related: browse_namespaces for discovery.',
+        'Create, update, or delete GitLab groups/namespaces. Actions: create (new group with visibility/settings), update (modify group settings, including automatic GitLab Duo code review cascading to subgroups and projects; a Duo setting GitLab could not apply is listed in not_applied with what it requires), delete (remove permanently), restore (recover a soft-deleted group before purge; on GitLab Free needs 18.0+). Related: browse_namespaces for discovery.',
       inputSchema: z.toJSONSchema(ManageNamespaceSchema),
       requirements: {
         default: { tier: 'free' },
@@ -1002,9 +1004,10 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'restore': {
             const { group_id } = input;
 
-            // Premium had group restore before the supported floor; Free got it in 17.11.
+            // Premium had group restore before the supported floor; on Free it works
+            // from 18.0 (see the project restore above).
             if (currentInstance()?.tier === 'free') {
-              assertInstanceAtLeast('17.11', 'Group restore on GitLab Free');
+              assertInstanceAtLeast('18.0', 'Group restore on GitLab Free');
             }
 
             return restoreEntity(

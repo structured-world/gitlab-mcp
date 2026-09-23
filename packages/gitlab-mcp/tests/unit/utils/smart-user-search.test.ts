@@ -422,6 +422,28 @@ describe('smart-user-search utilities', () => {
       expect(result.searchMetadata.warning).toContain('bot accounts other than project bots');
     });
 
+    it('keeps an earlier phase truncation warning when a later phase finds nothing', async () => {
+      // Otherwise "no users" hides that the first phase scanned only part of
+      // the instance.
+      nativeUserFilters = false;
+      const fullPage = Array.from({ length: 100 }, (_, i) => ({
+        id: i,
+        state: 'active',
+        bot: false,
+      }));
+      // Targeted username phase: 20 full pages, none inactive.
+      for (let i = 0; i < 20; i++) {
+        mockEnhancedFetch.mockResolvedValueOnce(mockApiResponse(fullPage));
+      }
+      // Broad and transliteration phases: empty.
+      mockEnhancedFetch.mockResolvedValue(mockApiResponse([]));
+
+      const result = await smartUserSearch('иван', { exclude_active: true });
+
+      expect(result.users).toEqual([]);
+      expect(result.searchMetadata.warning).toContain('only the first 2000 users were scanned');
+    });
+
     it('drops each default that contradicts the requested exclusion', async () => {
       // active=true with exclude_active, or humans=true with exclude_humans,
       // can only ever return nothing.

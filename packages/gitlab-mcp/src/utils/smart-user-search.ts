@@ -242,21 +242,24 @@ export async function smartUserSearch(
   }
 
   // A failed call propagates: an empty result would claim nobody matched.
+  // Warnings of every phase run are kept: an earlier phase that scanned only
+  // part of the instance still qualifies an empty final answer.
+  const warnings = new Set<string>();
   const runPhase = async (phase: string, params: UserSearchParams): Promise<FetchedUsers> => {
     const fetched = await callUsersAPI(params);
     totalApiCalls++;
     searchPhases.push({ phase, params, resultCount: fetched.users.length });
+    if (fetched.warning) warnings.add(fetched.warning);
     return fetched;
   };
-  // The returned users come from the last phase run, and so does its warning.
-  const finish = ({ users, warning }: FetchedUsers): SmartSearchResult => ({
+  const finish = ({ users }: FetchedUsers): SmartSearchResult => ({
     users,
     searchMetadata: {
       query,
       pattern,
       searchPhases,
       totalApiCalls,
-      ...(warning ? { warning } : {}),
+      ...(warnings.size > 0 ? { warning: [...warnings].join('; ') } : {}),
     },
   });
 

@@ -2,7 +2,7 @@ import * as z from 'zod';
 import { BrowseRunnersSchema } from './schema-readonly';
 import { ManageRunnerSchema } from './schema';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { assertActionAllowed } from '../utils';
+import { assertActionAllowed, GITLAB_MAX_PER_PAGE } from '../utils';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { cleanGidsFromObject } from '../../utils/idConversion';
 import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
@@ -104,30 +104,22 @@ const RestRunnersSchema = z.array(
   }),
 );
 
-/**
- * The current user's runners through REST, shaped like the GraphQL connection,
- * for instances without currentUser.runners (GitLab 18.3). REST pages by number,
- * so the cursor is the next page number; `search` is matched client-side on the
- * description. Fields the REST listing lacks are null.
- */
-async function listOwnedRunnersViaRest(input: {
+interface OwnedRunnerFilters {
   type?: string;
   status?: string;
   paused?: boolean;
   tag_list?: string[];
-  search?: string;
-  first?: number;
-  after?: string;
-}) {
-  const perPage = input.first ?? 20;
-  const page = Number(input.after) > 0 ? Number(input.after) : 1;
+}
+
+/** One validated page of GET /runners with the server-side filters applied. */
+async function fetchOwnedRunnersPage(filters: OwnedRunnerFilters, perPage: number, page: number) {
   const parsed = RestRunnersSchema.safeParse(
     await gitlab.get('runners', {
       query: toQuery({
-        type: input.type?.toLowerCase(),
-        status: input.status?.toLowerCase(),
-        paused: input.paused,
-        tag_list: input.tag_list?.join(','),
+        type: filters.type?.toLowerCase(),
+        status: filters.status?.toLowerCase(),
+        paused: filters.paused,
+        tag_list: filters.tag_list?.join(','),
         per_page: perPage,
         page,
       }),
@@ -138,13 +130,46 @@ async function listOwnedRunnersViaRest(input: {
       `GitLab API error: unexpected runners response (${parsed.error.issues[0]?.message ?? 'invalid'})`,
     );
   }
-  const runners = parsed.data;
+  return parsed.data;
+}
+
+/**
+ * The current user's runners through REST, shaped like the GraphQL connection,
+ * for instances without currentUser.runners (GitLab 18.3). REST pages by number,
+ * so the cursor is the next page number. REST has no `search`, so it is matched
+ * on the description before paginating: REST pages are walked until the
+ * requested page of matches is complete, and the cursor counts pages of matches.
+ * Fields the REST listing lacks are null.
+ */
+async function listOwnedRunnersViaRest(
+  input: OwnedRunnerFilters & { search?: string; first?: number; after?: string },
+) {
+  const perPage = input.first ?? 20;
+  const page = Number(input.after) > 0 ? Number(input.after) : 1;
   const search = input.search?.toLowerCase();
-  const matching = search
-    ? runners.filter((r) => (r.description ?? '').toLowerCase().includes(search))
-    : runners;
+
+  let runners: z.infer<typeof RestRunnersSchema>;
+  let hasNextPage: boolean;
+  if (search) {
+    const wanted = page * perPage;
+    const matches: typeof runners = [];
+    // One match beyond the requested page tells whether another page exists.
+    for (let restPage = 1; matches.length <= wanted; restPage++) {
+      const batch = await fetchOwnedRunnersPage(input, GITLAB_MAX_PER_PAGE, restPage);
+      for (const runner of batch) {
+        if ((runner.description ?? '').toLowerCase().includes(search)) matches.push(runner);
+      }
+      if (batch.length < GITLAB_MAX_PER_PAGE) break;
+    }
+    runners = matches.slice(wanted - perPage, wanted);
+    hasNextPage = matches.length > wanted;
+  } else {
+    runners = await fetchOwnedRunnersPage(input, perPage, page);
+    hasNextPage = runners.length === perPage;
+  }
+
   return {
-    nodes: matching.map((r) => ({
+    nodes: runners.map((r) => ({
       id: r.id,
       description: r.description,
       runnerType: r.runner_type.toUpperCase(),
@@ -161,8 +186,8 @@ async function listOwnedRunnersViaRest(input: {
       createdAt: null,
     })),
     pageInfo: {
-      hasNextPage: runners.length === perPage,
-      endCursor: runners.length === perPage ? String(page + 1) : null,
+      hasNextPage,
+      endCursor: hasNextPage ? String(page + 1) : null,
     },
   };
 }

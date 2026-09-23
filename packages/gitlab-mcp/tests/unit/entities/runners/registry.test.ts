@@ -133,7 +133,38 @@ describe('runners registry', () => {
         );
       });
 
-      it('filters by search client-side and ends pagination on a short page', async () => {
+      it('searches before paginating, walking REST pages past non-matching ones', async () => {
+        // A full first REST page without a match must not hide a match on the
+        // next one; the cursor then counts pages of matches, not REST pages.
+        const unrelated = Array.from({ length: 100 }, (_, i) => ({
+          id: 100 + i,
+          description: 'build',
+          runner_type: 'project_type',
+          status: 'online',
+          paused: false,
+        }));
+        const deploy = (id: number) => ({
+          id,
+          description: `Deploy ${id}`,
+          runner_type: 'project_type',
+          status: 'online',
+          paused: false,
+        });
+        mockGitlab.get.mockResolvedValueOnce(unrelated);
+        mockGitlab.get.mockResolvedValueOnce([deploy(1), deploy(2), deploy(3)]);
+
+        const res = (await browse().handler({
+          action: 'list_owned',
+          search: 'deploy',
+          first: 2,
+        })) as { nodes: Array<{ id: number }>; pageInfo: Record<string, unknown> };
+
+        expect(mockGitlab.get.mock.calls.map((c) => c[1].query.page)).toEqual([1, 2]);
+        expect(res.nodes.map((n) => n.id)).toEqual([1, 2]);
+        expect(res.pageInfo).toEqual({ hasNextPage: true, endCursor: '2' });
+      });
+
+      it('returns a later page of matches and ends pagination when matches run out', async () => {
         mockGitlab.get.mockResolvedValueOnce([
           {
             id: 7,
@@ -159,16 +190,16 @@ describe('runners registry', () => {
           },
         ]);
 
-        const res = (await browse().handler({
+        const first = (await browse().handler({
           action: 'list_owned',
           search: 'deploy',
-          after: '3',
         })) as { nodes: Array<{ id: number }>; pageInfo: Record<string, unknown> };
 
-        expect(mockGitlab.get.mock.calls[0][1].query).toMatchObject({ page: 3 });
+        // The REST listing has no search parameter; it is matched here.
+        expect(mockGitlab.get.mock.calls[0][1].query).toMatchObject({ page: 1 });
         expect(mockGitlab.get.mock.calls[0][1].query).not.toHaveProperty('search');
-        expect(res.nodes.map((n) => n.id)).toEqual([7]);
-        expect(res.pageInfo).toEqual({ hasNextPage: false, endCursor: null });
+        expect(first.nodes.map((n) => n.id)).toEqual([7]);
+        expect(first.pageInfo).toEqual({ hasNextPage: false, endCursor: null });
       });
     });
 

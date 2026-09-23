@@ -17,13 +17,12 @@ import {
 } from './schema';
 import { enhancedFetch } from '../../utils/fetch';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
-import { smartUserSearch, type UserSearchParams } from '../../utils/smart-user-search';
+import { fetchUsers, smartUserSearch, type UserSearchParams } from '../../utils/smart-user-search';
 import { cleanGidsFromObject } from '../../utils/idConversion';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
-import { ConnectionManager } from '../../services/ConnectionManager';
-import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
-import { parseVersion } from '../../utils/version';
+import { assertInstanceAtLeast, currentInstance, instanceAtLeast } from '../instance-version';
+import { GROUP_DUO_SETTINGS, PROJECT_DUO_SETTINGS, withUnappliedSettings } from './duo-settings';
 
 /**
  * Minimal guard for the entity payload returned by the restore endpoints
@@ -57,6 +56,25 @@ async function restoreEntity(apiUrl: string): Promise<unknown> {
   return restored.data;
 }
 
+interface CommitDiff {
+  diff: string;
+  old_path: string;
+  new_path: string;
+  new_file: boolean;
+  deleted_file: boolean;
+}
+
+/**
+ * Prefix a commit diff with unified-diff file headers, as GitLab's own `unidiff`
+ * option does (Gitlab::Git::Diff#unidiff): empty and binary diffs stay as they are.
+ */
+function withUnifiedHeaders(d: CommitDiff): string {
+  if (!d.diff || d.diff.startsWith('Binary files')) return d.diff;
+  const oldHeader = d.new_file ? '/dev/null' : `a/${d.old_path}`;
+  const newHeader = d.deleted_file ? '/dev/null' : `b/${d.new_path}`;
+  return `--- ${oldHeader}\n+++ ${newHeader}\n${d.diff}`;
+}
+
 /**
  * Core tools registry - CQRS consolidated
  * All tools use discriminated union schema pattern.
@@ -75,7 +93,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
         'Find, list, or inspect GitLab projects. Actions: search (find by name/topic across GitLab), list (browse accessible projects or group projects), get (retrieve full project details). Related: manage_project to create/update/delete projects.',
       inputSchema: z.toJSONSchema(BrowseProjectsSchema),
       requirements: {
-        default: { tier: 'free', minVersion: '8.0' },
+        default: { tier: 'free' },
         // Listing soft-deleted projects needs active admin-mode elevation; the
         // registry strips this parameter when elevation is known inactive (non-admin
         // OR admin role without elevation), and keeps it when elevated or unknown
@@ -184,19 +202,8 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             // instances translate it to the long-standing `archived` filter
             // (active=true => archived=false), which is server-side and therefore
             // pagination-safe. Projects pending deletion are already hidden from
-            // default listings, so this mapping matches `active` semantics. The
-            // instance version is detected at startup, so this is a cheap in-memory
-            // read; an unknown version fails open to the native parameter.
-            let activeFilterSupported = true;
-            try {
-              const version = ConnectionManager.getInstance().getInstanceInfo(
-                getGitLabApiUrlFromContext(),
-              ).version;
-              activeFilterSupported =
-                version === 'unknown' || parseVersion(version) >= parseVersion('18.5');
-            } catch {
-              // Connection not initialised — assume supported (fail-open).
-            }
+            // default listings, so this mapping matches `active` semantics.
+            const activeFilterSupported = instanceAtLeast('18.5');
             const applyActiveFilter = (value: boolean): void => {
               if (activeFilterSupported) {
                 // active wins over an explicit archived filter: drop archived so the
@@ -272,7 +279,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Explore GitLab groups and user namespaces. Actions: list (discover available namespaces), get (retrieve details with storage stats), verify (check if path exists). Related: manage_namespace to create/update/delete groups.',
       inputSchema: z.toJSONSchema(BrowseNamespacesSchema),
-      requirements: { default: { tier: 'free', minVersion: '9.0' } },
+      requirements: { default: { tier: 'free' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseNamespacesSchema.parse(args);
 
@@ -356,7 +363,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Explore repository commit history and diffs. Actions: list (browse commits with filters), get (retrieve commit metadata and stats), diff (view code changes). Related: browse_refs for branch/tag info.',
       inputSchema: z.toJSONSchema(BrowseCommitsSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0' } },
+      requirements: { default: { tier: 'free' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseCommitsSchema.parse(args);
 
@@ -422,9 +429,11 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
           case 'diff': {
             const { project_id, sha, unidiff, per_page, page } = input;
+            // `unidiff` landed in GitLab 16.5; before that the headers are added here.
+            const nativeUnidiff = instanceAtLeast('16.5');
 
             const queryParams = new URLSearchParams();
-            if (unidiff) queryParams.set('unidiff', 'true');
+            if (unidiff && nativeUnidiff) queryParams.set('unidiff', 'true');
             if (per_page) queryParams.set('per_page', String(per_page));
             if (page) queryParams.set('page', String(page));
 
@@ -435,7 +444,9 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
             }
 
-            return await response.json();
+            const diffs = (await response.json()) as unknown;
+            if (!unidiff || nativeUnidiff || !Array.isArray(diffs)) return diffs;
+            return diffs.map((d: CommitDiff) => ({ ...d, diff: withUnifiedHeaders(d) }));
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */
@@ -453,7 +464,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Track GitLab activity and events. Actions: user (your activity across all projects), project (specific project activity feed). Filter by date range, action type, or target type.',
       inputSchema: z.toJSONSchema(BrowseEventsSchema),
-      requirements: { default: { tier: 'free', minVersion: '9.0' } },
+      requirements: { default: { tier: 'free' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseEventsSchema.parse(args);
 
@@ -520,7 +531,8 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Find GitLab users with smart pattern detection. Actions: search (find users by name/email/username with transliteration support), get (retrieve specific user by ID). Related: browse_members for project/group membership.',
       inputSchema: z.toJSONSchema(BrowseUsersSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0' } },
+      // User-type filters newer than the floor are emulated on older instances (fetchUsers).
+      requirements: { default: { tier: 'free' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseUsersSchema.parse(args);
 
@@ -547,22 +559,8 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
               return await smartUserSearch(query, additionalParams);
             } else {
-              const queryParams = new URLSearchParams();
-              Object.entries(input).forEach(([key, value]) => {
-                if (value !== undefined && key !== 'smart_search' && key !== 'action') {
-                  queryParams.set(key, String(value));
-                }
-              });
-
-              const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/users?${queryParams}`;
-              const response = await enhancedFetch(apiUrl);
-
-              if (!response.ok) {
-                throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
-              }
-
-              const users = await response.json();
-              return cleanGidsFromObject(users);
+              const { smart_search: _smart, action: _action, ...params } = input;
+              return cleanGidsFromObject(await fetchUsers(params));
             }
           }
 
@@ -595,7 +593,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'View your GitLab todo queue (notifications requiring action). Actions: list (filter by state, action type, target type). Todos are auto-created for assignments, mentions, reviews, and pipeline failures. Related: manage_todos to mark done/restore.',
       inputSchema: z.toJSONSchema(BrowseTodosSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0' } },
+      requirements: { default: { tier: 'free' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseTodosSchema.parse(args);
 
@@ -643,10 +641,10 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: 'manage_project',
       description:
-        'Create, update, or manage GitLab projects. Actions: create (new project with settings), fork (copy existing project), update (modify settings), delete (remove permanently), restore (recover a soft-deleted project before purge), archive/unarchive (toggle read-only), transfer (move to different namespace). Related: browse_projects for discovery, including include_deleted to find restorable projects.',
+        'Create, update, or manage GitLab projects. Actions: create (new project with settings), fork (copy existing project), update (modify settings, including GitLab Duo settings such as automatic Duo code review; any Duo setting GitLab could not apply is listed in not_applied with what it requires), delete (remove permanently), restore (recover a soft-deleted project before purge), archive/unarchive (toggle read-only), transfer (move to different namespace). Related: browse_projects for discovery, including include_deleted to find restorable projects.',
       inputSchema: z.toJSONSchema(ManageProjectSchema),
       requirements: {
-        default: { tier: 'free', minVersion: '8.0' },
+        default: { tier: 'free' },
         parameters: {
           issues_template: { tier: 'premium' },
           merge_requests_template: { tier: 'premium' },
@@ -654,6 +652,12 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           merge_trains_enabled: { tier: 'premium' },
           only_allow_merge_if_all_status_checks_passed: { tier: 'ultimate' },
           requirements_access_level: { tier: 'ultimate' },
+          auto_duo_code_review_enabled: { tier: 'premium', minVersion: '18.0' },
+          duo_remote_flows_enabled: { tier: 'premium', minVersion: '18.4' },
+          duo_sast_fp_detection_enabled: { tier: 'ultimate', minVersion: '18.7' },
+          duo_sast_vr_workflow_enabled: { tier: 'ultimate', minVersion: '18.9' },
+          duo_secret_detection_fp_enabled: { tier: 'ultimate', minVersion: '18.10' },
+          duo_dependency_bump_breaking_changes_enabled: { tier: 'ultimate', minVersion: '19.2' },
         },
       },
       handler: async (args: unknown): Promise<unknown> => {
@@ -816,7 +820,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
             }
 
-            return await response.json();
+            return withUnappliedSettings(updateParams, await response.json(), PROJECT_DUO_SETTINGS);
           }
 
           case 'delete': {
@@ -880,6 +884,10 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
           case 'restore': {
             const { project_id } = input;
+            // Premium had project restore before the supported floor; Free got it in 17.11.
+            if (currentInstance()?.tier === 'free') {
+              assertInstanceAtLeast('17.11', 'Project restore on GitLab Free');
+            }
             return restoreEntity(
               `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/restore`,
             );
@@ -898,16 +906,17 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
     {
       name: 'manage_namespace',
       description:
-        'Create, update, or delete GitLab groups/namespaces. Actions: create (new group with visibility/settings), update (modify group settings), delete (remove permanently), restore (recover a soft-deleted group before purge; requires GitLab 18.0+). Related: browse_namespaces for discovery.',
+        'Create, update, or delete GitLab groups/namespaces. Actions: create (new group with visibility/settings), update (modify group settings, including automatic GitLab Duo code review cascading to subgroups and projects; a Duo setting GitLab could not apply is listed in not_applied with what it requires), delete (remove permanently), restore (recover a soft-deleted group before purge; on GitLab Free needs 17.11+). Related: browse_namespaces for discovery.',
       inputSchema: z.toJSONSchema(ManageNamespaceSchema),
       requirements: {
-        default: { tier: 'free', minVersion: '8.0' },
+        default: { tier: 'free' },
         parameters: {
           membership_lock: { tier: 'premium' },
           wiki_access_level: { tier: 'premium' },
           ip_restriction_ranges: { tier: 'premium' },
-          allowed_email_domains_list: { tier: 'premium' },
+          allowed_email_domains_list: { tier: 'premium', minVersion: '17.4' },
           unique_project_download_limit: { tier: 'ultimate' },
+          auto_duo_code_review_enabled: { tier: 'premium', minVersion: '18.7' },
         },
       },
       handler: async (args: unknown): Promise<unknown> => {
@@ -974,7 +983,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
             }
 
-            return await response.json();
+            return withUnappliedSettings(updateParams, await response.json(), GROUP_DUO_SETTINGS);
           }
 
           case 'delete': {
@@ -993,22 +1002,9 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
           case 'restore': {
             const { group_id } = input;
 
-            // Group restore landed in GitLab 18.0. The instance version is already
-            // detected at startup, so this is a cheap in-memory check (no API call).
-            // Fail-open when the version is unknown (not yet probed / connection not
-            // initialised) so we never block on a missing detection.
-            let version = 'unknown';
-            try {
-              version = ConnectionManager.getInstance().getInstanceInfo(
-                getGitLabApiUrlFromContext(),
-              ).version;
-            } catch {
-              // Connection not initialised — leave version unknown (fail-open).
-            }
-            if (version !== 'unknown' && parseVersion(version) < parseVersion('18.0')) {
-              throw new Error(
-                `Group restore requires GitLab 18.0+, but the instance is ${version}`,
-              );
+            // Premium had group restore before the supported floor; Free got it in 17.11.
+            if (currentInstance()?.tier === 'free') {
+              assertInstanceAtLeast('17.11', 'Group restore on GitLab Free');
             }
 
             return restoreEntity(
@@ -1035,7 +1031,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
       description:
         'Manage your GitLab todo queue. Actions: mark_done (complete a single todo), mark_all_done (clear entire queue), restore (undo completion). Related: browse_todos to view your todo list.',
       inputSchema: z.toJSONSchema(ManageTodosSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0' } },
+      requirements: { default: { tier: 'free' } },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageTodosSchema.parse(args);
 

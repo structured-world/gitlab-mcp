@@ -12,6 +12,8 @@ import {
   type GitLabWorkItem,
 } from '../../utils/idConversion';
 import { WidgetAvailability } from '../../services/WidgetAvailability';
+import { graphqlSupports } from '../instance-version';
+import type { GraphQLClient } from '../../graphql/client';
 import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
 import {
   createVersionRestrictedError,
@@ -25,12 +27,93 @@ interface WorkItemType {
   name: string;
 }
 
+/** Create-input widgets whose update-input shape is identical, so they can be deferred as-is. */
+const SAME_SHAPE_CREATE_WIDGETS = [
+  'assigneesWidget',
+  'milestoneWidget',
+  'startAndDueDateWidget',
+  'hierarchyWidget',
+  'weightWidget',
+  'iterationWidget',
+  'healthStatusWidget',
+  'progressWidget',
+  'colorWidget',
+] as const;
+
+/** Tool parameter a deferred widget carries, named in failure reports. */
+const DEFERRED_WIDGET_PROPERTY: Readonly<Record<string, string>> = {
+  timeTrackingWidget: 'timeEstimate',
+  descriptionWidget: 'description',
+  labelsWidget: 'labelIds',
+  assigneesWidget: 'assigneeIds',
+  milestoneWidget: 'milestoneId',
+  startAndDueDateWidget: 'dates',
+  hierarchyWidget: 'hierarchy',
+  weightWidget: 'weight',
+  iterationWidget: 'iterationId',
+  healthStatusWidget: 'healthStatus',
+  progressWidget: 'progressCurrentValue',
+  colorWidget: 'color',
+  verificationStatusWidget: 'verificationStatus',
+};
+
+/** A single-field widget input reports its value; a multi-field one reports the object. */
+const unwrapWidget = (value: unknown): unknown =>
+  value !== null && typeof value === 'object' && Object.keys(value).length === 1
+    ? Object.values(value)[0]
+    : value;
+
+/** Whether this instance's workItemCreate input accepts the field. */
+const createSupports = (field: string): boolean => graphqlSupports('WorkItemCreateInput', field);
+
+/**
+ * List a namespace's work items: the namespace-level query when the instance has
+ * it, otherwise the project listing, then the group one.
+ */
+async function listWorkItems(
+  client: GraphQLClient,
+  vars: { namespacePath: string; types?: string[]; first: number; after?: string },
+) {
+  if (graphqlSupports('Namespace', 'workItems')) {
+    return (await client.request(GET_NAMESPACE_WORK_ITEMS, vars)).namespace?.workItems ?? null;
+  }
+  const { project } = await client.request(LIST_PROJECT_WORK_ITEMS, vars);
+  if (project) return project.workItems;
+  if (!graphqlSupports('Group', 'workItems')) {
+    throw new Error(
+      `"${vars.namespacePath}" is not a project, and this GitLab instance cannot list group-level work items`,
+    );
+  }
+  return (await client.request(LIST_GROUP_WORK_ITEMS, vars)).group?.workItems ?? null;
+}
+
+/** Find a work item by namespace path + IID, falling back like listWorkItems. */
+async function getWorkItemByIid(
+  client: GraphQLClient,
+  namespacePath: string,
+  iid: string,
+): Promise<GraphQLWorkItem | null> {
+  const vars = { namespacePath, iid };
+  if (graphqlSupports('Namespace', 'workItem')) {
+    return (await client.request(GET_WORK_ITEM_BY_IID, vars)).namespace?.workItem ?? null;
+  }
+  const { project } = await client.request(GET_PROJECT_WORK_ITEM_BY_IID, vars);
+  if (project) return project.workItems?.nodes[0] ?? null;
+  if (!graphqlSupports('Group', 'workItems')) return null;
+  const { group } = await client.request(GET_GROUP_WORK_ITEM_BY_IID, vars);
+  return group?.workItems?.nodes[0] ?? null;
+}
+
 import {
   CREATE_WORK_ITEM_WITH_WIDGETS,
   WorkItemCreateInput,
   GET_NAMESPACE_WORK_ITEMS,
+  LIST_PROJECT_WORK_ITEMS,
+  LIST_GROUP_WORK_ITEMS,
   GET_WORK_ITEM,
   GET_WORK_ITEM_BY_IID,
+  GET_PROJECT_WORK_ITEM_BY_IID,
+  GET_GROUP_WORK_ITEM_BY_IID,
   UPDATE_WORK_ITEM,
   DELETE_WORK_ITEM,
   TIMELOG_DELETE,
@@ -280,7 +363,9 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       description:
         'Find and inspect issues, epics, tasks, and other work items. Actions: list (groups return epics, projects return issues/tasks, filter by type/state/labels), get (by numeric ID or namespace+iid from URL path). Related: manage_work_item to create/update/delete.',
       inputSchema: z.toJSONSchema(BrowseWorkItemsSchema),
-      requirements: { default: { tier: 'free', minVersion: '15.0' } },
+      // Queries adapt to the instance schema (unknown widget fragments dropped,
+      // project/group fallbacks for the namespace-level queries).
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_WORKITEMS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseWorkItemsSchema.parse(args);
@@ -300,16 +385,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // For the work items GraphQL query, use type names as-is (GraphQL expects enum values)
             const resolvedTypes: string[] | undefined = types;
 
-            // Query the namespace (works for both groups and projects)
-            const workItemsResponse = await client.request(GET_NAMESPACE_WORK_ITEMS, {
-              namespacePath,
-              types: resolvedTypes,
-              first: first || 20,
-              after: after,
-            });
-
-            // Extract work items and pagination info from namespace response
-            const workItemsData = workItemsResponse.namespace?.workItems;
+            const listVars = { namespacePath, types: resolvedTypes, first: first || 20, after };
+            const workItemsData = await listWorkItems(client, listVars);
             const allItems = workItemsData?.nodes ?? [];
             const pageInfo = {
               hasNextPage: workItemsData?.pageInfo?.hasNextPage ?? false,
@@ -345,20 +422,14 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // Route to appropriate query based on input
             if (namespace !== undefined && iid !== undefined) {
               // Lookup by namespace + IID (preferred for URL-based requests)
-              const response = await client.request(GET_WORK_ITEM_BY_IID, {
-                namespacePath: namespace,
-                iid: iid,
-              });
-
-              if (!response.namespace?.workItem) {
+              const workItem = await getWorkItemByIid(client, namespace, iid);
+              if (!workItem) {
                 throw new Error(
                   `Work item with IID "${iid}" not found in namespace "${namespace}"`,
                 );
               }
 
-              return cleanWorkItemResponse(
-                response.namespace.workItem as unknown as GitLabWorkItem,
-              );
+              return cleanWorkItemResponse(workItem as unknown as GitLabWorkItem);
             } else if (id !== undefined) {
               // Lookup by global ID (backward compatible)
               // Convert simple ID to GID for API call
@@ -399,12 +470,19 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       description:
         'Create, update, delete, or link work items (issues, epics, tasks). Actions: create (epics need GROUP namespace, issues/tasks need PROJECT), update (widgets: dates, time tracking, weight, iterations, health, progress, hierarchy), delete (permanent), delete_timelog (remove a time tracking entry by its global ID), add_link/remove_link (BLOCKS/BLOCKED_BY/RELATED). Related: browse_work_items for discovery.',
       inputSchema: z.toJSONSchema(ManageWorkItemSchema),
+      // create/update adapt to the instance schema (widgets its create input lacks
+      // go through a follow-up update). The linked-items mutations have no older
+      // equivalent: GitLab added them in 16.4.
       requirements: {
-        default: { tier: 'free', minVersion: '15.0' },
+        default: { tier: 'free' },
+        actions: {
+          add_link: { tier: 'free', minVersion: '16.4' },
+          remove_link: { tier: 'free', minVersion: '16.4' },
+        },
         parameters: {
-          weight: { tier: 'premium', minVersion: '15.0', notes: 'Work item weight widget' },
-          iterationId: { tier: 'premium', minVersion: '15.0', notes: 'Iteration widget' },
-          healthStatus: { tier: 'ultimate', minVersion: '15.0', notes: 'Health status widget' },
+          weight: { tier: 'premium', notes: 'Work item weight widget' },
+          iterationId: { tier: 'premium', notes: 'Iteration widget' },
+          healthStatus: { tier: 'ultimate', notes: 'Health status widget' },
         },
       },
       gate: { envVar: 'USE_WORKITEMS', defaultValue: true },
@@ -573,6 +651,28 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               createInput.colorWidget = { color };
             }
 
+            // Anything this instance's create input does not accept (older GitLab
+            // takes only a few widgets on create; time tracking is never accepted)
+            // is applied by one follow-up update, keeping create a single tool call.
+            const deferred: Omit<WorkItemUpdateInput, 'id'> = {};
+            if (createInput.description !== undefined && !createSupports('description')) {
+              deferred.descriptionWidget = { description: createInput.description };
+              delete createInput.description;
+            }
+            if (createInput.labelsWidget && !createSupports('labelsWidget')) {
+              deferred.labelsWidget = { addLabelIds: createInput.labelsWidget.labelIds };
+              delete createInput.labelsWidget;
+            }
+            for (const key of SAME_SHAPE_CREATE_WIDGETS) {
+              if (createInput[key] !== undefined && !createSupports(key)) {
+                Object.assign(deferred, { [key]: createInput[key] });
+                delete createInput[key];
+              }
+            }
+            if (timeEstimate !== undefined) {
+              deferred.timeTrackingWidget = { timeEstimate };
+            }
+
             // Use comprehensive mutation with widgets support
             const response = await client.request(CREATE_WORK_ITEM_WITH_WIDGETS, {
               input: createInput,
@@ -593,88 +693,43 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             const createdWorkItem = response.workItemCreate.workItem;
 
-            // Step 2: Apply timeEstimate via update if requested
-            // GitLab API does NOT support timeTrackingWidget on WorkItemCreateInput
-            // so we must apply it via a follow-up update call
-            if (timeEstimate !== undefined) {
-              try {
-                const updateInput: WorkItemUpdateInput = {
-                  id: createdWorkItem.id,
-                  timeTrackingWidget: { timeEstimate },
-                };
+            // Step 2: apply deferred widgets via update. A failure keeps the
+            // created item and reports each property that could not be applied.
+            if (Object.keys(deferred).length > 0) {
+              const withWarning = (error: string) => ({
+                ...cleanWorkItemResponse(createdWorkItem as unknown as GitLabWorkItem),
+                _warning: {
+                  message:
+                    'Work item created successfully, but some properties could not be applied',
+                  failedProperties: Object.fromEntries(
+                    Object.entries(deferred).map(([widget, requestedValue]) => [
+                      DEFERRED_WIDGET_PROPERTY[widget] ?? widget,
+                      { requestedValue: unwrapWidget(requestedValue), error },
+                    ]),
+                  ),
+                },
+              });
 
+              try {
                 const updateResponse = await client.request(UPDATE_WORK_ITEM, {
-                  input: updateInput,
+                  input: { id: createdWorkItem.id, ...deferred },
                 });
 
-                if (
-                  updateResponse.workItemUpdate?.errors?.length &&
-                  updateResponse.workItemUpdate.errors.length > 0
-                ) {
-                  // Update failed - return create result with warning
-                  const cleanedResult = cleanWorkItemResponse(
-                    createdWorkItem as unknown as GitLabWorkItem,
-                  );
-                  return {
-                    ...cleanedResult,
-                    _warning: {
-                      message:
-                        'Work item created successfully, but some properties could not be applied',
-                      failedProperties: {
-                        timeEstimate: {
-                          requestedValue: timeEstimate,
-                          error: updateResponse.workItemUpdate.errors.join(', '),
-                        },
-                      },
-                    },
-                  };
+                if (updateResponse.workItemUpdate?.errors?.length) {
+                  return withWarning(updateResponse.workItemUpdate.errors.join(', '));
                 }
-
                 if (updateResponse.workItemUpdate?.workItem) {
-                  // Return updated work item with time estimate applied
                   return cleanWorkItemResponse(
                     updateResponse.workItemUpdate.workItem as unknown as GitLabWorkItem,
                   );
                 }
-
-                // Update returned no work item but also no errors - return create result with warning
-                const cleanedResult = cleanWorkItemResponse(
-                  createdWorkItem as unknown as GitLabWorkItem,
-                );
-                return {
-                  ...cleanedResult,
-                  _warning: {
-                    message:
-                      'Work item created successfully, but some properties could not be applied',
-                    failedProperties: {
-                      timeEstimate: {
-                        requestedValue: timeEstimate,
-                        error: 'Time estimate update returned no work item',
-                      },
-                    },
-                  },
-                };
+                return withWarning('Follow-up update returned no work item');
               } catch (updateError) {
-                // Update failed with exception - return create result with warning
-                const cleanedResult = cleanWorkItemResponse(
-                  createdWorkItem as unknown as GitLabWorkItem,
+                return withWarning(
+                  updateError instanceof Error
+                    ? updateError.message
+                    : 'Unknown error applying deferred properties',
                 );
-                return {
-                  ...cleanedResult,
-                  _warning: {
-                    message:
-                      'Work item created successfully, but some properties could not be applied',
-                    failedProperties: {
-                      timeEstimate: {
-                        requestedValue: timeEstimate,
-                        error:
-                          updateError instanceof Error
-                            ? updateError.message
-                            : 'Unknown error applying time estimate',
-                      },
-                    },
-                  },
-                };
               }
             }
 
@@ -937,6 +992,19 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             // Verification status widget (Ultimate, requirements)
             if (verificationStatus !== undefined) {
               updateInput.verificationStatusWidget = { verificationStatus };
+            }
+
+            // A widget this instance's update input lacks cannot be emulated; name
+            // it instead of letting GitLab reject the whole mutation.
+            const unsupported = Object.keys(updateInput).filter(
+              (key) => key.endsWith('Widget') && !graphqlSupports('WorkItemUpdateInput', key),
+            );
+            if (unsupported.length > 0) {
+              throw new Error(
+                `This GitLab instance cannot update ${unsupported
+                  .map((key) => DEFERRED_WIDGET_PROPERTY[key] ?? key)
+                  .join(', ')} on work items`,
+              );
             }
 
             // Use single GraphQL mutation with dynamic input

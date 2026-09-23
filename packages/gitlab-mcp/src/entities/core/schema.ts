@@ -116,6 +116,30 @@ const UpdateProjectSchema = z.object({
     .enum(['disabled', 'private', 'enabled'])
     .optional()
     .describe('Ultimate: requirements management access level.'),
+  // GitLab Duo settings. GitLab skips any the instance cannot honour (missing
+  // add-on or feature flag); those come back listed in `not_applied`.
+  auto_duo_code_review_enabled: flexibleBoolean
+    .optional()
+    .describe(
+      'Premium+: run GitLab Duo code review automatically on every merge request. Needs a Duo Enterprise add-on or Duo Agent Platform code review.',
+    ),
+  duo_remote_flows_enabled: flexibleBoolean
+    .optional()
+    .describe('Premium+: allow GitLab Duo Agent Platform flows to run in this project.'),
+  duo_sast_fp_detection_enabled: flexibleBoolean
+    .optional()
+    .describe('Ultimate: let GitLab Duo flag likely false positives in SAST findings.'),
+  duo_sast_vr_workflow_enabled: flexibleBoolean
+    .optional()
+    .describe('Ultimate: let GitLab Duo run the SAST vulnerability resolution workflow.'),
+  duo_secret_detection_fp_enabled: flexibleBoolean
+    .optional()
+    .describe('Ultimate: let GitLab Duo flag likely false positives in secret detection findings.'),
+  duo_dependency_bump_breaking_changes_enabled: flexibleBoolean
+    .optional()
+    .describe(
+      'Ultimate: let GitLab Duo resolve breaking changes introduced by dependency version bumps.',
+    ),
 });
 
 // --- Action: delete ---
@@ -237,6 +261,12 @@ const UpdateNamespaceSchema = z.object({
     .number()
     .optional()
     .describe('Ultimate: max unique project downloads per user before action is taken.'),
+  auto_duo_code_review_enabled: z
+    .boolean()
+    .optional()
+    .describe(
+      'Premium+: run GitLab Duo code review automatically on merge requests in this group, cascading to its subgroups and projects. Needs a Duo Enterprise add-on or Duo Agent Platform code review; reported in `not_applied` when GitLab skips it.',
+    ),
 });
 
 // --- Action: delete ---
@@ -250,8 +280,8 @@ const RestoreNamespaceSchema = z.object({
   action: z
     .literal('restore')
     .describe(
-      'Restore a soft-deleted group within its deletion cooldown window. Requires GitLab 18.0+ ' +
-        '(group restore GA in 18.9) and group Owner or instance Administrator.',
+      'Restore a soft-deleted group within its deletion cooldown window. On GitLab Free needs ' +
+        '17.11+. Requires group Owner or instance Administrator.',
     ),
   group_id: requiredId.describe('Group ID or URL-encoded path of the group to restore.'),
 });

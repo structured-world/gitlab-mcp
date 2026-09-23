@@ -26,7 +26,7 @@ export const environmentsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
       description:
         'Inspect project environments and their deployments. Actions: list (environments filtered by state/name), get (single environment with its last deployment), list_deployments (deployment history, filterable by environment and status). Related: manage_environment to create, update, stop, or delete environments and update deployment status.',
       inputSchema: z.toJSONSchema(BrowseEnvironmentsSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0' } },
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_ENVIRONMENTS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseEnvironmentsSchema.parse(args);
@@ -72,7 +72,7 @@ export const environmentsToolRegistry: ToolRegistry = new Map<string, EnhancedTo
       description:
         'Create and control project environments and deployment status. Actions: create (new environment), update (external_url/tier/description), stop (required before delete), delete (stopped environment), update_deployment_status (set a non-pipeline deployment to running/success/failed/canceled). Related: browse_environments to list and inspect.',
       inputSchema: z.toJSONSchema(ManageEnvironmentSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0' } },
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_ENVIRONMENTS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageEnvironmentSchema.parse(args);

@@ -120,11 +120,15 @@ On instance switch:
 
 ### Version Compatibility
 
-| GitLab Version | Work Items API | Iterations | OKRs |
-|----------------|----------------|------------|------|
-| 17.0+ | Full support | Full | Full |
-| 16.x | Partial | Full | Limited |
-| 15.x | Not available | Partial | Not available |
+The server supports GitLab 16.0 and later. Tools and actions that rely on newer API
+surface are hidden on older instances, for example:
+
+| GitLab Version | Work items |
+|----------------|------------|
+| 18.1+ | Full support, including namespace-level listing |
+| 17.10 - 18.0 | Get, create, update, delete, links; no listing |
+| 16.4 - 17.9 | Delete and link/unlink only |
+| 16.0 - 16.3 | Delete only |
 
 ## Namespace Tier Cache
 

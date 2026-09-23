@@ -2,6 +2,8 @@ import { ExecutionResult, print } from 'graphql';
 import { TypedDocumentNode } from '@graphql-typed-document-node/core';
 import { DEFAULT_HEADERS } from '../http-client';
 import { enhancedFetch } from '../utils/fetch';
+import type { SchemaFieldIndex } from '../services/SchemaIntrospector';
+import { prepareDocument } from './prepare-document';
 
 export interface GraphQLClientOptions {
   endpoint: string;
@@ -11,10 +13,20 @@ export interface GraphQLClientOptions {
 export class GraphQLClient {
   private _endpoint: string;
   private defaultHeaders: Record<string, string>;
+  private schemaIndexProvider: () => SchemaFieldIndex | undefined = () => undefined;
 
   constructor(endpoint: string, options?: { headers?: Record<string, string> }) {
     this._endpoint = endpoint;
     this.defaultHeaders = options?.headers ?? {};
+  }
+
+  /**
+   * Source of the instance schema used to adapt each document before sending it
+   * (see prepareDocument). Read per request, so it sees introspection results
+   * that arrive after the client was created.
+   */
+  public setSchemaIndexProvider(provider: () => SchemaFieldIndex | undefined): void {
+    this.schemaIndexProvider = provider;
   }
 
   public get endpoint(): string {
@@ -38,7 +50,13 @@ export class GraphQLClient {
     variables?: TVariables,
     requestHeaders?: Record<string, string>,
   ): Promise<TResult> {
-    const query = print(document);
+    const prepared = prepareDocument(document, this.schemaIndexProvider());
+    const query = print(prepared.document);
+    const sentVariables = Object.fromEntries(
+      Object.entries((variables ?? {}) as Record<string, unknown>).filter(([name]) =>
+        prepared.variableNames.has(name),
+      ),
+    );
 
     // Prepare headers with authentication (enhancedFetch handles cookies automatically)
     const headers: Record<string, string> = {
@@ -53,7 +71,7 @@ export class GraphQLClient {
       headers,
       body: JSON.stringify({
         query,
-        variables: variables ?? {},
+        variables: sentVariables,
       }),
     });
 

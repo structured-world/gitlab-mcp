@@ -24,9 +24,9 @@ export const searchToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefi
         'Search across GitLab resources globally or within a scope. Actions: global (entire instance), project (within specific project), group (within specific group). Searchable: projects, issues, merge_requests, milestones, users, blobs (code), commits, wiki_blobs, notes.',
       inputSchema: z.toJSONSchema(BrowseSearchSchema),
       requirements: {
-        default: { tier: 'free', minVersion: '8.0' },
+        default: { tier: 'free' },
         actions: {
-          group: { tier: 'free', minVersion: '10.5', notes: 'Group-scoped search' },
+          group: { tier: 'free', notes: 'Group-scoped search' },
         },
       },
       gate: { envVar: 'USE_SEARCH', defaultValue: true },

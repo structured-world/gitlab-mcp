@@ -4,11 +4,27 @@ import { ManageAccessTokenSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
+import { instanceAtLeast } from '../instance-version';
 
-// Personal/project/group access tokens are Free tier. Project access tokens
-// landed in 13.0, group access tokens in 14.7; the tool degrades per-action
-// rather than gating the whole pair, so the lowest floor is declared here.
-const FREE_REQ = { tier: 'free', minVersion: '13.0' } as const;
+// Personal/project/group access tokens are Free tier; every endpoint used here
+// predates the supported version floor.
+const FREE_REQ = { tier: 'free' } as const;
+
+/**
+ * List project/group tokens, honouring `state`. The server-side filter landed in
+ * GitLab 17.2 (older instances ignore it and return every token), so there it is
+ * applied client-side on each token's `active` flag.
+ */
+async function listScopedTokens(path: string, query: Record<string, unknown>) {
+  const { state, ...rest } = query;
+  if (!state || instanceAtLeast('17.2')) {
+    return gitlab.get(path, { query: toQuery(query, []) });
+  }
+  const tokens = await gitlab.get<Array<{ active?: boolean }>>(path, {
+    query: toQuery(rest, []),
+  });
+  return tokens.filter((token) => token.active === (state === 'active'));
+}
 
 const NEW_TOKEN_NOTICE =
   'This response contains a token value shown only once. Store it securely; it cannot be retrieved again.';
@@ -77,16 +93,15 @@ export const accessTokensToolRegistry: ToolRegistry = new Map<string, EnhancedTo
 
           case 'list_project': {
             const { action: _action, project_id, ...query } = input;
-            return gitlab.get(`projects/${encodeURIComponent(project_id)}/access_tokens`, {
-              query: toQuery(query, []),
-            });
+            return listScopedTokens(
+              `projects/${encodeURIComponent(project_id)}/access_tokens`,
+              query,
+            );
           }
 
           case 'list_group': {
             const { action: _action, group_id, ...query } = input;
-            return gitlab.get(`groups/${encodeURIComponent(group_id)}/access_tokens`, {
-              query: toQuery(query, []),
-            });
+            return listScopedTokens(`groups/${encodeURIComponent(group_id)}/access_tokens`, query);
           }
 
           case 'get':

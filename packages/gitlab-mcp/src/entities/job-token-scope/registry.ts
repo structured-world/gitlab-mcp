@@ -27,10 +27,10 @@ function scopeBase(projectId: number): string {
   return `projects/${projectId}/job_token_scope`;
 }
 
-// Free tier throughout; the inbound project allowlist lands in GitLab 15.9 and
-// the group allowlist in 16.0.
-const SCOPE_REQ = { tier: 'free', minVersion: '15.9' } as const;
-const GROUP_REQ = { tier: 'free', minVersion: '16.0' } as const;
+// Free tier throughout. The job token scope API (project allowlist, enforcement
+// toggle) landed in GitLab 16.1, the group allowlist in 16.10.
+const SCOPE_REQ = { tier: 'free', minVersion: '16.1' } as const;
+const GROUP_REQ = { tier: 'free', minVersion: '16.10' } as const;
 
 /**
  * CI/CD job token scope tools registry - 2 CQRS tools.

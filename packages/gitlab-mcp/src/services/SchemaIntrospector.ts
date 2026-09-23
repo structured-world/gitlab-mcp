@@ -20,17 +20,66 @@ export interface TypeInfo {
   enumValues?: Array<{ name: string; description?: string }> | null;
 }
 
+/** A field of an output type: the named type it resolves to and its argument names. */
+export interface IndexedField {
+  type: string;
+  args: ReadonlySet<string>;
+}
+
+/**
+ * Every type the instance's GraphQL schema declares, with its fields (output
+ * types) or input fields (input objects). Types without either (unions, enums,
+ * scalars) map to an empty field map so their existence can still be checked.
+ */
+export type SchemaFieldIndex = ReadonlyMap<string, ReadonlyMap<string, IndexedField>>;
+
 export interface SchemaInfo {
   workItemWidgetTypes: string[];
   typeDefinitions: Map<string, TypeInfo>;
   availableFeatures: Set<string>;
+  /** Absent when introspection failed; callers then cannot adapt to the schema. */
+  fieldIndex?: SchemaFieldIndex;
+}
+
+interface IntrospectionTypeRef {
+  name: string | null;
+  kind: string;
+  ofType?: IntrospectionTypeRef | null;
 }
 
 interface IntrospectionType {
   name: string;
   kind: string;
-  fields?: FieldInfo[] | null;
+  fields?: Array<FieldInfo & { args?: Array<{ name: string }> }> | null;
+  inputFields?: Array<{ name: string }> | null;
   enumValues?: Array<{ name: string; description?: string }> | null;
+}
+
+/** Named type at the bottom of a NON_NULL/LIST wrapper chain. */
+function namedType(ref: IntrospectionTypeRef | null | undefined): string {
+  let current = ref;
+  while (current && !current.name) current = current.ofType;
+  return current?.name ?? '';
+}
+
+function buildFieldIndex(types: IntrospectionType[]): SchemaFieldIndex {
+  const index = new Map<string, Map<string, IndexedField>>();
+  for (const type of types) {
+    if (!type.name) continue;
+    const fields = new Map<string, IndexedField>();
+    for (const field of type.fields ?? []) {
+      fields.set(field.name, {
+        type: namedType(field.type),
+        args: new Set((field.args ?? []).map((arg) => arg.name)),
+      });
+    }
+    // Input object fields, so handlers can tell which mutation inputs exist.
+    for (const inputField of type.inputFields ?? []) {
+      fields.set(inputField.name, { type: '', args: new Set() });
+    }
+    index.set(type.name, fields);
+  }
+  return index;
 }
 
 interface IntrospectionResult {
@@ -47,14 +96,28 @@ const INTROSPECTION_QUERY = gql`
         kind
         fields {
           name
+          args {
+            name
+          }
           type {
             name
             kind
             ofType {
               name
               kind
+              ofType {
+                name
+                kind
+                ofType {
+                  name
+                  kind
+                }
+              }
             }
           }
+        }
+        inputFields {
+          name
         }
         enumValues {
           name
@@ -121,6 +184,7 @@ export class SchemaIntrospector {
         workItemWidgetTypes,
         typeDefinitions,
         availableFeatures,
+        fieldIndex: buildFieldIndex(types),
       };
 
       logInfo('GraphQL schema introspection completed', {

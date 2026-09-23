@@ -4,6 +4,7 @@ import { ManageWebhookSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
+import { assertInstanceAtLeast } from '../instance-version';
 
 /**
  * Webhooks tools registry - 2 CQRS tools (discriminated union schema)
@@ -23,7 +24,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       description:
         'List and inspect webhook configurations for projects or groups. Actions: list (all webhooks with event types and status), get (webhook details by ID). Related: manage_webhook to create/update/delete/test.',
       inputSchema: z.toJSONSchema(BrowseWebhooksSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0', notes: 'Project webhooks' } },
+      requirements: { default: { tier: 'free', notes: 'Project webhooks' } },
       gate: { envVar: 'USE_WEBHOOKS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseWebhooksSchema.parse(args);
@@ -82,11 +83,20 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
         'Create, update, delete, or test webhooks for event-driven automation. Actions: create (URL + event types + optional secret), update (modify settings), delete (remove), test (trigger delivery for specific event). Related: browse_webhooks for inspection.',
       inputSchema: z.toJSONSchema(ManageWebhookSchema),
       requirements: {
-        default: { tier: 'free', minVersion: '8.0', notes: 'Project webhooks' },
+        default: { tier: 'free', notes: 'Project webhooks' },
         actions: {
-          create_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
-          update_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
-          delete_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
+          create_group: { tier: 'premium', notes: 'Group webhooks' },
+          update_group: { tier: 'premium', notes: 'Group webhooks' },
+          delete_group: { tier: 'premium', notes: 'Group webhooks' },
+          // Project hook test endpoint; the group one (17.1) is checked in the handler.
+          test: { tier: 'free', minVersion: '16.11' },
+        },
+        parameters: {
+          emoji_events: { tier: 'free', minVersion: '16.2' },
+          resource_access_token_events: { tier: 'free', minVersion: '16.10' },
+          member_events: { tier: 'free', minVersion: '16.11' },
+          feature_flag_events: { tier: 'free', minVersion: '17.5' },
+          project_events: { tier: 'free', minVersion: '18.2' },
         },
       },
       gate: { envVar: 'USE_WEBHOOKS', defaultValue: true },
@@ -151,6 +161,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
           case 'test': {
             // TypeScript knows: input has hookId (required), trigger (required), scope, projectId/groupId
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
+            if (input.scope === 'group') assertInstanceAtLeast('17.1', 'Testing a group webhook');
 
             return gitlab.post(`${basePath}/${input.hookId}/test/${input.trigger}`, {
               contentType: 'json',

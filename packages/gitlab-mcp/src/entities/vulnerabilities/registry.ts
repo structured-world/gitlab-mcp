@@ -19,13 +19,8 @@ import {
 } from '../../graphql/vulnerabilities';
 
 // Vulnerability Management is Ultimate-tier; the capability gate hides the tool on
-// lower tiers. The GraphQL surface stabilised around 13.x; the floor is declared
-// here and the tier gate does the rest.
-const ULTIMATE_REQ = {
-  tier: 'ultimate',
-  minVersion: '13.0',
-  notes: 'Vulnerability Management',
-} as const;
+// lower tiers.
+const ULTIMATE_REQ = { tier: 'ultimate', notes: 'Vulnerability Management' } as const;
 
 const vulnerabilityGid = (id: number): string => `gid://gitlab/Vulnerability/${id}`;
 

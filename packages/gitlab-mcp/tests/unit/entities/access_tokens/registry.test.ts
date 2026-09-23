@@ -9,6 +9,8 @@ import {
   lastFetchCall as lastCall,
   mockEnhancedFetch,
 } from '../../helpers/fetch-mock';
+import { ConnectionManager } from '../../../../src/services/ConnectionManager';
+import type { GitLabInstanceInfo } from '../../../../src/services/GitLabVersionDetector';
 
 jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
@@ -34,8 +36,8 @@ describe('Access Tokens Registry', () => {
     });
 
     it('declares the Free-tier requirement and USE_ACCESS_TOKENS gate on both tools', () => {
-      expect(browse().requirements?.default).toEqual({ tier: 'free', minVersion: '13.0' });
-      expect(manage().requirements?.default).toEqual({ tier: 'free', minVersion: '13.0' });
+      expect(browse().requirements?.default).toEqual({ tier: 'free' });
+      expect(manage().requirements?.default).toEqual({ tier: 'free' });
       expect(browse().gate).toEqual({ envVar: 'USE_ACCESS_TOKENS', defaultValue: true });
       expect(manage().gate).toEqual({ envVar: 'USE_ACCESS_TOKENS', defaultValue: true });
     });
@@ -75,6 +77,60 @@ describe('Access Tokens Registry', () => {
 
       const [url] = lastCall();
       expect(url).toContain('/groups/my-group/access_tokens');
+    });
+
+    describe('state filter on project/group token lists (server-side from GitLab 17.2)', () => {
+      // Older instances ignore `state` and return every token; the tool must
+      // apply the filter itself there rather than return an unfiltered list.
+      const atVersion = (version: string) =>
+        jest
+          .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+          .mockReturnValue({ version, tier: 'free' } as GitLabInstanceInfo);
+
+      afterEach(() => jest.restoreAllMocks());
+
+      const tokens = [
+        { id: 1, active: true },
+        { id: 2, active: false },
+      ];
+
+      it('filters active project tokens client-side before 17.2', async () => {
+        atVersion('17.1.0');
+        mockOk(tokens);
+        const result = await browse().handler({
+          action: 'list_project',
+          project_id: 'p',
+          state: 'active',
+        });
+        expect(result).toEqual([{ id: 1, active: true }]);
+        // The ignored parameter is not sent.
+        expect(lastCall()[0]).not.toContain('state=');
+      });
+
+      it('filters inactive group tokens client-side before 17.2', async () => {
+        atVersion('17.1.0');
+        mockOk(tokens);
+        const result = await browse().handler({
+          action: 'list_group',
+          group_id: 'g',
+          state: 'inactive',
+        });
+        expect(result).toEqual([{ id: 2, active: false }]);
+      });
+
+      it('sends the state filter from 17.2', async () => {
+        atVersion('17.2.0');
+        mockOk([]);
+        await browse().handler({ action: 'list_project', project_id: 'p', state: 'active' });
+        expect(lastCall()[0]).toContain('state=active');
+      });
+
+      it('lists without a state filter on older instances', async () => {
+        atVersion('16.0.0');
+        mockOk([]);
+        await browse().handler({ action: 'list_group', group_id: 'g' });
+        expect(lastCall()[0]).toContain('/groups/g/access_tokens');
+      });
     });
 
     it('get without a scope reads a personal token by id', async () => {

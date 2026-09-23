@@ -6,7 +6,8 @@ import { assertActionAllowed } from '../utils';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { cleanGidsFromObject } from '../../utils/idConversion';
 import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
-import { gitlab } from '../../utils/gitlab-api';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { graphqlSupports } from '../instance-version';
 import {
   LIST_RUNNERS,
   LIST_OWNED_RUNNERS,
@@ -93,6 +94,69 @@ function applyRunnerSettings(
   if (src.maintenance_note !== undefined) target.maintenanceNote = src.maintenance_note;
 }
 
+interface RestRunner {
+  id: number;
+  description: string | null;
+  runner_type: string;
+  status: string | null;
+  paused: boolean;
+}
+
+/**
+ * The current user's runners through REST, shaped like the GraphQL connection,
+ * for instances without currentUser.runners (GitLab 18.3). REST pages by number,
+ * so the cursor is the next page number; `search` is matched client-side on the
+ * description. Fields the REST listing lacks are null.
+ */
+async function listOwnedRunnersViaRest(input: {
+  type?: string;
+  status?: string;
+  paused?: boolean;
+  tag_list?: string[];
+  search?: string;
+  first?: number;
+  after?: string;
+}) {
+  const perPage = input.first ?? 20;
+  const page = Number(input.after) > 0 ? Number(input.after) : 1;
+  const runners = await gitlab.get<RestRunner[]>('runners', {
+    query: toQuery({
+      type: input.type?.toLowerCase(),
+      status: input.status?.toLowerCase(),
+      paused: input.paused,
+      tag_list: input.tag_list?.join(','),
+      per_page: perPage,
+      page,
+    }),
+  });
+  const search = input.search?.toLowerCase();
+  const matching = search
+    ? runners.filter((r) => (r.description ?? '').toLowerCase().includes(search))
+    : runners;
+  return {
+    nodes: matching.map((r) => ({
+      id: r.id,
+      description: r.description,
+      runnerType: r.runner_type.toUpperCase(),
+      status: r.status?.toUpperCase() ?? null,
+      paused: r.paused,
+      locked: null,
+      runUntagged: null,
+      tagList: null,
+      accessLevel: null,
+      maximumTimeout: null,
+      jobExecutionStatus: null,
+      jobCount: null,
+      contactedAt: null,
+      createdAt: null,
+    })),
+    pageInfo: {
+      hasNextPage: runners.length === perPage,
+      endCursor: runners.length === perPage ? String(page + 1) : null,
+    },
+  };
+}
+
 /** Throw on a non-empty GraphQL mutation `errors` array. */
 function assertNoErrors(errors: string[] | undefined): void {
   if (errors && errors.length > 0) {
@@ -111,7 +175,7 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       description:
         "Inspect CI runners. Actions: list_all (every runner on the instance - admin), list_owned (the current user's runners), list_project / list_group (runners available to a project/group), get (single runner by ID), list_jobs (jobs a runner has executed). Related: manage_runner to register, update, pause/resume, or delete runners.",
       inputSchema: z.toJSONSchema(BrowseRunnersSchema),
-      requirements: { default: { tier: 'free', minVersion: '13.2' } },
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_RUNNERS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseRunnersSchema.parse(args);
@@ -127,6 +191,9 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
           }
 
           case 'list_owned': {
+            if (!graphqlSupports('CurrentUser', 'runners')) {
+              return listOwnedRunnersViaRest(input);
+            }
             const res = await client.request(LIST_OWNED_RUNNERS, listVars(input));
             return cleanGidsFromObject(res.currentUser?.runners ?? { nodes: [] });
           }
@@ -192,7 +259,7 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       description:
         'Register and control CI runners. Actions: create_authentication_token (register a runner, GitLab 16+, returns a one-time token), update (settings), pause/resume (toggle job pickup), delete, reset_authentication_token (rotate the token). Related: browse_runners to discover runners.',
       inputSchema: z.toJSONSchema(ManageRunnerSchema),
-      requirements: { default: { tier: 'free', minVersion: '13.2' } },
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_RUNNERS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageRunnerSchema.parse(args);

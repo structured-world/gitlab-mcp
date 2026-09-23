@@ -26,7 +26,11 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
       description:
         'Explore project file structure and read source code. Actions: tree (list directory contents with recursive depth control), content (read file at specific ref/branch), download_attachment (get uploaded file by secret+filename). Related: manage_files to create/update files.',
       inputSchema: z.toJSONSchema(BrowseFilesSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0' } },
+      // Downloading an upload by secret + filename landed in GitLab 17.4.
+      requirements: {
+        default: { tier: 'free' },
+        actions: { download_attachment: { tier: 'free', minVersion: '17.4' } },
+      },
       gate: { envVar: 'USE_FILES', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseFilesSchema.parse(args);
@@ -106,7 +110,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
       description:
         'Create, update, or upload repository files. Actions: single (create/update one file with commit message), batch (atomic multi-file commit), upload (add attachment returning markdown link). Related: browse_files to read existing files.',
       inputSchema: z.toJSONSchema(ManageFilesSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0' } },
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_FILES', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageFilesSchema.parse(args);

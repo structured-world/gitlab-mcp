@@ -3,6 +3,7 @@ import {
   transliterateText,
   hasNonLatin,
   smartUserSearch,
+  fetchUsers,
   type QueryPattern,
 } from '../../../src/utils/smart-user-search';
 import { enhancedFetch } from '../../../src/utils/fetch';
@@ -10,6 +11,13 @@ import { enhancedFetch } from '../../../src/utils/fetch';
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
+}));
+
+// Whether the simulated instance has the native user-type filters (GitLab 17.3).
+// A plain variable, not a jest.fn, so resetAllMocks below cannot clear it.
+let nativeUserFilters = true;
+jest.mock('../../../src/entities/instance-version', () => ({
+  instanceAtLeast: () => nativeUserFilters,
 }));
 
 const mockEnhancedFetch = enhancedFetch as jest.MockedFunction<typeof enhancedFetch>;
@@ -33,6 +41,62 @@ beforeEach(() => {
   jest.clearAllMocks();
   jest.resetAllMocks();
   mockEnhancedFetch.mockReset();
+  nativeUserFilters = true;
+});
+
+describe('fetchUsers user-type filters', () => {
+  const users = [
+    { id: 1, username: 'alice', state: 'active', bot: false },
+    { id: 2, username: 'alert-bot', state: 'active', bot: true },
+    { id: 3, username: 'bob', state: 'blocked', bot: false },
+  ];
+  const respond = (body: unknown) =>
+    mockEnhancedFetch.mockResolvedValueOnce({
+      ok: true,
+      json: jest.fn().mockResolvedValue(body),
+    } as unknown as Response);
+  const sentUrl = () => new URL(mockEnhancedFetch.mock.calls[0][0]);
+
+  it('passes the filters to GitLab when it supports them (17.3+)', async () => {
+    respond([users[0]]);
+    await fetchUsers({ humans: true, exclude_active: false });
+    expect(sentUrl().searchParams.get('humans')).toBe('true');
+  });
+
+  it('emulates humans on older instances: project bots server-side, other bots client-side', async () => {
+    nativeUserFilters = false;
+    respond(users);
+
+    const result = (await fetchUsers({ humans: true })) as Array<{ id: number }>;
+
+    expect(sentUrl().searchParams.get('humans')).toBeNull();
+    expect(sentUrl().searchParams.get('without_project_bots')).toBe('true');
+    expect(result.map((u) => u.id)).toEqual([1, 3]);
+  });
+
+  it('emulates exclude_active on each user state', async () => {
+    nativeUserFilters = false;
+    respond(users);
+    const result = (await fetchUsers({ exclude_active: true })) as Array<{ id: number }>;
+    expect(result.map((u) => u.id)).toEqual([3]);
+  });
+
+  it('emulates exclude_humans when the response carries the bot flag', async () => {
+    nativeUserFilters = false;
+    respond(users);
+    const result = (await fetchUsers({ exclude_humans: true })) as Array<{ id: number }>;
+    expect(result.map((u) => u.id)).toEqual([2]);
+  });
+
+  it('refuses exclude_humans when the response lacks the bot flag (non-admin, older GitLab)', async () => {
+    // Without the flag, bots and humans are indistinguishable; returning either
+    // set would be a guess.
+    nativeUserFilters = false;
+    respond([{ id: 1, username: 'alice', state: 'active' }]);
+    await expect(fetchUsers({ exclude_humans: true })).rejects.toThrow(
+      'Filtering to bot users needs GitLab 17.3+',
+    );
+  });
 });
 
 describe('smart-user-search utilities', () => {

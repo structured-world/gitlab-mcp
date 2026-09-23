@@ -1,5 +1,6 @@
 import { enhancedFetch } from './fetch';
 import { transliterate } from 'transliteration';
+import { instanceAtLeast } from '../entities/instance-version';
 
 /**
  * User query type detected by pattern analysis
@@ -99,34 +100,57 @@ export function analyzeQuery(query: string): QueryPattern {
   };
 }
 
+interface ListedUser {
+  state?: string;
+  /** Exposed only in the full user entity (administrators); absent otherwise. */
+  bot?: boolean;
+}
+
+/**
+ * GET /users with the user-type filters GitLab added in 17.3 (humans,
+ * exclude_humans, exclude_active). Older instances ignore them, so there they
+ * are emulated: exclude_active on each user's state, humans by excluding project
+ * bots server-side and any user flagged as a bot. exclude_humans needs the bot
+ * flag, which only the full entity carries.
+ */
+export async function fetchUsers(params: Record<string, unknown>): Promise<unknown[]> {
+  const { humans, exclude_humans, exclude_active, ...rest } = params;
+  const native = instanceAtLeast('17.3');
+  const query: Record<string, unknown> = native
+    ? params
+    : { ...rest, ...(humans ? { without_project_bots: true } : {}) };
+
+  const queryParams = new URLSearchParams();
+  Object.entries(query).forEach(([key, value]) => {
+    if (value !== undefined) queryParams.set(key, String(value));
+  });
+  const response = await enhancedFetch(`${process.env.GITLAB_API_URL}/api/v4/users?${queryParams}`);
+  if (!response.ok) {
+    throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
+  }
+  const body = (await response.json()) as unknown;
+  const users = Array.isArray(body) ? (body as ListedUser[]) : [];
+  if (native) return users;
+
+  if (exclude_humans && users.some((user) => user.bot === undefined)) {
+    throw new Error(
+      'Filtering to bot users needs GitLab 17.3+, or an administrator token on older instances',
+    );
+  }
+  return users.filter(
+    (user) =>
+      !(humans && user.bot === true) &&
+      !(exclude_humans && user.bot === false) &&
+      !(exclude_active && user.state === 'active'),
+  );
+}
+
 /**
  * Make GitLab Users API call with given parameters
  */
 async function callUsersAPI(params: UserSearchParams): Promise<unknown[]> {
-  const queryParams = new URLSearchParams();
-
   // Add common defaults for better results
-  const defaultParams = {
-    active: true,
-    humans: true,
-    ...params,
-  };
-
-  Object.entries(defaultParams).forEach(([key, value]) => {
-    if (value !== undefined) {
-      queryParams.set(key, String(value));
-    }
-  });
-
-  const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/users?${queryParams}`;
-  const response = await enhancedFetch(apiUrl);
-
-  if (!response.ok) {
-    throw new Error(`GitLab API error: ${response.status} ${response.statusText}`);
-  }
-
-  const users = (await response.json()) as unknown;
-  return Array.isArray(users) ? (users as unknown[]) : [];
+  return fetchUsers({ active: true, humans: true, ...params });
 }
 
 /**

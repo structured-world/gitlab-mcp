@@ -1,5 +1,6 @@
 import { ConnectionManager } from '../services/ConnectionManager';
-import { GET_WORK_ITEM_TYPES } from '../graphql/workItems';
+import { GET_PROJECT_OR_GROUP_WORK_ITEM_TYPES, GET_WORK_ITEM_TYPES } from '../graphql/workItems';
+import { graphqlSupports } from '../entities/instance-version';
 
 // Define interface for work item type objects
 interface WorkItemType {
@@ -16,11 +17,14 @@ export async function getWorkItemTypes(namespace: string): Promise<WorkItemType[
   const connectionManager = ConnectionManager.getInstance();
   const client = connectionManager.getClient();
 
-  // Use GraphQL query for getting work item types
-  const response = await client.request(GET_WORK_ITEM_TYPES, {
+  if (graphqlSupports('Namespace', 'workItemTypes')) {
+    const response = await client.request(GET_WORK_ITEM_TYPES, { namespacePath: namespace });
+    return response.namespace?.workItemTypes?.nodes ?? [];
+  }
+
+  // Older instances expose work item types on the project or group only.
+  const response = await client.request(GET_PROJECT_OR_GROUP_WORK_ITEM_TYPES, {
     namespacePath: namespace,
   });
-
-  // Return the work item types in the expected format
-  return response.namespace?.workItemTypes?.nodes ?? [];
+  return (response.project ?? response.group)?.workItemTypes?.nodes ?? [];
 }

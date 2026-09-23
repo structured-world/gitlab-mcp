@@ -110,6 +110,7 @@ describe('ConnectionManager Enhanced Tests', () => {
       request: jest.fn(),
       endpoint: 'https://test-gitlab.com/api/graphql',
       setEndpoint: jest.fn(),
+      setSchemaIndexProvider: jest.fn(),
     } as unknown as jest.Mocked<GraphQLClient>;
     MockedGraphQLClient.mockImplementation(() => mockClient);
 
@@ -1040,6 +1041,7 @@ describe('ConnectionManager Enhanced Tests', () => {
           request: jest.fn(),
           endpoint: 'https://cached-gitlab.example.com/api/graphql',
           setEndpoint: jest.fn(),
+          setSchemaIndexProvider: jest.fn(),
         })),
       }));
       jest.doMock('../../../src/services/GitLabVersionDetector', () => ({

@@ -17,6 +17,8 @@ jest.mock('../../../../src/utils/fetch', () => ({
 
 // Mock smart user search
 jest.mock('../../../../src/utils/smart-user-search', () => ({
+  // fetchUsers stays real: it goes through the mocked enhancedFetch.
+  ...jest.requireActual('../../../../src/utils/smart-user-search'),
   smartUserSearch: jest.fn(),
 }));
 
@@ -1185,6 +1187,65 @@ describe('Core Registry', () => {
         expect(calledUrl).toContain('unidiff=true');
       });
 
+      it('adds unified-diff headers itself before GitLab 16.5', async () => {
+        // Older instances ignore `unidiff`; the tool reproduces GitLab's headers
+        // (Gitlab::Git::Diff#unidiff) instead of returning bare hunks.
+        const spy = jest
+          .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+          .mockReturnValue({ version: '16.4.0', tier: 'free' } as GitLabInstanceInfo);
+        try {
+          mockEnhancedFetch.mockResolvedValueOnce(
+            okJson([
+              {
+                diff: '@@ -1 +1 @@\n-a\n+b\n',
+                old_path: 'x',
+                new_path: 'x',
+                new_file: false,
+                deleted_file: false,
+              },
+              {
+                diff: '@@ -0,0 +1 @@\n+n\n',
+                old_path: 'n',
+                new_path: 'n',
+                new_file: true,
+                deleted_file: false,
+              },
+              {
+                diff: '@@ -1 +0,0 @@\n-d\n',
+                old_path: 'd',
+                new_path: 'd',
+                new_file: false,
+                deleted_file: true,
+              },
+              {
+                diff: 'Binary files differ\n',
+                old_path: 'b',
+                new_path: 'b',
+                new_file: false,
+                deleted_file: false,
+              },
+            ]),
+          );
+
+          const result = (await coreToolRegistry.get('browse_commits')!.handler({
+            action: 'diff',
+            project_id: '123',
+            sha: 'abc123',
+            unidiff: true,
+          })) as Array<{ diff: string }>;
+
+          expect(mockEnhancedFetch.mock.calls[0][0]).not.toContain('unidiff');
+          expect(result.map((d) => d.diff)).toEqual([
+            '--- a/x\n+++ b/x\n@@ -1 +1 @@\n-a\n+b\n',
+            '--- /dev/null\n+++ b/n\n@@ -0,0 +1 @@\n+n\n',
+            '--- a/d\n+++ /dev/null\n@@ -1 +0,0 @@\n-d\n',
+            'Binary files differ\n',
+          ]);
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
       it('should handle API error for list action', async () => {
         // Test: Error handling for commit list
         mockEnhancedFetch.mockResolvedValueOnce({
@@ -2108,6 +2169,28 @@ describe('Core Registry', () => {
         expect(result).toEqual({ id: 1, marked_for_deletion_on: null });
       });
 
+      it('refuses project restore on GitLab Free before 17.11 but allows it on Premium', async () => {
+        // Free (CE) got the restore endpoint in 17.11; Premium had it before 16.0.
+        const spy = jest.spyOn(ConnectionManager.getInstance(), 'getInstanceInfo');
+        try {
+          spy.mockReturnValue({ version: '17.10.0', tier: 'free' } as GitLabInstanceInfo);
+          const tool = coreToolRegistry.get('manage_project');
+          await expect(tool!.handler({ action: 'restore', project_id: '1' })).rejects.toThrow(
+            'Project restore on GitLab Free requires GitLab 17.11+',
+          );
+          expect(mockEnhancedFetch).not.toHaveBeenCalled();
+
+          spy.mockReturnValue({ version: '17.0.0', tier: 'premium' } as GitLabInstanceInfo);
+          mockEnhancedFetch.mockResolvedValueOnce(okJson({ id: 1, marked_for_deletion_on: null }));
+          await expect(tool!.handler({ action: 'restore', project_id: '1' })).resolves.toEqual({
+            id: 1,
+            marked_for_deletion_on: null,
+          });
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
       it('should surface a 404 when the project is purged or not found', async () => {
         mockEnhancedFetch.mockResolvedValueOnce({
           ok: false,
@@ -2268,16 +2351,29 @@ describe('Core Registry', () => {
         );
       });
 
-      it('rejects group restore on GitLab below 18.0 with a clear message', async () => {
-        const spy = jest
-          .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
-          .mockReturnValue({ version: '17.11.0', tier: 'free' } as GitLabInstanceInfo);
+      it('refuses group restore on GitLab Free before 17.11 but allows Premium and later Free', async () => {
+        // Premium (EE) had group restore before 16.0; Free (CE) got the route in 17.11.
+        const spy = jest.spyOn(ConnectionManager.getInstance(), 'getInstanceInfo');
         try {
           const tool = coreToolRegistry.get('manage_namespace');
+          spy.mockReturnValue({ version: '17.10.0', tier: 'free' } as GitLabInstanceInfo);
           await expect(tool!.handler({ action: 'restore', group_id: 'old-group' })).rejects.toThrow(
-            'Group restore requires GitLab 18.0+',
+            'Group restore on GitLab Free requires GitLab 17.11+',
           );
           expect(mockEnhancedFetch).not.toHaveBeenCalled();
+
+          for (const info of [
+            { version: '17.11.0', tier: 'free' },
+            { version: '17.0.0', tier: 'premium' },
+          ]) {
+            spy.mockReturnValue(info as GitLabInstanceInfo);
+            mockEnhancedFetch.mockResolvedValueOnce(
+              okJson({ id: 5, marked_for_deletion_on: null }),
+            );
+            await expect(
+              tool!.handler({ action: 'restore', group_id: 'old-group' }),
+            ).resolves.toEqual({ id: 5, marked_for_deletion_on: null });
+          }
         } finally {
           spy.mockRestore();
         }

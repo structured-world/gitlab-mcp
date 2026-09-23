@@ -181,7 +181,7 @@ Trigger and control pipeline execution.
 
 :::
 
-### Pipeline Inputs (GitLab 15.5+)
+### Pipeline Inputs (GitLab 17.10+)
 
 For pipelines with typed inputs defined in `.gitlab-ci.yml`:
 
@@ -217,7 +217,7 @@ Trigger with inputs:
 
 ::: tip Variables vs Inputs
 - **`variables`**: Legacy key-value pairs, no type validation
-- **`inputs`**: Typed parameters with schema validation (requires GitLab 15.5+)
+- **`inputs`**: Typed parameters with schema validation (requires GitLab 17.10+ for the pipeline creation API)
 
 You can use both in the same request if needed.
 :::

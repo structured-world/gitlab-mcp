@@ -42,9 +42,11 @@ describe('Job Token Scope Registry', () => {
     });
 
     it('declares free-tier requirements with allowlist minVersions', () => {
-      expect(browse().requirements?.default).toEqual({ tier: 'free', minVersion: '15.9' });
-      expect(browse().requirements?.actions?.list_groups?.minVersion).toBe('16.0');
-      expect(manage().requirements?.actions?.add_group?.minVersion).toBe('16.0');
+      // The job token scope API landed in 16.1, its group allowlist in 16.10.
+      expect(browse().requirements?.default).toEqual({ tier: 'free', minVersion: '16.1' });
+      expect(browse().requirements?.actions?.list_groups?.minVersion).toBe('16.10');
+      expect(manage().requirements?.actions?.add_group?.minVersion).toBe('16.10');
+      expect(manage().requirements?.actions?.remove_group?.minVersion).toBe('16.10');
     });
 
     it('is gated by the shared USE_CI_TOKENS umbrella flag', () => {

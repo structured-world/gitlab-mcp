@@ -4,7 +4,11 @@
 import * as fs from 'fs';
 import * as path from 'path';
 import { RegistryManager } from '../registry-manager';
-import { getHighestTier, resolveRequirement } from '../services/InstanceCapabilities';
+import {
+  effectiveMinVersion,
+  getHighestTier,
+  resolveRequirement,
+} from '../services/InstanceCapabilities';
 import { EnhancedToolDefinition, ToolRequirements } from '../types';
 import { ProfileLoader, Preset, Profile } from '../profiles';
 
@@ -1747,10 +1751,10 @@ export async function main() {
       const output = filteredTools.map((tool) => ({
         name: tool.name,
         description: tool.description,
-        // Mirror the documented ToolRequirement defaults (tier→free, minVersion→8.0)
-        // when requirements are declared; only an absent requirements block is 'unknown'.
+        // Mirror the documented ToolRequirement defaults (tier->free, minVersion->the
+        // supported floor) when requirements are declared; only an absent block is 'unknown'.
         tier: tool.requirements ? (tool.requirements.default.tier ?? 'free') : 'unknown',
-        minVersion: tool.requirements ? (tool.requirements.default.minVersion ?? '8.0') : undefined,
+        minVersion: tool.requirements ? effectiveMinVersion(tool.requirements.default) : undefined,
         parameters: tool.inputSchema,
       }));
       console.log(JSON.stringify(output, null, 2));

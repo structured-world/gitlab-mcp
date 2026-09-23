@@ -73,8 +73,8 @@ For pipelines using GitLab's typed inputs feature:
 }
 ```
 
-::: info GitLab 15.5+ Required
-Pipeline inputs require GitLab 15.5 or later. Check your `.gitlab-ci.yml` for `spec.inputs` to see available inputs.
+::: info GitLab 17.10+ Required
+Passing pipeline inputs when creating a pipeline through the API requires GitLab 17.10 or later. Check your `.gitlab-ci.yml` for `spec.inputs` to see available inputs.
 :::
 
 ## Trigger Manual Deploy Jobs

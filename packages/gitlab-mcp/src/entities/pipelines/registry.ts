@@ -26,7 +26,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       description:
         'Monitor CI/CD pipelines and read job logs. Actions: list (filter by status/ref/source/username), get (pipeline details), jobs (list pipeline jobs), triggers (bridge/trigger jobs), job (single job details), logs (job console output). Related: manage_pipeline to trigger/retry/cancel pipelines and play/retry/cancel individual jobs.',
       inputSchema: z.toJSONSchema(BrowsePipelinesSchema),
-      requirements: { default: { tier: 'free', minVersion: '9.0' } },
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_PIPELINE', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowsePipelinesSchema.parse(args);
@@ -191,7 +191,10 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
       description:
         "Trigger, retry, or cancel CI/CD pipelines and individual jobs. Pipeline actions: create (run pipeline on ref with variables or typed inputs), retry (re-run failed jobs), cancel (stop running pipeline). Job actions: play_job (trigger a manual/delayed job with variables), retry_job (re-run a single job), cancel_job (stop a running job). Related: browse_pipelines actions 'job'/'logs' for job details.",
       inputSchema: z.toJSONSchema(ManagePipelineSchema),
-      requirements: { default: { tier: 'free', minVersion: '9.0' } },
+      requirements: {
+        default: { tier: 'free' },
+        parameters: { inputs: { tier: 'free', minVersion: '17.10' } },
+      },
       gate: { envVar: 'USE_PIPELINE', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManagePipelineSchema.parse(args);
@@ -214,7 +217,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               body.variables = variables;
             }
 
-            // Modern inputs (object with input_name: value) - GitLab 15.5+
+            // Typed inputs (object with input_name: value); API parameter since GitLab 17.10
             if (inputs && Object.keys(inputs).length > 0) {
               body.inputs = inputs;
             }

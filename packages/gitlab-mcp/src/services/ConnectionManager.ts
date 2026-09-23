@@ -260,6 +260,8 @@ export class ConnectionManager {
       const client = new GraphQLClient(endpoint, clientOptions);
       const versionDetector = new GitLabVersionDetector(client);
       const schemaIntrospector = new SchemaIntrospector(client);
+      // Adapt every query to this instance's schema once it is introspected.
+      client.setSchemaIndexProvider(() => schemaIntrospector.getCachedSchema()?.fieldIndex);
 
       // Create per-URL state entry (assigned to outer `let state` for catch guard)
       state = {

@@ -220,6 +220,6 @@ The server warns when a token expires within 7 days.
 
 ### Scope detection not working
 
-The `/personal_access_tokens/self` endpoint requires GitLab 14.0+. On older versions, the server falls back to attempting operations directly.
+Scope detection uses the `/personal_access_tokens/self` endpoint, available on every supported GitLab version (16.0+). If it fails, the server falls back to attempting operations directly.
 
 For more connection issues, see [Troubleshooting](/troubleshooting/connection).

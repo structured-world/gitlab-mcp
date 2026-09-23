@@ -20,6 +20,7 @@ jest.mock('@clack/prompts', () => ({
     step: jest.fn(),
   },
   isCancel: jest.fn().mockReturnValue(false),
+  CANCEL_SYMBOL: Symbol('clack:cancel'),
 }));
 
 jest.mock('../../../../../src/cli/install/installers', () => ({
@@ -103,7 +104,7 @@ describe('flows/configure-existing', () => {
 
   it('should return cancelled when action is cancelled', async () => {
     mockIsCancel.mockReturnValueOnce(true);
-    mockSelect.mockResolvedValueOnce(Symbol('cancel'));
+    mockSelect.mockResolvedValueOnce(p.CANCEL_SYMBOL);
 
     const result = await runConfigureExistingFlow(discoveryWithUnconfigured);
 
@@ -153,7 +154,7 @@ describe('flows/configure-existing', () => {
     });
     mockSelect.mockResolvedValueOnce('add-clients');
     mockMultiselect.mockResolvedValueOnce(['claude-code']);
-    mockPassword.mockResolvedValueOnce(Symbol('cancel'));
+    mockPassword.mockResolvedValueOnce(p.CANCEL_SYMBOL);
     mockIsCancel
       .mockReturnValueOnce(false) // action
       .mockReturnValueOnce(false) // multiselect
@@ -167,7 +168,7 @@ describe('flows/configure-existing', () => {
 
   it('should return cancelled when client selection is cancelled during add', async () => {
     mockSelect.mockResolvedValueOnce('add-clients');
-    mockMultiselect.mockResolvedValueOnce(Symbol('cancel'));
+    mockMultiselect.mockResolvedValueOnce(p.CANCEL_SYMBOL);
     mockIsCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     const result = await runConfigureExistingFlow(discoveryWithUnconfigured);
@@ -206,7 +207,7 @@ describe('flows/configure-existing', () => {
 
   it('should return cancelled when client selection is cancelled during update', async () => {
     mockSelect.mockResolvedValueOnce('update-clients');
-    mockMultiselect.mockResolvedValueOnce(Symbol('cancel'));
+    mockMultiselect.mockResolvedValueOnce(p.CANCEL_SYMBOL);
     mockIsCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     const result = await runConfigureExistingFlow(discoveryWithUnconfigured);
@@ -238,7 +239,7 @@ describe('flows/configure-existing', () => {
     });
     mockSelect.mockResolvedValueOnce('update-clients');
     mockMultiselect.mockResolvedValueOnce(['cursor']);
-    mockPassword.mockResolvedValueOnce(Symbol('cancel'));
+    mockPassword.mockResolvedValueOnce(p.CANCEL_SYMBOL);
     mockIsCancel
       .mockReturnValueOnce(false) // action
       .mockReturnValueOnce(false) // multiselect

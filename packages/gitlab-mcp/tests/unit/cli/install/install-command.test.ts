@@ -33,6 +33,7 @@ jest.mock('@clack/prompts', () => ({
   confirm: jest.fn(),
   cancel: jest.fn(),
   isCancel: jest.fn(() => false),
+  CANCEL_SYMBOL: Symbol('clack:cancel'),
 }));
 
 // Mock detector module
@@ -421,7 +422,7 @@ describe('install-command', () => {
     });
 
     it('should handle user cancellation during client selection', async () => {
-      mockP.multiselect.mockResolvedValueOnce(Symbol.for('cancel'));
+      mockP.multiselect.mockResolvedValueOnce(p.CANCEL_SYMBOL);
       mockP.isCancel.mockReturnValueOnce(true);
 
       const results = await runInstallWizard(mockServerConfig, {});
@@ -448,10 +449,9 @@ describe('install-command', () => {
       detectAllClients.mockReturnValueOnce([
         { client: 'claude-desktop', detected: true, alreadyConfigured: true },
       ]);
-      const cancelSymbol = Symbol.for('cancel');
-      mockP.confirm.mockResolvedValueOnce(cancelSymbol);
+      mockP.confirm.mockResolvedValueOnce(p.CANCEL_SYMBOL);
       // isCancel is called after confirm returns
-      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
+      mockP.isCancel.mockImplementation((val) => val === p.CANCEL_SYMBOL);
 
       const results = await runInstallWizard(mockServerConfig, { claudeDesktop: true });
 

@@ -20,6 +20,7 @@ jest.mock('@clack/prompts', () => ({
   },
   note: jest.fn(),
   isCancel: jest.fn().mockReturnValue(false),
+  CANCEL_SYMBOL: Symbol('clack:cancel'),
 }));
 
 jest.mock('../../../../../src/cli/docker/docker-utils', () => ({
@@ -105,7 +106,7 @@ describe('flows/server-setup', () => {
 
   it('should return cancelled when deployment type is cancelled', async () => {
     mockIsCancel.mockReturnValueOnce(true);
-    mockSelect.mockResolvedValueOnce(Symbol('cancel'));
+    mockSelect.mockResolvedValueOnce(p.CANCEL_SYMBOL);
 
     const result = await runServerSetupFlow(dockerReadyDiscovery);
 
@@ -115,7 +116,7 @@ describe('flows/server-setup', () => {
 
   it('should return cancelled when port is cancelled', async () => {
     mockSelect.mockResolvedValueOnce('standalone');
-    mockText.mockResolvedValueOnce(Symbol('cancel'));
+    mockText.mockResolvedValueOnce(p.CANCEL_SYMBOL);
     mockIsCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     const result = await runServerSetupFlow(dockerReadyDiscovery);
@@ -127,7 +128,7 @@ describe('flows/server-setup', () => {
   it('should return cancelled when OAuth confirm is cancelled', async () => {
     mockSelect.mockResolvedValueOnce('standalone');
     mockText.mockResolvedValueOnce('3333');
-    mockConfirm.mockResolvedValueOnce(Symbol('cancel'));
+    mockConfirm.mockResolvedValueOnce(p.CANCEL_SYMBOL);
     mockIsCancel
       .mockReturnValueOnce(false) // deployment
       .mockReturnValueOnce(false) // port
@@ -200,7 +201,7 @@ describe('flows/server-setup', () => {
 
   it('should return cancelled when database URL is cancelled', async () => {
     mockSelect.mockResolvedValueOnce('external-db');
-    mockText.mockResolvedValueOnce('3333').mockResolvedValueOnce(Symbol('cancel')); // db url cancel
+    mockText.mockResolvedValueOnce('3333').mockResolvedValueOnce(p.CANCEL_SYMBOL); // db url cancel
     mockConfirm.mockResolvedValueOnce(true); // enable oauth
     mockIsCancel
       .mockReturnValueOnce(false) // deployment

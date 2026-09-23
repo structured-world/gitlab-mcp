@@ -23,6 +23,7 @@ jest.mock('@clack/prompts', () => ({
     step: jest.fn(),
   },
   isCancel: jest.fn().mockReturnValue(false),
+  CANCEL_SYMBOL: Symbol('clack:cancel'),
 }));
 
 jest.mock('../../../../../src/cli/init/connection', () => ({
@@ -113,7 +114,7 @@ describe('flows/local-setup', () => {
 
   it('should return cancelled when instance type is cancelled', async () => {
     mockIsCancel.mockReturnValueOnce(true);
-    mockSelect.mockResolvedValueOnce(Symbol('cancel'));
+    mockSelect.mockResolvedValueOnce(p.CANCEL_SYMBOL);
 
     const result = await runLocalSetupFlow(emptyDiscovery);
 
@@ -146,7 +147,7 @@ describe('flows/local-setup', () => {
 
   it('should return cancelled when URL input is cancelled', async () => {
     mockSelect.mockResolvedValueOnce('self-hosted');
-    mockText.mockResolvedValueOnce(Symbol('cancel'));
+    mockText.mockResolvedValueOnce(p.CANCEL_SYMBOL);
     mockIsCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     const result = await runLocalSetupFlow(emptyDiscovery);
@@ -157,7 +158,7 @@ describe('flows/local-setup', () => {
 
   it('should return cancelled when has-token confirm is cancelled', async () => {
     mockSelect.mockResolvedValueOnce('saas');
-    mockConfirm.mockResolvedValueOnce(Symbol('cancel'));
+    mockConfirm.mockResolvedValueOnce(p.CANCEL_SYMBOL);
     mockIsCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
     const result = await runLocalSetupFlow(emptyDiscovery);
@@ -183,7 +184,7 @@ describe('flows/local-setup', () => {
   it('should return cancelled when token input is cancelled', async () => {
     mockSelect.mockResolvedValueOnce('saas');
     mockConfirm.mockResolvedValueOnce(true); // has token
-    mockPassword.mockResolvedValueOnce(Symbol('cancel'));
+    mockPassword.mockResolvedValueOnce(p.CANCEL_SYMBOL);
     mockIsCancel
       .mockReturnValueOnce(false) // instance
       .mockReturnValueOnce(false) // confirm
@@ -311,7 +312,7 @@ describe('flows/local-setup', () => {
     mockSelect.mockResolvedValueOnce('saas');
     mockConfirm.mockResolvedValueOnce(true);
     mockPassword.mockResolvedValueOnce('glpat-xxxxxxxxxxxxxxxxxxxx');
-    mockMultiselect.mockResolvedValueOnce(Symbol('cancel'));
+    mockMultiselect.mockResolvedValueOnce(p.CANCEL_SYMBOL);
     // isCancel returns false for all prior prompts, then true for multiselect
     mockIsCancel
       .mockReturnValueOnce(false) // instance type

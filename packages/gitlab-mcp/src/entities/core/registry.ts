@@ -560,7 +560,12 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               return await smartUserSearch(query, additionalParams);
             } else {
               const { smart_search: _smart, action: _action, ...params } = input;
-              return cleanGidsFromObject(await fetchUsers(params));
+              const { users, warning } = await fetchUsers(params);
+              // The plain list stays the shape; a filter the instance could only
+              // partly apply is reported alongside it.
+              return warning
+                ? { users: cleanGidsFromObject(users), _warning: warning }
+                : cleanGidsFromObject(users);
             }
           }
 

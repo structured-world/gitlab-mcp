@@ -2,6 +2,7 @@ import * as z from 'zod';
 import { enhancedFetch } from './fetch';
 import { transliterate } from 'transliteration';
 import { instanceAtLeast } from '../entities/instance-version';
+import { GITLAB_DEFAULT_PER_PAGE, GITLAB_MAX_PER_PAGE } from '../entities/utils';
 
 /**
  * User query type detected by pattern analysis
@@ -45,6 +46,8 @@ export interface SmartSearchResult {
       resultCount: number;
     }>;
     totalApiCalls: number;
+    /** Set when the returned users may not fully match the requested filters. */
+    warning?: string;
   };
 }
 
@@ -109,20 +112,17 @@ const ListedUsersSchema = z.array(
   }),
 );
 
-/**
- * GET /users with the user-type filters GitLab added in 17.3 (humans,
- * exclude_humans, exclude_active). Older instances ignore them, so there they
- * are emulated: exclude_active on each user's state, humans by excluding project
- * bots server-side and any user flagged as a bot. exclude_humans needs the bot
- * flag, which only the full entity carries.
- */
-export async function fetchUsers(params: Record<string, unknown>): Promise<unknown[]> {
-  const { humans, exclude_humans, exclude_active, ...rest } = params;
-  const native = instanceAtLeast('17.3');
-  const query: Record<string, unknown> = native
-    ? params
-    : { ...rest, ...(humans ? { without_project_bots: true } : {}) };
+/** Users from GET /users, and why they may not fully match the requested filters. */
+export interface FetchedUsers {
+  users: unknown[];
+  warning?: string;
+}
 
+const PARTIAL_HUMANS_WARNING =
+  'Filtered to humans without the bot flag (GitLab before 17.3 shows it only to administrators): bot accounts other than project bots may be included';
+
+/** One validated GET /users page. */
+async function fetchUsersPage(query: Record<string, unknown>) {
   const queryParams = new URLSearchParams();
   Object.entries(query).forEach(([key, value]) => {
     if (value !== undefined) queryParams.set(key, String(value));
@@ -137,26 +137,62 @@ export async function fetchUsers(params: Record<string, unknown>): Promise<unkno
       `GitLab API error: unexpected users response (${parsed.error.issues[0]?.message ?? 'invalid'})`,
     );
   }
-  const users = parsed.data;
-  if (native) return users;
+  return parsed.data;
+}
 
-  if (exclude_humans && users.some((user) => user.bot === undefined)) {
-    throw new Error(
-      'Filtering to bot users needs GitLab 17.3+, or an administrator token on older instances',
-    );
+/**
+ * GET /users with the user-type filters GitLab added in 17.3 (humans,
+ * exclude_humans, exclude_active). Older instances ignore them, so there they
+ * are emulated before pagination: GitLab's pages are walked until the requested
+ * filtered page is complete. exclude_active checks each user's state; humans
+ * excludes project bots server-side and any user flagged as a bot, but the bot
+ * flag reaches administrators only, so without it the result carries a warning.
+ * exclude_humans cannot work without the flag and is refused.
+ */
+export async function fetchUsers(params: Record<string, unknown>): Promise<FetchedUsers> {
+  const { humans, exclude_humans, exclude_active, page, per_page, ...filters } = params;
+  if (instanceAtLeast('17.3') || !(humans || exclude_humans || exclude_active)) {
+    return { users: await fetchUsersPage(params) };
   }
-  return users.filter(
-    (user) =>
-      !(humans && user.bot === true) &&
-      !(exclude_humans && user.bot === false) &&
-      !(exclude_active && user.state === 'active'),
-  );
+
+  const perPage = typeof per_page === 'number' ? per_page : GITLAB_DEFAULT_PER_PAGE;
+  const wanted = (typeof page === 'number' ? page : 1) * perPage;
+  const serverQuery = { ...filters, ...(humans ? { without_project_bots: true } : {}) };
+  const matches: unknown[] = [];
+  let botFlagMissing = false;
+  for (let serverPage = 1; matches.length < wanted; serverPage++) {
+    const batch = await fetchUsersPage({
+      ...serverQuery,
+      per_page: GITLAB_MAX_PER_PAGE,
+      page: serverPage,
+    });
+    if (batch.some((user) => user.bot === undefined)) {
+      if (exclude_humans) {
+        throw new Error(
+          'Filtering to bot users needs GitLab 17.3+, or an administrator token on older instances',
+        );
+      }
+      botFlagMissing = true;
+    }
+    for (const user of batch) {
+      if (
+        !(humans && user.bot === true) &&
+        !(exclude_humans && user.bot === false) &&
+        !(exclude_active && user.state === 'active')
+      ) {
+        matches.push(user);
+      }
+    }
+    if (batch.length < GITLAB_MAX_PER_PAGE) break;
+  }
+  const users = matches.slice(wanted - perPage, wanted);
+  return humans && botFlagMissing ? { users, warning: PARTIAL_HUMANS_WARNING } : { users };
 }
 
 /**
  * Make GitLab Users API call with given parameters
  */
-async function callUsersAPI(params: UserSearchParams): Promise<unknown[]> {
+async function callUsersAPI(params: UserSearchParams): Promise<FetchedUsers> {
   // Default to active humans, unless the caller excludes exactly those: the
   // default and the exclusion together can only return nothing.
   return fetchUsers({
@@ -192,70 +228,43 @@ export async function smartUserSearch(
   }
 
   // A failed call propagates: an empty result would claim nobody matched.
-  let users = await callUsersAPI(targetParams);
-  totalApiCalls++;
-  searchPhases.push({
-    phase: `targeted-${pattern.type}`,
-    params: targetParams,
-    resultCount: users.length,
-  });
-
-  // If we found users, return early
-  if (users.length > 0) {
-    return {
-      users,
-      searchMetadata: {
-        query,
-        pattern,
-        searchPhases,
-        totalApiCalls,
-      },
-    };
-  }
-
-  // Phase 2: Broad search fallback if targeted search returned empty
-  if (pattern.type !== 'name') {
-    const broadParams = { search: pattern.originalQuery, ...additionalParams };
-    users = await callUsersAPI(broadParams);
+  const runPhase = async (phase: string, params: UserSearchParams): Promise<FetchedUsers> => {
+    const fetched = await callUsersAPI(params);
     totalApiCalls++;
-    searchPhases.push({
-      phase: 'broad-search',
-      params: broadParams,
-      resultCount: users.length,
-    });
-
-    if (users.length > 0) {
-      return {
-        users,
-        searchMetadata: {
-          query,
-          pattern,
-          searchPhases,
-          totalApiCalls,
-        },
-      };
-    }
-  }
-
-  // Phase 3: Transliteration search if query has Cyrillic and no results yet
-  if (pattern.hasTransliteration && pattern.transliteratedQuery) {
-    const translitParams = { search: pattern.transliteratedQuery, ...additionalParams };
-    users = await callUsersAPI(translitParams);
-    totalApiCalls++;
-    searchPhases.push({
-      phase: 'transliteration',
-      params: translitParams,
-      resultCount: users.length,
-    });
-  }
-
-  return {
+    searchPhases.push({ phase, params, resultCount: fetched.users.length });
+    return fetched;
+  };
+  // The returned users come from the last phase run, and so does its warning.
+  const finish = ({ users, warning }: FetchedUsers): SmartSearchResult => ({
     users,
     searchMetadata: {
       query,
       pattern,
       searchPhases,
       totalApiCalls,
+      ...(warning ? { warning } : {}),
     },
-  };
+  });
+
+  let fetched = await runPhase(`targeted-${pattern.type}`, targetParams);
+  if (fetched.users.length > 0) return finish(fetched);
+
+  // Phase 2: Broad search fallback if targeted search returned empty
+  if (pattern.type !== 'name') {
+    fetched = await runPhase('broad-search', {
+      search: pattern.originalQuery,
+      ...additionalParams,
+    });
+    if (fetched.users.length > 0) return finish(fetched);
+  }
+
+  // Phase 3: Transliteration search if query has Cyrillic and no results yet
+  if (pattern.hasTransliteration && pattern.transliteratedQuery) {
+    fetched = await runPhase('transliteration', {
+      search: pattern.transliteratedQuery,
+      ...additionalParams,
+    });
+  }
+
+  return finish(fetched);
 }

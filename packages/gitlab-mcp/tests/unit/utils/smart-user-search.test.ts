@@ -78,29 +78,64 @@ describe('fetchUsers user-type filters', () => {
     );
   });
 
+  const ids = (result: { users: unknown[] }) =>
+    (result.users as Array<{ id: number }>).map((u) => u.id);
+
   it('emulates humans on older instances: project bots server-side, other bots client-side', async () => {
     nativeUserFilters = false;
     respond(users);
 
-    const result = (await fetchUsers({ humans: true })) as Array<{ id: number }>;
+    const result = await fetchUsers({ humans: true });
 
     expect(sentUrl().searchParams.get('humans')).toBeNull();
     expect(sentUrl().searchParams.get('without_project_bots')).toBe('true');
-    expect(result.map((u) => u.id)).toEqual([1, 3]);
+    expect(ids(result)).toEqual([1, 3]);
+    expect(result.warning).toBeUndefined();
+  });
+
+  it('warns that other bots may remain when humans is emulated without the bot flag', async () => {
+    // Non-admin tokens on older GitLab do not see the bot flag: only project
+    // bots can be excluded, so the result must not claim to be humans only.
+    nativeUserFilters = false;
+    respond([{ id: 1, username: 'alice', state: 'active' }]);
+
+    const result = await fetchUsers({ humans: true });
+
+    expect(ids(result)).toEqual([1]);
+    expect(result.warning).toContain('bot accounts other than project bots may be included');
+  });
+
+  it('filters before paginating, walking GitLab pages past excluded users', async () => {
+    // A full first page of active users must not hide inactive ones on the next
+    // page, and the requested page is cut from the filtered list.
+    nativeUserFilters = false;
+    respond(Array.from({ length: 100 }, (_, i) => ({ id: 100 + i, state: 'active', bot: false })));
+    respond([
+      { id: 1, state: 'blocked', bot: false },
+      { id: 2, state: 'blocked', bot: false },
+      { id: 3, state: 'blocked', bot: false },
+    ]);
+
+    const result = await fetchUsers({ exclude_active: true, per_page: 2, page: 2 });
+
+    expect(ids(result)).toEqual([3]);
+    const sent = mockEnhancedFetch.mock.calls.map(([url]) => new URL(String(url)).searchParams);
+    expect(sent.map((q) => [q.get('page'), q.get('per_page')])).toEqual([
+      ['1', '100'],
+      ['2', '100'],
+    ]);
   });
 
   it('emulates exclude_active on each user state', async () => {
     nativeUserFilters = false;
     respond(users);
-    const result = (await fetchUsers({ exclude_active: true })) as Array<{ id: number }>;
-    expect(result.map((u) => u.id)).toEqual([3]);
+    expect(ids(await fetchUsers({ exclude_active: true }))).toEqual([3]);
   });
 
   it('emulates exclude_humans when the response carries the bot flag', async () => {
     nativeUserFilters = false;
     respond(users);
-    const result = (await fetchUsers({ exclude_humans: true })) as Array<{ id: number }>;
-    expect(result.map((u) => u.id)).toEqual([2]);
+    expect(ids(await fetchUsers({ exclude_humans: true }))).toEqual([2]);
   });
 
   it('refuses exclude_humans when the response lacks the bot flag (non-admin, older GitLab)', async () => {
@@ -353,6 +388,20 @@ describe('smart-user-search utilities', () => {
       await expect(smartUserSearch('ivan', { exclude_humans: true })).rejects.toThrow(
         'Filtering to bot users needs GitLab 17.3+',
       );
+    });
+
+    it('carries the partial-humans warning of the phase whose users it returns', async () => {
+      // Smart search applies humans by default; on older GitLab without the bot
+      // flag the result must not look fully filtered.
+      nativeUserFilters = false;
+      mockEnhancedFetch.mockResolvedValueOnce(
+        mockApiResponse([{ id: 1, username: 'ivan', state: 'active' }]),
+      );
+
+      const result = await smartUserSearch('ivan');
+
+      expect(result.users).toHaveLength(1);
+      expect(result.searchMetadata.warning).toContain('bot accounts other than project bots');
     });
 
     it('drops each default that contradicts the requested exclusion', async () => {

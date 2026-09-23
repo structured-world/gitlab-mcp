@@ -1642,6 +1642,33 @@ describe('Core Registry', () => {
         expect(calledUrl).toContain('per_page=50');
       });
 
+      it('reports a humans filter it could only partly apply on older GitLab', async () => {
+        // Before 17.3 non-admin tokens do not see the bot flag, so the list may
+        // still hold bots other than project bots; the result must say so.
+        const spy = jest
+          .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+          .mockReturnValue({ version: '17.2.0', tier: 'free' } as GitLabInstanceInfo);
+        try {
+          mockEnhancedFetch.mockResolvedValueOnce({
+            ok: true,
+            status: 200,
+            json: jest.fn().mockResolvedValue([{ id: 1, username: 'alice', state: 'active' }]),
+          } as any);
+
+          const tool = coreToolRegistry.get('browse_users');
+          const result = (await tool!.handler({
+            action: 'search',
+            smart_search: false,
+            humans: true,
+          })) as { users: Array<{ id: number }>; _warning: string };
+
+          expect(result.users.map((u) => u.id)).toEqual([1]);
+          expect(result._warning).toContain('bot accounts other than project bots may be included');
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
       it('should handle API error for browse_users', async () => {
         // Test: Error handling for user listing
         mockEnhancedFetch.mockResolvedValueOnce({

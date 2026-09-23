@@ -67,6 +67,24 @@ const unwrapWidget = (value: object): unknown =>
 const createSupports = (field: string): boolean => graphqlSupports('WorkItemCreateInput', field);
 
 /**
+ * Refuse widgets this instance's update input lacks: they cannot be emulated,
+ * and sending one makes GitLab reject the whole mutation, supported widgets
+ * included. Names the tool parameters instead.
+ */
+function assertUpdatableWidgets(input: object, verb: 'set' | 'update'): void {
+  const unsupported = (Object.keys(input) as Array<keyof WorkItemUpdateInput>)
+    .filter((key): key is UpdateWidgetKey => key.endsWith('Widget'))
+    .filter((key) => !graphqlSupports('WorkItemUpdateInput', key));
+  if (unsupported.length > 0) {
+    throw new Error(
+      `This GitLab instance cannot ${verb} ${unsupported
+        .map((key) => WIDGET_PROPERTY[key])
+        .join(', ')} on work items`,
+    );
+  }
+}
+
+/**
  * List a namespace's work items: the namespace-level query when the instance has
  * it, otherwise the project listing, then the group one.
  */
@@ -672,6 +690,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             if (timeEstimate !== undefined) {
               deferred.timeTrackingWidget = { timeEstimate };
             }
+            // Checked before anything is created, so a refusal leaves no half-set item.
+            assertUpdatableWidgets(deferred, 'set');
 
             // Use comprehensive mutation with widgets support
             const response = await client.request(CREATE_WORK_ITEM_WITH_WIDGETS, {
@@ -994,18 +1014,7 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               updateInput.verificationStatusWidget = { verificationStatus };
             }
 
-            // A widget this instance's update input lacks cannot be emulated; name
-            // it instead of letting GitLab reject the whole mutation.
-            const unsupported = (Object.keys(updateInput) as Array<keyof WorkItemUpdateInput>)
-              .filter((key): key is UpdateWidgetKey => key.endsWith('Widget'))
-              .filter((key) => !graphqlSupports('WorkItemUpdateInput', key));
-            if (unsupported.length > 0) {
-              throw new Error(
-                `This GitLab instance cannot update ${unsupported
-                  .map((key) => WIDGET_PROPERTY[key])
-                  .join(', ')} on work items`,
-              );
-            }
+            assertUpdatableWidgets(updateInput, 'update');
 
             // Use single GraphQL mutation with dynamic input
             const response = await client.request(UPDATE_WORK_ITEM, { input: updateInput });

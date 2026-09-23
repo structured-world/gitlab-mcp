@@ -245,6 +245,26 @@ describe('manage_work_item create on an older create input', () => {
     });
   });
 
+  it('refuses before creating when a widget is in neither the create nor the update input', async () => {
+    // Deferring it would make GitLab reject the whole follow-up update, losing
+    // the supported deferred widgets too; nothing is created instead.
+    missing.add('WorkItemCreateInput.assigneesWidget');
+    missing.add('WorkItemCreateInput.progressWidget');
+    missing.add('WorkItemUpdateInput.progressWidget');
+
+    await expect(
+      manage().handler({
+        action: 'create',
+        namespace: 'grp/proj',
+        title: 't',
+        workItemType: 'Issue',
+        assigneeIds: ['4'],
+        progressCurrentValue: 50,
+      }),
+    ).rejects.toThrow('This GitLab instance cannot set progressCurrentValue on work items');
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+
   it('sends a single create when the instance accepts every widget', async () => {
     mockRequest.mockResolvedValueOnce({ workItemCreate: { workItem: item('1'), errors: [] } });
 

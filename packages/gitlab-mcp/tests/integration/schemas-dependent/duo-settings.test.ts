@@ -13,6 +13,7 @@
  * explicit overrides for every later test.
  */
 
+import * as z from 'zod';
 import { ManageNamespaceSchema, ManageProjectSchema } from '../../../src/entities/core/schema';
 import { BrowseProjectsSchema } from '../../../src/entities/core/schema-readonly';
 import { coreToolRegistry } from '../../../src/entities/core/registry';
@@ -23,10 +24,15 @@ import { enhancedFetch } from '../../../src/utils/fetch';
 import { getTestGroup } from '../../setup/testConfig';
 import { IntegrationTestHelper, initIntegrationHelper } from '../helpers/registry-helper';
 
-type Entity = Record<string, unknown> & {
-  id: number;
-  not_applied?: Array<{ setting: string; requested: unknown; current?: unknown }>;
-};
+const CreatedGroupSchema = z.looseObject({ id: z.number(), full_path: z.string() });
+const CreatedProjectSchema = z.looseObject({ id: z.number() });
+const UpdatedEntitySchema = z.looseObject({
+  id: z.number(),
+  not_applied: z
+    .array(z.object({ setting: z.string(), requested: z.unknown(), current: z.unknown() }))
+    .optional(),
+});
+type Entity = z.infer<typeof UpdatedEntitySchema>;
 
 /** Settings the tool catalog offers on this instance (tier/version gating applied). */
 function offeredSettings(toolName: string, tracked: Readonly<Record<string, string>>): string[] {
@@ -67,24 +73,28 @@ describe('GitLab Duo settings - GitLab Integration', () => {
   beforeAll(async () => {
     helper = await initIntegrationHelper();
     const suffix = Date.now().toString(36);
-    const group = (await helper.executeTool(
-      'manage_namespace',
-      ManageNamespaceSchema.parse({
-        action: 'create',
-        name: `duo-settings-${suffix}`,
-        path: `duo-settings-${suffix}`,
-        parent_id: Number(getTestGroup()!.id),
-      }),
-    )) as { id: number; full_path: string };
+    const group = CreatedGroupSchema.parse(
+      await helper.executeTool(
+        'manage_namespace',
+        ManageNamespaceSchema.parse({
+          action: 'create',
+          name: `duo-settings-${suffix}`,
+          path: `duo-settings-${suffix}`,
+          parent_id: Number(getTestGroup()!.id),
+        }),
+      ),
+    );
     groupId = String(group.id);
-    const project = (await helper.executeTool(
-      'manage_project',
-      ManageProjectSchema.parse({
-        action: 'create',
-        name: `duo-settings-${suffix}`,
-        namespace: group.full_path,
-      }),
-    )) as { id: number };
+    const project = CreatedProjectSchema.parse(
+      await helper.executeTool(
+        'manage_project',
+        ManageProjectSchema.parse({
+          action: 'create',
+          name: `duo-settings-${suffix}`,
+          namespace: group.full_path,
+        }),
+      ),
+    );
     projectId = String(project.id);
   }, 60000);
 
@@ -118,10 +128,12 @@ describe('GitLab Duo settings - GitLab Integration', () => {
     const before = await getProject();
     const requested = Object.fromEntries(offered.map((name) => [name, before[name] !== true]));
 
-    const updated = (await helper.executeTool(
-      'manage_project',
-      ManageProjectSchema.parse({ action: 'update', project_id: projectId, ...requested }),
-    )) as Entity;
+    const updated = UpdatedEntitySchema.parse(
+      await helper.executeTool(
+        'manage_project',
+        ManageProjectSchema.parse({ action: 'update', project_id: projectId, ...requested }),
+      ),
+    );
     console.log(
       `Project Duo settings not applied on this instance: ${JSON.stringify(updated.not_applied ?? [])}`,
     );
@@ -148,10 +160,12 @@ describe('GitLab Duo settings - GitLab Integration', () => {
     const before = await getGroup();
     const requested = Object.fromEntries(offered.map((name) => [name, before[name] !== true]));
 
-    const updated = (await helper.executeTool(
-      'manage_namespace',
-      ManageNamespaceSchema.parse({ action: 'update', group_id: groupId, ...requested }),
-    )) as Entity;
+    const updated = UpdatedEntitySchema.parse(
+      await helper.executeTool(
+        'manage_namespace',
+        ManageNamespaceSchema.parse({ action: 'update', group_id: groupId, ...requested }),
+      ),
+    );
     console.log(
       `Group Duo settings not applied on this instance: ${JSON.stringify(updated.not_applied ?? [])}`,
     );

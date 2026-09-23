@@ -94,7 +94,11 @@ import {
   USE_VULNERABILITIES,
   getToolDescriptionOverrides,
 } from './config';
-import { isToolAvailable, getRestrictedParameters } from './services/InstanceCapabilities';
+import {
+  isToolAvailable,
+  getRestrictedParameters,
+  getUnavailableActions,
+} from './services/InstanceCapabilities';
 import { ConnectionManager } from './services/ConnectionManager';
 import { HealthMonitor } from './services/HealthMonitor';
 import { isToolAvailableForScopes } from './services/TokenScopeDetector';
@@ -110,6 +114,8 @@ import {
 import { resolveRelatedReferences, stripRelatedSection } from './utils/description-utils';
 import { normalizeInstanceUrl } from './utils/url';
 import { getGitLabApiUrlFromContext } from './oauth/token-context';
+
+const NONE_UNAVAILABLE: ReadonlyMap<string, string> = new Map();
 
 /**
  * Central registry manager that aggregates tools from all entity registries
@@ -451,6 +457,7 @@ class RegistryManager {
       instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
       tokenScopes?: GitLabScope[];
     },
+    unavailableActions: ReadonlyMap<string, string>,
   ): 'readOnly' | 'deniedRegex' | 'scopes' | 'tier' | 'admin' | 'actionDenial' | null {
     if (GITLAB_READ_ONLY_MODE && !this.getReadOnlyTools().includes(toolName)) return 'readOnly';
     if (GITLAB_DENIED_TOOLS_REGEX?.test(toolName)) return 'deniedRegex';
@@ -472,8 +479,22 @@ class RegistryManager {
       if (!isToolAvailable(tool.requirements, ctx.instanceInfo)) return 'tier';
     }
     const allActions = extractActionsFromSchema(tool.inputSchema);
-    if (allActions.length > 0 && shouldRemoveTool(toolName, allActions)) return 'actionDenial';
+    if (allActions.length > 0) {
+      if (shouldRemoveTool(toolName, allActions)) return 'actionDenial';
+      // Every action left is one the instance cannot serve.
+      if (shouldRemoveTool(toolName, allActions, unavailableActions)) return 'tier';
+    }
     return null;
+  }
+
+  /** Actions of a GitLab-backed tool the instance cannot serve (none for context tools). */
+  private unavailableActionsFor(
+    toolName: string,
+    tool: EnhancedToolDefinition,
+    ctx: { instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean } },
+  ): ReadonlyMap<string, string> {
+    if (!ctx.instanceInfo || this.registries.get('context')?.has(toolName)) return NONE_UNAVAILABLE;
+    return getUnavailableActions(tool.requirements, ctx.instanceInfo);
   }
 
   /** Filter registries and build transformed tool map (schema + description overrides). */
@@ -485,13 +506,14 @@ class RegistryManager {
 
     for (const [, registry] of this.registries) {
       for (const [toolName, tool] of registry) {
-        const exclusion = this.getToolExclusionReason(toolName, tool, ctx);
+        const unavailableActions = this.unavailableActionsFor(toolName, tool, ctx);
+        const exclusion = this.getToolExclusionReason(toolName, tool, ctx, unavailableActions);
         if (exclusion) {
           logDebug('Tool filtered out', { toolName, reason: exclusion });
           continue;
         }
 
-        let transformedSchema = transformToolSchema(toolName, tool.inputSchema);
+        let transformedSchema = transformToolSchema(toolName, tool.inputSchema, unavailableActions);
 
         // Strip restricted parameters (skip only when not initialized). When version
         // is unknown, getRestrictedParameters fail-opens version/tier but still strips
@@ -508,6 +530,7 @@ class RegistryManager {
           ...tool,
           inputSchema: transformedSchema,
           ...(customDescription && { description: customDescription }),
+          ...(unavailableActions.size > 0 && { unavailableActions }),
         };
 
         if (customDescription) {
@@ -684,6 +707,14 @@ class RegistryManager {
     const tool = this.getTool(toolName, instanceUrl);
     if (!tool) {
       throw new Error(`Tool '${toolName}' not found in any registry`);
+    }
+
+    // The schema no longer offers an action the instance cannot serve, but a
+    // client may still send it; refuse with the reason instead of calling GitLab.
+    const action = (args as { action?: unknown } | null)?.action;
+    if (tool.unavailableActions && typeof action === 'string') {
+      const reason = tool.unavailableActions.get(action.toLowerCase());
+      if (reason) throw new Error(`Action '${action}' of ${toolName} is unavailable: ${reason}`);
     }
 
     return await tool.handler(args);
@@ -1067,7 +1098,12 @@ class RegistryManager {
     for (const registry of this.registries.values()) {
       for (const [toolName, tool] of registry) {
         if (contextTools && !contextTools.has(toolName)) continue;
-        const reason = this.getToolExclusionReason(toolName, tool, ctx);
+        const reason = this.getToolExclusionReason(
+          toolName,
+          tool,
+          ctx,
+          this.unavailableActionsFor(toolName, tool, ctx),
+        );
         if (!reason) {
           counts.available++;
         } else {

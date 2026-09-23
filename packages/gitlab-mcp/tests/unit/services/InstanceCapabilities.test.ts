@@ -14,6 +14,8 @@ import {
   getRestrictedParameters,
   getUnmetReason,
   getHighestTier,
+  effectiveMinVersion,
+  MIN_SUPPORTED_VERSION,
   type CapabilityGate,
 } from '../../../src/services/InstanceCapabilities';
 import { ToolRequirements } from '../../../src/types';
@@ -70,8 +72,19 @@ describe('meetsRequirement', () => {
     expect(meetsRequirement({ tier: 'premium', minVersion: '8.0' }, ultimate17)).toBe(true);
   });
 
-  it('treats missing tier/version as the free/8.0 default', () => {
+  it('treats missing tier/version as free at the supported floor', () => {
     expect(meetsRequirement({}, free17)).toBe(true);
+    expect(meetsRequirement({}, { version: '15.11.0', tier: 'ultimate' })).toBe(false);
+  });
+
+  it('never lets a declared minVersion lower the supported floor', () => {
+    // A stale sub-floor declaration must not re-admit an unsupported instance.
+    expect(meetsRequirement({ minVersion: '8.0' }, { version: '15.11.0', tier: 'free' })).toBe(
+      false,
+    );
+    expect(effectiveMinVersion({ minVersion: '8.0' })).toBe(MIN_SUPPORTED_VERSION);
+    expect(effectiveMinVersion({ minVersion: '17.2' })).toBe('17.2');
+    expect(effectiveMinVersion(undefined)).toBe(MIN_SUPPORTED_VERSION);
   });
 
   it('fails an admin requirement only when admin-mode elevation is known inactive', () => {
@@ -115,9 +128,9 @@ describe('isToolAvailable', () => {
     expect(isToolAvailable(undefined, unknown)).toBe(true);
   });
 
-  it('applies a conservative >= 15.0 gate to tools without declared requirements', () => {
-    expect(isToolAvailable(undefined, { version: '14.9.0', tier: 'ultimate' })).toBe(false);
-    expect(isToolAvailable(undefined, { version: '15.0.0', tier: 'free' })).toBe(true);
+  it('applies the supported version floor to tools without declared requirements', () => {
+    expect(isToolAvailable(undefined, { version: '15.11.0', tier: 'ultimate' })).toBe(false);
+    expect(isToolAvailable(undefined, { version: '16.0.0', tier: 'free' })).toBe(true);
   });
 });
 
@@ -186,8 +199,8 @@ describe('getUnmetReason', () => {
     expect(getUnmetReason(reqs, { version: 'unknown', tier: 'free' }, 'approve')).toBeNull();
   });
 
-  it('gates an unannotated tool conservatively and reports the reason', () => {
-    expect(getUnmetReason(undefined, { version: '14.0.0', tier: 'ultimate' })).toContain('15.0+');
+  it('gates an unannotated tool at the supported floor and reports the reason', () => {
+    expect(getUnmetReason(undefined, { version: '15.11.0', tier: 'ultimate' })).toContain('16.0+');
     expect(getUnmetReason(undefined, { version: '16.0.0', tier: 'free' })).toBeNull();
   });
 });
@@ -209,26 +222,30 @@ describe('getHighestTier', () => {
 describe('shipped tool requirements (real data)', () => {
   // These assert that the requirements migrated onto real tool definitions are
   // correct, end-to-end — a regression here means a tool would be mis-gated.
-  it('marks browse_iterations as premium 13.1', () => {
+  it('marks browse_iterations as premium at the supported floor', () => {
     const { iterationsToolRegistry } = require('../../../src/entities/iterations/registry');
     const req = iterationsToolRegistry.get('browse_iterations')?.requirements;
-    expect(req?.default).toEqual({
-      tier: 'premium',
-      minVersion: '13.1',
-      notes: 'Iterations/Sprints',
-    });
+    expect(req?.default).toEqual({ tier: 'premium', notes: 'Iterations/Sprints' });
   });
 
-  it('gates browse_work_items at free 15.0 and manage_work_item params by tier', () => {
+  it('keeps work items available from the floor, gating only the link mutations', () => {
+    // Queries adapt to the instance schema and fall back to project/group
+    // queries, so only the linked-items mutations (no older equivalent) are gated.
     const { workitemsToolRegistry } = require('../../../src/entities/workitems/registry');
-    expect(workitemsToolRegistry.get('browse_work_items')?.requirements?.default).toEqual({
-      tier: 'free',
-      minVersion: '15.0',
-    });
-    const params = workitemsToolRegistry.get('manage_work_item')?.requirements?.parameters;
-    expect(params?.weight?.tier).toBe('premium');
-    expect(params?.iterationId?.tier).toBe('premium');
-    expect(params?.healthStatus?.tier).toBe('ultimate');
+    const browse = workitemsToolRegistry.get('browse_work_items')?.requirements;
+    const floor = { version: '16.0.0', tier: 'ultimate' as const };
+    expect(isToolAvailable(browse, floor, 'list')).toBe(true);
+    expect(isToolAvailable(browse, floor, 'get')).toBe(true);
+
+    const manage = workitemsToolRegistry.get('manage_work_item')?.requirements;
+    const at = (version: string) => ({ version, tier: 'ultimate' as const });
+    expect(isToolAvailable(manage, at('16.0.0'), 'create')).toBe(true);
+    expect(isToolAvailable(manage, at('16.0.0'), 'update')).toBe(true);
+    expect(isToolAvailable(manage, at('16.3.0'), 'add_link')).toBe(false);
+    expect(isToolAvailable(manage, at('16.4.0'), 'remove_link')).toBe(true);
+    expect(manage?.parameters?.weight?.tier).toBe('premium');
+    expect(manage?.parameters?.iterationId?.tier).toBe('premium');
+    expect(manage?.parameters?.healthStatus?.tier).toBe('ultimate');
   });
 
   it('keeps the MR approvals action premium while the tool default stays free', () => {
@@ -238,14 +255,41 @@ describe('shipped tool requirements (real data)', () => {
     expect(req?.actions?.approvals?.tier).toBe('premium');
   });
 
-  it('marks the milestones burndown action premium 12.0', () => {
+  it.each([
+    // [registry module, tool, action or undefined, parameter or undefined, first version]
+    // Only capabilities GitLab cannot provide on older instances are gated; the
+    // rest are emulated in the handlers.
+    ['files', 'browse_files', 'download_attachment', undefined, '17.4'],
+    ['webhooks', 'manage_webhook', 'test', undefined, '16.11'],
+    ['webhooks', 'manage_webhook', undefined, 'name', '17.1'],
+    ['webhooks', 'manage_webhook', undefined, 'description', '17.1'],
+    ['webhooks', 'manage_webhook', undefined, 'feature_flag_events', '17.5'],
+    ['variables', 'manage_variable', undefined, 'description', '16.2'],
+    ['webhooks', 'manage_webhook', undefined, 'project_events', '18.2'],
+    ['pipelines', 'manage_pipeline', undefined, 'inputs', '17.10'],
+    ['workitems', 'manage_work_item', 'add_link', undefined, '16.4'],
+  ])('%s: %s %s %s requires GitLab %s', (module, toolName, action, param, version) => {
+    // Versions verified against GitLab sources at the release tags (see AGENTS.md).
+    const registry: Map<string, { requirements: ToolRequirements }> = Object.values(
+      require(`../../../src/entities/${module}/registry`),
+    ).find((v) => v instanceof Map) as Map<string, { requirements: ToolRequirements }>;
+    const reqs = registry.get(toolName)!.requirements;
+    const [major, minor] = version.split('.').map(Number);
+    const before = { version: `${major}.${minor - 1}.0`, tier: 'ultimate' as const };
+    const at = { version: `${version}.0`, tier: 'ultimate' as const };
+    if (param) {
+      expect(getRestrictedParameters(reqs, before)).toContain(param);
+      expect(getRestrictedParameters(reqs, at)).not.toContain(param);
+    } else {
+      expect(isToolAvailable(reqs, before, action)).toBe(false);
+      expect(isToolAvailable(reqs, at, action)).toBe(true);
+    }
+  });
+
+  it('marks the milestones burndown action premium', () => {
     const { milestonesToolRegistry } = require('../../../src/entities/milestones/registry');
     const req = milestonesToolRegistry.get('browse_milestones')?.requirements;
-    expect(req?.actions?.burndown).toEqual({
-      tier: 'premium',
-      minVersion: '12.0',
-      notes: 'Burndown charts',
-    });
+    expect(req?.actions?.burndown).toEqual({ tier: 'premium', notes: 'Burndown charts' });
   });
 
   it('tier-gates the premium/ultimate group attributes on manage_namespace', () => {
@@ -263,14 +307,17 @@ describe('shipped tool requirements (real data)', () => {
       expect(schemaJson).toContain(name);
     }
 
-    // Free strips all gated params; ultimate strips none. Order is irrelevant,
-    // so compare as sets.
+    // Free strips all gated params; ultimate on 17.0 strips only the version-gated
+    // ones (allowed email domains 17.4, automatic Duo review 18.7). Order is
+    // irrelevant, so compare as sets.
     const free = { version: '17.0.0', tier: 'free' as const };
     const ultimate = { version: '17.0.0', tier: 'ultimate' as const };
     expect(new Set(getRestrictedParameters(tool.requirements, free))).toEqual(
       new Set(Object.keys(params)),
     );
-    expect(getRestrictedParameters(tool.requirements, ultimate)).toEqual([]);
+    expect(new Set(getRestrictedParameters(tool.requirements, ultimate))).toEqual(
+      new Set(['allowed_email_domains_list', 'auto_duo_code_review_enabled']),
+    );
   });
 
   it('tier-gates the premium/ultimate project attributes on manage_project', () => {
@@ -287,10 +334,20 @@ describe('shipped tool requirements (real data)', () => {
       expect(schemaJson).toContain(name);
     }
 
-    // Premium instance keeps premium params, still strips the ultimate ones.
+    // Premium instance keeps premium params, still strips the ultimate ones and
+    // every GitLab Duo setting, all of which postdate 17.0.
     const premium = { version: '17.0.0', tier: 'premium' as const };
     expect(new Set(getRestrictedParameters(tool.requirements, premium))).toEqual(
-      new Set(['only_allow_merge_if_all_status_checks_passed', 'requirements_access_level']),
+      new Set([
+        'only_allow_merge_if_all_status_checks_passed',
+        'requirements_access_level',
+        'auto_duo_code_review_enabled',
+        'duo_remote_flows_enabled',
+        'duo_sast_fp_detection_enabled',
+        'duo_sast_vr_workflow_enabled',
+        'duo_secret_detection_fp_enabled',
+        'duo_dependency_bump_breaking_changes_enabled',
+      ]),
     );
   });
 });

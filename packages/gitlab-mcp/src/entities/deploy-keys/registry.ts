@@ -6,7 +6,7 @@ import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
 // Deploy keys have existed since early GitLab and are Free tier throughout.
-const FREE_REQ = { tier: 'free', minVersion: '8.0' } as const;
+const FREE_REQ = { tier: 'free' } as const;
 
 /**
  * Deploy keys tools registry - 2 CQRS tools.

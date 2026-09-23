@@ -35,8 +35,8 @@ describe('Environments Registry', () => {
     });
 
     it('declares the Free-tier requirement on both tools', () => {
-      expect(browse().requirements?.default).toEqual({ tier: 'free', minVersion: '8.0' });
-      expect(manage().requirements?.default).toEqual({ tier: 'free', minVersion: '8.0' });
+      expect(browse().requirements?.default).toEqual({ tier: 'free' });
+      expect(manage().requirements?.default).toEqual({ tier: 'free' });
     });
 
     it('is gated by USE_ENVIRONMENTS', () => {

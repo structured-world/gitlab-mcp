@@ -2,11 +2,12 @@ import * as z from 'zod';
 import { BrowseRunnersSchema } from './schema-readonly';
 import { ManageRunnerSchema } from './schema';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { assertActionAllowed } from '../utils';
+import { assertActionAllowed, GITLAB_MAX_PER_PAGE } from '../utils';
 import { ConnectionManager } from '../../services/ConnectionManager';
 import { cleanGidsFromObject } from '../../utils/idConversion';
 import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
-import { gitlab } from '../../utils/gitlab-api';
+import { gitlab, toQuery } from '../../utils/gitlab-api';
+import { graphqlSupports } from '../instance-version';
 import {
   LIST_RUNNERS,
   LIST_OWNED_RUNNERS,
@@ -93,6 +94,104 @@ function applyRunnerSettings(
   if (src.maintenance_note !== undefined) target.maintenanceNote = src.maintenance_note;
 }
 
+const RestRunnersSchema = z.array(
+  z.object({
+    id: z.number(),
+    description: z.string().nullable(),
+    runner_type: z.string(),
+    status: z.string().nullable(),
+    paused: z.boolean(),
+  }),
+);
+
+interface OwnedRunnerFilters {
+  type?: string;
+  status?: string;
+  paused?: boolean;
+  tag_list?: string[];
+}
+
+/** One validated page of GET /runners with the server-side filters applied. */
+async function fetchOwnedRunnersPage(filters: OwnedRunnerFilters, perPage: number, page: number) {
+  const parsed = RestRunnersSchema.safeParse(
+    await gitlab.get('runners', {
+      query: toQuery({
+        type: filters.type?.toLowerCase(),
+        status: filters.status?.toLowerCase(),
+        paused: filters.paused,
+        tag_list: filters.tag_list?.join(','),
+        per_page: perPage,
+        page,
+      }),
+    }),
+  );
+  if (!parsed.success) {
+    throw new Error(
+      `GitLab API error: unexpected runners response (${parsed.error.issues[0]?.message ?? 'invalid'})`,
+    );
+  }
+  return parsed.data;
+}
+
+/**
+ * The current user's runners through REST, shaped like the GraphQL connection,
+ * for instances without currentUser.runners (GitLab 18.3). REST pages by number,
+ * so the cursor is the next page number. REST has no `search`, so it is matched
+ * on the description before paginating: REST pages are walked until the
+ * requested page of matches is complete, and the cursor counts pages of matches.
+ * Fields the REST listing lacks are null.
+ */
+async function listOwnedRunnersViaRest(
+  input: OwnedRunnerFilters & { search?: string; first?: number; after?: string },
+) {
+  const perPage = input.first ?? 20;
+  const page = Number(input.after) > 0 ? Number(input.after) : 1;
+  const search = input.search?.toLowerCase();
+
+  let runners: z.infer<typeof RestRunnersSchema>;
+  let hasNextPage: boolean;
+  if (search) {
+    const wanted = page * perPage;
+    const matches: typeof runners = [];
+    // One match beyond the requested page tells whether another page exists.
+    for (let restPage = 1; matches.length <= wanted; restPage++) {
+      const batch = await fetchOwnedRunnersPage(input, GITLAB_MAX_PER_PAGE, restPage);
+      for (const runner of batch) {
+        if ((runner.description ?? '').toLowerCase().includes(search)) matches.push(runner);
+      }
+      if (batch.length < GITLAB_MAX_PER_PAGE) break;
+    }
+    runners = matches.slice(wanted - perPage, wanted);
+    hasNextPage = matches.length > wanted;
+  } else {
+    runners = await fetchOwnedRunnersPage(input, perPage, page);
+    hasNextPage = runners.length === perPage;
+  }
+
+  return {
+    nodes: runners.map((r) => ({
+      id: r.id,
+      description: r.description,
+      runnerType: r.runner_type.toUpperCase(),
+      status: r.status?.toUpperCase() ?? null,
+      paused: r.paused,
+      locked: null,
+      runUntagged: null,
+      tagList: null,
+      accessLevel: null,
+      maximumTimeout: null,
+      jobExecutionStatus: null,
+      jobCount: null,
+      contactedAt: null,
+      createdAt: null,
+    })),
+    pageInfo: {
+      hasNextPage,
+      endCursor: hasNextPage ? String(page + 1) : null,
+    },
+  };
+}
+
 /** Throw on a non-empty GraphQL mutation `errors` array. */
 function assertNoErrors(errors: string[] | undefined): void {
   if (errors && errors.length > 0) {
@@ -111,7 +210,7 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       description:
         "Inspect CI runners. Actions: list_all (every runner on the instance - admin), list_owned (the current user's runners), list_project / list_group (runners available to a project/group), get (single runner by ID), list_jobs (jobs a runner has executed). Related: manage_runner to register, update, pause/resume, or delete runners.",
       inputSchema: z.toJSONSchema(BrowseRunnersSchema),
-      requirements: { default: { tier: 'free', minVersion: '13.2' } },
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_RUNNERS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseRunnersSchema.parse(args);
@@ -127,6 +226,9 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
           }
 
           case 'list_owned': {
+            if (!graphqlSupports('CurrentUser', 'runners')) {
+              return listOwnedRunnersViaRest(input);
+            }
             const res = await client.request(LIST_OWNED_RUNNERS, listVars(input));
             return cleanGidsFromObject(res.currentUser?.runners ?? { nodes: [] });
           }
@@ -192,7 +294,7 @@ export const runnersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       description:
         'Register and control CI runners. Actions: create_authentication_token (register a runner, GitLab 16+, returns a one-time token), update (settings), pause/resume (toggle job pickup), delete, reset_authentication_token (rotate the token). Related: browse_runners to discover runners.',
       inputSchema: z.toJSONSchema(ManageRunnerSchema),
-      requirements: { default: { tier: 'free', minVersion: '13.2' } },
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_RUNNERS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageRunnerSchema.parse(args);

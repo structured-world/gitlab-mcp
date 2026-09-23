@@ -29,9 +29,11 @@ const REPOSITORY_LIST_FIELDS = `
   createdAt
   updatedAt
 `;
+// @optional fields are dropped on instances whose schema predates them
+// (lastPublishedAt 16.11, publishedAt 16.8, mediaType 17.2).
 const REPOSITORY_DETAIL_FIELDS = `
   ${REPOSITORY_LIST_FIELDS}
-  lastPublishedAt
+  lastPublishedAt @optional
 `;
 
 const TAG_FIELDS = `
@@ -43,8 +45,8 @@ const TAG_FIELDS = `
   shortRevision
   totalSize
   createdAt
-  publishedAt
-  mediaType
+  publishedAt @optional
+  mediaType @optional
 `;
 
 export interface ContainerRepositoryNode {
@@ -69,8 +71,9 @@ export interface ContainerTagNode {
   shortRevision: string | null;
   totalSize: string | null;
   createdAt: string | null;
-  publishedAt: string | null;
-  mediaType: string | null;
+  // Absent on instances whose schema predates them.
+  publishedAt?: string | null;
+  mediaType?: string | null;
 }
 
 interface PageInfo {

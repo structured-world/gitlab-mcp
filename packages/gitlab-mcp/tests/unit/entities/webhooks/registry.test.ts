@@ -6,6 +6,8 @@ import {
 } from '../../../../src/entities/webhooks/registry';
 import { enhancedFetch } from '../../../../src/utils/fetch';
 import * as config from '../../../../src/config';
+import { ConnectionManager } from '../../../../src/services/ConnectionManager';
+import type { GitLabInstanceInfo } from '../../../../src/services/GitLabVersionDetector';
 
 // Mock enhancedFetch to avoid actual API calls
 jest.mock('../../../../src/utils/fetch', () => ({
@@ -363,6 +365,71 @@ describe('Webhooks Registry', () => {
         }),
       );
       expect(result).toBeDefined();
+    });
+
+    it('refuses to test a group webhook before GitLab 17.1 without calling GitLab', async () => {
+      // The group hook test endpoint landed in 17.1 (project hooks in 16.11).
+      const spy = jest
+        .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+        .mockReturnValue({ version: '17.0.0', tier: 'premium' } as GitLabInstanceInfo);
+      try {
+        await expect(
+          webhooksToolRegistry.get('manage_webhook')!.handler({
+            action: 'test',
+            scope: 'group',
+            groupId: 'g',
+            hookId: 1,
+            trigger: 'push_events',
+          }),
+        ).rejects.toThrow('Testing a group webhook requires GitLab 17.1+');
+        expect(mockEnhancedFetch).not.toHaveBeenCalled();
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('refuses group webhooks on GitLab Free without calling GitLab', async () => {
+      // Group hooks are a Premium feature; project hooks stay available on Free.
+      const spy = jest
+        .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+        .mockReturnValue({ version: '18.0.0', tier: 'free' } as GitLabInstanceInfo);
+      try {
+        await expect(
+          webhooksToolRegistry.get('manage_webhook')!.handler({
+            action: 'create',
+            scope: 'group',
+            groupId: 'g',
+            url: 'https://example.com/hook',
+          }),
+        ).rejects.toThrow('Group webhooks require GitLab Premium');
+        await expect(
+          webhooksToolRegistry.get('browse_webhooks')!.handler({
+            action: 'list',
+            scope: 'group',
+            groupId: 'g',
+          }),
+        ).rejects.toThrow('Group webhooks require GitLab Premium');
+        expect(mockEnhancedFetch).not.toHaveBeenCalled();
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('rejects group-only event fields on project webhooks', async () => {
+      // The project hooks API has no project_events/subgroup_events and would
+      // silently ignore them while reporting success.
+      for (const field of ['project_events', 'subgroup_events']) {
+        await expect(
+          webhooksToolRegistry.get('manage_webhook')!.handler({
+            action: 'create',
+            scope: 'project',
+            projectId: 'p',
+            url: 'https://example.com/hook',
+            [field]: true,
+          }),
+        ).rejects.toThrow(`${field} applies to group webhooks only`);
+      }
+      expect(mockEnhancedFetch).not.toHaveBeenCalled();
     });
 
     it('should require url for create action', async () => {

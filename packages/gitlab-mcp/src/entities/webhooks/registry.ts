@@ -4,6 +4,17 @@ import { ManageWebhookSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
+import { assertInstanceAtLeast, currentInstance } from '../instance-version';
+
+/**
+ * Group webhooks are a Premium feature while project webhooks are Free; one tool
+ * serves both, so the scope is checked here rather than in tool requirements.
+ */
+function assertGroupHooksAvailable(scope: 'project' | 'group'): void {
+  if (scope === 'group' && currentInstance()?.tier === 'free') {
+    throw new Error('Group webhooks require GitLab Premium');
+  }
+}
 
 /**
  * Webhooks tools registry - 2 CQRS tools (discriminated union schema)
@@ -23,12 +34,13 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
       description:
         'List and inspect webhook configurations for projects or groups. Actions: list (all webhooks with event types and status), get (webhook details by ID). Related: manage_webhook to create/update/delete/test.',
       inputSchema: z.toJSONSchema(BrowseWebhooksSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0', notes: 'Project webhooks' } },
+      requirements: { default: { tier: 'free', notes: 'Project webhooks' } },
       gate: { envVar: 'USE_WEBHOOKS', defaultValue: true },
       handler: async (args: unknown) => {
         const input = BrowseWebhooksSchema.parse(args);
 
         assertActionAllowed('browse_webhooks', input.action);
+        assertGroupHooksAvailable(input.scope);
 
         // Helper to determine base API path from scope
         const getBasePath = (scope: 'project' | 'group', projectId?: string, groupId?: string) => {
@@ -82,11 +94,20 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
         'Create, update, delete, or test webhooks for event-driven automation. Actions: create (URL + event types + optional secret), update (modify settings), delete (remove), test (trigger delivery for specific event). Related: browse_webhooks for inspection.',
       inputSchema: z.toJSONSchema(ManageWebhookSchema),
       requirements: {
-        default: { tier: 'free', minVersion: '8.0', notes: 'Project webhooks' },
+        // Group scope (Premium) is checked in the handler.
+        default: { tier: 'free', notes: 'Project webhooks' },
         actions: {
-          create_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
-          update_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
-          delete_group: { tier: 'premium', minVersion: '10.4', notes: 'Group webhooks' },
+          // Project hook test endpoint; the group one (17.1) is checked in the handler.
+          test: { tier: 'free', minVersion: '16.11' },
+        },
+        parameters: {
+          name: { tier: 'free', minVersion: '17.1' },
+          description: { tier: 'free', minVersion: '17.1' },
+          emoji_events: { tier: 'free', minVersion: '16.2' },
+          resource_access_token_events: { tier: 'free', minVersion: '16.10' },
+          member_events: { tier: 'free', minVersion: '16.11' },
+          feature_flag_events: { tier: 'free', minVersion: '17.5' },
+          project_events: { tier: 'free', minVersion: '18.2' },
         },
       },
       gate: { envVar: 'USE_WEBHOOKS', defaultValue: true },
@@ -94,6 +115,15 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
         const input = ManageWebhookSchema.parse(args);
 
         assertActionAllowed('manage_webhook', input.action);
+        assertGroupHooksAvailable(input.scope);
+        // The project hooks API has no such events and would ignore them silently.
+        if (input.scope === 'project' && (input.action === 'create' || input.action === 'update')) {
+          for (const field of ['project_events', 'subgroup_events'] as const) {
+            if (input[field] !== undefined) {
+              throw new Error(`${field} applies to group webhooks only`);
+            }
+          }
+        }
 
         // Determine base path from scope and IDs
         const getBasePath = (scope: 'project' | 'group', projectId?: string, groupId?: string) => {
@@ -151,6 +181,7 @@ export const webhooksToolRegistry: ToolRegistry = new Map<string, EnhancedToolDe
           case 'test': {
             // TypeScript knows: input has hookId (required), trigger (required), scope, projectId/groupId
             const basePath = getBasePath(input.scope, input.projectId, input.groupId);
+            if (input.scope === 'group') assertInstanceAtLeast('17.1', 'Testing a group webhook');
 
             return gitlab.post(`${basePath}/${input.hookId}/test/${input.trigger}`, {
               contentType: 'json',

@@ -27,10 +27,10 @@ function scopeBase(projectId: number): string {
   return `projects/${projectId}/job_token_scope`;
 }
 
-// Free tier throughout; the inbound project allowlist lands in GitLab 15.9 and
-// the group allowlist in 16.0.
-const SCOPE_REQ = { tier: 'free', minVersion: '15.9' } as const;
-const GROUP_REQ = { tier: 'free', minVersion: '16.0' } as const;
+// Free tier throughout. Reading the scope predates 16.0; the project allowlist
+// and the enforcement toggle landed in GitLab 16.1, the group allowlist in 16.10.
+const SCOPE_REQ = { tier: 'free', minVersion: '16.1' } as const;
+const GROUP_REQ = { tier: 'free', minVersion: '16.10' } as const;
 
 /**
  * CI/CD job token scope tools registry - 2 CQRS tools.
@@ -53,7 +53,10 @@ export const jobTokenScopeToolRegistry: ToolRegistry = new Map<string, EnhancedT
       description:
         'Inspect a project CI/CD job token inbound access scope. Actions: get (the inbound/outbound scope toggles), list_projects (projects allowed to reach this project via CI_JOB_TOKEN), list_groups (groups on the allowlist). Related: manage_job_token_scope to change the allowlist.',
       inputSchema: z.toJSONSchema(BrowseJobTokenScopeSchema),
-      requirements: { default: SCOPE_REQ, actions: { list_groups: GROUP_REQ } },
+      requirements: {
+        default: { tier: 'free' },
+        actions: { list_projects: SCOPE_REQ, list_groups: GROUP_REQ },
+      },
       gate: { envVar: 'USE_CI_TOKENS', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseJobTokenScopeSchema.parse(args);

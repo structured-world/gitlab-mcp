@@ -2,6 +2,7 @@ import { ConnectionManager, type InstanceState } from '../../../src/services/Con
 import { GraphQLClient } from '../../../src/graphql/client';
 import { GitLabVersionDetector } from '../../../src/services/GitLabVersionDetector';
 import { SchemaIntrospector } from '../../../src/services/SchemaIntrospector';
+import { InstanceRegistry } from '../../../src/services/InstanceRegistry';
 
 /** Type-safe access to ConnectionManager private fields in tests */
 type CMStatic = { instance: ConnectionManager | null; introspectionCache: Map<string, unknown> };
@@ -110,6 +111,7 @@ describe('ConnectionManager Enhanced Tests', () => {
       request: jest.fn(),
       endpoint: 'https://test-gitlab.com/api/graphql',
       setEndpoint: jest.fn(),
+      setSchemaIndexProvider: jest.fn(),
     } as unknown as jest.Mocked<GraphQLClient>;
     MockedGraphQLClient.mockImplementation(() => mockClient);
 
@@ -1040,6 +1042,7 @@ describe('ConnectionManager Enhanced Tests', () => {
           request: jest.fn(),
           endpoint: 'https://cached-gitlab.example.com/api/graphql',
           setEndpoint: jest.fn(),
+          setSchemaIndexProvider: jest.fn(),
         })),
       }));
       jest.doMock('../../../src/services/GitLabVersionDetector', () => ({
@@ -1239,6 +1242,32 @@ describe('ConnectionManager Enhanced Tests', () => {
       const client = connectionManager.getInstanceClient();
       expect(client).toBeDefined();
       expect(client).toBe(connectionManager.getClient());
+    });
+
+    it('adapts pooled clients to the instance schema with one provider per instance', async () => {
+      // Pooled clients are created without the schema; without the provider their
+      // documents would not be adapted to older instances.
+      await connectionManager.initialize();
+      const fieldIndex = new Map();
+      mockSchemaIntrospector.getCachedSchema.mockReturnValue({ ...mockSchemaInfo, fieldIndex });
+      const pooled = { setSchemaIndexProvider: jest.fn() } as unknown as GraphQLClient;
+      const spy = jest.spyOn(InstanceRegistry, 'getInstance').mockReturnValue({
+        isInitialized: () => true,
+        has: () => true,
+        getGraphQLClient: () => pooled,
+      } as unknown as InstanceRegistry);
+      try {
+        expect(connectionManager.getInstanceClient()).toBe(pooled);
+        connectionManager.getInstanceClient();
+
+        const wire = pooled.setSchemaIndexProvider as jest.Mock;
+        expect(wire).toHaveBeenCalledTimes(2);
+        // The same provider each time: nothing is allocated per call.
+        expect(wire.mock.calls[1][0]).toBe(wire.mock.calls[0][0]);
+        expect((wire.mock.calls[0][0] as () => unknown)()).toBe(fieldIndex);
+      } finally {
+        spy.mockRestore();
+      }
     });
 
     it('should throw for explicit unregistered instance URL', async () => {

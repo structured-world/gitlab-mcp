@@ -88,18 +88,43 @@ interface JSONSchema {
 // Core Transformation Functions
 // ============================================================================
 
+/** Lowercase action names; satisfied by a Set and by a Map keyed by action. */
+export interface ActionNames {
+  readonly size: number;
+  has(action: string): boolean;
+  keys(): Iterable<string>;
+}
+
+const NO_ACTIONS: ActionNames = new Set<string>();
+
+/**
+ * Lowercase actions removed from a tool: denied by configuration, plus those the
+ * connected instance cannot serve.
+ */
+function removedActions(toolName: string, unavailable: ActionNames): ActionNames {
+  const denied = GITLAB_DENIED_ACTIONS.get(toolName.toLowerCase());
+  if (unavailable.size === 0) return denied ?? NO_ACTIONS;
+  if (!denied || denied.size === 0) return unavailable;
+  return new Set([...denied, ...unavailable.keys()]);
+}
+
 /**
  * Filter branches from a discriminated union JSON schema based on denied actions
  *
  * @param schema - JSON schema with oneOf (discriminated union)
  * @param toolName - Tool name for looking up denied actions
+ * @param unavailable - Lowercase actions the instance cannot serve
  * @returns Filtered schema with denied action branches removed
  */
-export function filterDiscriminatedUnionActions(schema: JSONSchema, toolName: string): JSONSchema {
-  const deniedActions = GITLAB_DENIED_ACTIONS.get(toolName.toLowerCase());
+export function filterDiscriminatedUnionActions(
+  schema: JSONSchema,
+  toolName: string,
+  unavailable: ActionNames = NO_ACTIONS,
+): JSONSchema {
+  const deniedActions = removedActions(toolName, unavailable);
 
   // If no oneOf, this isn't a discriminated union - return as-is
-  if (!schema.oneOf || !deniedActions || deniedActions.size === 0) {
+  if (!schema.oneOf || deniedActions.size === 0) {
     return schema;
   }
 
@@ -372,17 +397,22 @@ function getSchemaMode(): 'flat' | 'discriminated' {
  *
  * @param toolName - Tool name
  * @param inputSchema - Original JSON schema (may be discriminated union or flat)
+ * @param unavailableActions - Lowercase actions the connected instance cannot serve
  * @returns Transformed JSON schema ready for clients
  */
-export function transformToolSchema(toolName: string, inputSchema: JSONSchema): JSONSchema {
+export function transformToolSchema(
+  toolName: string,
+  inputSchema: JSONSchema,
+  unavailableActions: ActionNames = NO_ACTIONS,
+): JSONSchema {
   let schema = inputSchema;
 
-  // Step 1: Filter denied actions
+  // Step 1: Filter denied and unavailable actions
   if (schema.oneOf) {
-    schema = filterDiscriminatedUnionActions(schema, toolName);
+    schema = filterDiscriminatedUnionActions(schema, toolName, unavailableActions);
   } else if (schema.properties?.action?.enum) {
     // Flat schema with action enum - filter the enum directly
-    schema = filterFlatSchemaActions(schema, toolName);
+    schema = filterFlatSchemaActions(schema, toolName, unavailableActions);
   }
 
   // Step 2: Apply description overrides (works on oneOf or flat)
@@ -401,10 +431,14 @@ export function transformToolSchema(toolName: string, inputSchema: JSONSchema): 
  * Filter actions from a flat schema (legacy support)
  * Used for schemas that haven't been migrated to discriminated union yet
  */
-function filterFlatSchemaActions(schema: JSONSchema, toolName: string): JSONSchema {
-  const deniedActions = GITLAB_DENIED_ACTIONS.get(toolName.toLowerCase());
+function filterFlatSchemaActions(
+  schema: JSONSchema,
+  toolName: string,
+  unavailable: ActionNames,
+): JSONSchema {
+  const deniedActions = removedActions(toolName, unavailable);
 
-  if (!deniedActions || deniedActions.size === 0) {
+  if (deniedActions.size === 0) {
     return schema;
   }
 
@@ -493,11 +527,16 @@ function stripFromProperties(schema: JSONSchema, restrictedParams: Set<string>):
 // ============================================================================
 
 /**
- * Check if all actions are denied for a tool
+ * Check if all actions of a tool are denied by configuration or, when given,
+ * unavailable on the connected instance
  */
-export function shouldRemoveTool(toolName: string, allActions: string[]): boolean {
-  const deniedActions = GITLAB_DENIED_ACTIONS.get(toolName.toLowerCase());
-  if (!deniedActions || deniedActions.size === 0) {
+export function shouldRemoveTool(
+  toolName: string,
+  allActions: string[],
+  unavailable: ActionNames = NO_ACTIONS,
+): boolean {
+  const deniedActions = removedActions(toolName, unavailable);
+  if (deniedActions.size === 0) {
     return false;
   }
 

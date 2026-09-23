@@ -26,9 +26,9 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         'Track milestone progress with associated issues and MRs. Actions: list (filter by state/title/search), get (milestone details), issues (items in milestone), merge_requests (MRs targeting milestone), burndown (chart data for sprint tracking). Related: manage_milestone to create/update.',
       inputSchema: z.toJSONSchema(BrowseMilestonesSchema),
       requirements: {
-        default: { tier: 'free', minVersion: '8.0' },
+        default: { tier: 'free' },
         actions: {
-          burndown: { tier: 'premium', minVersion: '12.0', notes: 'Burndown charts' },
+          burndown: { tier: 'premium', notes: 'Burndown charts' },
         },
       },
       gate: { envVar: 'USE_MILESTONE', defaultValue: true },
@@ -103,7 +103,7 @@ export const milestonesToolRegistry: ToolRegistry = new Map<string, EnhancedTool
       description:
         'Create, update, or delete project/group milestones. Actions: create (title + optional dates/description), update (modify properties or close/activate), delete (remove permanently), promote (elevate project milestone to group). Related: browse_milestones for progress tracking.',
       inputSchema: z.toJSONSchema(ManageMilestoneSchema),
-      requirements: { default: { tier: 'free', minVersion: '8.0' } },
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_MILESTONE', defaultValue: true },
       handler: async (args: unknown) => {
         const input = ManageMilestoneSchema.parse(args);

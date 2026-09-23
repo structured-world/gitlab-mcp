@@ -3,12 +3,51 @@ import { BrowseAccessTokensSchema } from './schema-readonly';
 import { ManageAccessTokenSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { assertActionAllowed } from '../utils';
+import { assertActionAllowed, GITLAB_MAX_PER_PAGE } from '../utils';
+import { instanceAtLeast } from '../instance-version';
 
-// Personal/project/group access tokens are Free tier. Project access tokens
-// landed in 13.0, group access tokens in 14.7; the tool degrades per-action
-// rather than gating the whole pair, so the lowest floor is declared here.
-const FREE_REQ = { tier: 'free', minVersion: '13.0' } as const;
+// Personal/project/group access tokens are Free tier; every endpoint used here
+// predates the supported version floor.
+const FREE_REQ = { tier: 'free' } as const;
+
+/** A project/group token list page; `active` drives the client-side state filter. */
+const ListedTokensSchema = z.array(z.looseObject({ active: z.boolean() }));
+
+/**
+ * List project/group tokens, honouring `state`. The server-side filter landed in
+ * GitLab 17.2 (older instances ignore it and return every token), so there it is
+ * applied client-side on each token's `active` flag, before pagination: GitLab's
+ * pages are walked until the requested filtered page is complete or the list ends.
+ */
+async function listScopedTokens(
+  path: string,
+  query: { state?: 'active' | 'inactive'; per_page: number; page?: number },
+) {
+  const { state, per_page: perPage, page = 1 } = query;
+  if (!state || instanceAtLeast('17.2')) {
+    return gitlab.get(path, { query: toQuery(query, []) });
+  }
+  const wanted = page * perPage;
+  const matches: Array<z.infer<typeof ListedTokensSchema>[number]> = [];
+  for (let serverPage = 1; matches.length < wanted; serverPage++) {
+    const parsed = ListedTokensSchema.safeParse(
+      await gitlab.get(path, {
+        query: toQuery({ per_page: GITLAB_MAX_PER_PAGE, page: serverPage }, []),
+      }),
+    );
+    if (!parsed.success) {
+      throw new Error(
+        `GitLab API error: unexpected access tokens response (${parsed.error.issues[0]?.message ?? 'invalid'})`,
+      );
+    }
+    const batch = parsed.data;
+    for (const token of batch) {
+      if (token.active === (state === 'active')) matches.push(token);
+    }
+    if (batch.length < GITLAB_MAX_PER_PAGE) break;
+  }
+  return matches.slice(wanted - perPage, wanted);
+}
 
 const NEW_TOKEN_NOTICE =
   'This response contains a token value shown only once. Store it securely; it cannot be retrieved again.';
@@ -77,16 +116,15 @@ export const accessTokensToolRegistry: ToolRegistry = new Map<string, EnhancedTo
 
           case 'list_project': {
             const { action: _action, project_id, ...query } = input;
-            return gitlab.get(`projects/${encodeURIComponent(project_id)}/access_tokens`, {
-              query: toQuery(query, []),
-            });
+            return listScopedTokens(
+              `projects/${encodeURIComponent(project_id)}/access_tokens`,
+              query,
+            );
           }
 
           case 'list_group': {
             const { action: _action, group_id, ...query } = input;
-            return gitlab.get(`groups/${encodeURIComponent(group_id)}/access_tokens`, {
-              query: toQuery(query, []),
-            });
+            return listScopedTokens(`groups/${encodeURIComponent(group_id)}/access_tokens`, query);
           }
 
           case 'get':

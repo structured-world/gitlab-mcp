@@ -14,7 +14,7 @@ const PipelineVariableSchema = z.object({
     .describe('Variable type: env_var (default) or file'),
 });
 
-// Pipeline input value types (GitLab 15.5+ supports string, number, boolean, array)
+// Pipeline input value types: string, number, boolean, array
 const PipelineInputValueSchema = z
   .union([z.string(), z.number(), z.boolean(), z.array(z.string())])
   .describe('Input value: string, number, boolean, or array of strings');
@@ -46,7 +46,7 @@ const CreatePipelineSchema = z.object({
     .record(z.string(), PipelineInputValueSchema)
     .optional()
     .describe(
-      'Typed pipeline inputs defined in .gitlab-ci.yml spec (GitLab 15.5+). Keys must match input names in pipeline spec.',
+      'Typed pipeline inputs defined in the .gitlab-ci.yml spec (GitLab 17.10+). Keys must match input names in the pipeline spec.',
     ),
 });
 

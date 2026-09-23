@@ -19,7 +19,7 @@ export const iterationsToolRegistry: ToolRegistry = new Map<string, EnhancedTool
         'View group iterations for agile sprint planning. Actions: list (filter by state: current, upcoming, closed), get (retrieve specific iteration details). Related: browse_work_items for items in an iteration.',
       inputSchema: z.toJSONSchema(BrowseIterationsSchema),
       requirements: {
-        default: { tier: 'premium', minVersion: '13.1', notes: 'Iterations/Sprints' },
+        default: { tier: 'premium', notes: 'Iterations/Sprints' },
       },
       handler: async (args: unknown) => {
         const input = BrowseIterationsSchema.parse(args);

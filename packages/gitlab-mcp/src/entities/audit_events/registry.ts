@@ -5,9 +5,8 @@ import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 
 // Audit events are a Premium/Ultimate feature; the tier gate hides the tool on
-// lower-tier instances. Instance audit events landed in 12.4, group/project in
-// 12.5/13.1 - the lowest floor is declared here and the tier gate does the rest.
-const PREMIUM_REQ = { tier: 'premium', minVersion: '12.4', notes: 'Audit Events' } as const;
+// lower-tier instances. All endpoints predate the supported version floor.
+const PREMIUM_REQ = { tier: 'premium', notes: 'Audit Events' } as const;
 
 /**
  * Resolve the REST collection path for a single audit event (get action).

@@ -31,7 +31,9 @@ export interface FeatureGate {
 
 // Tier/version/admin requirement for a tool, one of its actions, or one of its
 // parameters. All fields optional: absent tier defaults to 'free', absent
-// minVersion to '8.0', absent requiresAdmin to false. Consulted by the registry
+// minVersion to MIN_SUPPORTED_VERSION (a lower value is ignored, so declare it
+// only for endpoints/params newer than that floor), absent requiresAdmin to
+// false. Consulted by the registry
 // (via InstanceCapabilities) to filter out unsupported tools and strip
 // restricted parameters, instead of letting them fail at call time. (Action-level
 // entries also drive tier-badge documentation.)
@@ -64,6 +66,11 @@ export interface EnhancedToolDefinition extends ToolDefinition {
    * error. Tools without requirements fall through to a conservative gate.
    */
   requirements?: ToolRequirements;
+  /**
+   * Set by the registry on its per-instance copy: actions (lowercase) whose own
+   * requirement the instance does not meet, with the reason they are refused.
+   */
+  unavailableActions?: ReadonlyMap<string, string>;
   /**
    * Mark the tool as idempotent (safe to retry on failure).
    * If not specified, idempotency is inferred from tool name:

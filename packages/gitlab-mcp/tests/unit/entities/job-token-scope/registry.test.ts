@@ -11,6 +11,7 @@ import {
   lastFetchCall as lastCall,
   mockEnhancedFetch,
 } from '../../helpers/fetch-mock';
+import { isToolAvailable } from '../../../../src/services/InstanceCapabilities';
 
 jest.mock('../../../../src/utils/fetch', () => ({
   enhancedFetch: jest.fn(),
@@ -41,10 +42,21 @@ describe('Job Token Scope Registry', () => {
       expect(getJobTokenScopeToolDefinitions()).toHaveLength(2);
     });
 
-    it('declares free-tier requirements with allowlist minVersions', () => {
-      expect(browse().requirements?.default).toEqual({ tier: 'free', minVersion: '15.9' });
-      expect(browse().requirements?.actions?.list_groups?.minVersion).toBe('16.0');
-      expect(manage().requirements?.actions?.add_group?.minVersion).toBe('16.0');
+    it('gates each action by the release that added its endpoint', () => {
+      // GET job_token_scope predates 16.0; PATCH and the project allowlist came
+      // in 16.1, the group allowlist in 16.10. Reading the scope must stay
+      // available on 16.0.
+      const at = (version: string) => ({ version, tier: 'free' as const });
+      const browseReq = browse().requirements;
+      const manageReq = manage().requirements;
+      expect(isToolAvailable(browseReq, at('16.0.0'), 'get')).toBe(true);
+      expect(isToolAvailable(browseReq, at('16.0.0'), 'list_projects')).toBe(false);
+      expect(isToolAvailable(browseReq, at('16.1.0'), 'list_projects')).toBe(true);
+      expect(isToolAvailable(browseReq, at('16.9.0'), 'list_groups')).toBe(false);
+      expect(isToolAvailable(manageReq, at('16.0.0'), 'set_enabled')).toBe(false);
+      expect(isToolAvailable(manageReq, at('16.1.0'), 'add_project')).toBe(true);
+      expect(isToolAvailable(manageReq, at('16.9.0'), 'add_group')).toBe(false);
+      expect(isToolAvailable(manageReq, at('16.10.0'), 'remove_group')).toBe(true);
     });
 
     it('is gated by the shared USE_CI_TOKENS umbrella flag', () => {

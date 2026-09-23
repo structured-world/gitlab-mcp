@@ -120,11 +120,15 @@ On instance switch:
 
 ### Version Compatibility
 
-| GitLab Version | Work Items API | Iterations | OKRs |
-|----------------|----------------|------------|------|
-| 17.0+ | Full support | Full | Full |
-| 16.x | Partial | Full | Limited |
-| 15.x | Not available | Partial | Not available |
+The server supports GitLab 16.0 and later. Where an older instance lacks newer API
+surface, tools fall back to an equivalent it does have; only actions GitLab itself
+cannot perform there are hidden (and refused if called), for example:
+
+| GitLab Version | Work items |
+|----------------|------------|
+| 18.1+ | All actions, using namespace-level queries |
+| 16.4 - 18.0 | All actions; listing goes through project or group queries, as does lookup by IID where the namespace query is missing |
+| 16.0 - 16.3 | All actions except `add_link` / `remove_link` |
 
 ## Namespace Tier Cache
 

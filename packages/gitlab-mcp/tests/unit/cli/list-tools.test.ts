@@ -93,8 +93,8 @@ describe('list-tools script', () => {
 
   it('applies documented requirement defaults in json output', async () => {
     // A tool with requirements but omitted tier/minVersion must report the
-    // documented defaults (free/8.0), not 'unknown'/undefined; a tool with no
-    // requirements at all stays 'unknown'/undefined.
+    // documented defaults (free / supported floor 16.0), not 'unknown'/undefined;
+    // a tool with no requirements at all stays 'unknown'/undefined.
     process.argv = ['node', 'list-tools.ts', '--json'];
     mockManager.getAllToolDefinitionsTierless.mockReturnValue([
       {
@@ -121,7 +121,7 @@ describe('list-tools script', () => {
     const none = output.find((t: { name: string }) => t.name === 'no_req_tool');
 
     expect(partial.tier).toBe('free');
-    expect(partial.minVersion).toBe('8.0');
+    expect(partial.minVersion).toBe('16.0');
     expect(none.tier).toBe('unknown');
     expect(none.minVersion).toBeUndefined();
   });

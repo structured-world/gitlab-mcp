@@ -98,7 +98,9 @@ export const containerRegistryToolRegistry: ToolRegistry = new Map<string, Enhan
       description:
         "Inspect the GitLab Container Registry. Actions: list_repositories (a project's image repositories), get_repository (single repository by ID), list_tags (tags of a repository), get_tag (single tag with manifest digest, size, and timestamps). Related: manage_registry to delete repositories and tags (including regex bulk cleanup).",
       inputSchema: z.toJSONSchema(BrowseRegistrySchema),
-      requirements: { default: { tier: 'free', minVersion: '12.0' } },
+      // Newer detail fields are @optional in the documents, so every action works
+      // from the supported floor and returns what the instance has.
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_REGISTRY', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = BrowseRegistrySchema.parse(args);
@@ -190,7 +192,7 @@ export const containerRegistryToolRegistry: ToolRegistry = new Map<string, Enhan
       description:
         'Delete GitLab Container Registry repositories and tags. Actions: delete_repository (remove a whole repository), delete_tag (remove one tag), delete_tags_bulk (regex cleanup with keep_n/older_than retention - destructive). Related: browse_registry to inspect before deleting.',
       inputSchema: z.toJSONSchema(ManageRegistrySchema),
-      requirements: { default: { tier: 'free', minVersion: '12.0' } },
+      requirements: { default: { tier: 'free' } },
       gate: { envVar: 'USE_REGISTRY', defaultValue: true },
       handler: async (args: unknown): Promise<unknown> => {
         const input = ManageRegistrySchema.parse(args);

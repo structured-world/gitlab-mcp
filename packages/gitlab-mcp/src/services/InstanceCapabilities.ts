@@ -46,16 +46,22 @@ export type CapabilityGate = Pick<InstanceCapabilities, 'version' | 'tier' | 'ad
 /** Tier hierarchy for comparison: free < premium < ultimate. */
 const TIER_ORDER: Record<string, number> = { free: 0, premium: 1, ultimate: 2 };
 
-/** Default requirement applied when a tool/action omits explicit thresholds. */
+/** Default requirement applied when a tool/action omits an explicit tier. */
 const DEFAULT_TIER = 'free' as const;
-const DEFAULT_MIN_VERSION = '8.0';
 
 /**
- * Conservative gate for GitLab-backed tools that declare no requirements at all
- * (a tool author forgot to annotate, or it is a future tool). Mirrors the legacy
- * "unknown tool" fallback so behaviour does not regress.
+ * Oldest GitLab release this server supports. Every tool, action and parameter
+ * requires at least this version; a declared minVersion only matters above it.
  */
-const UNKNOWN_TOOL_MIN_VERSION = '15.0';
+export const MIN_SUPPORTED_VERSION = '16.0';
+
+/** Version a requirement gates on: its own minVersion, never below the supported floor. */
+export function effectiveMinVersion(req: ToolRequirement | undefined): string {
+  const declared = req?.minVersion;
+  return declared && parseVersion(declared) > parseVersion(MIN_SUPPORTED_VERSION)
+    ? declared
+    : MIN_SUPPORTED_VERSION;
+}
 
 function isTierSufficient(actual: GitLabTier, required: ToolRequirement['tier']): boolean {
   const actualLevel = TIER_ORDER[actual] ?? 0;
@@ -87,9 +93,7 @@ export function meetsRequirement(req: ToolRequirement, caps: CapabilityGate): bo
   // landed, so gate it BEFORE the version-unknown fail-open.
   if (req.requiresAdmin && caps.adminModeActive === false) return false;
   if (caps.version === 'unknown') return true;
-  if (parseVersion(caps.version) < parseVersion(req.minVersion ?? DEFAULT_MIN_VERSION)) {
-    return false;
-  }
+  if (parseVersion(caps.version) < parseVersion(effectiveMinVersion(req))) return false;
   if (!isTierSufficient(caps.tier, req.tier)) return false;
   return true;
 }
@@ -98,8 +102,7 @@ export function meetsRequirement(req: ToolRequirement, caps: CapabilityGate): bo
  * Whether a tool is available on the instance for the given (optional) action.
  *
  * @param reqs - The tool's declared requirements, or undefined when the tool
- *   declares none — in which case a conservative >= 15.0 gate applies (matching
- *   the legacy unknown-tool behaviour).
+ *   declares none, in which case only the supported version floor applies.
  */
 export function isToolAvailable(
   reqs: ToolRequirements | undefined,
@@ -107,10 +110,10 @@ export function isToolAvailable(
   action?: string,
 ): boolean {
   if (!reqs) {
-    // Unannotated tools have no admin gate; only the conservative version floor.
+    // Unannotated tools have no admin gate; only the supported version floor.
     return caps.version === 'unknown'
       ? true
-      : parseVersion(caps.version) >= parseVersion(UNKNOWN_TOOL_MIN_VERSION);
+      : parseVersion(caps.version) >= parseVersion(MIN_SUPPORTED_VERSION);
   }
   // Delegate to meetsRequirement so the admin gate applies even when version is
   // unknown (it short-circuits version/tier internally).
@@ -137,6 +140,23 @@ export function getRestrictedParameters(
 }
 
 /**
+ * Actions whose own requirement the instance does not meet, keyed by lowercase
+ * action name with the reason. Actions without an override follow the tool
+ * default, which gates the whole tool instead.
+ */
+export function getUnavailableActions(
+  reqs: ToolRequirements | undefined,
+  caps: CapabilityGate,
+): Map<string, string> {
+  const unavailable = new Map<string, string>();
+  for (const action of Object.keys(reqs?.actions ?? {})) {
+    const reason = getUnmetReason(reqs, caps, action);
+    if (reason) unavailable.set(action.toLowerCase(), reason);
+  }
+  return unavailable;
+}
+
+/**
  * Human-readable reason a tool/action is unavailable, or null when available.
  * Intended for diagnostics that explain why a tool was filtered.
  */
@@ -153,15 +173,12 @@ export function getUnmetReason(
     return 'Requires administrator privileges (admin mode must be active)';
   }
   if (caps.version === 'unknown') return null;
-  if (!reqs) {
-    return parseVersion(caps.version) >= parseVersion(UNKNOWN_TOOL_MIN_VERSION)
-      ? null
-      : `Requires GitLab ${UNKNOWN_TOOL_MIN_VERSION}+, current version is ${caps.version}`;
+  const req = reqs ? resolveRequirement(reqs, action) : undefined;
+  const minVersion = effectiveMinVersion(req);
+  if (parseVersion(caps.version) < parseVersion(minVersion)) {
+    return `Requires GitLab ${minVersion}+, current version is ${caps.version}`;
   }
-  const req = resolveRequirement(reqs, action);
-  if (parseVersion(caps.version) < parseVersion(req.minVersion ?? DEFAULT_MIN_VERSION)) {
-    return `Requires GitLab ${req.minVersion ?? DEFAULT_MIN_VERSION}+, current version is ${caps.version}`;
-  }
+  if (!req) return null;
   if (!isTierSufficient(caps.tier, req.tier)) {
     return `Requires GitLab ${req.tier ?? DEFAULT_TIER} tier or higher, current tier is ${caps.tier}`;
   }

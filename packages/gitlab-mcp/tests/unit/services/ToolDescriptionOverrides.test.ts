@@ -43,6 +43,7 @@ jest.mock('../../../src/logger', () => ({
 jest.mock('../../../src/services/InstanceCapabilities', () => ({
   isToolAvailable: jest.fn().mockReturnValue(true),
   getRestrictedParameters: jest.fn().mockReturnValue([]),
+  getUnavailableActions: jest.fn().mockReturnValue(new Map()),
 }));
 
 jest.mock('../../../src/services/ConnectionManager', () => ({

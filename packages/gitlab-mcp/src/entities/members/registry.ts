@@ -25,14 +25,10 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
         'View team members and access levels in projects or groups. Actions: list_project, list_group, get_project, get_group (direct members), list_all_project, list_all_group (includes inherited). Levels: Guest(10), Reporter(20), Developer(30), Maintainer(40), Owner(50). Related: manage_member to add/remove, browse_users to find users by name.',
       inputSchema: z.toJSONSchema(BrowseMembersSchema),
       requirements: {
-        default: { tier: 'free', minVersion: '8.0' },
+        default: { tier: 'free' },
         actions: {
-          list_all_project: {
-            tier: 'free',
-            minVersion: '12.4',
-            notes: 'Includes inherited members',
-          },
-          list_all_group: { tier: 'free', minVersion: '12.4', notes: 'Includes inherited members' },
+          list_all_project: { tier: 'free', notes: 'Includes inherited members' },
+          list_all_group: { tier: 'free', notes: 'Includes inherited members' },
         },
       },
       handler: async (args: unknown): Promise<unknown> => {
@@ -112,13 +108,9 @@ export const membersToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
         'Add, remove, or update access levels for project/group members. Actions: add_to_project, add_to_group (with access level + optional expiry), remove_from_project, remove_from_group, update_project, update_group (change access level). Related: browse_members for current membership.',
       inputSchema: z.toJSONSchema(ManageMemberSchema),
       requirements: {
-        default: { tier: 'free', minVersion: '8.0' },
+        default: { tier: 'free' },
         actions: {
-          update_group: {
-            tier: 'free',
-            minVersion: '8.0',
-            notes: 'member_role_id requires Ultimate',
-          },
+          update_group: { tier: 'free', notes: 'member_role_id requires Ultimate' },
         },
       },
       handler: async (args: unknown): Promise<unknown> => {

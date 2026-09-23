@@ -545,32 +545,18 @@ export const GET_NAMESPACE_TYPE: TypedDocumentNode<
   }
 `;
 
-export const GET_NAMESPACE_WORK_ITEMS: TypedDocumentNode<
-  {
-    namespace: {
-      __typename: string;
-      fullPath: string;
-      workItems?: {
-        nodes: WorkItem[];
-        pageInfo: {
-          hasNextPage: boolean;
-          endCursor?: string;
-        };
-      } | null;
-    } | null;
-  },
-  { namespacePath: string; types?: string[]; first?: number; after?: string }
-> = gql`
-  query GetNamespaceWorkItems(
-    $namespacePath: ID!
-    $types: [IssueType!]
-    $first: Int
-    $after: String
-  ) {
-    namespace(fullPath: $namespacePath) {
-      __typename
-      fullPath
-      workItems(types: $types, first: $first, after: $after) {
+interface WorkItemListConnection {
+  nodes: WorkItem[];
+  pageInfo: {
+    hasNextPage: boolean;
+    endCursor?: string;
+  };
+}
+
+type WorkItemListVars = { namespacePath: string; types?: string[]; first?: number; after?: string };
+
+// Listing selection shared by the namespace query and its project/group fallbacks.
+const WORK_ITEM_LIST_CONNECTION = `
         nodes {
           id
           iid
@@ -658,6 +644,61 @@ export const GET_NAMESPACE_WORK_ITEMS: TypedDocumentNode<
           hasNextPage
           endCursor
         }
+`;
+
+export const GET_NAMESPACE_WORK_ITEMS: TypedDocumentNode<
+  {
+    namespace: {
+      __typename: string;
+      fullPath: string;
+      workItems?: WorkItemListConnection | null;
+    } | null;
+  },
+  WorkItemListVars
+> = gql`
+  query GetNamespaceWorkItems(
+    $namespacePath: ID!
+    $types: [IssueType!]
+    $first: Int
+    $after: String
+  ) {
+    namespace(fullPath: $namespacePath) {
+      __typename
+      fullPath
+      workItems(types: $types, first: $first, after: $after) {
+        ${WORK_ITEM_LIST_CONNECTION}
+      }
+    }
+  }
+`;
+
+// Fallbacks for instances without Namespace.workItems (GitLab 18.1).
+export const LIST_PROJECT_WORK_ITEMS: TypedDocumentNode<
+  { project: { workItems: WorkItemListConnection | null } | null },
+  WorkItemListVars
+> = gql`
+  query ListProjectWorkItems(
+    $namespacePath: ID!
+    $types: [IssueType!]
+    $first: Int
+    $after: String
+  ) {
+    project(fullPath: $namespacePath) {
+      workItems(types: $types, first: $first, after: $after) {
+        ${WORK_ITEM_LIST_CONNECTION}
+      }
+    }
+  }
+`;
+
+export const LIST_GROUP_WORK_ITEMS: TypedDocumentNode<
+  { group: { workItems: WorkItemListConnection | null } | null },
+  WorkItemListVars
+> = gql`
+  query ListGroupWorkItems($namespacePath: ID!, $types: [IssueType!], $first: Int, $after: String) {
+    group(fullPath: $namespacePath) {
+      workItems(types: $types, first: $first, after: $after) {
+        ${WORK_ITEM_LIST_CONNECTION}
       }
     }
   }
@@ -1329,15 +1370,8 @@ export const GET_PROJECT_WORK_ITEMS: TypedDocumentNode<
   }
 `;
 
-// Get work item by namespace + IID (for URL-based lookups)
-// Uses the namespace.workItem(iid) query supported since GitLab 16.3
-export const GET_WORK_ITEM_BY_IID: TypedDocumentNode<
-  { namespace: { workItem: WorkItem | null } | null },
-  { namespacePath: string; iid: string }
-> = gql`
-  query GetWorkItemByIid($namespacePath: ID!, $iid: String!) {
-    namespace(fullPath: $namespacePath) {
-      workItem(iid: $iid) {
+// Work item selection shared by the IID lookup and its project/group fallbacks.
+const WORK_ITEM_BY_IID_FIELDS = `
         id
         iid
         title
@@ -1469,6 +1503,49 @@ export const GET_WORK_ITEM_BY_IID: TypedDocumentNode<
               }
             }
           }
+        }
+`;
+
+// Get work item by namespace + IID (for URL-based lookups)
+export const GET_WORK_ITEM_BY_IID: TypedDocumentNode<
+  { namespace: { workItem: WorkItem | null } | null },
+  { namespacePath: string; iid: string }
+> = gql`
+  query GetWorkItemByIid($namespacePath: ID!, $iid: String!) {
+    namespace(fullPath: $namespacePath) {
+      workItem(iid: $iid) {
+        ${WORK_ITEM_BY_IID_FIELDS}
+      }
+    }
+  }
+`;
+
+// Fallbacks for instances without Namespace.workItem: filter the project or
+// group work item listing by IID.
+export const GET_PROJECT_WORK_ITEM_BY_IID: TypedDocumentNode<
+  { project: { workItems: { nodes: WorkItem[] } | null } | null },
+  { namespacePath: string; iid: string }
+> = gql`
+  query GetProjectWorkItemByIid($namespacePath: ID!, $iid: String!) {
+    project(fullPath: $namespacePath) {
+      workItems(iid: $iid, first: 1) {
+        nodes {
+          ${WORK_ITEM_BY_IID_FIELDS}
+        }
+      }
+    }
+  }
+`;
+
+export const GET_GROUP_WORK_ITEM_BY_IID: TypedDocumentNode<
+  { group: { workItems: { nodes: WorkItem[] } | null } | null },
+  { namespacePath: string; iid: string }
+> = gql`
+  query GetGroupWorkItemByIid($namespacePath: ID!, $iid: String!) {
+    group(fullPath: $namespacePath) {
+      workItems(iid: $iid, first: 1) {
+        nodes {
+          ${WORK_ITEM_BY_IID_FIELDS}
         }
       }
     }
@@ -1730,7 +1807,7 @@ export const UPDATE_WORK_ITEM: TypedDocumentNode<
           ... on WorkItemWidgetStartAndDueDate {
             startDate
             dueDate
-            isFixed
+            isFixed @optional
           }
           ... on WorkItemWidgetHierarchy {
             parent {
@@ -1784,10 +1861,10 @@ export const UPDATE_WORK_ITEM: TypedDocumentNode<
             healthStatus
           }
           ... on WorkItemWidgetProgress {
-            currentValue
-            endValue
+            currentValue @optional
+            endValue @optional
             progress
-            startValue
+            startValue @optional
           }
           ... on WorkItemWidgetColor {
             color
@@ -1875,6 +1952,34 @@ export const GET_WORK_ITEM_TYPES: TypedDocumentNode<
 > = gql`
   query GetWorkItemTypes($namespacePath: ID!) {
     namespace(fullPath: $namespacePath) {
+      workItemTypes {
+        nodes {
+          id
+          name
+        }
+      }
+    }
+  }
+`;
+
+// Fallback for instances without Namespace.workItemTypes (GitLab 17.2).
+export const GET_PROJECT_OR_GROUP_WORK_ITEM_TYPES: TypedDocumentNode<
+  {
+    project: { workItemTypes: { nodes: { id: string; name: string }[] } } | null;
+    group: { workItemTypes: { nodes: { id: string; name: string }[] } } | null;
+  },
+  { namespacePath: string }
+> = gql`
+  query GetProjectOrGroupWorkItemTypes($namespacePath: ID!) {
+    project(fullPath: $namespacePath) {
+      workItemTypes {
+        nodes {
+          id
+          name
+        }
+      }
+    }
+    group(fullPath: $namespacePath) {
       workItemTypes {
         nodes {
           id

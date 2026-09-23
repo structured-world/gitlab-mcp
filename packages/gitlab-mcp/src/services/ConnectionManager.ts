@@ -1,6 +1,6 @@
 import { GraphQLClient } from '../graphql/client';
 import { GitLabVersionDetector, GitLabInstanceInfo } from './GitLabVersionDetector';
-import { SchemaIntrospector, SchemaInfo } from './SchemaIntrospector';
+import { SchemaIntrospector, SchemaInfo, type SchemaFieldIndex } from './SchemaIntrospector';
 import {
   detectTokenScopes,
   logTokenScopeInfo,
@@ -67,6 +67,12 @@ export class ConnectionManager {
   /** Tracks the most recently requested URL so stale inits don't overwrite currentInstanceUrl.
    *  E.g. init(A) starts, init(B) starts, A finishes last — A must not rebind to itself. */
   private latestRequestedUrl: string | null = null;
+  /**
+   * Schema source per instance URL for pooled GraphQL clients, which are created
+   * without one. It looks the instance up on each request, so it follows
+   * re-initialisation and returns nothing once the instance is evicted.
+   */
+  private readonly schemaIndexProviders = new Map<string, () => SchemaFieldIndex | undefined>();
 
   /**
    * Last-access timestamps for per-URL instance entries (epoch ms).
@@ -260,6 +266,8 @@ export class ConnectionManager {
       const client = new GraphQLClient(endpoint, clientOptions);
       const versionDetector = new GitLabVersionDetector(client);
       const schemaIntrospector = new SchemaIntrospector(client);
+      // Adapt every query to this instance's schema once it is introspected.
+      client.setSchemaIndexProvider(() => schemaIntrospector.getCachedSchema()?.fieldIndex);
 
       // Create per-URL state entry (assigned to outer `let state` for catch guard)
       state = {
@@ -630,6 +638,8 @@ export class ConnectionManager {
     if (targetUrl && registry.isInitialized() && registry.has(targetUrl)) {
       const client = registry.getGraphQLClient(targetUrl, authHeaders);
       if (client) {
+        // Through the auth proxy this lands on the shared pooled client.
+        client.setSchemaIndexProvider(this.schemaIndexProviderFor(targetUrl));
         return client;
       }
     }
@@ -646,6 +656,15 @@ export class ConnectionManager {
       throw new Error(`Connection not initialized for ${targetUrl}. Call initialize() first.`);
     }
     return this.getClient();
+  }
+
+  private schemaIndexProviderFor(url: string): () => SchemaFieldIndex | undefined {
+    let provider = this.schemaIndexProviders.get(url);
+    if (!provider) {
+      provider = () => this.instances.get(url)?.schemaIntrospector.getCachedSchema()?.fieldIndex;
+      this.schemaIndexProviders.set(url, provider);
+    }
+    return provider;
   }
 
   public getVersionDetector(instanceUrl?: string): GitLabVersionDetector {

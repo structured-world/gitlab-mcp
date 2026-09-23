@@ -80,8 +80,8 @@ const CreateWebhookSchema = z.object({
   projectId: z.string().optional().describe('Project ID or path (required if scope=project)'),
   groupId: z.string().optional().describe('Group ID or path (required if scope=group)'),
   url: z.string().describe('Webhook URL (required)'),
-  name: z.string().optional().describe('Human-readable webhook name (GitLab 16.11+)'),
-  description: z.string().optional().describe('Webhook description (GitLab 16.11+)'),
+  name: z.string().optional().describe('Human-readable webhook name (GitLab 17.1+)'),
+  description: z.string().optional().describe('Webhook description (GitLab 17.1+)'),
   token: z.string().optional().describe('Secret token for webhook validation'),
   ...WebhookEventFields,
 });
@@ -94,8 +94,8 @@ const UpdateWebhookSchema = z.object({
   groupId: z.string().optional().describe('Group ID or path (required if scope=group)'),
   hookId: requiredId.describe('Webhook ID (required)'),
   url: z.string().optional().describe('Webhook URL'),
-  name: z.string().optional().describe('Human-readable webhook name (GitLab 16.11+)'),
-  description: z.string().optional().describe('Webhook description (GitLab 16.11+)'),
+  name: z.string().optional().describe('Human-readable webhook name (GitLab 17.1+)'),
+  description: z.string().optional().describe('Webhook description (GitLab 17.1+)'),
   token: z.string().optional().describe('Secret token for webhook validation'),
   ...WebhookEventFields,
 });

@@ -291,11 +291,12 @@ describe('WidgetAvailability', () => {
 
   describe('widget requirements', () => {
     it('should return widget requirement correctly', () => {
+      // Widgets present at the supported floor declare no minVersion.
       const assigneesReq = WidgetAvailability.getWidgetRequirement(WorkItemWidgetTypes.ASSIGNEES);
-      expect(assigneesReq).toEqual({ tier: 'free', minVersion: '15.0' });
+      expect(assigneesReq).toEqual({ tier: 'free' });
 
       const weightReq = WidgetAvailability.getWidgetRequirement(WorkItemWidgetTypes.WEIGHT);
-      expect(weightReq).toEqual({ tier: 'premium', minVersion: '15.0' });
+      expect(weightReq).toEqual({ tier: 'premium' });
 
       const customFieldsReq = WidgetAvailability.getWidgetRequirement(
         WorkItemWidgetTypes.CUSTOM_FIELDS,
@@ -305,7 +306,7 @@ describe('WidgetAvailability', () => {
       const verificationStatusReq = WidgetAvailability.getWidgetRequirement(
         WorkItemWidgetTypes.VERIFICATION_STATUS,
       );
-      expect(verificationStatusReq).toEqual({ tier: 'ultimate', minVersion: '13.1' });
+      expect(verificationStatusReq).toEqual({ tier: 'ultimate' });
     });
 
     it('should return undefined for unknown widget', () => {
@@ -428,7 +429,8 @@ describe('WidgetAvailability', () => {
     });
 
     it('should detect version-restricted widget parameters', () => {
-      // Old GitLab version (14.0) should fail for ASSIGNEES (requires 15.0+)
+      // An instance below the supported floor (16.0) fails even for ASSIGNEES,
+      // which declares no minVersion of its own.
       const oldVersionInfo = {
         ...mockInstanceInfoFree,
         version: '14.0.0',
@@ -442,7 +444,7 @@ describe('WidgetAvailability', () => {
       expect(result).not.toBeNull();
       expect(result!.parameter).toBe('assigneeIds');
       expect(result!.widget).toBe('ASSIGNEES');
-      expect(result!.requiredVersion).toBe('15.0');
+      expect(result!.requiredVersion).toBe('16.0');
       expect(result!.detectedVersion).toBe('14.0.0');
     });
 

@@ -17,7 +17,8 @@ import {
 } from '../../../../src/graphql/runners';
 
 const mockClient = { request: jest.fn() };
-const mockGitlab = { post: jest.fn() };
+const mockGitlab = { post: jest.fn(), get: jest.fn() };
+const mockGraphqlSupports = jest.fn(() => true);
 
 jest.mock('../../../../src/services/ConnectionManager', () => ({
   ConnectionManager: {
@@ -25,7 +26,14 @@ jest.mock('../../../../src/services/ConnectionManager', () => ({
   },
 }));
 jest.mock('../../../../src/utils/gitlab-api', () => ({
-  gitlab: { post: (...args: unknown[]) => mockGitlab.post(...args) },
+  ...jest.requireActual('../../../../src/utils/gitlab-api'),
+  gitlab: {
+    post: (...args: unknown[]) => mockGitlab.post(...args),
+    get: (...args: unknown[]) => mockGitlab.get(...args),
+  },
+}));
+jest.mock('../../../../src/entities/instance-version', () => ({
+  graphqlSupports: (...args: unknown[]) => mockGraphqlSupports(...(args as [])),
 }));
 
 const browse = () => runnersToolRegistry.get('browse_runners')!;
@@ -35,6 +43,8 @@ const RUNNER_GID = 'gid://gitlab/Ci::Runner/7';
 beforeEach(() => {
   mockClient.request.mockReset();
   mockGitlab.post.mockReset();
+  mockGitlab.get.mockReset();
+  mockGraphqlSupports.mockReturnValue(true);
 });
 
 describe('runners registry', () => {
@@ -65,6 +75,132 @@ describe('runners registry', () => {
       mockClient.request.mockResolvedValueOnce({ currentUser: null });
       const res = (await browse().handler({ action: 'list_owned' })) as { nodes: unknown[] };
       expect(res.nodes).toEqual([]);
+    });
+
+    describe('list_owned without currentUser.runners (before GitLab 18.3)', () => {
+      beforeEach(() => mockGraphqlSupports.mockReturnValue(false));
+
+      it('reads the REST owned-runners list, shaped like the GraphQL connection', async () => {
+        mockGitlab.get.mockResolvedValueOnce([
+          {
+            id: 7,
+            description: 'ci-a',
+            runner_type: 'project_type',
+            status: 'online',
+            paused: false,
+          },
+          {
+            id: 8,
+            description: 'ci-b',
+            runner_type: 'group_type',
+            status: 'offline',
+            paused: true,
+          },
+        ]);
+
+        const res = (await browse().handler({
+          action: 'list_owned',
+          status: 'ONLINE',
+          type: 'PROJECT_TYPE',
+          first: 2,
+        })) as { nodes: Array<Record<string, unknown>>; pageInfo: Record<string, unknown> };
+
+        expect(mockClient.request).not.toHaveBeenCalled();
+        const [path, opts] = mockGitlab.get.mock.calls[0];
+        expect(path).toBe('runners');
+        // REST expects lowercase enum values and page-number pagination.
+        expect(opts.query).toMatchObject({
+          status: 'online',
+          type: 'project_type',
+          per_page: 2,
+          page: 1,
+        });
+        expect(res.nodes[0]).toMatchObject({
+          id: 7,
+          runnerType: 'PROJECT_TYPE',
+          status: 'ONLINE',
+          paused: false,
+        });
+        // A full page means there may be more; the cursor is the next page.
+        expect(res.pageInfo).toEqual({ hasNextPage: true, endCursor: '2' });
+      });
+
+      it('rejects a malformed runners response with a clear error', async () => {
+        mockGitlab.get.mockResolvedValueOnce([{ id: 7, description: 'x', paused: false }]);
+
+        await expect(browse().handler({ action: 'list_owned' })).rejects.toThrow(
+          'GitLab API error: unexpected runners response',
+        );
+      });
+
+      it('searches before paginating, walking REST pages past non-matching ones', async () => {
+        // A full first REST page without a match must not hide a match on the
+        // next one; the cursor then counts pages of matches, not REST pages.
+        const unrelated = Array.from({ length: 100 }, (_, i) => ({
+          id: 100 + i,
+          description: 'build',
+          runner_type: 'project_type',
+          status: 'online',
+          paused: false,
+        }));
+        const deploy = (id: number) => ({
+          id,
+          description: `Deploy ${id}`,
+          runner_type: 'project_type',
+          status: 'online',
+          paused: false,
+        });
+        mockGitlab.get.mockResolvedValueOnce(unrelated);
+        mockGitlab.get.mockResolvedValueOnce([deploy(1), deploy(2), deploy(3)]);
+
+        const res = (await browse().handler({
+          action: 'list_owned',
+          search: 'deploy',
+          first: 2,
+        })) as { nodes: Array<{ id: number }>; pageInfo: Record<string, unknown> };
+
+        expect(mockGitlab.get.mock.calls.map((c) => c[1].query.page)).toEqual([1, 2]);
+        expect(res.nodes.map((n) => n.id)).toEqual([1, 2]);
+        expect(res.pageInfo).toEqual({ hasNextPage: true, endCursor: '2' });
+      });
+
+      it('returns a later page of matches and ends pagination when matches run out', async () => {
+        mockGitlab.get.mockResolvedValueOnce([
+          {
+            id: 7,
+            description: 'Deploy runner',
+            runner_type: 'project_type',
+            status: 'online',
+            paused: false,
+          },
+          {
+            id: 8,
+            description: 'build',
+            runner_type: 'project_type',
+            status: 'online',
+            paused: false,
+          },
+          // A runner without a description never matches a search.
+          {
+            id: 9,
+            description: null,
+            runner_type: 'project_type',
+            status: null,
+            paused: false,
+          },
+        ]);
+
+        const first = (await browse().handler({
+          action: 'list_owned',
+          search: 'deploy',
+        })) as { nodes: Array<{ id: number }>; pageInfo: Record<string, unknown> };
+
+        // The REST listing has no search parameter; it is matched here.
+        expect(mockGitlab.get.mock.calls[0][1].query).toMatchObject({ page: 1 });
+        expect(mockGitlab.get.mock.calls[0][1].query).not.toHaveProperty('search');
+        expect(first.nodes.map((n) => n.id)).toEqual([7]);
+        expect(first.pageInfo).toEqual({ hasNextPage: false, endCursor: null });
+      });
     });
 
     it('list_project queries by full path', async () => {

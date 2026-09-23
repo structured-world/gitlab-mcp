@@ -2,11 +2,13 @@ import { WorkItemWidgetType, WorkItemWidgetTypes } from '../graphql/workItems';
 import { ConnectionManager } from './ConnectionManager';
 import { GitLabTier } from './GitLabVersionDetector';
 import { parseVersion } from '../utils/version';
+import { effectiveMinVersion } from './InstanceCapabilities';
 import { logDebug } from '../logger';
 
 interface WidgetRequirement {
   tier: GitLabTier;
-  minVersion: string;
+  /** Declared only when newer than MIN_SUPPORTED_VERSION. */
+  minVersion?: string;
 }
 
 /**
@@ -67,44 +69,44 @@ const PARAMETER_WIDGET_MAP: Record<string, WorkItemWidgetType> = {
 export class WidgetAvailability {
   private static widgetRequirements: Record<WorkItemWidgetType, WidgetRequirement> = {
     // Free tier widgets (available to all)
-    [WorkItemWidgetTypes.ASSIGNEES]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.DESCRIPTION]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.HIERARCHY]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.LABELS]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.MILESTONE]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.NOTES]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.START_AND_DUE_DATE]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.STATUS]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.NOTIFICATIONS]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.CURRENT_USER_TODOS]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.AWARD_EMOJI]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.PARTICIPANTS]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.DESIGNS]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.DEVELOPMENT]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.TIME_TRACKING]: { tier: 'free', minVersion: '15.0' },
-    [WorkItemWidgetTypes.ERROR_TRACKING]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.ASSIGNEES]: { tier: 'free' },
+    [WorkItemWidgetTypes.DESCRIPTION]: { tier: 'free' },
+    [WorkItemWidgetTypes.HIERARCHY]: { tier: 'free' },
+    [WorkItemWidgetTypes.LABELS]: { tier: 'free' },
+    [WorkItemWidgetTypes.MILESTONE]: { tier: 'free' },
+    [WorkItemWidgetTypes.NOTES]: { tier: 'free' },
+    [WorkItemWidgetTypes.START_AND_DUE_DATE]: { tier: 'free' },
+    [WorkItemWidgetTypes.STATUS]: { tier: 'free' },
+    [WorkItemWidgetTypes.NOTIFICATIONS]: { tier: 'free' },
+    [WorkItemWidgetTypes.CURRENT_USER_TODOS]: { tier: 'free' },
+    [WorkItemWidgetTypes.AWARD_EMOJI]: { tier: 'free' },
+    [WorkItemWidgetTypes.PARTICIPANTS]: { tier: 'free' },
+    [WorkItemWidgetTypes.DESIGNS]: { tier: 'free' },
+    [WorkItemWidgetTypes.DEVELOPMENT]: { tier: 'free' },
+    [WorkItemWidgetTypes.TIME_TRACKING]: { tier: 'free' },
+    [WorkItemWidgetTypes.ERROR_TRACKING]: { tier: 'free' },
 
     // Free tier widgets (linked items available on CE)
-    [WorkItemWidgetTypes.LINKED_ITEMS]: { tier: 'free', minVersion: '15.0' },
+    [WorkItemWidgetTypes.LINKED_ITEMS]: { tier: 'free' },
 
     // Premium tier widgets
-    [WorkItemWidgetTypes.WEIGHT]: { tier: 'premium', minVersion: '15.0' },
-    [WorkItemWidgetTypes.ITERATION]: { tier: 'premium', minVersion: '15.0' },
-    [WorkItemWidgetTypes.PROGRESS]: { tier: 'premium', minVersion: '15.0' },
-    [WorkItemWidgetTypes.CRM_CONTACTS]: { tier: 'premium', minVersion: '16.0' },
-    [WorkItemWidgetTypes.EMAIL_PARTICIPANTS]: { tier: 'premium', minVersion: '16.0' },
+    [WorkItemWidgetTypes.WEIGHT]: { tier: 'premium' },
+    [WorkItemWidgetTypes.ITERATION]: { tier: 'premium' },
+    [WorkItemWidgetTypes.PROGRESS]: { tier: 'premium' },
+    [WorkItemWidgetTypes.CRM_CONTACTS]: { tier: 'premium' },
+    [WorkItemWidgetTypes.EMAIL_PARTICIPANTS]: { tier: 'premium' },
     [WorkItemWidgetTypes.LINKED_RESOURCES]: { tier: 'premium', minVersion: '16.5' },
 
     // Ultimate tier widgets
-    [WorkItemWidgetTypes.HEALTH_STATUS]: { tier: 'ultimate', minVersion: '15.0' },
-    [WorkItemWidgetTypes.COLOR]: { tier: 'ultimate', minVersion: '15.0' },
+    [WorkItemWidgetTypes.HEALTH_STATUS]: { tier: 'ultimate' },
+    [WorkItemWidgetTypes.COLOR]: { tier: 'ultimate' },
     [WorkItemWidgetTypes.CUSTOM_FIELDS]: { tier: 'ultimate', minVersion: '17.0' },
-    [WorkItemWidgetTypes.VULNERABILITIES]: { tier: 'ultimate', minVersion: '15.0' },
+    [WorkItemWidgetTypes.VULNERABILITIES]: { tier: 'ultimate' },
 
     // Legacy widgets (may not be available)
-    [WorkItemWidgetTypes.REQUIREMENT_LEGACY]: { tier: 'ultimate', minVersion: '13.1' },
-    [WorkItemWidgetTypes.TEST_REPORTS]: { tier: 'ultimate', minVersion: '13.6' },
-    [WorkItemWidgetTypes.VERIFICATION_STATUS]: { tier: 'ultimate', minVersion: '13.1' },
+    [WorkItemWidgetTypes.REQUIREMENT_LEGACY]: { tier: 'ultimate' },
+    [WorkItemWidgetTypes.TEST_REPORTS]: { tier: 'ultimate' },
+    [WorkItemWidgetTypes.VERIFICATION_STATUS]: { tier: 'ultimate' },
   };
 
   public static isWidgetAvailable(widget: WorkItemWidgetType, instanceUrl?: string): boolean {
@@ -121,8 +123,7 @@ export class WidgetAvailability {
 
       // Check version requirement
       const version = parseVersion(instanceInfo.version);
-      const minVersion = parseVersion(requirement.minVersion);
-      if (version < minVersion) {
+      if (version < parseVersion(effectiveMinVersion(requirement))) {
         return false;
       }
 
@@ -198,12 +199,12 @@ export class WidgetAvailability {
       if (!requirement) continue; // Unknown widget
 
       // Check version requirement
-      const minVersion = parseVersion(requirement.minVersion);
-      if (parsedVersion < minVersion) {
+      const requiredVersion = effectiveMinVersion(requirement);
+      if (parsedVersion < parseVersion(requiredVersion)) {
         return {
           parameter: paramName,
           widget: widgetType,
-          requiredVersion: requirement.minVersion,
+          requiredVersion,
           detectedVersion: instanceVersion,
           requiredTier: requirement.tier,
           currentTier: instanceTier,
@@ -219,7 +220,7 @@ export class WidgetAvailability {
           return {
             parameter: paramName,
             widget: widgetType,
-            requiredVersion: requirement.minVersion,
+            requiredVersion,
             detectedVersion: instanceVersion,
             requiredTier: requirement.tier,
             currentTier: instanceTier,

@@ -201,14 +201,14 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             if (!queryParams.has('simple')) queryParams.set('simple', 'true');
             if (!queryParams.has('per_page')) queryParams.set('per_page', '20');
 
-            // The native `active` query parameter landed in GitLab 18.5. On older
-            // instances translate it to the long-standing `archived` filter
+            // The native `active` query parameter landed in GitLab 18.5 for
+            // GET /projects and in 18.8 for GET /groups/:id/projects. Below that,
+            // translate it to the long-standing `archived` filter
             // (active=true => archived=false), which is server-side and therefore
             // pagination-safe. Projects pending deletion are already hidden from
             // default listings, so this mapping matches `active` semantics.
-            const activeFilterSupported = instanceAtLeast('18.5');
-            const applyActiveFilter = (value: boolean): void => {
-              if (activeFilterSupported) {
+            const applyActiveFilter = (value: boolean, nativeSince: string): void => {
+              if (instanceAtLeast(nativeSince)) {
                 // active wins over an explicit archived filter: drop archived so the
                 // request never sends both (which would make precedence ambiguous).
                 queryParams.delete('archived');
@@ -223,7 +223,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
 
             let apiUrl: string;
             if (group_id) {
-              if (active !== undefined) applyActiveFilter(active);
+              if (active !== undefined) applyActiveFilter(active, '18.8');
               apiUrl = `${process.env.GITLAB_API_URL}/api/v4/groups/${normalizeProjectId(group_id)}/projects?${queryParams}`;
             } else if (include_deleted) {
               // include_pending_delete returns soft-deleted projects; do NOT also send
@@ -231,7 +231,7 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
               queryParams.set('include_pending_delete', 'true');
               apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
             } else if (active !== undefined) {
-              applyActiveFilter(active);
+              applyActiveFilter(active, '18.5');
               apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects?${queryParams}`;
             } else {
               // Default: list active projects (historical behaviour, unchanged).

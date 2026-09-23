@@ -502,6 +502,27 @@ describe('Core Registry', () => {
         expect(url).toContain('active=true');
       });
 
+      it('translates active for group listings below 18.8, where the group endpoint lacks it', async () => {
+        // GET /groups/:id/projects gained `active` in 18.8, three releases after
+        // GET /projects; in between it is ignored, so it must become `archived`.
+        const url = await browseProjectsListUrlAtVersion(
+          { group_id: 'my-group', active: true },
+          '18.6.0',
+        );
+        expect(url).toContain('/api/v4/groups/my-group/projects?');
+        expect(url).toContain('archived=false');
+        expect(url).not.toContain('active=');
+      });
+
+      it('sends the native active filter to group listings from 18.8', async () => {
+        const url = await browseProjectsListUrlAtVersion(
+          { group_id: 'my-group', active: true },
+          '18.8.0',
+        );
+        expect(url).toContain('active=true');
+        expect(url).not.toContain('archived=');
+      });
+
       it('keeps the historical active=true default when active is omitted', async () => {
         // Default listing on a sub-18.5 instance must NOT switch to the archived
         // translation; the implicit default is unchanged to avoid a regression.

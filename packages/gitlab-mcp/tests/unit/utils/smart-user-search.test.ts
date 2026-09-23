@@ -126,6 +126,24 @@ describe('fetchUsers user-type filters', () => {
     ]);
   });
 
+  it('stops after a bounded number of pages and says the result may be incomplete', async () => {
+    // A filter matching few users must not walk every /users page of a large
+    // instance in one tool call.
+    nativeUserFilters = false;
+    const fullPage = Array.from({ length: 100 }, (_, i) => ({
+      id: i,
+      state: 'active',
+      bot: false,
+    }));
+    for (let i = 0; i < 25; i++) respond(fullPage);
+
+    const result = await fetchUsers({ exclude_active: true });
+
+    expect(mockEnhancedFetch).toHaveBeenCalledTimes(20);
+    expect(result.users).toEqual([]);
+    expect(result.warning).toContain('only the first 2000 users were scanned');
+  });
+
   it('emulates exclude_active on each user state', async () => {
     nativeUserFilters = false;
     respond(users);

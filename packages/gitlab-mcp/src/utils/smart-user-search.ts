@@ -121,6 +121,10 @@ export interface FetchedUsers {
 const PARTIAL_HUMANS_WARNING =
   'Filtered to humans without the bot flag (GitLab before 17.3 shows it only to administrators): bot accounts other than project bots may be included';
 
+/** Pages of /users one call may scan while emulating filters, bounding its requests. */
+const MAX_EMULATED_PAGES = 20;
+const TRUNCATED_WARNING = `Filtered client-side (GitLab before 17.3) and only the first ${MAX_EMULATED_PAGES * GITLAB_MAX_PER_PAGE} users were scanned: later matches may be missing; narrow the search to reach them`;
+
 /** One validated GET /users page. */
 async function fetchUsersPage(query: Record<string, unknown>) {
   const queryParams = new URLSearchParams();
@@ -147,7 +151,8 @@ async function fetchUsersPage(query: Record<string, unknown>) {
  * filtered page is complete. exclude_active checks each user's state; humans
  * excludes project bots server-side and any user flagged as a bot, but the bot
  * flag reaches administrators only, so without it the result carries a warning.
- * exclude_humans cannot work without the flag and is refused.
+ * exclude_humans cannot work without the flag and is refused. The walk stops
+ * after MAX_EMULATED_PAGES, with a warning that later matches may be missing.
  */
 export async function fetchUsers(params: Record<string, unknown>): Promise<FetchedUsers> {
   const { humans, exclude_humans, exclude_active, page, per_page, ...filters } = params;
@@ -160,7 +165,12 @@ export async function fetchUsers(params: Record<string, unknown>): Promise<Fetch
   const serverQuery = { ...filters, ...(humans ? { without_project_bots: true } : {}) };
   const matches: unknown[] = [];
   let botFlagMissing = false;
+  let truncated = false;
   for (let serverPage = 1; matches.length < wanted; serverPage++) {
+    if (serverPage > MAX_EMULATED_PAGES) {
+      truncated = true;
+      break;
+    }
     const batch = await fetchUsersPage({
       ...serverQuery,
       per_page: GITLAB_MAX_PER_PAGE,
@@ -186,7 +196,11 @@ export async function fetchUsers(params: Record<string, unknown>): Promise<Fetch
     if (batch.length < GITLAB_MAX_PER_PAGE) break;
   }
   const users = matches.slice(wanted - perPage, wanted);
-  return humans && botFlagMissing ? { users, warning: PARTIAL_HUMANS_WARNING } : { users };
+  const warnings = [
+    ...(humans && botFlagMissing ? [PARTIAL_HUMANS_WARNING] : []),
+    ...(truncated ? [TRUNCATED_WARNING] : []),
+  ];
+  return warnings.length > 0 ? { users, warning: warnings.join('; ') } : { users };
 }
 
 /**

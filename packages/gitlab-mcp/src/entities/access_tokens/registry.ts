@@ -3,7 +3,7 @@ import { BrowseAccessTokensSchema } from './schema-readonly';
 import { ManageAccessTokenSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
-import { assertActionAllowed } from '../utils';
+import { assertActionAllowed, GITLAB_MAX_PER_PAGE } from '../utils';
 import { instanceAtLeast } from '../instance-version';
 
 // Personal/project/group access tokens are Free tier; every endpoint used here
@@ -13,17 +13,29 @@ const FREE_REQ = { tier: 'free' } as const;
 /**
  * List project/group tokens, honouring `state`. The server-side filter landed in
  * GitLab 17.2 (older instances ignore it and return every token), so there it is
- * applied client-side on each token's `active` flag.
+ * applied client-side on each token's `active` flag, before pagination: GitLab's
+ * pages are walked until the requested filtered page is complete or the list ends.
  */
-async function listScopedTokens(path: string, query: Record<string, unknown>) {
-  const { state, ...rest } = query;
+async function listScopedTokens(
+  path: string,
+  query: { state?: 'active' | 'inactive'; per_page: number; page?: number },
+) {
+  const { state, per_page: perPage, page = 1 } = query;
   if (!state || instanceAtLeast('17.2')) {
     return gitlab.get(path, { query: toQuery(query, []) });
   }
-  const tokens = await gitlab.get<Array<{ active?: boolean }>>(path, {
-    query: toQuery(rest, []),
-  });
-  return tokens.filter((token) => token.active === (state === 'active'));
+  const wanted = page * perPage;
+  const matches: Array<{ active?: boolean }> = [];
+  for (let serverPage = 1; matches.length < wanted; serverPage++) {
+    const batch = await gitlab.get<Array<{ active?: boolean }>>(path, {
+      query: toQuery({ per_page: GITLAB_MAX_PER_PAGE, page: serverPage }, []),
+    });
+    for (const token of batch) {
+      if (token.active === (state === 'active')) matches.push(token);
+    }
+    if (batch.length < GITLAB_MAX_PER_PAGE) break;
+  }
+  return matches.slice(wanted - perPage, wanted);
 }
 
 const NEW_TOKEN_NOTICE =

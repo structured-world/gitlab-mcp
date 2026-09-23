@@ -118,6 +118,34 @@ describe('Access Tokens Registry', () => {
         expect(result).toEqual([{ id: 2, active: false }]);
       });
 
+      it('filters before paginating, walking GitLab pages past non-matching ones', async () => {
+        // A full first page of inactive tokens must not hide an active one on
+        // the next page, and the requested page is cut from the filtered list.
+        atVersion('17.1.0');
+        const inactive = Array.from({ length: 100 }, (_, i) => ({ id: i + 1, active: false }));
+        mockOk(inactive);
+        mockOk([
+          { id: 101, active: true },
+          { id: 102, active: true },
+          { id: 103, active: true },
+        ]);
+
+        const result = await browse().handler({
+          action: 'list_project',
+          project_id: 'p',
+          state: 'active',
+          per_page: 2,
+          page: 2,
+        });
+
+        expect(result).toEqual([{ id: 103, active: true }]);
+        const sent = mockEnhancedFetch.mock.calls.map(([url]) => new URL(String(url)).searchParams);
+        expect(sent.map((q) => [q.get('page'), q.get('per_page')])).toEqual([
+          ['1', '100'],
+          ['2', '100'],
+        ]);
+      });
+
       it('sends the state filter from 17.2', async () => {
         atVersion('17.2.0');
         mockOk([]);

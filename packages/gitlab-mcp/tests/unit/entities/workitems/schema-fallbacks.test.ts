@@ -86,6 +86,24 @@ describe('browse_work_items list', () => {
     ]);
   });
 
+  it('returns an empty page when the namespace does not exist', async () => {
+    mockRequest.mockResolvedValueOnce({ namespace: null });
+    const result = (await browse().handler({ action: 'list', namespace: 'gone', first: 5 })) as {
+      items: unknown[];
+    };
+    expect(mockRequest.mock.calls[0][1]).toMatchObject({ first: 5 });
+    expect(result.items).toEqual([]);
+  });
+
+  it('returns an empty page when the fallback finds neither project nor group', async () => {
+    missing.add('Namespace.workItems');
+    mockRequest.mockResolvedValueOnce({ project: null }).mockResolvedValueOnce({ group: null });
+    const result = (await browse().handler({ action: 'list', namespace: 'gone' })) as {
+      items: unknown[];
+    };
+    expect(result.items).toEqual([]);
+  });
+
   it('explains when group work items cannot be listed on the instance', async () => {
     missing.add('Namespace.workItems');
     missing.add('Group.workItems');
@@ -122,6 +140,27 @@ describe('browse_work_items get by IID', () => {
       'Work item with IID "9" not found in namespace "grp"',
     );
     expect(mockRequest.mock.calls[1][0]).toBe(GET_GROUP_WORK_ITEM_BY_IID);
+  });
+
+  it('reports not found when the project has no item with the IID', async () => {
+    missing.add('Namespace.workItem');
+    mockRequest.mockResolvedValueOnce({ project: { workItems: { nodes: [] } } });
+
+    await expect(
+      browse().handler({ action: 'get', namespace: 'grp/proj', iid: '9' }),
+    ).rejects.toThrow('Work item with IID "9" not found in namespace "grp/proj"');
+    expect(mockRequest).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the group lookup when the instance has no group work items', async () => {
+    missing.add('Namespace.workItem');
+    missing.add('Group.workItems');
+    mockRequest.mockResolvedValueOnce({ project: null });
+
+    await expect(browse().handler({ action: 'get', namespace: 'grp', iid: '9' })).rejects.toThrow(
+      'not found',
+    );
+    expect(mockRequest).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -173,6 +212,37 @@ describe('manage_work_item create on an older create input', () => {
     })) as { _warning: { failedProperties: Record<string, { error: string }> } };
 
     expect(result._warning.failedProperties.assigneeIds.error).toBe('denied');
+  });
+
+  it('defers the description and reports multi-field widgets as a whole', async () => {
+    missing.add('WorkItemCreateInput.description');
+    missing.add('WorkItemCreateInput.startAndDueDateWidget');
+    mockRequest
+      .mockResolvedValueOnce({ workItemCreate: { workItem: item('1'), errors: [] } })
+      .mockResolvedValueOnce({ workItemUpdate: { workItem: null, errors: ['denied'] } });
+
+    const result = (await manage().handler({
+      action: 'create',
+      namespace: 'grp/proj',
+      title: 't',
+      workItemType: 'Issue',
+      description: 'body',
+      startDate: '2026-01-01',
+      dueDate: '2026-02-01',
+    })) as { _warning: { failedProperties: Record<string, { requestedValue: unknown }> } };
+
+    const createInput = mockRequest.mock.calls[0][1].input;
+    expect(createInput.description).toBeUndefined();
+    expect(createInput.startAndDueDateWidget).toBeUndefined();
+    expect(mockRequest.mock.calls[1][1].input.descriptionWidget).toEqual({ description: 'body' });
+
+    const failed = result._warning.failedProperties;
+    // A single-field widget reports its value, a multi-field one the whole input.
+    expect(failed.description.requestedValue).toBe('body');
+    expect(failed.dates.requestedValue).toMatchObject({
+      startDate: '2026-01-01',
+      dueDate: '2026-02-01',
+    });
   });
 
   it('sends a single create when the instance accepts every widget', async () => {

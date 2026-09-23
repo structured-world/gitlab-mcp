@@ -40,8 +40,10 @@ const SAME_SHAPE_CREATE_WIDGETS = [
   'colorWidget',
 ] as const;
 
-/** Tool parameter a deferred widget carries, named in failure reports. */
-const DEFERRED_WIDGET_PROPERTY: Readonly<Record<string, string>> = {
+type UpdateWidgetKey = Extract<keyof WorkItemUpdateInput, `${string}Widget`>;
+
+/** Tool parameter each update widget carries, named in reports; exhaustive by type. */
+const WIDGET_PROPERTY: Readonly<Record<UpdateWidgetKey, string>> = {
   timeTrackingWidget: 'timeEstimate',
   descriptionWidget: 'description',
   labelsWidget: 'labelIds',
@@ -58,10 +60,8 @@ const DEFERRED_WIDGET_PROPERTY: Readonly<Record<string, string>> = {
 };
 
 /** A single-field widget input reports its value; a multi-field one reports the object. */
-const unwrapWidget = (value: unknown): unknown =>
-  value !== null && typeof value === 'object' && Object.keys(value).length === 1
-    ? Object.values(value)[0]
-    : value;
+const unwrapWidget = (value: object): unknown =>
+  Object.keys(value).length === 1 ? Object.values(value)[0] : value;
 
 /** Whether this instance's workItemCreate input accepts the field. */
 const createSupports = (field: string): boolean => graphqlSupports('WorkItemCreateInput', field);
@@ -703,8 +703,8 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
                     'Work item created successfully, but some properties could not be applied',
                   failedProperties: Object.fromEntries(
                     Object.entries(deferred).map(([widget, requestedValue]) => [
-                      DEFERRED_WIDGET_PROPERTY[widget] ?? widget,
-                      { requestedValue: unwrapWidget(requestedValue), error },
+                      WIDGET_PROPERTY[widget as UpdateWidgetKey],
+                      { requestedValue: unwrapWidget(requestedValue as object), error },
                     ]),
                   ),
                 },
@@ -996,13 +996,13 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
 
             // A widget this instance's update input lacks cannot be emulated; name
             // it instead of letting GitLab reject the whole mutation.
-            const unsupported = Object.keys(updateInput).filter(
-              (key) => key.endsWith('Widget') && !graphqlSupports('WorkItemUpdateInput', key),
-            );
+            const unsupported = (Object.keys(updateInput) as Array<keyof WorkItemUpdateInput>)
+              .filter((key): key is UpdateWidgetKey => key.endsWith('Widget'))
+              .filter((key) => !graphqlSupports('WorkItemUpdateInput', key));
             if (unsupported.length > 0) {
               throw new Error(
                 `This GitLab instance cannot update ${unsupported
-                  .map((key) => DEFERRED_WIDGET_PROPERTY[key] ?? key)
+                  .map((key) => WIDGET_PROPERTY[key])
                   .join(', ')} on work items`,
               );
             }

@@ -29,6 +29,16 @@ const stripOptional = (directives?: readonly DirectiveNode[]): DirectiveNode[] |
   directives?.filter((d) => d.name.value !== OPTIONAL_DIRECTIVE);
 
 /**
+ * Selection for a kept field (or operation) whose every sub-selection was
+ * dropped: a composite type needs at least one field, and __typename exists on
+ * every type.
+ */
+const typenameOnly = (set: SelectionSetNode): SelectionSetNode => ({
+  ...set,
+  selections: [{ kind: Kind.FIELD, name: { kind: Kind.NAME, value: '__typename' } }],
+});
+
+/**
  * Drop what the instance cannot answer. An inline fragment on a type the schema
  * does not declare can never match, so it always goes. A missing field goes only
  * when marked @optional; an essential missing field is left in place so GitLab
@@ -53,7 +63,7 @@ function pruneSelectionSet(
       if (selectionSet) {
         const pruned = pruneSelectionSet(selectionSet, field?.type, index);
         if (!pruned && optional) continue;
-        selectionSet = pruned ?? selectionSet;
+        selectionSet = pruned ?? typenameOnly(selectionSet);
       }
       selections.push({
         ...selection,
@@ -89,7 +99,8 @@ function prepare(document: DocumentNode, index: SchemaFieldIndex | undefined): P
       if (definition.kind !== Kind.OPERATION_DEFINITION) return definition;
       const root = definition.operation === 'mutation' ? 'Mutation' : 'Query';
       const selectionSet =
-        pruneSelectionSet(definition.selectionSet, root, index) ?? definition.selectionSet;
+        pruneSelectionSet(definition.selectionSet, root, index) ??
+        typenameOnly(definition.selectionSet);
       return { ...definition, selectionSet };
     }),
   };

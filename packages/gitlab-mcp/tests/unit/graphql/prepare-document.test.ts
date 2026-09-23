@@ -102,6 +102,84 @@ describe('prepareDocument', () => {
     expect(new Set(prepared.variableNames)).toEqual(new Set(['id', 'since']));
   });
 
+  it('keeps a field whose optional children are all missing as a valid selection', () => {
+    // Keeping the original selection would send the client-only @optional
+    // directive and the missing fields, so GitLab would reject the whole query.
+    const doc = gql`
+      query {
+        repo(id: 1) {
+          tags {
+            mediaType @optional
+          }
+        }
+        gone @optional
+      }
+    `;
+    const printed = print(prepareDocument(doc, oldSchema).document);
+
+    expect(printed).not.toContain('@optional');
+    expect(printed).not.toContain('mediaType');
+    expect(printed).not.toContain('gone');
+    expect(printed).toMatch(/tags\s*\{\s*__typename\s*\}/);
+  });
+
+  it('answers with __typename when every root selection is dropped', () => {
+    const doc = gql`
+      query {
+        gone @optional
+      }
+    `;
+    const printed = print(prepareDocument(doc, oldSchema).document);
+
+    expect(printed).not.toContain('@optional');
+    expect(printed).toMatch(/\{\s*__typename\s*\}/);
+  });
+
+  it('drops an optional field whose children are all missing', () => {
+    const doc = gql`
+      query {
+        repo(id: 1) {
+          name
+          tags @optional {
+            mediaType @optional
+          }
+        }
+      }
+    `;
+    expect(print(prepareDocument(doc, oldSchema).document)).not.toContain('tags');
+  });
+
+  it('prunes inside typeless and named fragments, and drops emptied ones', () => {
+    const doc = gql`
+      query {
+        repo(id: 1) {
+          ... {
+            name
+            mediaType @optional
+          }
+          ... on Repo {
+            mediaType @optional
+          }
+          ...RepoTags
+        }
+      }
+      fragment RepoTags on Repo {
+        tags {
+          name
+        }
+      }
+    `;
+    const printed = print(prepareDocument(doc, oldSchema).document);
+
+    expect(printed).not.toContain('mediaType');
+    expect(printed).not.toContain('... on Repo');
+    // The typeless fragment inherits the enclosing type and keeps its known field.
+    expect(printed).toMatch(/\.\.\.\s*\{\s*name\s*\}/);
+    // Named fragments and their spreads pass through untouched.
+    expect(printed).toContain('...RepoTags');
+    expect(printed).toContain('fragment RepoTags on Repo');
+  });
+
   it('returns the same prepared document for the same schema', () => {
     expect(prepareDocument(QUERY, oldSchema)).toBe(prepareDocument(QUERY, oldSchema));
   });

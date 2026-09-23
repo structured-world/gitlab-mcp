@@ -1246,6 +1246,23 @@ describe('Core Registry', () => {
         }
       });
 
+      it('rejects a malformed diff list when emulating unidiff', async () => {
+        // The headers are built from old_path/new_path/new_file/deleted_file; a
+        // body lacking them must fail loudly, not produce "a/undefined" headers.
+        const spy = jest
+          .spyOn(ConnectionManager.getInstance(), 'getInstanceInfo')
+          .mockReturnValue({ version: '16.4.0', tier: 'free' } as GitLabInstanceInfo);
+        try {
+          mockEnhancedFetch.mockResolvedValueOnce(okJson([{ diff: '@@ -1 +1 @@\n-a\n+b\n' }]));
+          const tool = coreToolRegistry.get('browse_commits');
+          await expect(
+            tool!.handler({ action: 'diff', project_id: '123', sha: 'abc123', unidiff: true }),
+          ).rejects.toThrow('GitLab API error: unexpected commit diff response');
+        } finally {
+          spy.mockRestore();
+        }
+      });
+
       it('should handle API error for list action', async () => {
         // Test: Error handling for commit list
         mockEnhancedFetch.mockResolvedValueOnce({

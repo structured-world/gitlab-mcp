@@ -10,6 +10,9 @@ import { instanceAtLeast } from '../instance-version';
 // predates the supported version floor.
 const FREE_REQ = { tier: 'free' } as const;
 
+/** A project/group token list page; `active` drives the client-side state filter. */
+const ListedTokensSchema = z.array(z.looseObject({ active: z.boolean() }));
+
 /**
  * List project/group tokens, honouring `state`. The server-side filter landed in
  * GitLab 17.2 (older instances ignore it and return every token), so there it is
@@ -25,11 +28,19 @@ async function listScopedTokens(
     return gitlab.get(path, { query: toQuery(query, []) });
   }
   const wanted = page * perPage;
-  const matches: Array<{ active?: boolean }> = [];
+  const matches: Array<z.infer<typeof ListedTokensSchema>[number]> = [];
   for (let serverPage = 1; matches.length < wanted; serverPage++) {
-    const batch = await gitlab.get<Array<{ active?: boolean }>>(path, {
-      query: toQuery({ per_page: GITLAB_MAX_PER_PAGE, page: serverPage }, []),
-    });
+    const parsed = ListedTokensSchema.safeParse(
+      await gitlab.get(path, {
+        query: toQuery({ per_page: GITLAB_MAX_PER_PAGE, page: serverPage }, []),
+      }),
+    );
+    if (!parsed.success) {
+      throw new Error(
+        `GitLab API error: unexpected access tokens response (${parsed.error.issues[0]?.message ?? 'invalid'})`,
+      );
+    }
+    const batch = parsed.data;
     for (const token of batch) {
       if (token.active === (state === 'active')) matches.push(token);
     }

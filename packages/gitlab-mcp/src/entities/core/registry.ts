@@ -56,13 +56,16 @@ async function restoreEntity(apiUrl: string): Promise<unknown> {
   return restored.data;
 }
 
-interface CommitDiff {
-  diff: string;
-  old_path: string;
-  new_path: string;
-  new_file: boolean;
-  deleted_file: boolean;
-}
+const CommitDiffsSchema = z.array(
+  z.looseObject({
+    diff: z.string(),
+    old_path: z.string(),
+    new_path: z.string(),
+    new_file: z.boolean(),
+    deleted_file: z.boolean(),
+  }),
+);
+type CommitDiff = z.infer<typeof CommitDiffsSchema>[number];
 
 /**
  * Prefix a commit diff with unified-diff file headers, as GitLab's own `unidiff`
@@ -445,8 +448,14 @@ export const coreToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefini
             }
 
             const diffs = (await response.json()) as unknown;
-            if (!unidiff || nativeUnidiff || !Array.isArray(diffs)) return diffs;
-            return diffs.map((d: CommitDiff) => ({ ...d, diff: withUnifiedHeaders(d) }));
+            if (!unidiff || nativeUnidiff) return diffs;
+            const parsed = CommitDiffsSchema.safeParse(diffs);
+            if (!parsed.success) {
+              throw new Error(
+                `GitLab API error: unexpected commit diff response (${parsed.error.issues[0]?.message ?? 'invalid'})`,
+              );
+            }
+            return parsed.data.map((d) => ({ ...d, diff: withUnifiedHeaders(d) }));
           }
 
           /* istanbul ignore next -- unreachable with Zod discriminatedUnion */

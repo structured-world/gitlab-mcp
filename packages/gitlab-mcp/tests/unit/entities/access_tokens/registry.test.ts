@@ -146,6 +146,15 @@ describe('Access Tokens Registry', () => {
         ]);
       });
 
+      it('rejects a malformed token page when filtering client-side', async () => {
+        // Without an `active` flag every token would silently fail the filter.
+        atVersion('17.1.0');
+        mockOk([{ id: 1 }]);
+        await expect(
+          browse().handler({ action: 'list_project', project_id: 'p', state: 'active' }),
+        ).rejects.toThrow('GitLab API error: unexpected access tokens response');
+      });
+
       it('sends the state filter from 17.2', async () => {
         atVersion('17.2.0');
         mockOk([]);

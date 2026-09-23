@@ -140,6 +140,23 @@ export function getRestrictedParameters(
 }
 
 /**
+ * Actions whose own requirement the instance does not meet, keyed by lowercase
+ * action name with the reason. Actions without an override follow the tool
+ * default, which gates the whole tool instead.
+ */
+export function getUnavailableActions(
+  reqs: ToolRequirements | undefined,
+  caps: CapabilityGate,
+): Map<string, string> {
+  const unavailable = new Map<string, string>();
+  for (const action of Object.keys(reqs?.actions ?? {})) {
+    const reason = getUnmetReason(reqs, caps, action);
+    if (reason) unavailable.set(action.toLowerCase(), reason);
+  }
+  return unavailable;
+}
+
+/**
  * Human-readable reason a tool/action is unavailable, or null when available.
  * Intended for diagnostics that explain why a tool was filtered.
  */

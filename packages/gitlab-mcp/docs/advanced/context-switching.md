@@ -120,15 +120,15 @@ On instance switch:
 
 ### Version Compatibility
 
-The server supports GitLab 16.0 and later. Tools and actions that rely on newer API
-surface are hidden on older instances, for example:
+The server supports GitLab 16.0 and later. Where an older instance lacks newer API
+surface, tools fall back to an equivalent it does have; only actions GitLab itself
+cannot perform there are hidden (and refused if called), for example:
 
 | GitLab Version | Work items |
 |----------------|------------|
-| 18.1+ | Full support, including namespace-level listing |
-| 17.10 - 18.0 | Get, create, update, delete, links; no listing |
-| 16.4 - 17.9 | Delete and link/unlink only |
-| 16.0 - 16.3 | Delete only |
+| 18.1+ | All actions, using namespace-level queries |
+| 16.4 - 18.0 | All actions; listing goes through project or group queries, as does lookup by IID where the namespace query is missing |
+| 16.0 - 16.3 | All actions except `add_link` / `remove_link` |
 
 ## Namespace Tier Cache
 

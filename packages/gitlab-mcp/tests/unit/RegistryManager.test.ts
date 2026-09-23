@@ -550,6 +550,67 @@ describe('RegistryManager', () => {
       }
     });
 
+    describe('action requirements', () => {
+      // An action gated above the instance version must neither be advertised nor
+      // reach GitLab; the tool's default requirement alone does not cover it.
+      const branch = (action: string) => ({
+        type: 'object',
+        properties: { action: { type: 'string', const: action } },
+        required: ['action'],
+      });
+      const actionTool = (name: string, actions: string[]) => ({
+        name,
+        description: 'Tool with a version-gated action',
+        inputSchema: { oneOf: actions.map(branch) },
+        requirements: {
+          default: { tier: 'free' },
+          actions: { add_link: { tier: 'free', minVersion: '99.0' } },
+        },
+        handler: jest.fn().mockResolvedValue('ok'),
+      });
+      const actionsOf = (name: string) =>
+        (
+          RegistryManager.getInstance().getTool(name)?.inputSchema as {
+            oneOf: Array<{ properties: { action: { const: string } } }>;
+          }
+        ).oneOf.map((b) => b.properties.action.const);
+
+      it('removes the unavailable action from the schema and refuses to run it', async () => {
+        const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
+        const tool = actionTool('tool_gated_action', ['list', 'add_link']);
+        coreRegistry.set('tool_gated_action', tool);
+        try {
+          resetRegistryManagerSingleton();
+          const manager = RegistryManager.getInstance();
+
+          expect(actionsOf('tool_gated_action')).toEqual(['list']);
+          await expect(
+            manager.executeTool('tool_gated_action', { action: 'add_link' }),
+          ).rejects.toThrow('Requires GitLab 99.0+, current version is 17.0.0');
+          expect(tool.handler).not.toHaveBeenCalled();
+
+          await expect(manager.executeTool('tool_gated_action', { action: 'list' })).resolves.toBe(
+            'ok',
+          );
+        } finally {
+          coreRegistry.delete('tool_gated_action');
+        }
+      });
+
+      it('hides the tool when none of its actions is available', () => {
+        const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;
+        coreRegistry.set('tool_only_gated', actionTool('tool_only_gated', ['add_link']));
+        try {
+          resetRegistryManagerSingleton();
+          expect(RegistryManager.getInstance().getAvailableToolNames()).not.toContain(
+            'tool_only_gated',
+          );
+        } finally {
+          coreRegistry.delete('tool_only_gated');
+        }
+      });
+    });
+
     it('should skip parameter stripping when ConnectionManager is not initialized', () => {
       const { ConnectionManager } = require('../../src/services/ConnectionManager');
       const coreRegistry = require('../../src/entities/core/registry').coreToolRegistry;

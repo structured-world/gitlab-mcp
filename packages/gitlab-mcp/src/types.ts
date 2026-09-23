@@ -67,6 +67,11 @@ export interface EnhancedToolDefinition extends ToolDefinition {
    */
   requirements?: ToolRequirements;
   /**
+   * Set by the registry on its per-instance copy: actions (lowercase) whose own
+   * requirement the instance does not meet, with the reason they are refused.
+   */
+  unavailableActions?: ReadonlyMap<string, string>;
+  /**
    * Mark the tool as idempotent (safe to retry on failure).
    * If not specified, idempotency is inferred from tool name:
    * - browse_*, list_*, get_*, download_* are considered idempotent (read-only)

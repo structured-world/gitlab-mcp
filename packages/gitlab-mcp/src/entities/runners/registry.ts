@@ -94,13 +94,15 @@ function applyRunnerSettings(
   if (src.maintenance_note !== undefined) target.maintenanceNote = src.maintenance_note;
 }
 
-interface RestRunner {
-  id: number;
-  description: string | null;
-  runner_type: string;
-  status: string | null;
-  paused: boolean;
-}
+const RestRunnersSchema = z.array(
+  z.object({
+    id: z.number(),
+    description: z.string().nullable(),
+    runner_type: z.string(),
+    status: z.string().nullable(),
+    paused: z.boolean(),
+  }),
+);
 
 /**
  * The current user's runners through REST, shaped like the GraphQL connection,
@@ -119,16 +121,24 @@ async function listOwnedRunnersViaRest(input: {
 }) {
   const perPage = input.first ?? 20;
   const page = Number(input.after) > 0 ? Number(input.after) : 1;
-  const runners = await gitlab.get<RestRunner[]>('runners', {
-    query: toQuery({
-      type: input.type?.toLowerCase(),
-      status: input.status?.toLowerCase(),
-      paused: input.paused,
-      tag_list: input.tag_list?.join(','),
-      per_page: perPage,
-      page,
+  const parsed = RestRunnersSchema.safeParse(
+    await gitlab.get('runners', {
+      query: toQuery({
+        type: input.type?.toLowerCase(),
+        status: input.status?.toLowerCase(),
+        paused: input.paused,
+        tag_list: input.tag_list?.join(','),
+        per_page: perPage,
+        page,
+      }),
     }),
-  });
+  );
+  if (!parsed.success) {
+    throw new Error(
+      `GitLab API error: unexpected runners response (${parsed.error.issues[0]?.message ?? 'invalid'})`,
+    );
+  }
+  const runners = parsed.data;
   const search = input.search?.toLowerCase();
   const matching = search
     ? runners.filter((r) => (r.description ?? '').toLowerCase().includes(search))

@@ -125,6 +125,14 @@ describe('runners registry', () => {
         expect(res.pageInfo).toEqual({ hasNextPage: true, endCursor: '2' });
       });
 
+      it('rejects a malformed runners response with a clear error', async () => {
+        mockGitlab.get.mockResolvedValueOnce([{ id: 7, description: 'x', paused: false }]);
+
+        await expect(browse().handler({ action: 'list_owned' })).rejects.toThrow(
+          'GitLab API error: unexpected runners response',
+        );
+      });
+
       it('filters by search client-side and ends pagination on a short page', async () => {
         mockGitlab.get.mockResolvedValueOnce([
           {

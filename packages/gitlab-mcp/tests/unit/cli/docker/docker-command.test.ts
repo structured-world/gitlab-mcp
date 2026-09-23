@@ -54,6 +54,7 @@ jest.mock('@clack/prompts', () => ({
   select: jest.fn(),
   isCancel: jest.fn(() => false),
   cancel: jest.fn(),
+  CANCEL_SYMBOL: Symbol('clack:cancel'),
 }));
 
 import {
@@ -589,9 +590,8 @@ describe('docker-command', () => {
         dockerRunning: true,
         composeInstalled: true,
       });
-      const cancelSymbol = Symbol.for('cancel');
-      mockP.text.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
+      mockP.text.mockResolvedValueOnce(p.CANCEL_SYMBOL);
+      mockP.isCancel.mockImplementation((val) => val === p.CANCEL_SYMBOL);
 
       await initDocker();
 
@@ -605,9 +605,8 @@ describe('docker-command', () => {
         composeInstalled: true,
       });
       mockP.text.mockResolvedValueOnce('3333');
-      const cancelSymbol = Symbol.for('cancel');
-      mockP.confirm.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
+      mockP.confirm.mockResolvedValueOnce(p.CANCEL_SYMBOL);
+      mockP.isCancel.mockImplementation((val) => val === p.CANCEL_SYMBOL);
 
       await initDocker();
 
@@ -675,9 +674,8 @@ describe('docker-command', () => {
       });
       mockP.text.mockResolvedValueOnce('3333');
       mockP.confirm.mockResolvedValueOnce(false);
-      const cancelSymbol = Symbol.for('cancel');
-      mockP.confirm.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
+      mockP.confirm.mockResolvedValueOnce(p.CANCEL_SYMBOL);
+      mockP.isCancel.mockImplementation((val) => val === p.CANCEL_SYMBOL);
 
       await initDocker();
 
@@ -738,9 +736,8 @@ describe('docker-command', () => {
     });
 
     it('should handle host input cancellation', async () => {
-      const cancelSymbol = Symbol.for('cancel');
-      mockP.text.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
+      mockP.text.mockResolvedValueOnce(p.CANCEL_SYMBOL);
+      mockP.isCancel.mockImplementation((val) => val === p.CANCEL_SYMBOL);
 
       await dockerAddInstance();
 
@@ -748,9 +745,8 @@ describe('docker-command', () => {
     });
 
     it('should handle name input cancellation', async () => {
-      const cancelSymbol = Symbol.for('cancel');
-      mockP.text.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
+      mockP.text.mockResolvedValueOnce(p.CANCEL_SYMBOL);
+      mockP.isCancel.mockImplementation((val) => val === p.CANCEL_SYMBOL);
 
       await dockerAddInstance('gitlab.company.com');
 
@@ -759,9 +755,8 @@ describe('docker-command', () => {
 
     it('should handle OAuth confirmation cancellation', async () => {
       mockP.text.mockResolvedValueOnce('Name');
-      const cancelSymbol = Symbol.for('cancel');
-      mockP.confirm.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
+      mockP.confirm.mockResolvedValueOnce(p.CANCEL_SYMBOL);
+      mockP.isCancel.mockImplementation((val) => val === p.CANCEL_SYMBOL);
 
       await dockerAddInstance('gitlab.company.com');
 
@@ -789,9 +784,8 @@ describe('docker-command', () => {
     it('should handle OAuth client ID cancellation', async () => {
       mockP.text.mockResolvedValueOnce('Name');
       mockP.confirm.mockResolvedValueOnce(true);
-      const cancelSymbol = Symbol.for('cancel');
-      mockP.text.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
+      mockP.text.mockResolvedValueOnce(p.CANCEL_SYMBOL);
+      mockP.isCancel.mockImplementation((val) => val === p.CANCEL_SYMBOL);
 
       await dockerAddInstance('gitlab.company.com');
 
@@ -801,9 +795,8 @@ describe('docker-command', () => {
     it('should handle preset selection cancellation', async () => {
       mockP.text.mockResolvedValueOnce('Name');
       mockP.confirm.mockResolvedValueOnce(false);
-      const cancelSymbol = Symbol.for('cancel');
-      mockP.select.mockResolvedValueOnce(cancelSymbol);
-      mockP.isCancel.mockImplementation((val) => val === cancelSymbol);
+      mockP.select.mockResolvedValueOnce(p.CANCEL_SYMBOL);
+      mockP.isCancel.mockImplementation((val) => val === p.CANCEL_SYMBOL);
 
       await dockerAddInstance('gitlab.company.com');
 

@@ -14,6 +14,7 @@ jest.mock('@clack/prompts', () => ({
     step: jest.fn(),
   },
   isCancel: jest.fn().mockReturnValue(false),
+  CANCEL_SYMBOL: Symbol('clack:cancel'),
 }));
 
 import {
@@ -58,7 +59,7 @@ describe('flows/tool-selection', () => {
     it('should return null when preset selection is cancelled', async () => {
       mockSelect.mockResolvedValueOnce('preset');
       // Second call returns cancel symbol
-      mockSelect.mockResolvedValueOnce(Symbol('cancel'));
+      mockSelect.mockResolvedValueOnce(p.CANCEL_SYMBOL);
       mockIsCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
       const result = await runToolSelectionFlow();
@@ -87,7 +88,7 @@ describe('flows/tool-selection', () => {
 
     it('should return null when manual selection is cancelled', async () => {
       mockSelect.mockResolvedValueOnce('manual');
-      mockMultiselect.mockResolvedValueOnce(Symbol('cancel'));
+      mockMultiselect.mockResolvedValueOnce(p.CANCEL_SYMBOL);
       mockIsCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
       const result = await runToolSelectionFlow();
@@ -177,7 +178,7 @@ describe('flows/tool-selection', () => {
 
     it('should return null when feature flags selection is cancelled', async () => {
       mockSelect.mockResolvedValueOnce('advanced');
-      mockMultiselect.mockResolvedValueOnce(Symbol('cancel'));
+      mockMultiselect.mockResolvedValueOnce(p.CANCEL_SYMBOL);
       mockIsCancel.mockReturnValueOnce(false).mockReturnValueOnce(true);
 
       const result = await runToolSelectionFlow();
@@ -187,7 +188,7 @@ describe('flows/tool-selection', () => {
     it('should return null when read-only confirm is cancelled', async () => {
       mockSelect.mockResolvedValueOnce('advanced');
       mockMultiselect.mockResolvedValueOnce(['USE_MRS']);
-      mockConfirm.mockResolvedValueOnce(Symbol('cancel'));
+      mockConfirm.mockResolvedValueOnce(p.CANCEL_SYMBOL);
       mockIsCancel
         .mockReturnValueOnce(false) // mode
         .mockReturnValueOnce(false) // features
@@ -228,7 +229,7 @@ describe('flows/tool-selection', () => {
       mockMultiselect.mockResolvedValueOnce(['USE_MRS']);
       mockConfirm
         .mockResolvedValueOnce(false) // read-only
-        .mockResolvedValueOnce(Symbol('cancel')); // cross-refs cancel
+        .mockResolvedValueOnce(p.CANCEL_SYMBOL); // cross-refs cancel
       mockIsCancel
         .mockReturnValueOnce(false) // mode
         .mockReturnValueOnce(false) // features
@@ -245,7 +246,7 @@ describe('flows/tool-selection', () => {
       mockConfirm
         .mockResolvedValueOnce(false) // read-only
         .mockResolvedValueOnce(true) // cross-refs
-        .mockResolvedValueOnce(Symbol('cancel')); // scope cancel
+        .mockResolvedValueOnce(p.CANCEL_SYMBOL); // scope cancel
       mockIsCancel
         .mockReturnValueOnce(false) // mode
         .mockReturnValueOnce(false) // features
@@ -258,7 +259,7 @@ describe('flows/tool-selection', () => {
     });
 
     it('should return null when scope type selection is cancelled', async () => {
-      mockSelect.mockResolvedValueOnce('advanced').mockResolvedValueOnce(Symbol('cancel')); // scope type cancel
+      mockSelect.mockResolvedValueOnce('advanced').mockResolvedValueOnce(p.CANCEL_SYMBOL); // scope type cancel
       mockMultiselect.mockResolvedValueOnce(['USE_MRS']);
       mockConfirm
         .mockResolvedValueOnce(false) // read-only
@@ -283,7 +284,7 @@ describe('flows/tool-selection', () => {
         .mockResolvedValueOnce(false) // read-only
         .mockResolvedValueOnce(true) // cross-refs
         .mockResolvedValueOnce(true); // yes scope
-      mockText.mockResolvedValueOnce(Symbol('cancel'));
+      mockText.mockResolvedValueOnce(p.CANCEL_SYMBOL);
       mockIsCancel
         .mockReturnValueOnce(false) // mode
         .mockReturnValueOnce(false) // features
@@ -298,7 +299,7 @@ describe('flows/tool-selection', () => {
     });
 
     it('should return null when log level is cancelled', async () => {
-      mockSelect.mockResolvedValueOnce('advanced').mockResolvedValueOnce(Symbol('cancel')); // log level cancel
+      mockSelect.mockResolvedValueOnce('advanced').mockResolvedValueOnce(p.CANCEL_SYMBOL); // log level cancel
       mockMultiselect.mockResolvedValueOnce(['USE_MRS']);
       mockConfirm
         .mockResolvedValueOnce(false) // read-only

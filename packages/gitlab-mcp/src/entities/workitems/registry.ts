@@ -90,7 +90,13 @@ function assertUpdatableWidgets(input: object, verb: 'set' | 'update'): void {
  */
 async function listWorkItems(
   client: GraphQLClient,
-  vars: { namespacePath: string; types?: string[]; first: number; after?: string },
+  vars: {
+    namespacePath: string;
+    types?: string[];
+    state?: 'opened' | 'closed';
+    first: number;
+    after?: string;
+  },
 ) {
   if (graphqlSupports('Namespace', 'workItems')) {
     return (await client.request(GET_NAMESPACE_WORK_ITEMS, vars)).namespace?.workItems ?? null;
@@ -400,23 +406,33 @@ export const workitemsToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const connectionManager = ConnectionManager.getInstance();
             const client = connectionManager.getClient(getGitLabApiUrlFromContext());
 
-            // For the work items GraphQL query, use type names as-is (GraphQL expects enum values)
-            const resolvedTypes: string[] | undefined = types;
+            // No state requested matches nothing.
+            if (state.length === 0) return { items: [], hasMore: false, endCursor: null };
 
-            const listVars = { namespacePath, types: resolvedTypes, first: first || 20, after };
+            // GitLab filters by state (IssuableState) before paginating, so each
+            // page and its hasNextPage describe the requested states only. Both
+            // states need no filter.
+            const wantsOpen = state.includes('OPEN');
+            const wantsClosed = state.includes('CLOSED');
+            let serverState: 'opened' | 'closed' | undefined;
+            if (wantsOpen !== wantsClosed) serverState = wantsOpen ? 'opened' : 'closed';
+
+            // For the work items GraphQL query, use type names as-is (GraphQL expects enum values)
+            const listVars = {
+              namespacePath,
+              types,
+              state: serverState,
+              first: first || 20,
+              after,
+            };
             const workItemsData = await listWorkItems(client, listVars);
-            const allItems = workItemsData?.nodes ?? [];
             const pageInfo = {
               hasNextPage: workItemsData?.pageInfo?.hasNextPage ?? false,
               endCursor: workItemsData?.pageInfo?.endCursor ?? null,
             };
-            // Apply state filtering (client-side since GitLab API doesn't support it reliably)
-            const filteredItems = allItems.filter((item: GraphQLWorkItem) => {
-              return state.includes(item.state);
-            });
 
             // Apply simplification if requested and clean GIDs
-            const finalResults = filteredItems.map((item: GraphQLWorkItem) => {
+            const finalResults = (workItemsData?.nodes ?? []).map((item: GraphQLWorkItem) => {
               const cleanedItem = cleanWorkItemResponse(item as unknown as GitLabWorkItem);
               return simplifyWorkItem(cleanedItem as GraphQLWorkItem, simple);
             });

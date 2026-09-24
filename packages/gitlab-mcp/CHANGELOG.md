@@ -4,6 +4,22 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [10.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v9.1.4...gitlab-mcp-v10.0.0) (2026-09-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* **core:** GitLab releases older than 16.0 are no longer supported; tools are hidden on such instances.
+
+### Features
+
+* **core:** add Duo project settings and GitLab 16.0+ version policy ([#608](https://github.com/structured-world/gitlab-mcp/issues/608)) ([8885c54](https://github.com/structured-world/gitlab-mcp/commit/8885c540a5003bff16bd3e532478120094d70a28))
+
+
+### Bug Fixes
+
+* **workitems:** filter work items by state in the GitLab query ([#611](https://github.com/structured-world/gitlab-mcp/issues/611)) ([fee03e5](https://github.com/structured-world/gitlab-mcp/commit/fee03e53100e4c5177c39c7b9245b90266182a35)), closes [#610](https://github.com/structured-world/gitlab-mcp/issues/610)
+
 ## [9.1.4](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v9.1.3...gitlab-mcp-v9.1.4) (2026-09-05)
 
 

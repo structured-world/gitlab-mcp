@@ -553,7 +553,14 @@ interface WorkItemListConnection {
   };
 }
 
-type WorkItemListVars = { namespacePath: string; types?: string[]; first?: number; after?: string };
+type WorkItemListVars = {
+  namespacePath: string;
+  types?: string[];
+  /** IssuableState; omitted for every state. */
+  state?: 'opened' | 'closed';
+  first?: number;
+  after?: string;
+};
 
 // Listing selection shared by the namespace query and its project/group fallbacks.
 const WORK_ITEM_LIST_CONNECTION = `
@@ -659,13 +666,14 @@ export const GET_NAMESPACE_WORK_ITEMS: TypedDocumentNode<
   query GetNamespaceWorkItems(
     $namespacePath: ID!
     $types: [IssueType!]
+    $state: IssuableState
     $first: Int
     $after: String
   ) {
     namespace(fullPath: $namespacePath) {
       __typename
       fullPath
-      workItems(types: $types, first: $first, after: $after) {
+      workItems(types: $types, state: $state, first: $first, after: $after) {
         ${WORK_ITEM_LIST_CONNECTION}
       }
     }
@@ -680,11 +688,12 @@ export const LIST_PROJECT_WORK_ITEMS: TypedDocumentNode<
   query ListProjectWorkItems(
     $namespacePath: ID!
     $types: [IssueType!]
+    $state: IssuableState
     $first: Int
     $after: String
   ) {
     project(fullPath: $namespacePath) {
-      workItems(types: $types, first: $first, after: $after) {
+      workItems(types: $types, state: $state, first: $first, after: $after) {
         ${WORK_ITEM_LIST_CONNECTION}
       }
     }
@@ -695,9 +704,15 @@ export const LIST_GROUP_WORK_ITEMS: TypedDocumentNode<
   { group: { workItems: WorkItemListConnection | null } | null },
   WorkItemListVars
 > = gql`
-  query ListGroupWorkItems($namespacePath: ID!, $types: [IssueType!], $first: Int, $after: String) {
+  query ListGroupWorkItems(
+    $namespacePath: ID!
+    $types: [IssueType!]
+    $state: IssuableState
+    $first: Int
+    $after: String
+  ) {
     group(fullPath: $namespacePath) {
-      workItems(types: $types, first: $first, after: $after) {
+      workItems(types: $types, state: $state, first: $first, after: $after) {
         ${WORK_ITEM_LIST_CONNECTION}
       }
     }

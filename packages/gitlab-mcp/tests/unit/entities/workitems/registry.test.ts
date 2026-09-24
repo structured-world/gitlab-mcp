@@ -306,9 +306,11 @@ describe('Workitems Registry - CQRS Tools', () => {
         const tool = workitemsToolRegistry.get('browse_work_items');
         const result = await tool?.handler({ action: 'list', namespace: 'test-group' });
 
+        // The default state (OPEN) is filtered by GitLab.
         expect(mockClient.request).toHaveBeenCalledWith(expect.any(Object), {
           namespacePath: 'test-group',
           types: undefined,
+          state: 'opened',
           first: 20,
           after: undefined,
         });
@@ -379,6 +381,7 @@ describe('Workitems Registry - CQRS Tools', () => {
         expect(mockClient.request).toHaveBeenCalledWith(expect.any(Object), {
           namespacePath: 'test-group',
           types: undefined,
+          state: 'opened',
           first: 50,
           after: 'cursor-123',
         });
@@ -426,6 +429,7 @@ describe('Workitems Registry - CQRS Tools', () => {
         expect(mockClient.request).toHaveBeenCalledWith(expect.any(Object), {
           namespacePath: 'test-group',
           types: ['EPIC', 'ISSUE'],
+          state: 'opened',
           first: 20,
           after: undefined,
         });
@@ -916,17 +920,14 @@ describe('Workitems Registry - CQRS Tools', () => {
         expect(widgets.some((widget) => widget.type === 'TEST_REPORTS')).toBe(false);
       });
 
-      it('should filter by state parameter', async () => {
-        const mockWorkItems = [
-          createMockWorkItem({ id: 'gid://gitlab/WorkItem/1', state: 'OPEN' }),
-          createMockWorkItem({ id: 'gid://gitlab/WorkItem/2', state: 'CLOSED' }),
-        ];
-
+      it('should filter by state parameter in the GitLab query', async () => {
+        // GitLab applies the state filter before paginating, so the page it
+        // returns is passed through as is.
         mockClient.request.mockResolvedValueOnce({
           namespace: {
             __typename: 'Group',
             workItems: {
-              nodes: mockWorkItems,
+              nodes: [createMockWorkItem({ id: 'gid://gitlab/WorkItem/1', state: 'OPEN' })],
               pageInfo: { hasNextPage: false, endCursor: null },
             },
           },
@@ -939,7 +940,7 @@ describe('Workitems Registry - CQRS Tools', () => {
           state: ['OPEN'],
         })) as { items: unknown[] };
 
-        // Client-side filtering should only return OPEN items
+        expect(mockClient.request.mock.calls[0][1].state).toBe('opened');
         expect(result.items.length).toBe(1);
       });
     });

@@ -182,6 +182,53 @@ describe('Work Items Integration - Using Handler Functions', () => {
     }, 30000);
   });
 
+  describe('Work item state filter', () => {
+    // The state filter must reach GitLab: filtered after pagination, closed items
+    // newer than an open one push it off the page and leave the page empty.
+    it('returns the open item on the first page even when newer items are closed', async () => {
+      const namespace = requireTestData().project.path_with_namespace;
+      const created: string[] = [];
+      const create = async (title: string) => {
+        const item = (await helper.createWorkItem({
+          namespace,
+          title,
+          workItemType: 'ISSUE',
+        })) as { id: string };
+        created.push(item.id);
+        return item.id;
+      };
+
+      try {
+        const suffix = Date.now();
+        const openId = await create(`State filter open ${suffix}`);
+        for (const title of [
+          `State filter closed B ${suffix}`,
+          `State filter closed C ${suffix}`,
+        ]) {
+          await helper.updateWorkItem({ id: await create(title), state: 'CLOSE' });
+        }
+
+        const open = (await helper.listWorkItems({ namespace, state: ['OPEN'], first: 2 })) as {
+          items: Array<{ id: string; state: string }>;
+        };
+        expect(open.items[0]?.id).toBe(openId);
+        expect(open.items.every((item) => item.state === 'OPEN')).toBe(true);
+
+        const closed = (await helper.listWorkItems({ namespace, state: ['CLOSED'], first: 2 })) as {
+          items: Array<{ id: string; state: string }>;
+        };
+        expect(closed.items).toHaveLength(2);
+        expect(closed.items.map((item) => item.id)).toEqual(created.slice(1).reverse());
+      } finally {
+        for (const id of created) {
+          await helper.deleteWorkItem({ id }).catch((error: unknown) => {
+            console.warn(`Could not delete state filter fixture ${id}:`, error);
+          });
+        }
+      }
+    }, 60000);
+  });
+
   describe('Work Items Widget Validation through Handlers', () => {
     it('should validate core widget types through list_work_items handler', async () => {
       const testData = requireTestData();

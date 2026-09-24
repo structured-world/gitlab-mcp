@@ -115,6 +115,51 @@ describe('browse_work_items list', () => {
   });
 });
 
+describe('browse_work_items list state filter', () => {
+  // Filtering after GitLab paginated would leave pages empty while hasMore is
+  // true; the filter has to be part of the query.
+  it.each([
+    [['OPEN'], 'opened'],
+    [['CLOSED'], 'closed'],
+    [['OPEN', 'CLOSED'], undefined],
+  ])('sends state %j to GitLab as %s', async (state, expected) => {
+    mockRequest.mockResolvedValueOnce({ namespace: { workItems: connection('1') } });
+    await browse().handler({ action: 'list', namespace: 'grp/proj', state });
+    expect(mockRequest.mock.calls[0][1].state).toBe(expected);
+  });
+
+  it('passes the state to the project fallback too', async () => {
+    missing.add('Namespace.workItems');
+    mockRequest.mockResolvedValueOnce({ project: { workItems: connection('7') } });
+    await browse().handler({ action: 'list', namespace: 'grp/proj', state: ['CLOSED'] });
+    expect(mockRequest.mock.calls[0][1].state).toBe('closed');
+  });
+
+  it('returns the page as GitLab filtered it, with its own hasMore', async () => {
+    mockRequest.mockResolvedValueOnce({
+      namespace: {
+        workItems: {
+          nodes: [item('3')],
+          pageInfo: { hasNextPage: false, endCursor: 'c' },
+        },
+      },
+    });
+    const result = (await browse().handler({
+      action: 'list',
+      namespace: 'grp/proj',
+      state: ['OPEN'],
+    })) as { items: Array<{ iid: string }>; hasMore: boolean };
+    expect(result.items.map((i) => i.iid)).toEqual(['3']);
+    expect(result.hasMore).toBe(false);
+  });
+
+  it('matches nothing for an empty state list without calling GitLab', async () => {
+    const result = await browse().handler({ action: 'list', namespace: 'grp/proj', state: [] });
+    expect(result).toEqual({ items: [], hasMore: false, endCursor: null });
+    expect(mockRequest).not.toHaveBeenCalled();
+  });
+});
+
 describe('browse_work_items get by IID', () => {
   it('falls back to the project listing filtered by IID', async () => {
     missing.add('Namespace.workItem');

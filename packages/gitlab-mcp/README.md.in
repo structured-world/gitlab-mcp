@@ -167,7 +167,7 @@ See [CONTRIBUTING.md](__REPO_BASE__/CONTRIBUTING.md) for development setup, test
 
 <div align="center">
 
-![USDT TRC-20 Donation QR Code](__REPO_BASE__/packages/gitlab-mcp/assets/usdt-qr.svg)
+![USDT TRC-20 Donation QR Code](__ASSET_BASE__/packages/gitlab-mcp/assets/usdt-qr.svg)
 
 USDT (TRC-20): `TFDsezHa1cBkoeZT5q2T49Wp66K8t2DmdA`
 

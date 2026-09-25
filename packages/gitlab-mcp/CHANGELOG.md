@@ -4,6 +4,13 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [10.0.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v10.0.0...gitlab-mcp-v10.0.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **docs:** use absolute URLs for images and links in the npm READMEs ([#613](https://github.com/structured-world/gitlab-mcp/issues/613)) ([af1ec62](https://github.com/structured-world/gitlab-mcp/commit/af1ec621718d7c83bdf52a9b9458d92fd442ef45)), closes [#612](https://github.com/structured-world/gitlab-mcp/issues/612)
+
 ## [10.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v9.1.4...gitlab-mcp-v10.0.0) (2026-09-24)
 
 

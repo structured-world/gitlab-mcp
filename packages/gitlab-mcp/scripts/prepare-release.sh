@@ -59,29 +59,35 @@ jq --arg v "$VERSION" --arg tc "$TOOL_COUNT" --arg ac "$ACTION_COUNT" --arg ec "
   '.version = $v | .packages[0].version = $v | .description = $tc + " CQRS tools exposing " + $ac + " GitLab operations across " + $ec + " entity types"' \
   server.json > server.tmp && mv server.tmp server.json
 
-# Generate README.md from the template for each location it ships to. __REPO_BASE__
-# is substituted with the path from that README's directory to the repo root, so the
-# repo-relative links (LICENSE, CONTRIBUTING, assets) resolve from every location:
-#   packages/gitlab-mcp/README.md    (npm core page)    -> base ../..
-#   <repo root>/README.md            (GitHub repo page)  -> base .
-#   packages/gitlab-mcp-db/README.md (npm db page)       -> base ../..
+# Generate README.md from the template for each location it ships to. Repo files are
+# referenced through two bases: __REPO_BASE__ for links (LICENSE, CONTRIBUTING) and
+# __ASSET_BASE__ for images. The GitHub repo page resolves paths relative to the
+# repo root. npm does not: it joins a relative path onto the repository URL, which
+# yields a GitHub page address instead of the file, so the READMEs published to npm
+# get absolute bases (blob URLs for links, raw URLs for images).
+#   packages/gitlab-mcp/README.md    (npm core page)    -> absolute
+#   <repo root>/README.md            (GitHub repo page)  -> .
+#   packages/gitlab-mcp-db/README.md (npm db page)       -> absolute
 if [[ ! -f "README.md.in" ]]; then
   echo "ERROR: README.md.in not found" >&2
   exit 1
 fi
+NPM_LINK_BASE="https://github.com/structured-world/gitlab-mcp/blob/HEAD"
+NPM_ASSET_BASE="https://raw.githubusercontent.com/structured-world/gitlab-mcp/HEAD"
 render_readme() {
-  # $1 = output path, $2 = relative path from that README's directory to the repo root
+  # $1 = output path, $2 = link base, $3 = image base
   sed -e "s/__TOOL_COUNT__/${TOOL_COUNT}/g" \
       -e "s/__ACTION_COUNT__/${ACTION_COUNT}/g" \
       -e "s/__ENTITY_COUNT__/${ENTITY_COUNT}/g" \
       -e "s/__READONLY_TOOL_COUNT__/${READONLY_TOOL_COUNT}/g" \
       -e "s/__VERSION__/${VERSION}/g" \
       -e "s|__REPO_BASE__|$2|g" \
+      -e "s|__ASSET_BASE__|$3|g" \
       README.md.in > "$1"
 }
-render_readme README.md ../..
-render_readme ../../README.md .
-render_readme ../gitlab-mcp-db/README.md ../..
+render_readme README.md "$NPM_LINK_BASE" "$NPM_ASSET_BASE"
+render_readme ../../README.md . .
+render_readme ../gitlab-mcp-db/README.md "$NPM_LINK_BASE" "$NPM_ASSET_BASE"
 
 # Update MCP manifest tools list in package.json
 # Uses the list-tools CLI to get full tool definitions and transforms them for manifest

@@ -1,5 +1,19 @@
 # Changelog
 
+## [10.0.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v10.0.0...gitlab-mcp-db-v10.0.1) (2026-09-25)
+
+
+### Bug Fixes
+
+* **docs:** use absolute URLs for images and links in the npm READMEs ([#613](https://github.com/structured-world/gitlab-mcp/issues/613)) ([af1ec62](https://github.com/structured-world/gitlab-mcp/commit/af1ec621718d7c83bdf52a9b9458d92fd442ef45)), closes [#612](https://github.com/structured-world/gitlab-mcp/issues/612)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @structured-world/gitlab-mcp bumped to 10.0.1
+
 ## [10.0.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-db-v9.1.4...gitlab-mcp-db-v10.0.0) (2026-09-24)
 
 

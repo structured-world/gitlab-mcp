@@ -38,9 +38,11 @@ describe('Merge Requests Schema - Using Lifecycle Data', () => {
   // not a local description parser. Reuse suite-owned fixtures and restore the MR.
   it('reads native closing issues with one-page pagination without closing them', async () => {
     const mr = testData.mergeRequests?.[0] as { iid: number; description: string } | undefined;
-    const issue = testData.workItems?.find(
-      (item: { workItemType: string }) => item.workItemType === 'Issue',
-    ) as { iid: string; title: string } | undefined;
+    // Lifecycle stores manage_work_item results, not raw GraphQL objects:
+    // its cleanWorkItemResponse converts workItemType.name to a string.
+    const normalizedWorkItems = testData.workItems as
+      { workItemType: string; iid: string; title: string }[] | undefined;
+    const issue = normalizedWorkItems?.find((item) => item.workItemType === 'Issue');
     expect(mr).toBeDefined();
     expect(issue).toBeDefined();
     if (!mr || !issue) throw new Error('Lifecycle must create an MR and an Issue');

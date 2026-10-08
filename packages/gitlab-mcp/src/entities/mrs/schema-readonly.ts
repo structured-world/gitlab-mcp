@@ -3,7 +3,7 @@ import { flexibleBoolean, requiredId, paginationFields } from '../utils';
 
 // ============================================================================
 // browse_merge_requests - CQRS Query Tool (discriminated union schema)
-// Actions: list, get, diffs, compare, versions, version
+// Actions: list, get, closing_issues, diffs, compare, versions, version
 // Uses z.discriminatedUnion() for type-safe action handling.
 // Schema pipeline flattens to flat JSON Schema for AI clients that don't support oneOf.
 // ============================================================================
@@ -160,6 +160,20 @@ const GetMergeRequestByIidSchema = z
   })
   .passthrough();
 
+// --- Action: closing_issues ---
+const ClosingIssuesSchema = z
+  .object({
+    action: z
+      .literal('closing_issues')
+      .describe(
+        'Read one page of visible issues GitLab would close on merge; does not close issues',
+      ),
+    project_id: projectIdField,
+    merge_request_iid: mergeRequestIidField,
+    ...paginationFields(),
+  })
+  .passthrough();
+
 // --- Action: diffs ---
 // Note: .passthrough() preserves unknown fields for superRefine validation
 const DiffsMergeRequestSchema = z
@@ -234,6 +248,7 @@ const GetMergeRequestVersionSchema = z
 const BrowseMergeRequestsBaseSchema = z.discriminatedUnion('action', [
   ListMergeRequestsSchema,
   GetMergeRequestByIidSchema,
+  ClosingIssuesSchema,
   DiffsMergeRequestSchema,
   CompareMergeRequestSchema,
   ListMergeRequestVersionsSchema,
@@ -370,7 +385,7 @@ export const BrowseMergeRequestsSchema = BrowseMergeRequestsBaseSchema.refine(
   }
 
   // Check for get/diffs shared fields used in versions/version actions
-  if (data.action === 'versions' || data.action === 'version') {
+  if (data.action === 'versions' || data.action === 'version' || data.action === 'closing_issues') {
     for (const field of fieldsInvalidForVersionActions) {
       if (field in input && input[field] !== undefined) {
         ctx.addIssue({

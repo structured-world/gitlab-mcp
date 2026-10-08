@@ -179,7 +179,7 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
     {
       name: 'browse_merge_requests',
       description:
-        'Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), diffs (file-level changes with inline suggestions), compare (diff between any two refs), versions (list diff versions from pushes), version (get specific version with diffs). Related: manage_merge_request to create/update/merge.',
+        'Find and inspect merge requests. Actions: list (filter by state/author/reviewer/labels/branch), get (MR details by IID or source branch), closing_issues (one page of native issues that close on merge), diffs (file-level changes with inline suggestions), compare (diff between any two refs), versions (list diff versions from pushes), version (get specific version with diffs). Related: manage_merge_request to create/update/merge.',
       inputSchema: z.toJSONSchema(BrowseMergeRequestsSchema),
       requirements: {
         default: { tier: 'free' },
@@ -235,6 +235,16 @@ export const mrsToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefinit
             }
             /* istanbul ignore next -- unreachable: schema validation ensures merge_request_iid or branch_name */
             throw new Error('Either merge_request_iid or branch_name must be provided');
+          }
+
+          case 'closing_issues': {
+            // GitLab 16.0 baseline: visible native/external issues, explicit pagination.
+            // https://gitlab.com/gitlab-org/gitlab/-/blob/v16.0.0-ee/lib/api/merge_requests.rb#L669-689
+            const { project_id, merge_request_iid, page, per_page } = input;
+            return gitlab.get(
+              `projects/${normalizeProjectId(project_id)}/merge_requests/${merge_request_iid}/closes_issues`,
+              { query: toQuery({ page, per_page }, []) },
+            );
           }
 
           case 'diffs': {

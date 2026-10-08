@@ -62,6 +62,64 @@ beforeEach(() => {
   // mock implementation defined above, which is intended to mirror the real helper.
 });
 
+describe('Native MR closing issues', () => {
+  // One requested page preserves GitLab's authority, including external issue identifiers.
+  it('reads one native page without interpreting or closing issues', async () => {
+    const issues = [
+      { iid: 7, web_url: 'https://gitlab.example.com/group/sub/repo/-/issues/7' },
+      { id: 'EXT-9', title: 'External issue' },
+    ];
+    mockGitlab.get.mockResolvedValueOnce(issues);
+    const result = await mrsToolRegistry.get('browse_merge_requests')!.handler({
+      action: 'closing_issues',
+      project_id: 'group/sub/repo',
+      merge_request_iid: '8',
+      page: 2,
+      per_page: 100,
+    });
+    expect(result).toEqual(issues);
+    expect(mockGitlab.get).toHaveBeenCalledTimes(1);
+    expect(mockGitlab.get).toHaveBeenCalledWith(
+      'projects/group%2Fsub%2Frepo/merge_requests/8/closes_issues',
+      { query: { page: 2, per_page: 100 } },
+    );
+    expect(mockGitlab.post).not.toHaveBeenCalled();
+    expect(mockGitlab.put).not.toHaveBeenCalled();
+  });
+
+  // Invalid action fields must be rejected before any provider request.
+  it.each([
+    'branch_name',
+    'include_rebase_in_progress',
+    'state',
+    'version_id',
+    'exclude_lockfiles',
+  ])('rejects %s on closing_issues before dispatch', async (field) => {
+    await expect(
+      mrsToolRegistry.get('browse_merge_requests')!.handler({
+        action: 'closing_issues',
+        project_id: 'group/repo',
+        merge_request_iid: '8',
+        [field]: true,
+      }),
+    ).rejects.toThrow();
+    expect(mockGitlab.get).not.toHaveBeenCalled();
+  });
+
+  // A failed read is unknown evidence, never an empty set of closing links.
+  it('propagates provider failure', async () => {
+    mockGitlab.get.mockRejectedValueOnce(new Error('provider unavailable'));
+    await expect(
+      mrsToolRegistry.get('browse_merge_requests')!.handler({
+        action: 'closing_issues',
+        project_id: 'group/repo',
+        merge_request_iid: '8',
+      }),
+    ).rejects.toThrow('provider unavailable');
+    expect(mockGitlab.get).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('MRS Index exports', () => {
   it('should export mrsTools array with tool definitions', () => {
     expect(Array.isArray(mrsTools)).toBe(true);

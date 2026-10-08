@@ -85,6 +85,104 @@ describe('Integration namespace boundary', () => {
     await expect(deleteLifecycleGroup(request, apiUrl, token, group)).rejects.toThrow('403');
   });
 
+  // GitLab 18.5 can forbid bypassing retention. Only that exact policy response
+  // plus a verified pending deletion is successful scheduled cleanup.
+  it('reports scheduled cleanup when instance policy forbids immediate deletion', async () => {
+    const scheduled = { ...group, marked_for_deletion_on: '2026-10-09' };
+    request
+      .mockResolvedValueOnce(ok(root))
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce(ok(scheduled))
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          message: '`permanently_remove` option is not permitted on this instance.',
+        }),
+      })
+      .mockResolvedValueOnce(ok(scheduled));
+    await expect(deleteLifecycleGroup(request, apiUrl, token, group)).resolves.toBe(
+      'deletion_scheduled',
+    );
+    expect(request).toHaveBeenCalledTimes(6);
+  });
+
+  // Retention can expire while handling the policy response: a provider 404
+  // proves removal, whereas a failed verification must not be called success.
+  it('reports removal if the scheduled group disappears after the policy refusal', async () => {
+    request
+      .mockResolvedValueOnce(ok(root))
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          message: '`permanently_remove` option is not permitted on this instance.',
+        }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 404 });
+    await expect(deleteLifecycleGroup(request, apiUrl, token, group)).resolves.toBe('removed');
+  });
+
+  it('propagates failed verification after the policy refusal', async () => {
+    request
+      .mockResolvedValueOnce(ok(root))
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          message: '`permanently_remove` option is not permitted on this instance.',
+        }),
+      })
+      .mockResolvedValueOnce({ ok: false, status: 503 });
+    await expect(deleteLifecycleGroup(request, apiUrl, token, group)).rejects.toThrow('503');
+  });
+
+  // Do not hide unrelated validation errors behind the successful first DELETE.
+  it('rejects unrelated permanent-deletion validation errors', async () => {
+    request
+      .mockResolvedValueOnce(ok(root))
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({ message: '`full_path` is incorrect.' }),
+      });
+    await expect(deleteLifecycleGroup(request, apiUrl, token, group)).rejects.toThrow('400');
+    expect(request).toHaveBeenCalledTimes(5);
+  });
+
+  // A group restored or moved after scheduling is not a successful cleanup.
+  it.each([
+    { ...group, marked_for_deletion_on: null },
+    { ...group, parent_id: 4, marked_for_deletion_on: '2026-10-09' },
+    { ...group, id: 92, marked_for_deletion_on: '2026-10-09' },
+    { ...group, full_path: 'test/unrelated', marked_for_deletion_on: '2026-10-09' },
+  ])('rejects a policy refusal without verified scheduled deletion: %j', async (pending) => {
+    request
+      .mockResolvedValueOnce(ok(root))
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        json: async () => ({
+          message: '`permanently_remove` option is not permitted on this instance.',
+        }),
+      })
+      .mockResolvedValueOnce(ok(pending));
+    await expect(deleteLifecycleGroup(request, apiUrl, token, group)).rejects.toThrow();
+  });
+
   // Recheck ownership after scheduling so the second mutation cannot act on
   // a moved group or use an unrelated provider path as deletion confirmation.
   it.each([

@@ -43,7 +43,7 @@ async function deleteLifecycleGroup(request, apiUrl, token, saved) {
   // deletion. Confirm with the provider's updated full_path to bypass retention.
   // https://docs.gitlab.com/api/groups/#delete-a-group
   const scheduledResponse = await request(`${apiUrl}/api/v4/groups/${saved.id}`, { headers });
-  if (scheduledResponse.status === 404) return;
+  if (scheduledResponse.status === 404) return 'removed';
   if (!scheduledResponse.ok) {
     throw new Error(`Cannot verify scheduled test subgroup: ${scheduledResponse.status}`);
   }
@@ -61,7 +61,35 @@ async function deleteLifecycleGroup(request, apiUrl, token, saved) {
     headers: { ...headers, 'Content-Type': 'application/json' },
     body: JSON.stringify({ full_path: scheduled.full_path, permanently_remove: true }),
   });
-  if (!removed.ok) throw new Error(`Cannot permanently remove test subgroup: ${removed.status}`);
+  if (removed.ok) return 'permanent_removal_accepted';
+
+  // GitLab 18.5 Groups API returns this specific 400 when instance policy
+  // forbids bypassing retention. Other failures must still fail teardown.
+  // https://gitlab.com/gitlab-org/gitlab/-/blob/v18.5.0-ee/lib/api/groups.rb#L175-198
+  if (removed.status === 400) {
+    const error = await removed.json();
+    if (error.message === '`permanently_remove` option is not permitted on this instance.') {
+      const pendingResponse = await request(`${apiUrl}/api/v4/groups/${saved.id}`, { headers });
+      if (pendingResponse.status === 404) return 'removed';
+      if (!pendingResponse.ok) {
+        throw new Error(`Cannot verify pending test subgroup: ${pendingResponse.status}`);
+      }
+      const pending = await pendingResponse.json();
+      if (
+        pending.id !== saved.id ||
+        pending.parent_id !== root.id ||
+        pending.full_path !== scheduled.full_path ||
+        typeof pending.marked_for_deletion_on !== 'string' ||
+        !/^\d{4}-\d{2}-\d{2}$/.test(pending.marked_for_deletion_on)
+      ) {
+        throw new Error(
+          'Refusing scheduled cleanup: test subgroup is not verified pending deletion',
+        );
+      }
+      return 'deletion_scheduled';
+    }
+  }
+  throw new Error(`Cannot permanently remove test subgroup: ${removed.status}`);
 }
 
 module.exports = { findTestRoot, deleteLifecycleGroup };

@@ -46,14 +46,14 @@ module.exports = async () => {
 
     // A failed verification/deletion fails teardown and retains the data file
     // for diagnosis rather than claiming that cleanup succeeded.
-    await deleteLifecycleGroup(
+    const cleanup = await deleteLifecycleGroup(
       fetch,
       process.env.GITLAB_API_URL,
       process.env.GITLAB_TOKEN,
       testData.group,
     );
-    // GitLab may execute permanent removal asynchronously after its 202 response.
-    console.log(`Permanent cleanup accepted for suite-owned subgroup: ${testData.group.full_path}`);
+    // Report the provider's actual state: removal may remain subject to retention.
+    console.log(`Suite-owned subgroup cleanup: ${cleanup} (${testData.group.full_path})`);
   } else if (testData?.group?.id) {
     throw new Error('Cannot clean up lifecycle subgroup without test credentials');
   }

@@ -27,6 +27,7 @@ import { getWorkItemTypes } from '../../src/utils/workItemTypes';
 import { itIfTier, describeIfTier } from '../setup/tierGate';
 import { gql } from 'graphql-tag';
 import { IntegrationTestHelper } from './helpers/registry-helper';
+const { findTestRoot } = require('../setup/testNamespace.js');
 
 describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
   const timestamp = Date.now();
@@ -91,6 +92,10 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
     it('should create test group (foundation for all tests)', async () => {
       console.log('🔧 Creating test group...');
 
+      const root = (await findTestRoot(fetch, GITLAB_API_URL, GITLAB_TOKEN)) as {
+        id: number;
+      };
+
       const createResponse = await fetch(`${GITLAB_API_URL}/api/v4/groups`, {
         method: 'POST',
         headers: {
@@ -100,6 +105,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
         body: JSON.stringify({
           name: `Test Group ${baseTestName}`,
           path: baseTestName,
+          parent_id: root.id,
           description: `Integration test group created at ${new Date().toISOString()} - contains all test infrastructure`,
           visibility: 'private',
         }),
@@ -110,6 +116,8 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
       expect(group).toHaveProperty('id');
       expect(group).toHaveProperty('path', baseTestName);
+      expect(group).toHaveProperty('full_path', `test/${baseTestName}`);
+      expect(group).toHaveProperty('parent_id', root.id);
 
       // Update shared test data
       updateTestData({ group });
@@ -606,7 +614,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
         // Get work item types directly using utility function (not exposed as tool)
         console.log('🔍 Getting work item types for group namespace using internal utility...');
-        const groupWorkItemTypes = await getWorkItemTypes(testData.group!.path);
+        const groupWorkItemTypes = await getWorkItemTypes(testData.group!.full_path);
         console.log(
           '📋 Available group work item types:',
           groupWorkItemTypes.map((t) => `${t.name}(${t.id})`).join(', '),
@@ -655,7 +663,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
             // Step 1: Create work item with basic parameters (CREATE doesn't support widgets)
             const workItem = (await helper.createWorkItem({
-              namespace: testData.group!.path,
+              namespace: testData.group!.full_path,
               title: workItemData.title,
               workItemType: workItemData.workItemType,
               description: workItemData.description,
@@ -1693,7 +1701,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
       // Test group work items (Epics)
       const groupResult = (await helper.listWorkItems({
-        namespace: testData.group!.path,
+        namespace: testData.group!.full_path,
         state: ['OPEN', 'CLOSED'],
         simple: true,
       })) as any;
@@ -1753,7 +1761,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
       // Test filtering for EPIC type in group
       const epicResult = (await helper.listWorkItems({
-        namespace: testData.group!.path,
+        namespace: testData.group!.full_path,
         types: ['EPIC'],
         simple: true,
       })) as any;

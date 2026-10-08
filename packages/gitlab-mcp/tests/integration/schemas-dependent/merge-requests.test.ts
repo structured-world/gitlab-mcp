@@ -18,6 +18,7 @@ import {
   getTestProject,
 } from '../../setup/testConfig';
 import { BrowseMergeRequestsSchema } from '../../../src/entities/mrs/schema-readonly';
+import { IntegrationTestHelper } from '../helpers/registry-helper';
 
 describe('Merge Requests Schema - Using Lifecycle Data', () => {
   let testData: any;
@@ -31,6 +32,61 @@ describe('Merge Requests Schema - Using Lifecycle Data', () => {
     console.log(
       `Using lifecycle data: Project ${testProject.id}, MRs: ${testData.mergeRequests?.length}`,
     );
+  });
+
+  // Exercise the production handler against GitLab's native closing relationship,
+  // not a local description parser. Reuse suite-owned fixtures and restore the MR.
+  it('reads native closing issues with one-page pagination without closing them', async () => {
+    const mr = testData.mergeRequests?.[0] as { iid: number; description: string } | undefined;
+    // Lifecycle stores manage_work_item results, not raw GraphQL objects:
+    // its cleanWorkItemResponse converts workItemType.name to a string.
+    const normalizedWorkItems = testData.workItems as
+      { workItemType: string; iid: string; title: string }[] | undefined;
+    const issue = normalizedWorkItems?.find((item) => item.workItemType === 'Issue');
+    expect(mr).toBeDefined();
+    expect(issue).toBeDefined();
+    if (!mr || !issue) throw new Error('Lifecycle must create an MR and an Issue');
+
+    const helper = new IntegrationTestHelper();
+    await helper.initialize();
+    const params = {
+      project_id: testProject.path_with_namespace as string,
+      merge_request_iid: String(mr.iid),
+    };
+    try {
+      await helper.executeTool('manage_merge_request', {
+        action: 'update',
+        ...params,
+        description: `Closes #${issue.iid}`,
+      });
+      const page = (await helper.executeTool('browse_merge_requests', {
+        action: 'closing_issues',
+        ...params,
+        page: 1,
+        per_page: 1,
+      })) as { iid: number; title: string; state: string; web_url: string }[];
+      expect(page).toHaveLength(1);
+      expect(page[0]).toMatchObject({
+        iid: Number(issue.iid),
+        title: issue.title,
+        state: 'opened',
+      });
+      expect(page[0].web_url).toBe(`${testProject.web_url}/-/issues/${issue.iid}`);
+      await expect(
+        helper.executeTool('browse_merge_requests', {
+          action: 'closing_issues',
+          ...params,
+          page: 2,
+          per_page: 1,
+        }),
+      ).resolves.toEqual([]);
+    } finally {
+      await helper.executeTool('manage_merge_request', {
+        action: 'update',
+        ...params,
+        description: mr.description,
+      });
+    }
   });
 
   describe('BrowseMergeRequestsSchema (list action)', () => {

@@ -37,7 +37,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
       // 🚨 CRITICAL: This uses the ACTUAL list_work_items handler
       // Tests the production code path that MCP clients use
       const testData = requireTestData();
-      const testGroupPath = testData.group.path;
+      const testGroupPath = testData.group.full_path;
 
       console.log(`🔧 Testing list_work_items handler with group: ${testGroupPath}`);
 
@@ -116,7 +116,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
     it('should get single work item using get_work_item handler', async () => {
       // First get a list using handler to find a work item ID
       const testData = requireTestData();
-      const testGroupPath = testData.group.path;
+      const testGroupPath = testData.group.full_path;
 
       const response = (await helper.listWorkItems({
         namespace: testGroupPath,
@@ -232,7 +232,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
   describe('Work Items Widget Validation through Handlers', () => {
     it('should validate core widget types through list_work_items handler', async () => {
       const testData = requireTestData();
-      const testGroupPath = testData.group.path;
+      const testGroupPath = testData.group.full_path;
 
       // Use handler function instead of direct GraphQL
       const response = (await helper.listWorkItems({
@@ -277,7 +277,7 @@ describe('Work Items Integration - Using Handler Functions', () => {
     it('should create a test Epic using create_work_item handler', async () => {
       try {
         const testData = requireTestData();
-        const testGroupPath = testData.group.path;
+        const testGroupPath = testData.group.full_path;
 
         // 🚨 CRITICAL: Get work item types using internal utility function
         console.log('🔍 Getting Epic work item type using internal utility function...');

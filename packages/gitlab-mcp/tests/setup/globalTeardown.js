@@ -7,6 +7,7 @@
 
 const fs = require('fs');
 const { config } = require('dotenv');
+const { deleteLifecycleGroup } = require('./testNamespace');
 
 // Use native fetch API (available in Node.js 18+)
 // No import needed - fetch is global in modern Node.js
@@ -43,36 +44,21 @@ module.exports = async () => {
   if (testData?.group?.id && process.env.GITLAB_TOKEN && process.env.GITLAB_API_URL) {
     console.log('🧹 Final cleanup: Deleting all test infrastructure...');
 
-    try {
-      const response = await fetch(
-        `${process.env.GITLAB_API_URL}/api/v4/groups/${testData.group.id}`,
-        {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${process.env.GITLAB_TOKEN}`,
-          },
-        },
-      );
-
-      if (response.ok) {
-        console.log(
-          `✅ Cleaned up test group: ${testData.group.id} (includes all projects, MRs, work items)`,
-        );
-      } else {
-        console.log(`⚠️  Could not delete test group ${testData.group.id}: ${response.status}`);
-      }
-    } catch (error) {
-      console.log(`⚠️  Error deleting test group:`, error);
-    }
+    // A failed verification/deletion fails teardown and retains the data file
+    // for diagnosis rather than claiming that cleanup succeeded.
+    const cleanup = await deleteLifecycleGroup(
+      fetch,
+      process.env.GITLAB_API_URL,
+      process.env.GITLAB_TOKEN,
+      testData.group,
+    );
+    // Report the provider's actual state: removal may remain subject to retention.
+    console.log(`Suite-owned subgroup cleanup: ${cleanup} (${testData.group.full_path})`);
+  } else if (testData?.group?.id) {
+    throw new Error('Cannot clean up lifecycle subgroup without test credentials');
   }
 
-  console.log('📊 Data lifecycle summary:');
-  console.log('  ✅ Test infrastructure created');
-  console.log('  ✅ Schema validation completed with real data');
-  console.log('  ✅ GraphQL functionality verified');
-  console.log('  ✅ Complete cleanup performed');
-  console.log('');
-  console.log('✅ GitLab Integration Test Suite - All tests completed successfully');
+  console.log('GitLab integration teardown completed; test results are reported by Jest');
 
   // Clean up temporary test data file
   try {

@@ -52,7 +52,8 @@ module.exports = async () => {
       process.env.GITLAB_TOKEN,
       testData.group,
     );
-    console.log(`Cleaned up suite-owned subgroup: ${testData.group.full_path}`);
+    // GitLab may execute permanent removal asynchronously after its 202 response.
+    console.log(`Permanent cleanup accepted for suite-owned subgroup: ${testData.group.full_path}`);
   } else if (testData?.group?.id) {
     throw new Error('Cannot clean up lifecycle subgroup without test credentials');
   }

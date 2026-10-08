@@ -614,7 +614,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
         // Get work item types directly using utility function (not exposed as tool)
         console.log('🔍 Getting work item types for group namespace using internal utility...');
-        const groupWorkItemTypes = await getWorkItemTypes(testData.group!.path);
+        const groupWorkItemTypes = await getWorkItemTypes(testData.group!.full_path);
         console.log(
           '📋 Available group work item types:',
           groupWorkItemTypes.map((t) => `${t.name}(${t.id})`).join(', '),
@@ -663,7 +663,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
             // Step 1: Create work item with basic parameters (CREATE doesn't support widgets)
             const workItem = (await helper.createWorkItem({
-              namespace: testData.group!.path,
+              namespace: testData.group!.full_path,
               title: workItemData.title,
               workItemType: workItemData.workItemType,
               description: workItemData.description,
@@ -1701,7 +1701,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
       // Test group work items (Epics)
       const groupResult = (await helper.listWorkItems({
-        namespace: testData.group!.path,
+        namespace: testData.group!.full_path,
         state: ['OPEN', 'CLOSED'],
         simple: true,
       })) as any;
@@ -1761,7 +1761,7 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
 
       // Test filtering for EPIC type in group
       const epicResult = (await helper.listWorkItems({
-        namespace: testData.group!.path,
+        namespace: testData.group!.full_path,
         types: ['EPIC'],
         simple: true,
       })) as any;

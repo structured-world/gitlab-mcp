@@ -36,12 +36,69 @@ describe('Integration namespace boundary', () => {
   // Cleanup must verify live provider ownership, not trust a saved group ID.
   it('deletes only its verified lifecycle subgroup', async () => {
     request.mockResolvedValueOnce(ok(root)).mockResolvedValueOnce(ok(group));
-    request.mockResolvedValueOnce({ ok: true });
+    request.mockResolvedValueOnce({ ok: true }).mockResolvedValueOnce({ ok: false, status: 404 });
     await deleteLifecycleGroup(request, apiUrl, token, group);
-    expect(request).toHaveBeenLastCalledWith(`${apiUrl}/api/v4/groups/${group.id}`, {
+    expect(request).toHaveBeenNthCalledWith(3, `${apiUrl}/api/v4/groups/${group.id}`, {
       method: 'DELETE',
       headers: { Authorization: `Bearer ${token}` },
     });
+    expect(request).toHaveBeenLastCalledWith(`${apiUrl}/api/v4/groups/${group.id}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    expect(request).toHaveBeenCalledTimes(4);
+  });
+
+  // With retention enabled the first DELETE only schedules deletion. The
+  // provider renames the group; its updated full_path confirms permanent removal.
+  it('requests permanent removal after deletion is scheduled', async () => {
+    const scheduled = { ...group, full_path: `${group.full_path}-deletion_scheduled-91` };
+    request
+      .mockResolvedValueOnce(ok(root))
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({ ok: true, status: 202 })
+      .mockResolvedValueOnce(ok(scheduled))
+      .mockResolvedValueOnce({ ok: true, status: 202 });
+    await deleteLifecycleGroup(request, apiUrl, token, group);
+    expect(request.mock.calls.map((call) => call[1].method || 'GET')).toEqual([
+      'GET',
+      'GET',
+      'DELETE',
+      'GET',
+      'DELETE',
+    ]);
+    expect(request).toHaveBeenLastCalledWith(`${apiUrl}/api/v4/groups/${group.id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ full_path: scheduled.full_path, permanently_remove: true }),
+    });
+  });
+
+  // A failed permanent request must retain the fixture record by rejecting
+  // teardown rather than treating the scheduled deletion as completed cleanup.
+  it('propagates permanent-removal failures', async () => {
+    request
+      .mockResolvedValueOnce(ok(root))
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({ ok: false, status: 403 });
+    await expect(deleteLifecycleGroup(request, apiUrl, token, group)).rejects.toThrow('403');
+  });
+
+  // Recheck ownership after scheduling so the second mutation cannot act on
+  // a moved group or use an unrelated provider path as deletion confirmation.
+  it.each([
+    { ...group, parent_id: 4 },
+    { ...group, full_path: 'production/unrelated' },
+    { ...group, id: 92 },
+  ])('refuses permanent removal of a changed subgroup: %j', async (scheduled) => {
+    request
+      .mockResolvedValueOnce(ok(root))
+      .mockResolvedValueOnce(ok(group))
+      .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce(ok(scheduled));
+    await expect(deleteLifecycleGroup(request, apiUrl, token, group)).rejects.toThrow('Refusing');
+    expect(request).toHaveBeenCalledTimes(4);
   });
 
   it.each([

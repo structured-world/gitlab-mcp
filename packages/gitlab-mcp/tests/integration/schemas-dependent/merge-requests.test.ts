@@ -39,7 +39,7 @@ describe('Merge Requests Schema - Using Lifecycle Data', () => {
   it('reads native closing issues with one-page pagination without closing them', async () => {
     const mr = testData.mergeRequests?.[0] as { iid: number; description: string } | undefined;
     const issue = testData.workItems?.find(
-      (item: { workItemType: { name: string } }) => item.workItemType.name === 'Issue',
+      (item: { workItemType: string }) => item.workItemType === 'Issue',
     ) as { iid: string; title: string } | undefined;
     expect(mr).toBeDefined();
     expect(issue).toBeDefined();

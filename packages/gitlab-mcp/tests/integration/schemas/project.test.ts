@@ -6,16 +6,16 @@
 import { GitLabProjectSchema } from '../../../src/entities/shared';
 import { ManageProjectSchema } from '../../../src/entities/core/schema';
 import { IntegrationTestHelper } from '../helpers/registry-helper';
+import { getTestGroup } from '../../setup/testConfig';
 
 describe('Project Schema - GitLab 18.3 Integration', () => {
   let helper: IntegrationTestHelper;
   const GITLAB_TOKEN = process.env.GITLAB_TOKEN;
   const GITLAB_API_URL = process.env.GITLAB_API_URL;
-  const TEST_GROUP = process.env.TEST_GROUP;
+  let TEST_GROUP: string;
 
   let testTimestamp: string;
   let testGroupId: string | null = null;
-  let createdTestGroup = false; // Track if we created the group
   let createdProjects: string[] = [];
 
   beforeAll(async () => {
@@ -36,66 +36,16 @@ describe('Project Schema - GitLab 18.3 Integration', () => {
     if (!GITLAB_API_URL) {
       throw new Error('GITLAB_API_URL environment variable is required for integration tests');
     }
-    if (!TEST_GROUP) {
-      throw new Error('TEST_GROUP environment variable is required for integration tests');
-    }
-
     testTimestamp = Date.now().toString();
 
-    // Verify if TEST_GROUP exists, create if necessary following ZERO DATA VALIDATION RULE
-    console.log(`🔍 Checking if test group '${TEST_GROUP}' exists...`);
-
-    try {
-      const checkGroupResponse = await fetch(
-        `${GITLAB_API_URL}/api/v4/groups/${encodeURIComponent(TEST_GROUP)}`,
-        {
-          headers: {
-            Authorization: `Bearer ${GITLAB_TOKEN}`,
-          },
-        },
-      );
-
-      if (checkGroupResponse.ok) {
-        const existingGroup = await checkGroupResponse.json();
-        testGroupId = existingGroup.id;
-        console.log(
-          `✅ Found existing test group: ${existingGroup.name} (ID: ${existingGroup.id})`,
-        );
-      } else if (checkGroupResponse.status === 404) {
-        console.log(`🔧 Creating test group '${TEST_GROUP}' for project schema validation...`);
-
-        const groupData = {
-          name: TEST_GROUP,
-          path: TEST_GROUP,
-          description: `Test group for project schema validation - ${testTimestamp}`,
-          visibility: 'private',
-        };
-
-        const createGroupResponse = await fetch(`${GITLAB_API_URL}/api/v4/groups`, {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${GITLAB_TOKEN}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify(groupData),
-        });
-
-        if (createGroupResponse.ok) {
-          const group = await createGroupResponse.json();
-          testGroupId = group.id;
-          createdTestGroup = true;
-          console.log(`✅ Created test group: ${group.name} (ID: ${group.id})`);
-        } else {
-          const errorBody = await createGroupResponse.text();
-          console.log(`⚠️  Could not create group: ${createGroupResponse.status} - ${errorBody}`);
-        }
-      } else {
-        const errorBody = await checkGroupResponse.text();
-        console.log(`⚠️  Error checking group: ${checkGroupResponse.status} - ${errorBody}`);
-      }
-    } catch (error) {
-      console.log(`⚠️  Error with group operations:`, error);
+    // Reuse the verified suite-owned lifecycle subgroup; never create or delete
+    // a root namespace based on TEST_GROUP supplied by the environment.
+    const group = getTestGroup() as { id: number; full_path: string };
+    if (!/^test\/lifecycle-test-\d+$/.test(group.full_path)) {
+      throw new Error('Project fixtures require the suite-owned test lifecycle subgroup');
     }
+    TEST_GROUP = group.full_path;
+    testGroupId = String(group.id);
 
     // Create test projects in the test group
     if (testGroupId) {
@@ -175,35 +125,7 @@ describe('Project Schema - GitLab 18.3 Integration', () => {
       }
     }
 
-    // Clean up test group only if we created it during this test run
-    if (createdTestGroup && testGroupId) {
-      console.log(
-        `🧹 Cleaning up test group '${TEST_GROUP}' (ID: ${testGroupId}) that was created during test...`,
-      );
-
-      try {
-        const response = await fetch(`${GITLAB_API_URL}/api/v4/groups/${testGroupId}`, {
-          method: 'DELETE',
-          headers: {
-            Authorization: `Bearer ${GITLAB_TOKEN}`,
-          },
-        });
-
-        if (response.ok || response.status === 404) {
-          console.log(`✅ Cleaned up test group '${TEST_GROUP}': ${testGroupId}`);
-        } else {
-          console.log(
-            `⚠️  Could not delete group '${TEST_GROUP}' ${testGroupId}: ${response.status}`,
-          );
-        }
-      } catch (error) {
-        console.log(`⚠️  Error deleting group '${TEST_GROUP}' ${testGroupId}:`, error);
-      }
-    } else if (testGroupId && !createdTestGroup) {
-      console.log(
-        `ℹ️  Test group '${TEST_GROUP}' (ID: ${testGroupId}) existed before test - not deleting`,
-      );
-    }
+    // The lifecycle teardown owns subgroup cleanup after all suites finish.
   });
 
   it('should validate ManageProjectSchema against test project creation parameters', async () => {

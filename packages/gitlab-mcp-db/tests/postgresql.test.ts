@@ -49,7 +49,7 @@ const createMockPrisma = () => ({
     count: jest.fn().mockResolvedValue(0),
   },
   authCodeFlowState: {
-    create: jest.fn().mockResolvedValue({}),
+    upsert: jest.fn().mockResolvedValue({}),
     findUnique: jest.fn(),
     delete: jest.fn().mockResolvedValue({}),
     deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
@@ -433,7 +433,7 @@ describe('PostgreSQLStorageBackend', () => {
       const auth = { ...createAuthCodeFlow(), requestedGitlabScopes };
       await backend.storeAuthCodeFlow(auth.internalState, auth);
       expect(
-        mockPrisma.authCodeFlowState.create.mock.calls[0][0].data.requestedGitlabScopes,
+        mockPrisma.authCodeFlowState.upsert.mock.calls[0][0].create.requestedGitlabScopes,
       ).toEqual(requestedGitlabScopes);
       mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
         ...auth,
@@ -503,7 +503,7 @@ describe('PostgreSQLStorageBackend', () => {
 
     const flow = createAuthCodeFlow();
     await backend.storeAuthCodeFlow(flow.internalState, flow);
-    expect(mockPrisma.authCodeFlowState.create).toHaveBeenCalled();
+    expect(mockPrisma.authCodeFlowState.upsert).toHaveBeenCalled();
 
     mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
       internalState: flow.internalState,
@@ -724,7 +724,7 @@ describe('PostgreSQLStorageBackend', () => {
         resource: 'https://mcp.example.com/mcp',
       };
       await backend.storeAuthCodeFlow(flow.internalState, flow);
-      const data = mockPrisma.authCodeFlowState.create.mock.calls[0][0].data;
+      const data = mockPrisma.authCodeFlowState.upsert.mock.calls[0][0].create;
       expect(data).toMatchObject({
         selectedInstance: 'https://git.corp.example/gitlab',
         selectedInstanceLabel: 'Corp',
@@ -734,6 +734,29 @@ describe('PostgreSQLStorageBackend', () => {
 
       mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce(data);
       expect(await backend.getAuthCodeFlow(flow.internalState)).toEqual(flow);
+    });
+
+    // GitLab's authorization code works once: the tokens of a callback that failed after
+    // the exchange are stored with the flow, so a retried callback on any replica finishes.
+    it('keeps the GitLab tokens of an authorization code flow', async () => {
+      const gitlabTokens = {
+        access_token: 'gl-at',
+        refresh_token: 'gl-rt',
+        token_type: 'Bearer',
+        expires_in: 7200,
+        created_at: 1,
+      };
+      const flow: AuthCodeFlowState = { ...createAuthCodeFlow(), gitlabTokens };
+
+      await backend.storeAuthCodeFlow(flow.internalState, flow);
+
+      const call = mockPrisma.authCodeFlowState.upsert.mock.calls[0][0];
+      expect(call.where).toEqual({ internalState: flow.internalState });
+      expect(call.update.gitlabTokens).toEqual(gitlabTokens);
+      mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce(call.create);
+      expect((await backend.getAuthCodeFlow(flow.internalState))?.gitlabTokens).toEqual(
+        gitlabTokens,
+      );
     });
 
     it('keeps the resource of a session', async () => {

@@ -123,6 +123,11 @@ export interface AuthCodeFlowState {
   scopes?: string[];
   /** RFC 8707 resource requested at /authorize; absent means the `/mcp` resource. */
   resource?: string;
+  /**
+   * Tokens GitLab issued for the callback's code; the code works once, so they are kept
+   * until the account is set up and a retried callback finishes with them.
+   */
+  gitlabTokens?: GitLabTokenResponse;
 }
 
 /**

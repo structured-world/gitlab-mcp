@@ -474,6 +474,44 @@ describe('OAuth handshake over HTTP', () => {
     expect(token.status).toBe(200);
   });
 
+  // GitLab's authorization code works once. A temporary failure after the exchange used to
+  // lose the authorization; reloading the callback now finishes it with the stored tokens.
+  it('finishes an approved authorization after a temporary failure in the callback', async () => {
+    const mcp = await replica();
+    const clientId = await register(mcp);
+    const { verifier, challenge } = pkce();
+    const toGitLab = await fetch(
+      `${mcp.url}/authorize?${new URLSearchParams({
+        response_type: 'code',
+        client_id: clientId,
+        redirect_uri: CLIENT_REDIRECT,
+        code_challenge: challenge,
+        code_challenge_method: 'S256',
+        state: 'client-csrf',
+      })}`,
+      { redirect: 'manual' },
+    );
+    const state = new URL(toGitLab.headers.get('location')!).searchParams.get('state')!;
+    const callbackUrl = `${mcp.url}/oauth/callback?code=${gitlab.approve(jane, CALLBACK)}&state=${state}`;
+    gitlab.userFailures = 1;
+
+    const failed = new URL(
+      (await fetch(callbackUrl, { redirect: 'manual' })).headers.get('location')!,
+    );
+    const retried = new URL(
+      (await fetch(callbackUrl, { redirect: 'manual' })).headers.get('location')!,
+    );
+
+    expect(failed.searchParams.get('error')).toBe('server_error');
+    expect(retried.searchParams.get('state')).toBe('client-csrf');
+    const code = retried.searchParams.get('code');
+    expect(code).toBeTruthy();
+    expect(
+      gitlab.requests.filter((r) => r.params.grant_type === 'authorization_code'),
+    ).toHaveLength(1);
+    expect((await exchange(mcp, clientId, code!, verifier)).status).toBe(200);
+  });
+
   // GitLab hands out the device tokens once. A temporary failure while setting up the
   // account after that used to lose the completed authorization.
   it('finishes a completed device authorization after a temporary failure', async () => {

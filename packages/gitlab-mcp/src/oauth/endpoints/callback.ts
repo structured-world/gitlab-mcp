@@ -15,7 +15,9 @@
  */
 
 import { Request, Response } from 'express';
-import { loadOAuthConfig } from '../config';
+import { loadOAuthConfig, type OAuthConfig } from '../config';
+import type { GitLabOAuthApp } from '../oauth-app';
+import type { AuthCodeFlowState, GitLabTokenResponse } from '../types';
 import { sessionStore } from '../session-store';
 import { exchangeGitLabAuthCode, getGitLabUser } from '../gitlab-device-flow';
 import { generateSessionId, generateAuthorizationCode, calculateTokenExpiry } from '../token-utils';
@@ -95,11 +97,12 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     return;
   }
 
-  // Take the auth code flow state: a callback is processed once, on whichever replica
-  // receives it first.
+  // The flow stays until the account is set up: GitLab's code works once, so a callback
+  // that fails after the exchange keeps the issued tokens with the flow and a retried
+  // callback finishes with them.
   let flow;
   try {
-    flow = await sessionStore.consumeAuthCodeFlow(state);
+    flow = await sessionStore.getAuthCodeFlow(state);
   } catch (err: unknown) {
     logError('Failed to read authorization flow', { err: err as Error });
     res.status(503).json({
@@ -118,6 +121,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
 
   // Check if flow has expired
   if (Date.now() > flow.expiresAt) {
+    await sessionStore.deleteAuthCodeFlow(state).catch(() => false);
     res.status(400).json({
       error: 'invalid_request',
       error_description: 'Authorization flow expired. Please start again.',
@@ -132,11 +136,19 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       throw new Error('GitLab instance is no longer configured');
     }
 
-    // Exchange GitLab authorization code for tokens
-    const gitlabTokens = await exchangeGitLabAuthCode(code, flow.callbackUri, config, app);
+    const gitlabTokens = flow.gitlabTokens ?? (await exchangeCode(state, flow, code, config, app));
 
     // Get GitLab user info
     const userInfo = await getGitLabUser(gitlabTokens.access_token, app.baseUrl);
+
+    // Exactly one callback completes the flow, so one session and one code are created.
+    if (!(await sessionStore.consumeAuthCodeFlow(state))) {
+      res.status(400).json({
+        error: 'invalid_request',
+        error_description: 'Authorization was already completed.',
+      });
+      return;
+    }
 
     // Create session
     const sessionId = generateSessionId();
@@ -198,8 +210,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
   } catch (error: unknown) {
     logError('Failed to complete authorization code flow', { err: error as Error });
 
-    // The flow was taken above, so a retried callback cannot reuse it.
-    // Try to redirect to client with error
+    // The flow is kept unless it was completed, so the callback can be retried
     res.redirect(
       authorizationRedirect(flow.clientRedirectUri, config.issuer, {
         error: 'server_error',
@@ -209,4 +220,28 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       }),
     );
   }
+}
+
+/**
+ * Exchange GitLab's single-use code and keep the tokens with the flow before anything
+ * else can fail. When a concurrent callback already spent the code, its stored tokens are
+ * used instead.
+ */
+async function exchangeCode(
+  state: string,
+  flow: AuthCodeFlowState,
+  code: string,
+  config: OAuthConfig,
+  app: GitLabOAuthApp,
+): Promise<GitLabTokenResponse> {
+  let tokens: GitLabTokenResponse;
+  try {
+    tokens = await exchangeGitLabAuthCode(code, flow.callbackUri, config, app);
+  } catch (error: unknown) {
+    const current = await sessionStore.getAuthCodeFlow(state);
+    if (current?.gitlabTokens) return current.gitlabTokens;
+    throw error;
+  }
+  await sessionStore.storeAuthCodeFlow(state, { ...flow, gitlabTokens: tokens });
+  return tokens;
 }

@@ -18,7 +18,8 @@ ADD COLUMN     "selected_instance" TEXT,
 ADD COLUMN     "selected_instance_label" TEXT;
 
 -- AlterTable
-ALTER TABLE "oauth_auth_code_flows" ADD COLUMN     "mcp_scopes" JSONB,
+ALTER TABLE "oauth_auth_code_flows" ADD COLUMN     "gitlab_tokens" JSONB,
+ADD COLUMN     "mcp_scopes" JSONB,
 ADD COLUMN     "resource" TEXT,
 ADD COLUMN     "selected_instance" TEXT,
 ADD COLUMN     "selected_instance_label" TEXT;

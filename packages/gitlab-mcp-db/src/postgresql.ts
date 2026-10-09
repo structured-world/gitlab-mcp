@@ -71,6 +71,7 @@ interface PrismaDeviceFlowStateRow {
 
 interface PrismaAuthCodeFlowStateRow {
   requestedGitlabScopes?: unknown;
+  gitlabTokens?: unknown;
   selectedInstance?: string | null;
   selectedInstanceLabel?: string | null;
   mcpScopes?: unknown;
@@ -189,7 +190,7 @@ interface GenericPrismaClient {
     count(): Promise<number>;
   };
   authCodeFlowState: {
-    create(args: unknown): Promise<unknown>;
+    upsert(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
     delete(args: unknown): Promise<unknown>;
     deleteMany(args: unknown): Promise<unknown>;
@@ -499,22 +500,26 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   // Auth code flow operations
   async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowStateType): Promise<void> {
     const prisma = this.getPrisma();
-    await prisma.authCodeFlowState.create({
-      data: {
-        internalState,
-        clientId: flow.clientId,
-        codeChallenge: flow.codeChallenge,
-        codeChallengeMethod: flow.codeChallengeMethod,
-        clientState: flow.clientState,
-        clientRedirectUri: flow.clientRedirectUri,
-        callbackUri: flow.callbackUri,
-        expiresAt: BigInt(flow.expiresAt),
-        requestedGitlabScopes: flow.requestedGitlabScopes,
-        selectedInstance: flow.selectedInstance ?? null,
-        selectedInstanceLabel: flow.selectedInstanceLabel ?? null,
-        mcpScopes: flow.scopes,
-        resource: flow.resource ?? null,
-      },
+    // The callback stores the flow again with the GitLab tokens it received.
+    const data = {
+      clientId: flow.clientId,
+      codeChallenge: flow.codeChallenge,
+      codeChallengeMethod: flow.codeChallengeMethod,
+      clientState: flow.clientState,
+      clientRedirectUri: flow.clientRedirectUri,
+      callbackUri: flow.callbackUri,
+      expiresAt: BigInt(flow.expiresAt),
+      requestedGitlabScopes: flow.requestedGitlabScopes,
+      selectedInstance: flow.selectedInstance ?? null,
+      selectedInstanceLabel: flow.selectedInstanceLabel ?? null,
+      mcpScopes: flow.scopes,
+      resource: flow.resource ?? null,
+      gitlabTokens: flow.gitlabTokens,
+    };
+    await prisma.authCodeFlowState.upsert({
+      where: { internalState },
+      update: data,
+      create: { internalState, ...data },
     });
   }
 
@@ -550,6 +555,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       selectedInstanceLabel: optional(row.selectedInstanceLabel),
       scopes: storedMcpScopes(row.mcpScopes),
       resource: optional(row.resource),
+      gitlabTokens: storedGitlabTokens(row.gitlabTokens),
     };
   }
 

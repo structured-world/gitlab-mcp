@@ -194,6 +194,38 @@ describe('OAuth Callback Handler', () => {
         error_description: 'GitLab authorization failed',
       });
     });
+
+    // Without the flow there is no registered redirect to send the error to.
+    it('reports a GitLab error as JSON when the flow cannot be read', async () => {
+      mockRequest.query = { error: 'access_denied', state: 'flow-state-123' };
+      mockSessionStore.consumeAuthCodeFlow.mockRejectedValue(new Error('database down'));
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(redirectMock).not.toHaveBeenCalled();
+      expect(statusMock).toHaveBeenCalledWith(400);
+      expect(jsonMock).toHaveBeenCalledWith({
+        error: 'access_denied',
+        error_description: 'GitLab authorization failed',
+      });
+    });
+  });
+
+  describe('storage outage', () => {
+    // An outage is not an invalid state: the user can retry the sign-in.
+    it('answers 503 when the authorization flow cannot be read', async () => {
+      mockRequest.query = { code: 'gitlab-code', state: 'flow-state-123' };
+      mockSessionStore.consumeAuthCodeFlow.mockRejectedValue(new Error('database down'));
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(statusMock).toHaveBeenCalledWith(503);
+      expect(jsonMock).toHaveBeenCalledWith({
+        error: 'temporarily_unavailable',
+        error_description: 'Authorization storage is unavailable. Please try again.',
+      });
+      expect(redirectMock).not.toHaveBeenCalled();
+    });
   });
 
   describe('parameter validation', () => {

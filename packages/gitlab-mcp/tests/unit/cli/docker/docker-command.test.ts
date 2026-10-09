@@ -636,6 +636,23 @@ describe('docker-command', () => {
       );
     });
 
+    it('should cancel when the public URL prompt is cancelled', async () => {
+      mockGetDockerStatus.mockReturnValue({
+        dockerInstalled: true,
+        dockerRunning: true,
+        composeInstalled: true,
+      });
+      mockP.text.mockResolvedValueOnce('3333');
+      mockP.text.mockResolvedValueOnce(p.CANCEL_SYMBOL); // public URL
+      mockP.confirm.mockResolvedValueOnce(true); // enable OAuth
+      mockP.isCancel.mockImplementation((val) => val === p.CANCEL_SYMBOL);
+
+      await initDocker();
+
+      expect(mockP.cancel).toHaveBeenCalledWith('Setup cancelled');
+      expect(mockInitDockerConfig).not.toHaveBeenCalled();
+    });
+
     it('should start container after init if requested', async () => {
       mockGetDockerStatus.mockReturnValue({
         dockerInstalled: true,

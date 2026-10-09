@@ -352,6 +352,35 @@ describe('GitLab Device Flow Client', () => {
       // onPending may or may not be called depending on timing
     });
 
+    // RFC 8628 section 3.5: slow_down adds 5 seconds to this and every later interval.
+    it('waits 5 seconds longer after slow_down', async () => {
+      jest.useFakeTimers();
+      try {
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: false,
+            json: jest.fn().mockResolvedValue({ error: 'slow_down' }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({ access_token: 'token' }),
+          });
+        const config = { ...mockConfig, devicePollInterval: 1, deviceTimeout: 60 };
+
+        const result = pollForToken('device-code-123', config);
+        await jest.advanceTimersByTimeAsync(1000);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        await jest.advanceTimersByTimeAsync(5999);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        await jest.advanceTimersByTimeAsync(1);
+
+        await expect(result).resolves.toEqual({ access_token: 'token' });
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('should timeout when authorization never completes', async () => {
       // Always return pending
       mockFetch.mockResolvedValue({
@@ -658,6 +687,14 @@ describe('GitLab Device Flow Client', () => {
       expect(body.get('token')).toBe('gl-access');
       expect(body.get('client_id')).toBe('corp-app');
       expect(body.get('client_secret')).toBe('corp-secret');
+    });
+
+    it('revokes through the default application when none is given', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true });
+      await revokeGitLabToken('gl-access', mockConfig);
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(String(url)).toMatch(/\/oauth\/revoke$/);
+      expect((init.body as URLSearchParams).get('client_id')).toBe(mockConfig.gitlabClientId);
     });
 
     it('sends the browser to the instance authorization page', () => {

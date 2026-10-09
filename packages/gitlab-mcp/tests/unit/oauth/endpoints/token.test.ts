@@ -451,6 +451,20 @@ describe('OAuth Token Endpoint', () => {
         mockSessionStore.getSession.mockResolvedValue(session);
       });
 
+      // The session was revoked between the code being issued and redeemed.
+      it('rejects the exchange when the session is gone by the time tokens are stored', async () => {
+        mockSessionStore.updateSession.mockResolvedValueOnce(false);
+        const res = createMockResponse() as Response;
+
+        await tokenHandler(exchange({}), res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'invalid_grant',
+          error_description: 'Session not found',
+        });
+      });
+
       it('rejects an exchange without client_id (RFC 6749 4.1.3)', async () => {
         const res = createMockResponse() as Response;
         await tokenHandler(

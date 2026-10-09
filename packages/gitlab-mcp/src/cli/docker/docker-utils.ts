@@ -245,6 +245,10 @@ export function generateDockerCompose(config: DockerConfig): string {
       working_dir: '/app/node_modules/@structured-world/gitlab-mcp-db',
       entrypoint: ['node', 'node_modules/prisma/build/index.js', 'migrate', 'deploy'],
       environment: [`OAUTH_STORAGE_POSTGRESQL_URL=${databaseUrl}`],
+      // The bundled database must accept connections before migrations run
+      ...(config.deploymentType === 'compose-bundle' && {
+        depends_on: { postgres: { condition: 'service_healthy' as const } },
+      }),
     };
     compose.services['gitlab-mcp'].depends_on = {
       migrate: { condition: 'service_completed_successfully' },
@@ -271,9 +275,6 @@ export function generateDockerCompose(config: DockerConfig): string {
         retries: 5,
       },
     };
-    if (compose.services.migrate) {
-      compose.services.migrate.depends_on = { postgres: { condition: 'service_healthy' } };
-    }
     if (compose.volumes) {
       compose.volumes['postgres-data'] = {};
     }

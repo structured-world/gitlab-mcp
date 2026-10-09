@@ -131,6 +131,30 @@ describe('revokeHandler', () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
+  it('answers 500 when OAuth is not configured', async () => {
+    mockConfig.mockReturnValue(null);
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(mockStore.deleteSession).not.toHaveBeenCalled();
+  });
+
+  // The session ends even when its instance is gone; there is no GitLab grant to revoke
+  // through another instance's application.
+  it('ends the session without calling GitLab when its instance is no longer configured', async () => {
+    mockStore.getSessionByRefreshToken.mockResolvedValue(session);
+    mockAppFor.mockResolvedValue(undefined);
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(mockStore.deleteSession).toHaveBeenCalledWith('session-1');
+    expect(mockRevokeGitLab).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
   // A failed delete must not be reported as revoked: the tokens would stay usable.
   it('answers 503 when the session cannot be deleted', async () => {
     mockStore.getSessionByRefreshToken.mockResolvedValue(session);

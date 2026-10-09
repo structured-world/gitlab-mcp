@@ -9,6 +9,7 @@ import {
   OAUTH_SECURITY_SCHEMES,
   isGitLabAuthFailure,
   isGitLabInsufficientScope,
+  toolScopeRejection,
   withReauthChallenge,
 } from '../../../src/oauth/tool-auth';
 import { StructuredToolError } from '../../../src/utils/error-handler';
@@ -58,6 +59,14 @@ describe('tool authorization contract', () => {
       ],
       // 403 is a permission problem of this request, not dead credentials.
       ['a GitLab 403', new Error('GitLab API error: 403 Forbidden'), false],
+      [
+        'a structured 403',
+        new StructuredToolError({
+          error_code: 'API_ERROR',
+          http_status: 403,
+        } as unknown as GitLabStructuredError),
+        false,
+      ],
       ['a GitLab 404', new Error('GitLab API error: 404 Not Found'), false],
       ['a network failure', new Error('fetch failed'), false],
       ['a non-error value', '401', false],
@@ -78,6 +87,32 @@ describe('tool authorization contract', () => {
       ['a 401', unauthorized, false],
     ])('classifies %s as %s', (_case, error, expected) => {
       expect(isGitLabInsufficientScope(error)).toBe(expected);
+    });
+  });
+
+  describe('toolScopeRejection', () => {
+    const context = {
+      gitlabToken: 'fixture-only',
+      gitlabUserId: 1,
+      gitlabUsername: 'u',
+      sessionId: 's',
+      apiUrl: 'https://gitlab.example.com',
+    };
+
+    it('lets calls without an OAuth token context through', () => {
+      expect(toolScopeRejection()).toBeUndefined();
+    });
+
+    // Without a recorded resource the challenge points at the default /mcp resource.
+    it('points the challenge at the default resource when the request has none', async () => {
+      const result = await runWithTokenContext({ ...context, mcpScopes: ['mcp:resources'] }, () =>
+        toolScopeRejection(),
+      );
+
+      expect(result?.isError).toBe(true);
+      expect((result?._meta?.['mcp/www_authenticate'] as string[])[0]).toContain(
+        'resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp"',
+      );
     });
   });
 

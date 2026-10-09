@@ -642,6 +642,20 @@ describe('OAuth Authentication Middleware', () => {
         expect(res.locals.gitlabUserId).toBe(12345);
         expect(res.locals.gitlabUsername).toBe('testuser');
       });
+
+      // Optional authentication: an unreadable store leaves the request anonymous.
+      it('continues without context when the session store fails', async () => {
+        mockSessionStore.getSession.mockRejectedValueOnce(new Error('database down'));
+        const req = createMockReq({
+          headers: { authorization: 'Bearer valid-mcp-token' },
+        });
+        const res = createMockRes();
+
+        await optionalOAuthMiddleware(req, res, mockNext);
+
+        expect(mockNext).toHaveBeenCalled();
+        expect(res.locals.oauthSessionId).toBeUndefined();
+      });
     });
   });
 });

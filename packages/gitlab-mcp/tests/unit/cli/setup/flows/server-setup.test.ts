@@ -322,6 +322,23 @@ describe('flows/server-setup', () => {
     expect(configArg.oauthIssuer).toBe('https://mcp.example.com');
   });
 
+  it('should return cancelled when the public URL is cancelled', async () => {
+    mockSelect.mockResolvedValueOnce('standalone');
+    mockText.mockResolvedValueOnce('3333').mockResolvedValueOnce(p.CANCEL_SYMBOL);
+    mockConfirm.mockResolvedValueOnce(true); // enable oauth
+    mockIsCancel
+      .mockReturnValueOnce(false) // deployment
+      .mockReturnValueOnce(false) // port
+      .mockReturnValueOnce(false) // oauth
+      .mockReturnValueOnce(true); // public URL cancel
+
+    const result = await runServerSetupFlow(dockerReadyDiscovery);
+
+    expect(result.success).toBe(false);
+    expect(result.error).toBe('Cancelled');
+    expect(initDockerConfig).not.toHaveBeenCalled();
+  });
+
   it('should validate database URL format', async () => {
     mockSelect.mockResolvedValueOnce('external-db');
     mockText

@@ -151,6 +151,45 @@ describe('FileStorageBackend', () => {
       await restarted.close();
     });
 
+    it('persists consumed authorization and device flows', async () => {
+      await seeded();
+      const authFlow = createTestAuthCodeFlow();
+      const deviceFlow = createTestDeviceFlow();
+      await storage.storeAuthCodeFlow(authFlow.internalState, authFlow);
+      await storage.storeDeviceFlow('device-state', deviceFlow);
+
+      expect(await storage.consumeAuthCodeFlow(authFlow.internalState)).toBeDefined();
+      expect(await storage.consumeDeviceFlow('device-state')).toBeDefined();
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getAuthCodeFlow(authFlow.internalState)).toBeUndefined();
+      expect(await restarted.getDeviceFlow('device-state')).toBeUndefined();
+      await restarted.close();
+    });
+
+    it('reports a missed consumption or rotation without writing', async () => {
+      const { session } = await seeded();
+      const before = fs.statSync(filePath).mtimeMs;
+
+      expect(await storage.consumeAuthCode('unknown')).toBeUndefined();
+      expect(await storage.consumeAuthCodeFlow('unknown')).toBeUndefined();
+      expect(await storage.consumeDeviceFlow('unknown')).toBeUndefined();
+      expect(await storage.rotateSession(session.id, 'not-current', {})).toBe(false);
+
+      expect(fs.statSync(filePath).mtimeMs).toBe(before);
+    });
+
+    // A transition that could not be written must not be reported as done.
+    it('fails the operation when the write-through fails', async () => {
+      const { code } = await seeded();
+      fs.chmodSync(tempDir, 0o500);
+      try {
+        await expect(storage.consumeAuthCode(code.code)).rejects.toThrow();
+      } finally {
+        fs.chmodSync(tempDir, 0o700);
+      }
+    });
+
     it('persists a revoked session', async () => {
       const { session } = await seeded();
 
@@ -159,6 +198,31 @@ describe('FileStorageBackend', () => {
 
       expect(await restarted.getSession(session.id)).toBeUndefined();
       await restarted.close();
+    });
+  });
+
+  // The reservations of the device poll and the GitLab refresh behave as in memory.
+  describe('poll reservation and refresh lease', () => {
+    beforeEach(async () => {
+      storage = new FileStorageBackend({ filePath });
+      await storage.initialize();
+    });
+
+    it('reserves a device poll once per interval', async () => {
+      await storage.storeDeviceFlow('flow', createTestDeviceFlow({ nextPollAt: 1000 }));
+
+      expect((await storage.claimDevicePoll('flow', 1000, 6000))?.nextPollAt).toBe(6000);
+      expect(await storage.claimDevicePoll('flow', 1000, 6000)).toBeUndefined();
+    });
+
+    it('leases a GitLab refresh token until released', async () => {
+      const session = createTestSession({ gitlabRefreshToken: 'grt' });
+      await storage.createSession(session);
+
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 1, 30001)).toBe(true);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 2, 30002)).toBe(false);
+      await storage.releaseGitLabRefresh(session.id);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 3, 30003)).toBe(true);
     });
   });
 

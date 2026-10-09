@@ -1102,6 +1102,22 @@ describe('OAuth Authorization Endpoint', () => {
         },
       }) as unknown as Request;
 
+    // Without a redirect_uri there is no client to send the error to: answer directly.
+    it('rejects an unconfigured instance in the device flow with a JSON error', async () => {
+      const res = createMockResponse() as Response;
+      const req = codeRequest({ instance: 'https://unknown.example.com' });
+      delete (req.query as Record<string, unknown>).redirect_uri;
+
+      await authorizeHandler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'invalid_request',
+        error_description: 'instance is not a configured GitLab instance',
+      });
+      expect(mockInitiateDeviceFlow).not.toHaveBeenCalled();
+    });
+
     it('answers 500 when the client registration cannot be read', async () => {
       mockGetRegisteredClient.mockRejectedValueOnce(new Error('database down'));
       const res = createMockResponse() as Response;

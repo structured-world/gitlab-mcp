@@ -110,6 +110,26 @@ describe('account profile', () => {
     });
   });
 
+  it('keeps the linked identity when GitLab throws a non-Error value', async () => {
+    mockFetch.mockRejectedValue('socket hang up');
+
+    const profile = await runWithTokenContext(account, () => getAccountProfile());
+
+    expect(profile.nickname).toBe('jane @ Corp');
+  });
+
+  // The nickname shows the configured URL as written when it has no parseable host.
+  it('names an instance by its URL when no host can be read', async () => {
+    mockFetch.mockResolvedValue(userResponse({}, false));
+
+    const profile = await runWithTokenContext(
+      { ...account, apiUrl: 'gitlab-internal', instanceLabel: undefined },
+      () => getAccountProfile(),
+    );
+
+    expect(profile.nickname).toMatch(/^jane @ gitlab-internal/);
+  });
+
   it('fails when no account can be identified', async () => {
     mockFetch.mockRejectedValue(new Error('fetch failed'));
     await expect(getAccountProfile()).rejects.toThrow(

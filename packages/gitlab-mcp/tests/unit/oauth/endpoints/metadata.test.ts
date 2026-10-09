@@ -253,6 +253,42 @@ describe('OAuth Metadata Endpoint', () => {
       expect(metadata.resource).toBe(resource);
       expect(metadata.authorization_servers).toEqual(['http://localhost:3333']);
     });
+
+    // An issuer with a path serves its documents at path-inserted URLs (RFC 9728 3.1).
+    it.each([
+      ['/.well-known/oauth-protected-resource/gitlab', 'https://mcp.example.com/gitlab'],
+      ['/.well-known/oauth-protected-resource/gitlab/mcp', 'https://mcp.example.com/gitlab/mcp'],
+    ])('serves %s of an issuer with a path as %s', (path, resource) => {
+      mockLoadOAuthConfig.mockReturnValue({
+        issuer: 'https://mcp.example.com/gitlab',
+      } as ReturnType<typeof loadOAuthConfig>);
+      const res = createMockResponse() as Response;
+      protectedResourceHandler(createMockRequest({ path } as Partial<Request>) as Request, res);
+      expect((res.json as jest.Mock).mock.calls[0][0].resource).toBe(resource);
+    });
+
+    // The root forms stay mounted for a path issuer too and describe its two resources.
+    it.each([
+      ['/.well-known/oauth-protected-resource', 'https://mcp.example.com/gitlab'],
+      ['/.well-known/oauth-protected-resource/mcp', 'https://mcp.example.com/gitlab/mcp'],
+    ])('serves the root form %s of an issuer with a path as %s', (path, resource) => {
+      mockLoadOAuthConfig.mockReturnValue({
+        issuer: 'https://mcp.example.com/gitlab',
+      } as ReturnType<typeof loadOAuthConfig>);
+      const res = createMockResponse() as Response;
+      protectedResourceHandler(createMockRequest({ path } as Partial<Request>) as Request, res);
+      expect((res.json as jest.Mock).mock.calls[0][0].resource).toBe(resource);
+    });
+
+    it('answers 500 when OAuth is not configured', () => {
+      mockLoadOAuthConfig.mockReturnValue(null);
+      const res = createMockResponse() as Response;
+      protectedResourceHandler(
+        createMockRequest({ path: '/x' } as Partial<Request>) as Request,
+        res,
+      );
+      expect(res.status).toHaveBeenCalledWith(500);
+    });
   });
 
   // NOTE: healthHandler tests removed - handler was replaced by simple /health endpoint in server.ts

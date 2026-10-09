@@ -29,6 +29,7 @@ jest.mock('../../../src/oauth/gitlab-device-flow', () => ({
 jest.mock('../../../src/oauth/instance-app', () => ({ oauthAppFor: jest.fn() }));
 jest.mock('../../../src/logger', () => ({
   logDebug: jest.fn(),
+  logWarn: jest.fn(),
   truncateId: (id: string) => id,
 }));
 
@@ -88,6 +89,45 @@ describe('withFreshGitLabToken', () => {
 
     expect(mockRefresh).not.toHaveBeenCalled();
     expect(result?.gitlabAccessToken).toBe('gl-new');
+  });
+
+  // A lease that cannot be released expires on its own; the refresh itself succeeded.
+  it('returns the refreshed session when the lease cannot be released', async () => {
+    mockRefresh.mockResolvedValue(tokens);
+    mockStore.releaseGitLabRefresh.mockRejectedValue(new Error('database down'));
+
+    const result = await withFreshGitLabToken(expiring, config);
+
+    expect(result?.gitlabAccessToken).toBe('gl-new');
+  });
+
+  it('reports a session deleted while waiting for another replica', async () => {
+    mockStore.claimGitLabRefresh.mockResolvedValue(false);
+    mockStore.getSession.mockResolvedValue(undefined);
+
+    expect(await withFreshGitLabToken(expiring, config)).toBeUndefined();
+    expect(mockRefresh).not.toHaveBeenCalled();
+  });
+
+  // A replica that holds the lease past its term without storing tokens is a temporary
+  // failure: callers answer 503 and the account stays linked.
+  it('gives up with a temporary error when the other replica never finishes', async () => {
+    jest.useFakeTimers();
+    try {
+      mockStore.claimGitLabRefresh.mockResolvedValue(false);
+      mockStore.getSession.mockResolvedValue(expiring);
+
+      const result = withFreshGitLabToken(expiring, config);
+      const settled = expect(result).rejects.toThrow(
+        'GitLab token refresh on another replica did not finish',
+      );
+      await jest.advanceTimersByTimeAsync(31_000);
+      await settled;
+      await expect(result).rejects.not.toBeInstanceOf(GitLabGrantRevokedError);
+      expect(mockRefresh).not.toHaveBeenCalled();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   it('claims the lease for the presented refresh token and releases it afterwards', async () => {

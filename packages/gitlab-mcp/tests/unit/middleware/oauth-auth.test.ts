@@ -430,6 +430,8 @@ describe('OAuth Authentication Middleware', () => {
             scope,
           });
           mockCalculateTokenExpiry.mockReturnValue(Date.now() + 7200000);
+          // The session still exists, so the new tokens are stored.
+          mockSessionStore.updateSession.mockResolvedValue(true);
 
           const req = createMockReq({
             headers: { authorization: 'Bearer valid-mcp-token' },

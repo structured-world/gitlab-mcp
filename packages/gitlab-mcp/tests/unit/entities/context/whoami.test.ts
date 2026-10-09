@@ -390,6 +390,25 @@ describe('whoami handler', () => {
       mockConnectionManager.getTokenScopeInfo.mockReturnValue(null);
     });
 
+    it('reports no browse access for an explicit empty OAuth grant', async () => {
+      // Empty grants are known denials, not the permissive unknown-grant case.
+      const result = await runWithTokenContext(
+        {
+          gitlabToken: 'fixture-only',
+          gitlabUserId: 2,
+          gitlabUsername: 'reader',
+          sessionId: 'reader',
+          apiUrl: 'https://gitlab.example.com',
+          gitlabScopes: [],
+        },
+        async () => (await handleManageContext({ action: 'whoami' })) as WhoamiResult,
+      );
+      expect(result.token?.scopes).toEqual([]);
+      expect(result.capabilities.canBrowse).toBe(false);
+      expect(result.capabilities.canManage).toBe(false);
+      expect(result.capabilities.canAccessGraphQL).toBe(false);
+    });
+
     it('reports the selected OAuth grant instead of assuming full API access', async () => {
       // A shared host must not report the default account's host or permissions.
       const result = await runWithTokenContext(
@@ -513,7 +532,8 @@ describe('whoami handler', () => {
       const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
 
       expect(result.token?.scopes).toHaveLength(0);
-      expect(result.capabilities.canBrowse).toBe(true); // Default behavior
+      // A detected empty PAT grant, like an empty OAuth grant, has no browse access.
+      expect(result.capabilities.canBrowse).toBe(false);
     });
 
     it('should handle token expiring today', async () => {

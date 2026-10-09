@@ -321,6 +321,50 @@ describe('ConnectionManager Unit', () => {
       expect(introspection).toHaveBeenCalledTimes(1);
     });
 
+    it('reuses known instance information without GraphQL for empty grants', async () => {
+      // A known empty grant must neither perform REST detection nor join GraphQL bootstrap.
+      const url = 'https://gitlab.example.com';
+      injectInstanceState(manager, url, {
+        instanceInfo: { version: '16.0.0', tier: 'free' } as InstanceState['instanceInfo'],
+      });
+      const detect = jest.spyOn(
+        manager as unknown as { detectVersionViaREST: (url: string) => Promise<unknown> },
+        'detectVersionViaREST',
+      );
+      const introspect = jest.spyOn(internals(manager), 'doIntrospection');
+      await manager.ensureIntrospected(url, []);
+      expect(detect).not.toHaveBeenCalled();
+      expect(introspect).not.toHaveBeenCalled();
+    });
+
+    it.each(['replacement', 'completed-introspection'])(
+      'does not overwrite newer state after REST detection: %s',
+      async (race) => {
+        // A REST response must not overwrite a replacement instance or concurrent GraphQL result.
+        const url = 'https://gitlab.example.com';
+        injectInstanceState(manager, url, {});
+        let complete!: (value: unknown) => void;
+        jest
+          .spyOn(
+            manager as unknown as { detectVersionViaREST: (url: string) => Promise<unknown> },
+            'detectVersionViaREST',
+          )
+          .mockImplementation(
+            () =>
+              new Promise((resolve) => {
+                complete = resolve;
+              }),
+          );
+        const request = manager.ensureIntrospected(url, ['read_user']);
+        const newer = { version: '19.0.0', tier: 'ultimate' } as InstanceState['instanceInfo'];
+        if (race === 'replacement') injectInstanceState(manager, url, { instanceInfo: newer });
+        else internals(manager).instances.get(url)!.instanceInfo = newer;
+        complete({ version: '16.0.0', tier: 'free' });
+        await request;
+        expect(manager.getInstanceInfo(url)).toBe(newer);
+      },
+    );
+
     it('lets REST version detection use the authenticated request identity', async () => {
       // The OAuth-only REST bootstrap must not add the server's static PAT alongside Bearer auth.
       const url = 'https://gitlab.example.com';

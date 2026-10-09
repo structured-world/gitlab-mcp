@@ -328,6 +328,17 @@ describe('TokenScopeDetector', () => {
   });
 
   describe('isToolAvailableForScopes', () => {
+    it.each([
+      { scopes: [], browse: false, manage: false },
+      { scopes: ['read_user'], browse: false, manage: false },
+      { scopes: ['read_api'], browse: true, manage: false },
+      { scopes: ['api'], browse: true, manage: true },
+    ])('enforces environment API grants: $scopes', ({ scopes, browse, manage }) => {
+      // Environment reads need API read access; mutations require full API access.
+      expect(isToolAvailableForScopes('browse_environments', scopes)).toBe(browse);
+      expect(isToolAvailableForScopes('manage_environment', scopes)).toBe(manage);
+    });
+
     it('should allow all tools with api scope', () => {
       const scopes: GitLabScope[] = ['api'];
       // api scope should enable all known tools

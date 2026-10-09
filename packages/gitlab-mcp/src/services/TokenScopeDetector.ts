@@ -126,6 +126,10 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   browse_variables: ['api', 'read_api'],
   manage_variable: ['api'],
 
+  // Environments - REST API reads and mutations use the standard API scopes.
+  browse_environments: ['api', 'read_api'],
+  manage_environment: ['api'],
+
   // CI/CD job token scope
   browse_job_token_scope: ['api', 'read_api'],
   manage_job_token_scope: ['api'],

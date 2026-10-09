@@ -99,6 +99,43 @@ describe('simultaneous MCP client contracts', () => {
   }
 
   it.each([
+    { scopes: [], browse: false, manage: false },
+    { scopes: ['read_user'], browse: false, manage: false },
+    { scopes: ['read_api'], browse: true, manage: false },
+    { scopes: ['api'], browse: true, manage: true },
+  ])(
+    'filters environment discovery and execution for $scopes',
+    async ({ scopes, browse, manage }) => {
+      // The real SDK catalog and dispatcher must enforce the same per-account grant.
+      const client = await connect('mcp-inspector', '2025-11-25');
+      const url = 'https://new.example.com';
+      const catalog = await asAccount(scopes, url, () => client.listTools());
+      const registry = RegistryManager.getInstance();
+      for (const [name, allowed] of [
+        ['browse_environments', browse],
+        ['manage_environment', manage],
+      ] as const) {
+        expect(catalog.tools.some((tool) => tool.name === name)).toBe(allowed);
+        expect(registry.getTool(name, url, scopes) !== null).toBe(allowed);
+        const handler = jest
+          .spyOn(registry.getTool(name, url)!, 'handler')
+          .mockResolvedValue({ fixture: true });
+        try {
+          if (allowed)
+            await expect(registry.executeTool(name, {}, url, scopes)).resolves.toEqual({
+              fixture: true,
+            });
+          else
+            await expect(registry.executeTool(name, {}, url, scopes)).rejects.toThrow('not found');
+          expect(handler).toHaveBeenCalledTimes(allowed ? 1 : 0);
+        } finally {
+          handler.mockRestore();
+        }
+      }
+    },
+  );
+
+  it.each([
     ['claude-code', 'mcp-inspector'],
     ['mcp-inspector', 'claude-code'],
   ])(

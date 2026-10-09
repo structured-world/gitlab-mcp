@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, existsSync, rmSync, realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import {
   launch,
   launchSync,
@@ -11,6 +11,29 @@ import {
   isMutationCall,
 } from '../../scripts/evaluation-process.mjs';
 import { startWorkflowGitLab } from '../manual/fixtures/workflow-gitlab.mjs';
+
+test('evaluator setup failure closes the loopback server and exits', () => {
+  // A failed version check must release the fixture instead of keeping Node alive.
+  const directory = mkdtempSync(join(tmpdir(), 'gitlab-eval-setup-'));
+  try {
+    writeFileSync(join(directory, 'codex'), '#!/bin/sh\nexit 7\n', { mode: 0o755 });
+    // Catch the setup exception so process exit cannot mask a leaked listening socket.
+    const script = resolve('scripts/evaluate-skills.mjs');
+    const entry = `process.argv = [process.execPath, ${JSON.stringify(script)}, 'codex'];
+      try { await import(process.argv[1]); }
+      catch (error) { console.error(error); process.exitCode = 1; }`;
+    const result = spawnSync(process.execPath, ['--input-type=module', '--eval', entry], {
+      env: { ...process.env, PATH: directory + delimiter + process.env.PATH },
+      encoding: 'utf8',
+      timeout: 3000,
+    });
+    assert.equal(result.error, undefined, result.stdout + result.stderr);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /exited with 7/);
+  } finally {
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 test('the evaluator rejects an executable supplied as a positional argument', () => {
   // An agent-facing invocation selects a known client, never arbitrary executable code.

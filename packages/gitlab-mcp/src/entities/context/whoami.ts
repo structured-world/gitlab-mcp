@@ -176,7 +176,6 @@ function buildCapabilities(tokenInfo: WhoamiTokenInfo | null): WhoamiCapabilitie
 
   const canBrowse =
     tokenInfo === null ||
-    tokenInfo.scopes.length === 0 ||
     tokenInfo.scopes.some((s) => ['api', 'read_api', 'read_user'].includes(s));
 
   const canManage = tokenInfo?.hasWriteAccess ?? false;

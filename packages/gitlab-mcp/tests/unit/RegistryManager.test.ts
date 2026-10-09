@@ -227,6 +227,22 @@ describe('RegistryManager', () => {
   });
 
   describe('Core Functionality', () => {
+    it('keeps account scope filtering out of the shared instance catalog cache', () => {
+      // Two accounts on the same host must retain independent permissions in either order.
+      const scopeCheck = jest.requireMock('../../src/services/TokenScopeDetector').isToolAvailableForScopes;
+      scopeCheck.mockImplementation((name: string, scopes: string[]) => name !== 'core_tool_1' || scopes.includes('api'));
+      const list = registryManager.getAllToolDefinitions.bind(registryManager) as (...args: unknown[]) => Array<{ name: string }>;
+      const url = 'https://gitlab.example.com';
+      for (const order of [['api', 'read_api'], ['read_api', 'api']]) {
+        for (const scope of order) {
+          const names = list(url, 'flat', [scope]).map((tool) => tool.name);
+          expect(names.includes('core_tool_1')).toBe(scope === 'api');
+          expect(names).toContain('core_readonly');
+        }
+      }
+      expect(list(url, 'flat').map((tool) => tool.name)).toContain('core_tool_1');
+      scopeCheck.mockReturnValue(true);
+    });
     it('should handle basic tool operations', () => {
       expect(registryManager.getTool('core_tool_1')).toBeDefined();
       expect(registryManager.getTool('nonexistent')).toBeNull();
@@ -260,6 +276,8 @@ describe('RegistryManager', () => {
         name: 'core_tool_1',
         description: 'Core tool 1',
         inputSchema: { type: 'object' },
+        title: 'Core tool 1',
+        annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: true, idempotentHint: false },
       });
       expect((tool as any).handler).toBeUndefined();
     });

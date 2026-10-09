@@ -7,6 +7,7 @@
 import {
   initiateDeviceFlow,
   pollDeviceFlowOnce,
+  pollDeviceFlowStep,
   pollForToken,
   refreshGitLabToken,
   getGitLabUser,
@@ -114,6 +115,37 @@ describe('GitLab Device Flow Client', () => {
       await expect(initiateDeviceFlow(mockConfig)).rejects.toThrow(
         'Failed to initiate device flow: 400 Invalid client_id',
       );
+    });
+  });
+
+  describe('pollDeviceFlowStep', () => {
+    // RFC 8628 3.5: slow_down must be told apart from pending so the caller can back off.
+    it.each([
+      ['authorization_pending', { status: 'pending' }],
+      ['slow_down', { status: 'slow_down' }],
+    ])('reports %s', async (error, expected) => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        json: jest.fn().mockResolvedValue({ error }),
+      });
+      expect(await pollDeviceFlowStep('device-code-123', mockConfig)).toEqual(expected);
+    });
+
+    it('returns the tokens on completion', async () => {
+      const tokens = { access_token: 'a', refresh_token: 'r', token_type: 'Bearer' };
+      mockFetch.mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue(tokens) });
+      expect(await pollDeviceFlowStep('device-code-123', mockConfig)).toEqual({
+        status: 'complete',
+        tokens,
+      });
+    });
+
+    it('throws on terminal errors', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        json: jest.fn().mockResolvedValue({ error: 'access_denied' }),
+      });
+      await expect(pollDeviceFlowStep('device-code-123', mockConfig)).rejects.toThrow('denied');
     });
   });
 

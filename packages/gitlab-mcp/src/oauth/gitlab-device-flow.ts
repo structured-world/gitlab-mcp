@@ -129,6 +129,69 @@ export async function initiateDeviceFlow(
   return data;
 }
 
+/** Outcome of one device token request. */
+export type DeviceFlowPollStep =
+  | { status: 'complete'; tokens: GitLabTokenResponse }
+  | { status: 'pending' }
+  | { status: 'slow_down' };
+
+/**
+ * Poll GitLab once, distinguishing `slow_down` from `authorization_pending` so the caller
+ * can increase its interval (RFC 8628 section 3.5).
+ *
+ * @throws Error for terminal errors (expired, denied, etc.)
+ */
+export async function pollDeviceFlowStep(
+  deviceCode: string,
+  config: OAuthConfig,
+  app: GitLabOAuthApp = defaultOAuthApp(config),
+): Promise<DeviceFlowPollStep> {
+  const url = `${app.baseUrl}/oauth/token`;
+
+  const response = await enhancedFetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: new URLSearchParams({
+      ...clientParams(app),
+      device_code: deviceCode,
+      grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
+    }),
+    ...oauthFetchOpts(app.baseUrl),
+  });
+
+  if (response.ok) {
+    const tokens = (await response.json()) as GitLabTokenResponse;
+    logInfo('Device flow authorization completed successfully');
+    return { status: 'complete', tokens };
+  }
+
+  const error = (await response.json()) as DeviceFlowErrorResponse;
+
+  switch (error.error) {
+    case 'authorization_pending':
+      return { status: 'pending' };
+
+    case 'slow_down':
+      logDebug('Device flow: slow_down received, increasing poll interval');
+      return { status: 'slow_down' };
+
+    case 'expired_token':
+      throw new Error('Device code expired. Please start a new authorization.');
+
+    case 'access_denied':
+      throw new Error('User denied the authorization request.');
+
+    case 'invalid_grant':
+      throw new Error('Invalid device code or grant.');
+
+    default:
+      throw new Error(`Device flow error: ${error.error_description ?? error.error}`);
+  }
+}
+
 /**
  * Poll GitLab for device authorization completion (single attempt)
  *
@@ -146,56 +209,9 @@ export async function pollDeviceFlowOnce(
   config: OAuthConfig,
   app: GitLabOAuthApp = defaultOAuthApp(config),
 ): Promise<GitLabTokenResponse | null> {
-  const url = `${app.baseUrl}/oauth/token`;
-
-  const params: Record<string, string> = {
-    ...clientParams(app),
-    device_code: deviceCode,
-    grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
-  };
-
-  const response = await enhancedFetch(url, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-    },
-    body: new URLSearchParams(params),
-    ...oauthFetchOpts(app.baseUrl),
-  });
-
-  if (response.ok) {
-    const data = (await response.json()) as GitLabTokenResponse;
-    logInfo('Device flow authorization completed successfully');
-    return data;
-  }
-
-  // Handle error responses
-  const error = (await response.json()) as DeviceFlowErrorResponse;
-
-  switch (error.error) {
-    case 'authorization_pending':
-      // User hasn't completed authorization yet - this is normal
-      return null;
-
-    case 'slow_down':
-      // GitLab is asking us to slow down - we should increase the interval
-      // The caller should handle this by increasing poll interval
-      logDebug('Device flow: slow_down received, should increase poll interval');
-      return null;
-
-    case 'expired_token':
-      throw new Error('Device code expired. Please start a new authorization.');
-
-    case 'access_denied':
-      throw new Error('User denied the authorization request.');
-
-    case 'invalid_grant':
-      throw new Error('Invalid device code or grant.');
-
-    default:
-      throw new Error(`Device flow error: ${error.error_description ?? error.error}`);
-  }
+  const step = await pollDeviceFlowStep(deviceCode, config, app);
+  // pending and slow_down both mean "not yet"; callers that back off use pollDeviceFlowStep.
+  return step.status === 'complete' ? step.tokens : null;
 }
 
 /**
@@ -226,10 +242,14 @@ export async function pollForToken(
     await sleep(interval);
 
     try {
-      const result = await pollDeviceFlowOnce(deviceCode, config, app);
+      const step = await pollDeviceFlowStep(deviceCode, config, app);
 
-      if (result) {
-        return result;
+      if (step.status === 'complete') {
+        return step.tokens;
+      }
+      // RFC 8628 section 3.5: slow_down adds 5 seconds to every later interval.
+      if (step.status === 'slow_down') {
+        interval += 5000;
       }
 
       // Still pending

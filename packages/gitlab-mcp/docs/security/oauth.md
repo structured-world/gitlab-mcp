@@ -67,8 +67,8 @@ OAUTH_CLIENT_SECRET=your-secret    # Required only if GitLab app is confidential
 OAUTH_SCOPES=api,read_user          # Default scopes
 OAUTH_TOKEN_TTL=3600                       # Token lifetime (seconds)
 OAUTH_REFRESH_TOKEN_TTL=604800             # Refresh token lifetime (seconds)
-OAUTH_DEVICE_POLL_INTERVAL=5               # Device flow poll interval (seconds)
-OAUTH_DEVICE_TIMEOUT=300                   # Auth timeout (seconds)
+OAUTH_DEVICE_POLL_INTERVAL=5               # Minimum device flow poll interval (seconds)
+OAUTH_DEVICE_TIMEOUT=300                   # Maximum device flow lifetime (seconds)
 ```
 
 ### Step 3: Deploy with HTTPS

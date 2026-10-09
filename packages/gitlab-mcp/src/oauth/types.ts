@@ -121,6 +121,8 @@ export interface DeviceFlowState {
   expiresAt: number;
   /** Polling interval in seconds */
   interval: number;
+  /** Earliest time GitLab may be polled again (milliseconds since epoch, RFC 8628 3.5) */
+  nextPollAt?: number;
   /** OAuth client ID */
   clientId: string;
   /** PKCE code challenge */
@@ -252,6 +254,8 @@ export interface DeviceFlowPollResponse {
   state?: string;
   /** Issuer to append to the redirect (RFC 9207 section 2) */
   iss?: string;
+  /** Seconds to wait before the next poll while pending */
+  interval?: number;
   error?: string;
 }
 

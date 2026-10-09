@@ -17,7 +17,7 @@ import { loadOAuthConfig } from '../config';
 import { sessionStore } from '../session-store';
 import {
   initiateDeviceFlow,
-  pollDeviceFlowOnce,
+  pollDeviceFlowStep,
   getGitLabUser,
   buildGitLabAuthUrl,
 } from '../gitlab-device-flow';
@@ -296,6 +296,12 @@ async function handleDeviceFlow(
     // Generate a unique state for this device flow
     const flowState = generateRandomString(32);
 
+    // GitLab's interval is the minimum (RFC 8628 3.2); OAUTH_DEVICE_POLL_INTERVAL raises it.
+    // GitLab's expires_in is the maximum; OAUTH_DEVICE_TIMEOUT shortens it.
+    const interval = Math.max(deviceResponse.interval, config.devicePollInterval);
+    const lifetime = Math.min(deviceResponse.expires_in, config.deviceTimeout);
+    const startedAt = Date.now();
+
     // Store device flow state
     sessionStore.storeDeviceFlow(flowState, {
       requestedGitlabScopes: params.app.scopes.split(/[,\s]+/).filter(Boolean),
@@ -305,8 +311,9 @@ async function handleDeviceFlow(
       userCode: deviceResponse.user_code,
       verificationUri: deviceResponse.verification_uri,
       verificationUriComplete: deviceResponse.verification_uri_complete,
-      expiresAt: Date.now() + deviceResponse.expires_in * 1000,
-      interval: deviceResponse.interval,
+      expiresAt: startedAt + lifetime * 1000,
+      interval,
+      nextPollAt: startedAt + interval * 1000,
       clientId: params.clientId,
       codeChallenge: params.codeChallenge,
       codeChallengeMethod: params.codeChallengeMethod,
@@ -328,7 +335,8 @@ async function handleDeviceFlow(
       verificationUriComplete: deviceResponse.verification_uri_complete,
       flowState,
       pollUrl: `${config.issuer}/oauth/poll`,
-      expiresIn: deviceResponse.expires_in,
+      expiresIn: lifetime,
+      interval,
     });
 
     res.setHeader('Content-Type', 'text/html');
@@ -384,11 +392,19 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // RFC 8628 3.5: never poll GitLab sooner than the flow's interval, however often the
+  // page or another replica asks.
+  if (flow.nextPollAt !== undefined && Date.now() < flow.nextPollAt) {
+    res.json({ status: 'pending', interval: flow.interval });
+    return;
+  }
+
   try {
     // Single poll attempt to GitLab
-    const tokenResponse = await pollDeviceFlowOnce(flow.deviceCode, config, app);
+    const step = await pollDeviceFlowStep(flow.deviceCode, config, app);
 
-    if (tokenResponse) {
+    if (step.status === 'complete') {
+      const tokenResponse = step.tokens;
       // Success! Get user info and create session
       const userInfo = await getGitLabUser(tokenResponse.access_token, app.baseUrl);
 
@@ -451,8 +467,14 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
 
       res.json(response);
     } else {
-      // Still pending
-      res.json({ status: 'pending' });
+      // Still pending; slow_down adds 5 seconds to this and every later interval.
+      const interval = step.status === 'slow_down' ? flow.interval + 5 : flow.interval;
+      sessionStore.storeDeviceFlow(flow_state, {
+        ...flow,
+        interval,
+        nextPollAt: Date.now() + interval * 1000,
+      });
+      res.json({ status: 'pending', interval });
     }
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
@@ -464,7 +486,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
     } else {
       // Transient error - report as pending
       logWarn('Device flow poll error', { err: error as Error });
-      res.json({ status: 'pending' });
+      res.json({ status: 'pending', interval: flow.interval });
     }
   }
 }
@@ -479,6 +501,8 @@ interface DeviceFlowHTMLParams {
   flowState: string;
   pollUrl: string;
   expiresIn: number;
+  /** Initial poll interval in seconds; the server may raise it in later responses. */
+  interval: number;
 }
 
 /**
@@ -731,7 +755,8 @@ function getDeviceFlowHTML(params: DeviceFlowHTMLParams): string {
 
   <script>
     const pollUrl = '${params.pollUrl}?flow_state=${params.flowState}';
-    const pollInterval = 5000; // 5 seconds
+    // The server sets the cadence and raises it on GitLab slow_down (RFC 8628 3.5).
+    let pollInterval = ${params.interval * 1000};
     let countdown = ${params.expiresIn};
 
     // Update countdown timer
@@ -788,7 +813,10 @@ function getDeviceFlowHTML(params: DeviceFlowHTMLParams): string {
           return;
         }
 
-        // Still pending, continue polling
+        // Still pending, continue polling at the interval the server asks for
+        if (typeof data.interval === 'number' && data.interval > 0) {
+          pollInterval = data.interval * 1000;
+        }
         setTimeout(poll, pollInterval);
 
       } catch (error) {

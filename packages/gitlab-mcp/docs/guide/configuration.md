@@ -134,8 +134,8 @@ See [TLS/HTTPS Configuration](/advanced/tls) for detailed setup guides.
 | `OAUTH_SCOPES` | OAuth scopes | `api,read_user` |
 | `OAUTH_TOKEN_TTL` | Token lifetime in seconds | `3600` |
 | `OAUTH_REFRESH_TOKEN_TTL` | Refresh token lifetime in seconds | `604800` |
-| `OAUTH_DEVICE_POLL_INTERVAL` | Device flow poll interval | `5` |
-| `OAUTH_DEVICE_TIMEOUT` | Auth timeout in seconds | `300` |
+| `OAUTH_DEVICE_POLL_INTERVAL` | Minimum device flow poll interval in seconds; GitLab's interval and `slow_down` raise it | `5` |
+| `OAUTH_DEVICE_TIMEOUT` | Maximum device flow lifetime in seconds; GitLab's `expires_in` can shorten it | `300` |
 
 See [OAuth Authentication](/security/oauth) for setup guide.
 

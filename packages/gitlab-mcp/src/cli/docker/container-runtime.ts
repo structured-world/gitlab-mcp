@@ -110,8 +110,9 @@ function versionAtLeast(actual: string, minimum: string): boolean {
 /**
  * Why the detected compose cannot run deployments that start the server after a
  * one-shot migration (`depends_on` with `condition: service_completed_successfully`),
- * or undefined when it can. Docker Compose implements the condition from v2,
- * podman-compose from 1.6.0.
+ * or undefined when it can. podman-compose implements the condition from 1.6.0. Docker
+ * Compose has it from 1.29.0, but the v1 line reached end of life in July 2023 and gets no
+ * fixes, so Docker deployments require Compose v2.
  */
 export function completionDependencyError(info: ContainerRuntimeInfo): string | undefined {
   const required = 'Docker Compose v2 or podman-compose 1.6.0 or later';

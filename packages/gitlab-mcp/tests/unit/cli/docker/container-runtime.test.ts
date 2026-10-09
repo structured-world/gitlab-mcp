@@ -46,8 +46,8 @@ describe('container-runtime', () => {
   });
 
   // The generated PostgreSQL deployments run migrations first with
-  // `depends_on: condition: service_completed_successfully`, which Docker Compose
-  // implements from v2 and podman-compose from 1.6.0.
+  // `depends_on: condition: service_completed_successfully`. podman-compose implements it
+  // from 1.6.0; Docker Compose v1 (1.29 has it) is end of life, so Docker needs v2.
   describe('compose version and completion dependencies', () => {
     function withCompose(runtime: 'docker' | 'podman', composeOutput: string, plugin = true) {
       mockChildProcess.spawnSync.mockImplementation((cmd, args) => {

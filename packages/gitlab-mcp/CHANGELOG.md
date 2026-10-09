@@ -4,6 +4,13 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [10.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v10.0.1...gitlab-mcp-v10.1.0) (2026-10-08)
+
+
+### Features
+
+* **mrs:** expose native closing issues ([#630](https://github.com/structured-world/gitlab-mcp/issues/630)) ([b114527](https://github.com/structured-world/gitlab-mcp/commit/b11452710f95cdaee210aeeab6eba323b3f284e7))
+
 ## [10.0.1](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v10.0.0...gitlab-mcp-v10.0.1) (2026-09-25)
 
 

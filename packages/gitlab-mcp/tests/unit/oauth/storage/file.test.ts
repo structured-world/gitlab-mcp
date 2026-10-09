@@ -101,6 +101,67 @@ describe('FileStorageBackend', () => {
     }
   });
 
+  // Single-use transitions must be on disk before they are reported: with the debounced
+  // save, a crash right after redeeming a code reloaded the code from the file and let it
+  // be redeemed again (same for a spent refresh token and a revoked session).
+  describe('single-use transitions survive a crash', () => {
+    const slowSave = { saveDebounce: 60_000, saveInterval: 60_000 };
+
+    /** State as a new process sees it after this one died without flushing. */
+    async function reloadAfterCrash(): Promise<FileStorageBackend> {
+      const restarted = new FileStorageBackend({ filePath, ...slowSave });
+      await restarted.initialize();
+      return restarted;
+    }
+
+    async function seeded(): Promise<{ session: OAuthSession; code: AuthorizationCode }> {
+      const session = createTestSession();
+      const code = createTestAuthCode({ sessionId: session.id });
+      const seed = new FileStorageBackend({ filePath, ...slowSave });
+      await seed.initialize();
+      await seed.createSession(session);
+      await seed.storeAuthCode(code);
+      await seed.close();
+      storage = new FileStorageBackend({ filePath, ...slowSave });
+      await storage.initialize();
+      return { session, code };
+    }
+
+    it('persists a consumed authorization code', async () => {
+      const { code } = await seeded();
+
+      expect(await storage.consumeAuthCode(code.code)).toBeDefined();
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.consumeAuthCode(code.code)).toBeUndefined();
+      await restarted.close();
+    });
+
+    it('persists a rotated refresh token', async () => {
+      const { session } = await seeded();
+
+      expect(
+        await storage.rotateSession(session.id, session.mcpRefreshToken, {
+          mcpRefreshToken: 'rotated-refresh',
+        }),
+      ).toBe(true);
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getSessionByRefreshToken(session.mcpRefreshToken)).toBeUndefined();
+      await restarted.close();
+    });
+
+    it('persists a revoked session', async () => {
+      const { session } = await seeded();
+
+      expect(await storage.deleteSession(session.id)).toBe(true);
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getSession(session.id)).toBeUndefined();
+      await restarted.close();
+    });
+  });
+
   describe('Initialization and Lifecycle', () => {
     it('should initialize with empty file', async () => {
       storage = new FileStorageBackend({ filePath });

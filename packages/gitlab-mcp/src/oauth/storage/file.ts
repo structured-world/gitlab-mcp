@@ -5,7 +5,8 @@
  * Suitable for single-instance deployments without external database.
  *
  * Features:
- * - Automatic save on changes (debounced)
+ * - Automatic save on changes (debounced); single-use transitions and revocations are
+ *   written through before they are reported
  * - Periodic auto-save interval
  * - Atomic file writes (write to temp, then rename)
  * - Data version migration support
@@ -165,40 +166,59 @@ export class FileStorageBackend implements SessionStorageBackend {
   }
 
   private async saveToFile(): Promise<void> {
-    if (!this.initialized) return;
-
     try {
-      const exportedData = this.memory.exportData();
-
-      const data: StorageData = {
-        version: STORAGE_DATA_VERSION,
-        exportedAt: Date.now(),
-        sessions: exportedData.sessions,
-        deviceFlows: exportedData.deviceFlows,
-        authCodeFlows: exportedData.authCodeFlows,
-        authCodes: exportedData.authCodes,
-        mcpSessionMappings: exportedData.mcpSessionMappings,
-        clients: exportedData.clients,
-      };
-
-      // Atomic write: write to temp file, then rename
-      const tempPath = `${this.filePath}.tmp`;
-      const content = JSON.stringify(data);
-
-      fs.writeFileSync(tempPath, content, 'utf-8');
-      fs.renameSync(tempPath, this.filePath);
-
-      logDebug('Saved sessions to file', {
-        sessions: data.sessions.length,
-        deviceFlows: data.deviceFlows.length,
-        authCodes: data.authCodes.length,
-      });
+      await this.writeSnapshot();
     } catch (error) {
       logError('Failed to save sessions to file', {
         err: error as Error,
         filePath: this.filePath,
       });
     }
+  }
+
+  /**
+   * Write the current state now, replacing any pending debounced save. Single-use
+   * transitions (consumed codes and flows, rotated refresh tokens, revoked sessions) are
+   * reported only after this succeeds, so a crash cannot bring them back.
+   */
+  private async persistNow(): Promise<void> {
+    if (this.saveDebounceId) {
+      clearTimeout(this.saveDebounceId);
+      this.saveDebounceId = null;
+    }
+    this.pendingSave = false;
+    await this.writeSnapshot();
+  }
+
+  /** Atomically replace the file with the current state; rejects when the write fails. */
+  private async writeSnapshot(): Promise<void> {
+    if (!this.initialized) return;
+
+    const exportedData = this.memory.exportData();
+
+    const data: StorageData = {
+      version: STORAGE_DATA_VERSION,
+      exportedAt: Date.now(),
+      sessions: exportedData.sessions,
+      deviceFlows: exportedData.deviceFlows,
+      authCodeFlows: exportedData.authCodeFlows,
+      authCodes: exportedData.authCodes,
+      mcpSessionMappings: exportedData.mcpSessionMappings,
+      clients: exportedData.clients,
+    };
+
+    // Atomic write: write to temp file, then rename
+    const tempPath = `${this.filePath}.tmp`;
+    const content = JSON.stringify(data);
+
+    fs.writeFileSync(tempPath, content, 'utf-8');
+    fs.renameSync(tempPath, this.filePath);
+
+    logDebug('Saved sessions to file', {
+      sessions: data.sessions.length,
+      deviceFlows: data.deviceFlows.length,
+      authCodes: data.authCodes.length,
+    });
   }
 
   private scheduleSave(): void {
@@ -255,7 +275,8 @@ export class FileStorageBackend implements SessionStorageBackend {
 
   async deleteSession(sessionId: string): Promise<boolean> {
     const result = await this.memory.deleteSession(sessionId);
-    if (result) this.scheduleSave();
+    // A revoked session must not come back after a crash.
+    if (result) await this.persistNow();
     return result;
   }
 
@@ -341,22 +362,23 @@ export class FileStorageBackend implements SessionStorageBackend {
     return this.memory.getClient(clientId);
   }
 
-  // Single-use consumption and refresh rotation
+  // Single-use consumption and refresh rotation: written through before they are
+  // reported, so a crash cannot make a spent code, flow or refresh token usable again.
   async consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {
     const record = await this.memory.consumeAuthCode(code);
-    if (record) this.scheduleSave();
+    if (record) await this.persistNow();
     return record;
   }
 
   async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
     const record = await this.memory.consumeAuthCodeFlow(internalState);
-    if (record) this.scheduleSave();
+    if (record) await this.persistNow();
     return record;
   }
 
   async consumeDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
     const record = await this.memory.consumeDeviceFlow(state);
-    if (record) this.scheduleSave();
+    if (record) await this.persistNow();
     return record;
   }
 
@@ -366,7 +388,7 @@ export class FileStorageBackend implements SessionStorageBackend {
     updates: Partial<OAuthSession>,
   ): Promise<boolean> {
     const rotated = await this.memory.rotateSession(sessionId, expectedRefreshToken, updates);
-    if (rotated) this.scheduleSave();
+    if (rotated) await this.persistNow();
     return rotated;
   }
 

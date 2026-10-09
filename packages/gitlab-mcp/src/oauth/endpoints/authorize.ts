@@ -89,16 +89,18 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
 
   // RFC 6749 section 3.1: parameters must not repeat. Reported without a redirect, since a
   // repeated redirect_uri has no single target. `resource` may repeat (RFC 8707 section
-  // 2) and is checked below.
+  // 2) and is checked below. Only values checked to be strings are read further.
+  const params: Partial<Record<(typeof SINGLE_VALUED_PARAMS)[number], string>> = {};
   for (const name of SINGLE_VALUED_PARAMS) {
     const value = req.query[name];
-    if (value !== undefined && typeof value !== 'string') {
+    if (value === undefined) continue;
+    if (typeof value !== 'string') {
       sendError(req, res, 400, 'invalid_request', `${name} must not be repeated`);
       return;
     }
+    params[name] = value;
   }
 
-  // Extract query parameters
   const {
     client_id,
     redirect_uri,
@@ -108,7 +110,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     code_challenge_method,
     scope,
     instance: requestedInstance,
-  } = req.query as Record<string, string | undefined>;
+  } = params;
 
   // Validate required parameters
   if (response_type !== 'code') {
@@ -134,6 +136,8 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
 
   // A redirect goes only to a URI the client registered; an unknown client or an
   // unregistered URI is reported here, never redirected (RFC 6749 section 4.1.2.1).
+  // Every redirect below uses the registered value, never the request's copy.
+  let redirectUri: string | undefined;
   if (redirect_uri) {
     let client;
     try {
@@ -153,7 +157,8 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
       );
       return;
     }
-    if (!client.redirect_uris.includes(redirect_uri)) {
+    redirectUri = client.redirect_uris.find((registered) => registered === redirect_uri);
+    if (!redirectUri) {
       sendError(req, res, 400, 'invalid_request', 'redirect_uri is not registered for this client');
       return;
     }
@@ -169,9 +174,9 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
         : undefined;
     if (!resource) {
       const description = 'resource must name this MCP server';
-      if (redirect_uri) {
+      if (redirectUri) {
         res.redirect(
-          authorizationRedirect(redirect_uri, config.issuer, {
+          authorizationRedirect(redirectUri, config.issuer, {
             error: 'invalid_target',
             error_description: description,
             state,
@@ -202,9 +207,9 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
   }
   if (!app) {
     const description = 'instance is not a configured GitLab instance';
-    if (redirect_uri) {
+    if (redirectUri) {
       res.redirect(
-        authorizationRedirect(redirect_uri, config.issuer, {
+        authorizationRedirect(redirectUri, config.issuer, {
           error: 'invalid_request',
           error_description: description,
           state,
@@ -217,11 +222,11 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
   }
 
   // Determine which flow to use based on redirect_uri presence
-  if (redirect_uri) {
+  if (redirectUri) {
     // Authorization Code Flow - redirect to GitLab
     await handleAuthorizationCodeFlow(req, res, config, {
       clientId: client_id,
-      redirectUri: redirect_uri,
+      redirectUri,
       state: state ?? '',
       codeChallenge: code_challenge,
       codeChallengeMethod: code_challenge_method,

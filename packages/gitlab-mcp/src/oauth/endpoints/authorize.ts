@@ -13,7 +13,7 @@
  */
 
 import { Request, Response } from 'express';
-import { loadOAuthConfig } from '../config';
+import { loadOAuthConfig, type OAuthConfig } from '../config';
 import { sessionStore } from '../session-store';
 import {
   initiateDeviceFlow,
@@ -29,7 +29,12 @@ import {
 } from '../token-utils';
 import { GITLAB_BASE_URL } from '../../config';
 import { logInfo, logWarn, logError, truncateId } from '../../logger';
-import { DeviceFlowPollResponse, OAuthErrorResponse } from '../types';
+import {
+  DeviceFlowPollResponse,
+  DeviceFlowState,
+  GitLabTokenResponse,
+  OAuthErrorResponse,
+} from '../types';
 import { getIpAddress } from '../../utils/request-logger';
 import { grantedGitlabScopes } from '../granted-scopes';
 import { getRegisteredClient } from './register';
@@ -80,6 +85,122 @@ const SINGLE_VALUED_PARAMS = [
   'instance',
 ] as const;
 
+type SingleValuedParams = Partial<Record<(typeof SINGLE_VALUED_PARAMS)[number], string>>;
+
+/**
+ * A refused authorization request. A redirectable refusal goes to the client's registered
+ * redirect URI when there is one (RFC 6749 section 4.1.2.1); any other is answered here.
+ */
+interface Rejection {
+  rejected: true;
+  status: number;
+  error: string;
+  description: string;
+  redirectable?: boolean;
+}
+
+function rejection(
+  status: number,
+  error: string,
+  description: string,
+  redirectable = false,
+): Rejection {
+  return { rejected: true, status, error, description, redirectable };
+}
+
+function isRejection(value: unknown): value is Rejection {
+  return typeof value === 'object' && value !== null && 'rejected' in value;
+}
+
+/**
+ * RFC 6749 section 3.1: parameters must not repeat. Reported without a redirect, since a
+ * repeated redirect_uri has no single target. `resource` may repeat (RFC 8707 section 2)
+ * and is checked separately. Only values checked to be strings are read further.
+ */
+function singleValuedParams(query: Request['query']): SingleValuedParams | Rejection {
+  const params: SingleValuedParams = {};
+  for (const name of SINGLE_VALUED_PARAMS) {
+    const value = query[name];
+    if (value === undefined) continue;
+    if (typeof value !== 'string') {
+      return rejection(400, 'invalid_request', `${name} must not be repeated`);
+    }
+    params[name] = value;
+  }
+  return params;
+}
+
+/** The required parameters; PKCE with S256 is mandatory in OAuth 2.1. */
+function requiredParams(
+  params: SingleValuedParams,
+): { clientId: string; codeChallenge: string } | Rejection {
+  if (params.response_type !== 'code') {
+    return rejection(400, 'unsupported_response_type', 'Only "code" response type is supported');
+  }
+  if (!params.client_id) return rejection(400, 'invalid_request', 'client_id is required');
+  if (!params.code_challenge) {
+    return rejection(400, 'invalid_request', 'code_challenge is required (PKCE)');
+  }
+  if (params.code_challenge_method !== 'S256') {
+    return rejection(400, 'invalid_request', 'code_challenge_method must be "S256"');
+  }
+  return { clientId: params.client_id, codeChallenge: params.code_challenge };
+}
+
+/**
+ * The registered redirect URI the request names, or undefined for the device flow. An
+ * unknown client or an unregistered URI is refused without a redirect (RFC 6749 section
+ * 4.1.2.1); the returned value comes from the registration, never the request's copy.
+ */
+async function registeredRedirectUri(
+  clientId: string,
+  requested: string | undefined,
+): Promise<string | undefined | Rejection> {
+  if (!requested) return undefined;
+  let client;
+  try {
+    client = await getRegisteredClient(clientId);
+  } catch (error: unknown) {
+    logError('Failed to read client registration', { err: error as Error });
+    return rejection(500, 'server_error', 'Failed to start authorization');
+  }
+  if (!client) {
+    return rejection(
+      400,
+      'invalid_request',
+      'Unknown client_id; register the client via /register',
+    );
+  }
+  return (
+    client.redirect_uris.find((registered) => registered === requested) ??
+    rejection(400, 'invalid_request', 'redirect_uri is not registered for this client')
+  );
+}
+
+/** RFC 8707 section 2: a resource that is not ours is refused with invalid_target. */
+function requestedResource(issuer: string, value: unknown): string | undefined | Rejection {
+  if (value === undefined) return undefined;
+  const resource = typeof value === 'string' ? matchProtectedResource(issuer, value) : undefined;
+  return resource ?? rejection(400, 'invalid_target', 'resource must name this MCP server', true);
+}
+
+/**
+ * The GitLab instance comes only from the operator's configuration: a requested URL
+ * selects one of the configured instances or the request is refused.
+ */
+function requestedApp(
+  apps: GitLabOAuthApp[],
+  requestedInstance: string | undefined,
+): GitLabOAuthApp | Rejection {
+  const wanted =
+    requestedInstance === undefined ? undefined : normalizeInstanceUrl(requestedInstance);
+  const app =
+    wanted === undefined ? apps[0] : apps.find((candidate) => candidate.baseUrl === wanted);
+  return (
+    app ?? rejection(400, 'invalid_request', 'instance is not a configured GitLab instance', true)
+  );
+}
+
 export async function authorizeHandler(req: Request, res: Response): Promise<void> {
   const config = loadOAuthConfig();
   if (!config) {
@@ -87,165 +208,75 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     return;
   }
 
-  // RFC 6749 section 3.1: parameters must not repeat. Reported without a redirect, since a
-  // repeated redirect_uri has no single target. `resource` may repeat (RFC 8707 section
-  // 2) and is checked below. Only values checked to be strings are read further.
-  const params: Partial<Record<(typeof SINGLE_VALUED_PARAMS)[number], string>> = {};
-  for (const name of SINGLE_VALUED_PARAMS) {
-    const value = req.query[name];
-    if (value === undefined) continue;
-    if (typeof value !== 'string') {
-      sendError(req, res, 400, 'invalid_request', `${name} must not be repeated`);
-      return;
-    }
-    params[name] = value;
-  }
-
-  const {
-    client_id,
-    redirect_uri,
-    response_type,
-    state,
-    code_challenge,
-    code_challenge_method,
-    scope,
-    instance: requestedInstance,
-  } = params;
-
-  // Validate required parameters
-  if (response_type !== 'code') {
-    sendError(req, res, 400, 'unsupported_response_type', 'Only "code" response type is supported');
+  const params = singleValuedParams(req.query);
+  if (isRejection(params)) {
+    sendRejection(req, res, params);
     return;
   }
-
-  if (!client_id) {
-    sendError(req, res, 400, 'invalid_request', 'client_id is required');
+  const required = requiredParams(params);
+  if (isRejection(required)) {
+    sendRejection(req, res, required);
     return;
   }
-
-  // PKCE is required for OAuth 2.1
-  if (!code_challenge) {
-    sendError(req, res, 400, 'invalid_request', 'code_challenge is required (PKCE)');
+  const redirectUri = await registeredRedirectUri(required.clientId, params.redirect_uri);
+  if (isRejection(redirectUri)) {
+    sendRejection(req, res, redirectUri);
     return;
   }
-
-  if (code_challenge_method !== 'S256') {
-    sendError(req, res, 400, 'invalid_request', 'code_challenge_method must be "S256"');
-    return;
-  }
-
-  // A redirect goes only to a URI the client registered; an unknown client or an
-  // unregistered URI is reported here, never redirected (RFC 6749 section 4.1.2.1).
-  // Every redirect below uses the registered value, never the request's copy.
-  let redirectUri: string | undefined;
-  if (redirect_uri) {
-    let client;
-    try {
-      client = await getRegisteredClient(client_id);
-    } catch (error: unknown) {
-      logError('Failed to read client registration', { err: error as Error });
-      sendError(req, res, 500, 'server_error', 'Failed to start authorization');
-      return;
-    }
-    if (!client) {
-      sendError(
-        req,
-        res,
-        400,
-        'invalid_request',
-        'Unknown client_id; register the client via /register',
-      );
-      return;
-    }
-    redirectUri = client.redirect_uris.find((registered) => registered === redirect_uri);
-    if (!redirectUri) {
-      sendError(req, res, 400, 'invalid_request', 'redirect_uri is not registered for this client');
-      return;
-    }
-  }
-
-  // RFC 8707 section 2: a resource that is not ours is rejected with invalid_target.
-  const requestedResource = req.query.resource;
-  let resource: string | undefined;
-  if (requestedResource !== undefined) {
-    resource =
-      typeof requestedResource === 'string'
-        ? matchProtectedResource(config.issuer, requestedResource)
-        : undefined;
-    if (!resource) {
-      const description = 'resource must name this MCP server';
-      if (redirectUri) {
-        res.redirect(
-          authorizationRedirect(redirectUri, config.issuer, {
-            error: 'invalid_target',
-            error_description: description,
-            state,
-          }),
-        );
-      } else {
-        sendError(req, res, 400, 'invalid_target', description);
-      }
-      return;
-    }
-  }
-  const scopes = grantedMcpScopes(scope);
-
-  // The GitLab instance comes only from the operator's configuration: a requested URL
-  // selects one of the configured instances or the request fails.
-  const apps = await selectableOAuthApps(config);
-  let app: GitLabOAuthApp | undefined;
-  if (requestedInstance === undefined) {
-    if (apps.length > 1) {
-      res.setHeader('Content-Type', 'text/html');
-      res.send(getInstanceChooserHTML(config.issuer, req.query, apps));
-      return;
-    }
-    app = apps[0];
-  } else {
-    const wanted = normalizeInstanceUrl(requestedInstance);
-    app = apps.find((candidate) => candidate.baseUrl === wanted);
-  }
-  if (!app) {
-    const description = 'instance is not a configured GitLab instance';
-    if (redirectUri) {
+  const refuse = (refusal: Rejection): void => {
+    if (refusal.redirectable && redirectUri) {
       res.redirect(
         authorizationRedirect(redirectUri, config.issuer, {
-          error: 'invalid_request',
-          error_description: description,
-          state,
+          error: refusal.error,
+          error_description: refusal.description,
+          state: params.state,
         }),
       );
     } else {
-      sendError(req, res, 400, 'invalid_request', description);
+      sendRejection(req, res, refusal);
     }
+  };
+
+  const resource = requestedResource(config.issuer, req.query.resource);
+  if (isRejection(resource)) {
+    refuse(resource);
+    return;
+  }
+  const scopes = grantedMcpScopes(params.scope);
+
+  const apps = await selectableOAuthApps(config);
+  if (params.instance === undefined && apps.length > 1) {
+    res.setHeader('Content-Type', 'text/html');
+    res.send(getInstanceChooserHTML(config.issuer, req.query, apps));
+    return;
+  }
+  const app = requestedApp(apps, params.instance);
+  if (isRejection(app)) {
+    refuse(app);
     return;
   }
 
+  const flow = {
+    clientId: required.clientId,
+    state: params.state ?? '',
+    codeChallenge: required.codeChallenge,
+    codeChallengeMethod: 'S256',
+    scopes,
+    resource,
+    app,
+  };
   // Determine which flow to use based on redirect_uri presence
   if (redirectUri) {
     // Authorization Code Flow - redirect to GitLab
-    await handleAuthorizationCodeFlow(req, res, config, {
-      clientId: client_id,
-      redirectUri,
-      state: state ?? '',
-      codeChallenge: code_challenge,
-      codeChallengeMethod: code_challenge_method,
-      scopes,
-      resource,
-      app,
-    });
+    await handleAuthorizationCodeFlow(req, res, config, { ...flow, redirectUri });
   } else {
     // Device Flow - show HTML page
-    await handleDeviceFlow(req, res, config, {
-      clientId: client_id,
-      state: state ?? '',
-      codeChallenge: code_challenge,
-      codeChallengeMethod: code_challenge_method,
-      scopes,
-      resource,
-      app,
-    });
+    await handleDeviceFlow(req, res, config, flow);
   }
+}
+
+function sendRejection(req: Request, res: Response, refusal: Rejection): void {
+  sendError(req, res, refusal.status, refusal.error, refusal.description);
 }
 
 /**
@@ -410,7 +441,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { flow_state } = req.query as { flow_state?: string };
+  const flow_state = typeof req.query.flow_state === 'string' ? req.query.flow_state : undefined;
 
   if (!flow_state) {
     res.status(400).json({ status: 'failed', error: 'Missing flow_state' });
@@ -457,94 +488,13 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    let tokenResponse = flow.gitlabTokens;
-    if (!tokenResponse) {
-      // Single poll attempt to GitLab
-      const step = await pollDeviceFlowStep(flow.deviceCode, config, app);
-      if (step.status !== 'complete') {
-        // Still pending; slow_down adds 5 seconds to this and every later interval.
-        const interval = step.status === 'slow_down' ? flow.interval + 5 : flow.interval;
-        await sessionStore.storeDeviceFlow(flow_state, {
-          ...flow,
-          interval,
-          nextPollAt: Date.now() + interval * 1000,
-        });
-        res.json({ status: 'pending', interval });
-        return;
-      }
-      // GitLab issues these tokens once: keep them with the flow before anything else can
-      // fail, so the next poll finishes the setup instead of losing the authorization.
-      tokenResponse = step.tokens;
-      await sessionStore.storeDeviceFlow(flow_state, {
-        ...flow,
-        nextPollAt: now + flow.interval * 1000,
-        gitlabTokens: tokenResponse,
-      });
-    }
-
-    const userInfo = await getGitLabUser(tokenResponse.access_token, app.baseUrl);
-
-    // Exactly one poller completes the flow, so one session and one code are created.
-    if (!(await sessionStore.consumeDeviceFlow(flow_state))) {
-      res.json({ status: 'pending', interval: flow.interval });
+    const tokens = flow.gitlabTokens ?? (await pollGitLab(flow_state, flow, config, app, now));
+    if (!('access_token' in tokens)) {
+      res.json({ status: 'pending', interval: tokens.interval });
       return;
     }
-
-    const sessionId = generateSessionId();
-    const createdAt = Date.now();
-
-    // Generate authorization code for the OAuth flow
-    const authCode = generateAuthorizationCode();
-
-    // Create session with GitLab tokens before the code that references it.
-    // MCP tokens will be set when the authorization code is exchanged
-    await sessionStore.createSession({
-      id: sessionId,
-      mcpAccessToken: '', // Set on /token
-      mcpRefreshToken: '', // Set on /token
-      mcpTokenExpiry: 0, // Set on /token
-      gitlabAccessToken: tokenResponse.access_token,
-      gitlabRefreshToken: tokenResponse.refresh_token,
-      gitlabTokenExpiry: calculateTokenExpiry(tokenResponse.expires_in),
-      gitlabScopes: grantedGitlabScopes(tokenResponse.scope, flow.requestedGitlabScopes),
-      gitlabUserId: userInfo.id,
-      gitlabUsername: userInfo.username,
-      gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,
-      instanceLabel: flow.selectedInstanceLabel,
-      clientId: flow.clientId,
-      scopes: flow.scopes ?? [...MCP_SCOPES],
-      resource: flow.resource,
-      createdAt,
-      updatedAt: createdAt,
-    });
-
-    // Store authorization code (single-use, expires in 10 minutes)
-    await sessionStore.storeAuthCode({
-      code: authCode,
-      sessionId,
-      clientId: flow.clientId,
-      codeChallenge: flow.codeChallenge,
-      codeChallengeMethod: flow.codeChallengeMethod,
-      redirectUri: flow.redirectUri,
-      expiresAt: createdAt + 10 * 60 * 1000, // 10 minutes
-    });
-
-    logInfo('Device flow authorization completed', {
-      sessionId: truncateId(sessionId),
-      userId: userInfo.id,
-      username: userInfo.username,
-    });
-
-    // Return success with redirect info
-    const response: DeviceFlowPollResponse = {
-      status: 'complete',
-      redirect_uri: flow.redirectUri,
-      code: authCode,
-      state: flow.state ? flow.state : undefined,
-      iss: config.issuer,
-    };
-
-    res.json(response);
+    const response = await completeDeviceFlow(flow_state, flow, tokens, config, app);
+    res.json(response ?? { status: 'pending', interval: flow.interval });
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
 
@@ -558,6 +508,109 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
       res.json({ status: 'pending', interval: flow.interval });
     }
   }
+}
+
+/**
+ * One poll of GitLab for a reserved interval: the issued tokens, or the interval to wait
+ * while the user has not approved yet.
+ */
+async function pollGitLab(
+  flowState: string,
+  flow: DeviceFlowState,
+  config: OAuthConfig,
+  app: GitLabOAuthApp,
+  now: number,
+): Promise<GitLabTokenResponse | { interval: number }> {
+  const step = await pollDeviceFlowStep(flow.deviceCode, config, app);
+  if (step.status !== 'complete') {
+    // Still pending; slow_down adds 5 seconds to this and every later interval.
+    const interval = step.status === 'slow_down' ? flow.interval + 5 : flow.interval;
+    await sessionStore.storeDeviceFlow(flowState, {
+      ...flow,
+      interval,
+      nextPollAt: Date.now() + interval * 1000,
+    });
+    return { interval };
+  }
+  // GitLab issues these tokens once: keep them with the flow before anything else can
+  // fail, so the next poll finishes the setup instead of losing the authorization.
+  await sessionStore.storeDeviceFlow(flowState, {
+    ...flow,
+    nextPollAt: now + flow.interval * 1000,
+    gitlabTokens: step.tokens,
+  });
+  return step.tokens;
+}
+
+/**
+ * Create the session and authorization code of an approved device flow. Undefined when
+ * another poller completed the flow first.
+ */
+async function completeDeviceFlow(
+  flowState: string,
+  flow: DeviceFlowState,
+  tokens: GitLabTokenResponse,
+  config: OAuthConfig,
+  app: GitLabOAuthApp,
+): Promise<DeviceFlowPollResponse | undefined> {
+  const userInfo = await getGitLabUser(tokens.access_token, app.baseUrl);
+
+  // Exactly one poller completes the flow, so one session and one code are created.
+  if (!(await sessionStore.consumeDeviceFlow(flowState))) return undefined;
+
+  const sessionId = generateSessionId();
+  const createdAt = Date.now();
+
+  // Generate authorization code for the OAuth flow
+  const authCode = generateAuthorizationCode();
+
+  // Create session with GitLab tokens before the code that references it.
+  // MCP tokens will be set when the authorization code is exchanged
+  await sessionStore.createSession({
+    id: sessionId,
+    mcpAccessToken: '', // Set on /token
+    mcpRefreshToken: '', // Set on /token
+    mcpTokenExpiry: 0, // Set on /token
+    gitlabAccessToken: tokens.access_token,
+    gitlabRefreshToken: tokens.refresh_token,
+    gitlabTokenExpiry: calculateTokenExpiry(tokens.expires_in),
+    gitlabScopes: grantedGitlabScopes(tokens.scope, flow.requestedGitlabScopes),
+    gitlabUserId: userInfo.id,
+    gitlabUsername: userInfo.username,
+    gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,
+    instanceLabel: flow.selectedInstanceLabel,
+    clientId: flow.clientId,
+    scopes: flow.scopes ?? [...MCP_SCOPES],
+    resource: flow.resource,
+    createdAt,
+    updatedAt: createdAt,
+  });
+
+  // Store authorization code (single-use, expires in 10 minutes)
+  await sessionStore.storeAuthCode({
+    code: authCode,
+    sessionId,
+    clientId: flow.clientId,
+    codeChallenge: flow.codeChallenge,
+    codeChallengeMethod: flow.codeChallengeMethod,
+    redirectUri: flow.redirectUri,
+    expiresAt: createdAt + 10 * 60 * 1000, // 10 minutes
+  });
+
+  logInfo('Device flow authorization completed', {
+    sessionId: truncateId(sessionId),
+    userId: userInfo.id,
+    username: userInfo.username,
+  });
+
+  // Return success with redirect info
+  return {
+    status: 'complete',
+    redirect_uri: flow.redirectUri,
+    code: authCode,
+    state: flow.state ? flow.state : undefined,
+    iss: config.issuer,
+  };
 }
 
 /**

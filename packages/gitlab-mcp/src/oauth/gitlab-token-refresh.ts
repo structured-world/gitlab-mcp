@@ -58,17 +58,20 @@ async function storeRefreshedTokens(
   sessionId: string,
   updates: Partial<OAuthSession>,
   leaseUntil: number,
+  delay = STORE_RETRY_MS,
 ): Promise<void> {
-  for (let delay = STORE_RETRY_MS; ; delay *= 2) {
-    try {
-      await sessionStore.updateSession(sessionId, updates);
-      return;
-    } catch (error) {
-      if (Date.now() + delay >= leaseUntil) throw error;
-      logWarn('Storing refreshed GitLab tokens failed, retrying', { err: error as Error });
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
+  try {
+    await sessionStore.updateSession(sessionId, updates);
+  } catch (error) {
+    if (Date.now() + delay >= leaseUntil) throw error;
+    logWarn('Storing refreshed GitLab tokens failed, retrying', { err: error as Error });
+    await sleep(delay);
+    await storeRefreshedTokens(sessionId, updates, leaseUntil, delay * 2);
   }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 /** Spend the leased refresh token at GitLab and store the new tokens. */
@@ -129,21 +132,30 @@ async function refreshSession(
   const spentToken = session.gitlabRefreshToken;
   // A lease held elsewhere ends by REFRESH_LEASE_MS at the latest, then this caller claims it.
   const deadline = Date.now() + REFRESH_LEASE_MS + 2 * LEASE_POLL_MS;
-  for (;;) {
-    const now = Date.now();
-    const leaseUntil = now + REFRESH_LEASE_MS;
-    if (await sessionStore.claimGitLabRefresh(session.id, spentToken, now, leaseUntil)) {
-      return refreshHoldingLease(session, spentToken, config, leaseUntil);
-    }
-    // Another replica holds the lease or already refreshed: use the tokens it stores.
-    const current = await sessionStore.getSession(session.id);
-    if (!current) return undefined;
-    if (current.gitlabRefreshToken !== spentToken) return current;
-    if (Date.now() >= deadline) {
-      throw new Error('GitLab token refresh on another replica did not finish');
-    }
-    await new Promise((resolve) => setTimeout(resolve, LEASE_POLL_MS));
+  return claimOrWait(session, spentToken, config, deadline);
+}
+
+/** Claim the refresh lease, or wait for the replica holding it to store new tokens. */
+async function claimOrWait(
+  session: OAuthSession,
+  spentToken: string,
+  config: OAuthConfig,
+  deadline: number,
+): Promise<OAuthSession | undefined> {
+  const now = Date.now();
+  const leaseUntil = now + REFRESH_LEASE_MS;
+  if (await sessionStore.claimGitLabRefresh(session.id, spentToken, now, leaseUntil)) {
+    return refreshHoldingLease(session, spentToken, config, leaseUntil);
   }
+  // Another replica holds the lease or already refreshed: use the tokens it stores.
+  const current = await sessionStore.getSession(session.id);
+  if (!current) return undefined;
+  if (current.gitlabRefreshToken !== spentToken) return current;
+  if (Date.now() >= deadline) {
+    throw new Error('GitLab token refresh on another replica did not finish');
+  }
+  await sleep(LEASE_POLL_MS);
+  return claimOrWait(session, spentToken, config, deadline);
 }
 
 /**

@@ -146,6 +146,50 @@ describe('withFreshGitLabToken', () => {
     expect(mockStore.releaseGitLabRefresh).toHaveBeenCalledWith('session-1');
   });
 
+  // GitLab already spent the old refresh token: if the new tokens are not stored, the
+  // next refresh presents the spent one and the account is disconnected. The write is
+  // retried while this replica still holds the lease, and the lease is released after it.
+  it('retries storing refreshed tokens before releasing the lease', async () => {
+    jest.useFakeTimers();
+    try {
+      mockRefresh.mockResolvedValue(tokens);
+      mockStore.updateSession
+        .mockRejectedValueOnce(new Error('database down'))
+        .mockRejectedValueOnce(new Error('database down'))
+        .mockResolvedValue(true);
+
+      const result = withFreshGitLabToken(expiring, config);
+      await jest.advanceTimersByTimeAsync(5_000);
+
+      expect((await result)?.gitlabAccessToken).toBe('gl-new');
+      expect(mockStore.updateSession).toHaveBeenCalledTimes(3);
+      expect(mockStore.releaseGitLabRefresh.mock.invocationCallOrder[0]).toBeGreaterThan(
+        mockStore.updateSession.mock.invocationCallOrder[2],
+      );
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  // Storage that stays down for the whole lease is a temporary failure, never a revoked grant.
+  it('gives up storing refreshed tokens when the lease runs out', async () => {
+    jest.useFakeTimers();
+    try {
+      mockRefresh.mockResolvedValue(tokens);
+      mockStore.updateSession.mockRejectedValue(new Error('database down'));
+
+      const result = withFreshGitLabToken(expiring, config);
+      const settled = expect(result).rejects.toThrow('database down');
+      await jest.advanceTimersByTimeAsync(31_000);
+      await settled;
+      await expect(result).rejects.not.toBeInstanceOf(GitLabGrantRevokedError);
+      expect(mockStore.updateSession.mock.calls.length).toBeGreaterThan(1);
+      expect(mockStore.releaseGitLabRefresh).toHaveBeenCalledWith('session-1');
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   it('returns a session whose token is not expiring without calling GitLab', async () => {
     expect(await withFreshGitLabToken(refreshed, config)).toBe(refreshed);
     expect(mockRefresh).not.toHaveBeenCalled();

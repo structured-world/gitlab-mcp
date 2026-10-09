@@ -20,6 +20,8 @@ import { logDebug, logWarn, truncateId } from '../logger';
 const REFRESH_LEASE_MS = 30_000;
 /** How often a replica waiting for another replica's refresh re-reads the session. */
 const LEASE_POLL_MS = 200;
+/** First delay before retrying a failed write of refreshed tokens; doubles each time. */
+const STORE_RETRY_MS = 200;
 
 /**
  * The account cannot be refreshed any more: GitLab refused the grant (RFC 6749 section 5.2
@@ -47,11 +49,34 @@ function releaseLease(sessionId: string): Promise<void> {
   });
 }
 
+/**
+ * Store tokens GitLab just issued. GitLab has already spent the old refresh token, so
+ * losing them disconnects the account: a failed write is retried while this replica still
+ * holds the lease (no other replica can spend the old token meanwhile), with backoff.
+ */
+async function storeRefreshedTokens(
+  sessionId: string,
+  updates: Partial<OAuthSession>,
+  leaseUntil: number,
+): Promise<void> {
+  for (let delay = STORE_RETRY_MS; ; delay *= 2) {
+    try {
+      await sessionStore.updateSession(sessionId, updates);
+      return;
+    } catch (error) {
+      if (Date.now() + delay >= leaseUntil) throw error;
+      logWarn('Storing refreshed GitLab tokens failed, retrying', { err: error as Error });
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+  }
+}
+
 /** Spend the leased refresh token at GitLab and store the new tokens. */
 async function refreshHoldingLease(
   session: OAuthSession,
   spentToken: string,
   config: OAuthConfig,
+  leaseUntil: number,
 ): Promise<OAuthSession | undefined> {
   let tokens;
   try {
@@ -77,17 +102,18 @@ async function refreshHoldingLease(
     }
     throw error;
   }
+  const updates: Partial<OAuthSession> = {
+    gitlabAccessToken: tokens.access_token,
+    gitlabRefreshToken: tokens.refresh_token,
+    gitlabTokenExpiry: calculateTokenExpiry(tokens.expires_in),
+    // RFC 6749 section 6: omitted scope retains the original grant.
+    // https://www.rfc-editor.org/rfc/rfc6749#section-6
+    ...(tokens.scope !== undefined && {
+      gitlabScopes: tokens.scope.split(/\s+/).filter(Boolean),
+    }),
+  };
   try {
-    await sessionStore.updateSession(session.id, {
-      gitlabAccessToken: tokens.access_token,
-      gitlabRefreshToken: tokens.refresh_token,
-      gitlabTokenExpiry: calculateTokenExpiry(tokens.expires_in),
-      // RFC 6749 section 6: omitted scope retains the original grant.
-      // https://www.rfc-editor.org/rfc/rfc6749#section-6
-      ...(tokens.scope !== undefined && {
-        gitlabScopes: tokens.scope.split(/\s+/).filter(Boolean),
-      }),
-    });
+    await storeRefreshedTokens(session.id, updates, leaseUntil);
   } finally {
     await releaseLease(session.id);
   }
@@ -105,10 +131,9 @@ async function refreshSession(
   const deadline = Date.now() + REFRESH_LEASE_MS + 2 * LEASE_POLL_MS;
   for (;;) {
     const now = Date.now();
-    if (
-      await sessionStore.claimGitLabRefresh(session.id, spentToken, now, now + REFRESH_LEASE_MS)
-    ) {
-      return refreshHoldingLease(session, spentToken, config);
+    const leaseUntil = now + REFRESH_LEASE_MS;
+    if (await sessionStore.claimGitLabRefresh(session.id, spentToken, now, leaseUntil)) {
+      return refreshHoldingLease(session, spentToken, config, leaseUntil);
     }
     // Another replica holds the lease or already refreshed: use the tokens it stores.
     const current = await sessionStore.getSession(session.id);

@@ -791,9 +791,19 @@ class RegistryManager {
 
   private forScopes(definitions: ToolDefinition[], scopes?: readonly string[]): ToolDefinition[] {
     // Account permissions are request data, never stored in a URL-keyed shared cache.
-    return scopes
-      ? definitions.filter((tool) => isToolAvailableForScopes(tool.name, scopes))
-      : definitions;
+    if (scopes === undefined) return definitions;
+    const filtered = definitions.filter((tool) => isToolAvailableForScopes(tool.name, scopes));
+    if (!GITLAB_CROSS_REFS || filtered.length === definitions.length) return filtered;
+    const availableNames = new Set<string>();
+    for (const tool of filtered) availableNames.add(tool.name);
+    for (let index = 0; index < filtered.length; index++) {
+      const tool = filtered[index];
+      if (this.descriptionOverrides.has(tool.name)) continue;
+      const description = resolveRelatedReferences(tool.description, availableNames);
+      // Only changed descriptions need ownership; never mutate the shared client-mode cache.
+      if (description !== tool.description) filtered[index] = { ...tool, description };
+    }
+    return filtered;
   }
 
   /**

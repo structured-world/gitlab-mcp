@@ -390,6 +390,31 @@ describe('whoami handler', () => {
       mockConnectionManager.getTokenScopeInfo.mockReturnValue(null);
     });
 
+    it.each([
+      { scopes: ['read_repository'], browse: true, manage: false },
+      { scopes: ['read_registry'], browse: true, manage: false },
+      { scopes: ['write_repository'], browse: false, manage: true },
+      { scopes: ['write_registry'], browse: false, manage: true },
+      { scopes: ['create_runner'], browse: false, manage: true },
+      { scopes: ['manage_runner'], browse: false, manage: true },
+    ])('reflects specialized tool grants: $scopes', async ({ scopes, browse, manage }) => {
+      // Capability flags must use the same requirements as tool discovery, including specialized grants.
+      const result = await runWithTokenContext(
+        {
+          gitlabToken: 'fixture-only',
+          gitlabUserId: 2,
+          gitlabUsername: 'reader',
+          sessionId: 'reader',
+          apiUrl: 'https://gitlab.example.com',
+          gitlabScopes: scopes,
+        },
+        async () => (await handleManageContext({ action: 'whoami' })) as WhoamiResult,
+      );
+      expect(result.capabilities.canBrowse).toBe(browse);
+      expect(result.capabilities.canManage).toBe(manage);
+      expect(result.capabilities.canAccessGraphQL).toBe(false);
+    });
+
     it('reports no browse access for an explicit empty OAuth grant', async () => {
       // Empty grants are known denials, not the permissive unknown-grant case.
       const result = await runWithTokenContext(

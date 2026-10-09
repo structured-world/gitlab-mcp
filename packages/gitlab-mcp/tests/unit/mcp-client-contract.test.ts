@@ -99,6 +99,25 @@ describe('simultaneous MCP client contracts', () => {
   }
 
   it.each([
+    ['read_api', 'api'],
+    ['api', 'read_api'],
+  ])('keeps related hints scoped in order %s then %s', async (first, second) => {
+    // A scoped description must not suggest forbidden tools or mutate another account's cached hints.
+    const client = await connect('mcp-inspector', '2025-11-25');
+    for (const scope of [first, second]) {
+      const result = await asAccount([scope], 'https://new.example.com', () => client.listTools());
+      const description = result.tools.find(
+        (tool) => tool.name === 'browse_pipelines',
+      )!.description!;
+      expect(description.includes('manage_pipeline')).toBe(scope === 'api');
+    }
+    const shared = RegistryManager.getInstance().getAllToolDefinitions('https://new.example.com');
+    expect(shared.find((tool) => tool.name === 'browse_pipelines')!.description).toContain(
+      'manage_pipeline',
+    );
+  });
+
+  it.each([
     { scopes: [], browse: false, manage: false },
     { scopes: ['read_user'], browse: false, manage: false },
     { scopes: ['read_api'], browse: true, manage: false },

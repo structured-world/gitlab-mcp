@@ -1,4 +1,4 @@
-import { launch, launchSync, resolveExecutable, isMutationCall } from './evaluation-process.mjs';
+import { runEvaluation, launchSync, resolveExecutable, isMutationCall } from './evaluation-process.mjs';
 import { mkdtemp, mkdir, writeFile, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -120,29 +120,7 @@ try {
   let conversation;
 
   function run(args) {
-    return new Promise((resolveRun, reject) => {
-      const child = launch(command, args, { cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'] });
-      let stdout = '',
-        stderr = '';
-      const timer = setTimeout(() => {
-        child.kill('SIGTERM');
-        reject(new Error('Client evaluation timed out after 180s'));
-      }, 180000);
-      child.stdout.on('data', (chunk) => {
-        stdout += chunk;
-      });
-      child.stderr.on('data', (chunk) => {
-        stderr += chunk;
-      });
-      child.on('error', (error) => {
-        clearTimeout(timer);
-        reject(error);
-      });
-      child.on('close', (code) => {
-        clearTimeout(timer);
-        resolveRun({ code, stdout, stderr });
-      });
-    });
+    return runEvaluation(command, args, { cwd: workspace });
   }
 
   function skillPrefix(skill) {

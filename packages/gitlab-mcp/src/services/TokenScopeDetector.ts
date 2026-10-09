@@ -320,6 +320,22 @@ export function isToolAvailableForScopes(toolName: string, scopes: readonly stri
   return requiredScopes.some((required) => scopes.includes(required));
 }
 
+/** Grant-level capabilities derived from the same requirements as tool filtering. */
+export function getScopeCapabilities(scopes: readonly string[]): {
+  canBrowse: boolean;
+  canManage: boolean;
+} {
+  let canBrowse = false;
+  let canManage = false;
+  for (const name in TOOL_SCOPE_REQUIREMENTS) {
+    if (!isToolAvailableForScopes(name, scopes)) continue;
+    if (name.startsWith('browse_')) canBrowse = true;
+    if (name.startsWith('manage_')) canManage = true;
+    if (canBrowse && canManage) break;
+  }
+  return { canBrowse, canManage };
+}
+
 /**
  * Get the list of tools available for given scopes
  */

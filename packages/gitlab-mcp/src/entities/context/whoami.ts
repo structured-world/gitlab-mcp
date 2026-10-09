@@ -21,7 +21,7 @@ import { logInfo, logDebug } from '../../logger';
 import { isOAuthEnabled } from '../../oauth/index.js';
 import { getGitLabApiUrlFromContext, getTokenContext } from '../../oauth/token-context';
 import { ConnectionManager } from '../../services/ConnectionManager';
-import { getTokenCreationUrl } from '../../services/TokenScopeDetector';
+import { getTokenCreationUrl, getScopeCapabilities } from '../../services/TokenScopeDetector';
 import { RegistryManager } from '../../registry-manager';
 import { sendToolsListChangedNotification } from '../../server';
 import { enhancedFetch } from '../../utils/fetch';
@@ -174,11 +174,10 @@ function buildCapabilities(tokenInfo: WhoamiTokenInfo | null): WhoamiCapabilitie
   const registryManager = RegistryManager.getInstance();
   const filterStats = registryManager.getFilterStats();
 
-  const canBrowse =
-    tokenInfo === null ||
-    tokenInfo.scopes.some((s) => ['api', 'read_api', 'read_user'].includes(s));
-
-  const canManage = tokenInfo?.hasWriteAccess ?? false;
+  const { canBrowse, canManage } =
+    tokenInfo === null
+      ? { canBrowse: true, canManage: false }
+      : getScopeCapabilities(tokenInfo.scopes);
   const canAccessGraphQL = tokenInfo?.hasGraphQLAccess ?? false;
 
   return {

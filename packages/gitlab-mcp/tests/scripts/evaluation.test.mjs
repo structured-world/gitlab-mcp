@@ -1,7 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync, existsSync, rmSync, realpathSync } from 'node:fs';
+import {
+  mkdtempSync,
+  writeFileSync,
+  readFileSync,
+  existsSync,
+  rmSync,
+  realpathSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import {
@@ -9,21 +16,87 @@ import {
   launchSync,
   resolveExecutable,
   isMutationCall,
+  runEvaluation,
 } from '../../scripts/evaluation-process.mjs';
 import { startWorkflowGitLab } from '../manual/fixtures/workflow-gitlab.mjs';
+
+test('evaluation preserves completed results and rejects launch failures', async () => {
+  // Moving process ownership must retain transcript/exit codes and release the timeout on spawn errors.
+  for (const code of [0, 7]) {
+    const result = await runEvaluation(
+      process.execPath,
+      ['-e', `process.stdout.write('out'); process.stderr.write('err'); process.exitCode=${code};`],
+      { cwd: process.cwd(), timeoutMs: 3000 },
+    );
+    assert.deepEqual(result, { code, stdout: 'out', stderr: 'err' });
+  }
+  await assert.rejects(
+    runEvaluation(join(tmpdir(), 'missing-evaluation-command'), [], {
+      cwd: process.cwd(),
+      timeoutMs: 3000,
+    }),
+    /ENOENT/,
+  );
+});
+
+test('timeout stops the client tree before rejecting the evaluation', async (context) => {
+  // Both client and MCP descendant ignore graceful termination and share output pipes.
+  const directory = mkdtempSync(join(tmpdir(), 'gitlab-eval-timeout-'));
+  const heartbeat = join(directory, 'heartbeat');
+  const pids = join(directory, 'pids');
+  const descendant = `require('node:fs').writeFileSync(${JSON.stringify(heartbeat)}, 'ready');
+    process.on('SIGTERM', () => {});
+    setInterval(() => require('node:fs').appendFileSync(${JSON.stringify(heartbeat)}, '.'), 20);`;
+  const parent = `const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}], {stdio:'inherit'});
+    require('node:fs').writeFileSync(${JSON.stringify(pids)}, JSON.stringify([process.pid, child.pid]));
+    process.on('SIGTERM', () => {}); setInterval(() => {}, 1000);`;
+  context.after(() => {
+    if (existsSync(pids))
+      for (const pid of JSON.parse(readFileSync(pids, 'utf8'))) {
+        try {
+          process.kill(pid, 'SIGKILL');
+        } catch (error) {
+          if (error.code !== 'ESRCH') throw error;
+        }
+      }
+    rmSync(directory, { recursive: true, force: true });
+  });
+  await assert.rejects(
+    runEvaluation(process.execPath, ['-e', parent], { cwd: directory, timeoutMs: 500 }),
+    /timed out/,
+  );
+  const stopped = readFileSync(heartbeat, 'utf8');
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  assert.equal(
+    readFileSync(heartbeat, 'utf8'),
+    stopped,
+    'descendant still runs after timeout rejection',
+  );
+});
 
 test('evaluator setup failure closes the loopback server and exits', () => {
   // A failed version check must release the fixture instead of keeping Node alive.
   const directory = mkdtempSync(join(tmpdir(), 'gitlab-eval-setup-'));
   try {
-    writeFileSync(join(directory, 'codex'), '#!/bin/sh\nexit 7\n', { mode: 0o755 });
+    const shim = process.platform === 'win32' ? 'codex.cmd' : 'codex';
+    const body =
+      process.platform === 'win32' ? '@echo off\r\nexit /b 7\r\n' : '#!/bin/sh\nexit 7\n';
+    writeFileSync(join(directory, shim), body, { mode: 0o755 });
     // Catch the setup exception so process exit cannot mask a leaked listening socket.
     const script = resolve('scripts/evaluate-skills.mjs');
     const entry = `process.argv = [process.execPath, ${JSON.stringify(script)}, 'codex'];
       try { await import(process.argv[1]); }
       catch (error) { console.error(error); process.exitCode = 1; }`;
     const result = spawnSync(process.execPath, ['--input-type=module', '--eval', entry], {
-      env: { ...process.env, PATH: directory + delimiter + process.env.PATH },
+      env: {
+        ...Object.fromEntries(
+          Object.entries(process.env).filter(([key]) => key.toUpperCase() !== 'PATH'),
+        ),
+        PATH:
+          directory +
+          delimiter +
+          Object.entries(process.env).find(([key]) => key.toUpperCase() === 'PATH')[1],
+      },
       encoding: 'utf8',
       timeout: 3000,
     });
@@ -40,8 +113,15 @@ test('the evaluator rejects an executable supplied as a positional argument', ()
   const directory = mkdtempSync(join(tmpdir(), 'gitlab-eval-command-'));
   try {
     const marker = join(directory, 'executed');
-    const executable = join(directory, 'unexpected');
-    writeFileSync(executable, `#!/bin/sh\ntouch '${marker}'\necho fixture\n`, { mode: 0o755 });
+    const executable = join(
+      directory,
+      process.platform === 'win32' ? 'unexpected.cmd' : 'unexpected',
+    );
+    const body =
+      process.platform === 'win32'
+        ? `@echo off\r\ntype nul > "${marker}"\r\necho fixture\r\n`
+        : `#!/bin/sh\ntouch '${marker}'\necho fixture\n`;
+    writeFileSync(executable, body, { mode: 0o755 });
     const result = spawnSync(
       process.execPath,
       [resolve('scripts/evaluate-skills.mjs'), 'codex', executable],

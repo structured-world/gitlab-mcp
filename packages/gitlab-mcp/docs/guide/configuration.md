@@ -127,6 +127,7 @@ See [TLS/HTTPS Configuration](/advanced/tls) for detailed setup guides.
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `OAUTH_ENABLED` | Enable OAuth mode | `false` |
+| `OAUTH_ISSUER` | Public URL clients connect to; required in OAuth mode (https, or http for localhost) | — |
 | `OAUTH_SESSION_SECRET` | Session secret (min 32 chars) | — |
 | `OAUTH_CLIENT_ID` | GitLab OAuth application ID | — |
 | `OAUTH_CLIENT_SECRET` | Client secret (if confidential app) | — |

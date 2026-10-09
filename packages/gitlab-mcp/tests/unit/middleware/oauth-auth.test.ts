@@ -87,6 +87,7 @@ describe('OAuth Authentication Middleware', () => {
   let mockNext: NextFunction;
 
   const mockConfig = {
+    issuer: 'https://mcp.example.com',
     sessionSecret: 'test-session-secret-12345678901234567890',
     clientId: 'test-client-id',
     apiUrl: 'https://gitlab.example.com',
@@ -286,6 +287,21 @@ describe('OAuth Authentication Middleware', () => {
         expect(res.setHeader).toHaveBeenCalledWith(
           'WWW-Authenticate',
           expect.stringContaining('resource_metadata='),
+        );
+      });
+
+      it.each([
+        ['/mcp', 'https://mcp.example.com/.well-known/oauth-protected-resource/mcp'],
+        ['/mcp/message', 'https://mcp.example.com/.well-known/oauth-protected-resource/mcp'],
+        ['/', 'https://mcp.example.com/.well-known/oauth-protected-resource'],
+      ])('points the challenge for %s at %s, built from OAUTH_ISSUER', async (path, url) => {
+        // RFC 9728 section 5.1: the metadata of the endpoint that was called.
+        mockGetBaseUrl.mockReturnValue('https://attacker.example');
+        const res = createMockRes();
+        await oauthAuthMiddleware(createMockReq({ path }), res, mockNext);
+        expect(res.setHeader).toHaveBeenCalledWith(
+          'WWW-Authenticate',
+          `Bearer realm="gitlab-mcp", resource_metadata="${url}"`,
         );
       });
     });

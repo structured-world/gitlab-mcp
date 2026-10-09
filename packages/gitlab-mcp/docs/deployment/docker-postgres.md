@@ -54,6 +54,7 @@ docker run -d --name gitlab-mcp \
   -e PORT=3002 \
   -e HOST=0.0.0.0 \
   -e OAUTH_ENABLED=true \
+  -e OAUTH_ISSUER=https://mcp.example.com \
   -e OAUTH_STORAGE_TYPE=postgresql \
   -e OAUTH_STORAGE_POSTGRESQL_URL="postgresql://gitlab_mcp:your_secure_password@db-host:5432/gitlab_mcp" \
   -e OAUTH_SESSION_SECRET="$(openssl rand -hex 32)" \
@@ -82,6 +83,7 @@ docker run -d --name gitlab-mcp \
 | ------------------------------ | -------- | -------------------------------------------------------------------------------------- |
 | `PORT`                         | Yes      | Internal HTTP port                                                                     |
 | `OAUTH_ENABLED`                | Yes      | Set to `true` to enable per-user OAuth (required for the database backend)             |
+| `OAUTH_ISSUER`                 | Yes      | Public URL clients connect to; issuer of every token                                   |
 | `OAUTH_STORAGE_TYPE`           | Yes      | Set to `postgresql` to use the database backend (requires the `gitlab-mcp-db` image)   |
 | `OAUTH_STORAGE_POSTGRESQL_URL` | Yes      | PostgreSQL connection string (`DATABASE_URL` is also accepted as a fallback)           |
 | `OAUTH_SESSION_SECRET`         | Yes      | Secret for session encryption                                                          |

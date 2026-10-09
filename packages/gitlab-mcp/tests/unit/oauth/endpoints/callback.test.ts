@@ -67,6 +67,7 @@ describe('OAuth Callback Handler', () => {
 
   const mockOAuthConfig = {
     enabled: true as const,
+    issuer: 'https://gitlab-mcp.example.com',
     gitlabClientId: 'test-client-id',
     gitlabClientSecret: 'test-client-secret',
     gitlabScopes: 'api,read_user',

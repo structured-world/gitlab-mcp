@@ -976,8 +976,35 @@ describe('docker-utils', () => {
 
       initDockerConfig(config);
 
-      // Should write both docker-compose.yml and instances.yml
-      expect(mockFs.writeFileSync).toHaveBeenCalledTimes(2);
+      // docker-compose.yml, .env (OAUTH_ISSUER, required in OAuth mode) and instances.yml
+      const written = mockFs.writeFileSync.mock.calls.map((call) => String(call[0]));
+      expect(written).toHaveLength(3);
+      expect(written.some((path) => path.endsWith('instances.yml'))).toBe(true);
+    });
+
+    it('should give an OAuth deployment its public URL in .env and compose', () => {
+      // The server refuses to start in OAuth mode without OAUTH_ISSUER.
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      initDockerConfig({
+        port: 4444,
+        oauthEnabled: true,
+        instances: [],
+        containerName: 'gitlab-mcp',
+        image: 'ghcr.io/structured-world/gitlab-mcp:latest',
+      });
+
+      const files = mockFs.writeFileSync.mock.calls.map((call) => [
+        String(call[0]),
+        String(call[1]),
+      ]);
+      expect(files.find(([path]) => path.endsWith('.env'))?.[1]).toContain(
+        'OAUTH_ISSUER=http://localhost:4444',
+      );
+      expect(files.find(([path]) => path.endsWith('docker-compose.yml'))?.[1]).toContain(
+        'OAUTH_ISSUER=${OAUTH_ISSUER}',
+      );
     });
 
     it('should write .env file when oauthSessionSecret is set', () => {

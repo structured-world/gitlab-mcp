@@ -46,6 +46,7 @@ jest.mock('../../../src/logger', () => ({
 describe('GitLab Device Flow Client', () => {
   const mockConfig: OAuthConfig = {
     enabled: true,
+    issuer: 'https://gitlab-mcp.example.com',
     gitlabClientId: 'test-client-id',
     gitlabClientSecret: 'test-client-secret',
     gitlabScopes: 'api,read_user',

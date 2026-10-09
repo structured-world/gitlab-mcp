@@ -82,6 +82,7 @@ const mockSessionStore = sessionStore as jest.Mocked<typeof sessionStore>;
 describe('OAuth Authorization Endpoint', () => {
   const mockConfig = {
     enabled: true as const,
+    issuer: 'https://gitlab-mcp.example.com',
     sessionSecret: 'a'.repeat(32),
     gitlabClientId: 'test-client-id',
     gitlabScopes: 'api,read_user',

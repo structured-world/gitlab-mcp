@@ -27,7 +27,6 @@ import {
   generateAuthorizationCode,
   calculateTokenExpiry,
 } from '../token-utils';
-import { getBaseUrl } from './metadata';
 import { GITLAB_BASE_URL } from '../../config';
 import { logInfo, logWarn, logError, truncateId } from '../../logger';
 import { DeviceFlowPollResponse, OAuthErrorResponse } from '../types';
@@ -135,8 +134,8 @@ async function handleAuthorizationCodeFlow(
     codeChallengeMethod: string;
   },
 ): Promise<void> {
-  const baseUrl = getBaseUrl(req);
-  const callbackUri = `${baseUrl}/oauth/callback`;
+  // Registered in the GitLab application as <OAUTH_ISSUER>/oauth/callback.
+  const callbackUri = `${config.issuer}/oauth/callback`;
 
   // Generate internal state for GitLab callback
   const internalState = generateRandomString(32);
@@ -211,13 +210,12 @@ async function handleDeviceFlow(
     });
 
     // Return HTML page with device flow instructions
-    const baseUrl = getBaseUrl(req);
     const html = getDeviceFlowHTML({
       userCode: deviceResponse.user_code,
       verificationUri: deviceResponse.verification_uri,
       verificationUriComplete: deviceResponse.verification_uri_complete,
       flowState,
-      pollUrl: `${baseUrl}/oauth/poll`,
+      pollUrl: `${config.issuer}/oauth/poll`,
       expiresIn: deviceResponse.expires_in,
     });
 

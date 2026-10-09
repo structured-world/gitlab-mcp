@@ -125,6 +125,8 @@ function registerOAuthEndpoints(app: Express): void {
 
   // Protected Resource Metadata (RFC 9470) - required by Claude.ai custom connectors
   app.get('/.well-known/oauth-protected-resource', protectedResourceHandler);
+  // Metadata of the /mcp endpoint (RFC 9728 section 3.1 path-inserted form)
+  app.get('/.well-known/oauth-protected-resource/mcp', protectedResourceHandler);
 
   // Authorization endpoint - supports both flows:
   // - Device Flow (no redirect_uri) - returns HTML page

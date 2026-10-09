@@ -66,6 +66,8 @@ services:
       # OAuth mode (per-user auth) — not static-token mode. Register a GitLab
       # OAuth application and set OAUTH_CLIENT_ID; see the OAuth guide linked below.
       - OAUTH_ENABLED=true
+      # Public URL clients connect to; GitLab redirect URI is <OAUTH_ISSUER>/oauth/callback.
+      - OAUTH_ISSUER=${OAUTH_ISSUER}
       - OAUTH_CLIENT_ID=${OAUTH_CLIENT_ID}
       # Only needed for confidential OAuth apps; harmless (empty) for PKCE public apps.
       - OAUTH_CLIENT_SECRET=${OAUTH_CLIENT_SECRET}
@@ -104,6 +106,7 @@ Create a `.env` file alongside docker-compose.yml:
 # Required
 POSTGRES_PASSWORD=your_secure_database_password
 SESSION_SECRET=your_64_char_hex_secret
+OAUTH_ISSUER=https://mcp.example.com
 OAUTH_CLIENT_ID=your_gitlab_oauth_app_id
 
 # Optional

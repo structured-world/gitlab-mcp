@@ -18,6 +18,7 @@ import { sessionStore } from '../oauth/session-store';
 import { verifyMCPToken, isTokenExpiringSoon, calculateTokenExpiry } from '../oauth/token-utils';
 import { refreshGitLabToken } from '../oauth/gitlab-device-flow';
 import { getBaseUrl } from '../oauth/endpoints/metadata';
+import { resourceForPath, resourceMetadataUrl } from '../oauth/resource';
 import { logWarn, logError, logDebug, truncateId } from '../logger';
 import { OAuthErrorResponse } from '../oauth/types';
 import { getMinimalRequestContext } from '../utils/request-logger';
@@ -250,14 +251,18 @@ function sendUnauthorized(req: Request, res: Response, error: string, descriptio
     error_description: description,
   };
 
-  // Get base URL for resource_metadata parameter (MCP OAuth 2.1 spec)
-  const baseUrl = getBaseUrl(req);
+  // resource_metadata points at the metadata of the endpoint that was called (RFC 9728
+  // section 5.1), built from the configured issuer rather than request headers.
+  const config = loadOAuthConfig();
+  const metadataUrl = config
+    ? resourceMetadataUrl(resourceForPath(config.issuer, req.path))
+    : `${getBaseUrl(req)}/.well-known/oauth-protected-resource`;
 
   // Set WWW-Authenticate header with resource_metadata parameter
   // Points to Protected Resource Metadata document per MCP spec
   res.setHeader(
     'WWW-Authenticate',
-    `Bearer realm="gitlab-mcp", resource_metadata="${baseUrl}/.well-known/oauth-protected-resource"`,
+    `Bearer realm="gitlab-mcp", resource_metadata="${metadataUrl}"`,
   );
   res.status(401).json(response);
 }

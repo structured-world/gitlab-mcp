@@ -9,6 +9,8 @@
 
 import { Request, Response } from 'express';
 import { HOST, PORT } from '../../config';
+import { loadOAuthConfig } from '../config';
+import { protectedResources } from '../resource';
 
 /**
  * MCP Protocol version supported by this server
@@ -47,8 +49,15 @@ export function getBaseUrl(req: Request): string {
  * @param req - Express request
  * @param res - Express response
  */
-export function metadataHandler(req: Request, res: Response): void {
-  const baseUrl = getBaseUrl(req);
+export function metadataHandler(_req: Request, res: Response): void {
+  const config = loadOAuthConfig();
+  if (!config) {
+    res.status(500).json({ error: 'server_error', error_description: 'OAuth not configured' });
+    return;
+  }
+  // The issuer is configuration, never request headers (RFC 8414 section 3.3: it must
+  // equal the issuer the client expects).
+  const baseUrl = config.issuer;
 
   // OAuth 2.0 Authorization Server Metadata (RFC 8414)
   const metadata = {
@@ -97,15 +106,21 @@ export function metadataHandler(req: Request, res: Response): void {
  * @param res - Express response
  */
 export function protectedResourceHandler(req: Request, res: Response): void {
-  const baseUrl = getBaseUrl(req);
+  const config = loadOAuthConfig();
+  if (!config) {
+    res.status(500).json({ error: 'server_error', error_description: 'OAuth not configured' });
+    return;
+  }
+  const [root, mcp] = protectedResources(config.issuer);
 
-  // OAuth 2.0 Protected Resource Metadata (RFC 9470)
+  // OAuth 2.0 Protected Resource Metadata (RFC 9728)
   const metadata = {
-    // REQUIRED: Resource identifier
-    resource: baseUrl,
+    // REQUIRED: Resource identifier; RFC 9728 section 3.3 requires it to equal the
+    // identifier the client derived this document's URL from.
+    resource: req.path.endsWith('/mcp') ? mcp : root,
 
     // REQUIRED: Authorization servers that can be used to access this resource
-    authorization_servers: [baseUrl],
+    authorization_servers: [config.issuer],
 
     // OPTIONAL: Scopes required for this resource
     scopes_supported: ['mcp:tools', 'mcp:resources'],

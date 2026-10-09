@@ -42,11 +42,18 @@ GitLab MCP Server supports OAuth 2.1 authentication for use as a **Claude Custom
 The redirect URI is used by Claude.ai Custom Connectors (Authorization Code Flow). CLI clients use Device Flow which doesn't require redirect URI.
 :::
 
+::: info OAUTH_ISSUER
+`OAUTH_ISSUER` is the public URL clients connect to (for example `https://your-mcp-server.com`).
+It is the issuer of every token and the base of the redirect URI above
+(`<OAUTH_ISSUER>/oauth/callback`). It is configuration, not derived from request headers.
+:::
+
 ### Step 2: Configure Server
 
 ```bash
 # Required for OAuth mode
 OAUTH_ENABLED=true
+OAUTH_ISSUER=https://your-mcp-server.com   # Public URL clients connect to
 OAUTH_SESSION_SECRET=your-minimum-32-character-secret-key
 OAUTH_CLIENT_ID=your-gitlab-application-id
 GITLAB_API_URL=https://your-gitlab-instance.com
@@ -72,6 +79,7 @@ OAuth requires HTTPS. Example with Docker:
 docker run -d \
   --name gitlab-mcp \
   -e OAUTH_ENABLED=true \
+  -e OAUTH_ISSUER=https://your-mcp-server.com \
   -e OAUTH_SESSION_SECRET="$(openssl rand -base64 32)" \
   -e OAUTH_CLIENT_ID=your-app-id \
   -e GITLAB_API_URL=https://gitlab.example.com \
@@ -196,6 +204,7 @@ When OAuth is enabled:
 |----------|--------|-------------|
 | `/.well-known/oauth-authorization-server` | GET | OAuth metadata discovery |
 | `/.well-known/oauth-protected-resource` | GET | Protected resource metadata (RFC 9470) |
+| `/.well-known/oauth-protected-resource/mcp` | GET | Protected resource metadata of the `/mcp` endpoint (RFC 9728) |
 | `/authorize` | GET | Start authorization (auto-selects flow) |
 | `/oauth/callback` | GET | GitLab callback (Auth Code Flow only) |
 | `/oauth/poll` | GET | Poll for completion (Device Flow only) |

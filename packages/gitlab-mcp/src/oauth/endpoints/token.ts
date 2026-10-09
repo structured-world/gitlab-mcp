@@ -20,7 +20,6 @@ import {
   isTokenExpiringSoon,
 } from '../token-utils';
 import { refreshGitLabToken } from '../gitlab-device-flow';
-import { getBaseUrl } from './metadata';
 import { logInfo, logDebug, logWarn, logError, truncateId } from '../../logger';
 import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from '../types';
 import { getIpAddress } from '../../utils/request-logger';
@@ -125,11 +124,9 @@ async function handleAuthorizationCode(
   }
 
   // Generate MCP tokens
-  const baseUrl = getBaseUrl(req);
-
   const accessToken = createJWT(
     {
-      iss: baseUrl,
+      iss: config.issuer,
       sub: session.gitlabUserId.toString(),
       aud: authCode.clientId,
       sid: session.id,
@@ -225,11 +222,9 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
   }
 
   // Generate new MCP tokens
-  const baseUrl = getBaseUrl(req);
-
   const accessToken = createJWT(
     {
-      iss: baseUrl,
+      iss: config.issuer,
       sub: updatedSession.gitlabUserId.toString(),
       aud: updatedSession.clientId,
       sid: updatedSession.id,

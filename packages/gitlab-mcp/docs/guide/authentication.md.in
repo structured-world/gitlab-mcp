@@ -156,6 +156,7 @@ Click **Save application** and copy the **Application ID**.
 ```bash
 # Required
 OAUTH_ENABLED=true
+OAUTH_ISSUER=https://your-mcp-server.com   # public URL clients connect to
 OAUTH_SESSION_SECRET=$(openssl rand -base64 32)
 OAUTH_CLIENT_ID=your-application-id
 GITLAB_API_URL=https://gitlab.com
@@ -171,6 +172,7 @@ HOST=0.0.0.0
 ```bash
 docker run -d --name gitlab-mcp \
   -e OAUTH_ENABLED=true \
+  -e OAUTH_ISSUER=https://your-mcp-server.com \
   -e OAUTH_SESSION_SECRET="$(openssl rand -base64 32)" \
   -e OAUTH_CLIENT_ID=your-app-id \
   -e GITLAB_API_URL=https://gitlab.com \

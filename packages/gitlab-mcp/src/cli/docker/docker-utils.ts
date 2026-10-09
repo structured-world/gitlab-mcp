@@ -225,6 +225,7 @@ export function generateDockerCompose(config: DockerConfig): string {
     // Reference secret via env var — actual value stored in .env file
     compose.services['gitlab-mcp'].environment.push(
       'OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}',
+      'OAUTH_ISSUER=${OAUTH_ISSUER}',
       `DATABASE_URL=${databaseUrl}`,
     );
     compose.services['gitlab-mcp'].volumes.push('./instances.yml:/app/config/instances.yml:ro');
@@ -518,6 +519,12 @@ export function saveEnvFile(config: DockerConfig): void {
 
   if (config.oauthSessionSecret) {
     lines.push(`OAUTH_SESSION_SECRET=${config.oauthSessionSecret}`);
+  }
+
+  if (config.oauthEnabled) {
+    // OAuth mode requires the public URL; local access works until it is changed to the
+    // HTTPS URL clients use behind a proxy.
+    lines.push(`OAUTH_ISSUER=http://localhost:${config.port}`);
   }
 
   if (config.deploymentType === 'compose-bundle' && config.oauthEnabled) {

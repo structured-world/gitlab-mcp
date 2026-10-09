@@ -9,6 +9,7 @@ import { DiscoveryResult, SetupResult, DockerDeploymentType } from '../types';
 import { initDockerConfig, startContainer } from '../../docker/docker-utils';
 import { getContainerRuntime } from '../../docker/container-runtime';
 import { DEFAULT_DOCKER_CONFIG } from '../../docker/types';
+import { promptOAuthIssuer } from '../../docker/oauth-issuer-prompt';
 import { runToolSelectionFlow, applyManualCategories } from './tool-selection';
 
 /**
@@ -95,6 +96,7 @@ export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<Se
 
   let oauthSessionSecret: string | undefined;
   let databaseUrl: string | undefined;
+  let oauthIssuer: string | undefined;
 
   if (enableOAuth) {
     oauthSessionSecret = randomBytes(32).toString('hex');
@@ -117,6 +119,12 @@ export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<Se
       }
       databaseUrl = dbUrl;
     }
+
+    const issuer = await promptOAuthIssuer(parseInt(port, 10));
+    if (p.isCancel(issuer)) {
+      return { success: false, mode: 'server', error: 'Cancelled' };
+    }
+    oauthIssuer = issuer;
   }
 
   // Step 4: Tool configuration
@@ -142,6 +150,7 @@ export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<Se
     deploymentType,
     oauthEnabled: enableOAuth,
     oauthSessionSecret,
+    oauthIssuer,
     databaseUrl,
     environment: Object.keys(toolEnv).length > 0 ? toolEnv : undefined,
   };

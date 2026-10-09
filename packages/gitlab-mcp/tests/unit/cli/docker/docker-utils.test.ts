@@ -1125,6 +1125,23 @@ describe('docker-utils', () => {
       expect(match![1].length).toBeGreaterThanOrEqual(20);
     });
 
+    it('should write the public URL chosen during setup as OAUTH_ISSUER', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveEnvFile({
+        ...DEFAULT_DOCKER_CONFIG,
+        oauthEnabled: true,
+        oauthIssuer: 'https://mcp.example.com',
+      });
+
+      const envCall = mockFs.writeFileSync.mock.calls.find((call) =>
+        (call[0] as string).endsWith('.env'),
+      );
+      expect(envCall![1]).toContain('OAUTH_ISSUER=https://mcp.example.com\n');
+      expect(envCall![1]).not.toContain('localhost');
+    });
+
     // The external database URL carries its password, so it lives in the 0600 .env
     // file and the compose file only references it.
     it('should write the external PostgreSQL URL for external-db with OAuth', () => {

@@ -76,6 +76,8 @@ export interface DockerConfig {
   oauthEnabled: boolean;
   /** OAuth session secret */
   oauthSessionSecret?: string;
+  /** Public URL clients connect to (OAUTH_ISSUER); localhost on the chosen port if unset */
+  oauthIssuer?: string;
   /** Database URL for sessions */
   databaseUrl?: string;
   /** Additional environment variables (e.g., GITLAB_PROFILE, USE_* flags) */

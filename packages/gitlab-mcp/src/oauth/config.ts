@@ -49,6 +49,12 @@ const IssuerSchema = z
     return `${url.origin}${path}`;
   });
 
+/** Why `value` is not an acceptable OAUTH_ISSUER, or undefined when the server accepts it. */
+export function issuerValidationError(value: string): string | undefined {
+  const parsed = IssuerSchema.safeParse(value);
+  return parsed.success ? undefined : parsed.error.issues[0]?.message;
+}
+
 /**
  * Zod schema for OAuth configuration
  * All OAuth-specific environment variables are validated here

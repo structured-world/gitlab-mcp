@@ -570,9 +570,8 @@ export function saveEnvFile(config: DockerConfig): void {
   }
 
   if (config.oauthEnabled) {
-    // OAuth mode requires the public URL; local access works until it is changed to the
-    // HTTPS URL clients use behind a proxy.
-    lines.push(`OAUTH_ISSUER=http://localhost:${config.port}`);
+    // The public URL chosen during setup; without one, local access on the published port.
+    lines.push(`OAUTH_ISSUER=${config.oauthIssuer ?? `http://localhost:${config.port}`}`);
   }
 
   if (config.deploymentType === 'compose-bundle' && config.oauthEnabled) {

@@ -293,6 +293,35 @@ describe('flows/server-setup', () => {
     expect(textCall.validate('3333')).toBeUndefined();
   });
 
+  // The issuer is the URL clients reach and the base of the GitLab callback: a silent
+  // localhost value made every remote sign-in fail until the file was edited by hand.
+  it('asks for the public URL clients connect to and passes it on', async () => {
+    mockSelect.mockResolvedValueOnce('compose-bundle');
+    mockText
+      .mockResolvedValueOnce('3333') // port
+      .mockResolvedValueOnce('https://mcp.example.com'); // public URL
+    mockConfirm
+      .mockResolvedValueOnce(true) // enable oauth
+      .mockResolvedValueOnce(false); // don't start
+
+    const result = await runServerSetupFlow(dockerReadyDiscovery);
+
+    expect(result.success).toBe(true);
+    const issuerPrompt = (mockText.mock.calls[1] as unknown[])[0] as {
+      initialValue: string;
+      validate: (v: string) => string | undefined;
+    };
+    expect(issuerPrompt.initialValue).toBe('http://localhost:3333');
+    expect(issuerPrompt.validate('https://mcp.example.com')).toBeUndefined();
+    expect(issuerPrompt.validate('http://localhost:3333')).toBeUndefined();
+    expect(issuerPrompt.validate('http://mcp.example.com')).toBe(
+      'OAUTH_ISSUER must use https (http is allowed only for localhost)',
+    );
+    expect(issuerPrompt.validate('not a url')).toBe('OAUTH_ISSUER must be an absolute URL');
+    const configArg = (initDockerConfig as jest.Mock).mock.calls[0][0];
+    expect(configArg.oauthIssuer).toBe('https://mcp.example.com');
+  });
+
   it('should validate database URL format', async () => {
     mockSelect.mockResolvedValueOnce('external-db');
     mockText

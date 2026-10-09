@@ -206,7 +206,8 @@ The flow is selected automatically based on the presence of `redirect_uri` in th
 
 - **Client and redirect:** the Authorization Code flow requires a client registered through `/register`, and `redirect_uri` must be one of its registered URIs; otherwise the request fails without a redirect. The Device Flow does not use a redirect and needs no registration.
 - **Resource:** clients may send `resource` (RFC 8707) naming `<OAUTH_ISSUER>` or `<OAUTH_ISSUER>/mcp`; any other value fails with `invalid_target`. Access tokens carry that resource as `aud` (`<OAUTH_ISSUER>/mcp` when none was requested) and `OAUTH_ISSUER` as `iss`; both are checked on every request.
-- **Scope:** supported scopes are `mcp:tools` and `mcp:resources`; unknown values are ignored and no recognised value grants both. A refresh may narrow the scope, never widen it.
+- **Scope:** supported scopes are `mcp:tools` and `mcp:resources`; unknown values are ignored and no recognised value grants both. Tool calls require `mcp:tools`. A refresh may narrow the scope, never widen it.
+- **Transports:** every MCP transport requires the access token in OAuth mode, including the legacy SSE endpoints (`/sse`, `/messages`).
 - **Codes and refresh:** an authorization code is consumed on first use, and both grants require the `client_id` the code or refresh token was issued to.
 - **Issuer identification:** every redirect back to the client carries `iss` (RFC 9207).
 

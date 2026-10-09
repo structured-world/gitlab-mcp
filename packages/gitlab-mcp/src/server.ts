@@ -37,6 +37,7 @@ import {
   runWithTokenContext,
 } from './oauth/index';
 import { registerOAuthEndpoints } from './oauth/routes';
+import type { TokenContext } from './oauth/types';
 // Middleware imports
 import {
   oauthAuthMiddleware,
@@ -56,6 +57,32 @@ import {
   getConnectionTracker,
   runWithRequestContextAsync,
 } from './logging/index';
+
+/**
+ * Token context of a request the OAuth middleware authenticated (it stores the account in
+ * res.locals), or undefined for static-token and unauthenticated requests.
+ */
+function tokenContextFromLocals(
+  locals: Record<string, unknown> | undefined,
+): TokenContext | undefined {
+  if (!locals) return undefined;
+  const sessionId = locals.oauthSessionId as string | undefined;
+  const gitlabToken = locals.gitlabToken as string | undefined;
+  const gitlabUserId = locals.gitlabUserId as number | undefined;
+  const gitlabUsername = locals.gitlabUsername as string | undefined;
+  if (!sessionId || !gitlabToken || !gitlabUserId || !gitlabUsername) return undefined;
+  return {
+    gitlabToken,
+    gitlabUserId,
+    gitlabUsername,
+    gitlabScopes: locals.gitlabScopes as string[] | undefined,
+    sessionId,
+    apiUrl: (locals.gitlabApiUrl as string | undefined) ?? GITLAB_BASE_URL,
+    instanceLabel: locals.instanceLabel as string | undefined,
+    resource: locals.mcpResource as string | undefined,
+    mcpScopes: locals.mcpScopes as string[] | undefined,
+  };
+}
 
 /** Determine why an SSE/streaming connection closed.
  *  Shared between legacy SSE and StreamableHTTP GET close handlers. */
@@ -512,9 +539,11 @@ export async function startServer(): Promise<void> {
       });
 
       // OAuth authentication middleware for MCP endpoints (when OAuth mode is enabled)
-      // Returns 401 with WWW-Authenticate header if no valid token, triggering OAuth flow
+      // Returns 401 with WWW-Authenticate header if no valid token, triggering OAuth flow.
+      // The legacy SSE transport runs tools too, so it is authenticated the same way.
       if (isOAuthEnabled()) {
         app.use(['/', '/mcp'], oauthAuthMiddleware);
+        app.use(['/sse', '/messages'], oauthAuthMiddleware);
       }
 
       // Transport storage for both SSE and StreamableHTTP
@@ -615,9 +644,16 @@ export async function startServer(): Promise<void> {
           sessionManager.touchSession(sessionId);
           const transport = sseTransports[sessionId];
 
-          // Wrap in request context for access logging so handlers can track tool calls
+          // Wrap in request context for access logging so handlers can track tool calls,
+          // and in the account's token context when the request was authenticated
+          const tokenContext = tokenContextFromLocals(res.locals);
           const doHandle = async () => {
-            await transport.handlePostMessage(req, res, req.body);
+            const handle = () => transport.handlePostMessage(req, res, req.body);
+            if (tokenContext) {
+              await runWithTokenContext(tokenContext, handle);
+            } else {
+              await handle();
+            }
           };
 
           if (accessLogRequestId) {
@@ -643,13 +679,7 @@ export async function startServer(): Promise<void> {
         // Get OAuth token info from middleware (stored in res.locals)
         const oauthSessionId = res.locals.oauthSessionId as string | undefined;
         const gitlabToken = res.locals.gitlabToken as string | undefined;
-        const gitlabUserId = res.locals.gitlabUserId as number | undefined;
-        const gitlabUsername = res.locals.gitlabUsername as string | undefined;
-        const gitlabScopes = res.locals.gitlabScopes as string[] | undefined;
-        const gitlabApiUrl = res.locals.gitlabApiUrl as string | undefined;
-        const instanceLabel = res.locals.instanceLabel as string | undefined;
-        const mcpResource = res.locals.mcpResource as string | undefined;
-        const mcpScopes = res.locals.mcpScopes as string[] | undefined;
+        const tokenContext = tokenContextFromLocals(res.locals);
 
         // Get full request context for logging (verbose mode)
         if (!useCondensedLogging) {
@@ -667,24 +697,11 @@ export async function startServer(): Promise<void> {
         ): Promise<void> => {
           // Wrap in request context for access logging
           const doHandle = async () => {
-            if (gitlabToken && oauthSessionId && gitlabUserId && gitlabUsername) {
+            if (tokenContext) {
               // Wrap transport.handleRequest in token context so MCP handlers have access
-              await runWithTokenContext(
-                {
-                  gitlabToken,
-                  gitlabUserId,
-                  gitlabUsername,
-                  gitlabScopes,
-                  sessionId: oauthSessionId,
-                  apiUrl: gitlabApiUrl ?? GITLAB_BASE_URL,
-                  instanceLabel,
-                  resource: mcpResource,
-                  mcpScopes,
-                },
-                async () => {
-                  await transport.handleRequest(req, res, req.body);
-                },
-              );
+              await runWithTokenContext(tokenContext, async () => {
+                await transport.handleRequest(req, res, req.body);
+              });
             } else {
               // No OAuth token - direct handling (static token mode or unauthenticated)
               await transport.handleRequest(req, res, req.body);

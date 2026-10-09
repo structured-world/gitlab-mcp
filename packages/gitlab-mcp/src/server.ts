@@ -33,17 +33,10 @@ import {
   loadOAuthConfig,
   isOAuthEnabled,
   getAuthModeDescription,
-  metadataHandler,
-  protectedResourceHandler,
-  authorizeHandler,
-  pollHandler,
-  callbackHandler,
-  tokenHandler,
-  registerHandler,
-  revokeHandler,
   sessionStore,
   runWithTokenContext,
 } from './oauth/index';
+import { registerOAuthEndpoints } from './oauth/routes';
 // Middleware imports
 import {
   oauthAuthMiddleware,
@@ -102,63 +95,6 @@ export async function sendToolsListChangedNotification(): Promise<void> {
 // Terminal colors for logging (currently unused)
 // const colorGreen = '\x1b[32m';
 // const colorReset = '\x1b[0m';
-
-/**
- * Register OAuth endpoints on an Express app
- *
- * Adds:
- * - /.well-known/oauth-authorization-server - OAuth metadata
- * - /.well-known/oauth-protected-resource - Protected resource metadata (RFC 9470)
- * - /authorize - Authorization endpoint (supports both Device Flow and Authorization Code Flow)
- * - /oauth/poll - Device flow polling endpoint
- * - /oauth/callback - Authorization Code Flow callback from GitLab
- * - /token - Token exchange endpoint
- * - /health - Health check endpoint
- *
- * @param app - Express application
- */
-function registerOAuthEndpoints(app: Express): void {
-  // NOTE: Rate limiting is applied via rateLimiterMiddleware() BEFORE this function is called.
-  // All routes registered here are protected by the global rate limiter middleware.
-
-  // OAuth discovery metadata (no auth required)
-  app.get('/.well-known/oauth-authorization-server', metadataHandler);
-
-  // Protected Resource Metadata (RFC 9470) - required by Claude.ai custom connectors
-  app.get('/.well-known/oauth-protected-resource', protectedResourceHandler);
-  // Metadata of the /mcp endpoint (RFC 9728 section 3.1 path-inserted form)
-  app.get('/.well-known/oauth-protected-resource/mcp', protectedResourceHandler);
-
-  // Authorization endpoint - supports both flows:
-  // - Device Flow (no redirect_uri) - returns HTML page
-  // - Authorization Code Flow (with redirect_uri) - redirects to GitLab
-  app.get('/authorize', authorizeHandler);
-
-  // Device flow polling endpoint (no auth required)
-  app.get('/oauth/poll', pollHandler);
-
-  // Authorization Code Flow callback from GitLab
-  // GitLab redirects here after user authorizes, then we redirect to client
-  app.get('/oauth/callback', callbackHandler);
-
-  // Token endpoint - exchange code for tokens (no auth required)
-  // Uses URL-encoded body as per OAuth spec
-  app.post('/token', express.urlencoded({ extended: true }), tokenHandler);
-
-  // Dynamic Client Registration endpoint (RFC 7591) - required by Claude.ai
-  app.post('/register', express.json(), registerHandler);
-
-  // Token revocation (RFC 7009): disconnects the account
-  app.post('/revoke', express.urlencoded({ extended: true }), revokeHandler);
-
-  // NOTE: /health endpoint is registered globally in startServer() BEFORE OAuth endpoints
-  // to avoid access log spam from load balancer health checks. The simple handler there
-  // returns {"status": "ok"} which is sufficient for basic liveness/readiness checks.
-  // For structured MCP metadata (version, tools, auth mode, instances), use GET /
-  // with Accept: application/json header (dashboard endpoint).
-
-  logInfo('OAuth endpoints registered');
-}
 
 /**
  * Check if TLS/HTTPS is enabled via SSL certificate configuration

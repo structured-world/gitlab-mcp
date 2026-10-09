@@ -562,4 +562,64 @@ describe('GitLab Device Flow Client', () => {
       expect(url).toContain('scope=api+read_user+write_repository');
     });
   });
+
+  describe('per-instance application', () => {
+    // Every call of one account goes to its instance with that instance's application.
+    const app = {
+      baseUrl: 'https://git.corp.example/gitlab',
+      clientId: 'corp-app',
+      clientSecret: 'corp-secret',
+      scopes: 'read_api read_user',
+    };
+    const okJson = (body: unknown) => ({ ok: true, json: jest.fn().mockResolvedValue(body) });
+    const tokens = {
+      access_token: 'a',
+      refresh_token: 'r',
+      token_type: 'Bearer',
+      expires_in: 7200,
+      created_at: 1,
+    };
+
+    it('starts the device flow on the instance with its application', async () => {
+      mockFetch.mockResolvedValueOnce(okJson({ device_code: 'd' }));
+      await initiateDeviceFlow(mockConfig, app);
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe('https://git.corp.example/gitlab/oauth/authorize_device');
+      expect((init.body as URLSearchParams).get('client_id')).toBe('corp-app');
+      expect((init.body as URLSearchParams).get('scope')).toBe('read_api read_user');
+      expect(init.rateLimitBaseUrl).toBe('https://git.corp.example/gitlab');
+    });
+
+    it.each([
+      ['polls the device code', () => pollDeviceFlowOnce('d', mockConfig, app)],
+      ['refreshes', () => refreshGitLabToken('r', mockConfig, app)],
+      ['exchanges the code', () => exchangeGitLabAuthCode('c', 'https://cb', mockConfig, app)],
+    ])('%s at the instance token endpoint with its credentials', async (_c, call) => {
+      mockFetch.mockResolvedValueOnce(okJson(tokens));
+      await call();
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe('https://git.corp.example/gitlab/oauth/token');
+      const body = init.body as URLSearchParams;
+      expect(body.get('client_id')).toBe('corp-app');
+      expect(body.get('client_secret')).toBe('corp-secret');
+    });
+
+    it('omits the secret of a public application', async () => {
+      mockFetch.mockResolvedValueOnce(okJson(tokens));
+      await refreshGitLabToken('r', mockConfig, { ...app, clientSecret: undefined });
+      expect((mockFetch.mock.calls[0][1].body as URLSearchParams).has('client_secret')).toBe(false);
+    });
+
+    it('reads the user from the instance that issued the token', async () => {
+      mockFetch.mockResolvedValueOnce(okJson({ id: 7, username: 'u' }));
+      await getGitLabUser('a', app.baseUrl);
+      expect(mockFetch.mock.calls[0][0]).toBe('https://git.corp.example/gitlab/api/v4/user');
+    });
+
+    it('sends the browser to the instance authorization page', () => {
+      const url = new URL(buildGitLabAuthUrl(mockConfig, 'https://cb', 's', app));
+      expect(url.origin + url.pathname).toBe('https://git.corp.example/gitlab/oauth/authorize');
+      expect(url.searchParams.get('client_id')).toBe('corp-app');
+    });
+  });
 });

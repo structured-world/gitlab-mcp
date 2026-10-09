@@ -24,6 +24,7 @@ import { GITLAB_BASE_URL } from '../../config';
 import { grantedGitlabScopes } from '../granted-scopes';
 import { MCP_SCOPES } from '../resource';
 import { authorizationRedirect } from '../authorization-response';
+import { oauthAppFor } from '../instance-app';
 
 /**
  * OAuth callback handler
@@ -113,11 +114,17 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
   }
 
   try {
+    // The instance chosen at /authorize; never another one if it is no longer configured.
+    const app = await oauthAppFor(config, flow.selectedInstance);
+    if (!app) {
+      throw new Error('GitLab instance is no longer configured');
+    }
+
     // Exchange GitLab authorization code for tokens
-    const gitlabTokens = await exchangeGitLabAuthCode(code, flow.callbackUri, config);
+    const gitlabTokens = await exchangeGitLabAuthCode(code, flow.callbackUri, config, app);
 
     // Get GitLab user info
-    const userInfo = await getGitLabUser(gitlabTokens.access_token);
+    const userInfo = await getGitLabUser(gitlabTokens.access_token, app.baseUrl);
 
     // Create session
     const sessionId = generateSessionId();

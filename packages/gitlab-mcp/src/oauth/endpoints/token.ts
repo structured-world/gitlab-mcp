@@ -22,6 +22,7 @@ import {
 } from '../token-utils';
 import { refreshGitLabToken } from '../gitlab-device-flow';
 import { defaultResource, matchProtectedResource } from '../resource';
+import { oauthAppFor } from '../instance-app';
 import { logInfo, logDebug, logWarn, logError, truncateId } from '../../logger';
 import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from '../types';
 import { getIpAddress } from '../../utils/request-logger';
@@ -237,7 +238,12 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
 
   if (isTokenExpiringSoon(session.gitlabTokenExpiry)) {
     try {
-      const newTokens = await refreshGitLabToken(session.gitlabRefreshToken, config);
+      // Refresh with the application of the session's instance, never another one.
+      const app = await oauthAppFor(config, session.gitlabApiUrl);
+      if (!app) {
+        throw new Error('GitLab instance is no longer configured');
+      }
+      const newTokens = await refreshGitLabToken(session.gitlabRefreshToken, config, app);
 
       sessionStore.updateSession(session.id, {
         gitlabAccessToken: newTokens.access_token,

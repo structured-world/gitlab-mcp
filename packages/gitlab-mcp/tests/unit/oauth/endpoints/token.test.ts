@@ -34,6 +34,10 @@ jest.mock('../../../../src/oauth/gitlab-device-flow', () => ({
   refreshGitLabToken: jest.fn(),
 }));
 
+jest.mock('../../../../src/oauth/instance-app', () => ({
+  oauthAppFor: jest.fn(),
+}));
+
 jest.mock('../../../../src/oauth/endpoints/metadata', () => ({
   getBaseUrl: jest.fn(() => 'http://localhost:3333'),
 }));
@@ -71,6 +75,13 @@ const mockIsTokenExpiringSoon = isTokenExpiringSoon as jest.MockedFunction<
   typeof isTokenExpiringSoon
 >;
 const mockRefreshGitLabToken = refreshGitLabToken as jest.MockedFunction<typeof refreshGitLabToken>;
+import { oauthAppFor } from '../../../../src/oauth/instance-app';
+const mockOauthAppFor = oauthAppFor as jest.MockedFunction<typeof oauthAppFor>;
+const sessionApp = {
+  baseUrl: 'https://gitlab.example.com',
+  clientId: 'test-client-id',
+  scopes: 'api,read_user',
+};
 
 describe('OAuth Token Endpoint', () => {
   const mockConfig = {
@@ -109,6 +120,7 @@ describe('OAuth Token Endpoint', () => {
     mockLoadOAuthConfig.mockReturnValue(mockConfig);
     // The caller that removes the code is the one that redeems it.
     mockSessionStore.deleteAuthCode.mockReturnValue(true);
+    mockOauthAppFor.mockResolvedValue(sessionApp);
   });
 
   describe('tokenHandler - General', () => {
@@ -635,7 +647,11 @@ describe('OAuth Token Endpoint', () => {
 
         await tokenHandler(req, res);
 
-        expect(mockRefreshGitLabToken).toHaveBeenCalledWith('gitlab-refresh', mockConfig);
+        expect(mockRefreshGitLabToken).toHaveBeenCalledWith(
+          'gitlab-refresh',
+          mockConfig,
+          sessionApp,
+        );
         const grantUpdate = mockSessionStore.updateSession.mock.calls[0][1];
         if (scope === undefined) expect(grantUpdate).not.toHaveProperty('gitlabScopes');
         else expect(grantUpdate.gitlabScopes).toEqual(scope.split(/\s+/).filter(Boolean));
@@ -736,6 +752,46 @@ describe('OAuth Token Endpoint', () => {
           error: 'invalid_scope',
           error_description: 'scope exceeds the original grant',
         });
+      });
+    });
+
+    it('refreshes with the application of the session instance and fails when it is gone', async () => {
+      // An account on a removed instance is never refreshed through another one.
+      const existingSession = {
+        id: 'session-123',
+        mcpAccessToken: 'old-access-token',
+        mcpRefreshToken: 'valid-refresh-token',
+        mcpTokenExpiry: Date.now() + 1000,
+        gitlabAccessToken: 'expiring-gitlab-token',
+        gitlabRefreshToken: 'gitlab-refresh',
+        gitlabTokenExpiry: Date.now() + 60000,
+        gitlabUserId: 12345,
+        gitlabUsername: 'testuser',
+        gitlabApiUrl: 'https://removed.example.com',
+        clientId: 'test-client',
+        scopes: ['mcp:tools', 'mcp:resources'],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      mockSessionStore.getSessionByRefreshToken.mockReturnValue(existingSession);
+      mockIsTokenExpiringSoon.mockReturnValue(true);
+      mockOauthAppFor.mockResolvedValue(undefined);
+      const res = createMockResponse() as Response;
+
+      await tokenHandler(
+        createMockRequest({
+          grant_type: 'refresh_token',
+          refresh_token: 'valid-refresh-token',
+          client_id: 'test-client',
+        }) as Request,
+        res,
+      );
+
+      expect(mockOauthAppFor).toHaveBeenCalledWith(mockConfig, 'https://removed.example.com');
+      expect(mockRefreshGitLabToken).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'invalid_grant',
+        error_description: 'Failed to refresh underlying GitLab token',
       });
     });
 

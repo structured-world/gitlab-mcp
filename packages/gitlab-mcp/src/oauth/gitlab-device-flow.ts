@@ -13,6 +13,7 @@ import { OAuthConfig } from './config';
 import { GitLabDeviceResponse, GitLabTokenResponse, GitLabUserInfo } from './types';
 import { logInfo, logWarn, logError, logDebug } from '../logger';
 import { enhancedFetch, type FetchWithRetryOptions } from '../utils/fetch';
+import { defaultOAuthApp, type GitLabOAuthApp } from './oauth-app';
 
 /** Throw a descriptive error if the GitLab OAuth response indicates failure */
 async function throwOnHttpError(response: Response, operation: string): Promise<void> {
@@ -48,6 +49,18 @@ const OAUTH_FETCH_OPTS: Pick<
   skipAuth: true,
 };
 
+/** OAuth fetch options bound to the instance the call goes to (its dispatcher and TLS). */
+function oauthFetchOpts(baseUrl: string): typeof OAUTH_FETCH_OPTS {
+  return { ...OAUTH_FETCH_OPTS, rateLimitBaseUrl: baseUrl };
+}
+
+/** Application credentials for a token request; the secret only for confidential apps. */
+function clientParams(app: GitLabOAuthApp): Record<string, string> {
+  return app.clientSecret
+    ? { client_id: app.clientId, client_secret: app.clientSecret }
+    : { client_id: app.clientId };
+}
+
 /**
  * Device flow error types from GitLab
  */
@@ -75,16 +88,20 @@ interface DeviceFlowErrorResponse {
  * the user code to authorize the application.
  *
  * @param config - OAuth configuration
+ * @param app - Instance and application to sign in with (default: OAUTH_CLIENT_ID on GITLAB_API_URL)
  * @returns Device authorization response with codes and URIs
  * @throws Error if the request fails
  */
-export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDeviceResponse> {
-  const url = `${GITLAB_BASE_URL}/oauth/authorize_device`;
+export async function initiateDeviceFlow(
+  config: OAuthConfig,
+  app: GitLabOAuthApp = defaultOAuthApp(config),
+): Promise<GitLabDeviceResponse> {
+  const url = `${app.baseUrl}/oauth/authorize_device`;
 
-  logDebug('Initiating GitLab device flow', { url, clientId: config.gitlabClientId });
+  logDebug('Initiating GitLab device flow', { url, clientId: app.clientId });
 
   // Convert comma-separated scopes to space-separated (GitLab requirement)
-  const scopes = config.gitlabScopes.replace(/,/g, ' ');
+  const scopes = app.scopes.replace(/,/g, ' ');
 
   const response = await enhancedFetch(url, {
     method: 'POST',
@@ -93,10 +110,10 @@ export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDev
       Accept: 'application/json',
     },
     body: new URLSearchParams({
-      client_id: config.gitlabClientId,
+      client_id: app.clientId,
       scope: scopes,
     }),
-    ...OAUTH_FETCH_OPTS,
+    ...oauthFetchOpts(app.baseUrl),
   });
 
   await throwOnHttpError(response, 'initiate device flow');
@@ -120,25 +137,22 @@ export async function initiateDeviceFlow(config: OAuthConfig): Promise<GitLabDev
  *
  * @param deviceCode - Device code from initiateDeviceFlow
  * @param config - OAuth configuration
+ * @param app - Application the device code was issued for
  * @returns Token response if authorized, null if pending
  * @throws Error for terminal errors (expired, denied, etc.)
  */
 export async function pollDeviceFlowOnce(
   deviceCode: string,
   config: OAuthConfig,
+  app: GitLabOAuthApp = defaultOAuthApp(config),
 ): Promise<GitLabTokenResponse | null> {
-  const url = `${GITLAB_BASE_URL}/oauth/token`;
+  const url = `${app.baseUrl}/oauth/token`;
 
   const params: Record<string, string> = {
-    client_id: config.gitlabClientId,
+    ...clientParams(app),
     device_code: deviceCode,
     grant_type: 'urn:ietf:params:oauth:grant-type:device_code',
   };
-
-  // Add client secret if configured (for confidential apps)
-  if (config.gitlabClientSecret) {
-    params.client_secret = config.gitlabClientSecret;
-  }
 
   const response = await enhancedFetch(url, {
     method: 'POST',
@@ -147,7 +161,7 @@ export async function pollDeviceFlowOnce(
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
-    ...OAUTH_FETCH_OPTS,
+    ...oauthFetchOpts(app.baseUrl),
   });
 
   if (response.ok) {
@@ -193,6 +207,7 @@ export async function pollDeviceFlowOnce(
  * @param deviceCode - Device code from initiateDeviceFlow
  * @param config - OAuth configuration
  * @param onPending - Optional callback called on each pending poll
+ * @param app - Application the device code was issued for
  * @returns Token response when authorized
  * @throws Error on timeout, expiration, or denial
  */
@@ -200,6 +215,7 @@ export async function pollForToken(
   deviceCode: string,
   config: OAuthConfig,
   onPending?: () => void,
+  app: GitLabOAuthApp = defaultOAuthApp(config),
 ): Promise<GitLabTokenResponse> {
   const startTime = Date.now();
   const timeout = config.deviceTimeout * 1000;
@@ -210,7 +226,7 @@ export async function pollForToken(
     await sleep(interval);
 
     try {
-      const result = await pollDeviceFlowOnce(deviceCode, config);
+      const result = await pollDeviceFlowOnce(deviceCode, config, app);
 
       if (result) {
         return result;
@@ -246,25 +262,22 @@ export async function pollForToken(
  *
  * @param refreshToken - GitLab refresh token
  * @param config - OAuth configuration
+ * @param app - Application that issued the refresh token
  * @returns New token response
  * @throws Error if refresh fails
  */
 export async function refreshGitLabToken(
   refreshToken: string,
   config: OAuthConfig,
+  app: GitLabOAuthApp = defaultOAuthApp(config),
 ): Promise<GitLabTokenResponse> {
-  const url = `${GITLAB_BASE_URL}/oauth/token`;
+  const url = `${app.baseUrl}/oauth/token`;
 
   const params: Record<string, string> = {
-    client_id: config.gitlabClientId,
+    ...clientParams(app),
     refresh_token: refreshToken,
     grant_type: 'refresh_token',
   };
-
-  // Add client secret if configured
-  if (config.gitlabClientSecret) {
-    params.client_secret = config.gitlabClientSecret;
-  }
 
   logDebug('Refreshing GitLab token');
 
@@ -275,7 +288,7 @@ export async function refreshGitLabToken(
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
-    ...OAUTH_FETCH_OPTS,
+    ...oauthFetchOpts(app.baseUrl),
   });
 
   await throwOnHttpError(response, 'refresh token');
@@ -291,18 +304,22 @@ export async function refreshGitLabToken(
  * Uses the access token to fetch the authenticated user's profile.
  *
  * @param accessToken - GitLab access token
+ * @param baseUrl - Instance that issued the token (default: GITLAB_API_URL)
  * @returns User information (id and username)
  * @throws Error if the request fails
  */
-export async function getGitLabUser(accessToken: string): Promise<GitLabUserInfo> {
-  const url = `${GITLAB_BASE_URL}/api/v4/user`;
+export async function getGitLabUser(
+  accessToken: string,
+  baseUrl: string = GITLAB_BASE_URL,
+): Promise<GitLabUserInfo> {
+  const url = `${baseUrl}/api/v4/user`;
 
   const response = await enhancedFetch(url, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: 'application/json',
     },
-    ...OAUTH_FETCH_OPTS,
+    ...oauthFetchOpts(baseUrl),
   });
 
   await throwOnHttpError(response, 'get GitLab user info');
@@ -325,18 +342,22 @@ export async function getGitLabUser(accessToken: string): Promise<GitLabUserInfo
  * Checks if the token is still valid by making a lightweight API call.
  *
  * @param accessToken - GitLab access token to validate
+ * @param baseUrl - Instance that issued the token (default: GITLAB_API_URL)
  * @returns true if the token is valid, false otherwise
  */
-export async function validateGitLabToken(accessToken: string): Promise<boolean> {
+export async function validateGitLabToken(
+  accessToken: string,
+  baseUrl: string = GITLAB_BASE_URL,
+): Promise<boolean> {
   try {
-    const url = `${GITLAB_BASE_URL}/api/v4/user`;
+    const url = `${baseUrl}/api/v4/user`;
 
     const response = await enhancedFetch(url, {
       method: 'HEAD',
       headers: {
         Authorization: `Bearer ${accessToken}`,
       },
-      ...OAUTH_FETCH_OPTS,
+      ...oauthFetchOpts(baseUrl),
     });
 
     return response.ok;
@@ -353,6 +374,7 @@ export async function validateGitLabToken(accessToken: string): Promise<boolean>
  * @param code - Authorization code from GitLab callback
  * @param redirectUri - The redirect URI that was used in the authorization request
  * @param config - OAuth configuration
+ * @param app - Application the authorization was granted to
  * @returns Token response with access and refresh tokens
  * @throws Error if the exchange fails
  */
@@ -360,20 +382,16 @@ export async function exchangeGitLabAuthCode(
   code: string,
   redirectUri: string,
   config: OAuthConfig,
+  app: GitLabOAuthApp = defaultOAuthApp(config),
 ): Promise<GitLabTokenResponse> {
-  const url = `${GITLAB_BASE_URL}/oauth/token`;
+  const url = `${app.baseUrl}/oauth/token`;
 
   const params: Record<string, string> = {
-    client_id: config.gitlabClientId,
+    ...clientParams(app),
     code: code,
     grant_type: 'authorization_code',
     redirect_uri: redirectUri,
   };
-
-  // Add client secret if configured (for confidential apps)
-  if (config.gitlabClientSecret) {
-    params.client_secret = config.gitlabClientSecret;
-  }
 
   logDebug('Exchanging GitLab authorization code for tokens', { redirectUri });
 
@@ -384,7 +402,7 @@ export async function exchangeGitLabAuthCode(
       Accept: 'application/json',
     },
     body: new URLSearchParams(params),
-    ...OAUTH_FETCH_OPTS,
+    ...oauthFetchOpts(app.baseUrl),
   });
 
   await throwOnHttpError(response, 'exchange authorization code');
@@ -402,25 +420,27 @@ export async function exchangeGitLabAuthCode(
  * @param config - OAuth configuration
  * @param redirectUri - URI to redirect back to after authorization
  * @param state - State parameter for CSRF protection
+ * @param app - Instance and application to sign in with
  * @returns Full authorization URL
  */
 export function buildGitLabAuthUrl(
   config: OAuthConfig,
   redirectUri: string,
   state: string,
+  app: GitLabOAuthApp = defaultOAuthApp(config),
 ): string {
   // Convert comma-separated scopes to space-separated (GitLab requirement)
-  const scopes = config.gitlabScopes.replace(/,/g, ' ');
+  const scopes = app.scopes.replace(/,/g, ' ');
 
   const params = new URLSearchParams({
-    client_id: config.gitlabClientId,
+    client_id: app.clientId,
     redirect_uri: redirectUri,
     response_type: 'code',
     state: state,
     scope: scopes,
   });
 
-  return `${GITLAB_BASE_URL}/oauth/authorize?${params.toString()}`;
+  return `${app.baseUrl}/oauth/authorize?${params.toString()}`;
 }
 
 /**

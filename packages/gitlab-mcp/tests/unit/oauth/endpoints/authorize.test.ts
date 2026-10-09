@@ -49,6 +49,11 @@ jest.mock('../../../../src/oauth/endpoints/register', () => ({
   getRegisteredClient: jest.fn(),
 }));
 
+jest.mock('../../../../src/oauth/instance-app', () => ({
+  oauthAppFor: jest.fn(),
+  selectableOAuthApps: jest.fn(),
+}));
+
 jest.mock('../../../../src/logger', () => ({
   logger: {
     info: jest.fn(),
@@ -77,6 +82,23 @@ import {
   getGitLabUser,
 } from '../../../../src/oauth/gitlab-device-flow';
 import { getRegisteredClient } from '../../../../src/oauth/endpoints/register';
+import { oauthAppFor, selectableOAuthApps } from '../../../../src/oauth/instance-app';
+
+const mockOauthAppFor = oauthAppFor as jest.MockedFunction<typeof oauthAppFor>;
+const mockSelectableOAuthApps = selectableOAuthApps as jest.MockedFunction<
+  typeof selectableOAuthApps
+>;
+const defaultApp = {
+  baseUrl: 'https://gitlab.example.com',
+  clientId: 'test-client-id',
+  scopes: 'api,read_user',
+};
+const otherApp = {
+  baseUrl: 'https://git.corp.example/gitlab',
+  label: 'Corp <GitLab>',
+  clientId: 'corp-app',
+  scopes: 'read_api',
+};
 
 const mockGetRegisteredClient = getRegisteredClient as jest.MockedFunction<
   typeof getRegisteredClient
@@ -135,6 +157,8 @@ describe('OAuth Authorization Endpoint', () => {
     jest.clearAllMocks();
     mockLoadOAuthConfig.mockReturnValue(mockConfig);
     mockGetRegisteredClient.mockReturnValue(registeredClient);
+    mockSelectableOAuthApps.mockResolvedValue([defaultApp]);
+    mockOauthAppFor.mockResolvedValue(defaultApp);
   });
 
   describe('authorizeHandler', () => {
@@ -252,7 +276,7 @@ describe('OAuth Authorization Endpoint', () => {
 
       await authorizeHandler(req, res);
 
-      expect(mockInitiateDeviceFlow).toHaveBeenCalledWith(mockConfig);
+      expect(mockInitiateDeviceFlow).toHaveBeenCalledWith(mockConfig, defaultApp);
       expect(mockSessionStore.storeDeviceFlow).toHaveBeenCalled();
       expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'text/html');
       expect(res.send).toHaveBeenCalled();
@@ -410,6 +434,100 @@ describe('OAuth Authorization Endpoint', () => {
             clientId: 'cli-client',
             scopes: ['mcp:tools', 'mcp:resources'],
           }),
+        );
+      });
+    });
+
+    describe('instance selection', () => {
+      const codeFlow = (extra: Record<string, string>) =>
+        createMockRequest({
+          response_type: 'code',
+          client_id: 'test-client',
+          code_challenge: 'challenge-abc',
+          code_challenge_method: 'S256',
+          redirect_uri: 'https://callback.example.com',
+          state: 'csrf-state-123',
+          ...extra,
+        }) as Request;
+
+      beforeEach(() => {
+        mockSelectableOAuthApps.mockResolvedValue([defaultApp, otherApp]);
+      });
+
+      it('offers every configured instance, keeping the rest of the request', async () => {
+        const res = createMockResponse() as Response;
+
+        await authorizeHandler(codeFlow({}), res);
+
+        const html = (res.send as jest.Mock).mock.calls[0][0] as string;
+        expect(html).toContain('instance=https%3A%2F%2Fgitlab.example.com');
+        expect(html).toContain('instance=https%3A%2F%2Fgit.corp.example%2Fgitlab');
+        expect(html).toContain('code_challenge=challenge-abc');
+        // Labels come from configuration and are escaped.
+        expect(html).toContain('Corp &lt;GitLab&gt;');
+        expect(mockSessionStore.storeAuthCodeFlow).not.toHaveBeenCalled();
+      });
+
+      it('binds the chosen instance and its application to the flow', async () => {
+        const res = createMockResponse() as Response;
+
+        await authorizeHandler(codeFlow({ instance: 'https://git.corp.example/gitlab/' }), res);
+
+        expect(mockSessionStore.storeAuthCodeFlow).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({
+            selectedInstance: 'https://git.corp.example/gitlab',
+            selectedInstanceLabel: 'Corp <GitLab>',
+            requestedGitlabScopes: ['read_api'],
+          }),
+        );
+        const { buildGitLabAuthUrl } = jest.requireMock<{ buildGitLabAuthUrl: jest.Mock }>(
+          '../../../../src/oauth/gitlab-device-flow',
+        );
+        expect(buildGitLabAuthUrl).toHaveBeenCalledWith(
+          mockConfig,
+          'https://gitlab-mcp.example.com/oauth/callback',
+          expect.any(String),
+          otherApp,
+        );
+      });
+
+      it('rejects an instance that is not configured instead of contacting it', async () => {
+        const res = createMockResponse() as Response;
+
+        await authorizeHandler(codeFlow({ instance: 'https://attacker.example' }), res);
+
+        const location = new URL((res.redirect as jest.Mock).mock.calls[0][0] as string);
+        expect(location.searchParams.get('error')).toBe('invalid_request');
+        expect(location.searchParams.get('iss')).toBe('https://gitlab-mcp.example.com');
+        expect(mockSessionStore.storeAuthCodeFlow).not.toHaveBeenCalled();
+        expect(mockInitiateDeviceFlow).not.toHaveBeenCalled();
+      });
+
+      it('starts the device flow on the chosen instance', async () => {
+        mockInitiateDeviceFlow.mockResolvedValue({
+          device_code: 'device-code',
+          user_code: 'CORP-0001',
+          verification_uri: 'https://git.corp.example/gitlab/oauth/device',
+          expires_in: 600,
+          interval: 5,
+        });
+
+        await authorizeHandler(
+          createMockRequest({
+            response_type: 'code',
+            client_id: 'cli-client',
+            code_challenge: 'challenge',
+            code_challenge_method: 'S256',
+            instance: 'https://git.corp.example/gitlab',
+          }) as Request,
+          createMockResponse() as Response,
+        );
+
+        expect(mockInitiateDeviceFlow).toHaveBeenCalledWith(mockConfig, otherApp);
+        expect(mockSessionStore.storeDeviceFlow).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({ selectedInstance: 'https://git.corp.example/gitlab' }),
         );
       });
     });
@@ -598,7 +716,7 @@ describe('OAuth Authorization Endpoint', () => {
 
         await pollHandler(req, res);
 
-        expect(mockGetGitLabUser).toHaveBeenCalledWith('gitlab-access-token');
+        expect(mockGetGitLabUser).toHaveBeenCalledWith('gitlab-access-token', defaultApp.baseUrl);
         expect(mockSessionStore.storeAuthCode).toHaveBeenCalled();
         // Persist the grant GitLab returned, not the scopes requested by the MCP client.
         expect(mockSessionStore.createSession).toHaveBeenCalledWith(
@@ -709,6 +827,34 @@ describe('OAuth Authorization Endpoint', () => {
         code: 'auth-code-abc',
         state: undefined, // State should be undefined when empty
         iss: 'https://gitlab-mcp.example.com',
+      });
+    });
+
+    it('fails the flow when its instance is no longer configured', async () => {
+      // Never falls back to another instance with the user's device code.
+      mockSessionStore.getDeviceFlow.mockReturnValue({
+        deviceCode: 'device-code',
+        userCode: 'USER-CODE',
+        verificationUri: 'https://gitlab.example.com/oauth/authorize',
+        expiresAt: Date.now() + 600000,
+        interval: 5,
+        clientId: 'test-client',
+        codeChallenge: 'challenge',
+        codeChallengeMethod: 'S256',
+        state: '',
+        selectedInstance: 'https://removed.example.com',
+      });
+      mockOauthAppFor.mockResolvedValue(undefined);
+      const res = createMockResponse() as Response;
+
+      await pollHandler(createMockRequest({ flow_state: 'orphan-flow' }) as Request, res);
+
+      expect(mockOauthAppFor).toHaveBeenCalledWith(mockConfig, 'https://removed.example.com');
+      expect(mockPollDeviceFlowOnce).not.toHaveBeenCalled();
+      expect(mockSessionStore.deleteDeviceFlow).toHaveBeenCalledWith('orphan-flow');
+      expect(res.json).toHaveBeenCalledWith({
+        status: 'failed',
+        error: 'GitLab instance is no longer configured',
       });
     });
 

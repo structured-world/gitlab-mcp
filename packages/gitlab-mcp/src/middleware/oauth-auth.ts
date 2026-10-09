@@ -17,6 +17,7 @@ import { loadOAuthConfig } from '../oauth/config';
 import { sessionStore } from '../oauth/session-store';
 import { verifyMCPToken, isTokenExpiringSoon, calculateTokenExpiry } from '../oauth/token-utils';
 import { refreshGitLabToken } from '../oauth/gitlab-device-flow';
+import { oauthAppFor } from '../oauth/instance-app';
 import { getBaseUrl } from '../oauth/endpoints/metadata';
 import {
   MCP_SCOPES,
@@ -110,7 +111,12 @@ export async function oauthAuthMiddleware(
   // Refresh GitLab token if it's expiring soon (5 minute buffer)
   if (isTokenExpiringSoon(session.gitlabTokenExpiry)) {
     try {
-      const newTokens = await refreshGitLabToken(session.gitlabRefreshToken, config);
+      // Refresh with the application of the session's instance, never another one.
+      const app = await oauthAppFor(config, session.gitlabApiUrl);
+      if (!app) {
+        throw new Error('GitLab instance is no longer configured');
+      }
+      const newTokens = await refreshGitLabToken(session.gitlabRefreshToken, config, app);
 
       sessionStore.updateSession(sessionId, {
         gitlabAccessToken: newTokens.access_token,

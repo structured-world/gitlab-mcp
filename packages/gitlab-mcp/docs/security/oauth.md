@@ -204,6 +204,12 @@ The flow is selected automatically based on the presence of `redirect_uri` in th
 - **Codes and refresh:** an authorization code is consumed on first use, and both grants require the `client_id` the code or refresh token was issued to.
 - **Issuer identification:** every redirect back to the client carries `iss` (RFC 9207).
 
+### Choosing a GitLab instance
+
+Users sign in to an operator-configured instance only: the default `GITLAB_API_URL` with `OAUTH_CLIENT_ID`, plus every instance in `GITLAB_INSTANCES` / `GITLAB_INSTANCES_FILE` that has its own `oauth` application. When more than one is available, `/authorize` shows a page to choose one; a client may also pass `instance=<instance URL>`. A URL that is not one of the configured instances is rejected, so credentials are never sent to an arbitrary host.
+
+The chosen instance and its application are used for the whole account: authorization, code exchange, user lookup and every token refresh. Each instance's GitLab application registers the same redirect URI, `<OAUTH_ISSUER>/oauth/callback`. Instances with a base path (for example `https://git.example.com/gitlab`) are supported. If an instance is removed from the configuration, its accounts must sign in again; they are never moved to another instance.
+
 ### Reconnecting an account
 
 In OAuth mode every tool descriptor declares `securitySchemes: [{ "type": "oauth2", "scopes": ["mcp:tools"] }]` (mirrored in `_meta`). When GitLab rejects the account's credentials (HTTP 401), the tool result is an error carrying `_meta["mcp/www_authenticate"]` with a `Bearer` challenge (`error="invalid_token"` and an `error_description`) that points at the protected resource metadata, so the client starts its own reconnect flow. HTTP 401 responses carry the same `error` parameters for rejected tokens.

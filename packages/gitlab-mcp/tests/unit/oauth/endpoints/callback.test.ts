@@ -26,6 +26,10 @@ jest.mock('../../../../src/oauth/gitlab-device-flow', () => ({
   getGitLabUser: jest.fn(),
 }));
 
+jest.mock('../../../../src/oauth/instance-app', () => ({
+  oauthAppFor: jest.fn(),
+}));
+
 jest.mock('../../../../src/oauth/token-utils', () => ({
   generateSessionId: jest.fn().mockReturnValue('session-id-123'),
   generateAuthorizationCode: jest.fn().mockReturnValue('auth-code-456'),
@@ -57,6 +61,15 @@ const mockExchangeGitLabAuthCode = exchangeGitLabAuthCode as jest.MockedFunction
   typeof exchangeGitLabAuthCode
 >;
 const mockGetGitLabUser = getGitLabUser as jest.MockedFunction<typeof getGitLabUser>;
+import { oauthAppFor } from '../../../../src/oauth/instance-app';
+const mockOauthAppFor = oauthAppFor as jest.MockedFunction<typeof oauthAppFor>;
+const selectedApp = {
+  baseUrl: 'https://git.corp.example/gitlab',
+  label: 'Corp',
+  clientId: 'corp-app',
+  clientSecret: 'corp-secret',
+  scopes: 'read_api read_user',
+};
 
 describe('OAuth Callback Handler', () => {
   let mockRequest: Partial<Request>;
@@ -108,6 +121,7 @@ describe('OAuth Callback Handler', () => {
     };
 
     mockLoadOAuthConfig.mockReturnValue(mockOAuthConfig);
+    mockOauthAppFor.mockResolvedValue(selectedApp);
   });
 
   describe('configuration errors', () => {
@@ -287,7 +301,33 @@ describe('OAuth Callback Handler', () => {
         'gitlab-code-123',
         mockAuthCodeFlow.callbackUri,
         mockOAuthConfig,
+        selectedApp,
       );
+    });
+
+    it('exchanges the code with the application of the instance chosen at /authorize', async () => {
+      mockSessionStore.getAuthCodeFlow.mockReturnValue({
+        ...mockAuthCodeFlow,
+        selectedInstance: selectedApp.baseUrl,
+        selectedInstanceLabel: 'Corp',
+      });
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(mockOauthAppFor).toHaveBeenCalledWith(mockOAuthConfig, selectedApp.baseUrl);
+      expect(mockSessionStore.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ gitlabApiUrl: selectedApp.baseUrl, instanceLabel: 'Corp' }),
+      );
+    });
+
+    it('fails without contacting GitLab when the instance is no longer configured', async () => {
+      mockOauthAppFor.mockResolvedValue(undefined);
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(mockExchangeGitLabAuthCode).not.toHaveBeenCalled();
+      expect(mockSessionStore.createSession).not.toHaveBeenCalled();
+      expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('error=server_error'));
     });
 
     it('retains the requested grant when the token response omits scope', async () => {
@@ -310,7 +350,7 @@ describe('OAuth Callback Handler', () => {
     it('should get GitLab user info', async () => {
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
-      expect(mockGetGitLabUser).toHaveBeenCalledWith('gitlab-access-token');
+      expect(mockGetGitLabUser).toHaveBeenCalledWith('gitlab-access-token', selectedApp.baseUrl);
     });
 
     it('should store MCP authorization code', async () => {

@@ -35,6 +35,10 @@ import { grantedGitlabScopes } from '../granted-scopes';
 import { getRegisteredClient } from './register';
 import { MCP_SCOPES, grantedMcpScopes, matchProtectedResource } from '../resource';
 import { authorizationRedirect } from '../authorization-response';
+import { oauthAppFor, selectableOAuthApps } from '../instance-app';
+import type { GitLabOAuthApp } from '../oauth-app';
+import { normalizeInstanceUrl } from '../../utils/url';
+import { escapeHtml } from '../../utils/html';
 
 /**
  * Authorization endpoint handler
@@ -151,6 +155,38 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
   }
   const scopes = grantedMcpScopes(scope);
 
+  // The GitLab instance comes only from the operator's configuration: a requested URL
+  // selects one of the configured instances or the request fails.
+  const apps = await selectableOAuthApps(config);
+  const requestedInstance = req.query.instance;
+  let app: GitLabOAuthApp | undefined;
+  if (requestedInstance === undefined) {
+    if (apps.length > 1) {
+      res.setHeader('Content-Type', 'text/html');
+      res.send(getInstanceChooserHTML(config.issuer, req.query, apps));
+      return;
+    }
+    app = apps[0];
+  } else if (typeof requestedInstance === 'string') {
+    const wanted = normalizeInstanceUrl(requestedInstance);
+    app = apps.find((candidate) => candidate.baseUrl === wanted);
+  }
+  if (!app) {
+    const description = 'instance is not a configured GitLab instance';
+    if (redirect_uri) {
+      res.redirect(
+        authorizationRedirect(redirect_uri, config.issuer, {
+          error: 'invalid_request',
+          error_description: description,
+          state,
+        }),
+      );
+    } else {
+      sendError(req, res, 400, 'invalid_request', description);
+    }
+    return;
+  }
+
   // Determine which flow to use based on redirect_uri presence
   if (redirect_uri) {
     // Authorization Code Flow - redirect to GitLab
@@ -162,6 +198,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
       codeChallengeMethod: code_challenge_method,
       scopes,
       resource,
+      app,
     });
   } else {
     // Device Flow - show HTML page
@@ -172,6 +209,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
       codeChallengeMethod: code_challenge_method,
       scopes,
       resource,
+      app,
     });
   }
 }
@@ -194,6 +232,7 @@ async function handleAuthorizationCodeFlow(
     codeChallengeMethod: string;
     scopes: string[];
     resource?: string;
+    app: GitLabOAuthApp;
   },
 ): Promise<void> {
   // Registered in the GitLab application as <OAUTH_ISSUER>/oauth/callback.
@@ -204,7 +243,9 @@ async function handleAuthorizationCodeFlow(
 
   // Store auth code flow state (expires in 10 minutes)
   sessionStore.storeAuthCodeFlow(internalState, {
-    requestedGitlabScopes: config.gitlabScopes.split(/[,\s]+/).filter(Boolean),
+    requestedGitlabScopes: params.app.scopes.split(/[,\s]+/).filter(Boolean),
+    selectedInstance: params.app.baseUrl,
+    selectedInstanceLabel: params.app.label,
     clientId: params.clientId,
     codeChallenge: params.codeChallenge,
     codeChallengeMethod: params.codeChallengeMethod,
@@ -218,7 +259,7 @@ async function handleAuthorizationCodeFlow(
   });
 
   // Build GitLab authorization URL
-  const gitlabAuthUrl = buildGitLabAuthUrl(config, callbackUri, internalState);
+  const gitlabAuthUrl = buildGitLabAuthUrl(config, callbackUri, internalState, params.app);
 
   logInfo('Authorization Code Flow initiated, redirecting to GitLab', {
     internalState: truncateId(internalState),
@@ -245,18 +286,21 @@ async function handleDeviceFlow(
     codeChallengeMethod: string;
     scopes: string[];
     resource?: string;
+    app: GitLabOAuthApp;
   },
 ): Promise<void> {
   try {
     // Initiate GitLab device flow
-    const deviceResponse = await initiateDeviceFlow(config);
+    const deviceResponse = await initiateDeviceFlow(config, params.app);
 
     // Generate a unique state for this device flow
     const flowState = generateRandomString(32);
 
     // Store device flow state
     sessionStore.storeDeviceFlow(flowState, {
-      requestedGitlabScopes: config.gitlabScopes.split(/[,\s]+/).filter(Boolean),
+      requestedGitlabScopes: params.app.scopes.split(/[,\s]+/).filter(Boolean),
+      selectedInstance: params.app.baseUrl,
+      selectedInstanceLabel: params.app.label,
       deviceCode: deviceResponse.device_code,
       userCode: deviceResponse.user_code,
       verificationUri: deviceResponse.verification_uri,
@@ -332,13 +376,21 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
+  // The instance chosen at /authorize; never another one if it is no longer configured.
+  const app = await oauthAppFor(config, flow.selectedInstance);
+  if (!app) {
+    sessionStore.deleteDeviceFlow(flow_state);
+    res.json({ status: 'failed', error: 'GitLab instance is no longer configured' });
+    return;
+  }
+
   try {
     // Single poll attempt to GitLab
-    const tokenResponse = await pollDeviceFlowOnce(flow.deviceCode, config);
+    const tokenResponse = await pollDeviceFlowOnce(flow.deviceCode, config, app);
 
     if (tokenResponse) {
       // Success! Get user info and create session
-      const userInfo = await getGitLabUser(tokenResponse.access_token);
+      const userInfo = await getGitLabUser(tokenResponse.access_token, app.baseUrl);
 
       const sessionId = generateSessionId();
       const now = Date.now();
@@ -427,6 +479,58 @@ interface DeviceFlowHTMLParams {
   flowState: string;
   pollUrl: string;
   expiresIn: number;
+}
+
+/**
+ * Page listing the configured instances; each link repeats the authorization request with
+ * `instance` set, so the rest of the request is unchanged.
+ */
+function getInstanceChooserHTML(
+  issuer: string,
+  query: Request['query'],
+  apps: GitLabOAuthApp[],
+): string {
+  const links = apps
+    .map((app) => {
+      const params = new URLSearchParams();
+      for (const [name, value] of Object.entries(query)) {
+        if (typeof value === 'string' && name !== 'instance') params.set(name, value);
+      }
+      params.set('instance', app.baseUrl);
+      const href = escapeHtml(`${issuer}/authorize?${params.toString()}`);
+      const label = app.label
+        ? `${escapeHtml(app.label)} <small>${escapeHtml(app.baseUrl)}</small>`
+        : escapeHtml(app.baseUrl);
+      return `<li><a href="${href}">${label}</a></li>`;
+    })
+    .join('\n      ');
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GitLab MCP - Choose GitLab instance</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 40px 20px; background: #f5f5f5; }
+    .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+    h1 { color: #333; font-size: 24px; margin: 0 0 20px; }
+    ul { list-style: none; padding: 0; }
+    li { margin: 12px 0; }
+    a { display: block; padding: 14px 18px; border: 1px solid #ddd; border-radius: 8px; color: #333; text-decoration: none; }
+    a:hover { border-color: #fc6d26; }
+    small { display: block; color: #888; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Choose the GitLab instance to sign in to</h1>
+    <ul>
+      ${links}
+    </ul>
+  </div>
+</body>
+</html>`;
 }
 
 /**

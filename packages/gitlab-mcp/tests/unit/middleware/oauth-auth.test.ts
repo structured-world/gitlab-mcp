@@ -36,6 +36,16 @@ jest.mock('../../../src/oauth/gitlab-device-flow', () => ({
   refreshGitLabToken: mockRefreshGitLabToken,
 }));
 
+const sessionApp = {
+  baseUrl: 'https://gitlab.example.com',
+  clientId: 'test-client-id',
+  scopes: 'api,read_user',
+};
+const mockOauthAppFor = jest.fn();
+jest.mock('../../../src/oauth/instance-app', () => ({
+  oauthAppFor: mockOauthAppFor,
+}));
+
 jest.mock('../../../src/oauth/endpoints/metadata', () => ({
   getBaseUrl: mockGetBaseUrl,
 }));
@@ -129,6 +139,7 @@ describe('OAuth Authentication Middleware', () => {
     mockVerifyMCPToken.mockReturnValue(mockPayload);
     mockSessionStore.getSession.mockReturnValue(mockSession);
     mockIsTokenExpiringSoon.mockReturnValue(false);
+    mockOauthAppFor.mockResolvedValue(sessionApp);
   });
 
   describe('oauthAuthMiddleware', () => {
@@ -406,7 +417,11 @@ describe('OAuth Authentication Middleware', () => {
 
           await oauthAuthMiddleware(req, res, mockNext);
 
-          expect(mockRefreshGitLabToken).toHaveBeenCalledWith('gitlab-refresh-token', mockConfig);
+          expect(mockRefreshGitLabToken).toHaveBeenCalledWith(
+            'gitlab-refresh-token',
+            mockConfig,
+            sessionApp,
+          );
           expect(mockSessionStore.updateSession).toHaveBeenCalledWith(
             'session-123',
             expect.objectContaining({

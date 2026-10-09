@@ -258,7 +258,13 @@ export async function optionalOAuthMiddleware(
   next();
 }
 
-/** `iss` is our issuer and `aud` one of our resources (RFC 9068 section 4). */
+/**
+ * `iss` is our issuer and `aud` one of our resources (RFC 9068 section 4). Either resource
+ * is accepted on either path on purpose: the root and `/mcp` are the same server with the
+ * same tools and grants, so audience binding guards against tokens of other resource
+ * servers, not between these two. Clients also legitimately cross them: ChatGPT requests
+ * tokens for the root resource and calls `/mcp`.
+ */
 function isIssuedForThisServer(issuer: string, payload: MCPTokenPayload): boolean {
   return payload.iss === issuer && isProtectedResource(issuer, payload.aud);
 }

@@ -58,7 +58,7 @@ export class FakeGitLab {
   async start(): Promise<void> {
     this.server = http.createServer((req, res) => {
       this.handle(req, res).catch((error: unknown) => {
-        res.statusCode = 500;
+        res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
         res.end(String(error));
       });
     });

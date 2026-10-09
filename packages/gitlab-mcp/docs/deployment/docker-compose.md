@@ -37,16 +37,23 @@ docker compose up -d
 
 ### 3. Configure Clients
 
+Clients connect to `OAUTH_ISSUER` (from the `.env` file below) with `/mcp` appended. The
+discovery metadata names that URL as the resource, so a client using any other address
+rejects the server or receives tokens for a different resource.
+
 ```json
 {
   "mcpServers": {
     "gitlab": {
       "type": "streamable-http",
-      "url": "http://localhost:3333/mcp"
+      "url": "https://mcp.example.com/mcp"
     }
   }
 }
 ```
+
+For local testing set `OAUTH_ISSUER=http://localhost:3333` and connect to
+`http://localhost:3333/mcp`.
 
 ## docker-compose.yml
 

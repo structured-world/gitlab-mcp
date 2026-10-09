@@ -66,16 +66,22 @@ docker run -d --name gitlab-mcp \
 
 ### 3. Configure Clients
 
+Clients connect to `OAUTH_ISSUER` with `/mcp` appended; the discovery metadata names that
+URL as the resource, so any other address fails discovery.
+
 ```json
 {
   "mcpServers": {
     "gitlab": {
       "type": "streamable-http",
-      "url": "http://localhost:3333/mcp"
+      "url": "https://mcp.example.com/mcp"
     }
   }
 }
 ```
+
+For local testing set `OAUTH_ISSUER=http://localhost:3333` and connect to
+`http://localhost:3333/mcp`.
 
 ## Environment Variables
 

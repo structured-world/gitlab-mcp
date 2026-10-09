@@ -611,6 +611,18 @@ describe('docker-utils', () => {
       expect(parsed.services.postgres).toBeUndefined();
     });
 
+    // Without a URL the compose file would reference an empty variable and migrations
+    // would fail at start; refuse before any file is written.
+    it('refuses an external-db OAuth deployment without a database URL', () => {
+      expect(() =>
+        generateDockerCompose({
+          ...DEFAULT_DOCKER_CONFIG,
+          deploymentType: 'external-db',
+          oauthEnabled: true,
+        }),
+      ).toThrow('An external-db deployment with OAuth needs the PostgreSQL connection URL');
+    });
+
     it('should add postgres service for compose-bundle deployment', () => {
       const config: DockerConfig = {
         port: 3333,
@@ -1160,10 +1172,31 @@ describe('docker-utils', () => {
       );
       expect(envCall).toBeDefined();
       expect(envCall![1]).toContain(
-        'OAUTH_STORAGE_POSTGRESQL_URL=postgresql://user:pass@host:5432/db\n',
+        "OAUTH_STORAGE_POSTGRESQL_URL='postgresql://user:pass@host:5432/db'\n",
       );
       expect(envCall![1]).not.toContain('POSTGRES_PASSWORD=');
       expect(envCall![2]).toEqual({ encoding: 'utf8', mode: 0o600 });
+    });
+
+    // Compose interpolates unquoted .env values: a "$" in the password would be replaced.
+    // Single-quoted values are literal.
+    it('writes the external database URL as a literal value', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveEnvFile({
+        ...DEFAULT_DOCKER_CONFIG,
+        deploymentType: 'external-db',
+        oauthEnabled: true,
+        databaseUrl: 'postgresql://user:pa$word@host:5432/db',
+      });
+
+      const envCall = mockFs.writeFileSync.mock.calls.find((call) =>
+        (call[0] as string).endsWith('.env'),
+      );
+      expect(envCall![1]).toContain(
+        "OAUTH_STORAGE_POSTGRESQL_URL='postgresql://user:pa$word@host:5432/db'\n",
+      );
     });
 
     it('should not include POSTGRES_PASSWORD for compose-bundle without OAuth', () => {

@@ -180,8 +180,24 @@ const BUNDLED_POSTGRESQL_URL =
 function sessionDatabaseUrl(config: DockerConfig): string | undefined {
   if (!config.oauthEnabled) return undefined;
   if (config.deploymentType === 'compose-bundle') return BUNDLED_POSTGRESQL_URL;
-  if (config.deploymentType === 'external-db') return '${OAUTH_STORAGE_POSTGRESQL_URL}';
+  if (config.deploymentType === 'external-db') {
+    // The compose file references the URL written to .env; without one Compose would
+    // substitute an empty string and the migrations could not start.
+    if (!config.databaseUrl) {
+      throw new Error('An external-db deployment with OAuth needs the PostgreSQL connection URL');
+    }
+    return '${OAUTH_STORAGE_POSTGRESQL_URL}';
+  }
   return undefined;
+}
+
+/**
+ * A URL as a literal .env value: Compose interpolates unquoted values (a "$" in a password
+ * would be replaced) but keeps single-quoted ones as written. A single quote inside the
+ * URL is percent-encoded, which PostgreSQL decodes back to the same connection string.
+ */
+function envLiteralUrl(url: string): string {
+  return `'${url.replaceAll("'", '%27')}'`;
 }
 
 /**
@@ -583,7 +599,7 @@ export function saveEnvFile(config: DockerConfig): void {
 
   if (config.deploymentType === 'external-db' && config.oauthEnabled && config.databaseUrl) {
     // The compose file references it; the URL carries the database password
-    lines.push(`OAUTH_STORAGE_POSTGRESQL_URL=${config.databaseUrl}`);
+    lines.push(`OAUTH_STORAGE_POSTGRESQL_URL=${envLiteralUrl(config.databaseUrl)}`);
   }
 
   if (lines.length > 0) {

@@ -5,8 +5,8 @@
  * load balancer sharing PostgreSQL.
  */
 
-import * as http from 'http';
-import { AddressInfo } from 'net';
+import * as http from 'node:http';
+import { AddressInfo } from 'node:net';
 import type { SessionStorageBackend } from '../../../../src/oauth/storage/types';
 import type { SessionStore } from '../../../../src/oauth/session-store';
 

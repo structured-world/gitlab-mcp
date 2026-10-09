@@ -18,6 +18,7 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   type CallToolResult,
+  type ListToolsResult,
 } from '@modelcontextprotocol/sdk/types.js';
 import { Interceptor } from './interceptor';
 import { formatEvent } from './format';
@@ -99,21 +100,20 @@ export class ChannelGateway {
   }
 
   private registerHandlers(): void {
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+    this.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
       // The catalog read must honour the same reconnect/buffer policy as
       // CallTool: a ListTools that lands mid-reconnect should wait for the
       // link (bounded) and replay once, not throw against a dead client.
-      const { tools } = (await forwardWithPolicy(
+      return (await forwardWithPolicy(
         {
           isRead: () => true, // listing the catalog is an idempotent read
           isConnected: () => this.connected,
           waitForConnection: () => this.waitForConnection(),
-          call: () => this.client.listTools(),
+          call: () => this.client.listTools(request.params),
         },
         'tools/list',
         undefined,
-      )) as Awaited<ReturnType<Client['listTools']>>;
-      return { tools };
+      )) as ListToolsResult;
     });
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;

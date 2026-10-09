@@ -21,43 +21,13 @@ import {
   getActionDescriptionOverrides,
   getParamDescriptionOverrides,
 } from '../config';
-import { logInfo, logDebug, logWarn } from '../logger';
+import { logDebug, logWarn } from '../logger';
 
 // ============================================================================
 // Per-Session Schema Mode (for GITLAB_SCHEMA_MODE=auto)
 // ============================================================================
 
-// Detected schema mode from clientInfo during initialize (used when GITLAB_SCHEMA_MODE=auto)
-// NOTE: This module-level variable works correctly for stdio mode (single client per process).
-// For HTTP/SSE modes with multiple concurrent sessions, this is a known limitation -
-// all sessions will share the same detected mode. Use explicit GITLAB_SCHEMA_MODE for
-// multi-session deployments where different clients may connect simultaneously.
-let detectedSchemaMode: 'flat' | 'discriminated' | null = null;
-
-/**
- * Set the detected schema mode based on clientInfo from MCP initialize
- * Called from server.ts oninitialized callback when GITLAB_SCHEMA_MODE=auto
- *
- * @param clientName - Client name from server.getClientVersion().name
- */
-export function setDetectedSchemaMode(clientName?: string): void {
-  if (GITLAB_SCHEMA_MODE !== 'auto') {
-    return; // Only detect when in auto mode
-  }
-
-  detectedSchemaMode = detectSchemaMode(clientName);
-  logInfo('Auto-detected schema mode from client', {
-    clientName,
-    detectedMode: detectedSchemaMode,
-  });
-}
-
-/**
- * Clear the detected schema mode (for testing or session reset)
- */
-export function clearDetectedSchemaMode(): void {
-  detectedSchemaMode = null;
-}
+export type ClientSchemaMode = 'flat' | 'discriminated';
 
 // ============================================================================
 // Types
@@ -376,10 +346,9 @@ export function applyDescriptionOverrides(schema: JSONSchema, toolName: string):
  * - If GITLAB_SCHEMA_MODE is 'flat' or 'discriminated': use that directly
  * - If GITLAB_SCHEMA_MODE is 'auto': use detected mode from clientInfo, or 'flat' as fallback
  */
-function getSchemaMode(): 'flat' | 'discriminated' {
+export function getSchemaMode(clientName?: string): ClientSchemaMode {
   if (GITLAB_SCHEMA_MODE === 'auto') {
-    // Use detected mode, or fall back to flat if not yet detected
-    return detectedSchemaMode ?? 'flat';
+    return detectSchemaMode(clientName);
   }
   // Explicit mode configured
   return GITLAB_SCHEMA_MODE;
@@ -404,6 +373,7 @@ export function transformToolSchema(
   toolName: string,
   inputSchema: JSONSchema,
   unavailableActions: ActionNames = NO_ACTIONS,
+  schemaMode: ClientSchemaMode = getSchemaMode(),
 ): JSONSchema {
   let schema = inputSchema;
 
@@ -419,7 +389,6 @@ export function transformToolSchema(
   schema = applyDescriptionOverrides(schema, toolName);
 
   // Step 3: Conditional flatten based on config
-  const schemaMode = getSchemaMode();
   if (schemaMode === 'flat' && schema.oneOf) {
     schema = flattenDiscriminatedUnion(schema);
   }

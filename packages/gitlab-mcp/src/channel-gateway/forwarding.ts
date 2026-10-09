@@ -45,8 +45,8 @@ export async function forwardWithPolicy(
   try {
     return await policy.call(name, args);
   } catch (err) {
-    // Sent but failed: only idempotent reads may be replayed.
-    if (policy.isRead(name)) {
+    // Replay only after a lost link, never a valid protocol/schema rejection.
+    if (policy.isRead(name) && !policy.isConnected()) {
       await policy.waitForConnection();
       return await policy.call(name, args);
     }

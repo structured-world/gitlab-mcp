@@ -91,11 +91,22 @@ docker run -d --name gitlab-mcp \
 
 ## Database Schema
 
-The server automatically runs migrations on startup via Prisma. Tables created:
+The database package ships its Prisma schema; server startup does not apply schema
+changes. Apply the packaged schema through your database deployment process before
+starting an upgraded server. It defines `oauth_sessions`, `oauth_device_flows`,
+`oauth_auth_code_flows`, `oauth_authorization_codes` and `oauth_mcp_session_mappings`.
 
-- `oauth_sessions` — Active user sessions
-- `oauth_tokens` — Encrypted access/refresh tokens
-- `oauth_state` — CSRF protection for OAuth flow
+The client-contract update adds nullable JSONB `oauth_sessions.gitlab_scopes`.
+Existing databases must add this column before using the updated database package:
+
+```sql
+ALTER TABLE oauth_sessions ADD COLUMN gitlab_scopes JSONB;
+```
+
+Leave existing rows as SQL `NULL`: the upstream grant is unknown until GitLab
+reports it during authentication or token refresh. An empty JSON array means a
+known grant with no scopes. Do not copy MCP client scopes into this column or infer
+full GitLab access for older sessions.
 
 ## Multi-Instance Support
 

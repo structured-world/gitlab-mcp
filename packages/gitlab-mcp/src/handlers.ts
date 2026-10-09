@@ -17,6 +17,9 @@ import {
 import { GitLabTimeoutError } from './utils/fetch';
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './logging/index';
 import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL } from './config';
+import { getSchemaMode } from './utils/schema-utils';
+import { formatToolResult, errorToolResult } from './utils/tool-result';
+import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -87,18 +90,15 @@ function recordEarlyReturnError(
 /**
  * Check if a tool operation is idempotent (safe to retry).
  * browse_*, list_*, get_*, download_* are read-only.
- * manage_context is local despite the manage_ prefix.
+ * Mixed command tools, including session mutations, are conservative.
  */
-function isIdempotentOperation(toolName: string): boolean {
-  // manage_context is read-only/local despite the manage_ prefix (whoami,
-  // show_scope, set_scope, etc.) — it needs timeout protection and correct
-  // retryable semantics, unlike manage_merge_request/manage_issue which mutate.
+function isIdempotentOperation(toolName: string, declared?: boolean): boolean {
+  if (declared !== undefined) return declared;
   return (
     toolName.startsWith('browse_') ||
     toolName.startsWith('list_') ||
     toolName.startsWith('get_') ||
-    toolName.startsWith('download_') ||
-    toolName === 'manage_context'
+    toolName.startsWith('download_')
   );
 }
 
@@ -110,6 +110,7 @@ function toStructuredError(
   error: unknown,
   toolName: string,
   toolArgs?: Record<string, unknown>,
+  declaredIdempotent?: boolean,
 ): GitLabStructuredError | null {
   // If already a structured error, return it
   if (isStructuredToolError(error)) {
@@ -143,13 +144,13 @@ function toStructuredError(
       'timeoutMs' in error &&
       typeof (error as GitLabTimeoutError).timeoutMs === 'number')
   ) {
-    const retryable = isIdempotentOperation(toolName);
+    const retryable = isIdempotentOperation(toolName, declaredIdempotent);
     return createTimeoutError(toolName, action, (error as GitLabTimeoutError).timeoutMs, retryable);
   }
   if (error instanceof Error) {
     const timeoutMs = parseTimeoutError(error.message);
     if (timeoutMs !== null) {
-      const retryable = isIdempotentOperation(toolName);
+      const retryable = isIdempotentOperation(toolName, declaredIdempotent);
       return createTimeoutError(toolName, action, timeoutMs, retryable);
     }
   }
@@ -196,7 +197,7 @@ function checkUnreachableInstance(
   toolArguments: Record<string, unknown> | undefined,
   effectiveInstanceUrl: string,
   healthMonitor: HealthMonitor,
-): { content: Array<{ type: string; text: string }>; isError: true } | null {
+): CallToolResult | null {
   if (healthMonitor.isInstanceReachable(effectiveInstanceUrl) || toolName === 'manage_context') {
     return null;
   }
@@ -218,7 +219,7 @@ function checkUnreachableInstance(
     connectionState,
   );
   recordEarlyReturnError(toolName, action, connError.message);
-  return { content: [{ type: 'text', text: JSON.stringify(connError, null, 2) }], isError: true };
+  return errorToolResult(connError);
 }
 
 /**
@@ -282,7 +283,7 @@ async function tryManageContextFastPath(
   effectiveInstanceUrl: string,
   healthMonitor: HealthMonitor,
   sessionId: string | undefined,
-): Promise<{ content: Array<{ type: string; text: string }> } | null> {
+): Promise<CallToolResult | null> {
   if (toolName !== 'manage_context' || healthMonitor.isInstanceReachable(effectiveInstanceUrl)) {
     return null;
   }
@@ -306,7 +307,7 @@ async function tryManageContextFastPath(
       return null;
     }
     await resyncSessionAfterSwitchProfile(toolName, toolArguments, sessionId);
-    return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
+    return formatToolResult(result, registryManager.getTool(toolName, effectiveInstanceUrl));
   }
   return null; // tool not yet cached — fall through to bootstrap
 }
@@ -322,9 +323,7 @@ async function tryManageContextFastPath(
 // Cognitive complexity is elevated but justified: bootstrapState mutations, error
 // classification, HealthMonitor reporting, and derived-state computation are tightly
 // coupled. Further extraction would add indirection without reducing conceptual complexity.
-async function ensureBootstrapped(
-  ctx: BootstrapContext,
-): Promise<{ content: Array<{ type: string; text: string }>; isError: true } | undefined> {
+async function ensureBootstrapped(ctx: BootstrapContext): Promise<CallToolResult | undefined> {
   const {
     toolName,
     toolArguments,
@@ -424,10 +423,7 @@ async function ensureBootstrapped(
     if (!isTimedOut()) {
       recordEarlyReturnError(toolName, action, connError.message);
     }
-    return {
-      content: [{ type: 'text', text: JSON.stringify(connError, null, 2) }],
-      isError: true,
-    };
+    return errorToolResult(connError);
   }
 }
 
@@ -553,11 +549,8 @@ export async function setupHandlers(server: Server): Promise<void> {
     // would short-circuit that chain and return the wrong tool list for OAuth requests
     // with a real context URL or after an instance switch (#398).
     //
-    // NOTE: tools/list is NOT wrapped in runWithTokenContext(), so getGitLabApiUrlFromContext()
-    // returns undefined here regardless. Passing the tracked session URL is therefore
-    // correct — for static-token multi-instance it routes to the right instance, and
-    // for OAuth mode the session URL is kept in sync by the CallTool handler so it
-    // reflects the most-recently resolved OAuth context URL.
+    // HTTP OAuth requests carry their own token context, including tools/list.
+    // Static-token requests use the tracked session URL after an instance switch.
     const sessionInstanceUrl =
       listToolsSessionId !== undefined
         ? sessionMgr.getSessionInstanceUrl(listToolsSessionId)
@@ -566,7 +559,13 @@ export async function setupHandlers(server: Server): Promise<void> {
     // Get tools from registry manager (already filtered by tier/version/scopes)
     const { RegistryManager } = await import('./registry-manager');
     const registryManager = RegistryManager.getInstance();
-    const tools = registryManager.getAllToolDefinitions(sessionInstanceUrl);
+    const mode = getSchemaMode(server.getClientVersion()?.name);
+    const { getTokenContext: getCatalogContext } = await import('./oauth/index');
+    const scopes = getCatalogContext()?.gitlabScopes;
+    const tools =
+      scopes === undefined
+        ? registryManager.getAllToolDefinitions(sessionInstanceUrl, mode)
+        : registryManager.getAllToolDefinitions(sessionInstanceUrl, mode, scopes);
 
     logInfo('Returning tools list', { toolCount: tools.length });
 
@@ -667,8 +666,11 @@ export async function setupHandlers(server: Server): Promise<void> {
     // Capture instance URL early — used for both handlerWork and timeout reporting.
     // Must be resolved before Promise.race so timeout branch doesn't re-derive a
     // potentially different URL after a concurrent instance change.
-    const { getGitLabApiUrlFromContext: getUrlFromCtx, isOAuthEnabled } =
-      await import('./oauth/index');
+    const {
+      getGitLabApiUrlFromContext: getUrlFromCtx,
+      isOAuthEnabled,
+      getTokenContext: getCallContext,
+    } = await import('./oauth/index');
     // In OAuth mode, use the per-request context URL to avoid bleeding the
     // last-set ConnectionManager instance across concurrent OAuth sessions.
     // When OAuth is enabled but no request context is available (e.g. startup
@@ -679,6 +681,8 @@ export async function setupHandlers(server: Server): Promise<void> {
     // In static-token mode, prefer the actively selected instance URL so
     // requests continue routing to the current instance.
     const oauthEnabled = isOAuthEnabled();
+    const requestScopes = oauthEnabled ? getCallContext()?.gitlabScopes : undefined;
+    let declaredIdempotent: boolean | undefined;
     // getGitLabApiUrlFromContext() returns string | undefined; use undefined (not null)
     // so that strict equality checks below correctly detect "no OAuth context".
     const oauthContextUrl = oauthEnabled ? getUrlFromCtx() : undefined;
@@ -727,14 +731,7 @@ export async function setupHandlers(server: Server): Promise<void> {
     });
 
     // The actual handler logic as a separate async function
-    const handlerWork = async (): Promise<{
-      content: Array<{ type: string; text: string }>;
-      isError?: boolean;
-    }> => {
-      if (!request.params.arguments) {
-        throw new Error('Arguments are required');
-      }
-
+    const handlerWork = async (): Promise<CallToolResult> => {
       // In condensed mode, tool/action is captured via request tracker for single-line log
       // In verbose mode, emit per-request INFO logs
       if (LOG_FORMAT === 'verbose') {
@@ -830,6 +827,8 @@ export async function setupHandlers(server: Server): Promise<void> {
         // Import the registry manager
         const { RegistryManager } = await import('./registry-manager');
         const registryManager = RegistryManager.getInstance();
+        const definition = registryManager.getTool(toolName, effectiveInstanceUrl);
+        declaredIdempotent = definition?.idempotent ?? definition?.annotations?.idempotentHint;
 
         // Check if tool exists and passes all filtering (applied at registry level).
         // Uses per-URL cache so the check is against the correct instance's
@@ -857,11 +856,16 @@ export async function setupHandlers(server: Server): Promise<void> {
         }
 
         // Execute the tool using the registry manager (per-URL cache)
-        const result = await registryManager.executeTool(
-          toolName,
-          request.params.arguments,
-          effectiveInstanceUrl,
-        );
+        const args = request.params.arguments ?? {};
+        const result =
+          requestScopes === undefined
+            ? await registryManager.executeTool(toolName, args, effectiveInstanceUrl)
+            : await registryManager.executeTool(
+                toolName,
+                args,
+                effectiveInstanceUrl,
+                requestScopes,
+              );
 
         // Guard against TOCTOU cache miss: hasToolHandler returned true but a
         // concurrent refreshCache swapped the lookup table before executeTool ran.
@@ -881,14 +885,7 @@ export async function setupHandlers(server: Server): Promise<void> {
           healthMonitor.reportSuccess(effectiveInstanceUrl);
         }
 
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(result, null, 2),
-            },
-          ],
-        };
+        return formatToolResult(result, definition);
       } catch (error) {
         // Only report connectivity/auth errors to HealthMonitor — not request-level
         // 4xx (e.g. 404 "project not found") which don't indicate connection problems.
@@ -922,7 +919,7 @@ export async function setupHandlers(server: Server): Promise<void> {
           request.params.arguments && typeof request.params.arguments.action === 'string'
             ? request.params.arguments.action
             : 'unknown';
-        const retryable = isIdempotentOperation(toolName);
+        const retryable = isIdempotentOperation(toolName, declaredIdempotent);
         const timeoutError = createTimeoutError(toolName, action, HANDLER_TIMEOUT_MS, retryable);
 
         logError(`Handler timeout: tool '${toolName}' timed out after ${HANDLER_TIMEOUT_MS}ms`);
@@ -946,15 +943,7 @@ export async function setupHandlers(server: Server): Promise<void> {
 
         recordEarlyReturnError(toolName, action, timeoutError.message);
 
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(timeoutError, null, 2),
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResult(timeoutError);
       }
 
       return result;
@@ -979,32 +968,16 @@ export async function setupHandlers(server: Server): Promise<void> {
       // Try to convert to structured error for better LLM feedback
       const toolName = request.params.name;
       const toolArgs = request.params.arguments;
-      const structuredError = toStructuredError(error, toolName, toolArgs);
+      const structuredError = toStructuredError(error, toolName, toolArgs, declaredIdempotent);
 
       if (structuredError) {
         logDebug('Returning structured error response', { structuredError });
-        return {
-          content: [
-            {
-              type: 'text',
-              text: JSON.stringify(structuredError, null, 2),
-            },
-          ],
-          isError: true,
-        };
+        return errorToolResult(structuredError);
       }
 
       // Fallback to original error format
       const errorMessage = error instanceof Error ? error.message : String(error);
-      return {
-        content: [
-          {
-            type: 'text',
-            text: JSON.stringify({ error: errorMessage }, null, 2),
-          },
-        ],
-        isError: true,
-      };
+      return errorToolResult({ error: errorMessage });
     } finally {
       clearTimeout(handlerTimeoutId);
     }

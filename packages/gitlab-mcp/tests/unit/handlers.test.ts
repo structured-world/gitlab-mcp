@@ -62,6 +62,7 @@ jest.mock('../../src/config', () => ({
   LOG_FORMAT: 'condensed',
   HANDLER_TIMEOUT_MS: 100,
   GITLAB_BASE_URL: 'https://gitlab.example.com',
+  GITLAB_SCHEMA_MODE: 'flat',
 }));
 
 // Mock HealthMonitor
@@ -180,6 +181,7 @@ describe('handlers', () => {
     // Create mock server
     mockServer = {
       setRequestHandler: jest.fn(),
+      getClientVersion: jest.fn().mockReturnValue({ name: 'claude-code', version: 'test' }),
     } as unknown as jest.Mocked<Server>;
 
     // Mock ConnectionManager methods — re-seed defaults that tests may flip
@@ -413,6 +415,7 @@ describe('handlers', () => {
         expect(mockSessionManager.getSessionInstanceUrl).toHaveBeenCalledWith('sess-abc');
         expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(
           'https://custom.gitlab.com',
+          'flat',
         );
       });
 
@@ -422,7 +425,7 @@ describe('handlers', () => {
         await listToolsHandler({ method: 'tools/list' });
 
         expect(mockSessionManager.getSessionInstanceUrl).not.toHaveBeenCalled();
-        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined);
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined, 'flat');
       });
 
       it('should pass undefined to getAllToolDefinitions for unknown/expired sessionId (registry resolves via OAuth context chain)', async () => {
@@ -433,7 +436,7 @@ describe('handlers', () => {
 
         await listToolsHandler({ method: 'tools/list' }, { sessionId: 'new-sess' });
 
-        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined);
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined, 'flat');
       });
     });
   });
@@ -464,11 +467,14 @@ describe('handlers', () => {
       mockRegistryManager.getTool.mockReturnValue({
         resultFormat: 'mcp',
         outputSchema: {
-          type: 'object', properties: { ready: { type: 'boolean' } }, required: ['ready'],
+          type: 'object',
+          properties: { ready: { type: 'boolean' } },
+          required: ['ready'],
         },
       });
       mockRegistryManager.executeTool.mockResolvedValue({
-        content: [], structuredContent: { ready: 'yes' },
+        content: [],
+        structuredContent: { ready: 'yes' },
       });
       const result = await callToolHandler({ params: { name: 'settings', arguments: {} } });
       expect(result.isError).toBe(true);
@@ -783,7 +789,8 @@ describe('handlers', () => {
       );
     });
 
-    it('should throw error if arguments are missing', async () => {
+    it('normalizes omitted arguments to an empty object for no-input tools', async () => {
+      // MCP permits omitted arguments; native settings/profile reads use no inputs.
       const mockRequest = {
         params: {
           name: 'get_project',
@@ -797,11 +804,15 @@ describe('handlers', () => {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({ error: 'Arguments are required' }, null, 2),
+            text: JSON.stringify({ result: 'success' }, null, 2),
           },
         ],
-        isError: true,
       });
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'get_project',
+        {},
+        'https://gitlab.example.com',
+      );
     });
 
     it('should verify connection and continue if already initialized', async () => {
@@ -965,6 +976,12 @@ describe('handlers', () => {
           },
         ],
         isError: true,
+        structuredContent: {
+          error: {
+            error:
+              "Failed to execute tool 'unknown_tool': Tool 'unknown_tool' is not available or has been filtered out",
+          },
+        },
       });
     });
 
@@ -994,6 +1011,9 @@ describe('handlers', () => {
           },
         ],
         isError: true,
+        structuredContent: {
+          error: { error: "Failed to execute tool 'test_tool': Tool execution failed" },
+        },
       });
     });
 
@@ -1023,6 +1043,7 @@ describe('handlers', () => {
           },
         ],
         isError: true,
+        structuredContent: { error: { error: "Failed to execute tool 'test_tool': String error" } },
       });
     });
   });
@@ -1809,6 +1830,16 @@ describe('handlers', () => {
   });
 
   describe('timeout error handling', () => {
+    it('honors an explicit non-idempotent declaration on a browse tool', async () => {
+      // A public hint may tighten retry safety; the name must not override it.
+      mockRegistryManager.getTool.mockReturnValue({ idempotent: false });
+      mockRegistryManager.executeTool.mockRejectedValue(new GitLabTimeoutError('headers', 10000));
+      const result = await callToolHandler({
+        params: { name: 'browse_projects', arguments: { action: 'list' } },
+      });
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content![0].text).retryable).toBe(false);
+    });
     beforeEach(async () => {
       await setupHandlers(mockServer);
       callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);

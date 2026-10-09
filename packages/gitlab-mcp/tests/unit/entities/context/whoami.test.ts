@@ -7,6 +7,7 @@
 import { handleManageContext } from '../../../../src/entities/context/handlers';
 import { ContextManager } from '../../../../src/entities/context/context-manager';
 import { WhoamiResult } from '../../../../src/entities/context/types';
+import { runWithTokenContext } from '../../../../src/oauth/token-context';
 
 // Create mock objects that will be populated in tests
 const mockConnectionManager = {
@@ -381,6 +382,26 @@ describe('whoami handler', () => {
   });
 
   describe('whoami in OAuth mode', () => {
+    it('reports the selected OAuth grant instead of assuming full API access', async () => {
+      // A shared host must not report the default account's host or permissions.
+      const result = await runWithTokenContext(
+        {
+          gitlabToken: 'fixture-only',
+          gitlabUserId: 2,
+          gitlabUsername: 'reader',
+          sessionId: 'reader',
+          apiUrl: 'https://selected.example.com',
+          gitlabScopes: ['read_api'],
+        },
+        async () => (await handleManageContext({ action: 'whoami' })) as WhoamiResult,
+      );
+      expect(result.token?.scopes).toEqual(['read_api']);
+      expect(result.token?.hasWriteAccess).toBe(false);
+      expect(result.server.apiUrl).toBe('https://selected.example.com');
+      expect(mockEnhancedFetch).toHaveBeenCalledWith('https://selected.example.com/api/v4/user', {
+        retry: false,
+      });
+    });
     beforeEach(() => {
       process.env.OAUTH_ENABLED = 'true';
       ContextManager.resetInstance();
@@ -390,10 +411,28 @@ describe('whoami handler', () => {
     });
 
     it('should return oauth token type', async () => {
-      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+      // An OAuth identity is reported only from an actual request grant.
+      const result = await runWithTokenContext(
+        {
+          gitlabToken: 'fixture-only',
+          gitlabUserId: 2,
+          gitlabUsername: 'reader',
+          sessionId: 'reader',
+          apiUrl: 'https://gitlab.example.com',
+          gitlabScopes: ['api'],
+        },
+        async () => (await handleManageContext({ action: 'whoami' })) as WhoamiResult,
+      );
 
       expect(result.token?.type).toBe('oauth');
       expect(result.server.oauthEnabled).toBe(true);
+    });
+
+    it('keeps unknown OAuth permissions unknown', async () => {
+      // A token not reporting scope must not be advertised as full write access.
+      const result = (await handleManageContext({ action: 'whoami' })) as WhoamiResult;
+      expect(result.token).toBeNull();
+      expect(result.capabilities.canManage).toBe(false);
     });
   });
 

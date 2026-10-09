@@ -146,6 +146,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       gitlabAccessToken: gitlabTokens.access_token,
       gitlabRefreshToken: gitlabTokens.refresh_token,
       gitlabTokenExpiry: calculateTokenExpiry(gitlabTokens.expires_in),
+      gitlabScopes: gitlabTokens.scope?.split(/\s+/).filter(Boolean),
       gitlabUserId: userInfo.id,
       gitlabUsername: userInfo.username,
       gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,

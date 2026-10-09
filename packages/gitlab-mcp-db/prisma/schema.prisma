@@ -23,6 +23,8 @@ model OAuthSession {
   gitlabAccessToken    String   @map("gitlab_access_token")
   gitlabRefreshToken   String   @map("gitlab_refresh_token")
   gitlabTokenExpiry    BigInt   @map("gitlab_token_expiry")
+  // Null means the upstream grant was not reported; [] means no grants.
+  gitlabScopes         Json?    @map("gitlab_scopes")
 
   // User info from GitLab
   gitlabUserId         Int      @map("gitlab_user_id")

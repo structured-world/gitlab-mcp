@@ -42,6 +42,8 @@ export interface OAuthSession {
   gitlabRefreshToken: string;
   /** GitLab token expiry timestamp (milliseconds since epoch) */
   gitlabTokenExpiry: number;
+  /** Granted GitLab scopes, distinct from MCP scopes; absent when upstream did not report them. */
+  gitlabScopes?: string[];
 
   // User info from GitLab
   /** GitLab user ID */
@@ -174,6 +176,8 @@ export interface GitLabDeviceResponse {
  * Available via AsyncLocalStorage during OAuth-authenticated requests
  */
 export interface TokenContext {
+  /** Verified upstream grants for this account, never shared through instance caches. */
+  gitlabScopes?: readonly string[];
   /** GitLab access token for API calls */
   gitlabToken: string;
   /** GitLab user ID */

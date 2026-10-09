@@ -1,5 +1,6 @@
 import { RegistryManager } from '../../../src/registry-manager';
 import { ConnectionManager } from '../../../src/services/ConnectionManager';
+import { formatToolResult } from '../../../src/utils/tool-result';
 
 /**
  * Integration Test Helper for RegistryManager
@@ -56,7 +57,13 @@ export class IntegrationTestHelper {
       throw new Error('IntegrationTestHelper must be initialized before use');
     }
 
-    return await this.registryManager.executeTool(toolName, args);
+    const result = await this.registryManager.executeTool(toolName, args);
+    const tool = this.registryManager.getTool(toolName);
+    if (tool?.resultFormat === 'mcp') {
+      // Run production validation, then return domain data to existing schema suites.
+      return formatToolResult(result, tool).structuredContent?.data;
+    }
+    return result;
   }
 
   /**

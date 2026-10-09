@@ -447,62 +447,70 @@ describe('OAuth Token Endpoint', () => {
       });
     });
 
-    it('should refresh GitLab token when expiring soon', async () => {
-      const existingSession = {
-        id: 'session-123',
-        mcpAccessToken: 'old-access-token',
-        mcpRefreshToken: 'valid-refresh-token',
-        mcpTokenExpiry: Date.now() + 1000,
-        gitlabAccessToken: 'expiring-gitlab-token',
-        gitlabRefreshToken: 'gitlab-refresh',
-        gitlabTokenExpiry: Date.now() + 60000, // Expiring soon
-        gitlabUserId: 12345,
-        gitlabUsername: 'testuser',
-        clientId: 'test-client',
-        scopes: ['mcp:tools', 'mcp:resources'],
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
+    it.each([undefined, '', 'read_api', 'api read_user'])(
+      'refreshes the upstream grant independently of MCP scopes: %s',
+      async (scope) => {
+        // A refresh without scope must not overwrite the existing GitLab grant.
+        const existingSession = {
+          id: 'session-123',
+          mcpAccessToken: 'old-access-token',
+          mcpRefreshToken: 'valid-refresh-token',
+          mcpTokenExpiry: Date.now() + 1000,
+          gitlabAccessToken: 'expiring-gitlab-token',
+          gitlabRefreshToken: 'gitlab-refresh',
+          gitlabTokenExpiry: Date.now() + 60000, // Expiring soon
+          gitlabUserId: 12345,
+          gitlabUsername: 'testuser',
+          clientId: 'test-client',
+          scopes: ['mcp:tools', 'mcp:resources'],
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
 
-      mockSessionStore.getSessionByRefreshToken.mockReturnValue(existingSession);
-      mockIsTokenExpiringSoon.mockReturnValue(true);
-      mockRefreshGitLabToken.mockResolvedValue({
-        access_token: 'new-gitlab-token',
-        refresh_token: 'new-gitlab-refresh',
-        token_type: 'Bearer',
-        expires_in: 7200,
-        created_at: Date.now(),
-      });
-      mockSessionStore.getSession.mockReturnValue({
-        ...existingSession,
-        gitlabAccessToken: 'new-gitlab-token',
-        gitlabRefreshToken: 'new-gitlab-refresh',
-      });
-
-      const req = createMockRequest({
-        grant_type: 'refresh_token',
-        refresh_token: 'valid-refresh-token',
-      }) as Request;
-      const res = createMockResponse() as Response;
-
-      await tokenHandler(req, res);
-
-      expect(mockRefreshGitLabToken).toHaveBeenCalledWith('gitlab-refresh', mockConfig);
-      expect(mockSessionStore.updateSession).toHaveBeenCalledWith(
-        'session-123',
-        expect.objectContaining({
+        mockSessionStore.getSessionByRefreshToken.mockReturnValue(existingSession);
+        mockIsTokenExpiringSoon.mockReturnValue(true);
+        mockRefreshGitLabToken.mockResolvedValue({
+          access_token: 'new-gitlab-token',
+          refresh_token: 'new-gitlab-refresh',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          scope,
+          created_at: Date.now(),
+        });
+        mockSessionStore.getSession.mockReturnValue({
+          ...existingSession,
           gitlabAccessToken: 'new-gitlab-token',
           gitlabRefreshToken: 'new-gitlab-refresh',
-        }),
-      );
+        });
 
-      expect(res.json).toHaveBeenCalledWith(
-        expect.objectContaining({
-          access_token: 'mcp-access-token-jwt',
-          token_type: 'Bearer',
-        }),
-      );
-    });
+        const req = createMockRequest({
+          grant_type: 'refresh_token',
+          refresh_token: 'valid-refresh-token',
+        }) as Request;
+        const res = createMockResponse() as Response;
+
+        await tokenHandler(req, res);
+
+        expect(mockRefreshGitLabToken).toHaveBeenCalledWith('gitlab-refresh', mockConfig);
+        const grantUpdate = mockSessionStore.updateSession.mock.calls[0][1];
+        if (scope === undefined) expect(grantUpdate).not.toHaveProperty('gitlabScopes');
+        else expect(grantUpdate.gitlabScopes).toEqual(scope.split(/\s+/).filter(Boolean));
+        expect(mockSessionStore.updateSession).toHaveBeenCalledWith(
+          'session-123',
+          expect.objectContaining({
+            gitlabAccessToken: 'new-gitlab-token',
+            gitlabRefreshToken: 'new-gitlab-refresh',
+          }),
+        );
+
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({
+            access_token: 'mcp-access-token-jwt',
+            token_type: 'Bearer',
+          }),
+        );
+      },
+    );
 
     it('should return error when GitLab token refresh fails', async () => {
       const existingSession = {

@@ -1,0 +1,219 @@
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import { CallToolResultSchema } from '@modelcontextprotocol/sdk/types.js';
+import { SessionManager } from '../../src/session-manager';
+import { RegistryManager } from '../../src/registry-manager';
+import { coreToolRegistry } from '../../src/entities/core/registry';
+import { runWithTokenContext } from '../../src/oauth/token-context';
+import { resetHandlersState } from '../../src/handlers';
+
+jest.mock('../../src/config', () => ({
+  ...jest.requireActual('../../src/config'),
+  GITLAB_SCHEMA_MODE: 'auto',
+  GITLAB_READ_ONLY_MODE: false,
+}));
+jest.mock('../../src/oauth/index', () => ({
+  ...jest.requireActual('../../src/oauth/token-context'),
+  isOAuthEnabled: () => true,
+  isAuthenticationConfigured: () => true,
+}));
+jest.mock('../../src/services/ConnectionManager', () => ({
+  ConnectionManager: {
+    getInstance: () => ({
+      getInstanceInfo: (url: string) =>
+        url.includes('old.')
+          ? { version: '16.0.0', tier: 'free' }
+          : { version: '19.0.0', tier: 'ultimate' },
+      getCurrentInstanceUrl: () => 'https://new.example.com',
+      getTokenScopeInfo: () => null,
+      getAdminInfo: () => null,
+      isConnected: () => true,
+      getClient: () => ({}),
+      initialize: async () => undefined,
+      ensureIntrospected: async () => undefined,
+    }),
+  },
+}));
+jest.mock('../../src/services/HealthMonitor', () => ({
+  ...jest.requireActual('../../src/services/HealthMonitor'),
+  HealthMonitor: {
+    getInstance: () => ({
+      initialize: async () => undefined,
+      onStateChange: () => undefined,
+      getState: () => 'healthy',
+      getMonitoredInstances: () => [],
+      isAnyInstanceHealthy: () => true,
+      isInstanceReachable: () => true,
+      reportSuccess: () => undefined,
+      reportError: () => undefined,
+    }),
+  },
+}));
+
+describe('simultaneous MCP client contracts', () => {
+  const clients: Client[] = [];
+  let sessions: SessionManager;
+
+  beforeEach(() => {
+    resetHandlersState();
+    RegistryManager.getInstance().refreshCache();
+    sessions = new SessionManager();
+  });
+  afterEach(async () => {
+    await Promise.all(clients.splice(0).map((client) => client.close()));
+    await sessions.shutdown();
+    coreToolRegistry.delete('browse_contract');
+    RegistryManager.getInstance().refreshCache();
+  });
+
+  async function connect(name: string, protocol: string): Promise<Client> {
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+    const send = clientTransport.send.bind(clientTransport);
+    clientTransport.send = (message, options) => {
+      if ('method' in message && message.method === 'initialize' && message.params) {
+        message = { ...message, params: { ...message.params, protocolVersion: protocol } };
+      }
+      return send(message, options);
+    };
+    await sessions.createSession(name, serverTransport);
+    const client = new Client({ name, version: '1.0.0' });
+    clients.push(client);
+    await client.connect(clientTransport);
+    return client;
+  }
+
+  function asAccount<T>(scopes: string[], url: string, work: () => Promise<T>): Promise<T> {
+    return Promise.resolve(
+      runWithTokenContext(
+        {
+          gitlabToken: 'fixture-only',
+          gitlabUserId: scopes.includes('api') ? 1 : 2,
+          gitlabUsername: 'fixture',
+          sessionId: 'fixture',
+          gitlabScopes: scopes,
+          apiUrl: url,
+        },
+        work,
+      ),
+    );
+  }
+
+  it.each([
+    ['claude-code', 'mcp-inspector'],
+    ['mcp-inspector', 'claude-code'],
+  ])(
+    'keeps schemas, versions and account grants isolated when %s initializes first',
+    async (first, second) => {
+      // Real SDK clients initialize in both orders against the production registry/handlers.
+      const a = await connect(first, '2024-11-05');
+      const b = await connect(second, '2025-11-25');
+      const byName = new Map([
+        [first, a],
+        [second, b],
+      ]);
+      const claude = byName.get('claude-code')!;
+      const inspector = byName.get('mcp-inspector')!;
+      const list = (client: Client, grants: string[], url = 'https://new.example.com') =>
+        asAccount(grants, url, () => client.listTools());
+      const [flat, union] = await Promise.all([
+        list(claude, ['read_api']),
+        list(inspector, ['api']),
+      ]);
+      expect(
+        flat.tools.find((tool) => tool.name === 'browse_projects')?.inputSchema.oneOf,
+      ).toBeUndefined();
+      expect(
+        union.tools.find((tool) => tool.name === 'browse_projects')?.inputSchema.oneOf,
+      ).toBeDefined();
+      expect(flat.tools.some((tool) => tool.name === 'manage_project')).toBe(false);
+      expect(union.tools.some((tool) => tool.name === 'manage_project')).toBe(true);
+      // Diagnostics must count the same account-specific catalog the client sees.
+      const stats = await asAccount(['read_api'], 'https://new.example.com', async () =>
+        RegistryManager.getInstance().getFilterStats(),
+      );
+      expect(stats.available).toBe(flat.tools.length);
+      expect(flat.tools.find((tool) => tool.name === 'manage_context')?.annotations).toEqual({
+        readOnlyHint: false,
+        destructiveHint: false,
+        openWorldHint: true,
+        idempotentHint: false,
+      });
+      const old = await list(inspector, ['api'], 'https://old.example.com');
+      expect(old.tools.some((tool) => tool.name === 'manage_vulnerability')).toBe(false);
+      expect(union.tools.some((tool) => tool.name === 'manage_vulnerability')).toBe(true);
+      // Refreshing another instance cannot replace this client's cached projection.
+      RegistryManager.getInstance().refreshCache('https://old.example.com');
+      expect(await list(claude, ['read_api'])).toEqual(flat);
+      const denied = await asAccount(['read_api'], 'https://new.example.com', () =>
+        claude.callTool({
+          name: 'manage_project',
+          arguments: { action: 'delete', project_id: 'test/fixture' },
+        }),
+      );
+      expect(denied.isError).toBe(true);
+      expect(denied.structuredContent).toHaveProperty('error');
+      const shown = CallToolResultSchema.parse(
+        await asAccount(['read_api'], 'https://new.example.com', () =>
+          claude.callTool({ name: 'manage_context', arguments: { action: 'show' } }),
+        ),
+      );
+      expect(shown.isError).toBeUndefined();
+      expect(shown.structuredContent?.action).toBe('show');
+      expect(shown.content).toEqual([
+        { type: 'text', text: JSON.stringify(shown.structuredContent?.data, null, 2) },
+      ]);
+      // SDK clients validate present structuredContent even on isError envelopes.
+      const invalid = await asAccount(['read_api'], 'https://new.example.com', () =>
+        claude.callTool({ name: 'manage_context', arguments: { action: 'invalid' } }),
+      );
+      expect(invalid.isError).toBe(true);
+      expect(invalid.structuredContent).toHaveProperty('error');
+    },
+  );
+
+  it('carries full descriptors and native empty output through SDK discovery and execution', async () => {
+    // Vendor UI/auth metadata and non-text content must survive every registry projection.
+    const envelope = {
+      content: [{ type: 'text' as const, text: 'No matches' }],
+      structuredContent: { items: [] },
+      _meta: { display: 'empty' },
+    };
+    const metadata = {
+      ui: { resourceUri: 'ui://gitlab/settings.html' },
+      securitySchemes: [{ type: 'oauth2', scopes: ['api'] }],
+    };
+    coreToolRegistry.set('browse_contract', {
+      name: 'browse_contract',
+      title: 'Fixture contract',
+      description: 'Contract fixture',
+      icons: [{ src: 'https://example.com/icon.svg', mimeType: 'image/svg+xml' }],
+      _meta: metadata,
+      annotations: {
+        readOnlyHint: true,
+        destructiveHint: false,
+        openWorldHint: true,
+        idempotentHint: true,
+      },
+      inputSchema: { type: 'object' },
+      outputSchema: {
+        type: 'object',
+        properties: { items: { type: 'array', items: { type: 'integer' } } },
+        required: ['items'],
+      },
+      resultFormat: 'mcp',
+      handler: async () => envelope,
+    });
+    RegistryManager.getInstance().refreshCache();
+    const client = await connect('codex', '2025-11-25');
+    const catalog = await client.listTools();
+    const tool = catalog.tools.find((item) => item.name === 'browse_contract');
+    expect(tool?.title).toBe('Fixture contract');
+    expect(tool?._meta).toEqual(metadata);
+    expect(tool?.icons).toEqual([
+      { src: 'https://example.com/icon.svg', mimeType: 'image/svg+xml' },
+    ]);
+    expect(tool).not.toHaveProperty('handler');
+    expect(tool).not.toHaveProperty('resultFormat');
+    expect(await client.callTool({ name: 'browse_contract' })).toEqual(envelope);
+  });
+});

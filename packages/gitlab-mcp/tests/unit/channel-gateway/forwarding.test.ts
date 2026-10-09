@@ -63,11 +63,17 @@ describe('forwardWithPolicy', () => {
 
   it('retries a read once after a sent-then-failed call', async () => {
     let n = 0;
+    let connected = true;
     const call = jest.fn(() => {
       n++;
+      connected = n !== 1;
       return n === 1 ? Promise.reject(new Error('link dropped')) : Promise.resolve('result');
     });
-    const out = await forwardWithPolicy(policy({ call }), 'browse_pipelines', {});
+    const out = await forwardWithPolicy(
+      policy({ call, isConnected: () => connected }),
+      'browse_pipelines',
+      {},
+    );
     expect(out).toBe('result');
     expect(call).toHaveBeenCalledTimes(2);
   });
@@ -93,9 +99,26 @@ describe('forwardWithPolicy', () => {
 
   it('gives up after a single read retry if it fails again', async () => {
     const call = jest.fn(() => Promise.reject(new Error('still down')));
-    await expect(forwardWithPolicy(policy({ call }), 'browse_pipelines', {})).rejects.toThrow(
-      'still down',
-    );
+    let connected = true;
+    call.mockImplementation(() => {
+      connected = false;
+      return Promise.reject(new Error('still down'));
+    });
+    await expect(
+      forwardWithPolicy(policy({ call, isConnected: () => connected }), 'browse_pipelines', {}),
+    ).rejects.toThrow('still down');
     expect(call).toHaveBeenCalledTimes(2); // initial + one retry, then give up
+  });
+
+  it('does not replay schema or protocol errors on a healthy link', async () => {
+    // A client output-schema rejection is not a reconnect: replaying repeats
+    // the same invalid result and consumes another upstream request.
+    const call = jest.fn(() => Promise.reject(new Error('Invalid structured output')));
+    const waitForConnection = jest.fn();
+    await expect(
+      forwardWithPolicy(policy({ call, waitForConnection }), 'browse_pipelines', {}),
+    ).rejects.toThrow('Invalid structured output');
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(waitForConnection).not.toHaveBeenCalled();
   });
 });

@@ -8,6 +8,8 @@ import * as z from 'zod';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { ManageContextSchema } from './schema';
 import { handleManageContext } from './handlers';
+import { ContextOutputSchema } from './output-schema';
+import { ToolSchema } from '@modelcontextprotocol/sdk/types.js';
 
 /**
  * Context tools registry - 1 CQRS tool with 8 actions
@@ -30,10 +32,21 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       description:
         'View and manage runtime session configuration. Actions: show (current host/preset/scope/mode), list_presets (available tool configurations), list_profiles (OAuth users), whoami (token introspection with live refresh - detects permission changes and updates available tools), switch_preset (change active preset), switch_profile (change OAuth user), set_scope (restrict to namespace), reset (restore initial state). Use whoami to diagnose access issues and verify token permissions.',
       inputSchema: z.toJSONSchema(ManageContextSchema),
+      outputSchema: ToolSchema.shape.outputSchema.parse({
+        ...z.toJSONSchema(ContextOutputSchema, { target: 'draft-7' }),
+        type: 'object',
+      }),
+      resultFormat: 'mcp',
       // No gate - context management is always available
       handler: async (args: unknown) => {
         const input = ManageContextSchema.parse(args);
-        return handleManageContext(input);
+        const data = await handleManageContext(input);
+        return {
+          // Retain the documented Claude text payload. Context responses are small;
+          // large entity/log results keep their existing single text representation.
+          content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+          structuredContent: { action: input.action, data },
+        };
       },
     },
   ],

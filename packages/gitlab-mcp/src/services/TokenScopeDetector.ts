@@ -304,7 +304,7 @@ export async function detectTokenScopes(baseUrl?: string): Promise<TokenScopeInf
 /**
  * Check if a tool is available given the detected token scopes
  */
-export function isToolAvailableForScopes(toolName: string, scopes: GitLabScope[]): boolean {
+export function isToolAvailableForScopes(toolName: string, scopes: readonly string[]): boolean {
   const requiredScopes = TOOL_SCOPE_REQUIREMENTS[toolName];
 
   // Tool not in scope map - allow it (might be a new tool without mapping)

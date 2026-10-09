@@ -201,6 +201,11 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
         gitlabAccessToken: newTokens.access_token,
         gitlabRefreshToken: newTokens.refresh_token,
         gitlabTokenExpiry: calculateTokenExpiry(newTokens.expires_in),
+        // RFC 6749 section 6: omitted scope retains the original grant.
+        // https://www.rfc-editor.org/rfc/rfc6749#section-6
+        ...(newTokens.scope !== undefined && {
+          gitlabScopes: newTokens.scope.split(/\s+/).filter(Boolean),
+        }),
       });
 
       // Get updated session

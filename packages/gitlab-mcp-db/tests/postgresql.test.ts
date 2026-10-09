@@ -241,6 +241,42 @@ describe('PostgreSQLStorageBackend', () => {
     expect(sessions[0].id).toBe(session.id);
   });
 
+  it.each([undefined, [], ['read_api'], ['api', 'read_user']])(
+    'persists upstream grants independently of MCP scopes: %j',
+    async (grants) => {
+      // Unknown grants stay unknown; an explicitly empty grant is never upgraded.
+      (backend as any).prisma = mockPrisma;
+      const session = { ...createSession(), gitlabScopes: grants };
+      await backend.createSession(session);
+      expect(mockPrisma.oAuthSession.create.mock.calls[0][0].data.gitlabScopes).toEqual(grants);
+      mockPrisma.oAuthSession.findUnique.mockResolvedValueOnce({
+        ...session,
+        gitlabScopes: grants === undefined ? null : grants,
+        mcpTokenExpiry: BigInt(session.mcpTokenExpiry),
+        gitlabTokenExpiry: BigInt(session.gitlabTokenExpiry),
+        createdAt: BigInt(session.createdAt),
+        updatedAt: BigInt(session.updatedAt),
+      });
+      const restored = await backend.getSession(session.id);
+      expect(restored?.gitlabScopes).toEqual(grants);
+      expect(restored?.scopes).toEqual(session.scopes);
+      await backend.updateSession(session.id, { gitlabScopes: grants });
+      const update = mockPrisma.oAuthSession.update.mock.calls[0][0].data;
+      if (grants === undefined) expect(update).not.toHaveProperty('gitlabScopes');
+      else expect(update.gitlabScopes).toEqual(grants);
+    },
+  );
+
+  it('rejects malformed stored grants instead of granting access', async () => {
+    // Corrupt durable permissions must not become the unknown/fail-open state.
+    (backend as any).prisma = mockPrisma;
+    mockPrisma.oAuthSession.findUnique.mockResolvedValueOnce({
+      ...createSession(),
+      gitlabScopes: ['api', 1],
+    });
+    await expect(backend.getSession('session-1')).rejects.toThrow('Invalid stored GitLab scopes');
+  });
+
   it('handles device flow operations', async () => {
     (backend as any).prisma = mockPrisma;
 

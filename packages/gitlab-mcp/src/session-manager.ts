@@ -2,7 +2,6 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { Transport } from '@modelcontextprotocol/sdk/shared/transport.js';
 import { packageName, packageVersion, GITLAB_BASE_URL } from './config';
 import { setupHandlers } from './handlers';
-import { setDetectedSchemaMode } from './utils/schema-utils';
 import { logInfo, logWarn, logError, logDebug } from './logger';
 import { normalizeInstanceUrl } from './utils/url';
 
@@ -32,7 +31,6 @@ export class SessionManager {
   private sessions = new Map<string, ManagedSession>();
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
   private readonly sessionTimeoutMs: number;
-  private schemaModeDetected = false;
 
   constructor(sessionTimeoutMs?: number) {
     this.sessionTimeoutMs = sessionTimeoutMs ?? DEFAULT_SESSION_TIMEOUT_MS;
@@ -77,16 +75,6 @@ export class SessionManager {
       { name: packageName, version: packageVersion },
       { capabilities: { tools: { listChanged: true } } },
     );
-
-    // Auto-detect schema mode from the first client to initialize.
-    // Only the first session sets the mode to avoid race conditions.
-    server.oninitialized = () => {
-      if (!this.schemaModeDetected) {
-        this.schemaModeDetected = true;
-        const clientVersion = server.getClientVersion();
-        setDetectedSchemaMode(clientVersion?.name);
-      }
-    };
 
     // Register request handlers (idempotent — same logic for every session)
     await setupHandlers(server);

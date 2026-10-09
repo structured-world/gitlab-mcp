@@ -439,6 +439,7 @@ describe('OAuth Authorization Endpoint', () => {
       mockPollDeviceFlowOnce.mockResolvedValue({
         access_token: 'gitlab-access-token',
         refresh_token: 'gitlab-refresh-token',
+        scope: 'read_api',
         token_type: 'Bearer',
         expires_in: 7200,
         created_at: Date.now(),
@@ -458,7 +459,10 @@ describe('OAuth Authorization Endpoint', () => {
 
       expect(mockGetGitLabUser).toHaveBeenCalledWith('gitlab-access-token');
       expect(mockSessionStore.storeAuthCode).toHaveBeenCalled();
-      expect(mockSessionStore.createSession).toHaveBeenCalled();
+      // Persist the grant GitLab returned, not the scopes requested by the MCP client.
+      expect(mockSessionStore.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({ gitlabScopes: ['read_api'] }),
+      );
       expect(mockSessionStore.deleteDeviceFlow).toHaveBeenCalledWith('success-flow');
 
       expect(res.json).toHaveBeenCalledWith({

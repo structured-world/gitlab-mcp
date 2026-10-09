@@ -298,6 +298,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
         gitlabAccessToken: tokenResponse.access_token,
         gitlabRefreshToken: tokenResponse.refresh_token,
         gitlabTokenExpiry: calculateTokenExpiry(tokenResponse.expires_in),
+        gitlabScopes: tokenResponse.scope?.split(/\s+/).filter(Boolean),
         gitlabUserId: userInfo.id,
         gitlabUsername: userInfo.username,
         gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,

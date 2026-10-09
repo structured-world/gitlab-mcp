@@ -261,6 +261,7 @@ describe('OAuth Callback Handler', () => {
       mockExchangeGitLabAuthCode.mockResolvedValue({
         access_token: 'gitlab-access-token',
         refresh_token: 'gitlab-refresh-token',
+        scope: 'read_api read_user',
         expires_in: 7200,
         token_type: 'Bearer',
         created_at: 1234567890,
@@ -313,6 +314,8 @@ describe('OAuth Callback Handler', () => {
           id: 'session-id-123',
           gitlabAccessToken: 'gitlab-access-token',
           gitlabRefreshToken: 'gitlab-refresh-token',
+          // Upstream grants are independent of the MCP client's requested scopes.
+          gitlabScopes: ['read_api', 'read_user'],
           gitlabUserId: 12345,
           gitlabUsername: 'testuser',
           clientId: mockAuthCodeFlow.clientId,

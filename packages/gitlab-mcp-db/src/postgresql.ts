@@ -33,6 +33,7 @@ interface PrismaOAuthSessionRow {
   gitlabAccessToken: string;
   gitlabRefreshToken: string;
   gitlabTokenExpiry: bigint;
+  gitlabScopes?: unknown;
   gitlabUserId: number;
   gitlabUsername: string;
   gitlabApiUrl: string | null;
@@ -189,6 +190,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         gitlabAccessToken: session.gitlabAccessToken,
         gitlabRefreshToken: session.gitlabRefreshToken,
         gitlabTokenExpiry: BigInt(session.gitlabTokenExpiry),
+        gitlabScopes: session.gitlabScopes,
         gitlabUserId: session.gitlabUserId,
         gitlabUsername: session.gitlabUsername,
         gitlabApiUrl: session.gitlabApiUrl,
@@ -251,6 +253,9 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     if (updates.gitlabTokenExpiry !== undefined) {
       data.gitlabTokenExpiry = BigInt(updates.gitlabTokenExpiry);
     }
+    if (updates.gitlabScopes !== undefined) {
+      data.gitlabScopes = updates.gitlabScopes;
+    }
 
     try {
       await prisma.oAuthSession.update({
@@ -282,6 +287,13 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   }
 
   private rowToSession(row: PrismaOAuthSessionRow): OAuthSession {
+    const grants = row.gitlabScopes;
+    if (
+      grants != null &&
+      (!Array.isArray(grants) || !grants.every((scope) => typeof scope === 'string'))
+    ) {
+      throw new Error('Invalid stored GitLab scopes');
+    }
     return {
       id: row.id,
       mcpAccessToken: row.mcpAccessToken,
@@ -290,6 +302,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       gitlabAccessToken: row.gitlabAccessToken,
       gitlabRefreshToken: row.gitlabRefreshToken,
       gitlabTokenExpiry: Number(row.gitlabTokenExpiry),
+      gitlabScopes: grants == null ? undefined : (grants as string[]),
       gitlabUserId: row.gitlabUserId,
       gitlabUsername: row.gitlabUsername,
       gitlabApiUrl: row.gitlabApiUrl ?? undefined,

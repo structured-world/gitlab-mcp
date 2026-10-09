@@ -69,11 +69,33 @@ import { escapeHtml } from '../../utils/html';
  * - state: CSRF protection token
  * - scope: Requested scopes
  */
+const SINGLE_VALUED_PARAMS = [
+  'response_type',
+  'client_id',
+  'redirect_uri',
+  'state',
+  'code_challenge',
+  'code_challenge_method',
+  'scope',
+  'instance',
+] as const;
+
 export async function authorizeHandler(req: Request, res: Response): Promise<void> {
   const config = loadOAuthConfig();
   if (!config) {
     sendError(req, res, 500, 'server_error', 'OAuth not configured');
     return;
+  }
+
+  // RFC 6749 section 3.1: parameters must not repeat. Reported without a redirect, since a
+  // repeated redirect_uri has no single target. `resource` may repeat (RFC 8707 section
+  // 2) and is checked below.
+  for (const name of SINGLE_VALUED_PARAMS) {
+    const value = req.query[name];
+    if (value !== undefined && typeof value !== 'string') {
+      sendError(req, res, 400, 'invalid_request', `${name} must not be repeated`);
+      return;
+    }
   }
 
   // Extract query parameters
@@ -85,6 +107,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     code_challenge,
     code_challenge_method,
     scope,
+    instance: requestedInstance,
   } = req.query as Record<string, string | undefined>;
 
   // Validate required parameters
@@ -165,7 +188,6 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
   // The GitLab instance comes only from the operator's configuration: a requested URL
   // selects one of the configured instances or the request fails.
   const apps = await selectableOAuthApps(config);
-  const requestedInstance = req.query.instance;
   let app: GitLabOAuthApp | undefined;
   if (requestedInstance === undefined) {
     if (apps.length > 1) {
@@ -174,7 +196,7 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
       return;
     }
     app = apps[0];
-  } else if (typeof requestedInstance === 'string') {
+  } else {
     const wanted = normalizeInstanceUrl(requestedInstance);
     app = apps.find((candidate) => candidate.baseUrl === wanted);
   }

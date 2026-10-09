@@ -1084,4 +1084,101 @@ describe('OAuth Authorization Endpoint', () => {
       );
     });
   });
+
+  // Storage outages and malformed parameters end in an error response, never in a
+  // redirect to an unchecked target or a crash.
+  describe('failure and malformed input paths', () => {
+    const codeRequest = (extra: Record<string, unknown> = {}): Request =>
+      ({
+        ...createMockRequest(),
+        query: {
+          response_type: 'code',
+          client_id: 'test-client',
+          code_challenge: 'challenge',
+          code_challenge_method: 'S256',
+          redirect_uri: 'https://callback.example.com',
+          state: 'client-state',
+          ...extra,
+        },
+      }) as unknown as Request;
+
+    it('answers 500 when the client registration cannot be read', async () => {
+      mockGetRegisteredClient.mockRejectedValueOnce(new Error('database down'));
+      const res = createMockResponse() as Response;
+
+      await authorizeHandler(codeRequest(), res);
+
+      expect(res.status).toHaveBeenCalledWith(500);
+      expect(res.redirect).not.toHaveBeenCalled();
+    });
+
+    it('rejects a resource given more than once', async () => {
+      const res = createMockResponse() as Response;
+
+      await authorizeHandler(
+        codeRequest({ resource: ['https://gitlab-mcp.example.com', 'https://other.example'] }),
+        res,
+      );
+
+      const location = new URL((res.redirect as jest.Mock).mock.calls[0][0] as string);
+      expect(location.searchParams.get('error')).toBe('invalid_target');
+    });
+
+    // RFC 6749 section 3.1: parameters must not repeat. A repeated scope crashed the
+    // handler; a repeated redirect_uri must not be redirected to either.
+    it.each(['scope', 'redirect_uri', 'state', 'client_id', 'instance'])(
+      'rejects a repeated %s with invalid_request',
+      async (name) => {
+        const res = createMockResponse() as Response;
+
+        await authorizeHandler(codeRequest({ [name]: ['a', 'b'] }), res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'invalid_request',
+          error_description: `${name} must not be repeated`,
+        });
+        expect(res.redirect).not.toHaveBeenCalled();
+      },
+    );
+
+    it('sends the client back with temporarily_unavailable when the flow cannot be stored', async () => {
+      mockSessionStore.storeAuthCodeFlow.mockRejectedValueOnce(new Error('database down'));
+      const res = createMockResponse() as Response;
+
+      await authorizeHandler(codeRequest(), res);
+
+      const location = new URL((res.redirect as jest.Mock).mock.calls[0][0] as string);
+      expect(location.origin + location.pathname).toBe('https://callback.example.com/');
+      expect(location.searchParams.get('error')).toBe('temporarily_unavailable');
+      expect(location.searchParams.get('state')).toBe('client-state');
+      expect(location.searchParams.get('iss')).toBe(mockConfig.issuer);
+    });
+
+    it('keeps the device page polling when the flow cannot be read', async () => {
+      mockSessionStore.getDeviceFlow.mockRejectedValueOnce(new Error('database down'));
+      const res = createMockResponse() as Response;
+
+      await pollHandler(
+        { ...createMockRequest(), query: { flow_state: 'flow' } } as unknown as Request,
+        res,
+      );
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith({ status: 'pending' });
+    });
+
+    it('drops repeated query values from the instance chooser links', async () => {
+      mockSelectableOAuthApps.mockResolvedValueOnce([defaultApp, otherApp]);
+      const res = createMockResponse() as Response;
+      const req = codeRequest({ ui_locales: ['en', 'de'] });
+      delete (req.query as Record<string, unknown>).redirect_uri;
+
+      await authorizeHandler(req, res);
+
+      const html = (res.send as jest.Mock).mock.calls[0][0] as string;
+      expect(html).toContain('instance=');
+      expect(html).not.toContain('ui_locales=');
+    });
+  });
 });

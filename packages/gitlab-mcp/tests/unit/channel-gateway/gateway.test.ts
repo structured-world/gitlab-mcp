@@ -135,6 +135,33 @@ describe('ChannelGateway', () => {
     expect(result).toEqual(payload);
   });
 
+  it('preserves native authorization errors without watching or replaying them', async () => {
+    // A challenge may contain CI-shaped data; it must remain an error and cause no I/O.
+    const challenge = {
+      content: [{ type: 'text', text: 'Connect your account' }],
+      structuredContent: { id: 7, status: 'running' },
+      isError: true,
+      _meta: {
+        'mcp/www_authenticate': [
+          'Bearer resource_metadata="https://example.com/.well-known/oauth-protected-resource"',
+        ],
+        ui: { resourceUri: 'ui://gitlab/settings.html' },
+      },
+    };
+    mockClientCallTool.mockResolvedValue(challenge);
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    try {
+      expect(await callTool('manage_pipeline', { action: 'create', project_id: 'test/p' })).toBe(
+        challenge,
+      );
+      expect(mockClientCallTool).toHaveBeenCalledTimes(1);
+      expect(mockServerNotification).not.toHaveBeenCalled();
+    } finally {
+      await gw.stop();
+    }
+  });
+
   it('arms a watch on a non-final pipeline and pushes a channel event on terminal', async () => {
     const jobsSeq = [
       [{ id: 1, name: 'build', stage: 'build', status: 'running' }],

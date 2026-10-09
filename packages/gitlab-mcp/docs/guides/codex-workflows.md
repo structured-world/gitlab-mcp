@@ -108,7 +108,7 @@ GitLab versions and account grants. Live integration uses the repository's exist
 
 Validated on October 9, 2026 with MCP TypeScript SDK 1.32.1:
 
-- Monorepo build and lint, documentation build, 5,393 core unit tests and 14
+- Monorepo build and lint, documentation build, 5,395 core unit tests and 14
   database adapter unit tests passed.
 - Codex CLI 0.162.0-alpha.2 passed all nine installed-skill scenarios against the
   loopback fixture, including one actual denied mutation with no replay.
@@ -118,9 +118,12 @@ Validated on October 9, 2026 with MCP TypeScript SDK 1.32.1:
 - The live GitLab suite could not complete: the configured test endpoint timed
   out at TCP connection, and setup exceeded its 30-second limit. This does not
   qualify live GitLab behavior.
-- The optional PostgreSQL backend could not initialize with Prisma 7 because its
-  constructor lacks the required driver adapter. Its grant serialization tests
-  use a mocked database client; they do not qualify durable runtime storage.
+- Both released MCPB variants use memory storage by default, including when only
+  a PostgreSQL URL is set. The core bundle does not include Prisma. Selecting
+  PostgreSQL storage in the database bundle (also reproduced in its released
+  Docker image) fails before connection because the Prisma 7 constructor lacks
+  the required driver adapter. Grant serialization tests use a mocked database
+  client; they do not qualify durable runtime storage.
 
 Desktop plugin installation, native UI rendering and a new account-linking flow
 are separate deliverables and have not been qualified by these checks.

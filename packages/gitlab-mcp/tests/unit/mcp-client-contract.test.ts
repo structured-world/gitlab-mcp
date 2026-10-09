@@ -216,4 +216,49 @@ describe('simultaneous MCP client contracts', () => {
     expect(tool).not.toHaveProperty('resultFormat');
     expect(await client.callTool({ name: 'browse_contract' })).toEqual(envelope);
   });
+
+  it('delivers non-text content and authorization challenges through the SDK unchanged', async () => {
+    // Exercise production dispatch, serialization and SDK validation rather than a result mock.
+    const success = {
+      content: [
+        { type: 'image' as const, data: 'aW1hZ2U=', mimeType: 'image/png' },
+        {
+          type: 'resource_link' as const,
+          uri: 'https://example.com/report',
+          name: 'report',
+          mimeType: 'text/plain',
+        },
+      ],
+      structuredContent: { items: [] },
+      _meta: { ui: { resourceUri: 'ui://gitlab/settings.html' } },
+    };
+    const challenge = {
+      content: [{ type: 'text' as const, text: 'Connect your account' }],
+      isError: true,
+      _meta: {
+        'mcp/www_authenticate': [
+          'Bearer resource_metadata="https://example.com/.well-known/oauth-protected-resource"',
+        ],
+      },
+    };
+    const handler = jest.fn().mockResolvedValueOnce(success).mockResolvedValueOnce(challenge);
+    coreToolRegistry.set('browse_contract', {
+      name: 'browse_contract',
+      description: 'Native content fixture',
+      inputSchema: { type: 'object' },
+      outputSchema: {
+        type: 'object',
+        properties: { items: { type: 'array', items: { type: 'integer' } } },
+        required: ['items'],
+      },
+      resultFormat: 'mcp',
+      handler,
+    });
+    RegistryManager.getInstance().refreshCache();
+    const client = await connect('codex', '2025-11-25');
+    await client.listTools();
+    expect(await client.callTool({ name: 'browse_contract' })).toEqual(success);
+    expect(await client.callTool({ name: 'browse_contract' })).toEqual(challenge);
+    expect(handler).toHaveBeenCalledTimes(2);
+  });
 });

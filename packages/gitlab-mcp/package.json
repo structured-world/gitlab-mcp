@@ -561,7 +561,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
-    "@modelcontextprotocol/sdk": "^1.32.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "express": "^5.2.1",
     "graphql": "^17.0.2",
     "graphql-tag": "^2.12.7",

@@ -628,9 +628,10 @@ describe('PostgreSQLStorageBackend', () => {
       mockPrisma.oAuthSession.updateMany.mockResolvedValueOnce({ count: 0 });
       expect(await backend.claimGitLabRefresh('session-1', 'gl-refresh', 10000, 40000)).toBe(false);
 
-      await backend.releaseGitLabRefresh('session-1');
+      // Only the caller's own lease ends: a newer holder's lease has a later leaseUntil.
+      await backend.releaseGitLabRefresh('session-1', 40000);
       expect(mockPrisma.oAuthSession.updateMany).toHaveBeenLastCalledWith({
-        where: { id: 'session-1' },
+        where: { id: 'session-1', gitlabRefreshLeaseUntil: BigInt(40000) },
         data: { gitlabRefreshLeaseUntil: null },
       });
     });

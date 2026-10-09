@@ -248,8 +248,10 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return true;
   }
 
-  async releaseGitLabRefresh(sessionId: string): Promise<void> {
-    this.gitlabRefreshLeases.delete(sessionId);
+  async releaseGitLabRefresh(sessionId: string, leaseUntil: number): Promise<void> {
+    if (this.gitlabRefreshLeases.get(sessionId) === leaseUntil) {
+      this.gitlabRefreshLeases.delete(sessionId);
+    }
   }
 
   async rotateSession(

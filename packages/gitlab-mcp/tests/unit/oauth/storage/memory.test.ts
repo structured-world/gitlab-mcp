@@ -320,8 +320,21 @@ describe('MemoryStorageBackend', () => {
       expect(await storage.claimGitLabRefresh(session.id, 'grt', 2000, 32000)).toBe(false);
       expect(await storage.claimGitLabRefresh(session.id, 'grt', 31000, 61000)).toBe(true);
 
-      await storage.releaseGitLabRefresh(session.id);
+      await storage.releaseGitLabRefresh(session.id, 61000);
       expect(await storage.claimGitLabRefresh(session.id, 'grt', 31001, 61001)).toBe(true);
+    });
+
+    // A holder whose lease expired and was claimed again must not end the new holder's
+    // lease: a third caller would then spend the same single-use token.
+    it('ends only the lease the caller holds', async () => {
+      const session = createTestSession({ gitlabRefreshToken: 'grt' });
+      await storage.createSession(session);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 1000, 31000)).toBe(true);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 31000, 61000)).toBe(true);
+
+      await storage.releaseGitLabRefresh(session.id, 31000);
+
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 40000, 70000)).toBe(false);
     });
 
     it('refuses a token the session no longer holds and a missing session', async () => {

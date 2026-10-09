@@ -682,10 +682,11 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     return claimed.count === 1;
   }
 
-  async releaseGitLabRefresh(sessionId: string): Promise<void> {
+  async releaseGitLabRefresh(sessionId: string, leaseUntil: number): Promise<void> {
     const prisma = this.getPrisma();
+    // Compare-and-clear: a lease claimed later by another replica ends later and is kept.
     await prisma.oAuthSession.updateMany({
-      where: { id: sessionId },
+      where: { id: sessionId, gitlabRefreshLeaseUntil: BigInt(leaseUntil) },
       data: { gitlabRefreshLeaseUntil: null },
     });
   }

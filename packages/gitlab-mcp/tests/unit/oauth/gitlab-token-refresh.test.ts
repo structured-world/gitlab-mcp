@@ -8,7 +8,12 @@ import {
   GitLabGrantRevokedError,
 } from '../../../src/oauth/gitlab-token-refresh';
 import { sessionStore } from '../../../src/oauth/session-store';
-import { refreshGitLabToken, GitLabOAuthHttpError } from '../../../src/oauth/gitlab-device-flow';
+import {
+  refreshGitLabToken,
+  revokeGitLabToken,
+  GitLabOAuthHttpError,
+} from '../../../src/oauth/gitlab-device-flow';
+import { BODY_TIMEOUT_MS, CONNECT_TIMEOUT_MS, HEADERS_TIMEOUT_MS } from '../../../src/config';
 import { oauthAppFor } from '../../../src/oauth/instance-app';
 import type { OAuthConfig } from '../../../src/oauth/config';
 import type { OAuthSession } from '../../../src/oauth/types';
@@ -23,6 +28,7 @@ jest.mock('../../../src/oauth/session-store', () => ({
 }));
 jest.mock('../../../src/oauth/gitlab-device-flow', () => ({
   refreshGitLabToken: jest.fn(),
+  revokeGitLabToken: jest.fn(),
   GitLabOAuthHttpError: jest.requireActual('../../../src/oauth/gitlab-device-flow')
     .GitLabOAuthHttpError,
 }));
@@ -36,6 +42,7 @@ jest.mock('../../../src/logger', () => ({
 const mockStore = sessionStore as jest.Mocked<typeof sessionStore>;
 const mockRefresh = refreshGitLabToken as jest.MockedFunction<typeof refreshGitLabToken>;
 const mockAppFor = oauthAppFor as jest.MockedFunction<typeof oauthAppFor>;
+const mockRevoke = revokeGitLabToken as jest.MockedFunction<typeof revokeGitLabToken>;
 
 const config = { gitlabClientId: 'app', gitlabScopes: 'api' } as OAuthConfig;
 const app = { baseUrl: 'https://gitlab.example.com', clientId: 'app', scopes: 'api' };
@@ -121,7 +128,7 @@ describe('withFreshGitLabToken', () => {
       const settled = expect(result).rejects.toThrow(
         'GitLab token refresh on another replica did not finish',
       );
-      await jest.advanceTimersByTimeAsync(31_000);
+      await jest.advanceTimersByTimeAsync(300_000);
       await settled;
       await expect(result).rejects.not.toBeInstanceOf(GitLabGrantRevokedError);
       expect(mockRefresh).not.toHaveBeenCalled();
@@ -143,7 +150,32 @@ describe('withFreshGitLabToken', () => {
     );
     const [, , now, leaseUntil] = mockStore.claimGitLabRefresh.mock.calls[0];
     expect(leaseUntil).toBeGreaterThan(now);
-    expect(mockStore.releaseGitLabRefresh).toHaveBeenCalledWith('session-1');
+    // Only this caller's lease is ended, named by the leaseUntil it claimed.
+    expect(mockStore.releaseGitLabRefresh).toHaveBeenCalledWith('session-1', leaseUntil);
+  });
+
+  // The lease must outlast the GitLab call: another replica may claim an expired lease
+  // and spend the same single-use token while this call is still in flight.
+  it('holds the lease longer than a GitLab call can take', async () => {
+    mockRefresh.mockResolvedValue(tokens);
+
+    await withFreshGitLabToken(expiring, config);
+
+    const [, , now, leaseUntil] = mockStore.claimGitLabRefresh.mock.calls[0];
+    expect(leaseUntil - now).toBeGreaterThan(
+      2 * CONNECT_TIMEOUT_MS + HEADERS_TIMEOUT_MS + BODY_TIMEOUT_MS,
+    );
+  });
+
+  // The account was disconnected while GitLab issued new tokens: they are stored nowhere,
+  // so they are revoked at GitLab instead of staying valid.
+  it('revokes fresh GitLab tokens when the session was removed meanwhile', async () => {
+    mockRefresh.mockResolvedValue(tokens);
+    mockStore.updateSession.mockResolvedValue(false);
+    mockStore.getSession.mockResolvedValue(undefined);
+
+    expect(await withFreshGitLabToken(expiring, config)).toBeUndefined();
+    expect(mockRevoke).toHaveBeenCalledWith('gl-new', config, app);
   });
 
   // GitLab already spent the old refresh token: if the new tokens are not stored, the
@@ -180,11 +212,11 @@ describe('withFreshGitLabToken', () => {
 
       const result = withFreshGitLabToken(expiring, config);
       const settled = expect(result).rejects.toThrow('database down');
-      await jest.advanceTimersByTimeAsync(31_000);
+      await jest.advanceTimersByTimeAsync(300_000);
       await settled;
       await expect(result).rejects.not.toBeInstanceOf(GitLabGrantRevokedError);
       expect(mockStore.updateSession.mock.calls.length).toBeGreaterThan(1);
-      expect(mockStore.releaseGitLabRefresh).toHaveBeenCalledWith('session-1');
+      expect(mockStore.releaseGitLabRefresh).toHaveBeenCalledWith('session-1', expect.any(Number));
     } finally {
       jest.useRealTimers();
     }

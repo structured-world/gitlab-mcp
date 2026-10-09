@@ -367,7 +367,7 @@ describe('FileStorageBackend', () => {
 
       expect(await storage.claimGitLabRefresh(session.id, 'grt', 1, 30001)).toBe(true);
       expect(await storage.claimGitLabRefresh(session.id, 'grt', 2, 30002)).toBe(false);
-      await storage.releaseGitLabRefresh(session.id);
+      await storage.releaseGitLabRefresh(session.id, 30001);
       expect(await storage.claimGitLabRefresh(session.id, 'grt', 3, 30003)).toBe(true);
     });
   });

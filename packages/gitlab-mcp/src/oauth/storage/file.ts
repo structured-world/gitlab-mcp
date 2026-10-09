@@ -440,8 +440,8 @@ export class FileStorageBackend implements SessionStorageBackend {
     return this.memory.claimGitLabRefresh(sessionId, expectedRefreshToken, now, leaseUntil);
   }
 
-  async releaseGitLabRefresh(sessionId: string): Promise<void> {
-    await this.memory.releaseGitLabRefresh(sessionId);
+  async releaseGitLabRefresh(sessionId: string, leaseUntil: number): Promise<void> {
+    await this.memory.releaseGitLabRefresh(sessionId, leaseUntil);
   }
 
   async rotateSession(

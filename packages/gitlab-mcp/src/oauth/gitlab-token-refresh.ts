@@ -10,14 +10,23 @@
 
 import type { OAuthConfig } from './config';
 import { sessionStore } from './session-store';
-import { refreshGitLabToken, GitLabOAuthHttpError } from './gitlab-device-flow';
+import { refreshGitLabToken, revokeGitLabToken, GitLabOAuthHttpError } from './gitlab-device-flow';
 import { oauthAppFor } from './instance-app';
+import type { GitLabOAuthApp } from './oauth-app';
 import { calculateTokenExpiry, isTokenExpiringSoon } from './token-utils';
 import type { OAuthSession } from './types';
+import { BODY_TIMEOUT_MS, CONNECT_TIMEOUT_MS, HEADERS_TIMEOUT_MS } from '../config';
 import { logDebug, logWarn, truncateId } from '../logger';
 
-/** How long a replica may hold the refresh token while it calls GitLab. */
-const REFRESH_LEASE_MS = 30_000;
+/** Time left after the GitLab call for storing the new tokens (with retries). */
+const STORE_BUDGET_MS = 15_000;
+/**
+ * How long a replica holds the refresh token. It outlasts the longest GitLab call the
+ * request timeouts allow (two connects through a proxy, headers, body), so no other
+ * replica can claim the token while this one may still be spending it.
+ */
+const REFRESH_LEASE_MS =
+  2 * CONNECT_TIMEOUT_MS + HEADERS_TIMEOUT_MS + BODY_TIMEOUT_MS + STORE_BUDGET_MS;
 /** How often a replica waiting for another replica's refresh re-reads the session. */
 const LEASE_POLL_MS = 200;
 /** First delay before retrying a failed write of refreshed tokens; doubles each time. */
@@ -42,31 +51,45 @@ function isGrantRejection(error: unknown): boolean {
 // Coalesces concurrent refreshes in this process; the backend stays the source of truth.
 const inflight = new Map<string, Promise<OAuthSession | undefined>>();
 
-function releaseLease(sessionId: string): Promise<void> {
+function releaseLease(sessionId: string, leaseUntil: number): Promise<void> {
   // A lease that cannot be released expires on its own.
-  return sessionStore.releaseGitLabRefresh(sessionId).catch((error: unknown) => {
+  return sessionStore.releaseGitLabRefresh(sessionId, leaseUntil).catch((error: unknown) => {
     logWarn('Failed to release GitLab refresh lease', { err: error as Error });
   });
 }
 
 /**
- * Store tokens GitLab just issued. GitLab has already spent the old refresh token, so
- * losing them disconnects the account: a failed write is retried while this replica still
- * holds the lease (no other replica can spend the old token meanwhile), with backoff.
+ * Store tokens GitLab just issued; false when the session no longer exists. GitLab has
+ * already spent the old refresh token, so losing them disconnects the account: a failed
+ * write is retried while this replica still holds the lease (no other replica can spend
+ * the old token meanwhile), with backoff.
  */
 async function storeRefreshedTokens(
   sessionId: string,
   updates: Partial<OAuthSession>,
   leaseUntil: number,
   delay = STORE_RETRY_MS,
-): Promise<void> {
+): Promise<boolean> {
   try {
-    await sessionStore.updateSession(sessionId, updates);
+    return await sessionStore.updateSession(sessionId, updates);
   } catch (error) {
     if (Date.now() + delay >= leaseUntil) throw error;
     logWarn('Storing refreshed GitLab tokens failed, retrying', { err: error as Error });
     await sleep(delay);
-    await storeRefreshedTokens(sessionId, updates, leaseUntil, delay * 2);
+    return storeRefreshedTokens(sessionId, updates, leaseUntil, delay * 2);
+  }
+}
+
+/** Revoke tokens issued for a session that was removed meanwhile; best effort. */
+async function revokeOrphanedTokens(
+  accessToken: string,
+  config: OAuthConfig,
+  app: GitLabOAuthApp,
+): Promise<void> {
+  try {
+    await revokeGitLabToken(accessToken, config, app);
+  } catch (error: unknown) {
+    logWarn('Failed to revoke GitLab tokens of a removed session', { err: error as Error });
   }
 }
 
@@ -82,15 +105,16 @@ async function refreshHoldingLease(
   leaseUntil: number,
 ): Promise<OAuthSession | undefined> {
   let tokens;
+  let app: GitLabOAuthApp | undefined;
   try {
     // Refresh with the application of the session's instance, never another one.
-    const app = await oauthAppFor(config, session.gitlabApiUrl);
+    app = await oauthAppFor(config, session.gitlabApiUrl);
     if (!app) {
       throw new GitLabGrantRevokedError('GitLab instance is no longer configured');
     }
     tokens = await refreshGitLabToken(spentToken, config, app);
   } catch (error) {
-    await releaseLease(session.id);
+    await releaseLease(session.id, leaseUntil);
     // A server that predates the lease may have spent the token and stored the result.
     const current = await sessionStore.getSession(session.id);
     if (
@@ -116,9 +140,13 @@ async function refreshHoldingLease(
     }),
   };
   try {
-    await storeRefreshedTokens(session.id, updates, leaseUntil);
+    if (!(await storeRefreshedTokens(session.id, updates, leaseUntil))) {
+      // Disconnected while GitLab issued them: nothing holds these tokens any more.
+      await revokeOrphanedTokens(tokens.access_token, config, app);
+      return undefined;
+    }
   } finally {
-    await releaseLease(session.id);
+    await releaseLease(session.id, leaseUntil);
   }
   logDebug('GitLab token refreshed', { sessionId: truncateId(session.id) });
   return sessionStore.getSession(session.id);

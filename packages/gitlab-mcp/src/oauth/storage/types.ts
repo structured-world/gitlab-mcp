@@ -91,8 +91,12 @@ export interface SessionStorageBackend {
     leaseUntil: number,
   ): Promise<boolean>;
 
-  /** End the session's GitLab refresh lease (after the refresh finished or failed). */
-  releaseGitLabRefresh(sessionId: string): Promise<void>;
+  /**
+   * End the caller's GitLab refresh lease (after the refresh finished or failed), named by
+   * the `leaseUntil` it claimed. A lease claimed later by another caller is kept: a lease
+   * can only be claimed again after it expired, so a newer one always ends later.
+   */
+  releaseGitLabRefresh(sessionId: string, leaseUntil: number): Promise<void>;
 
   /**
    * Apply `updates` only while the session still holds `expectedRefreshToken`

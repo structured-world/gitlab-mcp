@@ -126,9 +126,9 @@ export class SessionStore {
     return this.backend.claimGitLabRefresh(sessionId, expectedRefreshToken, now, leaseUntil);
   }
 
-  /** End the session's GitLab refresh lease. */
-  async releaseGitLabRefresh(sessionId: string): Promise<void> {
-    await this.backend.releaseGitLabRefresh(sessionId);
+  /** End the caller's GitLab refresh lease, named by the `leaseUntil` it claimed. */
+  async releaseGitLabRefresh(sessionId: string, leaseUntil: number): Promise<void> {
+    await this.backend.releaseGitLabRefresh(sessionId, leaseUntil);
   }
 
   /**

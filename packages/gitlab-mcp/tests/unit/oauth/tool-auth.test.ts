@@ -8,6 +8,7 @@ import { runWithTokenContext } from '../../../src/oauth/token-context';
 import {
   OAUTH_SECURITY_SCHEMES,
   isGitLabAuthFailure,
+  isGitLabInsufficientScope,
   withReauthChallenge,
 } from '../../../src/oauth/tool-auth';
 import { StructuredToolError } from '../../../src/utils/error-handler';
@@ -65,6 +66,21 @@ describe('tool authorization contract', () => {
     });
   });
 
+  describe('isGitLabInsufficientScope', () => {
+    it.each([
+      [
+        'a 403 naming insufficient_scope',
+        new Error('GitLab API error: 403 Forbidden - {"error":"insufficient_scope"}'),
+        true,
+      ],
+      // A plain 403 is a project permission, which a reconnect cannot fix.
+      ['a plain 403', new Error('GitLab API error: 403 Forbidden - 403 Forbidden'), false],
+      ['a 401', unauthorized, false],
+    ])('classifies %s as %s', (_case, error, expected) => {
+      expect(isGitLabInsufficientScope(error)).toBe(expected);
+    });
+  });
+
   describe('withReauthChallenge', () => {
     it('adds an RFC 6750 challenge with error and error_description for a 401', () => {
       const result = withReauthChallenge(errorResult, unauthorized);
@@ -95,6 +111,20 @@ describe('tool authorization contract', () => {
       expect((result._meta?.['mcp/www_authenticate'] as string[])[0]).toContain(
         'resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource"',
       );
+    });
+
+    it('asks for a reconnect with the needed scope on 403 insufficient_scope (RFC 6750 3.1)', () => {
+      const insufficient = new Error(
+        'GitLab API error: 403 Forbidden - {"error":"insufficient_scope","scope":"api"}',
+      );
+
+      const challenge = (
+        withReauthChallenge(errorResult, insufficient)._meta?.['mcp/www_authenticate'] as string[]
+      )[0];
+
+      expect(challenge).toContain('error="insufficient_scope"');
+      expect(challenge).toContain('scope="mcp:tools"');
+      expect(challenge).toContain('error_description=');
     });
 
     it('leaves other failures unchanged', () => {

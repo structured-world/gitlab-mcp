@@ -210,6 +210,17 @@ Users sign in to an operator-configured instance only: the default `GITLAB_API_U
 
 The chosen instance and its application are used for the whole account: authorization, code exchange, user lookup and every token refresh. Each instance's GitLab application registers the same redirect URI, `<OAUTH_ISSUER>/oauth/callback`. Instances with a base path (for example `https://git.example.com/gitlab`) are supported. If an instance is removed from the configuration, its accounts must sign in again; they are never moved to another instance.
 
+### Disconnecting and recovery
+
+- **Disconnect:** a client revokes its access or refresh token at `/revoke` (RFC 7009, `client_id` required). The session ends on every replica and the linked GitLab token is revoked as well.
+- **Denied consent:** the client receives `error=access_denied` (with `state` and `iss`) and can start again.
+- **Expired or revoked GitLab authorization:** requests get `401 invalid_token` and tool results carry a reconnect challenge.
+- **Missing GitLab scope:** a GitLab `403 insufficient_scope` produces a tool result challenge with `error="insufficient_scope"`.
+- **Instance removed from the configuration:** its accounts must sign in again; they are never moved to another instance.
+- **Storage outage:** requests answer `503`, so clients retry instead of discarding valid credentials.
+
+Access and refresh tokens, GitLab tokens and application secrets never appear in logs, tool results or diagnostics.
+
 ### Account profile
 
 The read-only `get_profile` tool takes no input and returns the account behind the connection: an opaque `id`, the GitLab display `name` and `email` when GitLab provides them, and a `nickname` of the form `<username> @ <instance>`. The `id` is derived from the instance and the GitLab user id, so it stays the same across token refresh and reconnects and differs for the same user id on different instances. The tool is marked with `_meta["openai/profile"]` so hosts can label each connection.
@@ -232,6 +243,7 @@ When OAuth is enabled:
 | `/oauth/poll` | GET | Poll for completion (Device Flow only) |
 | `/token` | POST | Exchange code for tokens |
 | `/register` | POST | Dynamic Client Registration (RFC 7591) |
+| `/revoke` | POST | Token revocation (RFC 7009): disconnects the account |
 | `/health` | GET | Health check |
 
 ## Troubleshooting

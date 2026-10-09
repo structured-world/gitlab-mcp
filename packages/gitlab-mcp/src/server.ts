@@ -40,6 +40,7 @@ import {
   callbackHandler,
   tokenHandler,
   registerHandler,
+  revokeHandler,
   sessionStore,
   runWithTokenContext,
 } from './oauth/index';
@@ -146,6 +147,9 @@ function registerOAuthEndpoints(app: Express): void {
 
   // Dynamic Client Registration endpoint (RFC 7591) - required by Claude.ai
   app.post('/register', express.json(), registerHandler);
+
+  // Token revocation (RFC 7009): disconnects the account
+  app.post('/revoke', express.urlencoded({ extended: true }), revokeHandler);
 
   // NOTE: /health endpoint is registered globally in startServer() BEFORE OAuth endpoints
   // to avoid access log spam from load balancer health checks. The simple handler there

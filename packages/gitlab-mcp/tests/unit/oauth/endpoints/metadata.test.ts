@@ -187,6 +187,14 @@ describe('OAuth Metadata Endpoint', () => {
       expect(metadata.scopes_supported).toEqual(['mcp:tools', 'mcp:resources']);
     });
 
+    it('should advertise the revocation endpoint (RFC 8414 section 2, RFC 7009)', () => {
+      const res = createMockResponse() as Response;
+      metadataHandler(createMockRequest() as Request, res);
+      const metadata = (res.json as jest.Mock).mock.calls[0][0];
+      expect(metadata.revocation_endpoint).toBe('http://localhost:3333/revoke');
+      expect(metadata.revocation_endpoint_auth_methods_supported).toEqual(['none']);
+    });
+
     it('should advertise iss in authorization responses (RFC 9207 section 3)', () => {
       const res = createMockResponse() as Response;
       metadataHandler(createMockRequest() as Request, res);

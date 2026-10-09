@@ -92,6 +92,10 @@ export function metadataHandler(_req: Request, res: Response): void {
     // REQUIRED for Claude.ai: Dynamic Client Registration endpoint (RFC 7591)
     registration_endpoint: `${baseUrl}/register`,
 
+    // Token revocation (RFC 7009), advertised per RFC 8414 section 2
+    revocation_endpoint: `${baseUrl}/revoke`,
+    revocation_endpoint_auth_methods_supported: ['none'],
+
     // MCP-specific metadata
     mcp_version: MCP_PROTOCOL_VERSION,
   };

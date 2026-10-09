@@ -42,19 +42,44 @@ export function isGitLabAuthFailure(error: unknown): boolean {
 }
 
 /**
+ * Whether GitLab refused because the token lacks an OAuth scope (HTTP 403 with
+ * `insufficient_scope`, RFC 6750 section 3.1), as opposed to missing project permissions.
+ */
+export function isGitLabInsufficientScope(error: unknown): boolean {
+  let current: unknown = error;
+  for (let depth = 0; depth < MAX_CAUSE_DEPTH && current instanceof Error; depth++) {
+    const parsed = parseGitLabApiError(current.message);
+    if (parsed?.status === 403 && parsed.message.includes('insufficient_scope')) return true;
+    current = (current as Error & { cause?: unknown }).cause;
+  }
+  return false;
+}
+
+/**
  * Attach a reauthorization challenge to an error result when OAuth is enabled and GitLab
- * rejected the account's credentials. The challenge carries `error` and
+ * rejected the account's credentials (401) or their scope (403 insufficient_scope). The
+ * challenge carries `error` and
  * `error_description` (RFC 6750 section 3) and points at the metadata of the resource the
  * client called (RFC 9728 section 5.1). Other results are returned unchanged.
  */
 export function withReauthChallenge(result: CallToolResult, error: unknown): CallToolResult {
   const config = loadOAuthConfig();
-  if (!config || !isGitLabAuthFailure(error)) return result;
+  if (!config) return result;
+
+  let errorParams: string;
+  if (isGitLabAuthFailure(error)) {
+    errorParams =
+      'error="invalid_token", error_description="GitLab no longer accepts this account\'s authorization; reconnect the GitLab account"';
+  } else if (isGitLabInsufficientScope(error)) {
+    errorParams =
+      `error="insufficient_scope", scope="${OAUTH_SECURITY_SCHEMES[0].scopes.join(' ')}", ` +
+      'error_description="The GitLab authorization lacks a scope this action needs; reconnect the GitLab account to grant it"';
+  } else {
+    return result;
+  }
 
   const resource = getTokenContext()?.resource ?? defaultResource(config.issuer);
-  const challenge =
-    `Bearer resource_metadata="${resourceMetadataUrl(resource)}", error="invalid_token", ` +
-    'error_description="GitLab no longer accepts this account\'s authorization; reconnect the GitLab account"';
+  const challenge = `Bearer resource_metadata="${resourceMetadataUrl(resource)}", ${errorParams}`;
   return {
     ...result,
     isError: true,

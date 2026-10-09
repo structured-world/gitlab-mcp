@@ -433,6 +433,33 @@ export async function exchangeGitLabAuthCode(
 }
 
 /**
+ * Revoke a GitLab OAuth token (RFC 7009), ending the grant the token belongs to.
+ *
+ * @param token - GitLab access or refresh token
+ * @param config - OAuth configuration
+ * @param app - Application that issued the token
+ * @throws Error if GitLab refuses the request
+ */
+export async function revokeGitLabToken(
+  token: string,
+  config: OAuthConfig,
+  app: GitLabOAuthApp = defaultOAuthApp(config),
+): Promise<void> {
+  const response = await enhancedFetch(`${app.baseUrl}/oauth/revoke`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+      Accept: 'application/json',
+    },
+    body: new URLSearchParams({ ...clientParams(app), token }),
+    ...oauthFetchOpts(app.baseUrl),
+  });
+
+  await throwOnHttpError(response, 'revoke GitLab token');
+  logInfo('GitLab token revoked');
+}
+
+/**
  * Build GitLab OAuth authorization URL
  *
  * Used to redirect users to GitLab for authorization in the Authorization Code Flow.

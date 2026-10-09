@@ -14,6 +14,7 @@ import {
   validateGitLabToken,
   exchangeGitLabAuthCode,
   buildGitLabAuthUrl,
+  revokeGitLabToken,
 } from '../../../src/oauth/gitlab-device-flow';
 import { OAuthConfig } from '../../../src/oauth/config';
 
@@ -646,6 +647,17 @@ describe('GitLab Device Flow Client', () => {
       mockFetch.mockResolvedValueOnce(okJson({ id: 7, username: 'u' }));
       await getGitLabUser('a', app.baseUrl);
       expect(mockFetch.mock.calls[0][0]).toBe('https://git.corp.example/gitlab/api/v4/user');
+    });
+
+    it('revokes the token at the instance with its application (RFC 7009)', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true });
+      await revokeGitLabToken('gl-access', mockConfig, app);
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe('https://git.corp.example/gitlab/oauth/revoke');
+      const body = init.body as URLSearchParams;
+      expect(body.get('token')).toBe('gl-access');
+      expect(body.get('client_id')).toBe('corp-app');
+      expect(body.get('client_secret')).toBe('corp-secret');
     });
 
     it('sends the browser to the instance authorization page', () => {

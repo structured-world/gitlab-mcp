@@ -446,6 +446,41 @@ describe('PostgreSQLStorageBackend', () => {
     },
   );
 
+  // GitLab issues device tokens once; a poll on another replica finishes the setup with
+  // the copy stored here.
+  it('keeps the GitLab tokens of a completed device flow', async () => {
+    (backend as any).prisma = mockPrisma;
+    const gitlabTokens = {
+      access_token: 'gl-at',
+      refresh_token: 'gl-rt',
+      token_type: 'Bearer',
+      expires_in: 7200,
+      created_at: 1,
+      scope: 'api',
+    };
+    const device = { ...createDeviceFlow(), gitlabTokens };
+    await backend.storeDeviceFlow(device.state, device);
+    const deviceData = mockPrisma.deviceFlowState.upsert.mock.calls[0][0];
+    expect(deviceData.update.gitlabTokens).toEqual(gitlabTokens);
+    mockPrisma.deviceFlowState.findUnique.mockResolvedValueOnce({
+      ...device,
+      expiresAt: BigInt(device.expiresAt),
+    });
+
+    expect((await backend.getDeviceFlow(device.state))?.gitlabTokens).toEqual(gitlabTokens);
+  });
+
+  it('rejects corrupt GitLab tokens in a device flow', async () => {
+    (backend as any).prisma = mockPrisma;
+    mockPrisma.deviceFlowState.findUnique.mockResolvedValueOnce({
+      ...createDeviceFlow(),
+      expiresAt: BigInt(Date.now()),
+      gitlabTokens: { access_token: 'gl-at' },
+    });
+
+    await expect(backend.getDeviceFlow('fixture')).rejects.toThrow('Invalid stored GitLab tokens');
+  });
+
   it.each(['device', 'auth'])('rejects corrupt requested scopes in a %s flow', async (kind) => {
     // Corrupt stored requests must not turn into an unknown, unrestricted account grant.
     (backend as any).prisma = mockPrisma;

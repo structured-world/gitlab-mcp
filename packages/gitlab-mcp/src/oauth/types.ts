@@ -163,6 +163,11 @@ export interface DeviceFlowState {
   scopes?: string[];
   /** RFC 8707 resource requested at /authorize; absent means the `/mcp` resource. */
   resource?: string;
+  /**
+   * Tokens GitLab issued when the user approved; GitLab hands them out once, so they are
+   * kept until the account is set up and a failed attempt is retried without them lost.
+   */
+  gitlabTokens?: GitLabTokenResponse;
 }
 
 /**

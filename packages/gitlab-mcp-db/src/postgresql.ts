@@ -17,6 +17,7 @@ import type {
   AuthCodeFlowState as AuthCodeFlowStateType,
   AuthorizationCode as AuthorizationCodeType,
   RegisteredOAuthClient as RegisteredOAuthClientType,
+  GitLabTokenResponse,
   SessionStorageBackend,
   SessionStorageStats,
 } from '@structured-world/gitlab-mcp/storage-contract';
@@ -54,6 +55,7 @@ interface PrismaDeviceFlowStateRow {
   selectedInstanceLabel?: string | null;
   mcpScopes?: unknown;
   resource?: string | null;
+  gitlabTokens?: unknown;
   state: string;
   deviceCode: string;
   userCode: string;
@@ -130,6 +132,23 @@ function storedMcpScopes(value: unknown): string[] | undefined {
     throw new Error('Invalid stored MCP scopes');
   }
   return value;
+}
+
+/** GitLab tokens kept with a device flow; corrupt values are refused, not half-used. */
+function storedGitlabTokens(value: unknown): GitLabTokenResponse | undefined {
+  if (value == null) return undefined;
+  const tokens = value as Partial<Record<keyof GitLabTokenResponse, unknown>>;
+  if (
+    typeof tokens.access_token !== 'string' ||
+    typeof tokens.refresh_token !== 'string' ||
+    typeof tokens.token_type !== 'string' ||
+    typeof tokens.expires_in !== 'number' ||
+    typeof tokens.created_at !== 'number' ||
+    (tokens.scope !== undefined && typeof tokens.scope !== 'string')
+  ) {
+    throw new Error('Invalid stored GitLab tokens');
+  }
+  return value as GitLabTokenResponse;
 }
 
 /** Optional row values come back as null; the contract uses absent properties. */
@@ -419,6 +438,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       selectedInstanceLabel: flow.selectedInstanceLabel ?? null,
       mcpScopes: flow.scopes,
       resource: flow.resource ?? null,
+      gitlabTokens: flow.gitlabTokens,
     };
     await prisma.deviceFlowState.upsert({
       where: { state },
@@ -472,6 +492,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       selectedInstanceLabel: optional(row.selectedInstanceLabel),
       scopes: storedMcpScopes(row.mcpScopes),
       resource: optional(row.resource),
+      gitlabTokens: storedGitlabTokens(row.gitlabTokens),
     };
   }
 

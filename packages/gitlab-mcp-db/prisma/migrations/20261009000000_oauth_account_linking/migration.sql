@@ -1,5 +1,6 @@
 -- OAuth account linking: resource/scope/instance binding of flows and sessions, the
--- device flow's client state and poll cadence, the GitLab refresh lease, and durable
+-- device flow's client state, poll cadence and issued GitLab tokens, the GitLab refresh
+-- lease, and durable
 -- client registrations.
 -- Additive only: new nullable columns and a new table; existing rows stay valid.
 
@@ -9,6 +10,7 @@ ADD COLUMN     "resource" TEXT;
 
 -- AlterTable
 ALTER TABLE "oauth_device_flows" ADD COLUMN     "client_state" TEXT,
+ADD COLUMN     "gitlab_tokens" JSONB,
 ADD COLUMN     "mcp_scopes" JSONB,
 ADD COLUMN     "next_poll_at" BIGINT,
 ADD COLUMN     "resource" TEXT,

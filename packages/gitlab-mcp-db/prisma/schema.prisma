@@ -78,6 +78,8 @@ model DeviceFlowState {
   // MCP scopes granted at /authorize; null means the full default set.
   mcpScopes               Json?    @map("mcp_scopes")
   resource                String?
+  // Tokens GitLab issued on approval, kept until the account is set up.
+  gitlabTokens            Json?    @map("gitlab_tokens")
 
   @@map("oauth_device_flows")
   @@index([deviceCode], map: "idx_oauth_device_flows_device_code")

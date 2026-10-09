@@ -41,6 +41,8 @@ export class FakeGitLab {
   /** Device code -> undefined while pending, the user once approved */
   readonly devices = new Map<string, FakeUser | undefined>();
   deviceUserCode = 'WXYZ-1234';
+  /** Number of upcoming /api/v4/user requests answered with a 502 */
+  userFailures = 0;
 
   private server: http.Server | undefined;
   private readonly codes = new Map<string, { grant: Grant; redirectUri: string }>();
@@ -122,6 +124,11 @@ export class FakeGitLab {
       params.client_secret === this.options.clientSecret;
 
     if (url.pathname === '/api/v4/user') {
+      if (this.userFailures > 0) {
+        this.userFailures--;
+        json(502, { message: '502 Bad Gateway' });
+        return;
+      }
       const token = req.headers.authorization?.replace(/^Bearer /, '') ?? '';
       const grant = this.accessTokens.get(token);
       if (!grant) {

@@ -452,84 +452,94 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
   }
 
   try {
-    // Single poll attempt to GitLab
-    const step = await pollDeviceFlowStep(flow.deviceCode, config, app);
-
-    if (step.status === 'complete') {
-      // Exactly one poller completes the flow, so one session and one code are created.
-      if (!(await sessionStore.consumeDeviceFlow(flow_state))) {
-        res.json({ status: 'pending', interval: flow.interval });
+    let tokenResponse = flow.gitlabTokens;
+    if (!tokenResponse) {
+      // Single poll attempt to GitLab
+      const step = await pollDeviceFlowStep(flow.deviceCode, config, app);
+      if (step.status !== 'complete') {
+        // Still pending; slow_down adds 5 seconds to this and every later interval.
+        const interval = step.status === 'slow_down' ? flow.interval + 5 : flow.interval;
+        await sessionStore.storeDeviceFlow(flow_state, {
+          ...flow,
+          interval,
+          nextPollAt: Date.now() + interval * 1000,
+        });
+        res.json({ status: 'pending', interval });
         return;
       }
-      const tokenResponse = step.tokens;
-      // Success! Get user info and create session
-      const userInfo = await getGitLabUser(tokenResponse.access_token, app.baseUrl);
-
-      const sessionId = generateSessionId();
-      const now = Date.now();
-
-      // Generate authorization code for the OAuth flow
-      const authCode = generateAuthorizationCode();
-
-      // Create session with GitLab tokens before the code that references it.
-      // MCP tokens will be set when the authorization code is exchanged
-      await sessionStore.createSession({
-        id: sessionId,
-        mcpAccessToken: '', // Set on /token
-        mcpRefreshToken: '', // Set on /token
-        mcpTokenExpiry: 0, // Set on /token
-        gitlabAccessToken: tokenResponse.access_token,
-        gitlabRefreshToken: tokenResponse.refresh_token,
-        gitlabTokenExpiry: calculateTokenExpiry(tokenResponse.expires_in),
-        gitlabScopes: grantedGitlabScopes(tokenResponse.scope, flow.requestedGitlabScopes),
-        gitlabUserId: userInfo.id,
-        gitlabUsername: userInfo.username,
-        gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,
-        instanceLabel: flow.selectedInstanceLabel,
-        clientId: flow.clientId,
-        scopes: flow.scopes ?? [...MCP_SCOPES],
-        resource: flow.resource,
-        createdAt: now,
-        updatedAt: now,
-      });
-
-      // Store authorization code (single-use, expires in 10 minutes)
-      await sessionStore.storeAuthCode({
-        code: authCode,
-        sessionId,
-        clientId: flow.clientId,
-        codeChallenge: flow.codeChallenge,
-        codeChallengeMethod: flow.codeChallengeMethod,
-        redirectUri: flow.redirectUri,
-        expiresAt: now + 10 * 60 * 1000, // 10 minutes
-      });
-
-      logInfo('Device flow authorization completed', {
-        sessionId: truncateId(sessionId),
-        userId: userInfo.id,
-        username: userInfo.username,
-      });
-
-      // Return success with redirect info
-      const response: DeviceFlowPollResponse = {
-        status: 'complete',
-        redirect_uri: flow.redirectUri,
-        code: authCode,
-        state: flow.state ? flow.state : undefined,
-        iss: config.issuer,
-      };
-
-      res.json(response);
-    } else {
-      // Still pending; slow_down adds 5 seconds to this and every later interval.
-      const interval = step.status === 'slow_down' ? flow.interval + 5 : flow.interval;
+      // GitLab issues these tokens once: keep them with the flow before anything else can
+      // fail, so the next poll finishes the setup instead of losing the authorization.
+      tokenResponse = step.tokens;
       await sessionStore.storeDeviceFlow(flow_state, {
         ...flow,
-        interval,
-        nextPollAt: Date.now() + interval * 1000,
+        nextPollAt: now + flow.interval * 1000,
+        gitlabTokens: tokenResponse,
       });
-      res.json({ status: 'pending', interval });
     }
+
+    const userInfo = await getGitLabUser(tokenResponse.access_token, app.baseUrl);
+
+    // Exactly one poller completes the flow, so one session and one code are created.
+    if (!(await sessionStore.consumeDeviceFlow(flow_state))) {
+      res.json({ status: 'pending', interval: flow.interval });
+      return;
+    }
+
+    const sessionId = generateSessionId();
+    const createdAt = Date.now();
+
+    // Generate authorization code for the OAuth flow
+    const authCode = generateAuthorizationCode();
+
+    // Create session with GitLab tokens before the code that references it.
+    // MCP tokens will be set when the authorization code is exchanged
+    await sessionStore.createSession({
+      id: sessionId,
+      mcpAccessToken: '', // Set on /token
+      mcpRefreshToken: '', // Set on /token
+      mcpTokenExpiry: 0, // Set on /token
+      gitlabAccessToken: tokenResponse.access_token,
+      gitlabRefreshToken: tokenResponse.refresh_token,
+      gitlabTokenExpiry: calculateTokenExpiry(tokenResponse.expires_in),
+      gitlabScopes: grantedGitlabScopes(tokenResponse.scope, flow.requestedGitlabScopes),
+      gitlabUserId: userInfo.id,
+      gitlabUsername: userInfo.username,
+      gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,
+      instanceLabel: flow.selectedInstanceLabel,
+      clientId: flow.clientId,
+      scopes: flow.scopes ?? [...MCP_SCOPES],
+      resource: flow.resource,
+      createdAt,
+      updatedAt: createdAt,
+    });
+
+    // Store authorization code (single-use, expires in 10 minutes)
+    await sessionStore.storeAuthCode({
+      code: authCode,
+      sessionId,
+      clientId: flow.clientId,
+      codeChallenge: flow.codeChallenge,
+      codeChallengeMethod: flow.codeChallengeMethod,
+      redirectUri: flow.redirectUri,
+      expiresAt: createdAt + 10 * 60 * 1000, // 10 minutes
+    });
+
+    logInfo('Device flow authorization completed', {
+      sessionId: truncateId(sessionId),
+      userId: userInfo.id,
+      username: userInfo.username,
+    });
+
+    // Return success with redirect info
+    const response: DeviceFlowPollResponse = {
+      status: 'complete',
+      redirect_uri: flow.redirectUri,
+      code: authCode,
+      state: flow.state ? flow.state : undefined,
+      iss: config.issuer,
+    };
+
+    res.json(response);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : 'Unknown error';
 

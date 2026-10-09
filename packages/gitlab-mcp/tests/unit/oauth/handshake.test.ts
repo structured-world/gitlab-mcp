@@ -474,6 +474,54 @@ describe('OAuth handshake over HTTP', () => {
     expect(token.status).toBe(200);
   });
 
+  // GitLab hands out the device tokens once. A temporary failure while setting up the
+  // account after that used to lose the completed authorization.
+  it('finishes a completed device authorization after a temporary failure', async () => {
+    const mcp = await replica();
+    const { verifier, challenge } = pkce();
+    const html = await (
+      await fetch(
+        `${mcp.url}/authorize?${new URLSearchParams({
+          response_type: 'code',
+          client_id: 'cli-client',
+          code_challenge: challenge,
+          code_challenge_method: 'S256',
+        })}`,
+      )
+    ).text();
+    const flowState = /flow_state=([A-Za-z0-9_-]+)/.exec(html)![1];
+    const [deviceCode] = [...gitlab.devices.keys()].slice(-1);
+    gitlab.devices.set(deviceCode, jane);
+    gitlab.userFailures = 1;
+    const start = Date.now();
+    const at = jest.spyOn(Date, 'now');
+    const poll = async (offset: number) => {
+      at.mockReturnValue(start + offset);
+      return (await (await fetch(`${mcp.url}/oauth/poll?flow_state=${flowState}`)).json()) as {
+        status: string;
+        code?: string;
+      };
+    };
+    const tokenRequests = () =>
+      gitlab.requests.filter((r) => r.params.grant_type?.includes('device_code')).length;
+
+    expect((await poll(6000)).status).toBe('pending');
+    const done = await poll(12000);
+
+    expect(done.status).toBe('complete');
+    expect(tokenRequests()).toBe(1);
+    const token = await fetch(
+      `${mcp.url}/token`,
+      form({
+        grant_type: 'authorization_code',
+        code: done.code!,
+        code_verifier: verifier,
+        client_id: 'cli-client',
+      }),
+    );
+    expect(token.status).toBe(200);
+  });
+
   // Duplicate polls on two replicas both asked GitLab; the loser got a terminal error and
   // deleted the flow the winner was completing, so sign-in failed.
   it('polls GitLab once per interval when replicas poll the same device flow', async () => {

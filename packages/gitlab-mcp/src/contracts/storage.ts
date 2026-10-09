@@ -17,4 +17,5 @@ export type {
   AuthCodeFlowState,
   AuthorizationCode,
   RegisteredOAuthClient,
+  GitLabTokenResponse,
 } from '../oauth/types';

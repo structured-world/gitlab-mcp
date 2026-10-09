@@ -126,6 +126,10 @@ const TOOL_SCOPE_REQUIREMENTS: Record<string, GitLabScope[]> = {
   browse_variables: ['api', 'read_api'],
   manage_variable: ['api'],
 
+  // Environments - REST API reads and mutations use the standard API scopes.
+  browse_environments: ['api', 'read_api'],
+  manage_environment: ['api'],
+
   // CI/CD job token scope
   browse_job_token_scope: ['api', 'read_api'],
   manage_job_token_scope: ['api'],
@@ -304,7 +308,7 @@ export async function detectTokenScopes(baseUrl?: string): Promise<TokenScopeInf
 /**
  * Check if a tool is available given the detected token scopes
  */
-export function isToolAvailableForScopes(toolName: string, scopes: GitLabScope[]): boolean {
+export function isToolAvailableForScopes(toolName: string, scopes: readonly string[]): boolean {
   const requiredScopes = TOOL_SCOPE_REQUIREMENTS[toolName];
 
   // Tool not in scope map - allow it (might be a new tool without mapping)
@@ -314,6 +318,22 @@ export function isToolAvailableForScopes(toolName: string, scopes: GitLabScope[]
 
   // Tool is available if the token has ANY of the required scopes
   return requiredScopes.some((required) => scopes.includes(required));
+}
+
+/** Grant-level capabilities derived from the same requirements as tool filtering. */
+export function getScopeCapabilities(scopes: readonly string[]): {
+  canBrowse: boolean;
+  canManage: boolean;
+} {
+  let canBrowse = false;
+  let canManage = false;
+  for (const name in TOOL_SCOPE_REQUIREMENTS) {
+    if (!isToolAvailableForScopes(name, scopes)) continue;
+    if (name.startsWith('browse_')) canBrowse = true;
+    if (name.startsWith('manage_')) canManage = true;
+    if (canBrowse && canManage) break;
+  }
+  return { canBrowse, canManage };
 }
 
 /**

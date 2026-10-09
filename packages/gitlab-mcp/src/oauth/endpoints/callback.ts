@@ -21,6 +21,7 @@ import { exchangeGitLabAuthCode, getGitLabUser } from '../gitlab-device-flow';
 import { generateSessionId, generateAuthorizationCode, calculateTokenExpiry } from '../token-utils';
 import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 import { GITLAB_BASE_URL } from '../../config';
+import { grantedGitlabScopes } from '../granted-scopes';
 
 /**
  * OAuth callback handler
@@ -146,6 +147,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       gitlabAccessToken: gitlabTokens.access_token,
       gitlabRefreshToken: gitlabTokens.refresh_token,
       gitlabTokenExpiry: calculateTokenExpiry(gitlabTokens.expires_in),
+      gitlabScopes: grantedGitlabScopes(gitlabTokens.scope, flow.requestedGitlabScopes),
       gitlabUserId: userInfo.id,
       gitlabUsername: userInfo.username,
       gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,

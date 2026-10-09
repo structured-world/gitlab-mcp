@@ -241,6 +241,42 @@ describe('PostgreSQLStorageBackend', () => {
     expect(sessions[0].id).toBe(session.id);
   });
 
+  it.each([undefined, [], ['read_api'], ['api', 'read_user']])(
+    'persists upstream grants independently of MCP scopes: %j',
+    async (grants) => {
+      // Unknown grants stay unknown; an explicitly empty grant is never upgraded.
+      (backend as any).prisma = mockPrisma;
+      const session = { ...createSession(), gitlabScopes: grants };
+      await backend.createSession(session);
+      expect(mockPrisma.oAuthSession.create.mock.calls[0][0].data.gitlabScopes).toEqual(grants);
+      mockPrisma.oAuthSession.findUnique.mockResolvedValueOnce({
+        ...session,
+        gitlabScopes: grants === undefined ? null : grants,
+        mcpTokenExpiry: BigInt(session.mcpTokenExpiry),
+        gitlabTokenExpiry: BigInt(session.gitlabTokenExpiry),
+        createdAt: BigInt(session.createdAt),
+        updatedAt: BigInt(session.updatedAt),
+      });
+      const restored = await backend.getSession(session.id);
+      expect(restored?.gitlabScopes).toEqual(grants);
+      expect(restored?.scopes).toEqual(session.scopes);
+      await backend.updateSession(session.id, { gitlabScopes: grants });
+      const update = mockPrisma.oAuthSession.update.mock.calls[0][0].data;
+      if (grants === undefined) expect(update).not.toHaveProperty('gitlabScopes');
+      else expect(update.gitlabScopes).toEqual(grants);
+    },
+  );
+
+  it('rejects malformed stored grants instead of granting access', async () => {
+    // Corrupt durable permissions must not become the unknown/fail-open state.
+    (backend as any).prisma = mockPrisma;
+    mockPrisma.oAuthSession.findUnique.mockResolvedValueOnce({
+      ...createSession(),
+      gitlabScopes: ['api', 1],
+    });
+    await expect(backend.getSession('session-1')).rejects.toThrow('Invalid stored GitLab scopes');
+  });
+
   it('handles device flow operations', async () => {
     (backend as any).prisma = mockPrisma;
 
@@ -286,6 +322,53 @@ describe('PostgreSQLStorageBackend', () => {
     mockPrisma.deviceFlowState.delete.mockRejectedValueOnce(new Error('fail'));
     const deleteFail = await backend.deleteDeviceFlow(flow.state);
     expect(deleteFail).toBe(false);
+  });
+
+  it.each([undefined, [], ['read_api', 'read_user']])(
+    'retains requested scopes across persisted OAuth flows: %j',
+    async (requestedGitlabScopes) => {
+      // Callback/poll may run on another replica; omitted upstream scope must use the saved request.
+      (backend as any).prisma = mockPrisma;
+      const device = { ...createDeviceFlow(), requestedGitlabScopes };
+      await backend.storeDeviceFlow(device.state, device);
+      const deviceData = mockPrisma.deviceFlowState.upsert.mock.calls[0][0];
+      expect(deviceData.create.requestedGitlabScopes).toEqual(requestedGitlabScopes);
+      expect(deviceData.update.requestedGitlabScopes).toEqual(requestedGitlabScopes);
+      mockPrisma.deviceFlowState.findUnique.mockResolvedValueOnce({
+        ...device,
+        requestedGitlabScopes: requestedGitlabScopes === undefined ? null : requestedGitlabScopes,
+        expiresAt: BigInt(device.expiresAt),
+      });
+      expect((await backend.getDeviceFlow(device.state))?.requestedGitlabScopes).toEqual(
+        requestedGitlabScopes,
+      );
+      const auth = { ...createAuthCodeFlow(), requestedGitlabScopes };
+      await backend.storeAuthCodeFlow(auth.internalState, auth);
+      expect(
+        mockPrisma.authCodeFlowState.create.mock.calls[0][0].data.requestedGitlabScopes,
+      ).toEqual(requestedGitlabScopes);
+      mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce({
+        ...auth,
+        requestedGitlabScopes: requestedGitlabScopes === undefined ? null : requestedGitlabScopes,
+        expiresAt: BigInt(auth.expiresAt),
+      });
+      expect((await backend.getAuthCodeFlow(auth.internalState))?.requestedGitlabScopes).toEqual(
+        requestedGitlabScopes,
+      );
+    },
+  );
+
+  it.each(['device', 'auth'])('rejects corrupt requested scopes in a %s flow', async (kind) => {
+    // Corrupt stored requests must not turn into an unknown, unrestricted account grant.
+    (backend as any).prisma = mockPrisma;
+    const invalid = { requestedGitlabScopes: ['api', 1] };
+    if (kind === 'device') {
+      mockPrisma.deviceFlowState.findUnique.mockResolvedValueOnce(invalid);
+      await expect(backend.getDeviceFlow('fixture')).rejects.toThrow('Invalid stored GitLab scopes');
+    } else {
+      mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce(invalid);
+      await expect(backend.getAuthCodeFlow('fixture')).rejects.toThrow('Invalid stored GitLab scopes');
+    }
   });
 
   it('handles auth code flow operations', async () => {

@@ -20,9 +20,12 @@ const DeploymentSchema = z.object({
   environment: z.object({ name: z.string() }).optional(),
 });
 
-/** MCP tool results wrap JSON in a text content block; unwrap it, else pass through. */
+/** Read successful native output or legacy JSON text; errors cannot arm watches. */
 export function parseToolResult(result: unknown): unknown {
-  if (result && typeof result === 'object' && 'content' in result) {
+  if (!result || typeof result !== 'object') return result;
+  if ('isError' in result && result.isError === true) return null;
+  if ('structuredContent' in result) return result.structuredContent;
+  if ('content' in result) {
     const content = (result as { content?: Array<{ type?: string; text?: string }> }).content;
     const text = Array.isArray(content) ? content.find((c) => c.type === 'text')?.text : undefined;
     if (typeof text === 'string') {

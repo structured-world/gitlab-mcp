@@ -512,6 +512,7 @@
   },
   "files": [
     "dist",
+    "skills",
     "LICENSE",
     "NOTICE"
   ],
@@ -542,6 +543,7 @@
     "test:integration": "yarn jest --testPathPatterns=tests/integration --runInBand",
     "test:all": "yarn jest --runInBand",
     "test:env-gating": "node tests/scripts/test-env-gating.js",
+    "evaluate:skills": "node scripts/evaluate-skills.mjs",
     "test:help": "printf '# Test Scripts\\n  yarn test              - Unit tests only (fast, safe default)\\n  yarn test <pattern>    - Unit tests matching pattern\\n  yarn test:cov          - Unit test coverage\\n  yarn test:integration  - Integration tests (needs .env.test)\\n  yarn test:all          - Full suite (unit + integration)\\n  yarn test:env-gating   - Test environment gating\\n'",
     "cleanup:test-groups": "node scripts/cleanup-test-groups.js",
     "cleanup:test-groups:dry-run": "node scripts/cleanup-test-groups.js --dry-run",
@@ -561,7 +563,7 @@
   },
   "dependencies": {
     "@clack/prompts": "^1.8.1",
-    "@modelcontextprotocol/sdk": "^1.32.0",
+    "@modelcontextprotocol/sdk": "^1.32.1",
     "express": "^5.2.1",
     "graphql": "^17.0.2",
     "graphql-tag": "^2.12.7",
@@ -588,6 +590,7 @@
     "@typescript-eslint/parser": "^8.71.0",
     "auto-changelog": "^2.7.0",
     "cross-env": "^10.1.0",
+    "cross-spawn": "^7.0.6",
     "dotenv": "^18.0.5",
     "eslint": "^10.12.0",
     "eslint-plugin-prettier": "^5.5.6",

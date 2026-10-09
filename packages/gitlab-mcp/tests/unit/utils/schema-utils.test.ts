@@ -11,8 +11,7 @@ import {
   stripTierRestrictedParameters,
   shouldRemoveTool,
   extractActionsFromSchema,
-  setDetectedSchemaMode,
-  clearDetectedSchemaMode,
+  getSchemaMode,
 } from '../../../src/utils/schema-utils';
 
 // Mock config module
@@ -509,6 +508,22 @@ describe('schema-utils', () => {
   });
 
   describe('transformToolSchema', () => {
+    it('projects independent client formats without altering the source', () => {
+      // A second client must not inherit the first client's flattened schema.
+      const project = transformToolSchema as (...args: unknown[]) => TestJSONSchema;
+      const before = JSON.stringify(discriminatedUnionSchema);
+      const inspector = project(
+        'manage_milestone',
+        discriminatedUnionSchema,
+        new Set(),
+        'discriminated',
+      );
+      const claude = project('manage_milestone', discriminatedUnionSchema, new Set(), 'flat');
+      expect(inspector.oneOf).toEqual(discriminatedUnionSchema.oneOf);
+      expect(claude.oneOf).toBeUndefined();
+      expect(claude.properties?.action?.enum).toBeDefined();
+      expect(JSON.stringify(discriminatedUnionSchema)).toBe(before);
+    });
     it('should apply full pipeline for discriminated union', () => {
       GITLAB_DENIED_ACTIONS.set('manage_milestone', new Set(['delete', 'promote']));
       mockGetParamDescriptionOverrides.mockReturnValue(
@@ -722,17 +737,9 @@ describe('schema-utils', () => {
   });
 
   describe('Auto-detection schema mode (GITLAB_SCHEMA_MODE=auto)', () => {
-    beforeEach(() => {
-      clearDetectedSchemaMode();
-    });
-
-    afterEach(() => {
-      clearDetectedSchemaMode();
-    });
-
     it('should use flat mode by default when auto mode not configured', () => {
-      // With default mock (GITLAB_SCHEMA_MODE=flat), setDetectedSchemaMode should be no-op
-      setDetectedSchemaMode('mcp-inspector');
+      // Explicit configuration overrides each client's detected preference.
+      expect(getSchemaMode('mcp-inspector')).toBe('flat');
 
       // Should still flatten because mode is not 'auto'
       const result = transformToolSchema('manage_milestone', discriminatedUnionSchema);
@@ -747,16 +754,21 @@ describe('schema-utils', () => {
       configModule.GITLAB_SCHEMA_MODE = 'auto';
 
       try {
-        // Simulate detection of inspector client
-        setDetectedSchemaMode('mcp-inspector');
-
-        const result = transformToolSchema('manage_milestone', discriminatedUnionSchema);
+        // Per-client resolution must be independent of initialization order.
+        const inspectorMode = getSchemaMode('mcp-inspector');
+        expect(getSchemaMode('claude-code')).toBe('flat');
+        expect(getSchemaMode('mcp-inspector')).toBe(inspectorMode);
+        const result = transformToolSchema(
+          'manage_milestone',
+          discriminatedUnionSchema,
+          new Set(),
+          inspectorMode,
+        );
 
         // Should preserve oneOf because inspector supports discriminated unions
         expect(result.oneOf).toBeDefined();
       } finally {
         configModule.GITLAB_SCHEMA_MODE = originalMode;
-        clearDetectedSchemaMode();
       }
     });
 
@@ -767,7 +779,7 @@ describe('schema-utils', () => {
       configModule.GITLAB_SCHEMA_MODE = 'auto';
 
       try {
-        // Don't call setDetectedSchemaMode - simulates pre-initialization
+        // An unidentified client uses the documented flat default.
 
         const result = transformToolSchema('manage_milestone', discriminatedUnionSchema);
 

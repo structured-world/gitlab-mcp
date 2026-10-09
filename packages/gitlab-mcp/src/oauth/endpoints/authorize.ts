@@ -32,6 +32,7 @@ import { GITLAB_BASE_URL } from '../../config';
 import { logInfo, logWarn, logError, truncateId } from '../../logger';
 import { DeviceFlowPollResponse, OAuthErrorResponse } from '../types';
 import { getIpAddress } from '../../utils/request-logger';
+import { grantedGitlabScopes } from '../granted-scopes';
 
 /**
  * Authorization endpoint handler
@@ -142,6 +143,7 @@ async function handleAuthorizationCodeFlow(
 
   // Store auth code flow state (expires in 10 minutes)
   sessionStore.storeAuthCodeFlow(internalState, {
+    requestedGitlabScopes: config.gitlabScopes.split(/[,\s]+/).filter(Boolean),
     clientId: params.clientId,
     codeChallenge: params.codeChallenge,
     codeChallengeMethod: params.codeChallengeMethod,
@@ -189,6 +191,7 @@ async function handleDeviceFlow(
 
     // Store device flow state
     sessionStore.storeDeviceFlow(flowState, {
+      requestedGitlabScopes: config.gitlabScopes.split(/[,\s]+/).filter(Boolean),
       deviceCode: deviceResponse.device_code,
       userCode: deviceResponse.user_code,
       verificationUri: deviceResponse.verification_uri,
@@ -298,6 +301,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
         gitlabAccessToken: tokenResponse.access_token,
         gitlabRefreshToken: tokenResponse.refresh_token,
         gitlabTokenExpiry: calculateTokenExpiry(tokenResponse.expires_in),
+        gitlabScopes: grantedGitlabScopes(tokenResponse.scope, flow.requestedGitlabScopes),
         gitlabUserId: userInfo.id,
         gitlabUsername: userInfo.username,
         gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,

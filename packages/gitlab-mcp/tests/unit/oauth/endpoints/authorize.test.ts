@@ -422,52 +422,61 @@ describe('OAuth Authorization Endpoint', () => {
       expect(res.json).toHaveBeenCalledWith({ status: 'pending' });
     });
 
-    it('should return complete with auth code when authorization succeeds', async () => {
-      mockSessionStore.getDeviceFlow.mockReturnValue({
-        deviceCode: 'device-code',
-        userCode: 'USER-CODE',
-        verificationUri: 'https://gitlab.example.com/oauth/authorize',
-        expiresAt: Date.now() + 600000,
-        interval: 5,
-        clientId: 'test-client',
-        codeChallenge: 'challenge',
-        codeChallengeMethod: 'S256',
-        state: 'csrf-state',
-        redirectUri: 'https://callback.example.com',
-      });
+    it.each(['read_api', undefined])(
+      'completes device authorization with token scope %s',
+      async (scope) => {
+        // Omitted scope retains the grant requested at flow creation, not a later config.
+        mockSessionStore.getDeviceFlow.mockReturnValue({
+          deviceCode: 'device-code',
+          userCode: 'USER-CODE',
+          verificationUri: 'https://gitlab.example.com/oauth/authorize',
+          expiresAt: Date.now() + 600000,
+          interval: 5,
+          clientId: 'test-client',
+          codeChallenge: 'challenge',
+          codeChallengeMethod: 'S256',
+          state: 'csrf-state',
+          redirectUri: 'https://callback.example.com',
+          requestedGitlabScopes: ['read_api'],
+        });
 
-      mockPollDeviceFlowOnce.mockResolvedValue({
-        access_token: 'gitlab-access-token',
-        refresh_token: 'gitlab-refresh-token',
-        token_type: 'Bearer',
-        expires_in: 7200,
-        created_at: Date.now(),
-      });
+        mockPollDeviceFlowOnce.mockResolvedValue({
+          access_token: 'gitlab-access-token',
+          refresh_token: 'gitlab-refresh-token',
+          scope,
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: Date.now(),
+        });
 
-      mockGetGitLabUser.mockResolvedValue({
-        id: 12345,
-        username: 'testuser',
-        name: 'Test User',
-        email: 'test@example.com',
-      });
+        mockGetGitLabUser.mockResolvedValue({
+          id: 12345,
+          username: 'testuser',
+          name: 'Test User',
+          email: 'test@example.com',
+        });
 
-      const req = createMockRequest({ flow_state: 'success-flow' }) as Request;
-      const res = createMockResponse() as Response;
+        const req = createMockRequest({ flow_state: 'success-flow' }) as Request;
+        const res = createMockResponse() as Response;
 
-      await pollHandler(req, res);
+        await pollHandler(req, res);
 
-      expect(mockGetGitLabUser).toHaveBeenCalledWith('gitlab-access-token');
-      expect(mockSessionStore.storeAuthCode).toHaveBeenCalled();
-      expect(mockSessionStore.createSession).toHaveBeenCalled();
-      expect(mockSessionStore.deleteDeviceFlow).toHaveBeenCalledWith('success-flow');
+        expect(mockGetGitLabUser).toHaveBeenCalledWith('gitlab-access-token');
+        expect(mockSessionStore.storeAuthCode).toHaveBeenCalled();
+        // Persist the grant GitLab returned, not the scopes requested by the MCP client.
+        expect(mockSessionStore.createSession).toHaveBeenCalledWith(
+          expect.objectContaining({ gitlabScopes: ['read_api'] }),
+        );
+        expect(mockSessionStore.deleteDeviceFlow).toHaveBeenCalledWith('success-flow');
 
-      expect(res.json).toHaveBeenCalledWith({
-        status: 'complete',
-        redirect_uri: 'https://callback.example.com',
-        code: 'auth-code-abc',
-        state: 'csrf-state',
-      });
-    });
+        expect(res.json).toHaveBeenCalledWith({
+          status: 'complete',
+          redirect_uri: 'https://callback.example.com',
+          code: 'auth-code-abc',
+          state: 'csrf-state',
+        });
+      },
+    );
 
     it('should handle terminal errors from GitLab', async () => {
       mockSessionStore.getDeviceFlow.mockReturnValue({

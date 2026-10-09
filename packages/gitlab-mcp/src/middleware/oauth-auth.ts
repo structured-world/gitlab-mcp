@@ -100,6 +100,11 @@ export async function oauthAuthMiddleware(
         gitlabAccessToken: newTokens.access_token,
         gitlabRefreshToken: newTokens.refresh_token,
         gitlabTokenExpiry: calculateTokenExpiry(newTokens.expires_in),
+        // RFC 6749 section 6: omitted scope retains the original grant.
+        // https://www.rfc-editor.org/rfc/rfc6749#section-6
+        ...(newTokens.scope !== undefined && {
+          gitlabScopes: newTokens.scope.split(/\s+/).filter(Boolean),
+        }),
       });
 
       logDebug('GitLab token refreshed during request', {
@@ -137,6 +142,7 @@ export async function oauthAuthMiddleware(
   res.locals.gitlabToken = updatedSession.gitlabAccessToken;
   res.locals.gitlabUserId = updatedSession.gitlabUserId;
   res.locals.gitlabUsername = updatedSession.gitlabUsername;
+  res.locals.gitlabScopes = updatedSession.gitlabScopes;
   // Multi-instance support: use session's API URL or fallback to global config
   res.locals.gitlabApiUrl = updatedSession.gitlabApiUrl ?? GITLAB_BASE_URL;
   res.locals.instanceLabel = updatedSession.instanceLabel;
@@ -214,6 +220,7 @@ export async function optionalOAuthMiddleware(
   res.locals.gitlabToken = session.gitlabAccessToken;
   res.locals.gitlabUserId = session.gitlabUserId;
   res.locals.gitlabUsername = session.gitlabUsername;
+  res.locals.gitlabScopes = session.gitlabScopes;
   // Multi-instance support: use session's API URL or fallback to global config
   res.locals.gitlabApiUrl = session.gitlabApiUrl ?? GITLAB_BASE_URL;
   res.locals.instanceLabel = session.instanceLabel;

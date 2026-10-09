@@ -276,10 +276,8 @@ export const GITLAB_SCHEMA_MODE: SchemaMode = parseSchemaMode(process.env.GITLAB
 
 /**
  * Detect effective schema mode based on clientInfo from MCP initialize
- * Called during initialize to determine per-session schema mode when GITLAB_SCHEMA_MODE=auto
- *
- * NOTE: This detection is only reliable for stdio mode (single client per server instance).
- * For HTTP/SSE modes with multiple concurrent sessions, use explicit GITLAB_SCHEMA_MODE instead.
+ * Used per server session when listing tools with GITLAB_SCHEMA_MODE=auto.
+ * Each transport session supplies its own initialized clientInfo.
  *
  * @param clientName - Client name from clientInfo (e.g., "claude-code", "mcp-inspector")
  * @returns Effective schema mode for this client

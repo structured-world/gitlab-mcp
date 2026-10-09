@@ -1286,9 +1286,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@modelcontextprotocol/sdk@npm:^1.32.0":
-  version: 1.32.0
-  resolution: "@modelcontextprotocol/sdk@npm:1.32.0"
+"@modelcontextprotocol/sdk@npm:^1.32.1":
+  version: 1.32.1
+  resolution: "@modelcontextprotocol/sdk@npm:1.32.1"
   dependencies:
     "@hono/node-server": "npm:^1.19.9 || ^2.0.5"
     ajv: "npm:^8.17.1"
@@ -1315,7 +1315,7 @@ __metadata:
       optional: true
     zod:
       optional: false
-  checksum: 10c0/13189842481a9cd52fe3b3ebe6ca53ea1e9bc9270d315b299a6f2003996b2e5406bf6ce16fabb3a84384f436c6cdcbc66e1642a89f101206491eccae99556570
+  checksum: 10c0/8b6c8ff6aa5358aeb316fedfa2094a4241ce12d98a0f818cee42510ec9149fed21fc75244c5f0e8cb453337f243c09fa8a90425cd2533fd481964d8583a1f0c9
   languageName: node
   linkType: hard
 
@@ -2142,7 +2142,7 @@ __metadata:
     "@cloudflare/workers-types": "npm:^5.20261003.1"
     "@eslint/js": "npm:^10.0.1"
     "@graphql-typed-document-node/core": "npm:^3.2.0"
-    "@modelcontextprotocol/sdk": "npm:^1.32.0"
+    "@modelcontextprotocol/sdk": "npm:^1.32.1"
     "@structured-world/vue-privacy": "npm:^1.10.0"
     "@types/express": "npm:^5.0.6"
     "@types/jest": "npm:^30.0.0"
@@ -2152,6 +2152,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:^8.71.0"
     auto-changelog: "npm:^2.7.0"
     cross-env: "npm:^10.1.0"
+    cross-spawn: "npm:^7.0.6"
     dotenv: "npm:^18.0.5"
     eslint: "npm:^10.12.0"
     eslint-plugin-prettier: "npm:^5.5.6"

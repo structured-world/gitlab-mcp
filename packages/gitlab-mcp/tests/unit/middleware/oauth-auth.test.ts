@@ -115,6 +115,7 @@ describe('OAuth Authentication Middleware', () => {
     gitlabUsername: 'testuser',
     clientId: 'test-client-id',
     scopes: ['api', 'read_user'],
+    gitlabScopes: ['read_api'],
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
@@ -262,6 +263,8 @@ describe('OAuth Authentication Middleware', () => {
 
         expect(mockNext).toHaveBeenCalled();
         expect(res.locals.oauthSessionId).toBe('session-123');
+        // GitLab grants, not the MCP token scopes, govern account catalog filtering.
+        expect(res.locals.gitlabScopes).toEqual(['read_api']);
         expect(res.locals.gitlabToken).toBe('gitlab-access-token');
         expect(res.locals.gitlabUserId).toBe(12345);
         expect(res.locals.gitlabUsername).toBe('testuser');
@@ -288,32 +291,40 @@ describe('OAuth Authentication Middleware', () => {
     });
 
     describe('when GitLab token needs refresh', () => {
-      it('should refresh GitLab token when expiring soon', async () => {
-        mockIsTokenExpiringSoon.mockReturnValue(true);
-        mockRefreshGitLabToken.mockResolvedValue({
-          access_token: 'new-gitlab-token',
-          refresh_token: 'new-gitlab-refresh',
-          expires_in: 7200,
-        });
-        mockCalculateTokenExpiry.mockReturnValue(Date.now() + 7200000);
+      it.each([undefined, '', 'read_api', 'api read_user'])(
+        'refreshes GitLab tokens without inventing grants for scope %s',
+        async (scope) => {
+          // Missing scope preserves the existing grant; a reported empty scope clears it.
+          mockIsTokenExpiringSoon.mockReturnValue(true);
+          mockRefreshGitLabToken.mockResolvedValue({
+            access_token: 'new-gitlab-token',
+            refresh_token: 'new-gitlab-refresh',
+            expires_in: 7200,
+            scope,
+          });
+          mockCalculateTokenExpiry.mockReturnValue(Date.now() + 7200000);
 
-        const req = createMockReq({
-          headers: { authorization: 'Bearer valid-mcp-token' },
-        });
-        const res = createMockRes();
+          const req = createMockReq({
+            headers: { authorization: 'Bearer valid-mcp-token' },
+          });
+          const res = createMockRes();
 
-        await oauthAuthMiddleware(req, res, mockNext);
+          await oauthAuthMiddleware(req, res, mockNext);
 
-        expect(mockRefreshGitLabToken).toHaveBeenCalledWith('gitlab-refresh-token', mockConfig);
-        expect(mockSessionStore.updateSession).toHaveBeenCalledWith(
-          'session-123',
-          expect.objectContaining({
-            gitlabAccessToken: 'new-gitlab-token',
-            gitlabRefreshToken: 'new-gitlab-refresh',
-          }),
-        );
-        expect(mockNext).toHaveBeenCalled();
-      });
+          expect(mockRefreshGitLabToken).toHaveBeenCalledWith('gitlab-refresh-token', mockConfig);
+          expect(mockSessionStore.updateSession).toHaveBeenCalledWith(
+            'session-123',
+            expect.objectContaining({
+              gitlabAccessToken: 'new-gitlab-token',
+              gitlabRefreshToken: 'new-gitlab-refresh',
+            }),
+          );
+          expect(mockNext).toHaveBeenCalled();
+          const update = mockSessionStore.updateSession.mock.calls[0][1];
+          if (scope === undefined) expect(update).not.toHaveProperty('gitlabScopes');
+          else expect(update.gitlabScopes).toEqual(scope.split(/\s+/).filter(Boolean));
+        },
+      );
 
       it('should return 401 when GitLab token refresh fails', async () => {
         mockIsTokenExpiringSoon.mockReturnValue(true);

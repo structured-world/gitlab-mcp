@@ -24,10 +24,6 @@ jest.mock('../../src/handlers', () => ({
   setupHandlers: jest.fn().mockResolvedValue(undefined),
 }));
 
-jest.mock('../../src/utils/schema-utils', () => ({
-  setDetectedSchemaMode: jest.fn(),
-}));
-
 jest.mock('../../src/logger', () => ({
   logger: {
     info: jest.fn(),
@@ -49,7 +45,6 @@ import {
 } from '../../src/session-manager';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { setupHandlers } from '../../src/handlers';
-import { setDetectedSchemaMode } from '../../src/utils/schema-utils';
 import { logWarn } from '../../src/logger';
 
 describe('SessionManager', () => {
@@ -117,20 +112,18 @@ describe('SessionManager', () => {
       expect(server.connect).toHaveBeenCalledWith(mockTransport);
     });
 
-    it('should only call setDetectedSchemaMode once across multiple sessions', async () => {
+    it('leaves client negotiation on each independent Server', async () => {
       manager.start();
 
       // Create first session and trigger oninitialized
       const server1 = await manager.createSession('session-1', mockTransport);
-      // Simulate SDK calling oninitialized
-      (server1 as any).oninitialized();
 
       // Create second session and trigger oninitialized
       const server2 = await manager.createSession('session-2', mockTransport);
-      (server2 as any).oninitialized();
-
-      // setDetectedSchemaMode should only be called once (from first session)
-      expect(setDetectedSchemaMode).toHaveBeenCalledTimes(1);
+      // No process-wide initialization callback may couple client schema preferences.
+      expect(server1).not.toBe(server2);
+      expect((server1 as any).oninitialized).toBeNull();
+      expect((server2 as any).oninitialized).toBeNull();
     });
 
     it('should close existing session when duplicate sessionId is provided', async () => {

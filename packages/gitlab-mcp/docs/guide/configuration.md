@@ -163,7 +163,7 @@ See [Docker + PostgreSQL](/deployment/docker-postgres) for a full deployment.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `GITLAB_SCHEMA_MODE` | Schema output format (`flat` or `discriminated`) | `flat` |
+| `GITLAB_SCHEMA_MODE` | Schema output format (`flat`, `discriminated`, or per-session `auto`) | `flat` |
 
 See [Customization](/advanced/customization) for schema mode details.
 

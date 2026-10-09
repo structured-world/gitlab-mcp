@@ -443,7 +443,10 @@ export class ConnectionManager {
    * Uses Promise-based deduplication to prevent thundering herd when
    * multiple concurrent requests trigger introspection simultaneously.
    */
-  public async ensureIntrospected(explicitUrl?: string): Promise<void> {
+  public async ensureIntrospected(
+    explicitUrl?: string,
+    requestScopes?: readonly string[],
+  ): Promise<void> {
     // Use explicit URL if provided (handler knows the effective URL),
     // otherwise fall back to OAuth context / current instance
     const instanceUrl = normalizeInstanceUrl(
@@ -458,6 +461,17 @@ export class ConnectionManager {
     // Any ensureIntrospected() call represents active use of the instance —
     // touch LRU timestamp on all code paths once state existence is confirmed.
     this.touchInstance(instanceUrl);
+
+    // GitLab GraphQL requires api/read_api; request grants are never cached on
+    // shared instance state. https://docs.gitlab.com/api/graphql/#token-scopes
+    if (requestScopes && !requestScopes.includes('api') && !requestScopes.includes('read_api')) {
+      if (!state.instanceInfo) {
+        const info = await this.detectVersionViaREST(instanceUrl);
+        if (this.instances.get(instanceUrl) === state && !state.instanceInfo)
+          state.instanceInfo = info;
+      }
+      return;
+    }
 
     // Already introspected for THIS instance - reuse cached data
     if (state.instanceInfo && state.schemaInfo && state.introspectedInstanceUrl === instanceUrl) {
@@ -875,7 +889,6 @@ export class ConnectionManager {
       const url = baseUrl ?? this.currentInstanceUrl ?? GITLAB_BASE_URL;
       const response = await enhancedFetch(`${url}/api/v4/version`, {
         headers: {
-          'PRIVATE-TOKEN': GITLAB_TOKEN ?? '',
           Accept: 'application/json',
         },
         retry: false, // Don't retry version detection at startup

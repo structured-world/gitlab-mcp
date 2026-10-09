@@ -10,6 +10,7 @@ import {
   getContextToolDefinitions,
   getFilteredContextTools,
 } from '../../../../src/entities/context/registry';
+import { formatToolResult } from '../../../../src/utils/tool-result';
 
 describe('contextToolRegistry', () => {
   it('should export manage_context tool', () => {
@@ -87,11 +88,38 @@ describe('tool handler', () => {
   it('should execute handler without errors for show action', async () => {
     const tool = contextToolRegistry.get('manage_context');
     expect(tool?.handler).toBeDefined();
+    if (!tool) throw new Error('Missing context tool');
 
-    const result = await tool?.handler({ action: 'show' });
-    expect(result).toBeDefined();
-    expect(result).toHaveProperty('host');
+    // Validate the declared native output and preserve the existing Claude JSON.
+    const result = formatToolResult(await tool.handler({ action: 'show' }), tool);
+    expect(result.structuredContent?.action).toBe('show');
+    expect(result.structuredContent?.data).toHaveProperty('host');
+    expect(result.content).toEqual([
+      { type: 'text', text: JSON.stringify(result.structuredContent?.data, null, 2) },
+    ]);
   });
+
+  it.each(['list_presets', 'list_profiles'])(
+    'validates %s arrays inside the object output envelope',
+    async (action) => {
+      // MCP outputSchema has an object root even when the domain result is an array.
+      const tool = contextToolRegistry.get('manage_context');
+      if (!tool) throw new Error('Missing context tool');
+      const original = process.env.OAUTH_ENABLED;
+      process.env.OAUTH_ENABLED = 'true';
+      try {
+        const result = formatToolResult(await tool.handler({ action }), tool);
+        expect(result.structuredContent?.action).toBe(action);
+        expect(Array.isArray(result.structuredContent?.data)).toBe(true);
+        expect(result.content).toEqual([
+          { type: 'text', text: JSON.stringify(result.structuredContent?.data, null, 2) },
+        ]);
+      } finally {
+        if (original === undefined) delete process.env.OAUTH_ENABLED;
+        else process.env.OAUTH_ENABLED = original;
+      }
+    },
+  );
 
   it('should throw error for invalid action', async () => {
     const tool = contextToolRegistry.get('manage_context');

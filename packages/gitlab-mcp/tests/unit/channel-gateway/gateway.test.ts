@@ -7,7 +7,12 @@
  * watch -> channel-notification path, reconnect-with-backoff, and the bounded
  * request buffer (backpressure + connect timeout).
  */
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  ListToolsRequestSchema,
+  McpError,
+  ErrorCode,
+} from '@modelcontextprotocol/sdk/types.js';
 
 // Shared mock surfaces (must be `mock`-prefixed to be usable in jest.mock factories).
 const mockClientConnect = jest.fn<Promise<void>, [unknown]>();
@@ -18,14 +23,20 @@ const mockServerConnect = jest.fn();
 const mockServerNotification = jest.fn();
 const mockTransportClose = jest.fn();
 // The most recently constructed downstream transport, so a test can fire onclose.
-let mockTransportInstance: { onclose?: () => void; close: jest.Mock };
+let mockTransportInstance: { onclose?: () => void; close: jest.Mock; closed?: boolean };
 
 jest.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
-  Client: jest.fn().mockImplementation(() => ({
-    connect: mockClientConnect,
-    listTools: mockClientListTools,
-    callTool: mockClientCallTool,
-  })),
+  Client: jest.fn().mockImplementation(() => {
+    const transport = mockTransportInstance;
+    return {
+      connect: mockClientConnect,
+      listTools: mockClientListTools,
+      callTool: mockClientCallTool,
+      get transport() {
+        return transport.closed ? undefined : transport;
+      },
+    };
+  }),
 }));
 
 jest.mock('@modelcontextprotocol/sdk/client/stdio.js', () => ({
@@ -103,6 +114,59 @@ describe('ChannelGateway', () => {
     expect(result).toEqual({ tools });
   });
 
+  it('preserves catalog pagination and metadata in both directions', async () => {
+    // Prevent the gateway from truncating paginated catalogs or hiding UI/auth metadata.
+    const catalog = {
+      tools: [{ name: 'settings', title: 'Settings', _meta: { securitySchemes: [] } }],
+      nextCursor: 'next-page',
+      _meta: { revision: 'current' },
+    };
+    mockClientListTools.mockResolvedValue(catalog);
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    const params = { cursor: 'previous-page' };
+    const result = await mockServerHandlers.get(ListToolsRequestSchema)!({ params });
+    expect(mockClientListTools).toHaveBeenCalledWith(params);
+    expect(result).toEqual(catalog);
+    await gw.stop();
+  });
+
+  it.each(['catalog', 'tool'])(
+    'retries a %s read from the closed client after replacement',
+    async (kind) => {
+      // Catch sees a live replacement; only the captured original client proves the lost request.
+      const gw = new ChannelGateway(baseConfig);
+      await gw.start();
+      const original = mockTransportInstance;
+      const result = kind === 'catalog' ? { tools: [] } : mcp({ ok: true });
+      const call = kind === 'catalog' ? mockClientListTools : mockClientCallTool;
+      call
+        .mockImplementationOnce(async () => {
+          original.closed = true;
+          original.onclose!();
+          await wait(0);
+          throw new McpError(ErrorCode.ConnectionClosed, 'Connection closed');
+        })
+        .mockResolvedValueOnce(result);
+      expect(await (kind === 'catalog' ? listTools() : callTool('browse_projects'))).toEqual(
+        result,
+      );
+      expect(call).toHaveBeenCalledTimes(2);
+      await gw.stop();
+    },
+  );
+
+  it('does not mistake a received server error for transport closure', async () => {
+    // -32000 can be an ordinary JSON-RPC server error while this client remains connected.
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    const error = new McpError(ErrorCode.ConnectionClosed, 'Remote server rejected the request');
+    mockClientCallTool.mockRejectedValueOnce(error);
+    await expect(callTool('browse_projects')).rejects.toBe(error);
+    expect(mockClientCallTool).toHaveBeenCalledTimes(1);
+    await gw.stop();
+  });
+
   it('forwards a read call to the downstream and returns the result unchanged', async () => {
     const payload = mcp({ projects: [{ id: 1 }] });
     mockClientCallTool.mockResolvedValue(payload);
@@ -116,6 +180,33 @@ describe('ChannelGateway', () => {
       arguments: { search: 'x' },
     });
     expect(result).toEqual(payload);
+  });
+
+  it('preserves native authorization errors without watching or replaying them', async () => {
+    // A challenge may contain CI-shaped data; it must remain an error and cause no I/O.
+    const challenge = {
+      content: [{ type: 'text', text: 'Connect your account' }],
+      structuredContent: { id: 7, status: 'running' },
+      isError: true,
+      _meta: {
+        'mcp/www_authenticate': [
+          'Bearer resource_metadata="https://example.com/.well-known/oauth-protected-resource"',
+        ],
+        ui: { resourceUri: 'ui://gitlab/settings.html' },
+      },
+    };
+    mockClientCallTool.mockResolvedValue(challenge);
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    try {
+      expect(await callTool('manage_pipeline', { action: 'create', project_id: 'test/p' })).toBe(
+        challenge,
+      );
+      expect(mockClientCallTool).toHaveBeenCalledTimes(1);
+      expect(mockServerNotification).not.toHaveBeenCalled();
+    } finally {
+      await gw.stop();
+    }
   });
 
   it('arms a watch on a non-final pipeline and pushes a channel event on terminal', async () => {

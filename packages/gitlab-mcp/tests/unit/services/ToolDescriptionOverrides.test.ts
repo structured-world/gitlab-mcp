@@ -58,11 +58,13 @@ jest.mock('../../../src/services/ConnectionManager', () => ({
 }));
 
 jest.mock('../../../src/oauth/token-context', () => ({
+  getTokenContext: jest.fn().mockReturnValue(undefined),
   getGitLabApiUrlFromContext: jest.fn().mockReturnValue(undefined),
 }));
 
 // Mock all entity registries
 jest.mock('../../../src/entities/core/registry', () => ({
+  getCoreReadOnlyToolNames: () => ['list_projects', 'get_project'],
   coreToolRegistry: new Map([
     [
       'list_projects',
@@ -87,34 +89,42 @@ jest.mock('../../../src/entities/core/registry', () => ({
 
 jest.mock('../../../src/entities/labels/registry', () => ({
   labelsToolRegistry: new Map(),
+  getLabelsReadOnlyToolNames: () => [],
 }));
 
 jest.mock('../../../src/entities/mrs/registry', () => ({
   mrsToolRegistry: new Map(),
+  getMrsReadOnlyToolNames: () => [],
 }));
 
 jest.mock('../../../src/entities/files/registry', () => ({
   filesToolRegistry: new Map(),
+  getFilesReadOnlyToolNames: () => [],
 }));
 
 jest.mock('../../../src/entities/milestones/registry', () => ({
   milestonesToolRegistry: new Map(),
+  getMilestonesReadOnlyToolNames: () => [],
 }));
 
 jest.mock('../../../src/entities/pipelines/registry', () => ({
   pipelinesToolRegistry: new Map(),
+  getPipelinesReadOnlyToolNames: () => [],
 }));
 
 jest.mock('../../../src/entities/variables/registry', () => ({
   variablesToolRegistry: new Map(),
+  getVariablesReadOnlyToolNames: () => [],
 }));
 
 jest.mock('../../../src/entities/wiki/registry', () => ({
   wikiToolRegistry: new Map(),
+  getWikiReadOnlyToolNames: () => [],
 }));
 
 jest.mock('../../../src/entities/workitems/registry', () => ({
   workitemsToolRegistry: new Map(),
+  getWorkitemsReadOnlyToolNames: () => [],
 }));
 
 describe('Tool Description Overrides', () => {

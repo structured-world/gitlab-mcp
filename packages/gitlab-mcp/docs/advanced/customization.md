@@ -160,13 +160,18 @@ export GITLAB_PARAM_BROWSE_WORK_ITEMS_TYPES="Filter by type: ISSUE, EPIC, TASK, 
 Configure how CQRS tool schemas are delivered to AI clients:
 
 ```bash
-GITLAB_SCHEMA_MODE=flat|discriminated
+GITLAB_SCHEMA_MODE=flat|discriminated|auto
 ```
 
 | Mode | Description | Best For |
 |------|-------------|----------|
 | `flat` (default) | Merged properties with action enum | Current AI clients (Claude, GPT) |
 | `discriminated` | Full `oneOf` with action-specific branches | Advanced clients with native oneOf support |
+| `auto` | Independent selection from each session's initialized client name | Shared servers with mixed clients |
+
+In `auto`, Inspector receives discriminated schemas; Claude, Codex and unknown
+clients receive flat schemas. This applies to stdio, SSE and Streamable HTTP.
+One client's initialization or catalog refresh does not change another's format.
 
 ### Schema Pipeline
 

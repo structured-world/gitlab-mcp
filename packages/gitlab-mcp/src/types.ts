@@ -1,3 +1,5 @@
+import type { Tool } from '@modelcontextprotocol/sdk/types.js';
+
 // Transport mode constants and type
 const TransportModeObj = {
   STDIO: 'stdio',
@@ -17,8 +19,7 @@ export interface GitLabAPIResponse<T = unknown> {
 }
 
 // Tool definition interface
-export interface ToolDefinition {
-  name: string;
+export interface ToolDefinition extends Omit<Tool, 'description' | 'inputSchema'> {
   description: string;
   inputSchema: Record<string, unknown>;
 }
@@ -58,6 +59,8 @@ export interface ToolRequirements {
 // Enhanced tool definition interface that includes handler function
 export interface EnhancedToolDefinition extends ToolDefinition {
   handler: (args: unknown) => Promise<unknown>;
+  /** Explicitly opt in to native MCP envelopes; ordinary entity data is never guessed by shape. */
+  resultFormat?: 'mcp';
   gate?: FeatureGate; // Optional - tools without gate are always enabled
   /**
    * Version/tier/admin requirements for this tool. When the detected instance

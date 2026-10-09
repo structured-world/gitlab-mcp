@@ -102,7 +102,6 @@ import {
 import { ConnectionManager } from './services/ConnectionManager';
 import { HealthMonitor } from './services/HealthMonitor';
 import { isToolAvailableForScopes } from './services/TokenScopeDetector';
-import type { GitLabScope } from './services/TokenScopeDetector';
 import type { GitLabTier } from './services/GitLabVersionDetector';
 import { logDebug, logError } from './logger';
 import {
@@ -110,10 +109,13 @@ import {
   stripTierRestrictedParameters,
   shouldRemoveTool,
   extractActionsFromSchema,
+  flattenDiscriminatedUnion,
+  getSchemaMode,
+  type ClientSchemaMode,
 } from './utils/schema-utils';
 import { resolveRelatedReferences, stripRelatedSection } from './utils/description-utils';
 import { normalizeInstanceUrl } from './utils/url';
-import { getGitLabApiUrlFromContext } from './oauth/token-context';
+import { getGitLabApiUrlFromContext, getTokenContext } from './oauth/token-context';
 
 const NONE_UNAVAILABLE: ReadonlyMap<string, string> = new Map();
 
@@ -130,7 +132,10 @@ class RegistryManager {
   // Growth is bounded by the number of distinct GitLab instances (typically 1-3,
   // never user-input-driven). No eviction needed at this scale.
   private readonly toolLookupCaches = new Map<string, Map<string, EnhancedToolDefinition>>();
-  private readonly toolDefinitionsCaches = new Map<string, ToolDefinition[]>();
+  private readonly toolDefinitionsCaches = new Map<
+    string,
+    Map<ClientSchemaMode, ToolDefinition[]>
+  >();
   private readonly toolNamesCaches = new Map<string, string[]>();
   private readonly filterStatsCaches = new Map<string, FilterStats>();
   // URLs where loadInstanceContext has returned a populated instanceInfo at
@@ -407,7 +412,7 @@ class RegistryManager {
    *  @throws on unexpected errors (anything other than expected init errors). */
   private loadInstanceContext(instanceUrl?: string): {
     instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
-    tokenScopes?: GitLabScope[];
+    tokenScopes?: readonly string[];
   } {
     let instanceInfo: { tier: GitLabTier; version: string; adminModeActive?: boolean } | undefined;
     try {
@@ -434,7 +439,7 @@ class RegistryManager {
       }
     }
 
-    let tokenScopes: GitLabScope[] | undefined;
+    let tokenScopes: readonly string[] | undefined;
     try {
       const scopeInfo = ConnectionManager.getInstance().getTokenScopeInfo(instanceUrl);
       if (scopeInfo) {
@@ -455,7 +460,7 @@ class RegistryManager {
     tool: EnhancedToolDefinition,
     ctx: {
       instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
-      tokenScopes?: GitLabScope[];
+      tokenScopes?: readonly string[];
     },
     unavailableActions: ReadonlyMap<string, string>,
   ): 'readOnly' | 'deniedRegex' | 'scopes' | 'tier' | 'admin' | 'actionDenial' | null {
@@ -500,7 +505,7 @@ class RegistryManager {
   /** Filter registries and build transformed tool map (schema + description overrides). */
   private buildFilteredTools(ctx: {
     instanceInfo?: { tier: GitLabTier; version: string; adminModeActive?: boolean };
-    tokenScopes?: GitLabScope[];
+    tokenScopes?: readonly string[];
   }): Map<string, EnhancedToolDefinition> {
     const result = new Map<string, EnhancedToolDefinition>();
 
@@ -513,7 +518,13 @@ class RegistryManager {
           continue;
         }
 
-        let transformedSchema = transformToolSchema(toolName, tool.inputSchema, unavailableActions);
+        // Store a canonical schema; client initialization must not mutate the shared cache.
+        let transformedSchema = transformToolSchema(
+          toolName,
+          tool.inputSchema,
+          unavailableActions,
+          'discriminated',
+        );
 
         // Strip restricted parameters (skip only when not initialized). When version
         // is unknown, getRestrictedParameters fail-opens version/tier but still strips
@@ -689,7 +700,12 @@ class RegistryManager {
    * @param toolName - Tool name to look up
    * @param instanceUrl - Optional instance URL to resolve the correct per-URL cache
    */
-  public getTool(toolName: string, instanceUrl?: string): EnhancedToolDefinition | null {
+  public getTool(
+    toolName: string,
+    instanceUrl?: string,
+    scopes?: readonly string[],
+  ): EnhancedToolDefinition | null {
+    if (scopes && !isToolAvailableForScopes(toolName, scopes)) return null;
     return this.resolveCache(instanceUrl).get(toolName) ?? null;
   }
 
@@ -703,8 +719,9 @@ class RegistryManager {
     toolName: string,
     args: unknown,
     instanceUrl?: string,
+    scopes?: readonly string[],
   ): Promise<unknown> {
-    const tool = this.getTool(toolName, instanceUrl);
+    const tool = this.getTool(toolName, instanceUrl, scopes);
     if (!tool) {
       throw new Error(`Tool '${toolName}' not found in any registry`);
     }
@@ -734,7 +751,11 @@ class RegistryManager {
    * @param instanceUrl - Optional instance URL. When omitted, resolves via
    *   OAuth request context → getCurrentInstanceUrl() → GITLAB_BASE_URL
    */
-  public getAllToolDefinitions(instanceUrl?: string): ToolDefinition[] {
+  public getAllToolDefinitions(
+    instanceUrl?: string,
+    mode: ClientSchemaMode = getSchemaMode(),
+    scopes?: readonly string[],
+  ): ToolDefinition[] {
     // url (resolved) is used as cache key — always non-undefined.
     // instanceUrl (raw) is passed to isUnreachableFor — preserves undefined
     // so that no-arg callers hit the global "all instances down" branch,
@@ -744,29 +765,45 @@ class RegistryManager {
     const unreachableMode = this.isUnreachableFor(instanceUrl);
     // In unreachable mode, rebuild every call (transient state — don't cache
     // a context-only list that would persist after recovery)
-    const cachedDefs = this.toolDefinitionsCaches.get(url);
+    const cachedDefs = this.toolDefinitionsCaches.get(url)?.get(mode);
     if (cachedDefs === undefined || unreachableMode) {
       const contextTools = unreachableMode ? this.registries.get('context') : null;
 
       const defs: ToolDefinition[] = [];
       for (const tool of cache.values()) {
         if (contextTools && !contextTools.has(tool.name)) continue;
-        defs.push({
-          name: tool.name,
-          description: tool.description,
-          inputSchema: tool.inputSchema,
-        });
+        defs.push(this.toToolDefinition(tool, mode));
       }
       // Don't persist cache in unreachable mode — next call after recovery
       // should see full tool list
       if (unreachableMode) {
-        return defs;
+        return this.forScopes(defs, scopes);
       }
-      this.toolDefinitionsCaches.set(url, defs);
-      return defs;
+      const modes =
+        this.toolDefinitionsCaches.get(url) ?? new Map<ClientSchemaMode, ToolDefinition[]>();
+      modes.set(mode, defs);
+      this.toolDefinitionsCaches.set(url, modes);
+      return this.forScopes(defs, scopes);
     }
 
-    return cachedDefs;
+    return this.forScopes(cachedDefs, scopes);
+  }
+
+  private forScopes(definitions: ToolDefinition[], scopes?: readonly string[]): ToolDefinition[] {
+    // Account permissions are request data, never stored in a URL-keyed shared cache.
+    if (scopes === undefined) return definitions;
+    const filtered = definitions.filter((tool) => isToolAvailableForScopes(tool.name, scopes));
+    if (!GITLAB_CROSS_REFS || filtered.length === definitions.length) return filtered;
+    const availableNames = new Set<string>();
+    for (const tool of filtered) availableNames.add(tool.name);
+    for (let index = 0; index < filtered.length; index++) {
+      const tool = filtered[index];
+      if (this.descriptionOverrides.has(tool.name)) continue;
+      const description = resolveRelatedReferences(tool.description, availableNames);
+      // Only changed descriptions need ownership; never mutate the shared client-mode cache.
+      if (description !== tool.description) filtered[index] = { ...tool, description };
+    }
+    return filtered;
   }
 
   /**
@@ -781,10 +818,13 @@ class RegistryManager {
    * @param instanceUrl - Optional instance URL. When omitted, resolves via
    *   OAuth request context → getCurrentInstanceUrl() → GITLAB_BASE_URL
    */
-  public getToolCatalog(instanceUrl?: string): ToolDefinition[] {
+  public getToolCatalog(
+    instanceUrl?: string,
+    mode: ClientSchemaMode = getSchemaMode(),
+  ): ToolDefinition[] {
     const url = this.resolveCacheUrl(instanceUrl);
     const cache = this.resolveCache(instanceUrl);
-    const cachedDefs = this.toolDefinitionsCaches.get(url);
+    const cachedDefs = this.toolDefinitionsCaches.get(url)?.get(mode);
     // Return the cached full-list when available (same object already stored by
     // getAllToolDefinitions on healthy path). If the cache is absent (e.g. first
     // call, or was cleared after an invalidation) build it now without the
@@ -794,14 +834,46 @@ class RegistryManager {
     }
     const defs: ToolDefinition[] = [];
     for (const tool of cache.values()) {
-      defs.push({
-        name: tool.name,
-        description: tool.description,
-        inputSchema: tool.inputSchema,
-      });
+      defs.push(this.toToolDefinition(tool, mode));
     }
-    this.toolDefinitionsCaches.set(url, defs);
+    const modes =
+      this.toolDefinitionsCaches.get(url) ?? new Map<ClientSchemaMode, ToolDefinition[]>();
+    modes.set(mode, defs);
+    this.toolDefinitionsCaches.set(url, modes);
     return defs;
+  }
+
+  private toToolDefinition(tool: EnhancedToolDefinition, mode: ClientSchemaMode): ToolDefinition {
+    const {
+      handler: _handler,
+      gate: _gate,
+      requirements: _requirements,
+      unavailableActions: _unavailable,
+      idempotent: _idempotent,
+      resultFormat: _format,
+      ...definition
+    } = tool;
+    // Registry query membership is reviewed per entity; manage_context is deliberately
+    // allowed in GitLab read-only mode but mutates session state. Mixed CQRS commands
+    // remain conservative even when an individual action only reads.
+    const readOnly = this.getReadOnlyTools().includes(tool.name) && tool.name !== 'manage_context';
+    const label = tool.name.replaceAll('_', ' ');
+    return {
+      ...definition,
+      title: tool.title ?? label.charAt(0).toUpperCase() + label.slice(1),
+      annotations: {
+        readOnlyHint: readOnly,
+        destructiveHint:
+          !readOnly && tool.name !== 'manage_context' && tool.name !== 'manage_todos',
+        openWorldHint: true,
+        idempotentHint: tool.idempotent ?? readOnly,
+        ...tool.annotations,
+      },
+      inputSchema:
+        mode === 'flat' && definition.inputSchema.oneOf
+          ? flattenDiscriminatedUnion(definition.inputSchema)
+          : definition.inputSchema,
+    };
   }
 
   /**
@@ -1121,6 +1193,7 @@ class RegistryManager {
    * Used by whoami action to explain tool availability
    */
   public getFilterStats(instanceUrl?: string): FilterStats {
+    const accountScopes = getTokenContext()?.gitlabScopes;
     // See getAllToolDefinitions for url vs instanceUrl rationale:
     // raw instanceUrl for reachability (preserves undefined → global fallback),
     // resolved url for instance context loading (avoids currentInstanceUrl leakage).
@@ -1129,13 +1202,7 @@ class RegistryManager {
     const contextTools = unreachableMode ? this.registries.get('context') : null;
 
     // Count total tools — in unreachable mode, only context tools are in scope
-    let totalTools = 0;
-    for (const registry of this.registries.values()) {
-      for (const [toolName] of registry) {
-        if (contextTools && !contextTools.has(toolName)) continue;
-        totalTools++;
-      }
-    }
+    const totalTools = this.countCatalogTools(contextTools);
 
     // In unreachable mode, tier/scope context is irrelevant — only context
     // tools are shown. Skip loadInstanceContext but still apply local filters
@@ -1177,7 +1244,7 @@ class RegistryManager {
       // reflecting the real total so whoami doesn't show totalToolCount: 0.
       const filteredTotal = totalTools;
       return (
-        this.filterStatsCaches.get(url) ?? {
+        (accountScopes === undefined ? this.filterStatsCaches.get(url) : undefined) ?? {
           available: 0,
           total: filteredTotal,
           filteredByScopes: filteredTotal,
@@ -1189,6 +1256,8 @@ class RegistryManager {
         }
       );
     }
+
+    if (accountScopes !== undefined) ctx = { ...ctx, tokenScopes: accountScopes };
 
     const {
       available: availableTools,
@@ -1210,8 +1279,24 @@ class RegistryManager {
       filteredByActionDenial,
       filteredByAdmin,
     };
-    this.filterStatsCaches.set(url, stats);
+    if (accountScopes === undefined) this.filterStatsCaches.set(url, stats);
     return stats;
+  }
+
+  private countCatalogTools(
+    contextTools: ReadonlyMap<string, EnhancedToolDefinition> | null | undefined,
+  ): number {
+    let total = 0;
+    for (const registry of this.registries.values()) {
+      if (!contextTools) {
+        total += registry.size;
+        continue;
+      }
+      for (const name of registry.keys()) {
+        if (contextTools.has(name)) total++;
+      }
+    }
+    return total;
   }
 }
 

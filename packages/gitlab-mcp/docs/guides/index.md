@@ -15,6 +15,7 @@ Comprehensive walkthroughs for common GitLab MCP workflows.
 
 | Guide | Description | Key Tools |
 |-------|-------------|-----------|
+| [Codex and Claude Workflow Skills](/guides/codex-workflows) | Portable workflows and shared MCP contracts | manage_context, browse_projects, browse_merge_requests, browse_work_items, browse_pipelines |
 | [Complete Code Review](/guides/complete-code-review) | End-to-end MR review process | browse_merge_requests, manage_mr_discussion |
 | [Setup CI Notifications](/guides/setup-ci-notifications) | Pipeline alerts via Slack/Discord/webhooks | manage_webhook, manage_integration |
 | [Automate Releases](/guides/automate-releases) | Release workflow with changelogs | manage_release, browse_commits |

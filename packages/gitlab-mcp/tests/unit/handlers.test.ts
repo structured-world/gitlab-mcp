@@ -48,6 +48,7 @@ const mockRegistryManager = {
   hasToolHandler: jest.fn(),
   executeTool: jest.fn(),
   refreshCache: jest.fn(),
+  getTool: jest.fn(),
 };
 
 jest.mock('../../src/registry-manager', () => ({
@@ -61,6 +62,7 @@ jest.mock('../../src/config', () => ({
   LOG_FORMAT: 'condensed',
   HANDLER_TIMEOUT_MS: 100,
   GITLAB_BASE_URL: 'https://gitlab.example.com',
+  GITLAB_SCHEMA_MODE: 'flat',
 }));
 
 // Mock HealthMonitor
@@ -179,6 +181,7 @@ describe('handlers', () => {
     // Create mock server
     mockServer = {
       setRequestHandler: jest.fn(),
+      getClientVersion: jest.fn().mockReturnValue({ name: 'claude-code', version: 'test' }),
     } as unknown as jest.Mocked<Server>;
 
     // Mock ConnectionManager methods — re-seed defaults that tests may flip
@@ -209,6 +212,7 @@ describe('handlers', () => {
     ]);
     mockRegistryManager.hasToolHandler.mockReturnValue(true);
     mockRegistryManager.executeTool.mockResolvedValue({ result: 'success' });
+    mockRegistryManager.getTool.mockReturnValue(null);
 
     // SessionManager mock defaults for per-session instance URL tracking (#398)
     mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://gitlab.example.com');
@@ -411,6 +415,7 @@ describe('handlers', () => {
         expect(mockSessionManager.getSessionInstanceUrl).toHaveBeenCalledWith('sess-abc');
         expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(
           'https://custom.gitlab.com',
+          'flat',
         );
       });
 
@@ -420,7 +425,7 @@ describe('handlers', () => {
         await listToolsHandler({ method: 'tools/list' });
 
         expect(mockSessionManager.getSessionInstanceUrl).not.toHaveBeenCalled();
-        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined);
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined, 'flat');
       });
 
       it('should pass undefined to getAllToolDefinitions for unknown/expired sessionId (registry resolves via OAuth context chain)', async () => {
@@ -431,7 +436,7 @@ describe('handlers', () => {
 
         await listToolsHandler({ method: 'tools/list' }, { sessionId: 'new-sess' });
 
-        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined);
+        expect(mockRegistryManager.getAllToolDefinitions).toHaveBeenCalledWith(undefined, 'flat');
       });
     });
   });
@@ -440,6 +445,40 @@ describe('handlers', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
       callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+    });
+
+    it('preserves explicitly declared MCP result envelopes', async () => {
+      // Auth/UI metadata and structured data must reach the host outside text content.
+      const envelope = {
+        content: [{ type: 'text', text: 'Ready' }],
+        structuredContent: { ready: true },
+        _meta: { 'ui/resourceUri': 'ui://gitlab/settings' },
+      };
+      mockRegistryManager.getTool.mockReturnValue({ resultFormat: 'mcp' });
+      mockRegistryManager.executeTool.mockResolvedValue(envelope);
+      const result = await callToolHandler({
+        params: { name: 'settings', arguments: {} },
+      });
+      expect(result).toEqual(envelope);
+    });
+
+    it('rejects structured output that violates the declared schema', async () => {
+      // A malformed native output must be a tool error, never a misleading success.
+      mockRegistryManager.getTool.mockReturnValue({
+        resultFormat: 'mcp',
+        outputSchema: {
+          type: 'object',
+          properties: { ready: { type: 'boolean' } },
+          required: ['ready'],
+        },
+      });
+      mockRegistryManager.executeTool.mockResolvedValue({
+        content: [],
+        structuredContent: { ready: 'yes' },
+      });
+      const result = await callToolHandler({ params: { name: 'settings', arguments: {} } });
+      expect(result.isError).toBe(true);
+      expect(result.content?.[0]?.text).toContain('output');
     });
 
     it('should update session instanceUrl on each tool call (#398)', async () => {
@@ -750,7 +789,8 @@ describe('handlers', () => {
       );
     });
 
-    it('should throw error if arguments are missing', async () => {
+    it('normalizes omitted arguments to an empty object for no-input tools', async () => {
+      // MCP permits omitted arguments; native settings/profile reads use no inputs.
       const mockRequest = {
         params: {
           name: 'get_project',
@@ -764,11 +804,15 @@ describe('handlers', () => {
         content: [
           {
             type: 'text',
-            text: JSON.stringify({ error: 'Arguments are required' }, null, 2),
+            text: JSON.stringify({ result: 'success' }, null, 2),
           },
         ],
-        isError: true,
       });
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledWith(
+        'get_project',
+        {},
+        'https://gitlab.example.com',
+      );
     });
 
     it('should verify connection and continue if already initialized', async () => {
@@ -932,6 +976,12 @@ describe('handlers', () => {
           },
         ],
         isError: true,
+        structuredContent: {
+          error: {
+            error:
+              "Failed to execute tool 'unknown_tool': Tool 'unknown_tool' is not available or has been filtered out",
+          },
+        },
       });
     });
 
@@ -961,6 +1011,9 @@ describe('handlers', () => {
           },
         ],
         isError: true,
+        structuredContent: {
+          error: { error: "Failed to execute tool 'test_tool': Tool execution failed" },
+        },
       });
     });
 
@@ -990,6 +1043,7 @@ describe('handlers', () => {
           },
         ],
         isError: true,
+        structuredContent: { error: { error: "Failed to execute tool 'test_tool': String error" } },
       });
     });
   });
@@ -1781,6 +1835,16 @@ describe('handlers', () => {
       callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
     });
 
+    it('honors an explicit non-idempotent declaration on a browse tool', async () => {
+      // A public hint may tighten retry safety; the name must not override it.
+      mockRegistryManager.getTool.mockReturnValue({ idempotent: false });
+      mockRegistryManager.executeTool.mockRejectedValue(new GitLabTimeoutError('headers', 10000));
+      const result = await callToolHandler({
+        params: { name: 'browse_projects', arguments: { action: 'list' } },
+      });
+      expect(result.isError).toBe(true);
+      expect(JSON.parse(result.content![0].text).retryable).toBe(false);
+    });
     it('should convert timeout error to structured TIMEOUT response for idempotent tools', async () => {
       // Test timeout handling for browse_* (idempotent) tools
       mockRegistryManager.executeTool.mockRejectedValue(new GitLabTimeoutError('headers', 10000));
@@ -2232,6 +2296,26 @@ describe('handlers', () => {
 
       expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(
         'https://gitlab.example.com',
+        undefined,
+      );
+    });
+
+    it('uses request grants when reading the dispatch idempotency definition', async () => {
+      // A denied account must not inherit a shared host's descriptor/retry hint.
+      const oauth = require('../../src/oauth/index');
+      oauth.getTokenContext.mockReturnValue({
+        gitlabToken: 'fixture-only',
+        gitlabScopes: ['read_api'],
+      });
+      await callToolHandler({ params: { name: 'browse_projects', arguments: { action: 'list' } } });
+      expect(mockRegistryManager.getTool).toHaveBeenCalledWith(
+        'browse_projects',
+        'https://gitlab.example.com',
+        ['read_api'],
+      );
+      expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+        ['read_api'],
       );
     });
 
@@ -2269,7 +2353,7 @@ describe('handlers', () => {
       // Verify the OAuth URL was passed through all per-URL code paths
       expect(mockConnectionManager.isConnected).toHaveBeenCalledWith(oauthUrl);
       expect(mockConnectionManager.initialize).toHaveBeenCalledWith(oauthUrl);
-      expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(oauthUrl);
+      expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(oauthUrl, undefined);
       expect(mockHealthMonitor.isInstanceReachable).toHaveBeenCalledWith(oauthUrl);
       expect(mockHealthMonitor.reportSuccess).toHaveBeenCalledWith(oauthUrl);
       // Per-URL cache resolution: instanceUrl threaded through registry calls

@@ -19,9 +19,9 @@
 import { GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from '../../config';
 import { logInfo, logDebug } from '../../logger';
 import { isOAuthEnabled } from '../../oauth/index.js';
-import { getGitLabApiUrlFromContext } from '../../oauth/token-context';
+import { getGitLabApiUrlFromContext, getTokenContext } from '../../oauth/token-context';
 import { ConnectionManager } from '../../services/ConnectionManager';
-import { getTokenCreationUrl } from '../../services/TokenScopeDetector';
+import { getTokenCreationUrl, getScopeCapabilities } from '../../services/TokenScopeDetector';
 import { RegistryManager } from '../../registry-manager';
 import { sendToolsListChangedNotification } from '../../server';
 import { enhancedFetch } from '../../utils/fetch';
@@ -40,11 +40,12 @@ import {
  * Get GitLab host from API URL
  */
 function getHost(): string {
+  const apiUrl = getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL;
   try {
-    const url = new URL(GITLAB_BASE_URL);
+    const url = new URL(apiUrl);
     return url.hostname;
   } catch {
-    return GITLAB_BASE_URL;
+    return apiUrl;
   }
 }
 
@@ -54,9 +55,12 @@ function getHost(): string {
  */
 async function fetchCurrentUser(): Promise<WhoamiUserInfo | null> {
   try {
-    const response = await enhancedFetch(`${GITLAB_BASE_URL}/api/v4/user`, {
-      retry: false,
-    });
+    const response = await enhancedFetch(
+      `${getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL}/api/v4/user`,
+      {
+        retry: false,
+      },
+    );
 
     if (!response.ok) {
       logDebug('Failed to fetch current user', { status: response.status });
@@ -96,20 +100,22 @@ async function fetchCurrentUser(): Promise<WhoamiUserInfo | null> {
 function buildTokenInfo(): WhoamiTokenInfo | null {
   try {
     const connectionManager = ConnectionManager.getInstance();
-    const tokenScopeInfo = connectionManager.getTokenScopeInfo();
+    const tokenScopeInfo = connectionManager.getTokenScopeInfo(getGitLabApiUrlFromContext());
 
     if (!tokenScopeInfo) {
       // In OAuth mode or when token detection failed
       if (isOAuthEnabled()) {
+        const scopes = getTokenContext()?.gitlabScopes;
+        if (scopes === undefined) return null;
         return {
           type: 'oauth',
           name: null,
-          scopes: [],
+          scopes: [...scopes],
           expiresAt: null,
           daysUntilExpiry: null,
           isValid: true, // Assume valid in OAuth mode
-          hasGraphQLAccess: true, // OAuth typically has full access
-          hasWriteAccess: true,
+          hasGraphQLAccess: scopes.some((scope) => scope === 'api' || scope === 'read_api'),
+          hasWriteAccess: scopes.includes('api'),
         };
       }
       return null;
@@ -152,7 +158,7 @@ function buildServerInfo(): WhoamiServerInfo {
 
   return {
     host: getHost(),
-    apiUrl: GITLAB_BASE_URL,
+    apiUrl: getGitLabApiUrlFromContext() ?? GITLAB_BASE_URL,
     version,
     tier,
     edition,
@@ -168,12 +174,10 @@ function buildCapabilities(tokenInfo: WhoamiTokenInfo | null): WhoamiCapabilitie
   const registryManager = RegistryManager.getInstance();
   const filterStats = registryManager.getFilterStats();
 
-  const canBrowse =
-    tokenInfo === null ||
-    tokenInfo.scopes.length === 0 ||
-    tokenInfo.scopes.some((s) => ['api', 'read_api', 'read_user'].includes(s));
-
-  const canManage = tokenInfo?.hasWriteAccess ?? false;
+  const { canBrowse, canManage } =
+    tokenInfo === null
+      ? { canBrowse: true, canManage: false }
+      : getScopeCapabilities(tokenInfo.scopes);
   const canAccessGraphQL = tokenInfo?.hasGraphQLAccess ?? false;
 
   return {
@@ -420,7 +424,7 @@ export async function executeWhoami(): Promise<WhoamiResult> {
   let effectiveIsAdmin = userInfo?.isAdmin;
   if (userInfo) {
     try {
-      const adminInfo = ConnectionManager.getInstance().getAdminInfo();
+      const adminInfo = ConnectionManager.getInstance().getAdminInfo(getGitLabApiUrlFromContext());
       if (adminInfo) {
         effectiveIsAdmin = adminInfo.isAdmin;
         userInfo.isAdmin = adminInfo.isAdmin;

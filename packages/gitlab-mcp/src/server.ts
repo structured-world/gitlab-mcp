@@ -703,6 +703,7 @@ export async function startServer(): Promise<void> {
         const gitlabToken = res.locals.gitlabToken as string | undefined;
         const gitlabUserId = res.locals.gitlabUserId as number | undefined;
         const gitlabUsername = res.locals.gitlabUsername as string | undefined;
+        const gitlabScopes = res.locals.gitlabScopes as string[] | undefined;
         const gitlabApiUrl = res.locals.gitlabApiUrl as string | undefined;
         const instanceLabel = res.locals.instanceLabel as string | undefined;
 
@@ -729,6 +730,7 @@ export async function startServer(): Promise<void> {
                   gitlabToken,
                   gitlabUserId,
                   gitlabUsername,
+                  gitlabScopes,
                   sessionId: oauthSessionId,
                   apiUrl: gitlabApiUrl ?? GITLAB_BASE_URL,
                   instanceLabel,

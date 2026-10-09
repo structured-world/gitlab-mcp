@@ -33,6 +33,7 @@ interface PrismaOAuthSessionRow {
   gitlabAccessToken: string;
   gitlabRefreshToken: string;
   gitlabTokenExpiry: bigint;
+  gitlabScopes?: unknown;
   gitlabUserId: number;
   gitlabUsername: string;
   gitlabApiUrl: string | null;
@@ -44,6 +45,7 @@ interface PrismaOAuthSessionRow {
 }
 
 interface PrismaDeviceFlowStateRow {
+  requestedGitlabScopes?: unknown;
   state: string;
   deviceCode: string;
   userCode: string;
@@ -58,6 +60,7 @@ interface PrismaDeviceFlowStateRow {
 }
 
 interface PrismaAuthCodeFlowStateRow {
+  requestedGitlabScopes?: unknown;
   internalState: string;
   clientId: string;
   codeChallenge: string;
@@ -86,6 +89,15 @@ interface PrismaMcpSessionMappingRow {
 
 interface PrismaBatchPayload {
   count: number;
+}
+
+/** Preserve unknown/empty grants and reject corrupt durable permissions. */
+function storedGitlabScopes(value: unknown): string[] | undefined {
+  if (value == null) return undefined;
+  if (!Array.isArray(value) || !value.every((scope) => typeof scope === 'string')) {
+    throw new Error('Invalid stored GitLab scopes');
+  }
+  return value;
 }
 
 /**
@@ -189,6 +201,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         gitlabAccessToken: session.gitlabAccessToken,
         gitlabRefreshToken: session.gitlabRefreshToken,
         gitlabTokenExpiry: BigInt(session.gitlabTokenExpiry),
+        gitlabScopes: session.gitlabScopes,
         gitlabUserId: session.gitlabUserId,
         gitlabUsername: session.gitlabUsername,
         gitlabApiUrl: session.gitlabApiUrl,
@@ -251,6 +264,9 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     if (updates.gitlabTokenExpiry !== undefined) {
       data.gitlabTokenExpiry = BigInt(updates.gitlabTokenExpiry);
     }
+    if (updates.gitlabScopes !== undefined) {
+      data.gitlabScopes = updates.gitlabScopes;
+    }
 
     try {
       await prisma.oAuthSession.update({
@@ -290,6 +306,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       gitlabAccessToken: row.gitlabAccessToken,
       gitlabRefreshToken: row.gitlabRefreshToken,
       gitlabTokenExpiry: Number(row.gitlabTokenExpiry),
+      gitlabScopes: storedGitlabScopes(row.gitlabScopes),
       gitlabUserId: row.gitlabUserId,
       gitlabUsername: row.gitlabUsername,
       gitlabApiUrl: row.gitlabApiUrl ?? undefined,
@@ -310,6 +327,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         deviceCode: flow.deviceCode,
         userCode: flow.userCode,
         expiresAt: BigInt(flow.expiresAt),
+        requestedGitlabScopes: flow.requestedGitlabScopes,
       },
       create: {
         state,
@@ -323,6 +341,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         codeChallenge: flow.codeChallenge,
         codeChallengeMethod: flow.codeChallengeMethod,
         redirectUri: flow.redirectUri ?? null,
+        requestedGitlabScopes: flow.requestedGitlabScopes,
       },
     });
   }
@@ -357,6 +376,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   private rowToDeviceFlow(row: PrismaDeviceFlowStateRow): DeviceFlowStateType {
     return {
+      requestedGitlabScopes: storedGitlabScopes(row.requestedGitlabScopes),
       deviceCode: row.deviceCode,
       userCode: row.userCode,
       verificationUri: row.verificationUri,
@@ -384,6 +404,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         clientRedirectUri: flow.clientRedirectUri,
         callbackUri: flow.callbackUri,
         expiresAt: BigInt(flow.expiresAt),
+        requestedGitlabScopes: flow.requestedGitlabScopes,
       },
     });
   }
@@ -411,6 +432,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   private rowToAuthCodeFlow(row: PrismaAuthCodeFlowStateRow): AuthCodeFlowStateType {
     return {
+      requestedGitlabScopes: storedGitlabScopes(row.requestedGitlabScopes),
       clientId: row.clientId,
       codeChallenge: row.codeChallenge,
       codeChallengeMethod: row.codeChallengeMethod,

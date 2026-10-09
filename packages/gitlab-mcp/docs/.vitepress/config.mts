@@ -411,6 +411,7 @@ export default defineConfig({
           text: "Step-by-Step Guides",
           items: [
             { text: "Overview", link: "/guides/" },
+            { text: "Codex and Claude Skills", link: "/guides/codex-workflows" },
             { text: "Complete Code Review", link: "/guides/complete-code-review" },
             { text: "Setup CI Notifications", link: "/guides/setup-ci-notifications" },
             { text: "Automate Releases", link: "/guides/automate-releases" },

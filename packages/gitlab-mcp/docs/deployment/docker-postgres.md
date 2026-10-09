@@ -1,6 +1,6 @@
 ---
 title: Docker + PostgreSQL
-description: "Deploy GitLab MCP Server with external PostgreSQL for OAuth session persistence and multi-user support. Ideal for teams with existing database infrastructure and production environments."
+description: 'Deploy GitLab MCP Server with external PostgreSQL for OAuth session persistence and multi-user support. Ideal for teams with existing database infrastructure and production environments.'
 head:
   - - meta
     - name: keywords
@@ -78,24 +78,43 @@ docker run -d --name gitlab-mcp \
 
 ## Environment Variables
 
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `PORT` | Yes | Internal HTTP port |
-| `OAUTH_ENABLED` | Yes | Set to `true` to enable per-user OAuth (required for the database backend) |
-| `OAUTH_STORAGE_TYPE` | Yes | Set to `postgresql` to use the database backend (requires the `gitlab-mcp-db` image) |
-| `OAUTH_STORAGE_POSTGRESQL_URL` | Yes | PostgreSQL connection string (`DATABASE_URL` is also accepted as a fallback) |
-| `OAUTH_SESSION_SECRET` | Yes | Secret for session encryption |
-| `OAUTH_CLIENT_ID` | Yes | GitLab OAuth Application ID |
-| `OAUTH_CLIENT_SECRET` | No | GitLab OAuth Application Secret (only for confidential apps; PKCE public apps omit it) |
-| `GITLAB_API_URL` | No | Default GitLab instance URL |
+| Variable                       | Required | Description                                                                            |
+| ------------------------------ | -------- | -------------------------------------------------------------------------------------- |
+| `PORT`                         | Yes      | Internal HTTP port                                                                     |
+| `OAUTH_ENABLED`                | Yes      | Set to `true` to enable per-user OAuth (required for the database backend)             |
+| `OAUTH_STORAGE_TYPE`           | Yes      | Set to `postgresql` to use the database backend (requires the `gitlab-mcp-db` image)   |
+| `OAUTH_STORAGE_POSTGRESQL_URL` | Yes      | PostgreSQL connection string (`DATABASE_URL` is also accepted as a fallback)           |
+| `OAUTH_SESSION_SECRET`         | Yes      | Secret for session encryption                                                          |
+| `OAUTH_CLIENT_ID`              | Yes      | GitLab OAuth Application ID                                                            |
+| `OAUTH_CLIENT_SECRET`          | No       | GitLab OAuth Application Secret (only for confidential apps; PKCE public apps omit it) |
+| `GITLAB_API_URL`               | No       | Default GitLab instance URL                                                            |
 
 ## Database Schema
 
-The server automatically runs migrations on startup via Prisma. Tables created:
+The database package ships its Prisma schema; server startup does not apply schema
+changes. Apply the packaged schema through your database deployment process before
+starting an upgraded server. It defines `oauth_sessions`, `oauth_device_flows`,
+`oauth_auth_code_flows`, `oauth_authorization_codes` and `oauth_mcp_session_mappings`.
 
-- `oauth_sessions` — Active user sessions
-- `oauth_tokens` — Encrypted access/refresh tokens
-- `oauth_state` — CSRF protection for OAuth flow
+The client-contract update adds nullable JSONB columns for granted session scopes
+and the scopes originally requested in each authorization flow. Existing databases
+must add these columns before using the updated database package:
+
+```sql
+ALTER TABLE oauth_sessions ADD COLUMN gitlab_scopes JSONB;
+ALTER TABLE oauth_device_flows ADD COLUMN requested_gitlab_scopes JSONB;
+ALTER TABLE oauth_auth_code_flows ADD COLUMN requested_gitlab_scopes JSONB;
+```
+
+Leave existing rows as SQL `NULL`: the upstream grant is unknown until GitLab
+reports it during authentication or token refresh. An empty JSON array means a
+known grant with no scopes. Do not copy MCP client scopes into this column or infer
+full GitLab access for older sessions.
+
+New flows retain the scopes sent to GitLab so an omitted token-response `scope`
+can be interpreted as the unchanged requested grant, as required by OAuth 2.0
+§5.1. Leave older flows' requested scopes as SQL `NULL` rather than inferring them
+from configuration that may have changed since the flow began.
 
 ## Multi-Instance Support
 

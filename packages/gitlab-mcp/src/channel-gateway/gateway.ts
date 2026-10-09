@@ -18,10 +18,14 @@ import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
   type CallToolResult,
+  type ListToolsResult,
+  type ListToolsRequest,
+  McpError,
+  ErrorCode,
 } from '@modelcontextprotocol/sdk/types.js';
 import { Interceptor } from './interceptor';
 import { formatEvent } from './format';
-import { forwardWithPolicy, isReadCall } from './forwarding';
+import { forwardWithPolicy, isReadCall, DownstreamDisconnectedError } from './forwarding';
 import type { WatchEvent } from './watch';
 
 /** Claude Code channel push method (Channels research preview). */
@@ -99,21 +103,20 @@ export class ChannelGateway {
   }
 
   private registerHandlers(): void {
-    this.server.setRequestHandler(ListToolsRequestSchema, async () => {
+    this.server.setRequestHandler(ListToolsRequestSchema, async (request) => {
       // The catalog read must honour the same reconnect/buffer policy as
       // CallTool: a ListTools that lands mid-reconnect should wait for the
       // link (bounded) and replay once, not throw against a dead client.
-      const { tools } = (await forwardWithPolicy(
+      return (await forwardWithPolicy(
         {
           isRead: () => true, // listing the catalog is an idempotent read
           isConnected: () => this.connected,
           waitForConnection: () => this.waitForConnection(),
-          call: () => this.client.listTools(),
+          call: () => this.listDownstream(request.params),
         },
         'tools/list',
         undefined,
-      )) as Awaited<ReturnType<Client['listTools']>>;
-      return { tools };
+      )) as ListToolsResult;
     });
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
@@ -207,10 +210,34 @@ export class ChannelGateway {
   }
 
   private async callDownstream(name: string, args: unknown): Promise<unknown> {
-    return await this.client.callTool({
-      name,
-      arguments: (args ?? {}) as Record<string, unknown>,
-    });
+    const client = this.client;
+    try {
+      return await client.callTool({ name, arguments: (args ?? {}) as Record<string, unknown> });
+    } catch (error) {
+      this.rethrowDownstreamError(client, error);
+    }
+  }
+
+  private async listDownstream(params: ListToolsRequest['params']): Promise<ListToolsResult> {
+    const client = this.client;
+    try {
+      return await client.listTools(params);
+    } catch (error) {
+      this.rethrowDownstreamError(client, error);
+    }
+  }
+
+  private rethrowDownstreamError(client: Client, error: unknown): never {
+    // The SDK clears THIS client's transport when rejecting in-flight requests
+    // with ConnectionClosed. A replacement client or unrelated close is irrelevant.
+    if (
+      !client.transport &&
+      error instanceof McpError &&
+      error.code === ErrorCode.ConnectionClosed
+    ) {
+      throw new DownstreamDisconnectedError(error);
+    }
+    throw error;
   }
 
   /** Push a watch event into the running session as a <channel> event. */

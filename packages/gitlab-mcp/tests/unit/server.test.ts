@@ -151,7 +151,7 @@ jest.mock('../../src/session-manager', () => ({
 import type { Server as _Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { startServer, sendToolsListChangedNotification } from '../../src/server';
 import { STDIO_SESSION_ID } from '../../src/session-manager';
-import { sessionStore as mockSessionStore } from '../../src/oauth/index';
+import { sessionStore as mockSessionStore, runWithTokenContext } from '../../src/oauth/index';
 
 describe('server', () => {
   let originalArgv: string[];
@@ -1013,12 +1013,18 @@ describe('server', () => {
           gitlabToken: 'test-token',
           gitlabUserId: 42,
           gitlabUsername: 'testuser',
+          gitlabScopes: ['read_api'],
         },
       };
 
       await mcpHandler(mockReq, mockRes);
 
       // onsessioninitialized was captured — verify the callback handles OAuth association
+      // The HTTP transport must pass this account's grants to discovery and execution.
+      expect(runWithTokenContext).toHaveBeenCalledWith(
+        expect.objectContaining({ gitlabScopes: mockRes.locals.gitlabScopes }),
+        expect.any(Function),
+      );
       expect(lastStreamableOpts).not.toBeNull();
       expect(lastStreamableOpts!.onsessioninitialized).toBeDefined();
 

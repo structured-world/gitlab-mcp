@@ -10,6 +10,36 @@ import {
 import type { WatchEvent } from '../../../src/channel-gateway/watch';
 
 describe('parseToolResult', () => {
+  it('preserves successful envelopes and primitive inputs across optional fields', () => {
+    // Missing optional MCP fields and a false isError flag must not discard successful data.
+    for (const value of [null, undefined, false, 0, 'raw'])
+      expect(parseToolResult(value)).toBe(value);
+    const content = { isError: false, content: [{ type: 'image', data: 'fixture' }] };
+    expect(parseToolResult(content)).toBe(content);
+    expect(parseToolResult({ isError: false, structuredContent: { ok: true } })).toEqual({
+      ok: true,
+    });
+    expect(parseToolResult({ content: [{ type: 'text' }] })).toEqual({
+      content: [{ type: 'text' }],
+    });
+  });
+  it('reads native structured output without requiring JSON text', () => {
+    // Native MCP tools may provide human prose rather than a duplicate JSON body.
+    const data = { id: 7, status: 'running' };
+    expect(
+      parseToolResult({ structuredContent: data, content: [{ type: 'text', text: 'Running' }] }),
+    ).toBe(data);
+  });
+
+  it('never interprets an error payload as a successful mutation', () => {
+    // Even an error containing an ID must not arm a pipeline/deployment watch.
+    expect(
+      parseToolResult({ isError: true, content: [{ type: 'text', text: '{"id":7}' }] }),
+    ).toBeNull();
+    expect(
+      parseToolResult({ isError: true, content: [], structuredContent: { id: 7 } }),
+    ).toBeNull();
+  });
   it('unwraps the JSON payload from an MCP text content block', () => {
     const mcp = { content: [{ type: 'text', text: '{"id":1,"status":"running"}' }] };
     expect(parseToolResult(mcp)).toEqual({ id: 1, status: 'running' });

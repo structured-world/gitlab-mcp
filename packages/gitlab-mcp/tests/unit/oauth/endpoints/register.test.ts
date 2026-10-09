@@ -8,11 +8,15 @@ import {
   getRegisteredClient,
   isValidRedirectUri,
 } from '../../../../src/oauth/endpoints/register';
+import { sessionStore } from '../../../../src/oauth/session-store';
 
-// Mock logger
+// Mock logger (registrations go through the real session storage, which also logs)
 jest.mock('../../../../src/logger', () => ({
   logInfo: jest.fn(),
   logError: jest.fn(),
+  logWarn: jest.fn(),
+  logDebug: jest.fn(),
+  truncateId: (id: string) => id,
 }));
 
 describe('OAuth Dynamic Client Registration', () => {
@@ -186,8 +190,8 @@ describe('OAuth Dynamic Client Registration', () => {
   });
 
   describe('getRegisteredClient', () => {
-    it('should return undefined for unregistered client', () => {
-      const client = getRegisteredClient('non-existent-client-id');
+    it('should return undefined for unregistered client', async () => {
+      const client = await getRegisteredClient('non-existent-client-id');
       expect(client).toBeUndefined();
     });
 
@@ -200,15 +204,37 @@ describe('OAuth Dynamic Client Registration', () => {
       await registerHandler(mockReq as Request, mockRes as Response);
       const registeredClientId = jsonFn.mock.calls[0][0].client_id;
 
-      const client = getRegisteredClient(registeredClientId);
+      const client = await getRegisteredClient(registeredClientId);
       expect(client).toBeDefined();
       expect(client?.client_name).toBe('Lookup Test Client');
+    });
+
+    it('should keep the registration in the shared session storage', async () => {
+      // Another replica or a restarted process resolves the client from the backend.
+      mockReq.body = { redirect_uris: ['https://example.com/callback'] };
+
+      await registerHandler(mockReq as Request, mockRes as Response);
+      const registeredClientId = jsonFn.mock.calls[0][0].client_id;
+
+      expect((await sessionStore.getClient(registeredClientId))?.redirectUris).toEqual([
+        'https://example.com/callback',
+      ]);
+    });
+
+    it('should fail the registration when it cannot be stored', async () => {
+      // Never hand out a client_id that no replica will recognise.
+      jest.spyOn(sessionStore, 'storeClient').mockRejectedValueOnce(new Error('database down'));
+      mockReq.body = { redirect_uris: ['https://example.com/callback'] };
+
+      await registerHandler(mockReq as Request, mockRes as Response);
+
+      expect(statusFn).toHaveBeenCalledWith(500);
     });
   });
 
   describe('isValidRedirectUri', () => {
-    it('should return true for unregistered client (backward compatibility)', () => {
-      const isValid = isValidRedirectUri('unknown-client', 'https://any-uri.com/callback');
+    it('should return true for unregistered client (backward compatibility)', async () => {
+      const isValid = await isValidRedirectUri('unknown-client', 'https://any-uri.com/callback');
       expect(isValid).toBe(true);
     });
 
@@ -220,7 +246,7 @@ describe('OAuth Dynamic Client Registration', () => {
       await registerHandler(mockReq as Request, mockRes as Response);
       const registeredClientId = jsonFn.mock.calls[0][0].client_id;
 
-      const isValid = isValidRedirectUri(registeredClientId, 'https://valid.com/callback');
+      const isValid = await isValidRedirectUri(registeredClientId, 'https://valid.com/callback');
       expect(isValid).toBe(true);
     });
 
@@ -232,7 +258,10 @@ describe('OAuth Dynamic Client Registration', () => {
       await registerHandler(mockReq as Request, mockRes as Response);
       const registeredClientId = jsonFn.mock.calls[0][0].client_id;
 
-      const isValid = isValidRedirectUri(registeredClientId, 'https://different.com/callback');
+      const isValid = await isValidRedirectUri(
+        registeredClientId,
+        'https://different.com/callback',
+      );
       expect(isValid).toBe(false);
     });
   });

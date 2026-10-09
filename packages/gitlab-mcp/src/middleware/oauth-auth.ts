@@ -15,9 +15,8 @@
 import { Request, Response, NextFunction } from 'express';
 import { loadOAuthConfig } from '../oauth/config';
 import { sessionStore } from '../oauth/session-store';
-import { verifyMCPToken, isTokenExpiringSoon, calculateTokenExpiry } from '../oauth/token-utils';
-import { refreshGitLabToken } from '../oauth/gitlab-device-flow';
-import { oauthAppFor } from '../oauth/instance-app';
+import { verifyMCPToken } from '../oauth/token-utils';
+import { withFreshGitLabToken } from '../oauth/gitlab-token-refresh';
 import { getBaseUrl } from '../oauth/endpoints/metadata';
 import {
   MCP_SCOPES,
@@ -89,7 +88,18 @@ export async function oauthAuthMiddleware(
 
   // Get session from token
   const sessionId = payload.sid;
-  const session = sessionStore.getSession(sessionId);
+  let session;
+  try {
+    session = await sessionStore.getSession(sessionId);
+  } catch (error: unknown) {
+    // Storage outage: the credentials cannot be verified, which is not a bad token.
+    logError('Failed to load OAuth session', { err: error as Error });
+    res.status(503).json({
+      error: 'temporarily_unavailable',
+      error_description: 'Session storage is unavailable',
+    });
+    return;
+  }
 
   if (!session) {
     sendUnauthorized(req, res, 'invalid_token', 'Session not found or expired');
@@ -109,43 +119,20 @@ export async function oauthAuthMiddleware(
   }
 
   // Refresh GitLab token if it's expiring soon (5 minute buffer)
-  if (isTokenExpiringSoon(session.gitlabTokenExpiry)) {
-    try {
-      // Refresh with the application of the session's instance, never another one.
-      const app = await oauthAppFor(config, session.gitlabApiUrl);
-      if (!app) {
-        throw new Error('GitLab instance is no longer configured');
-      }
-      const newTokens = await refreshGitLabToken(session.gitlabRefreshToken, config, app);
-
-      sessionStore.updateSession(sessionId, {
-        gitlabAccessToken: newTokens.access_token,
-        gitlabRefreshToken: newTokens.refresh_token,
-        gitlabTokenExpiry: calculateTokenExpiry(newTokens.expires_in),
-        // RFC 6749 section 6: omitted scope retains the original grant.
-        // https://www.rfc-editor.org/rfc/rfc6749#section-6
-        ...(newTokens.scope !== undefined && {
-          gitlabScopes: newTokens.scope.split(/\s+/).filter(Boolean),
-        }),
-      });
-
-      logDebug('GitLab token refreshed during request', {
-        sessionId: truncateId(sessionId),
-      });
-    } catch (error: unknown) {
-      logError('Failed to refresh GitLab token during request', { err: error as Error });
-      sendUnauthorized(
-        req,
-        res,
-        'invalid_token',
-        'GitLab token refresh failed. Please re-authenticate.',
-      );
-      return;
-    }
+  let updatedSession;
+  try {
+    updatedSession = await withFreshGitLabToken(session, config);
+  } catch (error: unknown) {
+    logError('Failed to refresh GitLab token during request', { err: error as Error });
+    sendUnauthorized(
+      req,
+      res,
+      'invalid_token',
+      'GitLab token refresh failed. Please re-authenticate.',
+    );
+    return;
   }
 
-  // Get potentially updated session
-  const updatedSession = sessionStore.getSession(sessionId);
   if (!updatedSession) {
     sendUnauthorized(req, res, 'invalid_token', 'Session lost during token refresh');
     return;
@@ -232,7 +219,15 @@ export async function optionalOAuthMiddleware(
     return;
   }
 
-  const session = sessionStore.getSession(payload.sid);
+  let session;
+  try {
+    session = await sessionStore.getSession(payload.sid);
+  } catch (error: unknown) {
+    // Optional auth: an unreadable session store means no authenticated context.
+    logError('Failed to load OAuth session', { err: error as Error });
+    next();
+    return;
+  }
   if (session?.mcpAccessToken !== token || !hasGrantedScope(payload.scope, session.scopes)) {
     next();
     return;

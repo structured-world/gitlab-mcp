@@ -806,12 +806,18 @@ export async function startServer(): Promise<void> {
 
                 // Associate MCP session with OAuth session if authenticated
                 if (oauthSessionId) {
-                  sessionStore.associateMcpSession(initializedSessionId, oauthSessionId);
+                  sessionStore
+                    .associateMcpSession(initializedSessionId, oauthSessionId)
+                    .catch((err: unknown) => {
+                      logWarn('Failed to store MCP session association', { err });
+                    });
                 }
               },
               onsessionclosed: (closedSessionId: string) => {
                 delete streamableTransports[closedSessionId];
-                sessionStore.removeMcpSessionAssociation(closedSessionId);
+                sessionStore.removeMcpSessionAssociation(closedSessionId).catch((err: unknown) => {
+                  logWarn('Failed to remove MCP session association', { err });
+                });
 
                 connectionTracker.closeConnection(closedSessionId, 'session_closed');
 

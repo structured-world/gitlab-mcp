@@ -136,8 +136,8 @@ jest.mock('../../src/oauth/index', () => ({
   sessionStore: {
     initialize: jest.fn().mockResolvedValue(undefined),
     close: jest.fn().mockResolvedValue(undefined),
-    associateMcpSession: jest.fn(),
-    removeMcpSessionAssociation: jest.fn(),
+    associateMcpSession: jest.fn().mockResolvedValue(undefined),
+    removeMcpSessionAssociation: jest.fn().mockResolvedValue(true),
   },
   runWithTokenContext: jest.fn(),
 }));

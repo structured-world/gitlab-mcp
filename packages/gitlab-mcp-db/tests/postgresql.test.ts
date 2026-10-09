@@ -12,6 +12,12 @@ jest.mock('../generated/prisma/client', () => ({
   PrismaClient: jest.fn(() => mockPrisma),
 }));
 
+jest.mock('@prisma/adapter-pg', () => ({
+  PrismaPg: jest.fn((options: unknown) => ({ adapterFor: options })),
+}));
+
+import { PrismaClient } from '../generated/prisma/client';
+
 const createMockPrisma = () => ({
   $connect: jest.fn().mockResolvedValue(undefined),
   $disconnect: jest.fn().mockResolvedValue(undefined),
@@ -24,9 +30,14 @@ const createMockPrisma = () => ({
     findFirst: jest.fn(),
     findMany: jest.fn().mockResolvedValue([]),
     update: jest.fn().mockResolvedValue({}),
+    updateMany: jest.fn().mockResolvedValue({ count: 0 }),
     delete: jest.fn().mockResolvedValue({}),
     deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     count: jest.fn().mockResolvedValue(0),
+  },
+  oAuthClient: {
+    create: jest.fn().mockResolvedValue({}),
+    findUnique: jest.fn(),
   },
   deviceFlowState: {
     upsert: jest.fn().mockResolvedValue({}),
@@ -119,14 +130,32 @@ describe('PostgreSQLStorageBackend', () => {
 
   it('initializes and closes prisma client', async () => {
     jest.useFakeTimers();
+    backend = new PostgreSQLStorageBackend({ connectionString: 'postgresql://db.example/x' });
 
     await backend.initialize();
     expect(mockPrisma.$connect).toHaveBeenCalled();
+    // Prisma 7 has no built-in engine: the client must be given the pg driver adapter.
+    expect(PrismaClient).toHaveBeenCalledWith({
+      adapter: { adapterFor: { connectionString: 'postgresql://db.example/x' } },
+    });
 
     await backend.close();
     expect(mockPrisma.$disconnect).toHaveBeenCalled();
 
     jest.useRealTimers();
+  });
+
+  it('refuses to start without a connection string', async () => {
+    const saved = [process.env.OAUTH_STORAGE_POSTGRESQL_URL, process.env.DATABASE_URL];
+    delete process.env.OAUTH_STORAGE_POSTGRESQL_URL;
+    delete process.env.DATABASE_URL;
+    try {
+      await expect(new PostgreSQLStorageBackend().initialize()).rejects.toThrow(
+        'PostgreSQL storage requires OAUTH_STORAGE_POSTGRESQL_URL or DATABASE_URL',
+      );
+    } finally {
+      [process.env.OAUTH_STORAGE_POSTGRESQL_URL, process.env.DATABASE_URL] = saved;
+    }
   });
 
   it('throws when used before initialization', async () => {
@@ -286,6 +315,7 @@ describe('PostgreSQLStorageBackend', () => {
 
     mockPrisma.deviceFlowState.findUnique.mockResolvedValueOnce({
       state: flow.state,
+      clientState: flow.state,
       deviceCode: flow.deviceCode,
       userCode: flow.userCode,
       verificationUri: flow.verificationUri,
@@ -470,6 +500,171 @@ describe('PostgreSQLStorageBackend', () => {
     mockPrisma.mcpSessionMapping.delete.mockRejectedValueOnce(new Error('fail'));
     const deleteFail = await backend.removeMcpSessionAssociation('mcp-1');
     expect(deleteFail).toBe(false);
+  });
+
+  describe('durable flow and session binding', () => {
+    beforeEach(() => {
+      (backend as any).prisma = mockPrisma;
+    });
+
+    it("returns the client's state, not the storage key, of a device flow", async () => {
+      // The storage key is ours; the client checks its own state value on completion.
+      const flow = { ...createDeviceFlow(), state: 'client-csrf' };
+      await backend.storeDeviceFlow('flow-key', flow);
+      const call = mockPrisma.deviceFlowState.upsert.mock.calls[0][0];
+      expect(call.where).toEqual({ state: 'flow-key' });
+      expect(call.create.state).toBe('flow-key');
+      expect(call.create.clientState).toBe('client-csrf');
+
+      mockPrisma.deviceFlowState.findUnique.mockResolvedValueOnce({
+        ...call.create,
+        verificationUriComplete: null,
+        redirectUri: null,
+      });
+      expect((await backend.getDeviceFlow('flow-key'))?.state).toBe('client-csrf');
+    });
+
+    it('keeps instance, scopes, resource and cadence of a device flow on every write', async () => {
+      // Another replica polls the flow and must see the same binding and interval.
+      const flow: DeviceFlowState = {
+        ...createDeviceFlow(),
+        selectedInstance: 'https://git.corp.example/gitlab',
+        selectedInstanceLabel: 'Corp',
+        scopes: ['mcp:tools'],
+        resource: 'https://mcp.example.com',
+        interval: 10,
+        nextPollAt: 9000,
+      };
+      await backend.storeDeviceFlow('flow-key', flow);
+      const call = mockPrisma.deviceFlowState.upsert.mock.calls[0][0];
+      for (const data of [call.create, call.update]) {
+        expect(data).toMatchObject({
+          selectedInstance: 'https://git.corp.example/gitlab',
+          selectedInstanceLabel: 'Corp',
+          mcpScopes: ['mcp:tools'],
+          resource: 'https://mcp.example.com',
+          interval: 10,
+          nextPollAt: BigInt(9000),
+        });
+      }
+
+      mockPrisma.deviceFlowState.findUnique.mockResolvedValueOnce({
+        ...call.create,
+        verificationUriComplete: flow.verificationUriComplete,
+        redirectUri: flow.redirectUri,
+      });
+      expect(await backend.getDeviceFlow('flow-key')).toEqual(flow);
+    });
+
+    it('keeps instance, scopes and resource of an authorization code flow', async () => {
+      const flow: AuthCodeFlowState = {
+        ...createAuthCodeFlow(),
+        selectedInstance: 'https://git.corp.example/gitlab',
+        selectedInstanceLabel: 'Corp',
+        scopes: ['mcp:tools', 'mcp:resources'],
+        resource: 'https://mcp.example.com/mcp',
+      };
+      await backend.storeAuthCodeFlow(flow.internalState, flow);
+      const data = mockPrisma.authCodeFlowState.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({
+        selectedInstance: 'https://git.corp.example/gitlab',
+        selectedInstanceLabel: 'Corp',
+        mcpScopes: ['mcp:tools', 'mcp:resources'],
+        resource: 'https://mcp.example.com/mcp',
+      });
+
+      mockPrisma.authCodeFlowState.findUnique.mockResolvedValueOnce(data);
+      expect(await backend.getAuthCodeFlow(flow.internalState)).toEqual(flow);
+    });
+
+    it('keeps the resource of a session', async () => {
+      await backend.createSession({ ...createSession(), resource: 'https://mcp.example.com' });
+      const data = mockPrisma.oAuthSession.create.mock.calls[0][0].data;
+      expect(data.resource).toBe('https://mcp.example.com');
+
+      await backend.updateSession('session-1', { resource: 'https://mcp.example.com/mcp' });
+      expect(mockPrisma.oAuthSession.update.mock.calls[0][0].data.resource).toBe(
+        'https://mcp.example.com/mcp',
+      );
+
+      mockPrisma.oAuthSession.findUnique.mockResolvedValueOnce({ ...data, gitlabScopes: null });
+      expect((await backend.getSession('session-1'))?.resource).toBe('https://mcp.example.com');
+    });
+
+    it.each([
+      ['authorization code', 'consumeAuthCode', 'authorizationCode', { code: 'code-1' }],
+      ['authorization flow', 'consumeAuthCodeFlow', 'authCodeFlowState', { internalState: 'code-1' }],
+      ['device flow', 'consumeDeviceFlow', 'deviceFlowState', { state: 'code-1' }],
+    ])(
+      'gives a %s to exactly one consumer',
+      async (_kind, method, model, where) => {
+        // The deleted-row count decides the winner across replicas.
+        const row = {
+          ...createAuthCode(),
+          ...createAuthCodeFlow(),
+          ...createDeviceFlow(),
+          ...where,
+          expiresAt: BigInt(7777),
+          verificationUriComplete: null,
+          redirectUri: null,
+        };
+        mockPrisma[model].findUnique.mockResolvedValue(row);
+        mockPrisma[model].deleteMany.mockResolvedValueOnce({ count: 1 });
+        mockPrisma[model].deleteMany.mockResolvedValueOnce({ count: 0 });
+
+        const winner = await (backend as any)[method]('code-1');
+        const loser = await (backend as any)[method]('code-1');
+
+        expect(winner).toBeDefined();
+        expect(loser).toBeUndefined();
+        expect(mockPrisma[model].deleteMany).toHaveBeenCalledWith({ where });
+      },
+    );
+
+    it('returns nothing when the record does not exist', async () => {
+      mockPrisma.authorizationCode.findUnique.mockResolvedValueOnce(null);
+      expect(await backend.consumeAuthCode('missing')).toBeUndefined();
+      expect(mockPrisma.authorizationCode.deleteMany).not.toHaveBeenCalled();
+    });
+
+    it('rotates a session only while it holds the presented refresh token', async () => {
+      mockPrisma.oAuthSession.updateMany.mockResolvedValueOnce({ count: 1 });
+      mockPrisma.oAuthSession.updateMany.mockResolvedValueOnce({ count: 0 });
+
+      const first = await backend.rotateSession('session-1', 'refresh-1', {
+        mcpRefreshToken: 'refresh-2',
+      });
+      const second = await backend.rotateSession('session-1', 'refresh-1', {
+        mcpRefreshToken: 'refresh-3',
+      });
+
+      expect(first).toBe(true);
+      expect(second).toBe(false);
+      expect(mockPrisma.oAuthSession.updateMany.mock.calls[0][0]).toMatchObject({
+        where: { id: 'session-1', mcpRefreshToken: 'refresh-1' },
+        data: { mcpRefreshToken: 'refresh-2' },
+      });
+    });
+
+    it('stores and reads registered clients', async () => {
+      const client = {
+        clientId: 'client-1',
+        redirectUris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
+        clientName: 'ChatGPT',
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code', 'refresh_token'],
+        responseTypes: ['code'],
+        createdAt: 1234,
+      };
+      await backend.storeClient(client);
+      const data = mockPrisma.oAuthClient.create.mock.calls[0][0].data;
+      expect(data).toMatchObject({ clientId: 'client-1', createdAt: BigInt(1234) });
+
+      mockPrisma.oAuthClient.findUnique.mockResolvedValueOnce({ ...data, clientSecret: null });
+      expect(await backend.getClient('client-1')).toEqual(client);
+      mockPrisma.oAuthClient.findUnique.mockResolvedValueOnce(null);
+      expect(await backend.getClient('unknown')).toBeUndefined();
+    });
   });
 
   it('runs cleanup and stats', async () => {

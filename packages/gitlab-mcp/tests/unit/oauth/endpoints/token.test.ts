@@ -13,10 +13,10 @@ jest.mock('../../../../src/oauth/config', () => ({
 
 jest.mock('../../../../src/oauth/session-store', () => ({
   sessionStore: {
-    getAuthCode: jest.fn(),
-    deleteAuthCode: jest.fn(),
+    consumeAuthCode: jest.fn(),
     getSession: jest.fn(),
     updateSession: jest.fn(),
+    rotateSession: jest.fn(),
     getSessionByRefreshToken: jest.fn(),
   },
 }));
@@ -118,8 +118,9 @@ describe('OAuth Token Endpoint', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLoadOAuthConfig.mockReturnValue(mockConfig);
-    // The caller that removes the code is the one that redeems it.
-    mockSessionStore.deleteAuthCode.mockReturnValue(true);
+    // Storage writes succeed and this caller wins every compare-and-set by default.
+    mockSessionStore.updateSession.mockResolvedValue(true);
+    mockSessionStore.rotateSession.mockResolvedValue(true);
     mockOauthAppFor.mockResolvedValue(sessionApp);
   });
 
@@ -200,7 +201,7 @@ describe('OAuth Token Endpoint', () => {
     });
 
     it('should return error for invalid authorization code', async () => {
-      mockSessionStore.getAuthCode.mockReturnValue(undefined);
+      mockSessionStore.consumeAuthCode.mockResolvedValue(undefined);
 
       const req = createMockRequest({
         grant_type: 'authorization_code',
@@ -220,7 +221,7 @@ describe('OAuth Token Endpoint', () => {
     });
 
     it('should return error for expired authorization code', async () => {
-      mockSessionStore.getAuthCode.mockReturnValue({
+      mockSessionStore.consumeAuthCode.mockResolvedValue({
         code: 'expired-code',
         sessionId: 'session-123',
         clientId: 'test-client',
@@ -239,7 +240,7 @@ describe('OAuth Token Endpoint', () => {
 
       await tokenHandler(req, res);
 
-      expect(mockSessionStore.deleteAuthCode).toHaveBeenCalledWith('expired-code');
+      expect(mockSessionStore.consumeAuthCode).toHaveBeenCalledWith('expired-code');
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
         error: 'invalid_grant',
@@ -248,7 +249,7 @@ describe('OAuth Token Endpoint', () => {
     });
 
     it('should return error for invalid code_verifier', async () => {
-      mockSessionStore.getAuthCode.mockReturnValue({
+      mockSessionStore.consumeAuthCode.mockResolvedValue({
         code: 'valid-code',
         sessionId: 'session-123',
         clientId: 'test-client',
@@ -281,7 +282,7 @@ describe('OAuth Token Endpoint', () => {
     });
 
     it('should return error when redirect_uri does not match', async () => {
-      mockSessionStore.getAuthCode.mockReturnValue({
+      mockSessionStore.consumeAuthCode.mockResolvedValue({
         code: 'valid-code',
         sessionId: 'session-123',
         clientId: 'test-client',
@@ -311,7 +312,7 @@ describe('OAuth Token Endpoint', () => {
     });
 
     it('should return error when session not found', async () => {
-      mockSessionStore.getAuthCode.mockReturnValue({
+      mockSessionStore.consumeAuthCode.mockResolvedValue({
         code: 'valid-code',
         sessionId: 'missing-session',
         clientId: 'test-client',
@@ -320,7 +321,7 @@ describe('OAuth Token Endpoint', () => {
         expiresAt: Date.now() + 600000,
       });
       mockVerifyCodeChallenge.mockReturnValue(true);
-      mockSessionStore.getSession.mockReturnValue(undefined);
+      mockSessionStore.getSession.mockResolvedValue(undefined);
 
       const req = createMockRequest({
         grant_type: 'authorization_code',
@@ -340,7 +341,7 @@ describe('OAuth Token Endpoint', () => {
     });
 
     it('should return tokens for valid authorization code exchange', async () => {
-      mockSessionStore.getAuthCode.mockReturnValue({
+      mockSessionStore.consumeAuthCode.mockResolvedValue({
         code: 'valid-code',
         sessionId: 'session-123',
         clientId: 'test-client',
@@ -349,7 +350,7 @@ describe('OAuth Token Endpoint', () => {
         expiresAt: Date.now() + 600000,
       });
       mockVerifyCodeChallenge.mockReturnValue(true);
-      mockSessionStore.getSession.mockReturnValue({
+      mockSessionStore.getSession.mockResolvedValue({
         id: 'session-123',
         mcpAccessToken: '',
         mcpRefreshToken: '',
@@ -383,7 +384,7 @@ describe('OAuth Token Endpoint', () => {
           resource: 'https://gitlab-mcp.example.com/mcp',
         }),
       );
-      expect(mockSessionStore.deleteAuthCode).toHaveBeenCalledWith('valid-code');
+      expect(mockSessionStore.consumeAuthCode).toHaveBeenCalledWith('valid-code');
       // RFC 8707: the audience is the protected resource, not the client.
       expect(createJWT).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -439,9 +440,9 @@ describe('OAuth Token Endpoint', () => {
         }) as Request;
 
       beforeEach(() => {
-        mockSessionStore.getAuthCode.mockReturnValue(code);
+        mockSessionStore.consumeAuthCode.mockResolvedValue(code);
         mockVerifyCodeChallenge.mockReturnValue(true);
-        mockSessionStore.getSession.mockReturnValue(session);
+        mockSessionStore.getSession.mockResolvedValue(session);
       });
 
       it('rejects an exchange without client_id (RFC 6749 4.1.3)', async () => {
@@ -471,8 +472,8 @@ describe('OAuth Token Endpoint', () => {
       });
 
       it('lets only the caller that consumed the code redeem it', async () => {
-        // A concurrent exchange already removed the code.
-        mockSessionStore.deleteAuthCode.mockReturnValue(false);
+        // A concurrent exchange on any replica already took the code.
+        mockSessionStore.consumeAuthCode.mockResolvedValue(undefined);
         const res = createMockResponse() as Response;
         await tokenHandler(exchange({}), res);
         expect(res.json).toHaveBeenCalledWith({
@@ -485,7 +486,18 @@ describe('OAuth Token Endpoint', () => {
       it('consumes the code even when PKCE verification fails', async () => {
         mockVerifyCodeChallenge.mockReturnValue(false);
         await tokenHandler(exchange({}), createMockResponse() as Response);
-        expect(mockSessionStore.deleteAuthCode).toHaveBeenCalledWith('valid-code');
+        expect(mockSessionStore.consumeAuthCode).toHaveBeenCalledWith('valid-code');
+      });
+
+      it('reports a storage failure as a server error, not as a granted token', async () => {
+        mockSessionStore.consumeAuthCode.mockRejectedValue(new Error('database down'));
+        const res = createMockResponse() as Response;
+        await tokenHandler(exchange({}), res);
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'server_error',
+          error_description: 'Token service is temporarily unavailable',
+        });
       });
 
       it.each([
@@ -509,7 +521,7 @@ describe('OAuth Token Endpoint', () => {
           'https://gitlab-mcp.example.com/mcp',
         ],
       ])('rejects a resource naming %s (RFC 8707 2)', async (_c, bound, resource) => {
-        mockSessionStore.getSession.mockReturnValue({ ...session, resource: bound });
+        mockSessionStore.getSession.mockResolvedValue({ ...session, resource: bound });
         const res = createMockResponse() as Response;
         await tokenHandler(exchange({ resource }), res);
         expect(res.json).toHaveBeenCalledWith({
@@ -538,7 +550,7 @@ describe('OAuth Token Endpoint', () => {
     });
 
     it('should return error for invalid refresh token', async () => {
-      mockSessionStore.getSessionByRefreshToken.mockReturnValue(undefined);
+      mockSessionStore.getSessionByRefreshToken.mockResolvedValue(undefined);
 
       const req = createMockRequest({
         grant_type: 'refresh_token',
@@ -573,7 +585,7 @@ describe('OAuth Token Endpoint', () => {
         updatedAt: Date.now(),
       };
 
-      mockSessionStore.getSessionByRefreshToken.mockReturnValue(existingSession);
+      mockSessionStore.getSessionByRefreshToken.mockResolvedValue(existingSession);
       mockIsTokenExpiringSoon.mockReturnValue(false);
 
       const req = createMockRequest({
@@ -585,8 +597,10 @@ describe('OAuth Token Endpoint', () => {
 
       await tokenHandler(req, res);
 
-      expect(mockSessionStore.updateSession).toHaveBeenCalledWith(
+      // Rotation is a compare-and-set on the presented refresh token.
+      expect(mockSessionStore.rotateSession).toHaveBeenCalledWith(
         'session-123',
+        'valid-refresh-token',
         expect.objectContaining({
           mcpAccessToken: 'mcp-access-token-jwt',
           mcpRefreshToken: 'mcp-refresh-token-abc',
@@ -622,7 +636,7 @@ describe('OAuth Token Endpoint', () => {
           updatedAt: Date.now(),
         };
 
-        mockSessionStore.getSessionByRefreshToken.mockReturnValue(existingSession);
+        mockSessionStore.getSessionByRefreshToken.mockResolvedValue(existingSession);
         mockIsTokenExpiringSoon.mockReturnValue(true);
         mockRefreshGitLabToken.mockResolvedValue({
           access_token: 'new-gitlab-token',
@@ -632,7 +646,7 @@ describe('OAuth Token Endpoint', () => {
           scope,
           created_at: Date.now(),
         });
-        mockSessionStore.getSession.mockReturnValue({
+        mockSessionStore.getSession.mockResolvedValue({
           ...existingSession,
           gitlabAccessToken: 'new-gitlab-token',
           gitlabRefreshToken: 'new-gitlab-refresh',
@@ -698,8 +712,20 @@ describe('OAuth Token Endpoint', () => {
         }) as Request;
 
       beforeEach(() => {
-        mockSessionStore.getSessionByRefreshToken.mockReturnValue(session);
+        mockSessionStore.getSessionByRefreshToken.mockResolvedValue(session);
         mockIsTokenExpiringSoon.mockReturnValue(false);
+      });
+
+      it('lets only one of concurrent refreshes with the same token rotate', async () => {
+        // Another replica rotated first: the presented refresh token is spent.
+        mockSessionStore.rotateSession.mockResolvedValue(false);
+        const res = createMockResponse() as Response;
+        await tokenHandler(refresh({}), res);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'invalid_grant',
+          error_description: 'Invalid refresh token',
+        });
+        expect(mockRefreshGitLabToken).not.toHaveBeenCalled();
       });
 
       it.each([
@@ -715,6 +741,7 @@ describe('OAuth Token Endpoint', () => {
         await tokenHandler(refresh({ client_id: clientId }), res);
         expect(res.json).toHaveBeenCalledWith({ error, error_description: description });
         expect(mockSessionStore.updateSession).not.toHaveBeenCalled();
+        expect(mockSessionStore.rotateSession).not.toHaveBeenCalled();
       });
 
       it('keeps the audience the session was bound to', async () => {
@@ -742,7 +769,7 @@ describe('OAuth Token Endpoint', () => {
       });
 
       it('rejects a scope beyond the original grant', async () => {
-        mockSessionStore.getSessionByRefreshToken.mockReturnValue({
+        mockSessionStore.getSessionByRefreshToken.mockResolvedValue({
           ...session,
           scopes: ['mcp:tools'],
         });
@@ -773,7 +800,7 @@ describe('OAuth Token Endpoint', () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      mockSessionStore.getSessionByRefreshToken.mockReturnValue(existingSession);
+      mockSessionStore.getSessionByRefreshToken.mockResolvedValue(existingSession);
       mockIsTokenExpiringSoon.mockReturnValue(true);
       mockOauthAppFor.mockResolvedValue(undefined);
       const res = createMockResponse() as Response;
@@ -812,7 +839,7 @@ describe('OAuth Token Endpoint', () => {
         updatedAt: Date.now(),
       };
 
-      mockSessionStore.getSessionByRefreshToken.mockReturnValue(existingSession);
+      mockSessionStore.getSessionByRefreshToken.mockResolvedValue(existingSession);
       mockIsTokenExpiringSoon.mockReturnValue(true);
       mockRefreshGitLabToken.mockRejectedValue(new Error('GitLab refresh failed'));
 
@@ -849,7 +876,7 @@ describe('OAuth Token Endpoint', () => {
         updatedAt: Date.now(),
       };
 
-      mockSessionStore.getSessionByRefreshToken.mockReturnValue(existingSession);
+      mockSessionStore.getSessionByRefreshToken.mockResolvedValue(existingSession);
       mockIsTokenExpiringSoon.mockReturnValue(true);
       mockRefreshGitLabToken.mockResolvedValue({
         access_token: 'new-gitlab-token',
@@ -858,7 +885,7 @@ describe('OAuth Token Endpoint', () => {
         expires_in: 7200,
         created_at: Date.now(),
       });
-      mockSessionStore.getSession.mockReturnValue(undefined); // Session lost
+      mockSessionStore.getSession.mockResolvedValue(undefined); // Session lost
 
       const req = createMockRequest({
         grant_type: 'refresh_token',

@@ -8,6 +8,8 @@
 import { Request, Response } from 'express';
 import { randomUUID } from 'crypto';
 import { logInfo, logError } from '../../logger';
+import { sessionStore } from '../session-store';
+import type { RegisteredOAuthClient } from '../types';
 
 /** Client registration request body */
 interface ClientRegistrationRequest {
@@ -30,8 +32,18 @@ interface RegisteredClient {
   created_at: number;
 }
 
-// In-memory store for registered clients (in production, use persistent storage)
-const registeredClients: Map<string, RegisteredClient> = new Map();
+function toRegisteredClient(client: RegisteredOAuthClient): RegisteredClient {
+  return {
+    client_id: client.clientId,
+    client_secret: client.clientSecret,
+    redirect_uris: client.redirectUris,
+    client_name: client.clientName,
+    token_endpoint_auth_method: client.tokenEndpointAuthMethod,
+    grant_types: client.grantTypes,
+    response_types: client.responseTypes,
+    created_at: client.createdAt,
+  };
+}
 
 /**
  * Dynamic Client Registration endpoint handler
@@ -84,19 +96,18 @@ export async function registerHandler(req: Request, res: Response): Promise<void
       client_secret = randomUUID() + randomUUID(); // Long random secret
     }
 
-    // Store client registration
-    const clientData: RegisteredClient = {
-      client_id,
-      client_secret,
-      redirect_uris,
-      client_name,
-      token_endpoint_auth_method,
-      grant_types,
-      response_types,
-      created_at: Date.now(),
-    };
-
-    registeredClients.set(client_id, clientData);
+    // Store client registration in the shared storage backend, so every replica and every
+    // restart knows the client; the response is sent only once the registration is stored.
+    await sessionStore.storeClient({
+      clientId: client_id,
+      clientSecret: client_secret,
+      redirectUris: redirect_uris,
+      clientName: client_name,
+      tokenEndpointAuthMethod: token_endpoint_auth_method,
+      grantTypes: grant_types,
+      responseTypes: response_types,
+      createdAt: Date.now(),
+    });
 
     logInfo('New OAuth client registered via DCR', {
       client_id,
@@ -133,15 +144,16 @@ export async function registerHandler(req: Request, res: Response): Promise<void
 /**
  * Get a registered client by ID
  */
-export function getRegisteredClient(clientId: string) {
-  return registeredClients.get(clientId);
+export async function getRegisteredClient(clientId: string): Promise<RegisteredClient | undefined> {
+  const client = await sessionStore.getClient(clientId);
+  return client ? toRegisteredClient(client) : undefined;
 }
 
 /**
  * Validate a client's redirect URI
  */
-export function isValidRedirectUri(clientId: string, redirectUri: string): boolean {
-  const client = registeredClients.get(clientId);
+export async function isValidRedirectUri(clientId: string, redirectUri: string): Promise<boolean> {
+  const client = await getRegisteredClient(clientId);
   if (!client) {
     // If client is not registered via DCR, allow any redirect URI
     // (for backwards compatibility with static client_id configuration)

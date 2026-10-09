@@ -37,6 +37,8 @@ model OAuthSession {
   // Session metadata
   clientId             String   @map("client_id")
   scopes               String[] @default([])
+  // RFC 8707 resource the session's tokens are issued for; null for older sessions.
+  resource             String?
   createdAt            BigInt   @map("created_at")
   updatedAt            BigInt   @map("updated_at")
 
@@ -65,6 +67,15 @@ model DeviceFlowState {
   redirectUri             String?  @map("redirect_uri")
   // The original GitLab grant request, retained across polling on another replica.
   requestedGitlabScopes   Json?    @map("requested_gitlab_scopes")
+  // The client's own state value; `state` above is the storage key.
+  clientState             String?  @map("client_state")
+  // Earliest next GitLab poll (RFC 8628 3.5), shared by all replicas.
+  nextPollAt              BigInt?  @map("next_poll_at")
+  selectedInstance        String?  @map("selected_instance")
+  selectedInstanceLabel   String?  @map("selected_instance_label")
+  // MCP scopes granted at /authorize; null means the full default set.
+  mcpScopes               Json?    @map("mcp_scopes")
+  resource                String?
 
   @@map("oauth_device_flows")
   @@index([deviceCode], map: "idx_oauth_device_flows_device_code")
@@ -83,6 +94,11 @@ model AuthCodeFlowState {
   expiresAt           BigInt   @map("expires_at")
   // OAuth §5.1 lets the token response omit scope when this grant is unchanged.
   requestedGitlabScopes Json?   @map("requested_gitlab_scopes")
+  selectedInstance      String? @map("selected_instance")
+  selectedInstanceLabel String? @map("selected_instance_label")
+  // MCP scopes granted at /authorize; null means the full default set.
+  mcpScopes             Json?   @map("mcp_scopes")
+  resource              String?
 
   @@map("oauth_auth_code_flows")
   @@index([expiresAt], map: "idx_oauth_auth_code_flows_expires_at")
@@ -104,6 +120,20 @@ model AuthorizationCode {
   @@map("oauth_authorization_codes")
   @@index([sessionId], map: "idx_oauth_authorization_codes_session_id")
   @@index([expiresAt], map: "idx_oauth_authorization_codes_expires_at")
+}
+
+// OAuth client registered through Dynamic Client Registration (RFC 7591)
+model OAuthClient {
+  clientId                String   @id @map("client_id")
+  clientSecret            String?  @map("client_secret")
+  redirectUris            String[] @map("redirect_uris")
+  clientName              String?  @map("client_name")
+  tokenEndpointAuthMethod String   @map("token_endpoint_auth_method")
+  grantTypes              String[] @map("grant_types")
+  responseTypes           String[] @map("response_types")
+  createdAt               BigInt   @map("created_at")
+
+  @@map("oauth_clients")
 }
 
 // MCP session to OAuth session mapping

@@ -13,7 +13,13 @@
 
 import * as fs from 'fs';
 import * as path from 'path';
-import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } from '../types';
+import {
+  OAuthSession,
+  DeviceFlowState,
+  AuthCodeFlowState,
+  AuthorizationCode,
+  RegisteredOAuthClient,
+} from '../types';
 import {
   SessionStorageBackend,
   SessionStorageStats,
@@ -139,6 +145,7 @@ export class FileStorageBackend implements SessionStorageBackend {
         authCodeFlows: validAuthCodeFlows,
         authCodes: validAuthCodes,
         mcpSessionMappings: data.mcpSessionMappings,
+        clients: data.clients,
       });
 
       const stats = await this.memory.getStats();
@@ -171,6 +178,7 @@ export class FileStorageBackend implements SessionStorageBackend {
         authCodeFlows: exportedData.authCodeFlows,
         authCodes: exportedData.authCodes,
         mcpSessionMappings: exportedData.mcpSessionMappings,
+        clients: exportedData.clients,
       };
 
       // Atomic write: write to temp file, then rename
@@ -321,6 +329,45 @@ export class FileStorageBackend implements SessionStorageBackend {
     const result = await this.memory.removeMcpSessionAssociation(mcpSessionId);
     if (result) this.scheduleSave();
     return result;
+  }
+
+  // Registered OAuth clients
+  async storeClient(client: RegisteredOAuthClient): Promise<void> {
+    await this.memory.storeClient(client);
+    this.scheduleSave();
+  }
+
+  async getClient(clientId: string): Promise<RegisteredOAuthClient | undefined> {
+    return this.memory.getClient(clientId);
+  }
+
+  // Single-use consumption and refresh rotation
+  async consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {
+    const record = await this.memory.consumeAuthCode(code);
+    if (record) this.scheduleSave();
+    return record;
+  }
+
+  async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    const record = await this.memory.consumeAuthCodeFlow(internalState);
+    if (record) this.scheduleSave();
+    return record;
+  }
+
+  async consumeDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
+    const record = await this.memory.consumeDeviceFlow(state);
+    if (record) this.scheduleSave();
+    return record;
+  }
+
+  async rotateSession(
+    sessionId: string,
+    expectedRefreshToken: string,
+    updates: Partial<OAuthSession>,
+  ): Promise<boolean> {
+    const rotated = await this.memory.rotateSession(sessionId, expectedRefreshToken, updates);
+    if (rotated) this.scheduleSave();
+    return rotated;
   }
 
   // Cleanup

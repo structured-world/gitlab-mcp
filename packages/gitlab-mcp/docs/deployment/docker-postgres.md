@@ -118,6 +118,33 @@ can be interpreted as the unchanged requested grant, as required by OAuth 2.0
 §5.1. Leave older flows' requested scopes as SQL `NULL` rather than inferring them
 from configuration that may have changed since the flow began.
 
+### Migrations
+
+The package ships Prisma migrations in `prisma/migrations`. Apply them with
+`prisma migrate deploy` (connection string from `OAUTH_STORAGE_POSTGRESQL_URL` or
+`DATABASE_URL`) before starting an upgraded server:
+
+```bash
+cd node_modules/@structured-world/gitlab-mcp-db
+npx prisma migrate deploy
+```
+
+- **New database:** `migrate deploy` creates every table.
+- **Existing database** created from the packaged schema before migrations were
+  shipped (including the `ALTER TABLE` statements above): mark the baseline as applied
+  once, then deploy the remaining migrations:
+
+  ```bash
+  npx prisma migrate resolve --applied 0_init
+  npx prisma migrate deploy
+  ```
+
+The account-linking migration only adds nullable columns and the `oauth_clients`
+table, so existing sessions and flows stay valid. It stores Dynamic Client
+Registrations, the resource, scope and GitLab instance each authorization is bound
+to, and the device flow's client state and poll schedule, so every replica sees the
+same registrations, codes and sessions.
+
 ## Multi-Instance Support
 
 Add multiple GitLab instances via the CLI:
@@ -137,6 +164,9 @@ For high-availability deployments:
 - Run multiple container replicas behind a load balancer
 - Set `OAUTH_SESSION_SECRET` to the same value across all replicas
 - Use sticky sessions or shared session storage
+- With the PostgreSQL backend no sticky sessions are needed: client registrations,
+  authorization codes, refresh-token rotation and device flows are stored and
+  redeemed atomically in the database, so any replica can serve any request
 
 ## Security Notes
 

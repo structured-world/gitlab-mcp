@@ -14,8 +14,7 @@ jest.mock('../../../../src/oauth/config', () => ({
 
 jest.mock('../../../../src/oauth/session-store', () => ({
   sessionStore: {
-    getAuthCodeFlow: jest.fn(),
-    deleteAuthCodeFlow: jest.fn(),
+    consumeAuthCodeFlow: jest.fn(),
     storeAuthCode: jest.fn(),
     createSession: jest.fn(),
   },
@@ -146,11 +145,11 @@ describe('OAuth Callback Handler', () => {
         state: 'flow-state-123',
       };
 
-      mockSessionStore.getAuthCodeFlow.mockReturnValue(mockAuthCodeFlow);
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue(mockAuthCodeFlow);
 
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
-      expect(mockSessionStore.deleteAuthCodeFlow).toHaveBeenCalledWith('flow-state-123');
+      expect(mockSessionStore.consumeAuthCodeFlow).toHaveBeenCalledWith('flow-state-123');
       expect(redirectMock).toHaveBeenCalledWith(
         expect.stringContaining('https://client.example.com/callback'),
       );
@@ -185,7 +184,7 @@ describe('OAuth Callback Handler', () => {
         state: 'invalid-state',
       };
 
-      mockSessionStore.getAuthCodeFlow.mockReturnValue(undefined);
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue(undefined);
 
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
@@ -234,7 +233,7 @@ describe('OAuth Callback Handler', () => {
         state: 'unknown-state',
       };
 
-      mockSessionStore.getAuthCodeFlow.mockReturnValue(undefined);
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue(undefined);
 
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
@@ -255,11 +254,11 @@ describe('OAuth Callback Handler', () => {
         ...mockAuthCodeFlow,
         expiresAt: Date.now() - 1000, // Expired
       };
-      mockSessionStore.getAuthCodeFlow.mockReturnValue(expiredFlow);
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue(expiredFlow);
 
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
-      expect(mockSessionStore.deleteAuthCodeFlow).toHaveBeenCalledWith('expired-state');
+      expect(mockSessionStore.consumeAuthCodeFlow).toHaveBeenCalledWith('expired-state');
       expect(statusMock).toHaveBeenCalledWith(400);
       expect(jsonMock).toHaveBeenCalledWith({
         error: 'invalid_request',
@@ -275,7 +274,7 @@ describe('OAuth Callback Handler', () => {
         state: 'flow-state-123',
       };
 
-      mockSessionStore.getAuthCodeFlow.mockReturnValue(mockAuthCodeFlow);
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue(mockAuthCodeFlow);
 
       mockExchangeGitLabAuthCode.mockResolvedValue({
         access_token: 'gitlab-access-token',
@@ -306,7 +305,7 @@ describe('OAuth Callback Handler', () => {
     });
 
     it('exchanges the code with the application of the instance chosen at /authorize', async () => {
-      mockSessionStore.getAuthCodeFlow.mockReturnValue({
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue({
         ...mockAuthCodeFlow,
         selectedInstance: selectedApp.baseUrl,
         selectedInstanceLabel: 'Corp',
@@ -318,6 +317,35 @@ describe('OAuth Callback Handler', () => {
       expect(mockSessionStore.createSession).toHaveBeenCalledWith(
         expect.objectContaining({ gitlabApiUrl: selectedApp.baseUrl, instanceLabel: 'Corp' }),
       );
+    });
+
+    it('processes a callback state once: a replayed callback finds no flow', async () => {
+      // Another replica (or a browser retry) already took this state.
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue(undefined);
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(mockExchangeGitLabAuthCode).not.toHaveBeenCalled();
+      expect(statusMock).toHaveBeenCalledWith(400);
+    });
+
+    it('creates the session before the code that references it', async () => {
+      // The PostgreSQL code row has a foreign key on the session.
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(mockSessionStore.createSession.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSessionStore.storeAuthCode.mock.invocationCallOrder[0],
+      );
+    });
+
+    it('reports storage failure without redirecting a sign-in that did not happen', async () => {
+      mockSessionStore.createSession.mockRejectedValueOnce(new Error('database down'));
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(mockSessionStore.storeAuthCode).not.toHaveBeenCalled();
+      expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('error=server_error'));
+      expect(redirectMock).not.toHaveBeenCalledWith(expect.stringContaining('code='));
     });
 
     it('fails without contacting GitLab when the instance is no longer configured', async () => {
@@ -389,7 +417,7 @@ describe('OAuth Callback Handler', () => {
     it('should delete flow state after success', async () => {
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
-      expect(mockSessionStore.deleteAuthCodeFlow).toHaveBeenCalledWith('flow-state-123');
+      expect(mockSessionStore.consumeAuthCodeFlow).toHaveBeenCalledWith('flow-state-123');
     });
 
     it('should redirect to client with MCP authorization code', async () => {
@@ -406,7 +434,7 @@ describe('OAuth Callback Handler', () => {
     });
 
     it('should bind the session to the scopes and resource of the authorization', async () => {
-      mockSessionStore.getAuthCodeFlow.mockReturnValue({
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue({
         ...mockAuthCodeFlow,
         scopes: ['mcp:tools'],
         resource: 'https://gitlab-mcp.example.com/mcp',
@@ -425,7 +453,7 @@ describe('OAuth Callback Handler', () => {
     it('should redirect without state if client state is empty', async () => {
       // Empty string clientState should not be included in redirect
       const flowWithEmptyState = { ...mockAuthCodeFlow, clientState: '' };
-      mockSessionStore.getAuthCodeFlow.mockReturnValue(flowWithEmptyState);
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue(flowWithEmptyState);
 
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
@@ -442,7 +470,7 @@ describe('OAuth Callback Handler', () => {
         state: 'flow-state-123',
       };
 
-      mockSessionStore.getAuthCodeFlow.mockReturnValue(mockAuthCodeFlow);
+      mockSessionStore.consumeAuthCodeFlow.mockResolvedValue(mockAuthCodeFlow);
     });
 
     it('should redirect with error if GitLab token exchange fails', async () => {
@@ -450,7 +478,7 @@ describe('OAuth Callback Handler', () => {
 
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
-      expect(mockSessionStore.deleteAuthCodeFlow).toHaveBeenCalledWith('flow-state-123');
+      expect(mockSessionStore.consumeAuthCodeFlow).toHaveBeenCalledWith('flow-state-123');
       expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('error=server_error'));
       expect(redirectMock).toHaveBeenCalledWith(
         expect.stringContaining('error_description=Invalid+authorization+code'),
@@ -472,7 +500,7 @@ describe('OAuth Callback Handler', () => {
 
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
-      expect(mockSessionStore.deleteAuthCodeFlow).toHaveBeenCalledWith('flow-state-123');
+      expect(mockSessionStore.consumeAuthCodeFlow).toHaveBeenCalledWith('flow-state-123');
       expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('error=server_error'));
     });
 

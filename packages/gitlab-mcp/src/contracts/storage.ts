@@ -16,4 +16,5 @@ export type {
   DeviceFlowState,
   AuthCodeFlowState,
   AuthorizationCode,
+  RegisteredOAuthClient,
 } from '../oauth/types';

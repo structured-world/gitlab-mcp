@@ -287,6 +287,22 @@ describe('OAuth Authentication Middleware', () => {
         expect(mockNext).not.toHaveBeenCalled();
       });
 
+      it('answers 503 when session storage is unavailable, not a bad-token 401', async () => {
+        // An outage must not send the client into a reconnect loop.
+        mockSessionStore.getSession.mockRejectedValue(new Error('database down'));
+        const res = createMockRes();
+
+        await oauthAuthMiddleware(
+          createMockReq({ headers: { authorization: 'Bearer valid-mcp-token' } }),
+          res,
+          mockNext,
+        );
+
+        expect(res.status).toHaveBeenCalledWith(503);
+        expect(res.setHeader).not.toHaveBeenCalled();
+        expect(mockNext).not.toHaveBeenCalled();
+      });
+
       it('names the error in the challenge for a rejected token (RFC 6750 3)', async () => {
         mockVerifyMCPToken.mockReturnValue(null);
         const res = createMockRes();

@@ -71,6 +71,28 @@ export interface OAuthSession {
 }
 
 /**
+ * OAuth client registered through Dynamic Client Registration (RFC 7591)
+ */
+export interface RegisteredOAuthClient {
+  /** Issued client identifier */
+  clientId: string;
+  /** Issued secret, only for confidential clients */
+  clientSecret?: string;
+  /** Redirect URIs the client may use */
+  redirectUris: string[];
+  /** Human-readable client name */
+  clientName?: string;
+  /** Token endpoint authentication method */
+  tokenEndpointAuthMethod: string;
+  /** Grant types the client registered */
+  grantTypes: string[];
+  /** Response types the client registered */
+  responseTypes: string[];
+  /** Registration timestamp (milliseconds since epoch) */
+  createdAt: number;
+}
+
+/**
  * State for tracking an in-progress Authorization Code Flow
  * Used when redirect_uri is provided (web-based OAuth like Claude.ai)
  */

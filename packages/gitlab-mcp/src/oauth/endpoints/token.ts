@@ -17,13 +17,11 @@ import {
   createJWT,
   generateRefreshToken,
   calculateTokenExpiry,
-  isTokenExpiringSoon,
   generateUUID,
 } from '../token-utils';
-import { refreshGitLabToken } from '../gitlab-device-flow';
+import { withFreshGitLabToken } from '../gitlab-token-refresh';
 import { defaultResource, matchProtectedResource } from '../resource';
-import { oauthAppFor } from '../instance-app';
-import { logInfo, logDebug, logWarn, logError, truncateId } from '../../logger';
+import { logInfo, logWarn, logError, truncateId } from '../../logger';
 import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from '../types';
 import { getIpAddress } from '../../utils/request-logger';
 
@@ -45,23 +43,29 @@ export async function tokenHandler(req: Request, res: Response): Promise<void> {
 
   const { grant_type } = req.body as { grant_type?: string };
 
-  switch (grant_type) {
-    case 'authorization_code':
-      await handleAuthorizationCode(req, res, config);
-      break;
+  try {
+    switch (grant_type) {
+      case 'authorization_code':
+        await handleAuthorizationCode(req, res, config);
+        break;
 
-    case 'refresh_token':
-      await handleRefreshToken(req, res, config);
-      break;
+      case 'refresh_token':
+        await handleRefreshToken(req, res, config);
+        break;
 
-    default:
-      sendError(
-        req,
-        res,
-        400,
-        'unsupported_grant_type',
-        `Grant type "${grant_type}" is not supported`,
-      );
+      default:
+        sendError(
+          req,
+          res,
+          400,
+          'unsupported_grant_type',
+          `Grant type "${grant_type}" is not supported`,
+        );
+    }
+  } catch (error: unknown) {
+    // Storage failures must not look like a granted or a refused token.
+    logError('Token request failed', { err: error as Error });
+    sendError(req, res, 500, 'server_error', 'Token service is temporarily unavailable');
   }
 }
 
@@ -101,16 +105,10 @@ async function handleAuthorizationCode(
     return;
   }
 
-  // Look up authorization code
-  const authCode = sessionStore.getAuthCode(code);
-  if (!authCode) {
-    sendError(req, res, 400, 'invalid_grant', 'Invalid or expired authorization code');
-    return;
-  }
-
   // Consume before any check so a code is presented at most once, whatever the outcome
-  // (RFC 6749 section 4.1.2); only the caller that removed it may continue.
-  if (!sessionStore.deleteAuthCode(code)) {
+  // (RFC 6749 section 4.1.2); of concurrent exchanges on any replica only one gets it.
+  const authCode = await sessionStore.consumeAuthCode(code);
+  if (!authCode) {
     sendError(req, res, 400, 'invalid_grant', 'Invalid or expired authorization code');
     return;
   }
@@ -140,7 +138,7 @@ async function handleAuthorizationCode(
   }
 
   // Get the session created during device flow
-  const session = sessionStore.getSession(authCode.sessionId);
+  const session = await sessionStore.getSession(authCode.sessionId);
   if (!session) {
     sendError(req, res, 400, 'invalid_grant', 'Session not found');
     return;
@@ -158,12 +156,16 @@ async function handleAuthorizationCode(
   const refreshToken = generateRefreshToken();
 
   // Update session with MCP tokens
-  sessionStore.updateSession(session.id, {
+  const stored = await sessionStore.updateSession(session.id, {
     mcpAccessToken: accessToken,
     mcpRefreshToken: refreshToken,
     mcpTokenExpiry: calculateTokenExpiry(config.tokenTtl),
     resource: audience,
   });
+  if (!stored) {
+    sendError(req, res, 400, 'invalid_grant', 'Session not found');
+    return;
+  }
 
   logInfo('MCP tokens issued via authorization_code grant', {
     sessionId: truncateId(session.id),
@@ -208,7 +210,7 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
   }
 
   // Find session by refresh token
-  const session = sessionStore.getSessionByRefreshToken(refresh_token);
+  const session = await sessionStore.getSessionByRefreshToken(refresh_token);
   if (!session) {
     sendError(req, res, 400, 'invalid_grant', 'Invalid refresh token');
     return;
@@ -233,57 +235,37 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
     return;
   }
 
-  // Refresh GitLab token if it's expiring soon (5 minute buffer)
-  let updatedSession: OAuthSession = session;
-
-  if (isTokenExpiringSoon(session.gitlabTokenExpiry)) {
-    try {
-      // Refresh with the application of the session's instance, never another one.
-      const app = await oauthAppFor(config, session.gitlabApiUrl);
-      if (!app) {
-        throw new Error('GitLab instance is no longer configured');
-      }
-      const newTokens = await refreshGitLabToken(session.gitlabRefreshToken, config, app);
-
-      sessionStore.updateSession(session.id, {
-        gitlabAccessToken: newTokens.access_token,
-        gitlabRefreshToken: newTokens.refresh_token,
-        gitlabTokenExpiry: calculateTokenExpiry(newTokens.expires_in),
-        // RFC 6749 section 6: omitted scope retains the original grant.
-        // https://www.rfc-editor.org/rfc/rfc6749#section-6
-        ...(newTokens.scope !== undefined && {
-          gitlabScopes: newTokens.scope.split(/\s+/).filter(Boolean),
-        }),
-      });
-
-      // Get updated session
-      const refreshedSession = sessionStore.getSession(session.id);
-      if (!refreshedSession) {
-        sendError(req, res, 400, 'invalid_grant', 'Session lost during refresh');
-        return;
-      }
-      updatedSession = refreshedSession;
-
-      logDebug('GitLab token refreshed', { sessionId: truncateId(session.id) });
-    } catch (error: unknown) {
-      logError('Failed to refresh GitLab token', { err: error as Error });
-      sendError(req, res, 400, 'invalid_grant', 'Failed to refresh underlying GitLab token');
-      return;
-    }
-  }
-
   // Generate new MCP tokens
-  const accessToken = mintAccessToken(config, updatedSession, audience, tokenScopes);
+  const accessToken = mintAccessToken(config, session, audience, tokenScopes);
 
   const newRefreshToken = generateRefreshToken();
 
-  // Update session with new MCP tokens
-  sessionStore.updateSession(updatedSession.id, {
+  // Rotate first: the refresh token is spent exactly once, by the caller whose
+  // compare-and-set wins on any replica (OAuth 2.1 section 4.3.1 rotation).
+  const rotated = await sessionStore.rotateSession(session.id, refresh_token, {
     mcpAccessToken: accessToken,
     mcpRefreshToken: newRefreshToken,
     mcpTokenExpiry: calculateTokenExpiry(config.tokenTtl),
     resource: audience,
   });
+  if (!rotated) {
+    sendError(req, res, 400, 'invalid_grant', 'Invalid refresh token');
+    return;
+  }
+
+  // Refresh GitLab token if it's expiring soon (5 minute buffer)
+  let updatedSession: OAuthSession | undefined;
+  try {
+    updatedSession = await withFreshGitLabToken(session, config);
+  } catch (error: unknown) {
+    logError('Failed to refresh GitLab token', { err: error as Error });
+    sendError(req, res, 400, 'invalid_grant', 'Failed to refresh underlying GitLab token');
+    return;
+  }
+  if (!updatedSession) {
+    sendError(req, res, 400, 'invalid_grant', 'Session lost during refresh');
+    return;
+  }
 
   logInfo('MCP tokens refreshed via refresh_token grant', {
     sessionId: truncateId(updatedSession.id),

@@ -16,6 +16,7 @@ import type {
   DeviceFlowState as DeviceFlowStateType,
   AuthCodeFlowState as AuthCodeFlowStateType,
   AuthorizationCode as AuthorizationCodeType,
+  RegisteredOAuthClient as RegisteredOAuthClientType,
   SessionStorageBackend,
   SessionStorageStats,
 } from '@structured-world/gitlab-mcp/storage-contract';
@@ -40,12 +41,19 @@ interface PrismaOAuthSessionRow {
   instanceLabel: string | null;
   clientId: string;
   scopes: string[];
+  resource?: string | null;
   createdAt: bigint;
   updatedAt: bigint;
 }
 
 interface PrismaDeviceFlowStateRow {
   requestedGitlabScopes?: unknown;
+  clientState?: string | null;
+  nextPollAt?: bigint | null;
+  selectedInstance?: string | null;
+  selectedInstanceLabel?: string | null;
+  mcpScopes?: unknown;
+  resource?: string | null;
   state: string;
   deviceCode: string;
   userCode: string;
@@ -61,6 +69,10 @@ interface PrismaDeviceFlowStateRow {
 
 interface PrismaAuthCodeFlowStateRow {
   requestedGitlabScopes?: unknown;
+  selectedInstance?: string | null;
+  selectedInstanceLabel?: string | null;
+  mcpScopes?: unknown;
+  resource?: string | null;
   internalState: string;
   clientId: string;
   codeChallenge: string;
@@ -87,6 +99,17 @@ interface PrismaMcpSessionMappingRow {
   oauthSession?: PrismaOAuthSessionRow;
 }
 
+interface PrismaOAuthClientRow {
+  clientId: string;
+  clientSecret: string | null;
+  redirectUris: string[];
+  clientName: string | null;
+  tokenEndpointAuthMethod: string;
+  grantTypes: string[];
+  responseTypes: string[];
+  createdAt: bigint;
+}
+
 interface PrismaBatchPayload {
   count: number;
 }
@@ -98,6 +121,20 @@ function storedGitlabScopes(value: unknown): string[] | undefined {
     throw new Error('Invalid stored GitLab scopes');
   }
   return value;
+}
+
+/** MCP scopes of a flow; null means the full default set, corrupt values are refused. */
+function storedMcpScopes(value: unknown): string[] | undefined {
+  if (value == null) return undefined;
+  if (!Array.isArray(value) || !value.every((scope) => typeof scope === 'string')) {
+    throw new Error('Invalid stored MCP scopes');
+  }
+  return value;
+}
+
+/** Optional row values come back as null; the contract uses absent properties. */
+function optional<T>(value: T | null | undefined): T | undefined {
+  return value ?? undefined;
 }
 
 /**
@@ -114,9 +151,14 @@ interface GenericPrismaClient {
     findFirst(args: unknown): Promise<unknown>;
     findMany(): Promise<unknown>;
     update(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
     delete(args: unknown): Promise<unknown>;
     deleteMany(args: unknown): Promise<unknown>;
     count(): Promise<number>;
+  };
+  oAuthClient: {
+    create(args: unknown): Promise<unknown>;
+    findUnique(args: unknown): Promise<unknown>;
   };
   deviceFlowState: {
     upsert(args: unknown): Promise<unknown>;
@@ -158,16 +200,33 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   private prisma: GenericPrismaClient | null = null;
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
+  private readonly connectionString: string | undefined;
+
+  constructor(options: PostgreSQLStorageOptions = {}) {
+    this.connectionString =
+      options.connectionString ??
+      process.env.OAUTH_STORAGE_POSTGRESQL_URL ??
+      process.env.DATABASE_URL;
+  }
 
   async initialize(): Promise<void> {
     try {
+      if (!this.connectionString) {
+        throw new Error(
+          'PostgreSQL storage requires OAUTH_STORAGE_POSTGRESQL_URL or DATABASE_URL',
+        );
+      }
+
       // Dynamic import Prisma client to avoid initialization if not used
       const prismaModule = (await import('../generated/prisma/client')) as unknown as {
         PrismaClient: new (opts: Record<string, unknown>) => GenericPrismaClient;
       };
+      const { PrismaPg } = await import('@prisma/adapter-pg');
 
-      // Create Prisma client
-      this.prisma = new prismaModule.PrismaClient({});
+      // Prisma 7 connects through a driver adapter; the client has no built-in engine.
+      this.prisma = new prismaModule.PrismaClient({
+        adapter: new PrismaPg({ connectionString: this.connectionString }),
+      });
 
       // Connect and test
       await this.prisma.$connect();
@@ -208,6 +267,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         instanceLabel: session.instanceLabel,
         clientId: session.clientId,
         scopes: session.scopes,
+        resource: session.resource ?? null,
         createdAt: BigInt(session.createdAt),
         updatedAt: BigInt(session.updatedAt),
       },
@@ -241,7 +301,35 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   async updateSession(sessionId: string, updates: Partial<OAuthSession>): Promise<boolean> {
     const prisma = this.getPrisma();
+    const data = this.sessionUpdateData(updates);
 
+    try {
+      await prisma.oAuthSession.update({
+        where: { id: sessionId },
+        data,
+      });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  async rotateSession(
+    sessionId: string,
+    expectedRefreshToken: string,
+    updates: Partial<OAuthSession>,
+  ): Promise<boolean> {
+    const prisma = this.getPrisma();
+    // Compare-and-set in one statement: only the row still holding the presented refresh
+    // token is updated, so concurrent refreshes on different replicas have one winner.
+    const result = (await prisma.oAuthSession.updateMany({
+      where: { id: sessionId, mcpRefreshToken: expectedRefreshToken },
+      data: this.sessionUpdateData(updates),
+    })) as PrismaBatchPayload;
+    return result.count === 1;
+  }
+
+  private sessionUpdateData(updates: Partial<OAuthSession>): Record<string, unknown> {
     const data: Record<string, unknown> = {
       updatedAt: BigInt(Date.now()),
     };
@@ -267,16 +355,10 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     if (updates.gitlabScopes !== undefined) {
       data.gitlabScopes = updates.gitlabScopes;
     }
-
-    try {
-      await prisma.oAuthSession.update({
-        where: { id: sessionId },
-        data,
-      });
-      return true;
-    } catch {
-      return false;
+    if (updates.resource !== undefined) {
+      data.resource = updates.resource;
     }
+    return data;
   }
 
   async deleteSession(sessionId: string): Promise<boolean> {
@@ -313,6 +395,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       instanceLabel: row.instanceLabel ?? undefined,
       clientId: row.clientId,
       scopes: row.scopes,
+      resource: optional(row.resource),
       createdAt: Number(row.createdAt),
       updatedAt: Number(row.updatedAt),
     };
@@ -321,28 +404,32 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   // Device flow operations
   async storeDeviceFlow(state: string, flow: DeviceFlowStateType): Promise<void> {
     const prisma = this.getPrisma();
+    // Every write stores the whole flow: polling replicas update the interval and the
+    // next poll time, and must not drop the binding written at /authorize.
+    const data = {
+      deviceCode: flow.deviceCode,
+      userCode: flow.userCode,
+      verificationUri: flow.verificationUri,
+      verificationUriComplete: flow.verificationUriComplete ?? null,
+      expiresAt: BigInt(flow.expiresAt),
+      interval: flow.interval,
+      clientId: flow.clientId,
+      codeChallenge: flow.codeChallenge,
+      codeChallengeMethod: flow.codeChallengeMethod,
+      redirectUri: flow.redirectUri ?? null,
+      requestedGitlabScopes: flow.requestedGitlabScopes,
+      // `state` is the storage key; the client's own state has its own column.
+      clientState: flow.state,
+      nextPollAt: flow.nextPollAt === undefined ? null : BigInt(flow.nextPollAt),
+      selectedInstance: flow.selectedInstance ?? null,
+      selectedInstanceLabel: flow.selectedInstanceLabel ?? null,
+      mcpScopes: flow.scopes,
+      resource: flow.resource ?? null,
+    };
     await prisma.deviceFlowState.upsert({
       where: { state },
-      update: {
-        deviceCode: flow.deviceCode,
-        userCode: flow.userCode,
-        expiresAt: BigInt(flow.expiresAt),
-        requestedGitlabScopes: flow.requestedGitlabScopes,
-      },
-      create: {
-        state,
-        deviceCode: flow.deviceCode,
-        userCode: flow.userCode,
-        verificationUri: flow.verificationUri,
-        verificationUriComplete: flow.verificationUriComplete ?? null,
-        expiresAt: BigInt(flow.expiresAt),
-        interval: flow.interval,
-        clientId: flow.clientId,
-        codeChallenge: flow.codeChallenge,
-        codeChallengeMethod: flow.codeChallengeMethod,
-        redirectUri: flow.redirectUri ?? null,
-        requestedGitlabScopes: flow.requestedGitlabScopes,
-      },
+      update: data,
+      create: { state, ...data },
     });
   }
 
@@ -386,8 +473,15 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       clientId: row.clientId,
       codeChallenge: row.codeChallenge,
       codeChallengeMethod: row.codeChallengeMethod,
-      state: row.state,
+      // The client's state, never the storage key; rows written before the column
+      // existed have no client state.
+      state: row.clientState ?? '',
       redirectUri: row.redirectUri ?? undefined,
+      nextPollAt: row.nextPollAt == null ? undefined : Number(row.nextPollAt),
+      selectedInstance: optional(row.selectedInstance),
+      selectedInstanceLabel: optional(row.selectedInstanceLabel),
+      scopes: storedMcpScopes(row.mcpScopes),
+      resource: optional(row.resource),
     };
   }
 
@@ -405,6 +499,10 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         callbackUri: flow.callbackUri,
         expiresAt: BigInt(flow.expiresAt),
         requestedGitlabScopes: flow.requestedGitlabScopes,
+        selectedInstance: flow.selectedInstance ?? null,
+        selectedInstanceLabel: flow.selectedInstanceLabel ?? null,
+        mcpScopes: flow.scopes,
+        resource: flow.resource ?? null,
       },
     });
   }
@@ -441,6 +539,10 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       clientRedirectUri: row.clientRedirectUri,
       callbackUri: row.callbackUri,
       expiresAt: Number(row.expiresAt),
+      selectedInstance: optional(row.selectedInstance),
+      selectedInstanceLabel: optional(row.selectedInstanceLabel),
+      scopes: storedMcpScopes(row.mcpScopes),
+      resource: optional(row.resource),
     };
   }
 
@@ -522,6 +624,79 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     } catch {
       return false;
     }
+  }
+
+  // Single-use consumption: the row is read, then deleted with a count; only the caller
+  // whose delete removed the row (count 1) receives it, on whichever replica it runs.
+  async consumeAuthCode(code: string): Promise<AuthorizationCodeType | undefined> {
+    const prisma = this.getPrisma();
+    const row = (await prisma.authorizationCode.findUnique({
+      where: { code },
+    })) as PrismaAuthorizationCodeRow | null;
+    if (!row) return undefined;
+    const removed = (await prisma.authorizationCode.deleteMany({
+      where: { code },
+    })) as PrismaBatchPayload;
+    return removed.count === 1 ? this.rowToAuthCode(row) : undefined;
+  }
+
+  async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowStateType | undefined> {
+    const prisma = this.getPrisma();
+    const row = (await prisma.authCodeFlowState.findUnique({
+      where: { internalState },
+    })) as PrismaAuthCodeFlowStateRow | null;
+    if (!row) return undefined;
+    const removed = (await prisma.authCodeFlowState.deleteMany({
+      where: { internalState },
+    })) as PrismaBatchPayload;
+    return removed.count === 1 ? this.rowToAuthCodeFlow(row) : undefined;
+  }
+
+  async consumeDeviceFlow(state: string): Promise<DeviceFlowStateType | undefined> {
+    const prisma = this.getPrisma();
+    const row = (await prisma.deviceFlowState.findUnique({
+      where: { state },
+    })) as PrismaDeviceFlowStateRow | null;
+    if (!row) return undefined;
+    const removed = (await prisma.deviceFlowState.deleteMany({
+      where: { state },
+    })) as PrismaBatchPayload;
+    return removed.count === 1 ? this.rowToDeviceFlow(row) : undefined;
+  }
+
+  // Registered OAuth clients
+  async storeClient(client: RegisteredOAuthClientType): Promise<void> {
+    const prisma = this.getPrisma();
+    await prisma.oAuthClient.create({
+      data: {
+        clientId: client.clientId,
+        clientSecret: client.clientSecret ?? null,
+        redirectUris: client.redirectUris,
+        clientName: client.clientName ?? null,
+        tokenEndpointAuthMethod: client.tokenEndpointAuthMethod,
+        grantTypes: client.grantTypes,
+        responseTypes: client.responseTypes,
+        createdAt: BigInt(client.createdAt),
+      },
+    });
+  }
+
+  async getClient(clientId: string): Promise<RegisteredOAuthClientType | undefined> {
+    const prisma = this.getPrisma();
+    const row = (await prisma.oAuthClient.findUnique({
+      where: { clientId },
+    })) as PrismaOAuthClientRow | null;
+    if (!row) return undefined;
+    return {
+      clientId: row.clientId,
+      clientSecret: optional(row.clientSecret),
+      redirectUris: row.redirectUris,
+      clientName: optional(row.clientName),
+      tokenEndpointAuthMethod: row.tokenEndpointAuthMethod,
+      grantTypes: row.grantTypes,
+      responseTypes: row.responseTypes,
+      createdAt: Number(row.createdAt),
+    };
   }
 
   // Cleanup

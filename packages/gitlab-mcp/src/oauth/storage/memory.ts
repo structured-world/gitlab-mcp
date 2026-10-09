@@ -5,7 +5,13 @@
  * Sessions are lost on server restart.
  */
 
-import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } from '../types';
+import {
+  OAuthSession,
+  DeviceFlowState,
+  AuthCodeFlowState,
+  AuthorizationCode,
+  RegisteredOAuthClient,
+} from '../types';
 import { SessionStorageBackend, SessionStorageStats } from './types';
 import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 
@@ -24,6 +30,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   private tokenToSession = new Map<string, string>();
   private refreshTokenToSession = new Map<string, string>();
   private mcpSessionToOAuthSession = new Map<string, string>();
+  private clients = new Map<string, RegisteredOAuthClient>();
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
   private silent: boolean;
 
@@ -184,6 +191,46 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return deleted;
   }
 
+  // Registered OAuth clients
+  async storeClient(client: RegisteredOAuthClient): Promise<void> {
+    this.clients.set(client.clientId, client);
+  }
+
+  async getClient(clientId: string): Promise<RegisteredOAuthClient | undefined> {
+    return this.clients.get(clientId);
+  }
+
+  // Single-use consumption: lookup and removal run without an await in between, so in
+  // this process exactly one caller gets the record.
+  async consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {
+    const record = this.authCodes.get(code);
+    if (record) this.authCodes.delete(code);
+    return record;
+  }
+
+  async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    const record = this.authCodeFlows.get(internalState);
+    if (record) this.authCodeFlows.delete(internalState);
+    return record;
+  }
+
+  async consumeDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
+    const record = this.deviceFlows.get(state);
+    if (record) this.deviceFlows.delete(state);
+    return record;
+  }
+
+  async rotateSession(
+    sessionId: string,
+    expectedRefreshToken: string,
+    updates: Partial<OAuthSession>,
+  ): Promise<boolean> {
+    if (this.sessions.get(sessionId)?.mcpRefreshToken !== expectedRefreshToken) {
+      return false;
+    }
+    return this.updateSession(sessionId, updates);
+  }
+
   // Cleanup
   async cleanup(): Promise<void> {
     const now = Date.now();
@@ -285,8 +332,10 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     authCodeFlows: Array<{ internalState: string; flow: AuthCodeFlowState }>;
     authCodes: AuthorizationCode[];
     mcpSessionMappings: Array<{ mcpSessionId: string; oauthSessionId: string }>;
+    clients: RegisteredOAuthClient[];
   } {
     return {
+      clients: Array.from(this.clients.values()),
       sessions: Array.from(this.sessions.values()),
       deviceFlows: Array.from(this.deviceFlows.entries()).map(([state, flow]) => ({ state, flow })),
       authCodeFlows: Array.from(this.authCodeFlows.entries()).map(([internalState, flow]) => ({
@@ -307,8 +356,13 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     authCodeFlows?: Array<{ internalState: string; flow: AuthCodeFlowState }>;
     authCodes?: AuthorizationCode[];
     mcpSessionMappings?: Array<{ mcpSessionId: string; oauthSessionId: string }>;
+    clients?: RegisteredOAuthClient[];
   }): void {
     // Clear existing data
+    this.clients.clear();
+    for (const client of data.clients ?? []) {
+      this.clients.set(client.clientId, client);
+    }
     this.sessions.clear();
     this.deviceFlows.clear();
     this.authCodeFlows.clear();

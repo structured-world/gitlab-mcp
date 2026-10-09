@@ -17,6 +17,7 @@ jest.mock('../../../../src/oauth/session-store', () => ({
     storeAuthCodeFlow: jest.fn(),
     getDeviceFlow: jest.fn(),
     deleteDeviceFlow: jest.fn(),
+    consumeDeviceFlow: jest.fn(),
     storeAuthCode: jest.fn(),
     createSession: jest.fn(),
   },
@@ -158,7 +159,11 @@ describe('OAuth Authorization Endpoint', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLoadOAuthConfig.mockReturnValue(mockConfig);
-    mockGetRegisteredClient.mockReturnValue(registeredClient);
+    mockGetRegisteredClient.mockResolvedValue(registeredClient);
+    // This poller is the one that completes the flow unless a test says otherwise.
+    mockSessionStore.consumeDeviceFlow.mockImplementation((state) =>
+      mockSessionStore.getDeviceFlow(state),
+    );
     mockSelectableOAuthApps.mockResolvedValue([defaultApp]);
     mockOauthAppFor.mockResolvedValue(defaultApp);
   });
@@ -343,7 +348,7 @@ describe('OAuth Authorization Endpoint', () => {
           'redirect_uri is not registered for this client',
         ],
       ])('reports %s without redirecting', async (_c, client, description) => {
-        mockGetRegisteredClient.mockReturnValue(client);
+        mockGetRegisteredClient.mockResolvedValue(client);
         const res = createMockResponse() as Response;
 
         await authorizeHandler(codeFlow({}), res);
@@ -409,7 +414,7 @@ describe('OAuth Authorization Endpoint', () => {
 
       it('keeps the device flow open to clients without a registration', async () => {
         // Device flow has no redirect, so it does not depend on DCR (unchanged behaviour).
-        mockGetRegisteredClient.mockReturnValue(undefined);
+        mockGetRegisteredClient.mockResolvedValue(undefined);
         mockInitiateDeviceFlow.mockResolvedValue({
           device_code: 'device-code',
           user_code: 'WXYZ-0000',
@@ -660,7 +665,7 @@ describe('OAuth Authorization Endpoint', () => {
     });
 
     it('should return expired when flow not found', async () => {
-      mockSessionStore.getDeviceFlow.mockReturnValue(undefined);
+      mockSessionStore.getDeviceFlow.mockResolvedValue(undefined);
 
       const req = createMockRequest({ flow_state: 'unknown-state' }) as Request;
       const res = createMockResponse() as Response;
@@ -675,7 +680,7 @@ describe('OAuth Authorization Endpoint', () => {
     });
 
     it('should return expired when device flow has expired', async () => {
-      mockSessionStore.getDeviceFlow.mockReturnValue({
+      mockSessionStore.getDeviceFlow.mockResolvedValue({
         deviceCode: 'device-code',
         userCode: 'USER-CODE',
         verificationUri: 'https://gitlab.example.com/oauth/authorize',
@@ -701,7 +706,7 @@ describe('OAuth Authorization Endpoint', () => {
     });
 
     it('should return pending when authorization not complete', async () => {
-      mockSessionStore.getDeviceFlow.mockReturnValue({
+      mockSessionStore.getDeviceFlow.mockResolvedValue({
         deviceCode: 'device-code',
         userCode: 'USER-CODE',
         verificationUri: 'https://gitlab.example.com/oauth/authorize',
@@ -726,7 +731,7 @@ describe('OAuth Authorization Endpoint', () => {
       'completes device authorization with token scope %s',
       async (scope) => {
         // Omitted scope retains the grant requested at flow creation, not a later config.
-        mockSessionStore.getDeviceFlow.mockReturnValue({
+        mockSessionStore.getDeviceFlow.mockResolvedValue({
           deviceCode: 'device-code',
           userCode: 'USER-CODE',
           verificationUri: 'https://gitlab.example.com/oauth/authorize',
@@ -770,7 +775,8 @@ describe('OAuth Authorization Endpoint', () => {
         expect(mockSessionStore.createSession).toHaveBeenCalledWith(
           expect.objectContaining({ gitlabScopes: ['read_api'] }),
         );
-        expect(mockSessionStore.deleteDeviceFlow).toHaveBeenCalledWith('success-flow');
+        // The completed flow is taken (removed) atomically by this poller.
+        expect(mockSessionStore.consumeDeviceFlow).toHaveBeenCalledWith('success-flow');
 
         expect(res.json).toHaveBeenCalledWith({
           status: 'complete',
@@ -784,7 +790,7 @@ describe('OAuth Authorization Endpoint', () => {
     );
 
     it('should handle terminal errors from GitLab', async () => {
-      mockSessionStore.getDeviceFlow.mockReturnValue({
+      mockSessionStore.getDeviceFlow.mockResolvedValue({
         deviceCode: 'device-code',
         userCode: 'USER-CODE',
         verificationUri: 'https://gitlab.example.com/oauth/authorize',
@@ -811,7 +817,7 @@ describe('OAuth Authorization Endpoint', () => {
     });
 
     it('should treat transient errors as pending', async () => {
-      mockSessionStore.getDeviceFlow.mockReturnValue({
+      mockSessionStore.getDeviceFlow.mockResolvedValue({
         deviceCode: 'device-code',
         userCode: 'USER-CODE',
         verificationUri: 'https://gitlab.example.com/oauth/authorize',
@@ -836,7 +842,7 @@ describe('OAuth Authorization Endpoint', () => {
     });
 
     it('should omit state from response when not provided', async () => {
-      mockSessionStore.getDeviceFlow.mockReturnValue({
+      mockSessionStore.getDeviceFlow.mockResolvedValue({
         deviceCode: 'device-code',
         userCode: 'USER-CODE',
         verificationUri: 'https://gitlab.example.com/oauth/authorize',
@@ -895,7 +901,7 @@ describe('OAuth Authorization Endpoint', () => {
       };
 
       it('does not poll GitLab before the interval has passed', async () => {
-        mockSessionStore.getDeviceFlow.mockReturnValue({
+        mockSessionStore.getDeviceFlow.mockResolvedValue({
           ...pendingFlow,
           nextPollAt: Date.now() + 3000,
         });
@@ -908,7 +914,7 @@ describe('OAuth Authorization Endpoint', () => {
       });
 
       it('schedules the next poll one interval later while pending', async () => {
-        mockSessionStore.getDeviceFlow.mockReturnValue({ ...pendingFlow });
+        mockSessionStore.getDeviceFlow.mockResolvedValue({ ...pendingFlow });
         mockPollDeviceFlowStep.mockResolvedValue({ status: 'pending' });
         const res = createMockResponse() as Response;
         const before = Date.now();
@@ -922,7 +928,7 @@ describe('OAuth Authorization Endpoint', () => {
       });
 
       it('adds 5 seconds to the interval on slow_down', async () => {
-        mockSessionStore.getDeviceFlow.mockReturnValue({ ...pendingFlow });
+        mockSessionStore.getDeviceFlow.mockResolvedValue({ ...pendingFlow });
         mockPollDeviceFlowStep.mockResolvedValue({ status: 'slow_down' });
         const res = createMockResponse() as Response;
         const before = Date.now();
@@ -936,9 +942,77 @@ describe('OAuth Authorization Endpoint', () => {
       });
     });
 
+    it('creates one session when another poller completed the flow first', async () => {
+      // Two polls saw GitLab complete; only the poller that takes the flow signs in.
+      mockSessionStore.getDeviceFlow.mockResolvedValue({
+        deviceCode: 'device-code',
+        userCode: 'USER-CODE',
+        verificationUri: 'https://gitlab.example.com/oauth/authorize',
+        expiresAt: Date.now() + 600000,
+        interval: 5,
+        clientId: 'test-client',
+        codeChallenge: 'challenge',
+        codeChallengeMethod: 'S256',
+        state: '',
+      });
+      mockSessionStore.consumeDeviceFlow.mockResolvedValue(undefined);
+      mockPollDeviceFlowStep.mockResolvedValue({
+        status: 'complete',
+        tokens: {
+          access_token: 'gitlab-access-token',
+          refresh_token: 'gitlab-refresh-token',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: Date.now(),
+        },
+      });
+      const res = createMockResponse() as Response;
+
+      await pollHandler(createMockRequest({ flow_state: 'raced-flow' }) as Request, res);
+
+      expect(mockSessionStore.createSession).not.toHaveBeenCalled();
+      expect(mockSessionStore.storeAuthCode).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith({ status: 'pending', interval: 5 });
+    });
+
+    it('creates the session before the code that references it', async () => {
+      // The PostgreSQL code row has a foreign key on the session.
+      mockSessionStore.getDeviceFlow.mockResolvedValue({
+        deviceCode: 'device-code',
+        userCode: 'USER-CODE',
+        verificationUri: 'https://gitlab.example.com/oauth/authorize',
+        expiresAt: Date.now() + 600000,
+        interval: 5,
+        clientId: 'test-client',
+        codeChallenge: 'challenge',
+        codeChallengeMethod: 'S256',
+        state: '',
+      });
+      mockPollDeviceFlowStep.mockResolvedValue({
+        status: 'complete',
+        tokens: {
+          access_token: 'gitlab-access-token',
+          refresh_token: 'gitlab-refresh-token',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: Date.now(),
+        },
+      });
+      mockGetGitLabUser.mockResolvedValue({ id: 1, username: 'u' });
+
+      await pollHandler(
+        createMockRequest({ flow_state: 'ordered-flow' }) as Request,
+        createMockResponse() as Response,
+      );
+
+      expect(mockSessionStore.createSession.mock.invocationCallOrder[0]).toBeLessThan(
+        mockSessionStore.storeAuthCode.mock.invocationCallOrder[0],
+      );
+    });
+
     it('fails the flow when its instance is no longer configured', async () => {
       // Never falls back to another instance with the user's device code.
-      mockSessionStore.getDeviceFlow.mockReturnValue({
+      mockSessionStore.getDeviceFlow.mockResolvedValue({
         deviceCode: 'device-code',
         userCode: 'USER-CODE',
         verificationUri: 'https://gitlab.example.com/oauth/authorize',
@@ -965,7 +1039,7 @@ describe('OAuth Authorization Endpoint', () => {
     });
 
     it('creates the session with the scopes and resource bound at /authorize', async () => {
-      mockSessionStore.getDeviceFlow.mockReturnValue({
+      mockSessionStore.getDeviceFlow.mockResolvedValue({
         deviceCode: 'device-code',
         userCode: 'USER-CODE',
         verificationUri: 'https://gitlab.example.com/oauth/authorize',

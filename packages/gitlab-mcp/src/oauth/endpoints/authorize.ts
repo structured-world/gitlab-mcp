@@ -112,7 +112,14 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
   // A redirect goes only to a URI the client registered; an unknown client or an
   // unregistered URI is reported here, never redirected (RFC 6749 section 4.1.2.1).
   if (redirect_uri) {
-    const client = getRegisteredClient(client_id);
+    let client;
+    try {
+      client = await getRegisteredClient(client_id);
+    } catch (error: unknown) {
+      logError('Failed to read client registration', { err: error as Error });
+      sendError(req, res, 500, 'server_error', 'Failed to start authorization');
+      return;
+    }
     if (!client) {
       sendError(
         req,
@@ -241,22 +248,35 @@ async function handleAuthorizationCodeFlow(
   // Generate internal state for GitLab callback
   const internalState = generateRandomString(32);
 
-  // Store auth code flow state (expires in 10 minutes)
-  sessionStore.storeAuthCodeFlow(internalState, {
-    requestedGitlabScopes: params.app.scopes.split(/[,\s]+/).filter(Boolean),
-    selectedInstance: params.app.baseUrl,
-    selectedInstanceLabel: params.app.label,
-    clientId: params.clientId,
-    codeChallenge: params.codeChallenge,
-    codeChallengeMethod: params.codeChallengeMethod,
-    clientState: params.state,
-    internalState: internalState,
-    clientRedirectUri: params.redirectUri,
-    callbackUri: callbackUri,
-    expiresAt: Date.now() + 10 * 60 * 1000,
-    scopes: params.scopes,
-    resource: params.resource,
-  });
+  // Store auth code flow state (expires in 10 minutes). The callback may land on another
+  // replica, so the browser goes to GitLab only once the flow is stored.
+  try {
+    await sessionStore.storeAuthCodeFlow(internalState, {
+      requestedGitlabScopes: params.app.scopes.split(/[,\s]+/).filter(Boolean),
+      selectedInstance: params.app.baseUrl,
+      selectedInstanceLabel: params.app.label,
+      clientId: params.clientId,
+      codeChallenge: params.codeChallenge,
+      codeChallengeMethod: params.codeChallengeMethod,
+      clientState: params.state,
+      internalState: internalState,
+      clientRedirectUri: params.redirectUri,
+      callbackUri: callbackUri,
+      expiresAt: Date.now() + 10 * 60 * 1000,
+      scopes: params.scopes,
+      resource: params.resource,
+    });
+  } catch (error: unknown) {
+    logError('Failed to store authorization flow', { err: error as Error });
+    res.redirect(
+      authorizationRedirect(params.redirectUri, config.issuer, {
+        error: 'temporarily_unavailable',
+        error_description: 'Authorization could not be started; try again',
+        state: params.state,
+      }),
+    );
+    return;
+  }
 
   // Build GitLab authorization URL
   const gitlabAuthUrl = buildGitLabAuthUrl(config, callbackUri, internalState, params.app);
@@ -303,7 +323,7 @@ async function handleDeviceFlow(
     const startedAt = Date.now();
 
     // Store device flow state
-    sessionStore.storeDeviceFlow(flowState, {
+    await sessionStore.storeDeviceFlow(flowState, {
       requestedGitlabScopes: params.app.scopes.split(/[,\s]+/).filter(Boolean),
       selectedInstance: params.app.baseUrl,
       selectedInstanceLabel: params.app.label,
@@ -370,7 +390,15 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const flow = sessionStore.getDeviceFlow(flow_state);
+  let flow;
+  try {
+    flow = await sessionStore.getDeviceFlow(flow_state);
+  } catch (error: unknown) {
+    // Storage outage: keep the page polling rather than reporting a failed sign-in.
+    logWarn('Device flow lookup failed', { err: error as Error });
+    res.status(503).json({ status: 'pending' });
+    return;
+  }
 
   if (!flow) {
     res.status(400).json({ status: 'expired', error: 'Flow not found' });
@@ -379,7 +407,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
 
   // Check if device flow has expired
   if (Date.now() > flow.expiresAt) {
-    sessionStore.deleteDeviceFlow(flow_state);
+    await sessionStore.deleteDeviceFlow(flow_state);
     res.status(400).json({ status: 'expired', error: 'Device code expired' });
     return;
   }
@@ -387,7 +415,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
   // The instance chosen at /authorize; never another one if it is no longer configured.
   const app = await oauthAppFor(config, flow.selectedInstance);
   if (!app) {
-    sessionStore.deleteDeviceFlow(flow_state);
+    await sessionStore.deleteDeviceFlow(flow_state);
     res.json({ status: 'failed', error: 'GitLab instance is no longer configured' });
     return;
   }
@@ -404,6 +432,11 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
     const step = await pollDeviceFlowStep(flow.deviceCode, config, app);
 
     if (step.status === 'complete') {
+      // Exactly one poller completes the flow, so one session and one code are created.
+      if (!(await sessionStore.consumeDeviceFlow(flow_state))) {
+        res.json({ status: 'pending', interval: flow.interval });
+        return;
+      }
       const tokenResponse = step.tokens;
       // Success! Get user info and create session
       const userInfo = await getGitLabUser(tokenResponse.access_token, app.baseUrl);
@@ -414,20 +447,9 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
       // Generate authorization code for the OAuth flow
       const authCode = generateAuthorizationCode();
 
-      // Store authorization code (single-use, expires in 10 minutes)
-      sessionStore.storeAuthCode({
-        code: authCode,
-        sessionId,
-        clientId: flow.clientId,
-        codeChallenge: flow.codeChallenge,
-        codeChallengeMethod: flow.codeChallengeMethod,
-        redirectUri: flow.redirectUri,
-        expiresAt: now + 10 * 60 * 1000, // 10 minutes
-      });
-
-      // Create session with GitLab tokens
+      // Create session with GitLab tokens before the code that references it.
       // MCP tokens will be set when the authorization code is exchanged
-      sessionStore.createSession({
+      await sessionStore.createSession({
         id: sessionId,
         mcpAccessToken: '', // Set on /token
         mcpRefreshToken: '', // Set on /token
@@ -447,8 +469,16 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
         updatedAt: now,
       });
 
-      // Clean up device flow
-      sessionStore.deleteDeviceFlow(flow_state);
+      // Store authorization code (single-use, expires in 10 minutes)
+      await sessionStore.storeAuthCode({
+        code: authCode,
+        sessionId,
+        clientId: flow.clientId,
+        codeChallenge: flow.codeChallenge,
+        codeChallengeMethod: flow.codeChallengeMethod,
+        redirectUri: flow.redirectUri,
+        expiresAt: now + 10 * 60 * 1000, // 10 minutes
+      });
 
       logInfo('Device flow authorization completed', {
         sessionId: truncateId(sessionId),
@@ -469,7 +499,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
     } else {
       // Still pending; slow_down adds 5 seconds to this and every later interval.
       const interval = step.status === 'slow_down' ? flow.interval + 5 : flow.interval;
-      sessionStore.storeDeviceFlow(flow_state, {
+      await sessionStore.storeDeviceFlow(flow_state, {
         ...flow,
         interval,
         nextPollAt: Date.now() + interval * 1000,
@@ -481,7 +511,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
 
     // Check for terminal errors
     if (message.includes('expired') || message.includes('denied') || message.includes('invalid')) {
-      sessionStore.deleteDeviceFlow(flow_state);
+      await sessionStore.deleteDeviceFlow(flow_state);
       res.json({ status: 'failed', error: message });
     } else {
       // Transient error - report as pending

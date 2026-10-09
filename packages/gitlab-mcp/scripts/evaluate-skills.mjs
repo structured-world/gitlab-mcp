@@ -226,7 +226,7 @@ async function runScenario(scenario) {
   return { scenario, output, start };
 }
 
-function* scenarioRuns() {
+async function* scenarioRuns() {
   // The consumer validates each result and updates conversation before requesting
   // the next promise. Resume scenarios and request-log attribution require this order.
   for (const scenario of scenarios) yield runScenario(scenario);

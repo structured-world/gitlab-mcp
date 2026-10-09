@@ -509,6 +509,17 @@ describe('schema-utils', () => {
   });
 
   describe('transformToolSchema', () => {
+    it('projects independent client formats without altering the source', () => {
+      // A second client must not inherit the first client's flattened schema.
+      const project = transformToolSchema as (...args: unknown[]) => TestJSONSchema;
+      const before = JSON.stringify(discriminatedUnionSchema);
+      const inspector = project('manage_milestone', discriminatedUnionSchema, new Set(), 'discriminated');
+      const claude = project('manage_milestone', discriminatedUnionSchema, new Set(), 'flat');
+      expect(inspector.oneOf).toEqual(discriminatedUnionSchema.oneOf);
+      expect(claude.oneOf).toBeUndefined();
+      expect(claude.properties?.action?.enum).toBeDefined();
+      expect(JSON.stringify(discriminatedUnionSchema)).toBe(before);
+    });
     it('should apply full pipeline for discriminated union', () => {
       GITLAB_DENIED_ACTIONS.set('manage_milestone', new Set(['delete', 'promote']));
       mockGetParamDescriptionOverrides.mockReturnValue(

@@ -103,6 +103,23 @@ describe('ChannelGateway', () => {
     expect(result).toEqual({ tools });
   });
 
+  it('preserves catalog pagination and metadata in both directions', async () => {
+    // Prevent the gateway from truncating paginated catalogs or hiding UI/auth metadata.
+    const catalog = {
+      tools: [{ name: 'settings', title: 'Settings', _meta: { securitySchemes: [] } }],
+      nextCursor: 'next-page',
+      _meta: { revision: 'current' },
+    };
+    mockClientListTools.mockResolvedValue(catalog);
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    const params = { cursor: 'previous-page' };
+    const result = await mockServerHandlers.get(ListToolsRequestSchema)!({ params });
+    expect(mockClientListTools).toHaveBeenCalledWith(params);
+    expect(result).toEqual(catalog);
+    await gw.stop();
+  });
+
   it('forwards a read call to the downstream and returns the result unchanged', async () => {
     const payload = mcp({ projects: [{ id: 1 }] });
     mockClientCallTool.mockResolvedValue(payload);

@@ -48,6 +48,7 @@ const mockRegistryManager = {
   hasToolHandler: jest.fn(),
   executeTool: jest.fn(),
   refreshCache: jest.fn(),
+  getTool: jest.fn(),
 };
 
 jest.mock('../../src/registry-manager', () => ({
@@ -209,6 +210,7 @@ describe('handlers', () => {
     ]);
     mockRegistryManager.hasToolHandler.mockReturnValue(true);
     mockRegistryManager.executeTool.mockResolvedValue({ result: 'success' });
+    mockRegistryManager.getTool.mockReturnValue(null);
 
     // SessionManager mock defaults for per-session instance URL tracking (#398)
     mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://gitlab.example.com');
@@ -440,6 +442,37 @@ describe('handlers', () => {
     beforeEach(async () => {
       await setupHandlers(mockServer);
       callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+    });
+
+    it('preserves explicitly declared MCP result envelopes', async () => {
+      // Auth/UI metadata and structured data must reach the host outside text content.
+      const envelope = {
+        content: [{ type: 'text', text: 'Ready' }],
+        structuredContent: { ready: true },
+        _meta: { 'ui/resourceUri': 'ui://gitlab/settings' },
+      };
+      mockRegistryManager.getTool.mockReturnValue({ resultFormat: 'mcp' });
+      mockRegistryManager.executeTool.mockResolvedValue(envelope);
+      const result = await callToolHandler({
+        params: { name: 'settings', arguments: {} },
+      });
+      expect(result).toEqual(envelope);
+    });
+
+    it('rejects structured output that violates the declared schema', async () => {
+      // A malformed native output must be a tool error, never a misleading success.
+      mockRegistryManager.getTool.mockReturnValue({
+        resultFormat: 'mcp',
+        outputSchema: {
+          type: 'object', properties: { ready: { type: 'boolean' } }, required: ['ready'],
+        },
+      });
+      mockRegistryManager.executeTool.mockResolvedValue({
+        content: [], structuredContent: { ready: 'yes' },
+      });
+      const result = await callToolHandler({ params: { name: 'settings', arguments: {} } });
+      expect(result.isError).toBe(true);
+      expect(result.content?.[0]?.text).toContain('output');
     });
 
     it('should update session instanceUrl on each tool call (#398)', async () => {

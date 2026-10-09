@@ -299,19 +299,15 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
     return row ? this.rowToSession(row) : undefined;
   }
 
+  // Updates and deletes report a missing row as false through the affected-row count;
+  // database errors propagate, so a failed write is never mistaken for an absent row.
   async updateSession(sessionId: string, updates: Partial<OAuthSession>): Promise<boolean> {
     const prisma = this.getPrisma();
-    const data = this.sessionUpdateData(updates);
-
-    try {
-      await prisma.oAuthSession.update({
-        where: { id: sessionId },
-        data,
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    const result = (await prisma.oAuthSession.updateMany({
+      where: { id: sessionId },
+      data: this.sessionUpdateData(updates),
+    })) as PrismaBatchPayload;
+    return result.count === 1;
   }
 
   async rotateSession(
@@ -363,14 +359,10 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   async deleteSession(sessionId: string): Promise<boolean> {
     const prisma = this.getPrisma();
-    try {
-      await prisma.oAuthSession.delete({
-        where: { id: sessionId },
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    const result = (await prisma.oAuthSession.deleteMany({
+      where: { id: sessionId },
+    })) as PrismaBatchPayload;
+    return result.count === 1;
   }
 
   async getAllSessions(): Promise<OAuthSession[]> {
@@ -451,14 +443,10 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   async deleteDeviceFlow(state: string): Promise<boolean> {
     const prisma = this.getPrisma();
-    try {
-      await prisma.deviceFlowState.delete({
-        where: { state },
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    const result = (await prisma.deviceFlowState.deleteMany({
+      where: { state },
+    })) as PrismaBatchPayload;
+    return result.count === 1;
   }
 
   private rowToDeviceFlow(row: PrismaDeviceFlowStateRow): DeviceFlowStateType {
@@ -518,14 +506,10 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   async deleteAuthCodeFlow(internalState: string): Promise<boolean> {
     const prisma = this.getPrisma();
-    try {
-      await prisma.authCodeFlowState.delete({
-        where: { internalState },
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    const result = (await prisma.authCodeFlowState.deleteMany({
+      where: { internalState },
+    })) as PrismaBatchPayload;
+    return result.count === 1;
   }
 
   private rowToAuthCodeFlow(row: PrismaAuthCodeFlowStateRow): AuthCodeFlowStateType {
@@ -573,14 +557,10 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   async deleteAuthCode(code: string): Promise<boolean> {
     const prisma = this.getPrisma();
-    try {
-      await prisma.authorizationCode.delete({
-        where: { code },
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    const result = (await prisma.authorizationCode.deleteMany({
+      where: { code },
+    })) as PrismaBatchPayload;
+    return result.count === 1;
   }
 
   private rowToAuthCode(row: PrismaAuthorizationCodeRow): AuthorizationCodeType {
@@ -616,14 +596,10 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   async removeMcpSessionAssociation(mcpSessionId: string): Promise<boolean> {
     const prisma = this.getPrisma();
-    try {
-      await prisma.mcpSessionMapping.delete({
-        where: { mcpSessionId },
-      });
-      return true;
-    } catch {
-      return false;
-    }
+    const result = (await prisma.mcpSessionMapping.deleteMany({
+      where: { mcpSessionId },
+    })) as PrismaBatchPayload;
+    return result.count === 1;
   }
 
   // Single-use consumption: the row is read, then deleted with a count; only the caller

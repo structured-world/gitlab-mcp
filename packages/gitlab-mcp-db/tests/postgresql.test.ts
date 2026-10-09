@@ -65,6 +65,7 @@ const createMockPrisma = () => ({
     upsert: jest.fn().mockResolvedValue({}),
     findUnique: jest.fn(),
     delete: jest.fn().mockResolvedValue({}),
+    deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
     count: jest.fn().mockResolvedValue(0),
   },
 });
@@ -225,22 +226,47 @@ describe('PostgreSQLStorageBackend', () => {
     const byRefresh = await backend.getSessionByRefreshToken(session.mcpRefreshToken);
     expect(byRefresh?.id).toBe(session.id);
 
+    mockPrisma.oAuthSession.updateMany.mockResolvedValueOnce({ count: 1 });
     const updateOk = await backend.updateSession(session.id, {
       mcpAccessToken: 'new-access',
       gitlabTokenExpiry: 9999,
     });
     expect(updateOk).toBe(true);
 
-    mockPrisma.oAuthSession.update.mockRejectedValueOnce(new Error('fail'));
-    const updateFail = await backend.updateSession(session.id, { mcpAccessToken: 'bad' });
-    expect(updateFail).toBe(false);
+    // false means the session does not exist
+    mockPrisma.oAuthSession.updateMany.mockResolvedValueOnce({ count: 0 });
+    const updateMissing = await backend.updateSession(session.id, { mcpAccessToken: 'bad' });
+    expect(updateMissing).toBe(false);
 
+    mockPrisma.oAuthSession.deleteMany.mockResolvedValueOnce({ count: 1 });
     const deleteOk = await backend.deleteSession(session.id);
     expect(deleteOk).toBe(true);
 
-    mockPrisma.oAuthSession.delete.mockRejectedValueOnce(new Error('fail'));
-    const deleteFail = await backend.deleteSession(session.id);
-    expect(deleteFail).toBe(false);
+    mockPrisma.oAuthSession.deleteMany.mockResolvedValueOnce({ count: 0 });
+    const deleteMissing = await backend.deleteSession(session.id);
+    expect(deleteMissing).toBe(false);
+  });
+
+  // A database error is not a missing row: reporting it as false made revocation answer
+  // 200 while the session stayed usable, and dropped refreshed GitLab tokens silently.
+  it.each([
+    ['updateSession', 'oAuthSession', 'updateMany', (b: PostgreSQLStorageBackend) =>
+      b.updateSession('session-1', { mcpAccessToken: 'x' })],
+    ['deleteSession', 'oAuthSession', 'deleteMany', (b: PostgreSQLStorageBackend) =>
+      b.deleteSession('session-1')],
+    ['deleteDeviceFlow', 'deviceFlowState', 'deleteMany', (b: PostgreSQLStorageBackend) =>
+      b.deleteDeviceFlow('state-1')],
+    ['deleteAuthCodeFlow', 'authCodeFlowState', 'deleteMany', (b: PostgreSQLStorageBackend) =>
+      b.deleteAuthCodeFlow('internal-1')],
+    ['deleteAuthCode', 'authorizationCode', 'deleteMany', (b: PostgreSQLStorageBackend) =>
+      b.deleteAuthCode('code-1')],
+    ['removeMcpSessionAssociation', 'mcpSessionMapping', 'deleteMany',
+      (b: PostgreSQLStorageBackend) => b.removeMcpSessionAssociation('mcp-1')],
+  ] as const)('%s reports database errors', async (_name, model, method, call) => {
+    (backend as any).prisma = mockPrisma;
+    (mockPrisma as any)[model][method].mockRejectedValueOnce(new Error('connection lost'));
+
+    await expect(call(backend)).rejects.toThrow('connection lost');
   });
 
   it('lists sessions', async () => {
@@ -290,7 +316,7 @@ describe('PostgreSQLStorageBackend', () => {
       expect(restored?.gitlabScopes).toEqual(grants);
       expect(restored?.scopes).toEqual(session.scopes);
       await backend.updateSession(session.id, { gitlabScopes: grants });
-      const update = mockPrisma.oAuthSession.update.mock.calls[0][0].data;
+      const update = mockPrisma.oAuthSession.updateMany.mock.calls[0][0].data;
       if (grants === undefined) expect(update).not.toHaveProperty('gitlabScopes');
       else expect(update.gitlabScopes).toEqual(grants);
     },
@@ -346,12 +372,13 @@ describe('PostgreSQLStorageBackend', () => {
     const byDeviceCode = await backend.getDeviceFlowByDeviceCode(flow.deviceCode);
     expect(byDeviceCode?.deviceCode).toBe(flow.deviceCode);
 
+    mockPrisma.deviceFlowState.deleteMany.mockResolvedValueOnce({ count: 1 });
     const deleteOk = await backend.deleteDeviceFlow(flow.state);
     expect(deleteOk).toBe(true);
 
-    mockPrisma.deviceFlowState.delete.mockRejectedValueOnce(new Error('fail'));
-    const deleteFail = await backend.deleteDeviceFlow(flow.state);
-    expect(deleteFail).toBe(false);
+    mockPrisma.deviceFlowState.deleteMany.mockResolvedValueOnce({ count: 0 });
+    const deleteMissing = await backend.deleteDeviceFlow(flow.state);
+    expect(deleteMissing).toBe(false);
   });
 
   it.each([undefined, [], ['read_api', 'read_user']])(
@@ -421,12 +448,13 @@ describe('PostgreSQLStorageBackend', () => {
     const fetched = await backend.getAuthCodeFlow(flow.internalState);
     expect(fetched?.internalState).toBe(flow.internalState);
 
+    mockPrisma.authCodeFlowState.deleteMany.mockResolvedValueOnce({ count: 1 });
     const deleteOk = await backend.deleteAuthCodeFlow(flow.internalState);
     expect(deleteOk).toBe(true);
 
-    mockPrisma.authCodeFlowState.delete.mockRejectedValueOnce(new Error('fail'));
-    const deleteFail = await backend.deleteAuthCodeFlow(flow.internalState);
-    expect(deleteFail).toBe(false);
+    mockPrisma.authCodeFlowState.deleteMany.mockResolvedValueOnce({ count: 0 });
+    const deleteMissing = await backend.deleteAuthCodeFlow(flow.internalState);
+    expect(deleteMissing).toBe(false);
   });
 
   it('handles authorization code operations', async () => {
@@ -448,12 +476,13 @@ describe('PostgreSQLStorageBackend', () => {
     const fetched = await backend.getAuthCode(code.code);
     expect(fetched?.code).toBe(code.code);
 
+    mockPrisma.authorizationCode.deleteMany.mockResolvedValueOnce({ count: 1 });
     const deleteOk = await backend.deleteAuthCode(code.code);
     expect(deleteOk).toBe(true);
 
-    mockPrisma.authorizationCode.delete.mockRejectedValueOnce(new Error('fail'));
-    const deleteFail = await backend.deleteAuthCode(code.code);
-    expect(deleteFail).toBe(false);
+    mockPrisma.authorizationCode.deleteMany.mockResolvedValueOnce({ count: 0 });
+    const deleteMissing = await backend.deleteAuthCode(code.code);
+    expect(deleteMissing).toBe(false);
   });
 
   it('handles mcp session mapping', async () => {
@@ -494,12 +523,13 @@ describe('PostgreSQLStorageBackend', () => {
     const missing = await backend.getSessionByMcpSessionId('mcp-2');
     expect(missing).toBeUndefined();
 
+    mockPrisma.mcpSessionMapping.deleteMany.mockResolvedValueOnce({ count: 1 });
     const deleteOk = await backend.removeMcpSessionAssociation('mcp-1');
     expect(deleteOk).toBe(true);
 
-    mockPrisma.mcpSessionMapping.delete.mockRejectedValueOnce(new Error('fail'));
-    const deleteFail = await backend.removeMcpSessionAssociation('mcp-1');
-    expect(deleteFail).toBe(false);
+    mockPrisma.mcpSessionMapping.deleteMany.mockResolvedValueOnce({ count: 0 });
+    const deleteMissing = await backend.removeMcpSessionAssociation('mcp-1');
+    expect(deleteMissing).toBe(false);
   });
 
   describe('durable flow and session binding', () => {
@@ -583,7 +613,7 @@ describe('PostgreSQLStorageBackend', () => {
       expect(data.resource).toBe('https://mcp.example.com');
 
       await backend.updateSession('session-1', { resource: 'https://mcp.example.com/mcp' });
-      expect(mockPrisma.oAuthSession.update.mock.calls[0][0].data.resource).toBe(
+      expect(mockPrisma.oAuthSession.updateMany.mock.calls[0][0].data.resource).toBe(
         'https://mcp.example.com/mcp',
       );
 

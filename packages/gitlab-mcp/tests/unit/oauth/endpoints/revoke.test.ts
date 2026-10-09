@@ -131,6 +131,28 @@ describe('revokeHandler', () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
+  // A failed delete must not be reported as revoked: the tokens would stay usable.
+  it('answers 503 when the session cannot be deleted', async () => {
+    mockStore.getSessionByRefreshToken.mockResolvedValue(session);
+    mockStore.deleteSession.mockRejectedValue(new Error('database down'));
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(mockRevokeGitLab).not.toHaveBeenCalled();
+  });
+
+  it('answers 200 when a concurrent revocation already removed the session', async () => {
+    mockStore.getSessionByRefreshToken.mockResolvedValue(session);
+    mockStore.deleteSession.mockResolvedValue(false);
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
   it('answers 503 when storage is unavailable (RFC 7009 2.2.1)', async () => {
     mockStore.getSessionByRefreshToken.mockRejectedValue(new Error('database down'));
     const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });

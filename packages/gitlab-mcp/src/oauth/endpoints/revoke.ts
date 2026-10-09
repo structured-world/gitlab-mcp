@@ -68,7 +68,9 @@ export async function revokeHandler(req: Request, res: Response): Promise<void> 
   }
 
   // Revoking a refresh token revokes the access tokens of the same grant (RFC 7009
-  // section 2.1), so the session goes away with both.
+  // section 2.1), so the session goes away with both. Backends throw when the delete
+  // fails; false only means a concurrent revocation removed the session first, which is
+  // the same outcome.
   try {
     await sessionStore.deleteSession(session.id);
   } catch (error: unknown) {

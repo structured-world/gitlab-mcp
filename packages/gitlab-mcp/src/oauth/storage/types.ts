@@ -18,6 +18,9 @@ import {
  *
  * All storage backends must implement this interface for session persistence.
  * Operations are async to support network-based storage (PostgreSQL, Redis).
+ *
+ * Methods returning a boolean report a missing record as `false`. A failed read or
+ * write rejects instead, so callers never mistake a storage outage for an absent record.
  */
 
 export interface SessionStorageBackend {

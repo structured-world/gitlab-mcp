@@ -204,6 +204,10 @@ The flow is selected automatically based on the presence of `redirect_uri` in th
 - **Codes and refresh:** an authorization code is consumed on first use, and both grants require the `client_id` the code or refresh token was issued to.
 - **Issuer identification:** every redirect back to the client carries `iss` (RFC 9207).
 
+### Reconnecting an account
+
+In OAuth mode every tool descriptor declares `securitySchemes: [{ "type": "oauth2", "scopes": ["mcp:tools"] }]` (mirrored in `_meta`). When GitLab rejects the account's credentials (HTTP 401), the tool result is an error carrying `_meta["mcp/www_authenticate"]` with a `Bearer` challenge (`error="invalid_token"` and an `error_description`) that points at the protected resource metadata, so the client starts its own reconnect flow. HTTP 401 responses carry the same `error` parameters for rejected tokens.
+
 ## Endpoints
 
 When OAuth is enabled:

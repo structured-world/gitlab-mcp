@@ -19,6 +19,7 @@ import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './
 import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL } from './config';
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
+import { OAUTH_SECURITY_SCHEMES, withReauthChallenge } from './oauth/tool-auth';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 interface JsonSchemaProperty {
@@ -419,7 +420,7 @@ function formatBootstrapFailure(ctx: BootstrapContext, initError: unknown): Call
   if (!isTimedOut()) {
     recordEarlyReturnError(toolName, action, connError.message);
   }
-  return errorToolResult(connError);
+  return withReauthChallenge(errorToolResult(connError), initError);
 }
 
 function recordCallContext(
@@ -600,8 +601,12 @@ export async function setupHandlers(server: Server): Promise<void> {
     const { RegistryManager } = await import('./registry-manager');
     const registryManager = RegistryManager.getInstance();
     const mode = getSchemaMode(server.getClientVersion()?.name);
-    const { getTokenContext: getCatalogContext } = await import('./oauth/index');
+    const { getTokenContext: getCatalogContext, isOAuthEnabled: isCatalogOAuth } =
+      await import('./oauth/index');
     const scopes = getCatalogContext()?.gitlabScopes;
+    // OAuth deployments declare the token every tool needs; static-token mode keeps
+    // the descriptors as before.
+    const securitySchemes = isCatalogOAuth() ? OAUTH_SECURITY_SCHEMES : undefined;
     const tools =
       scopes === undefined
         ? registryManager.getAllToolDefinitions(sessionInstanceUrl, mode)
@@ -690,7 +695,17 @@ export async function setupHandlers(server: Server): Promise<void> {
         inputSchema = cleanedSchema;
       }
 
-      return { ...tool, inputSchema };
+      // A tool that declares its own schemes keeps them.
+      if (!securitySchemes || tool._meta?.securitySchemes !== undefined) {
+        return { ...tool, inputSchema };
+      }
+      // Mirrored in _meta for clients whose descriptor schema drops unknown top-level fields.
+      return {
+        ...tool,
+        inputSchema,
+        securitySchemes,
+        _meta: { ...tool._meta, securitySchemes },
+      };
     });
 
     return {
@@ -982,12 +997,12 @@ export async function setupHandlers(server: Server): Promise<void> {
 
       if (structuredError) {
         logDebug('Returning structured error response', { structuredError });
-        return errorToolResult(structuredError);
+        return withReauthChallenge(errorToolResult(structuredError), error);
       }
 
       // Fallback to original error format
       const errorMessage = error instanceof Error ? error.message : String(error);
-      return errorToolResult({ error: errorMessage });
+      return withReauthChallenge(errorToolResult({ error: errorMessage }), error);
     } finally {
       clearTimeout(handlerTimeoutId);
     }

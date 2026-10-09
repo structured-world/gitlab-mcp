@@ -276,6 +276,24 @@ describe('OAuth Authentication Middleware', () => {
         expect(mockNext).not.toHaveBeenCalled();
       });
 
+      it('names the error in the challenge for a rejected token (RFC 6750 3)', async () => {
+        mockVerifyMCPToken.mockReturnValue(null);
+        const res = createMockRes();
+
+        await oauthAuthMiddleware(
+          createMockReq({ path: '/mcp', headers: { authorization: 'Bearer bad' } }),
+          res,
+          mockNext,
+        );
+
+        expect(res.setHeader).toHaveBeenCalledWith(
+          'WWW-Authenticate',
+          'Bearer realm="gitlab-mcp", ' +
+            'resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp", ' +
+            'error="invalid_token", error_description="Token is invalid or expired"',
+        );
+      });
+
       it('should accept a token issued for the root resource', async () => {
         mockVerifyMCPToken.mockReturnValue({ ...mockPayload, aud: 'https://mcp.example.com' });
 

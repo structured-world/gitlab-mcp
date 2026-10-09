@@ -273,6 +273,47 @@ describe('simultaneous MCP client contracts', () => {
     expect(await client.callTool({ name: 'browse_contract' })).toEqual(envelope);
   });
 
+  it('declares the OAuth scheme on every tool that does not declare its own', async () => {
+    // Hosts decide from the descriptor that a call needs the linked account.
+    const client = await connect('codex', '2025-11-25');
+    const catalog = await asAccount(['api'], 'https://new.example.com', () => client.listTools());
+    expect(catalog.tools.length).toBeGreaterThan(0);
+    for (const tool of catalog.tools) {
+      expect(tool._meta?.securitySchemes).toEqual([{ type: 'oauth2', scopes: ['mcp:tools'] }]);
+    }
+  });
+
+  it('asks the host to reconnect when GitLab rejects the account (401)', async () => {
+    // The challenge reaches the client through production dispatch and the SDK.
+    coreToolRegistry.set('browse_contract', {
+      name: 'browse_contract',
+      description: 'Rejected credentials fixture',
+      inputSchema: { type: 'object' },
+      handler: async () => {
+        throw new Error('GitLab API error: 401 Unauthorized - invalid_token');
+      },
+    });
+    RegistryManager.getInstance().refreshCache();
+    const oauthConfig = await import('../../src/oauth/config');
+    const config = jest
+      .spyOn(oauthConfig, 'loadOAuthConfig')
+      .mockReturnValue({ issuer: 'https://mcp.example.com' } as ReturnType<
+        typeof oauthConfig.loadOAuthConfig
+      >);
+    try {
+      const client = await connect('codex', '2025-11-25');
+      const result = await asAccount(['api'], 'https://new.example.com', () =>
+        client.callTool({ name: 'browse_contract', arguments: {} }),
+      );
+      expect(result.isError).toBe(true);
+      const challenges = result._meta?.['mcp/www_authenticate'] as string[];
+      expect(challenges[0]).toContain('error="invalid_token"');
+      expect(challenges[0]).toContain('error_description=');
+    } finally {
+      config.mockRestore();
+    }
+  });
+
   it('delivers non-text content and authorization challenges through the SDK unchanged', async () => {
     // Exercise production dispatch, serialization and SDK validation rather than a result mock.
     const success = {

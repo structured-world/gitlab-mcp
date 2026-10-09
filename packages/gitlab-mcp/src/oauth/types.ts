@@ -204,6 +204,8 @@ export interface TokenContext {
   apiUrl: string;
   /** Human-readable instance label for UI display */
   instanceLabel?: string;
+  /** Protected resource the request was sent to; reauthorization challenges point at its metadata. */
+  resource?: string;
 }
 
 /**

@@ -708,6 +708,7 @@ export async function startServer(): Promise<void> {
         const gitlabScopes = res.locals.gitlabScopes as string[] | undefined;
         const gitlabApiUrl = res.locals.gitlabApiUrl as string | undefined;
         const instanceLabel = res.locals.instanceLabel as string | undefined;
+        const mcpResource = res.locals.mcpResource as string | undefined;
 
         // Get full request context for logging (verbose mode)
         if (!useCondensedLogging) {
@@ -736,6 +737,7 @@ export async function startServer(): Promise<void> {
                   sessionId: oauthSessionId,
                   apiUrl: gitlabApiUrl ?? GITLAB_BASE_URL,
                   instanceLabel,
+                  resource: mcpResource,
                 },
                 async () => {
                   await transport.handleRequest(req, res, req.body);

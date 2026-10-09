@@ -162,6 +162,7 @@ export async function oauthAuthMiddleware(
   // Multi-instance support: use session's API URL or fallback to global config
   res.locals.gitlabApiUrl = updatedSession.gitlabApiUrl ?? GITLAB_BASE_URL;
   res.locals.instanceLabel = updatedSession.instanceLabel;
+  res.locals.mcpResource = resourceForPath(config.issuer, req.path);
 
   logDebug('OAuth session validated, passing to route handler', {
     sessionId: truncateId(updatedSession.id),
@@ -240,6 +241,7 @@ export async function optionalOAuthMiddleware(
   // Multi-instance support: use session's API URL or fallback to global config
   res.locals.gitlabApiUrl = session.gitlabApiUrl ?? GITLAB_BASE_URL;
   res.locals.instanceLabel = session.instanceLabel;
+  res.locals.mcpResource = resourceForPath(config.issuer, req.path);
 
   next();
 }
@@ -309,10 +311,14 @@ function sendUnauthorized(req: Request, res: Response, error: string, descriptio
     : `${getBaseUrl(req)}/.well-known/oauth-protected-resource`;
 
   // Set WWW-Authenticate header with resource_metadata parameter
-  // Points to Protected Resource Metadata document per MCP spec
+  // Points to Protected Resource Metadata document per MCP spec. A rejected token also
+  // names the error (RFC 6750 section 3); a request without credentials does not
+  // (RFC 6750 section 3.1).
+  const tokenError =
+    error === 'invalid_token' ? `, error="invalid_token", error_description="${description}"` : '';
   res.setHeader(
     'WWW-Authenticate',
-    `Bearer realm="gitlab-mcp", resource_metadata="${metadataUrl}"`,
+    `Bearer realm="gitlab-mcp", resource_metadata="${metadataUrl}"${tokenError}`,
   );
   res.status(401).json(response);
 }

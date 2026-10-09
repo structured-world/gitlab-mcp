@@ -84,6 +84,20 @@ function tokenContextFromLocals(
   };
 }
 
+/** A transport and the OAuth session that opened it (undefined in static-token mode). */
+interface OwnedTransport<T> {
+  transport: T;
+  owner: string | undefined;
+}
+
+/** Whether the request comes from the account that opened the transport. */
+function ownedBy(
+  owned: OwnedTransport<unknown>,
+  locals: Record<string, unknown> | undefined,
+): boolean {
+  return owned.owner === (locals?.oauthSessionId as string | undefined);
+}
+
 /** Determine why an SSE/streaming connection closed.
  *  Shared between legacy SSE and StreamableHTTP GET close handlers. */
 function resolveCloseReason(
@@ -547,8 +561,10 @@ export async function startServer(): Promise<void> {
       }
 
       // Transport storage for both SSE and StreamableHTTP
-      const sseTransports: { [sessionId: string]: SSEServerTransport } = {};
-      const streamableTransports: { [sessionId: string]: StreamableHTTPServerTransport } = {};
+      // Each transport belongs to the OAuth session that opened it (none in static-token
+      // mode); a request of another account never reaches it, even with a leaked id.
+      const sseTransports = new Map<string, OwnedTransport<SSEServerTransport>>();
+      const streamableTransports = new Map<string, OwnedTransport<StreamableHTTPServerTransport>>();
 
       // SSE Transport Endpoints (backwards compatibility)
       app.get('/sse', async (req, res) => {
@@ -566,7 +582,10 @@ export async function startServer(): Promise<void> {
         try {
           // Each SSE session gets its own Server instance
           await sessionManager.createSession(sessionId, transport);
-          sseTransports[sessionId] = transport;
+          sseTransports.set(sessionId, {
+            transport,
+            owner: res.locals?.oauthSessionId as string | undefined,
+          });
           logDebug('SSE transport created with session', { sessionId });
 
           // Track connection for access logging
@@ -607,7 +626,7 @@ export async function startServer(): Promise<void> {
         res.on('close', () => {
           stopHeartbeat();
           socket?.removeListener('error', onSocketError);
-          delete sseTransports[sessionId];
+          sseTransports.delete(sessionId);
 
           const reason = resolveCloseReason(socketError, res);
 
@@ -622,9 +641,10 @@ export async function startServer(): Promise<void> {
 
       app.post('/messages', async (req, res): Promise<void> => {
         logDebug('SSE messages endpoint hit!');
-        const sessionId = req.query.sessionId as string;
+        const sessionId = typeof req.query.sessionId === 'string' ? req.query.sessionId : '';
+        const owned = sseTransports.get(sessionId);
 
-        if (!sessionId || !sseTransports[sessionId]) {
+        if (!owned || !ownedBy(owned, res.locals)) {
           res.status(404).json({ error: 'Session not found' });
           return;
         }
@@ -642,7 +662,7 @@ export async function startServer(): Promise<void> {
 
         try {
           sessionManager.touchSession(sessionId);
-          const transport = sseTransports[sessionId];
+          const { transport } = owned;
 
           // Wrap in request context for access logging so handlers can track tool calls,
           // and in the account's token context when the request was authenticated
@@ -720,19 +740,19 @@ export async function startServer(): Promise<void> {
           let transport: StreamableHTTPServerTransport;
           let effectiveSessionId: string;
 
-          // Use Object.hasOwn() instead of 'in' to avoid matching inherited keys
-          // like 'toString' or '__proto__' which could bypass 404 path
-          if (sessionId && Object.hasOwn(streamableTransports, sessionId)) {
+          const owned = sessionId ? streamableTransports.get(sessionId) : undefined;
+          if (sessionId && owned && ownedBy(owned, res.locals)) {
             effectiveSessionId = sessionId;
             sessionManager.touchSession(sessionId);
 
             // Increment request count for connection tracking
             connectionTracker.incrementRequests(sessionId);
 
-            transport = streamableTransports[sessionId];
+            transport = owned.transport;
             await handleWithContext(transport);
           } else {
-            // Check if client sent invalid session ID
+            // Unknown session ID, or one opened by another account: the same answer, so
+            // the response does not reveal which sessions exist
             if (sessionId) {
               res.status(404).json({
                 error: 'Session not found',
@@ -748,7 +768,10 @@ export async function startServer(): Promise<void> {
             transport = new StreamableHTTPServerTransport({
               sessionIdGenerator: () => newSessionId,
               onsessioninitialized: (initializedSessionId: string) => {
-                streamableTransports[initializedSessionId] = transport;
+                streamableTransports.set(initializedSessionId, {
+                  transport,
+                  owner: oauthSessionId,
+                });
                 logInfo('MCP session initialized', {
                   sessionId: initializedSessionId,
                   method: req.method,
@@ -773,7 +796,7 @@ export async function startServer(): Promise<void> {
                 }
               },
               onsessionclosed: (closedSessionId: string) => {
-                delete streamableTransports[closedSessionId];
+                streamableTransports.delete(closedSessionId);
                 sessionStore.removeMcpSessionAssociation(closedSessionId).catch((err: unknown) => {
                   logWarn('Failed to remove MCP session association', { err });
                 });

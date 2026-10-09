@@ -477,8 +477,7 @@ describe('server', () => {
       }
     });
 
-    it('runs SSE messages in the token context of the authenticated account', async () => {
-      await startServer();
+    async function openSse(locals: Record<string, unknown>): Promise<void> {
       const sseHandler = mockApp.get.mock.calls.find((call) => call[0] === '/sse')[1];
       await sseHandler(
         { headers: {}, method: 'GET', path: '/sse', query: {} },
@@ -488,10 +487,13 @@ describe('server', () => {
           setHeader: jest.fn(),
           writeHead: jest.fn(),
           headersSent: false,
-          locals: {},
+          locals,
         },
       );
-      const messagesHandler = mockApp.post.mock.calls.find((call) => call[0] === '/messages')[1];
+    }
+
+    it('runs SSE messages in the token context of the authenticated account', async () => {
+      await startServer();
       const locals = {
         oauthSessionId: 'oauth-session-123',
         gitlabToken: 'test-token',
@@ -501,6 +503,8 @@ describe('server', () => {
         mcpResource: 'https://mcp.example.com',
         mcpScopes: ['mcp:resources'],
       };
+      await openSse(locals);
+      const messagesHandler = mockApp.post.mock.calls.find((call) => call[0] === '/messages')[1];
 
       await messagesHandler(
         { query: { sessionId: 'test-session-123' }, body: {} },
@@ -516,6 +520,56 @@ describe('server', () => {
         }),
         expect.any(Function),
       );
+    });
+
+    // A leaked SSE session id must not let another account inject requests into that
+    // stream: the session belongs to the account that opened it.
+    it("refuses SSE messages from another account than the stream's owner", async () => {
+      await startServer();
+      await openSse({ oauthSessionId: 'owner-session' });
+      const messagesHandler = mockApp.post.mock.calls.find((call) => call[0] === '/messages')[1];
+      const res = {
+        json: jest.fn(),
+        status: jest.fn().mockReturnThis(),
+        headersSent: false,
+        locals: { oauthSessionId: 'other-session' },
+      };
+      mockTransport.handlePostMessage.mockClear();
+
+      await messagesHandler({ query: { sessionId: 'test-session-123' }, body: {} }, res);
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(mockTransport.handlePostMessage).not.toHaveBeenCalled();
+    });
+
+    it("refuses MCP requests from another account than the session's owner", async () => {
+      process.env.PORT = '3000';
+      await startServer();
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+      const respond = (oauthSessionId: string) => ({
+        status: jest.fn().mockReturnThis(),
+        json: jest.fn(),
+        headersSent: false,
+        locals: { oauthSessionId },
+      });
+      await mcpHandler(
+        { headers: {}, method: 'POST', path: '/mcp', body: {} },
+        respond('owner-session'),
+      );
+      const sessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(sessionId);
+      mockTransport.handleRequest.mockClear();
+
+      const res = respond('other-session');
+      await mcpHandler(
+        { headers: { 'mcp-session-id': sessionId }, method: 'POST', path: '/mcp', body: {} },
+        res,
+      );
+
+      expect(res.status).toHaveBeenCalledWith(404);
+      expect(mockTransport.handleRequest).not.toHaveBeenCalled();
     });
 
     it('should handle messages endpoint with missing session', async () => {

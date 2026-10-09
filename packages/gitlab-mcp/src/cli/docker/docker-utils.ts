@@ -17,6 +17,7 @@ import {
   GitLabInstance,
   InstancesYaml,
   DEFAULT_DOCKER_CONFIG,
+  DEFAULT_DB_IMAGE,
   getConfigDir,
 } from './types';
 import { getContainerRuntime } from './container-runtime';
@@ -167,24 +168,44 @@ export function getDockerStatus(containerName: string = 'gitlab-mcp'): DockerSta
   return result;
 }
 
+/** Connection string of the database bundled by the compose-bundle deployment */
+const BUNDLED_POSTGRESQL_URL =
+  'postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp';
+
+/**
+ * PostgreSQL URL the deployment stores OAuth sessions in, as written into the compose
+ * file; undefined when sessions live in a file on the data volume. An external URL
+ * carries its password, so it stays in .env and the compose file references it.
+ */
+function sessionDatabaseUrl(config: DockerConfig): string | undefined {
+  if (!config.oauthEnabled) return undefined;
+  if (config.deploymentType === 'compose-bundle') return BUNDLED_POSTGRESQL_URL;
+  if (config.deploymentType === 'external-db') return '${OAUTH_STORAGE_POSTGRESQL_URL}';
+  return undefined;
+}
+
 /**
  * Generate docker-compose.yml content
  */
 export function generateDockerCompose(config: DockerConfig): string {
+  const databaseUrl = sessionDatabaseUrl(config);
+  const environment = [
+    'TRANSPORT=sse',
+    'HOST=0.0.0.0',
+    'PORT=3333',
+    `OAUTH_ENABLED=${config.oauthEnabled}`,
+  ];
+  const volumes = ['gitlab-mcp-data:/data'];
   const compose: DockerComposeFile = {
     version: '3.8',
     services: {
       'gitlab-mcp': {
-        image: config.image,
+        // Only the db image carries the PostgreSQL backend
+        image: databaseUrl ? DEFAULT_DB_IMAGE : config.image,
         container_name: config.containerName,
         ports: [`\${PORT:-${config.port}}:3333`],
-        environment: [
-          'TRANSPORT=sse',
-          'HOST=0.0.0.0',
-          'PORT=3333',
-          `OAUTH_ENABLED=${config.oauthEnabled}`,
-        ],
-        volumes: ['gitlab-mcp-data:/data'],
+        environment,
+        volumes,
         restart: 'unless-stopped',
       },
     },
@@ -192,6 +213,43 @@ export function generateDockerCompose(config: DockerConfig): string {
       'gitlab-mcp-data': {},
     },
   };
+
+  // Add OAuth-specific configuration
+  if (config.oauthEnabled) {
+    // Reference secret via env var — actual value stored in .env file
+    environment.push(
+      'OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}',
+      'OAUTH_ISSUER=${OAUTH_ISSUER}',
+    );
+    if (databaseUrl) {
+      environment.push(
+        'OAUTH_STORAGE_TYPE=postgresql',
+        `OAUTH_STORAGE_POSTGRESQL_URL=${databaseUrl}`,
+      );
+    } else {
+      // Sessions survive restarts on the data volume
+      environment.push(
+        'OAUTH_STORAGE_TYPE=file',
+        'OAUTH_STORAGE_FILE_PATH=/data/oauth-sessions.json',
+      );
+    }
+    volumes.push('./instances.yml:/app/config/instances.yml:ro');
+  }
+
+  if (databaseUrl) {
+    // One-shot schema migration with the Prisma CLI shipped in the db image; the
+    // server starts only after it succeeds
+    compose.services.migrate = {
+      image: DEFAULT_DB_IMAGE,
+      restart: 'no',
+      working_dir: '/app/node_modules/@structured-world/gitlab-mcp-db',
+      entrypoint: ['node', 'node_modules/prisma/build/index.js', 'migrate', 'deploy'],
+      environment: [`OAUTH_STORAGE_POSTGRESQL_URL=${databaseUrl}`],
+    };
+    compose.services['gitlab-mcp'].depends_on = {
+      migrate: { condition: 'service_completed_successfully' },
+    };
+  }
 
   // Add compose-bundle postgres service (only when OAuth needs a database)
   if (config.deploymentType === 'compose-bundle' && config.oauthEnabled) {
@@ -206,35 +264,25 @@ export function generateDockerCompose(config: DockerConfig): string {
       ],
       volumes: ['postgres-data:/var/lib/postgresql/data'],
       restart: 'unless-stopped',
+      healthcheck: {
+        test: ['CMD-SHELL', 'pg_isready -U gitlab_mcp'],
+        interval: '5s',
+        timeout: '5s',
+        retries: 5,
+      },
     };
-    compose.services['gitlab-mcp'].depends_on = ['postgres'];
+    if (compose.services.migrate) {
+      compose.services.migrate.depends_on = { postgres: { condition: 'service_healthy' } };
+    }
     if (compose.volumes) {
       compose.volumes['postgres-data'] = {};
     }
   }
 
-  // Add OAuth-specific configuration
-  if (config.oauthEnabled) {
-    // Determine DATABASE_URL based on deployment type
-    let databaseUrl: string;
-    if (config.deploymentType === 'compose-bundle') {
-      databaseUrl = 'postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp';
-    } else {
-      databaseUrl = config.databaseUrl ?? 'file:/data/sessions.db';
-    }
-    // Reference secret via env var — actual value stored in .env file
-    compose.services['gitlab-mcp'].environment.push(
-      'OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}',
-      'OAUTH_ISSUER=${OAUTH_ISSUER}',
-      `DATABASE_URL=${databaseUrl}`,
-    );
-    compose.services['gitlab-mcp'].volumes.push('./instances.yml:/app/config/instances.yml:ro');
-  }
-
   // Add tool configuration environment variables
   if (config.environment) {
     for (const [key, value] of Object.entries(config.environment)) {
-      compose.services['gitlab-mcp'].environment.push(`${key}=${value}`);
+      environment.push(`${key}=${value}`);
     }
   }
 
@@ -531,6 +579,11 @@ export function saveEnvFile(config: DockerConfig): void {
     // Generate a strong random postgres password for the bundled database
     const pgPassword = randomBytes(24).toString('base64url');
     lines.push(`POSTGRES_PASSWORD=${pgPassword}`);
+  }
+
+  if (config.deploymentType === 'external-db' && config.oauthEnabled && config.databaseUrl) {
+    // The compose file references it; the URL carries the database password
+    lines.push(`OAUTH_STORAGE_POSTGRESQL_URL=${config.databaseUrl}`);
   }
 
   if (lines.length > 0) {

@@ -100,16 +100,31 @@ export const DEFAULT_DOCKER_CONFIG: DockerConfig = {
 };
 
 /**
+ * Image with the PostgreSQL backend and the Prisma CLI for migrations, used by
+ * deployments that keep OAuth sessions in PostgreSQL
+ */
+export const DEFAULT_DB_IMAGE = 'ghcr.io/structured-world/gitlab-mcp-db:latest';
+
+/**
  * Docker compose service configuration
  */
 export interface DockerComposeService {
   image: string;
-  container_name: string;
-  ports: string[];
+  container_name?: string;
+  ports?: string[];
   environment: string[];
-  volumes: string[];
+  volumes?: string[];
   restart: string;
-  depends_on?: string[];
+  working_dir?: string;
+  entrypoint?: string[];
+  /** Services to wait for, with the state each must reach first */
+  depends_on?: Record<string, { condition: 'service_healthy' | 'service_completed_successfully' }>;
+  healthcheck?: {
+    test: string[];
+    interval: string;
+    timeout: string;
+    retries: number;
+  };
 }
 
 /**

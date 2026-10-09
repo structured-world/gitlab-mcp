@@ -31,6 +31,7 @@ import {
   GitLabInstance,
   ContainerRuntimeInfo,
   DEFAULT_DOCKER_CONFIG,
+  DEFAULT_DB_IMAGE,
 } from '../../../../src/cli/docker/types';
 import * as fs from 'fs';
 import * as childProcess from 'child_process';
@@ -550,28 +551,64 @@ describe('docker-utils', () => {
       expect(parsed.services['gitlab-mcp'].environment).toContain(
         'OAUTH_SESSION_SECRET=${OAUTH_SESSION_SECRET}',
       );
-      expect(parsed.services['gitlab-mcp'].environment).toContain(
-        'DATABASE_URL=file:/data/sessions.db',
-      );
     });
 
-    it('should use custom databaseUrl for external-db', () => {
+    // Standalone OAuth keeps sessions in a file on the data volume: the server reads
+    // OAUTH_STORAGE_TYPE/OAUTH_STORAGE_FILE_PATH, a DATABASE_URL alone selects nothing
+    // and left sessions in memory, lost on every restart.
+    it('should store standalone OAuth sessions in a file on the data volume', () => {
       const config: DockerConfig = {
-        port: 3333,
+        ...DEFAULT_DOCKER_CONFIG,
+        deploymentType: 'standalone',
+        oauthEnabled: true,
+      };
+
+      const parsed = YAML.parse(generateDockerCompose(config));
+      const service = parsed.services['gitlab-mcp'];
+
+      expect(service.image).toBe(DEFAULT_DOCKER_CONFIG.image);
+      expect(service.environment).toContain('OAUTH_STORAGE_TYPE=file');
+      expect(service.environment).toContain('OAUTH_STORAGE_FILE_PATH=/data/oauth-sessions.json');
+      expect(service.volumes).toContain('gitlab-mcp-data:/data');
+      expect(service.environment.some((entry: string) => entry.startsWith('DATABASE_URL='))).toBe(
+        false,
+      );
+      expect(parsed.services.migrate).toBeUndefined();
+    });
+
+    // External PostgreSQL needs the db image (core has no PostgreSQL backend), the
+    // storage selection, migrations before start, and the URL kept in .env because it
+    // carries the database password.
+    it('should run external-db deployments on the db image with migrations', () => {
+      const config: DockerConfig = {
+        ...DEFAULT_DOCKER_CONFIG,
         deploymentType: 'external-db',
         oauthEnabled: true,
         databaseUrl: 'postgresql://user:pass@host:5432/db',
-        instances: [],
-        containerName: 'gitlab-mcp',
-        image: 'ghcr.io/structured-world/gitlab-mcp:latest',
       };
 
       const result = generateDockerCompose(config);
       const parsed = YAML.parse(result);
+      const service = parsed.services['gitlab-mcp'];
 
-      expect(parsed.services['gitlab-mcp'].environment).toContain(
-        'DATABASE_URL=postgresql://user:pass@host:5432/db',
+      expect(service.image).toBe(DEFAULT_DB_IMAGE);
+      expect(service.environment).toContain('OAUTH_STORAGE_TYPE=postgresql');
+      expect(service.environment).toContain(
+        'OAUTH_STORAGE_POSTGRESQL_URL=${OAUTH_STORAGE_POSTGRESQL_URL}',
       );
+      expect(result).not.toContain('user:pass');
+      expect(service.depends_on).toEqual({
+        migrate: { condition: 'service_completed_successfully' },
+      });
+
+      expect(parsed.services.migrate).toEqual({
+        image: DEFAULT_DB_IMAGE,
+        restart: 'no',
+        working_dir: '/app/node_modules/@structured-world/gitlab-mcp-db',
+        entrypoint: ['node', 'node_modules/prisma/build/index.js', 'migrate', 'deploy'],
+        environment: ['OAUTH_STORAGE_POSTGRESQL_URL=${OAUTH_STORAGE_POSTGRESQL_URL}'],
+      });
+      expect(parsed.services.postgres).toBeUndefined();
     });
 
     it('should add postgres service for compose-bundle deployment', () => {
@@ -592,14 +629,31 @@ describe('docker-utils', () => {
       expect(parsed.services.postgres.image).toBe('postgres:16-alpine');
       expect(parsed.services.postgres.container_name).toBe('gitlab-mcp-db');
       expect(parsed.services.postgres.environment).toContain('POSTGRES_DB=gitlab_mcp');
+      // Migrations wait for a database that accepts connections
+      expect(parsed.services.postgres.healthcheck.test).toEqual([
+        'CMD-SHELL',
+        'pg_isready -U gitlab_mcp',
+      ]);
 
-      // gitlab-mcp depends on postgres
-      expect(parsed.services['gitlab-mcp'].depends_on).toEqual(['postgres']);
-
-      // DATABASE_URL points to bundled postgres
+      // The server runs on the db image, selects PostgreSQL storage, and points it at
+      // the bundled database
+      const bundledUrl = 'postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp';
+      expect(parsed.services['gitlab-mcp'].image).toBe(DEFAULT_DB_IMAGE);
+      expect(parsed.services['gitlab-mcp'].environment).toContain('OAUTH_STORAGE_TYPE=postgresql');
       expect(parsed.services['gitlab-mcp'].environment).toContain(
-        'DATABASE_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp',
+        `OAUTH_STORAGE_POSTGRESQL_URL=${bundledUrl}`,
       );
+
+      // Order: postgres healthy -> migrations applied -> server
+      expect(parsed.services.migrate.environment).toEqual([
+        `OAUTH_STORAGE_POSTGRESQL_URL=${bundledUrl}`,
+      ]);
+      expect(parsed.services.migrate.depends_on).toEqual({
+        postgres: { condition: 'service_healthy' },
+      });
+      expect(parsed.services['gitlab-mcp'].depends_on).toEqual({
+        migrate: { condition: 'service_completed_successfully' },
+      });
 
       // postgres-data volume added
       expect(parsed.volumes['postgres-data']).toBeDefined();
@@ -620,6 +674,8 @@ describe('docker-utils', () => {
 
       // Postgres service should NOT be added without OAuth
       expect(parsed.services.postgres).toBeUndefined();
+      expect(parsed.services.migrate).toBeUndefined();
+      expect(parsed.services['gitlab-mcp'].image).toBe(DEFAULT_DOCKER_CONFIG.image);
       expect(parsed.services['gitlab-mcp'].depends_on).toBeUndefined();
       expect(parsed.volumes['postgres-data']).toBeUndefined();
     });
@@ -1067,6 +1123,30 @@ describe('docker-utils', () => {
       const match = content.match(/POSTGRES_PASSWORD=(.+)/);
       expect(match).toBeDefined();
       expect(match![1].length).toBeGreaterThanOrEqual(20);
+    });
+
+    // The external database URL carries its password, so it lives in the 0600 .env
+    // file and the compose file only references it.
+    it('should write the external PostgreSQL URL for external-db with OAuth', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+
+      saveEnvFile({
+        ...DEFAULT_DOCKER_CONFIG,
+        deploymentType: 'external-db',
+        oauthEnabled: true,
+        databaseUrl: 'postgresql://user:pass@host:5432/db',
+      });
+
+      const envCall = mockFs.writeFileSync.mock.calls.find((call) =>
+        (call[0] as string).endsWith('.env'),
+      );
+      expect(envCall).toBeDefined();
+      expect(envCall![1]).toContain(
+        'OAUTH_STORAGE_POSTGRESQL_URL=postgresql://user:pass@host:5432/db\n',
+      );
+      expect(envCall![1]).not.toContain('POSTGRES_PASSWORD=');
+      expect(envCall![2]).toEqual({ encoding: 'utf8', mode: 0o600 });
     });
 
     it('should not include POSTGRES_PASSWORD for compose-bundle without OAuth', () => {

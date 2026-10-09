@@ -427,8 +427,8 @@ jobs:
       - name: Commit regenerated metadata to the release PR
         working-directory: packages/gitlab-mcp
         run: |
-          git config user.name "structured-world-releaser[bot]"
-          git config user.email "structured-world-releaser[bot]@users.noreply.github.com"
+          git config user.name "sw-release-bot[bot]"
+          git config user.email "255865126+sw-release-bot[bot]@users.noreply.github.com"
           # Only the committed dynamic artifacts. .semantic-release-version is a
           # release-time-only file and must not be committed. The root
           # package.json (../../) carries the mirrored release version.

@@ -5,8 +5,9 @@
  * Suitable for single-instance deployments without external database.
  *
  * Features:
- * - Automatic save on changes (debounced); session updates, single-use transitions and
- *   revocations are written through before they are reported
+ * - Every OAuth record (client, session, flow, code) and every transition of one is
+ *   written through before it is reported; cleanup and MCP transport mappings are
+ *   saved debounced
  * - Periodic auto-save interval
  * - Atomic file writes (write to temp, then rename)
  * - Data version migration support
@@ -249,10 +250,13 @@ export class FileStorageBackend implements SessionStorageBackend {
     }
   }
 
-  // Session operations - delegate to memory with save scheduling
+  // Records handed to a client or to GitLab right after they are stored (client ids,
+  // codes and their sessions, flows GitLab calls back for, device flows holding tokens
+  // GitLab issued once) are written through, so a crash cannot lose what was handed out.
+  // Cleanup and MCP transport mappings stay debounced.
   async createSession(session: OAuthSession): Promise<void> {
     await this.memory.createSession(session);
-    this.scheduleSave();
+    await this.persistNow();
   }
 
   async getSession(sessionId: string): Promise<OAuthSession | undefined> {
@@ -289,7 +293,7 @@ export class FileStorageBackend implements SessionStorageBackend {
   // Device flow operations
   async storeDeviceFlow(state: string, flow: DeviceFlowState): Promise<void> {
     await this.memory.storeDeviceFlow(state, flow);
-    this.scheduleSave();
+    await this.persistNow();
   }
 
   async getDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
@@ -309,7 +313,7 @@ export class FileStorageBackend implements SessionStorageBackend {
   // Auth code flow operations
   async storeAuthCodeFlow(internalState: string, flow: AuthCodeFlowState): Promise<void> {
     await this.memory.storeAuthCodeFlow(internalState, flow);
-    this.scheduleSave();
+    await this.persistNow();
   }
 
   async getAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
@@ -325,7 +329,7 @@ export class FileStorageBackend implements SessionStorageBackend {
   // Authorization code operations
   async storeAuthCode(code: AuthorizationCode): Promise<void> {
     await this.memory.storeAuthCode(code);
-    this.scheduleSave();
+    await this.persistNow();
   }
 
   async getAuthCode(code: string): Promise<AuthorizationCode | undefined> {
@@ -357,7 +361,7 @@ export class FileStorageBackend implements SessionStorageBackend {
   // Registered OAuth clients
   async storeClient(client: RegisteredOAuthClient): Promise<void> {
     await this.memory.storeClient(client);
-    this.scheduleSave();
+    await this.persistNow();
   }
 
   async getClient(clientId: string): Promise<RegisteredOAuthClient | undefined> {

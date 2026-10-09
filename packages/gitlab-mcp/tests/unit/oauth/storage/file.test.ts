@@ -209,6 +209,68 @@ describe('FileStorageBackend', () => {
       await restarted.close();
     });
 
+    // Each of these is handed to a client or to GitLab right after it is stored: a client
+    // id, a code, a session behind a code, a flow GitLab will call back for, and a device
+    // flow holding tokens GitLab issued once. A crash must not lose them.
+    it('persists records handed to clients or GitLab', async () => {
+      await seeded();
+      const client = {
+        clientId: 'registered-client',
+        redirectUris: ['https://client.example.com/callback'],
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code', 'refresh_token'],
+        responseTypes: ['code'],
+        createdAt: 1,
+      };
+      const session = createTestSession();
+      const code = createTestAuthCode({ sessionId: session.id });
+      const authFlow = createTestAuthCodeFlow();
+      const deviceFlow = createTestDeviceFlow({
+        gitlabTokens: {
+          access_token: 'gl-at',
+          refresh_token: 'gl-rt',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: 1,
+        },
+      });
+
+      await storage.storeClient(client);
+      await storage.createSession(session);
+      await storage.storeAuthCode(code);
+      await storage.storeAuthCodeFlow(authFlow.internalState, authFlow);
+      await storage.storeDeviceFlow('device-state', deviceFlow);
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getClient(client.clientId)).toEqual(client);
+      expect(await restarted.getSession(session.id)).toEqual(session);
+      expect(await restarted.getAuthCode(code.code)).toEqual(code);
+      expect(await restarted.getAuthCodeFlow(authFlow.internalState)).toEqual(authFlow);
+      expect((await restarted.getDeviceFlow('device-state'))?.gitlabTokens).toEqual(
+        deviceFlow.gitlabTokens,
+      );
+      await restarted.close();
+    });
+
+    // A write-through also carries changes waiting for the debounced save and replaces it.
+    it('writes pending debounced changes with the next write-through', async () => {
+      const { session } = await seeded();
+      await storage.associateMcpSession('mcp-session', session.id);
+
+      await storage.storeClient({
+        clientId: 'another-client',
+        redirectUris: ['https://client.example.com/callback'],
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code'],
+        responseTypes: ['code'],
+        createdAt: 1,
+      });
+      const restarted = await reloadAfterCrash();
+
+      expect((await restarted.getSessionByMcpSessionId('mcp-session'))?.id).toBe(session.id);
+      await restarted.close();
+    });
+
     it('persists a revoked session', async () => {
       const { session } = await seeded();
 

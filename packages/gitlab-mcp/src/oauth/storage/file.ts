@@ -5,8 +5,8 @@
  * Suitable for single-instance deployments without external database.
  *
  * Features:
- * - Automatic save on changes (debounced); single-use transitions and revocations are
- *   written through before they are reported
+ * - Automatic save on changes (debounced); session updates, single-use transitions and
+ *   revocations are written through before they are reported
  * - Periodic auto-save interval
  * - Atomic file writes (write to temp, then rename)
  * - Data version migration support
@@ -269,7 +269,9 @@ export class FileStorageBackend implements SessionStorageBackend {
 
   async updateSession(sessionId: string, updates: Partial<OAuthSession>): Promise<boolean> {
     const result = await this.memory.updateSession(sessionId, updates);
-    if (result) this.scheduleSave();
+    // Written through: updates carry tokens just handed to clients or replacing spent
+    // GitLab refresh tokens, which a crash must not lose.
+    if (result) await this.persistNow();
     return result;
   }
 

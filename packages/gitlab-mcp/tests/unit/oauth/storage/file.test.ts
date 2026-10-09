@@ -190,6 +190,25 @@ describe('FileStorageBackend', () => {
       }
     });
 
+    // Issued MCP tokens and refreshed GitLab tokens (whose predecessors are spent) are
+    // returned to clients right after this update; losing it strands the account.
+    it('persists a session update', async () => {
+      const { session } = await seeded();
+
+      expect(
+        await storage.updateSession(session.id, {
+          mcpAccessToken: 'issued-access',
+          gitlabRefreshToken: 'gl-refresh-new',
+        }),
+      ).toBe(true);
+      const restarted = await reloadAfterCrash();
+
+      const stored = await restarted.getSession(session.id);
+      expect(stored?.mcpAccessToken).toBe('issued-access');
+      expect(stored?.gitlabRefreshToken).toBe('gl-refresh-new');
+      await restarted.close();
+    });
+
     it('persists a revoked session', async () => {
       const { session } = await seeded();
 

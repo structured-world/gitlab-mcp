@@ -19,7 +19,7 @@ import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './
 import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL } from './config';
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
-import { OAUTH_SECURITY_SCHEMES, withReauthChallenge } from './oauth/tool-auth';
+import { OAUTH_SECURITY_SCHEMES, toolScopeRejection, withReauthChallenge } from './oauth/tool-auth';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 
 interface JsonSchemaProperty {
@@ -736,6 +736,10 @@ export async function setupHandlers(server: Server): Promise<void> {
     // In static-token mode, prefer the actively selected instance URL so
     // requests continue routing to the current instance.
     const oauthEnabled = isOAuthEnabled();
+    if (oauthEnabled) {
+      const rejection = toolScopeRejection();
+      if (rejection) return rejection;
+    }
     const requestScopes = oauthEnabled ? getCallContext()?.gitlabScopes : undefined;
     let declaredIdempotent: boolean | undefined;
     // getGitLabApiUrlFromContext() returns string | undefined; use undefined (not null)

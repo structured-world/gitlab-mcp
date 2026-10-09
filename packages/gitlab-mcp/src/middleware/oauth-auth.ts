@@ -164,6 +164,8 @@ export async function oauthAuthMiddleware(
   res.locals.gitlabApiUrl = updatedSession.gitlabApiUrl ?? GITLAB_BASE_URL;
   res.locals.instanceLabel = updatedSession.instanceLabel;
   res.locals.mcpResource = resourceForPath(config.issuer, req.path);
+  // Tool dispatch requires mcp:tools among them.
+  res.locals.mcpScopes = tokenScopes(payload.scope);
 
   logDebug('OAuth session validated, passing to route handler', {
     sessionId: truncateId(updatedSession.id),
@@ -251,6 +253,7 @@ export async function optionalOAuthMiddleware(
   res.locals.gitlabApiUrl = session.gitlabApiUrl ?? GITLAB_BASE_URL;
   res.locals.instanceLabel = session.instanceLabel;
   res.locals.mcpResource = resourceForPath(config.issuer, req.path);
+  res.locals.mcpScopes = tokenScopes(payload.scope);
 
   next();
 }
@@ -264,8 +267,12 @@ function isIssuedForThisServer(issuer: string, payload: MCPTokenPayload): boolea
  * The token carries at least one MCP scope and nothing beyond the session's grant, so a
  * token minted before a narrower grant cannot outlive it.
  */
+function tokenScopes(tokenScope: string): string[] {
+  return tokenScope.split(' ').filter(Boolean);
+}
+
 function hasGrantedScope(tokenScope: string, grantedScopes: string[]): boolean {
-  const scopes = tokenScope.split(' ').filter(Boolean);
+  const scopes = tokenScopes(tokenScope);
   return (
     scopes.some((scope) => MCP_SCOPES.includes(scope)) &&
     scopes.every((scope) => grantedScopes.includes(scope))

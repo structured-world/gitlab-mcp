@@ -24,6 +24,41 @@ export const OAUTH_SECURITY_SCHEMES: readonly OAuthSecurityScheme[] = [
   { type: 'oauth2', scopes: ['mcp:tools'] },
 ];
 
+/** Scope a tool call needs, the one every tool declares. */
+const TOOL_SCOPE = OAUTH_SECURITY_SCHEMES[0].scopes[0];
+
+/**
+ * Error result for a tool call whose MCP access token lacks `mcp:tools` (RFC 6750 section
+ * 3.1 insufficient_scope), or undefined when the call may proceed. The request middleware
+ * admits any MCP scope, so a token granted only `mcp:resources` is stopped here. Calls
+ * without an OAuth token context (static token, stdio) are not scope-checked.
+ */
+export function toolScopeRejection(): CallToolResult | undefined {
+  const config = loadOAuthConfig();
+  const context = getTokenContext();
+  if (!config || !context?.mcpScopes || context.mcpScopes.includes(TOOL_SCOPE)) {
+    return undefined;
+  }
+  const resource = context.resource ?? defaultResource(config.issuer);
+  const challenge =
+    `Bearer resource_metadata="${resourceMetadataUrl(resource)}", ` +
+    `error="insufficient_scope", scope="${TOOL_SCOPE}", ` +
+    `error_description="This access token does not allow tool calls; reconnect to grant ${TOOL_SCOPE}"`;
+  return {
+    content: [
+      {
+        type: 'text',
+        text: JSON.stringify({
+          error: 'insufficient_scope',
+          message: `The access token was not granted ${TOOL_SCOPE}`,
+        }),
+      },
+    ],
+    isError: true,
+    _meta: { 'mcp/www_authenticate': [challenge] },
+  };
+}
+
 /** Bound on the cause chain walked when looking for the GitLab status. */
 const MAX_CAUSE_DEPTH = 8;
 

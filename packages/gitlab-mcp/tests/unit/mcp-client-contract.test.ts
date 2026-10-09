@@ -351,6 +351,61 @@ describe('simultaneous MCP client contracts', () => {
     }
   });
 
+  // A token granted only mcp:resources reached every tool, including mutating ones, because
+  // the request middleware accepts any MCP scope; tool calls need mcp:tools.
+  it.each([
+    { mcpScopes: ['mcp:resources'], allowed: false },
+    { mcpScopes: ['mcp:tools'], allowed: true },
+    { mcpScopes: ['mcp:tools', 'mcp:resources'], allowed: true },
+  ])('requires mcp:tools to call a tool: $mcpScopes', async ({ mcpScopes, allowed }) => {
+    const handler = jest.fn().mockResolvedValue({ ok: true });
+    coreToolRegistry.set('browse_contract', {
+      name: 'browse_contract',
+      description: 'Scope fixture',
+      inputSchema: { type: 'object' },
+      handler,
+    });
+    RegistryManager.getInstance().refreshCache();
+    const oauthConfig = await import('../../src/oauth/config');
+    const config = jest
+      .spyOn(oauthConfig, 'loadOAuthConfig')
+      .mockReturnValue({ issuer: 'https://mcp.example.com' } as ReturnType<
+        typeof oauthConfig.loadOAuthConfig
+      >);
+    try {
+      const client = await connect('codex', '2025-11-25');
+      const result = await runWithTokenContext(
+        {
+          gitlabToken: 'fixture-only',
+          gitlabUserId: 1,
+          gitlabUsername: 'fixture',
+          sessionId: 'fixture',
+          gitlabScopes: ['api'],
+          apiUrl: 'https://new.example.com',
+          resource: 'https://mcp.example.com/mcp',
+          mcpScopes,
+        },
+        () => client.callTool({ name: 'browse_contract', arguments: {} }),
+      );
+
+      if (allowed) {
+        expect(handler).toHaveBeenCalled();
+        expect(result.isError).toBeFalsy();
+      } else {
+        expect(handler).not.toHaveBeenCalled();
+        expect(result.isError).toBe(true);
+        // RFC 6750 section 3.1: the challenge names the scope the call needs.
+        expect(result._meta?.['mcp/www_authenticate']).toEqual([
+          'Bearer resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp", ' +
+            'error="insufficient_scope", scope="mcp:tools", ' +
+            'error_description="This access token does not allow tool calls; reconnect to grant mcp:tools"',
+        ]);
+      }
+    } finally {
+      config.mockRestore();
+    }
+  });
+
   it('delivers non-text content and authorization challenges through the SDK unchanged', async () => {
     // Exercise production dispatch, serialization and SDK validation rather than a result mock.
     const success = {

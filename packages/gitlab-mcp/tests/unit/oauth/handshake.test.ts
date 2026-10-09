@@ -197,6 +197,21 @@ describe('OAuth handshake over HTTP', () => {
     });
   });
 
+  // Tool dispatch checks the token's MCP scopes, so the request must carry them.
+  it('passes the scopes of the presented token to the request', async () => {
+    const mcp = await replica();
+    const clientId = await register(mcp);
+    const { verifier, challenge } = pkce();
+    const redirect = await signIn(mcp, mcp, clientId, challenge, { scope: 'mcp:resources' });
+    const token = await exchange(mcp, clientId, redirect.searchParams.get('code')!, verifier);
+    const tokens = (await token.json()) as TokenSet;
+    expect(tokens.scope).toBe('mcp:resources');
+
+    const served = await callMcp(mcp, tokens.access_token);
+    expect(served.status).toBe(200);
+    expect(await served.json()).toMatchObject({ mcpScopes: ['mcp:resources'] });
+  });
+
   it('serves every step of the sign-in from a different replica', async () => {
     const [a, b] = [await replica(), await replica()];
 

@@ -230,6 +230,8 @@ export interface TokenContext {
   instanceLabel?: string;
   /** Protected resource the request was sent to; reauthorization challenges point at its metadata. */
   resource?: string;
+  /** MCP scopes of the access token the request presented (e.g. `mcp:tools`). */
+  mcpScopes?: readonly string[];
 }
 
 /**

@@ -10,6 +10,7 @@ import { loadOAuthConfig } from '../config';
 import { sessionStore } from '../session-store';
 import { oauthAppFor } from '../instance-app';
 import { revokeGitLabToken } from '../gitlab-device-flow';
+import { withFreshGitLabToken } from '../gitlab-token-refresh';
 import { logInfo, logWarn, logError, truncateId } from '../../logger';
 import { OAuthErrorResponse } from '../types';
 
@@ -67,6 +68,16 @@ export async function revokeHandler(req: Request, res: Response): Promise<void> 
     return;
   }
 
+  // GitLab does not revoke an expired access token, while its refresh token stays usable:
+  // refresh a grant that is due so the revocation below reaches a live token.
+  let gitlabAccessToken = session.gitlabAccessToken;
+  try {
+    gitlabAccessToken =
+      (await withFreshGitLabToken(session, config))?.gitlabAccessToken ?? gitlabAccessToken;
+  } catch (error: unknown) {
+    logWarn('Could not refresh the GitLab grant before revoking it', { err: error as Error });
+  }
+
   // Revoking a refresh token revokes the access tokens of the same grant (RFC 7009
   // section 2.1), so the session goes away with both. Backends throw when the delete
   // fails; false only means a concurrent revocation removed the session first, which is
@@ -83,7 +94,7 @@ export async function revokeHandler(req: Request, res: Response): Promise<void> 
   try {
     const app = await oauthAppFor(config, session.gitlabApiUrl);
     if (app) {
-      await revokeGitLabToken(session.gitlabAccessToken, config, app);
+      await revokeGitLabToken(gitlabAccessToken, config, app);
     }
   } catch (error: unknown) {
     logWarn('GitLab token revocation failed', { err: error as Error });

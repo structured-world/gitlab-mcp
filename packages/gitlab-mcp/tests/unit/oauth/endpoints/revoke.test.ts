@@ -9,6 +9,7 @@ import { loadOAuthConfig } from '../../../../src/oauth/config';
 import { sessionStore } from '../../../../src/oauth/session-store';
 import { oauthAppFor } from '../../../../src/oauth/instance-app';
 import { revokeGitLabToken } from '../../../../src/oauth/gitlab-device-flow';
+import { withFreshGitLabToken } from '../../../../src/oauth/gitlab-token-refresh';
 import type { OAuthSession } from '../../../../src/oauth/types';
 
 jest.mock('../../../../src/oauth/config', () => ({ loadOAuthConfig: jest.fn() }));
@@ -21,6 +22,9 @@ jest.mock('../../../../src/oauth/session-store', () => ({
 }));
 jest.mock('../../../../src/oauth/instance-app', () => ({ oauthAppFor: jest.fn() }));
 jest.mock('../../../../src/oauth/gitlab-device-flow', () => ({ revokeGitLabToken: jest.fn() }));
+jest.mock('../../../../src/oauth/gitlab-token-refresh', () => ({
+  withFreshGitLabToken: jest.fn(async (s: unknown) => s),
+}));
 jest.mock('../../../../src/logger', () => ({
   logInfo: jest.fn(),
   logWarn: jest.fn(),
@@ -32,6 +36,7 @@ const mockConfig = loadOAuthConfig as jest.MockedFunction<typeof loadOAuthConfig
 const mockStore = sessionStore as jest.Mocked<typeof sessionStore>;
 const mockAppFor = oauthAppFor as jest.MockedFunction<typeof oauthAppFor>;
 const mockRevokeGitLab = revokeGitLabToken as jest.MockedFunction<typeof revokeGitLabToken>;
+const mockFresh = withFreshGitLabToken as jest.MockedFunction<typeof withFreshGitLabToken>;
 
 const config = { issuer: 'https://mcp.example.com' } as ReturnType<typeof loadOAuthConfig>;
 const app = { baseUrl: 'https://gitlab.example.com', clientId: 'app', scopes: 'api' };
@@ -123,6 +128,34 @@ describe('revokeHandler', () => {
   it('keeps the MCP revocation when GitLab cannot be reached', async () => {
     mockStore.getSessionByRefreshToken.mockResolvedValue(session);
     mockRevokeGitLab.mockRejectedValue(new Error('fetch failed'));
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(mockStore.deleteSession).toHaveBeenCalledWith('session-1');
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  // GitLab does not revoke an expired access token, and its refresh token stays usable:
+  // the grant is refreshed first so the revocation reaches a live token.
+  it('refreshes an expired GitLab grant and revokes the fresh token', async () => {
+    const expired = { ...session, gitlabTokenExpiry: Date.now() - 1000 };
+    mockStore.getSessionByRefreshToken.mockResolvedValue(expired);
+    mockFresh.mockResolvedValueOnce({ ...expired, gitlabAccessToken: 'gl-fresh' });
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(mockFresh).toHaveBeenCalledWith(expired, config);
+    expect(mockRevokeGitLab).toHaveBeenCalledWith('gl-fresh', config, app);
+    expect(mockStore.deleteSession).toHaveBeenCalledWith('session-1');
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('still disconnects when the expired grant cannot be refreshed', async () => {
+    const expired = { ...session, gitlabTokenExpiry: Date.now() - 1000 };
+    mockStore.getSessionByRefreshToken.mockResolvedValue(expired);
+    mockFresh.mockRejectedValueOnce(new Error('GitLab refused the refresh token'));
     const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
 
     await revokeHandler(req, res);

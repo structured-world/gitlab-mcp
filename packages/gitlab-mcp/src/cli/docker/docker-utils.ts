@@ -253,18 +253,18 @@ export function generateDockerCompose(config: DockerConfig): string {
   }
 
   if (databaseUrl) {
-    // One-shot schema migration with the Prisma CLI shipped in the db image; the
-    // server starts only after it succeeds
+    // One-shot schema migration from the db image; the server starts only after it
+    // succeeds. It waits for the database to accept connections itself and baselines a
+    // database created before migrations shipped. The bundled database is only started
+    // first: podman-compose 1.6.0 on Podman 4.9.3 hangs on `service_healthy`
+    // (https://github.com/containers/podman-compose/issues/1541).
     compose.services.migrate = {
       image: DEFAULT_DB_IMAGE,
       restart: 'no',
       working_dir: '/app/node_modules/@structured-world/gitlab-mcp-db',
-      entrypoint: ['node', 'node_modules/prisma/build/index.js', 'migrate', 'deploy'],
+      entrypoint: ['node', 'dist/src/migrate.js'],
       environment: [`OAUTH_STORAGE_POSTGRESQL_URL=${databaseUrl}`],
-      // The bundled database must accept connections before migrations run
-      ...(config.deploymentType === 'compose-bundle' && {
-        depends_on: { postgres: { condition: 'service_healthy' as const } },
-      }),
+      ...(config.deploymentType === 'compose-bundle' && { depends_on: ['postgres'] }),
     };
     compose.services['gitlab-mcp'].depends_on = {
       migrate: { condition: 'service_completed_successfully' },

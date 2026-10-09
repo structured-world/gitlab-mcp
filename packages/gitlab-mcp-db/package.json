@@ -27,12 +27,14 @@
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "dotenv": "^18.0.7",
+    "pg": "^8.16.3",
     "prisma": "^7.10.0"
   },
   "devDependencies": {
     "@structured-world/gitlab-mcp": "workspace:^",
     "@types/jest": "^30.0.0",
     "@types/node": "^25.9.9",
+    "@types/pg": "^8.16.0",
     "jest": "^30.5.2",
     "ts-jest": "^29.4.14",
     "typescript": "^6.0.3"

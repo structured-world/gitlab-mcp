@@ -123,8 +123,8 @@ export interface DockerComposeService {
   restart: string;
   working_dir?: string;
   entrypoint?: string[];
-  /** Services to wait for, with the state each must reach first */
-  depends_on?: Record<string, { condition: 'service_healthy' | 'service_completed_successfully' }>;
+  /** Services to start first (list), or with the state each must reach first (map) */
+  depends_on?: string[] | Record<string, { condition: 'service_completed_successfully' }>;
   healthcheck?: {
     test: string[];
     interval: string;

@@ -605,7 +605,7 @@ describe('docker-utils', () => {
         image: DEFAULT_DB_IMAGE,
         restart: 'no',
         working_dir: '/app/node_modules/@structured-world/gitlab-mcp-db',
-        entrypoint: ['node', 'node_modules/prisma/build/index.js', 'migrate', 'deploy'],
+        entrypoint: ['node', 'dist/src/migrate.js'],
         environment: ['OAUTH_STORAGE_POSTGRESQL_URL=${OAUTH_STORAGE_POSTGRESQL_URL}'],
       });
       expect(parsed.services.postgres).toBeUndefined();
@@ -656,13 +656,13 @@ describe('docker-utils', () => {
         `OAUTH_STORAGE_POSTGRESQL_URL=${bundledUrl}`,
       );
 
-      // Order: postgres healthy -> migrations applied -> server
+      // Order: postgres started -> migrations applied (they wait for the database to
+      // accept connections themselves) -> server. No health condition: podman-compose
+      // 1.6.0 on Podman 4.9.3 hangs on service_healthy.
       expect(parsed.services.migrate.environment).toEqual([
         `OAUTH_STORAGE_POSTGRESQL_URL=${bundledUrl}`,
       ]);
-      expect(parsed.services.migrate.depends_on).toEqual({
-        postgres: { condition: 'service_healthy' },
-      });
+      expect(parsed.services.migrate.depends_on).toEqual(['postgres']);
       expect(parsed.services['gitlab-mcp'].depends_on).toEqual({
         migrate: { condition: 'service_completed_successfully' },
       });

@@ -280,6 +280,10 @@ jobs:
             ${{ env.IMAGE_NAME }}-db:test node_modules/prisma/build/index.js migrate deploy 2>&1 || true)
           echo "$migrate_output"
           echo "$migrate_output" | grep -q 'P1001'
+          # The migration command the deployments run must load its modules (pg driver).
+          docker run --rm --entrypoint node \
+            -w /app/node_modules/@structured-world/gitlab-mcp-db \
+            ${{ env.IMAGE_NAME }}-db:test -e "require('./dist/src/migrate.js'); console.log('migrate command ok')"
 
   # Job 3: Summary
   summary:

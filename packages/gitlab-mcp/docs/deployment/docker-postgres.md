@@ -126,18 +126,25 @@ from configuration that may have changed since the flow began.
 
 ### Migrations
 
-The package ships Prisma migrations in `prisma/migrations`. Apply them with
-`prisma migrate deploy` (connection string from `OAUTH_STORAGE_POSTGRESQL_URL` or
-`DATABASE_URL`) before starting an upgraded server:
+The package ships Prisma migrations in `prisma/migrations` and a migration command
+(connection string from `OAUTH_STORAGE_POSTGRESQL_URL` or `DATABASE_URL`). Run it
+before starting an upgraded server:
 
 ```bash
 cd node_modules/@structured-world/gitlab-mcp-db
-npx prisma migrate deploy
+node dist/src/migrate.js
 ```
 
-The `gitlab-mcp-db` image carries the Prisma CLI, so migrations can run from the
-same image before the server containers start (Prisma commands below run the same
-way with `migrate resolve ...` in place of `migrate deploy`):
+It waits up to a minute for the database to accept connections, then applies the
+pending migrations with `prisma migrate deploy`:
+
+- **New database:** every table is created.
+- **Existing database** created from the packaged schema before migrations were
+  shipped (including the `ALTER TABLE` statements above): OAuth tables without
+  migration history are detected, the baseline `0_init` is marked applied, and the
+  remaining migrations are deployed.
+
+The `gitlab-mcp-db` image runs the same command before the server containers start:
 
 ```bash
 docker run --rm \
@@ -145,18 +152,8 @@ docker run --rm \
   -w /app/node_modules/@structured-world/gitlab-mcp-db \
   --entrypoint node \
   ghcr.io/structured-world/gitlab-mcp-db:latest \
-  node_modules/prisma/build/index.js migrate deploy
+  dist/src/migrate.js
 ```
-
-- **New database:** `migrate deploy` creates every table.
-- **Existing database** created from the packaged schema before migrations were
-  shipped (including the `ALTER TABLE` statements above): mark the baseline as applied
-  once, then deploy the remaining migrations:
-
-  ```bash
-  npx prisma migrate resolve --applied 0_init
-  npx prisma migrate deploy
-  ```
 
 The account-linking migration only adds nullable columns and the `oauth_clients`
 table, so existing sessions and flows stay valid. It stores Dynamic Client

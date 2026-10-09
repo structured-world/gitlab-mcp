@@ -92,18 +92,18 @@ services:
       migrate:
         condition: service_completed_successfully
 
-  # Applies pending database migrations with the Prisma CLI shipped in the image,
-  # then exits; the server starts only after it succeeds.
+  # Waits for the database to accept connections, applies pending migrations, then
+  # exits; the server starts only after it succeeds. A database created by a release
+  # before migrations shipped is baselined automatically.
   migrate:
     image: ghcr.io/structured-world/gitlab-mcp-db:latest
     restart: "no"
     working_dir: /app/node_modules/@structured-world/gitlab-mcp-db
-    entrypoint: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
+    entrypoint: ["node", "dist/src/migrate.js"]
     environment:
       - OAUTH_STORAGE_POSTGRESQL_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp
     depends_on:
-      postgres:
-        condition: service_healthy
+      - postgres
 
   postgres:
     image: postgres:16-alpine

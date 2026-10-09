@@ -51,6 +51,8 @@ export class FileStorageBackend implements SessionStorageBackend {
   private saveDebounceId: ReturnType<typeof setTimeout> | null = null;
   private pendingSave = false;
   private initialized = false;
+  /** Tail of the serialized file writes */
+  private writeQueue: Promise<void> = Promise.resolve();
 
   constructor(options: FileStorageOptions) {
     // Use memory backend internally as cache, but suppress its logging
@@ -191,9 +193,13 @@ export class FileStorageBackend implements SessionStorageBackend {
     await this.writeSnapshot();
   }
 
-  /** Atomically replace the file with the current state; rejects when the write fails. */
-  private async writeSnapshot(): Promise<void> {
-    if (!this.initialized) return;
+  /**
+   * Atomically replace the file with the current state; rejects when the write fails.
+   * The state is captured now and writes run one at a time in call order, so concurrent
+   * writes never share the temp file and the last call's state is what remains.
+   */
+  private writeSnapshot(): Promise<void> {
+    if (!this.initialized) return Promise.resolve();
 
     const exportedData = this.memory.exportData();
 
@@ -208,18 +214,21 @@ export class FileStorageBackend implements SessionStorageBackend {
       clients: exportedData.clients,
     };
 
-    // Atomic write: write to temp file, then rename
-    const tempPath = `${this.filePath}.tmp`;
     const content = JSON.stringify(data);
-
-    fs.writeFileSync(tempPath, content, 'utf-8');
-    fs.renameSync(tempPath, this.filePath);
-
-    logDebug('Saved sessions to file', {
-      sessions: data.sessions.length,
-      deviceFlows: data.deviceFlows.length,
-      authCodes: data.authCodes.length,
+    const write = this.writeQueue.then(async () => {
+      // Atomic write: write to temp file, then rename
+      const tempPath = `${this.filePath}.tmp`;
+      await fs.promises.writeFile(tempPath, content, 'utf-8');
+      await fs.promises.rename(tempPath, this.filePath);
+      logDebug('Saved sessions to file', {
+        sessions: data.sessions.length,
+        deviceFlows: data.deviceFlows.length,
+        authCodes: data.authCodes.length,
+      });
     });
+    // A failed write is reported to its caller; the next write still runs.
+    this.writeQueue = write.catch(() => undefined);
+    return write;
   }
 
   private scheduleSave(): void {

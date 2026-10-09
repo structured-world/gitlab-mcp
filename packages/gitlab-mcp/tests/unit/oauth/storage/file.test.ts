@@ -252,6 +252,44 @@ describe('FileStorageBackend', () => {
       await restarted.close();
     });
 
+    // Writes do not block the event loop, so several can be in flight: they must not share
+    // the temp file, and the file must end with every record.
+    it('keeps every record when writes run concurrently', async () => {
+      await seeded();
+      const clients = Array.from({ length: 10 }, (_, i) => ({
+        clientId: `client-${i}`,
+        redirectUris: ['https://client.example.com/callback'],
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code'],
+        responseTypes: ['code'],
+        createdAt: i,
+      }));
+
+      await Promise.all(clients.map((client) => storage.storeClient(client)));
+      const restarted = await reloadAfterCrash();
+
+      for (const client of clients) {
+        expect(await restarted.getClient(client.clientId)).toEqual(client);
+      }
+      await restarted.close();
+    });
+
+    it('writes again after a failed write', async () => {
+      const { code } = await seeded();
+      fs.chmodSync(tempDir, 0o500);
+      try {
+        await expect(storage.consumeAuthCode(code.code)).rejects.toThrow();
+      } finally {
+        fs.chmodSync(tempDir, 0o700);
+      }
+
+      await storage.createSession(createTestSession({ id: 'after-failure' }));
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getSession('after-failure')).toBeDefined();
+      await restarted.close();
+    });
+
     // A write-through also carries changes waiting for the debounced save and replaces it.
     it('writes pending debounced changes with the next write-through', async () => {
       const { session } = await seeded();

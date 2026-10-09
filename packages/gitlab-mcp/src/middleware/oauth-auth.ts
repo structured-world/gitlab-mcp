@@ -16,7 +16,7 @@ import { Request, Response, NextFunction } from 'express';
 import { loadOAuthConfig } from '../oauth/config';
 import { sessionStore } from '../oauth/session-store';
 import { verifyMCPToken } from '../oauth/token-utils';
-import { withFreshGitLabToken } from '../oauth/gitlab-token-refresh';
+import { withFreshGitLabToken, GitLabGrantRevokedError } from '../oauth/gitlab-token-refresh';
 import { getBaseUrl } from '../oauth/endpoints/metadata';
 import {
   MCP_SCOPES,
@@ -124,12 +124,20 @@ export async function oauthAuthMiddleware(
     updatedSession = await withFreshGitLabToken(session, config);
   } catch (error: unknown) {
     logError('Failed to refresh GitLab token during request', { err: error as Error });
-    sendUnauthorized(
-      req,
-      res,
-      'invalid_token',
-      'GitLab token refresh failed. Please re-authenticate.',
-    );
+    if (error instanceof GitLabGrantRevokedError) {
+      sendUnauthorized(
+        req,
+        res,
+        'invalid_token',
+        'GitLab token refresh failed. Please re-authenticate.',
+      );
+    } else {
+      // A GitLab outage is not a bad token: the account stays linked, the client retries.
+      res.status(503).json({
+        error: 'temporarily_unavailable',
+        error_description: 'GitLab is temporarily unavailable',
+      });
+    }
     return;
   }
 

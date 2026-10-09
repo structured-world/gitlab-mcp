@@ -9,11 +9,27 @@
 
 import type { OAuthConfig } from './config';
 import { sessionStore } from './session-store';
-import { refreshGitLabToken } from './gitlab-device-flow';
+import { refreshGitLabToken, GitLabOAuthHttpError } from './gitlab-device-flow';
 import { oauthAppFor } from './instance-app';
 import { calculateTokenExpiry, isTokenExpiringSoon } from './token-utils';
 import type { OAuthSession } from './types';
 import { logDebug, truncateId } from '../logger';
+
+/**
+ * The account cannot be refreshed any more: GitLab refused the grant (RFC 6749 section 5.2
+ * errors come with 400 or 401) or the session's instance was removed. Any other failure
+ * is temporary and leaves the account usable.
+ */
+export class GitLabGrantRevokedError extends Error {
+  constructor(message: string, options?: ErrorOptions) {
+    super(message, options);
+    this.name = 'GitLabGrantRevokedError';
+  }
+}
+
+function isGrantRejection(error: unknown): boolean {
+  return error instanceof GitLabOAuthHttpError && (error.status === 400 || error.status === 401);
+}
 
 // Coalesces concurrent refreshes in this process; the backend stays the source of truth.
 const inflight = new Map<string, Promise<OAuthSession | undefined>>();
@@ -26,7 +42,7 @@ async function refreshSession(
     // Refresh with the application of the session's instance, never another one.
     const app = await oauthAppFor(config, session.gitlabApiUrl);
     if (!app) {
-      throw new Error('GitLab instance is no longer configured');
+      throw new GitLabGrantRevokedError('GitLab instance is no longer configured');
     }
     const tokens = await refreshGitLabToken(session.gitlabRefreshToken, config, app);
     await sessionStore.updateSession(session.id, {
@@ -50,6 +66,9 @@ async function refreshSession(
     ) {
       return current;
     }
+    if (isGrantRejection(error)) {
+      throw new GitLabGrantRevokedError('GitLab refused the refresh token', { cause: error });
+    }
     throw error;
   }
   return sessionStore.getSession(session.id);
@@ -59,7 +78,8 @@ async function refreshSession(
  * Return the session with GitLab tokens that are not about to expire, refreshing them
  * when needed. Resolves to undefined when the session no longer exists.
  *
- * @throws Error when GitLab refuses the refresh and no other request refreshed it
+ * @throws GitLabGrantRevokedError when the account can no longer be refreshed
+ * @throws Error on a temporary failure (network, GitLab 5xx); the account stays usable
  */
 export async function withFreshGitLabToken(
   session: OAuthSession,

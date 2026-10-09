@@ -3,9 +3,12 @@
  * requests or replicas need fresh tokens at the same time.
  */
 
-import { withFreshGitLabToken } from '../../../src/oauth/gitlab-token-refresh';
+import {
+  withFreshGitLabToken,
+  GitLabGrantRevokedError,
+} from '../../../src/oauth/gitlab-token-refresh';
 import { sessionStore } from '../../../src/oauth/session-store';
-import { refreshGitLabToken } from '../../../src/oauth/gitlab-device-flow';
+import { refreshGitLabToken, GitLabOAuthHttpError } from '../../../src/oauth/gitlab-device-flow';
 import { oauthAppFor } from '../../../src/oauth/instance-app';
 import type { OAuthConfig } from '../../../src/oauth/config';
 import type { OAuthSession } from '../../../src/oauth/types';
@@ -13,7 +16,11 @@ import type { OAuthSession } from '../../../src/oauth/types';
 jest.mock('../../../src/oauth/session-store', () => ({
   sessionStore: { updateSession: jest.fn(), getSession: jest.fn() },
 }));
-jest.mock('../../../src/oauth/gitlab-device-flow', () => ({ refreshGitLabToken: jest.fn() }));
+jest.mock('../../../src/oauth/gitlab-device-flow', () => ({
+  refreshGitLabToken: jest.fn(),
+  GitLabOAuthHttpError: jest.requireActual('../../../src/oauth/gitlab-device-flow')
+    .GitLabOAuthHttpError,
+}));
 jest.mock('../../../src/oauth/instance-app', () => ({ oauthAppFor: jest.fn() }));
 jest.mock('../../../src/logger', () => ({
   logDebug: jest.fn(),
@@ -84,7 +91,9 @@ describe('withFreshGitLabToken', () => {
   });
 
   it('uses the tokens another replica stored when GitLab refuses the spent token', async () => {
-    mockRefresh.mockRejectedValue(new Error('Failed to refresh token: 400 invalid_grant'));
+    mockRefresh.mockRejectedValue(
+      new GitLabOAuthHttpError('Failed to refresh token: 400 invalid_grant', 400),
+    );
 
     const result = await withFreshGitLabToken(expiring, config);
 
@@ -92,20 +101,34 @@ describe('withFreshGitLabToken', () => {
     expect(mockStore.updateSession).not.toHaveBeenCalled();
   });
 
-  it('fails when GitLab refuses and nobody refreshed the session', async () => {
-    mockRefresh.mockRejectedValue(new Error('Failed to refresh token: 400 invalid_grant'));
+  it('reports a revoked grant when GitLab refuses and nobody refreshed the session', async () => {
+    mockRefresh.mockRejectedValue(
+      new GitLabOAuthHttpError('Failed to refresh token: 400 invalid_grant', 400),
+    );
     mockStore.getSession.mockResolvedValue(expiring);
 
-    await expect(withFreshGitLabToken(expiring, config)).rejects.toThrow('invalid_grant');
+    await expect(withFreshGitLabToken(expiring, config)).rejects.toBeInstanceOf(
+      GitLabGrantRevokedError,
+    );
+  });
+
+  // Network errors and GitLab 5xx must not read as a revoked grant: callers answer them
+  // with a retryable error and keep the account linked.
+  it('passes a temporary failure through without declaring the grant revoked', async () => {
+    const outage = new GitLabOAuthHttpError('Failed to refresh token: 502 Bad Gateway', 502);
+    mockRefresh.mockRejectedValue(outage);
+    mockStore.getSession.mockResolvedValue(expiring);
+
+    await expect(withFreshGitLabToken(expiring, config)).rejects.toBe(outage);
   });
 
   it('never refreshes through another instance when the session instance is gone', async () => {
     mockAppFor.mockResolvedValue(undefined);
     mockStore.getSession.mockResolvedValue(expiring);
 
-    await expect(withFreshGitLabToken(expiring, config)).rejects.toThrow(
-      'GitLab instance is no longer configured',
-    );
+    const failure = withFreshGitLabToken(expiring, config);
+    await expect(failure).rejects.toBeInstanceOf(GitLabGrantRevokedError);
+    await expect(failure).rejects.toThrow('GitLab instance is no longer configured');
     expect(mockRefresh).not.toHaveBeenCalled();
   });
 

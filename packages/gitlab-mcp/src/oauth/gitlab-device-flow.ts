@@ -15,6 +15,17 @@ import { logInfo, logWarn, logError, logDebug } from '../logger';
 import { enhancedFetch, type FetchWithRetryOptions } from '../utils/fetch';
 import { defaultOAuthApp, type GitLabOAuthApp } from './oauth-app';
 
+/** A GitLab OAuth endpoint answered with an error status. */
+export class GitLabOAuthHttpError extends Error {
+  constructor(
+    message: string,
+    readonly status: number,
+  ) {
+    super(message);
+    this.name = 'GitLabOAuthHttpError';
+  }
+}
+
 /** Throw a descriptive error if the GitLab OAuth response indicates failure */
 async function throwOnHttpError(response: Response, operation: string): Promise<void> {
   if (!response.ok) {
@@ -22,7 +33,10 @@ async function throwOnHttpError(response: Response, operation: string): Promise<
     // Truncate to prevent unbounded HTML/proxy error pages from bloating logs
     const details = rawText.trim().slice(0, 500) || response.statusText;
     logError(`Failed to ${operation}`, { status: response.status, error: details });
-    throw new Error(`Failed to ${operation}: ${response.status} ${details}`);
+    throw new GitLabOAuthHttpError(
+      `Failed to ${operation}: ${response.status} ${details}`,
+      response.status,
+    );
   }
 }
 

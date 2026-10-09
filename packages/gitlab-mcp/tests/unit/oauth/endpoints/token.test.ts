@@ -32,6 +32,8 @@ jest.mock('../../../../src/oauth/token-utils', () => ({
 
 jest.mock('../../../../src/oauth/gitlab-device-flow', () => ({
   refreshGitLabToken: jest.fn(),
+  GitLabOAuthHttpError: jest.requireActual('../../../../src/oauth/gitlab-device-flow')
+    .GitLabOAuthHttpError,
 }));
 
 jest.mock('../../../../src/oauth/instance-app', () => ({
@@ -64,7 +66,7 @@ import {
   isTokenExpiringSoon,
   createJWT,
 } from '../../../../src/oauth/token-utils';
-import { refreshGitLabToken } from '../../../../src/oauth/gitlab-device-flow';
+import { refreshGitLabToken, GitLabOAuthHttpError } from '../../../../src/oauth/gitlab-device-flow';
 
 const mockLoadOAuthConfig = loadOAuthConfig as jest.MockedFunction<typeof loadOAuthConfig>;
 const mockSessionStore = sessionStore as jest.Mocked<typeof sessionStore>;
@@ -686,6 +688,95 @@ describe('OAuth Token Endpoint', () => {
       },
     );
 
+    describe('GitLab refresh failures', () => {
+      const expiringSession = {
+        id: 'session-123',
+        mcpAccessToken: 'old-access-token',
+        mcpRefreshToken: 'valid-refresh-token',
+        mcpTokenExpiry: Date.now() + 1000,
+        gitlabAccessToken: 'expiring-gitlab-token',
+        gitlabRefreshToken: 'gitlab-refresh',
+        gitlabTokenExpiry: Date.now() + 60000,
+        gitlabUserId: 12345,
+        gitlabUsername: 'testuser',
+        clientId: 'test-client',
+        scopes: ['mcp:tools', 'mcp:resources'],
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      const refreshRequest = () =>
+        createMockRequest({
+          grant_type: 'refresh_token',
+          refresh_token: 'valid-refresh-token',
+          client_id: 'test-client',
+        }) as Request;
+
+      beforeEach(() => {
+        mockSessionStore.getSessionByRefreshToken.mockResolvedValue(expiringSession);
+        // The stored session is unchanged: no other request refreshed it meanwhile.
+        mockSessionStore.getSession.mockResolvedValue(expiringSession);
+        mockIsTokenExpiringSoon.mockReturnValue(true);
+      });
+
+      // A GitLab outage must not spend the client's refresh token: rotating first and then
+      // failing left the client without the new token and with the old one already spent.
+      it('keeps the refresh token usable when GitLab is temporarily unavailable', async () => {
+        mockRefreshGitLabToken.mockRejectedValue(new Error('connect ETIMEDOUT'));
+        const res = createMockResponse() as Response;
+
+        await tokenHandler(refreshRequest(), res);
+
+        expect(mockSessionStore.rotateSession).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(503);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'temporarily_unavailable',
+          error_description: 'GitLab is temporarily unavailable; retry the refresh',
+        });
+      });
+
+      it('reports invalid_grant without rotating when GitLab rejects the grant', async () => {
+        mockRefreshGitLabToken.mockRejectedValue(
+          new GitLabOAuthHttpError('Failed to refresh token: 400 invalid_grant', 400),
+        );
+        const res = createMockResponse() as Response;
+
+        await tokenHandler(refreshRequest(), res);
+
+        expect(mockSessionStore.rotateSession).not.toHaveBeenCalled();
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'invalid_grant',
+          error_description: 'GitLab no longer accepts this account; sign in again',
+        });
+      });
+
+      it('rotates only after GitLab tokens are refreshed', async () => {
+        const order: string[] = [];
+        mockRefreshGitLabToken.mockImplementation(async () => {
+          order.push('gitlab');
+          return {
+            access_token: 'new-gitlab-token',
+            refresh_token: 'new-gitlab-refresh',
+            token_type: 'Bearer',
+            expires_in: 7200,
+            created_at: Date.now(),
+          };
+        });
+        mockSessionStore.rotateSession.mockImplementation(async () => {
+          order.push('rotate');
+          return true;
+        });
+        const res = createMockResponse() as Response;
+
+        await tokenHandler(refreshRequest(), res);
+
+        expect(order).toEqual(['gitlab', 'rotate']);
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({ refresh_token: 'mcp-refresh-token-abc' }),
+        );
+      });
+    });
+
     describe('refresh binding', () => {
       const session = {
         id: 'session-123',
@@ -818,11 +909,11 @@ describe('OAuth Token Endpoint', () => {
       expect(mockRefreshGitLabToken).not.toHaveBeenCalled();
       expect(res.json).toHaveBeenCalledWith({
         error: 'invalid_grant',
-        error_description: 'Failed to refresh underlying GitLab token',
+        error_description: 'GitLab no longer accepts this account; sign in again',
       });
     });
 
-    it('should return error when GitLab token refresh fails', async () => {
+    it('should return invalid_grant when GitLab rejects the refresh with 401', async () => {
       const existingSession = {
         id: 'session-123',
         mcpAccessToken: 'old-access-token',
@@ -841,7 +932,9 @@ describe('OAuth Token Endpoint', () => {
 
       mockSessionStore.getSessionByRefreshToken.mockResolvedValue(existingSession);
       mockIsTokenExpiringSoon.mockReturnValue(true);
-      mockRefreshGitLabToken.mockRejectedValue(new Error('GitLab refresh failed'));
+      mockRefreshGitLabToken.mockRejectedValue(
+        new GitLabOAuthHttpError('Failed to refresh token: 401 invalid_client', 401),
+      );
 
       const req = createMockRequest({
         grant_type: 'refresh_token',
@@ -855,7 +948,7 @@ describe('OAuth Token Endpoint', () => {
       expect(res.status).toHaveBeenCalledWith(400);
       expect(res.json).toHaveBeenCalledWith({
         error: 'invalid_grant',
-        error_description: 'Failed to refresh underlying GitLab token',
+        error_description: 'GitLab no longer accepts this account; sign in again',
       });
     });
 

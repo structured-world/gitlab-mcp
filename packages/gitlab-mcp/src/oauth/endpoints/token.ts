@@ -19,7 +19,7 @@ import {
   calculateTokenExpiry,
   generateUUID,
 } from '../token-utils';
-import { withFreshGitLabToken } from '../gitlab-token-refresh';
+import { withFreshGitLabToken, GitLabGrantRevokedError } from '../gitlab-token-refresh';
 import { defaultResource, matchProtectedResource } from '../resource';
 import { logInfo, logWarn, logError, truncateId } from '../../logger';
 import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from '../types';
@@ -235,13 +235,42 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
     return;
   }
 
-  // Generate new MCP tokens
-  const accessToken = mintAccessToken(config, session, audience, tokenScopes);
+  // GitLab first: until the rotation below commits, the client's refresh token stays
+  // valid, so a GitLab outage costs a retry rather than the account.
+  let updatedSession: OAuthSession | undefined;
+  try {
+    updatedSession = await withFreshGitLabToken(session, config);
+  } catch (error: unknown) {
+    logError('Failed to refresh GitLab token', { err: error as Error });
+    if (error instanceof GitLabGrantRevokedError) {
+      sendError(
+        req,
+        res,
+        400,
+        'invalid_grant',
+        'GitLab no longer accepts this account; sign in again',
+      );
+    } else {
+      sendError(
+        req,
+        res,
+        503,
+        'temporarily_unavailable',
+        'GitLab is temporarily unavailable; retry the refresh',
+      );
+    }
+    return;
+  }
+  if (!updatedSession) {
+    sendError(req, res, 400, 'invalid_grant', 'Session lost during refresh');
+    return;
+  }
 
+  const accessToken = mintAccessToken(config, updatedSession, audience, tokenScopes);
   const newRefreshToken = generateRefreshToken();
 
-  // Rotate first: the refresh token is spent exactly once, by the caller whose
-  // compare-and-set wins on any replica (OAuth 2.1 section 4.3.1 rotation).
+  // The refresh token is spent exactly once, by the caller whose compare-and-set wins on
+  // any replica (OAuth 2.1 section 4.3.1 rotation).
   const rotated = await sessionStore.rotateSession(session.id, refresh_token, {
     mcpAccessToken: accessToken,
     mcpRefreshToken: newRefreshToken,
@@ -250,20 +279,6 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
   });
   if (!rotated) {
     sendError(req, res, 400, 'invalid_grant', 'Invalid refresh token');
-    return;
-  }
-
-  // Refresh GitLab token if it's expiring soon (5 minute buffer)
-  let updatedSession: OAuthSession | undefined;
-  try {
-    updatedSession = await withFreshGitLabToken(session, config);
-  } catch (error: unknown) {
-    logError('Failed to refresh GitLab token', { err: error as Error });
-    sendError(req, res, 400, 'invalid_grant', 'Failed to refresh underlying GitLab token');
-    return;
-  }
-  if (!updatedSession) {
-    sendError(req, res, 400, 'invalid_grant', 'Session lost during refresh');
     return;
   }
 

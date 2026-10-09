@@ -34,6 +34,8 @@ jest.mock('../../../src/oauth/token-utils', () => ({
 
 jest.mock('../../../src/oauth/gitlab-device-flow', () => ({
   refreshGitLabToken: mockRefreshGitLabToken,
+  GitLabOAuthHttpError: jest.requireActual('../../../src/oauth/gitlab-device-flow')
+    .GitLabOAuthHttpError,
 }));
 
 const sessionApp = {
@@ -452,9 +454,14 @@ describe('OAuth Authentication Middleware', () => {
         },
       );
 
-      it('should return 401 when GitLab token refresh fails', async () => {
+      it('should return 401 when GitLab rejects the refresh', async () => {
         mockIsTokenExpiringSoon.mockReturnValue(true);
-        mockRefreshGitLabToken.mockRejectedValue(new Error('Refresh failed'));
+        const { GitLabOAuthHttpError } = jest.requireActual<
+          typeof import('../../../src/oauth/gitlab-device-flow')
+        >('../../../src/oauth/gitlab-device-flow');
+        mockRefreshGitLabToken.mockRejectedValue(
+          new GitLabOAuthHttpError('Failed to refresh token: 400 invalid_grant', 400),
+        );
 
         const req = createMockReq({
           headers: { authorization: 'Bearer valid-mcp-token' },
@@ -467,6 +474,27 @@ describe('OAuth Authentication Middleware', () => {
         expect(res.json).toHaveBeenCalledWith({
           error: 'invalid_token',
           error_description: 'GitLab token refresh failed. Please re-authenticate.',
+        });
+        expect(mockNext).not.toHaveBeenCalled();
+      });
+
+      // A GitLab outage is not a bad token: answering 401 sent clients into a needless
+      // reconnect of an account that still works.
+      it('should return 503 when GitLab is temporarily unavailable', async () => {
+        mockIsTokenExpiringSoon.mockReturnValue(true);
+        mockRefreshGitLabToken.mockRejectedValue(new Error('connect ETIMEDOUT'));
+
+        const req = createMockReq({
+          headers: { authorization: 'Bearer valid-mcp-token' },
+        });
+        const res = createMockRes();
+
+        await oauthAuthMiddleware(req, res, mockNext);
+
+        expect(res.status).toHaveBeenCalledWith(503);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'temporarily_unavailable',
+          error_description: 'GitLab is temporarily unavailable',
         });
         expect(mockNext).not.toHaveBeenCalled();
       });

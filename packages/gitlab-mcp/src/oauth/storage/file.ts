@@ -392,6 +392,21 @@ export class FileStorageBackend implements SessionStorageBackend {
     return claimed;
   }
 
+  // GitLab refresh leases only coordinate requests of this process (the file backend has
+  // one writer) and are not persisted.
+  async claimGitLabRefresh(
+    sessionId: string,
+    expectedRefreshToken: string,
+    now: number,
+    leaseUntil: number,
+  ): Promise<boolean> {
+    return this.memory.claimGitLabRefresh(sessionId, expectedRefreshToken, now, leaseUntil);
+  }
+
+  async releaseGitLabRefresh(sessionId: string): Promise<void> {
+    await this.memory.releaseGitLabRefresh(sessionId);
+  }
+
   async rotateSession(
     sessionId: string,
     expectedRefreshToken: string,

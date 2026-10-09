@@ -18,6 +18,8 @@ jest.mock('../../../../src/oauth/session-store', () => ({
     updateSession: jest.fn(),
     rotateSession: jest.fn(),
     getSessionByRefreshToken: jest.fn(),
+    claimGitLabRefresh: jest.fn(),
+    releaseGitLabRefresh: jest.fn(),
   },
 }));
 
@@ -123,6 +125,8 @@ describe('OAuth Token Endpoint', () => {
     // Storage writes succeed and this caller wins every compare-and-set by default.
     mockSessionStore.updateSession.mockResolvedValue(true);
     mockSessionStore.rotateSession.mockResolvedValue(true);
+    mockSessionStore.claimGitLabRefresh.mockResolvedValue(true);
+    mockSessionStore.releaseGitLabRefresh.mockResolvedValue(undefined);
     mockOauthAppFor.mockResolvedValue(sessionApp);
   });
 

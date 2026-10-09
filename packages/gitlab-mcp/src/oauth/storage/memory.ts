@@ -31,6 +31,8 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   private refreshTokenToSession = new Map<string, string>();
   private mcpSessionToOAuthSession = new Map<string, string>();
   private clients = new Map<string, RegisteredOAuthClient>();
+  /** Session id -> end of its GitLab refresh lease (transient, not exported). */
+  private gitlabRefreshLeases = new Map<string, number>();
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
   private silent: boolean;
 
@@ -105,6 +107,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     }
 
     this.sessions.delete(sessionId);
+    this.gitlabRefreshLeases.delete(sessionId);
     logDebug('Session deleted', { sessionId });
     return true;
   }
@@ -230,6 +233,23 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     const claimed = { ...flow, nextPollAt };
     this.deviceFlows.set(state, claimed);
     return claimed;
+  }
+
+  async claimGitLabRefresh(
+    sessionId: string,
+    expectedRefreshToken: string,
+    now: number,
+    leaseUntil: number,
+  ): Promise<boolean> {
+    if (this.sessions.get(sessionId)?.gitlabRefreshToken !== expectedRefreshToken) return false;
+    const held = this.gitlabRefreshLeases.get(sessionId);
+    if (held !== undefined && held > now) return false;
+    this.gitlabRefreshLeases.set(sessionId, leaseUntil);
+    return true;
+  }
+
+  async releaseGitLabRefresh(sessionId: string): Promise<void> {
+    this.gitlabRefreshLeases.delete(sessionId);
   }
 
   async rotateSession(

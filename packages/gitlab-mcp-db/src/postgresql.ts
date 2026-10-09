@@ -164,6 +164,7 @@ interface GenericPrismaClient {
     upsert(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
     findFirst(args: unknown): Promise<unknown>;
+    updateMany(args: unknown): Promise<unknown>;
     delete(args: unknown): Promise<unknown>;
     deleteMany(args: unknown): Promise<unknown>;
     count(): Promise<number>;
@@ -186,6 +187,7 @@ interface GenericPrismaClient {
     upsert(args: unknown): Promise<unknown>;
     findUnique(args: unknown): Promise<unknown>;
     delete(args: unknown): Promise<unknown>;
+    deleteMany(args: unknown): Promise<unknown>;
     count(): Promise<number>;
   };
 }
@@ -638,6 +640,33 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       where: { state },
     })) as PrismaBatchPayload;
     return removed.count === 1 ? this.rowToDeviceFlow(row) : undefined;
+  }
+
+  async claimGitLabRefresh(
+    sessionId: string,
+    expectedRefreshToken: string,
+    now: number,
+    leaseUntil: number,
+  ): Promise<boolean> {
+    const prisma = this.getPrisma();
+    // One statement: the row still holds the presented refresh token and no unexpired lease.
+    const claimed = (await prisma.oAuthSession.updateMany({
+      where: {
+        id: sessionId,
+        gitlabRefreshToken: expectedRefreshToken,
+        OR: [{ gitlabRefreshLeaseUntil: null }, { gitlabRefreshLeaseUntil: { lte: BigInt(now) } }],
+      },
+      data: { gitlabRefreshLeaseUntil: BigInt(leaseUntil) },
+    })) as PrismaBatchPayload;
+    return claimed.count === 1;
+  }
+
+  async releaseGitLabRefresh(sessionId: string): Promise<void> {
+    const prisma = this.getPrisma();
+    await prisma.oAuthSession.updateMany({
+      where: { id: sessionId },
+      data: { gitlabRefreshLeaseUntil: null },
+    });
   }
 
   async claimDevicePoll(

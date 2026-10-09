@@ -16,6 +16,9 @@ const mockGetBaseUrl = jest.fn();
 const mockSessionStore = {
   getSession: jest.fn(),
   updateSession: jest.fn(),
+  // This replica holds the GitLab refresh lease.
+  claimGitLabRefresh: jest.fn().mockResolvedValue(true),
+  releaseGitLabRefresh: jest.fn().mockResolvedValue(undefined),
 };
 
 jest.mock('../../../src/oauth/config', () => ({

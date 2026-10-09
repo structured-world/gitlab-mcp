@@ -3,8 +3,9 @@
  *
  * GitLab rotates refresh tokens: a refresh token works once. Concurrent requests of one
  * account (parallel tool calls, several replicas) must therefore not each spend it. In this
- * process concurrent refreshes of a session share one GitLab call; across replicas the
- * loser of the race finds the tokens the winner stored instead of failing.
+ * process concurrent refreshes of a session share one GitLab call; across replicas only the
+ * holder of the storage lease spends the token, and the others wait for the tokens it
+ * stores.
  */
 
 import type { OAuthConfig } from './config';
@@ -13,7 +14,12 @@ import { refreshGitLabToken, GitLabOAuthHttpError } from './gitlab-device-flow';
 import { oauthAppFor } from './instance-app';
 import { calculateTokenExpiry, isTokenExpiringSoon } from './token-utils';
 import type { OAuthSession } from './types';
-import { logDebug, truncateId } from '../logger';
+import { logDebug, logWarn, truncateId } from '../logger';
+
+/** How long a replica may hold the refresh token while it calls GitLab. */
+const REFRESH_LEASE_MS = 30_000;
+/** How often a replica waiting for another replica's refresh re-reads the session. */
+const LEASE_POLL_MS = 200;
 
 /**
  * The account cannot be refreshed any more: GitLab refused the grant (RFC 6749 section 5.2
@@ -34,17 +40,44 @@ function isGrantRejection(error: unknown): boolean {
 // Coalesces concurrent refreshes in this process; the backend stays the source of truth.
 const inflight = new Map<string, Promise<OAuthSession | undefined>>();
 
-async function refreshSession(
+function releaseLease(sessionId: string): Promise<void> {
+  // A lease that cannot be released expires on its own.
+  return sessionStore.releaseGitLabRefresh(sessionId).catch((error: unknown) => {
+    logWarn('Failed to release GitLab refresh lease', { err: error as Error });
+  });
+}
+
+/** Spend the leased refresh token at GitLab and store the new tokens. */
+async function refreshHoldingLease(
   session: OAuthSession,
+  spentToken: string,
   config: OAuthConfig,
 ): Promise<OAuthSession | undefined> {
+  let tokens;
   try {
     // Refresh with the application of the session's instance, never another one.
     const app = await oauthAppFor(config, session.gitlabApiUrl);
     if (!app) {
       throw new GitLabGrantRevokedError('GitLab instance is no longer configured');
     }
-    const tokens = await refreshGitLabToken(session.gitlabRefreshToken, config, app);
+    tokens = await refreshGitLabToken(spentToken, config, app);
+  } catch (error) {
+    await releaseLease(session.id);
+    // A server that predates the lease may have spent the token and stored the result.
+    const current = await sessionStore.getSession(session.id);
+    if (
+      current &&
+      current.gitlabRefreshToken !== spentToken &&
+      !isTokenExpiringSoon(current.gitlabTokenExpiry)
+    ) {
+      return current;
+    }
+    if (isGrantRejection(error)) {
+      throw new GitLabGrantRevokedError('GitLab refused the refresh token', { cause: error });
+    }
+    throw error;
+  }
+  try {
     await sessionStore.updateSession(session.id, {
       gitlabAccessToken: tokens.access_token,
       gitlabRefreshToken: tokens.refresh_token,
@@ -55,23 +88,37 @@ async function refreshSession(
         gitlabScopes: tokens.scope.split(/\s+/).filter(Boolean),
       }),
     });
-    logDebug('GitLab token refreshed', { sessionId: truncateId(session.id) });
-  } catch (error) {
-    // Another replica may have spent this refresh token first and stored the result.
-    const current = await sessionStore.getSession(session.id);
-    if (
-      current &&
-      current.gitlabRefreshToken !== session.gitlabRefreshToken &&
-      !isTokenExpiringSoon(current.gitlabTokenExpiry)
-    ) {
-      return current;
-    }
-    if (isGrantRejection(error)) {
-      throw new GitLabGrantRevokedError('GitLab refused the refresh token', { cause: error });
-    }
-    throw error;
+  } finally {
+    await releaseLease(session.id);
   }
+  logDebug('GitLab token refreshed', { sessionId: truncateId(session.id) });
   return sessionStore.getSession(session.id);
+}
+
+async function refreshSession(
+  session: OAuthSession,
+  config: OAuthConfig,
+): Promise<OAuthSession | undefined> {
+  // Read once: the stored session may change under us while we wait.
+  const spentToken = session.gitlabRefreshToken;
+  // A lease held elsewhere ends by REFRESH_LEASE_MS at the latest, then this caller claims it.
+  const deadline = Date.now() + REFRESH_LEASE_MS + 2 * LEASE_POLL_MS;
+  for (;;) {
+    const now = Date.now();
+    if (
+      await sessionStore.claimGitLabRefresh(session.id, spentToken, now, now + REFRESH_LEASE_MS)
+    ) {
+      return refreshHoldingLease(session, spentToken, config);
+    }
+    // Another replica holds the lease or already refreshed: use the tokens it stores.
+    const current = await sessionStore.getSession(session.id);
+    if (!current) return undefined;
+    if (current.gitlabRefreshToken !== spentToken) return current;
+    if (Date.now() >= deadline) {
+      throw new Error('GitLab token refresh on another replica did not finish');
+    }
+    await new Promise((resolve) => setTimeout(resolve, LEASE_POLL_MS));
+  }
 }
 
 /**

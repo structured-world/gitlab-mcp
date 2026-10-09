@@ -79,6 +79,22 @@ export interface SessionStorageBackend {
   ): Promise<DeviceFlowState | undefined>;
 
   /**
+   * Lease the session's GitLab refresh token for a refresh: succeeds only while the session
+   * still holds `expectedRefreshToken` and no other unexpired lease exists, and then holds
+   * the lease until `leaseUntil`. GitLab refresh tokens work once, so of concurrent
+   * refreshes on any replica only the lease holder may spend the token.
+   */
+  claimGitLabRefresh(
+    sessionId: string,
+    expectedRefreshToken: string,
+    now: number,
+    leaseUntil: number,
+  ): Promise<boolean>;
+
+  /** End the session's GitLab refresh lease (after the refresh finished or failed). */
+  releaseGitLabRefresh(sessionId: string): Promise<void>;
+
+  /**
    * Apply `updates` only while the session still holds `expectedRefreshToken`
    * (compare-and-set), so of concurrent refreshes exactly one rotates the tokens.
    */

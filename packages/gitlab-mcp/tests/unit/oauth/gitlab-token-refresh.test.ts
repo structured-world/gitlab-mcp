@@ -14,7 +14,12 @@ import type { OAuthConfig } from '../../../src/oauth/config';
 import type { OAuthSession } from '../../../src/oauth/types';
 
 jest.mock('../../../src/oauth/session-store', () => ({
-  sessionStore: { updateSession: jest.fn(), getSession: jest.fn() },
+  sessionStore: {
+    updateSession: jest.fn(),
+    getSession: jest.fn(),
+    claimGitLabRefresh: jest.fn(),
+    releaseGitLabRefresh: jest.fn(),
+  },
 }));
 jest.mock('../../../src/oauth/gitlab-device-flow', () => ({
   refreshGitLabToken: jest.fn(),
@@ -68,6 +73,37 @@ describe('withFreshGitLabToken', () => {
     mockAppFor.mockResolvedValue(app);
     mockStore.updateSession.mockResolvedValue(true);
     mockStore.getSession.mockResolvedValue(refreshed);
+    // This replica holds the refresh lease unless a test says otherwise.
+    mockStore.claimGitLabRefresh.mockResolvedValue(true);
+    mockStore.releaseGitLabRefresh.mockResolvedValue(undefined);
+  });
+
+  // Another replica is spending the single-use refresh token: this one must not spend it
+  // too, and uses the tokens that replica stores.
+  it('waits for the replica holding the refresh lease instead of spending the token', async () => {
+    mockStore.claimGitLabRefresh.mockResolvedValue(false);
+    mockStore.getSession.mockResolvedValueOnce(expiring).mockResolvedValue(refreshed);
+
+    const result = await withFreshGitLabToken(expiring, config);
+
+    expect(mockRefresh).not.toHaveBeenCalled();
+    expect(result?.gitlabAccessToken).toBe('gl-new');
+  });
+
+  it('claims the lease for the presented refresh token and releases it afterwards', async () => {
+    mockRefresh.mockResolvedValue(tokens);
+
+    await withFreshGitLabToken(expiring, config);
+
+    expect(mockStore.claimGitLabRefresh).toHaveBeenCalledWith(
+      'session-1',
+      'gl-refresh-old',
+      expect.any(Number),
+      expect.any(Number),
+    );
+    const [, , now, leaseUntil] = mockStore.claimGitLabRefresh.mock.calls[0];
+    expect(leaseUntil).toBeGreaterThan(now);
+    expect(mockStore.releaseGitLabRefresh).toHaveBeenCalledWith('session-1');
   });
 
   it('returns a session whose token is not expiring without calling GitLab', async () => {

@@ -572,6 +572,34 @@ describe('PostgreSQLStorageBackend', () => {
       (backend as any).prisma = mockPrisma;
     });
 
+    // Only the lease holder spends the single-use GitLab refresh token: the lease is a
+    // conditional update on the presented token and an expired or absent lease.
+    it('leases the GitLab refresh token with a conditional update', async () => {
+      mockPrisma.oAuthSession.updateMany.mockResolvedValueOnce({ count: 1 });
+
+      expect(await backend.claimGitLabRefresh('session-1', 'gl-refresh', 10000, 40000)).toBe(true);
+      expect(mockPrisma.oAuthSession.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'session-1',
+          gitlabRefreshToken: 'gl-refresh',
+          OR: [
+            { gitlabRefreshLeaseUntil: null },
+            { gitlabRefreshLeaseUntil: { lte: BigInt(10000) } },
+          ],
+        },
+        data: { gitlabRefreshLeaseUntil: BigInt(40000) },
+      });
+
+      mockPrisma.oAuthSession.updateMany.mockResolvedValueOnce({ count: 0 });
+      expect(await backend.claimGitLabRefresh('session-1', 'gl-refresh', 10000, 40000)).toBe(false);
+
+      await backend.releaseGitLabRefresh('session-1');
+      expect(mockPrisma.oAuthSession.updateMany).toHaveBeenLastCalledWith({
+        where: { id: 'session-1' },
+        data: { gitlabRefreshLeaseUntil: null },
+      });
+    });
+
     // One replica per interval may poll GitLab: the reservation is a conditional update
     // whose row count picks the winner.
     it('reserves a device flow poll with a conditional update', async () => {

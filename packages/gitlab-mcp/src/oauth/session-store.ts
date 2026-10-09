@@ -114,6 +114,24 @@ export class SessionStore {
   }
 
   /**
+   * Lease the session's single-use GitLab refresh token until `leaseUntil`; false while
+   * another replica holds an unexpired lease or the token already changed.
+   */
+  async claimGitLabRefresh(
+    sessionId: string,
+    expectedRefreshToken: string,
+    now: number,
+    leaseUntil: number,
+  ): Promise<boolean> {
+    return this.backend.claimGitLabRefresh(sessionId, expectedRefreshToken, now, leaseUntil);
+  }
+
+  /** End the session's GitLab refresh lease. */
+  async releaseGitLabRefresh(sessionId: string): Promise<void> {
+    await this.backend.releaseGitLabRefresh(sessionId);
+  }
+
+  /**
    * Delete a session
    */
   async deleteSession(sessionId: string): Promise<boolean> {

@@ -310,6 +310,29 @@ describe('MemoryStorageBackend', () => {
     });
   });
 
+  // GitLab refresh tokens work once: only the lease holder may spend one.
+  describe('claimGitLabRefresh', () => {
+    it('grants one lease per refresh token until it expires or is released', async () => {
+      const session = createTestSession({ gitlabRefreshToken: 'grt' });
+      await storage.createSession(session);
+
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 1000, 31000)).toBe(true);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 2000, 32000)).toBe(false);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 31000, 61000)).toBe(true);
+
+      await storage.releaseGitLabRefresh(session.id);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 31001, 61001)).toBe(true);
+    });
+
+    it('refuses a token the session no longer holds and a missing session', async () => {
+      const session = createTestSession({ gitlabRefreshToken: 'grt' });
+      await storage.createSession(session);
+
+      expect(await storage.claimGitLabRefresh(session.id, 'spent', 1, 2)).toBe(false);
+      expect(await storage.claimGitLabRefresh('missing', 'grt', 1, 2)).toBe(false);
+    });
+  });
+
   describe('Device Flow Operations', () => {
     // One poller per interval reaches GitLab: the reservation moves nextPollAt forward only
     // when the current interval has elapsed.

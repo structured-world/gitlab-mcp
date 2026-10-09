@@ -371,6 +371,27 @@ describe('OAuth handshake over HTTP', () => {
     await failing.close();
   });
 
+  // GitLab refresh tokens work once: replicas serving one account at the same time spent
+  // the same token, and a loser that read storage before the winner wrote answered 401.
+  it('refreshes GitLab tokens once when replicas need them at the same time', async () => {
+    const [a, b] = [await replica(), await replica()];
+    const { tokens } = await connect(a);
+    const sessionId = (
+      (await (await callMcp(a, tokens.access_token)).json()) as { oauthSessionId: string }
+    ).oauthSessionId;
+    await backend.updateSession(sessionId, { gitlabTokenExpiry: Date.now() - 1000 });
+    const refreshes = () =>
+      gitlab.requests.filter((r) => r.params.grant_type === 'refresh_token').length;
+
+    const responses = await Promise.all([
+      callMcp(a, tokens.access_token),
+      callMcp(b, tokens.access_token),
+    ]);
+
+    expect(responses.map((response) => response.status)).toEqual([200, 200]);
+    expect(refreshes()).toBe(1);
+  });
+
   it('asks the client to reconnect when GitLab revoked the grant', async () => {
     const mcp = await replica();
     const { tokens } = await connect(mcp);

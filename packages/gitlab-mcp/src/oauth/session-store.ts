@@ -383,7 +383,7 @@ export class SessionStore {
    */
   clear(): void {
     if (!(this.backend instanceof MemoryStorageBackend)) {
-      throw new Error('clear() is only supported for in-memory storage');
+      throw new TypeError('clear() is only supported for in-memory storage');
     }
     this.backend.importData({});
     logDebug('Session store cleared');

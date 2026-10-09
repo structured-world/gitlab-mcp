@@ -129,7 +129,7 @@ export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<Se
       databaseUrl = dbUrl;
     }
 
-    const issuer = await promptOAuthIssuer(parseInt(port, 10));
+    const issuer = await promptOAuthIssuer(Number.parseInt(port, 10));
     if (p.isCancel(issuer)) {
       return { success: false, mode: 'server', error: 'Cancelled' };
     }

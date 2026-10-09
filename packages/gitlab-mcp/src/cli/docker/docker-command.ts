@@ -183,7 +183,7 @@ export async function initDocker(): Promise<void> {
       'OAuth Mode',
     );
 
-    const issuer = await promptOAuthIssuer(parseInt(port, 10));
+    const issuer = await promptOAuthIssuer(Number.parseInt(port, 10));
     if (p.isCancel(issuer)) {
       p.cancel('Setup cancelled');
       return;

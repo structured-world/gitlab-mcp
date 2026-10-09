@@ -588,7 +588,8 @@ export function saveEnvFile(config: DockerConfig): void {
 
   if (config.oauthEnabled) {
     // The public URL chosen during setup; without one, local access on the published port.
-    lines.push(`OAUTH_ISSUER=${config.oauthIssuer ?? `http://localhost:${config.port}`}`);
+    const issuer = config.oauthIssuer ?? `http://localhost:${config.port}`;
+    lines.push(`OAUTH_ISSUER=${issuer}`);
   }
 
   if (config.deploymentType === 'compose-bundle' && config.oauthEnabled) {

@@ -115,7 +115,7 @@ export async function initiateDeviceFlow(
   logDebug('Initiating GitLab device flow', { url, clientId: app.clientId });
 
   // Convert comma-separated scopes to space-separated (GitLab requirement)
-  const scopes = app.scopes.replace(/,/g, ' ');
+  const scopes = app.scopes.replaceAll(',', ' ');
 
   const response = await enhancedFetch(url, {
     method: 'POST',
@@ -491,7 +491,7 @@ export function buildGitLabAuthUrl(
   app: GitLabOAuthApp = defaultOAuthApp(config),
 ): string {
   // Convert comma-separated scopes to space-separated (GitLab requirement)
-  const scopes = app.scopes.replace(/,/g, ' ');
+  const scopes = app.scopes.replaceAll(',', ' ');
 
   const params = new URLSearchParams({
     client_id: app.clientId,

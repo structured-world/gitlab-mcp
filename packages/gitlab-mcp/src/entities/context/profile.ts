@@ -7,7 +7,7 @@
  * returned only when GitLab provides them.
  */
 
-import { createHash } from 'crypto';
+import { createHash } from 'node:crypto';
 import { GITLAB_BASE_URL } from '../../config';
 import { logDebug } from '../../logger';
 import { getGitLabApiUrlFromContext, getTokenContext } from '../../oauth/token-context';
@@ -26,7 +26,7 @@ export interface AccountProfile {
 export const ACCOUNT_PROFILE_OUTPUT_SCHEMA = {
   type: 'object' as const,
   properties: {
-    id: { type: 'string', minLength: 1, pattern: '\\S' },
+    id: { type: 'string', minLength: 1, pattern: String.raw`\S` },
     name: { type: 'string' },
     email: { type: 'string' },
     nickname: { type: 'string' },

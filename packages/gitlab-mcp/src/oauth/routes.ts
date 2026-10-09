@@ -16,6 +16,12 @@ import {
   registerHandler,
   revokeHandler,
 } from './index';
+import { loadOAuthConfig } from './config';
+import {
+  authorizationServerMetadataUrl,
+  protectedResources,
+  resourceMetadataUrl,
+} from './resource';
 import { logInfo } from '../logger';
 
 /**
@@ -43,6 +49,17 @@ export function registerOAuthEndpoints(app: Express): void {
   app.get('/.well-known/oauth-protected-resource', protectedResourceHandler);
   // Metadata of the /mcp endpoint (RFC 9728 section 3.1 path-inserted form)
   app.get('/.well-known/oauth-protected-resource/mcp', protectedResourceHandler);
+
+  // An issuer with a path (a proxy serving this server under a prefix and stripping it)
+  // has its metadata at path-inserted URLs on the origin (RFC 8414 section 3.1, RFC 9728
+  // section 3.1); the forms above cover the root issuer.
+  const issuer = loadOAuthConfig()?.issuer;
+  if (issuer && new URL(issuer).pathname !== '/') {
+    app.get(new URL(authorizationServerMetadataUrl(issuer)).pathname, metadataHandler);
+    for (const resource of protectedResources(issuer)) {
+      app.get(new URL(resourceMetadataUrl(resource)).pathname, protectedResourceHandler);
+    }
+  }
 
   // Authorization endpoint - supports both flows:
   // - Device Flow (no redirect_uri) - returns HTML page

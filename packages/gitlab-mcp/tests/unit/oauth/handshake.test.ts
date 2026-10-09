@@ -197,6 +197,38 @@ describe('OAuth handshake over HTTP', () => {
     });
   });
 
+  // An issuer with a path (served behind a proxy that strips the prefix) advertised
+  // path-inserted metadata URLs that no route served, so discovery ended in 404.
+  it('serves discovery documents at the metadata URLs of an issuer with a path', async () => {
+    const pathIssuer = `${ISSUER}/gitlab`;
+    oauthEnv(gitlab.url, { OAUTH_ISSUER: pathIssuer });
+    const mcp = await replica();
+
+    const challenge = await fetch(`${mcp.url}/mcp`);
+    const metadataUrl = `${ISSUER}/.well-known/oauth-protected-resource/gitlab/mcp`;
+    expect(challenge.headers.get('www-authenticate')).toContain(
+      `resource_metadata="${metadataUrl}"`,
+    );
+
+    const mcpPrm = await fetch(`${mcp.url}/.well-known/oauth-protected-resource/gitlab/mcp`);
+    expect(mcpPrm.status).toBe(200);
+    expect(await mcpPrm.json()).toMatchObject({
+      resource: `${pathIssuer}/mcp`,
+      authorization_servers: [pathIssuer],
+    });
+    const rootPrm = await fetch(`${mcp.url}/.well-known/oauth-protected-resource/gitlab`);
+    expect(rootPrm.status).toBe(200);
+    expect(await rootPrm.json()).toMatchObject({ resource: pathIssuer });
+
+    // RFC 8414 section 3.1: the authorization server metadata of a path issuer
+    const asm = await fetch(`${mcp.url}/.well-known/oauth-authorization-server/gitlab`);
+    expect(asm.status).toBe(200);
+    expect(await asm.json()).toMatchObject({
+      issuer: pathIssuer,
+      token_endpoint: `${pathIssuer}/token`,
+    });
+  });
+
   // Tool dispatch checks the token's MCP scopes, so the request must carry them.
   it('passes the scopes of the presented token to the request', async () => {
     const mcp = await replica();

@@ -52,9 +52,26 @@ export function resourceForPath(issuer: string, requestPath: string): string {
   return requestPath === '/mcp' || requestPath.startsWith('/mcp/') ? mcp : root;
 }
 
+/** `wellKnown` inserted between the origin and the path of `identifier`. */
+function insertWellKnown(identifier: string, wellKnown: string): string {
+  const url = new URL(identifier);
+  const path = url.pathname === '/' ? '' : url.pathname;
+  return `${url.origin}/.well-known/${wellKnown}${path}`;
+}
+
 /** Metadata URL of a resource: RFC 9728 section 3.1 puts the well-known segment before the path. */
 export function resourceMetadataUrl(resource: string): string {
-  const url = new URL(resource);
-  const path = url.pathname === '/' ? '' : url.pathname;
-  return `${url.origin}/.well-known/oauth-protected-resource${path}`;
+  return insertWellKnown(resource, 'oauth-protected-resource');
+}
+
+/** Metadata URL of an issuer, built the same way (RFC 8414 section 3.1). */
+export function authorizationServerMetadataUrl(issuer: string): string {
+  return insertWellKnown(issuer, 'oauth-authorization-server');
+}
+
+/** Resource whose metadata document is served at `requestPath`, if any. */
+export function resourceForMetadataPath(issuer: string, requestPath: string): string | undefined {
+  return protectedResources(issuer).find(
+    (resource) => new URL(resourceMetadataUrl(resource)).pathname === requestPath,
+  );
 }

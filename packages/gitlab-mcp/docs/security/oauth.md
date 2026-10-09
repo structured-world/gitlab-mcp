@@ -46,6 +46,12 @@ The redirect URI is used by Claude.ai Custom Connectors (Authorization Code Flow
 `OAUTH_ISSUER` is the public URL clients connect to (for example `https://your-mcp-server.com`).
 It is the issuer of every token and the base of the redirect URI above
 (`<OAUTH_ISSUER>/oauth/callback`). It is configuration, not derived from request headers.
+
+The issuer may include a path when a reverse proxy serves the server under a prefix
+(for example `https://example.com/gitlab`) and strips that prefix before forwarding.
+Discovery documents of such an issuer live on the origin with the path after the
+well-known segment (`/.well-known/oauth-authorization-server/gitlab`,
+`/.well-known/oauth-protected-resource/gitlab/mcp`); route these URLs to the server too.
 :::
 
 ### Step 2: Configure Server

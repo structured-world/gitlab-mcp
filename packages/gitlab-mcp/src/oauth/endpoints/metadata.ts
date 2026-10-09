@@ -10,7 +10,7 @@
 import { Request, Response } from 'express';
 import { HOST, PORT } from '../../config';
 import { loadOAuthConfig } from '../config';
-import { MCP_SCOPES, protectedResources } from '../resource';
+import { MCP_SCOPES, protectedResources, resourceForMetadataPath } from '../resource';
 
 /**
  * MCP Protocol version supported by this server
@@ -124,7 +124,8 @@ export function protectedResourceHandler(req: Request, res: Response): void {
   const metadata = {
     // REQUIRED: Resource identifier; RFC 9728 section 3.3 requires it to equal the
     // identifier the client derived this document's URL from.
-    resource: req.path.endsWith('/mcp') ? mcp : root,
+    resource:
+      resourceForMetadataPath(config.issuer, req.path) ?? (req.path.endsWith('/mcp') ? mcp : root),
 
     // REQUIRED: Authorization servers that can be used to access this resource
     authorization_servers: [config.issuer],

@@ -35,6 +35,12 @@ jest.mock('../../../src/logger', () => ({
   truncateId: (id: string) => (id.length <= 10 ? id : id.substring(0, 4) + '..' + id.slice(-4)),
 }));
 
+// MCP sessions this process holds; a header naming another id is not a session.
+const knownSessions = new Set(['mcp-session-456']);
+jest.mock('../../../src/session-manager', () => ({
+  getSessionManager: () => ({ hasSession: (id: string) => knownSessions.has(id) }),
+}));
+
 // Helper to create mock request
 function createMockReq(overrides: Record<string, unknown> = {}): Request {
   return {
@@ -101,6 +107,22 @@ describe('Rate Limiter Middleware', () => {
 
       expect(mockNext).toHaveBeenCalled();
       expect(mockRes.status).not.toHaveBeenCalled();
+    });
+
+    // Any client can send an Mcp-Session-Id header; one that names no session of this
+    // process must not lift the per-IP limit (it would make /register unlimited).
+    it('limits a request whose Mcp-Session-Id names no session by IP', () => {
+      const middleware = rateLimiterMiddleware();
+      const mockReq = createMockReq({
+        ip: '10.9.9.9',
+        headers: { 'mcp-session-id': 'made-up' },
+      });
+      const mockRes = createMockRes();
+
+      middleware(mockReq, mockRes, mockNext);
+
+      expect(mockRes.set).toHaveBeenCalledWith('X-RateLimit-Limit', '100');
+      expect(getRateLimitStats().entries.map((e) => e.key)).toContain('ip:10.9.9.9');
     });
 
     it('should apply IP-based rate limiting for anonymous requests', () => {

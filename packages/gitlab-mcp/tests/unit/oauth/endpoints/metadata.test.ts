@@ -187,6 +187,13 @@ describe('OAuth Metadata Endpoint', () => {
       expect(metadata.scopes_supported).toEqual(['mcp:tools', 'mcp:resources']);
     });
 
+    it('should advertise iss in authorization responses (RFC 9207 section 3)', () => {
+      const res = createMockResponse() as Response;
+      metadataHandler(createMockRequest() as Request, res);
+      const metadata = (res.json as jest.Mock).mock.calls[0][0];
+      expect(metadata.authorization_response_iss_parameter_supported).toBe(true);
+    });
+
     it('should include MCP version', () => {
       const req = createMockRequest() as Request;
       const res = createMockResponse() as Response;

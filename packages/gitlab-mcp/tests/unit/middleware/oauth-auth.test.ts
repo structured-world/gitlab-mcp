@@ -96,9 +96,9 @@ describe('OAuth Authentication Middleware', () => {
   const mockPayload = {
     iss: 'https://mcp.example.com',
     sub: '12345',
-    aud: 'test-client-id',
+    aud: 'https://mcp.example.com/mcp',
     sid: 'session-123',
-    scope: 'api read_user',
+    scope: 'mcp:tools mcp:resources',
     gitlab_user: 'testuser',
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
@@ -115,7 +115,7 @@ describe('OAuth Authentication Middleware', () => {
     gitlabUserId: 12345,
     gitlabUsername: 'testuser',
     clientId: 'test-client-id',
-    scopes: ['api', 'read_user'],
+    scopes: ['mcp:tools', 'mcp:resources'],
     gitlabScopes: ['read_api'],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -251,6 +251,67 @@ describe('OAuth Authentication Middleware', () => {
         });
         expect(mockNext).not.toHaveBeenCalled();
       });
+
+      // A signed token minted for another issuer or resource must not reach GitLab work.
+      it.each([
+        ['another issuer', { iss: 'https://other.example.com' }],
+        ['another resource', { aud: 'https://other.example.com/mcp' }],
+        ['the client id as audience', { aud: 'test-client-id' }],
+      ])('should return 401 for a token issued for %s', async (_case, claims) => {
+        mockVerifyMCPToken.mockReturnValue({ ...mockPayload, ...claims });
+        const res = createMockRes();
+
+        await oauthAuthMiddleware(
+          createMockReq({ headers: { authorization: 'Bearer valid-mcp-token' } }),
+          res,
+          mockNext,
+        );
+
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'invalid_token',
+          error_description: 'Token was not issued for this server',
+        });
+        expect(mockSessionStore.getSession).not.toHaveBeenCalled();
+        expect(mockNext).not.toHaveBeenCalled();
+      });
+
+      it('should accept a token issued for the root resource', async () => {
+        mockVerifyMCPToken.mockReturnValue({ ...mockPayload, aud: 'https://mcp.example.com' });
+
+        await oauthAuthMiddleware(
+          createMockReq({ headers: { authorization: 'Bearer valid-mcp-token' } }),
+          createMockRes(),
+          mockNext,
+        );
+
+        expect(mockNext).toHaveBeenCalled();
+      });
+
+      it.each([
+        ['a scope beyond the session grant', 'mcp:tools mcp:admin', ['mcp:tools']],
+        ['no MCP scope', 'read_user', ['mcp:tools', 'mcp:resources']],
+      ])(
+        'should return 403 insufficient_scope for %s (RFC 6750 3.1)',
+        async (_c, scope, granted) => {
+          mockVerifyMCPToken.mockReturnValue({ ...mockPayload, scope });
+          mockSessionStore.getSession.mockReturnValue({ ...mockSession, scopes: granted });
+          const res = createMockRes();
+
+          await oauthAuthMiddleware(
+            createMockReq({ headers: { authorization: 'Bearer valid-mcp-token' } }),
+            res,
+            mockNext,
+          );
+
+          expect(res.status).toHaveBeenCalledWith(403);
+          expect(res.setHeader).toHaveBeenCalledWith(
+            'WWW-Authenticate',
+            'Bearer realm="gitlab-mcp", error="insufficient_scope", scope="mcp:tools mcp:resources"',
+          );
+          expect(mockNext).not.toHaveBeenCalled();
+        },
+      );
     });
 
     describe('when token is valid', () => {

@@ -32,6 +32,9 @@ import { logInfo, logWarn, logError, truncateId } from '../../logger';
 import { DeviceFlowPollResponse, OAuthErrorResponse } from '../types';
 import { getIpAddress } from '../../utils/request-logger';
 import { grantedGitlabScopes } from '../granted-scopes';
+import { getRegisteredClient } from './register';
+import { MCP_SCOPES, grantedMcpScopes, matchProtectedResource } from '../resource';
+import { authorizationRedirect } from '../authorization-response';
 
 /**
  * Authorization endpoint handler
@@ -70,8 +73,15 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
   }
 
   // Extract query parameters
-  const { client_id, redirect_uri, response_type, state, code_challenge, code_challenge_method } =
-    req.query as Record<string, string | undefined>;
+  const {
+    client_id,
+    redirect_uri,
+    response_type,
+    state,
+    code_challenge,
+    code_challenge_method,
+    scope,
+  } = req.query as Record<string, string | undefined>;
 
   // Validate required parameters
   if (response_type !== 'code') {
@@ -95,6 +105,52 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
     return;
   }
 
+  // A redirect goes only to a URI the client registered; an unknown client or an
+  // unregistered URI is reported here, never redirected (RFC 6749 section 4.1.2.1).
+  if (redirect_uri) {
+    const client = getRegisteredClient(client_id);
+    if (!client) {
+      sendError(
+        req,
+        res,
+        400,
+        'invalid_request',
+        'Unknown client_id; register the client via /register',
+      );
+      return;
+    }
+    if (!client.redirect_uris.includes(redirect_uri)) {
+      sendError(req, res, 400, 'invalid_request', 'redirect_uri is not registered for this client');
+      return;
+    }
+  }
+
+  // RFC 8707 section 2: a resource that is not ours is rejected with invalid_target.
+  const requestedResource = req.query.resource;
+  let resource: string | undefined;
+  if (requestedResource !== undefined) {
+    resource =
+      typeof requestedResource === 'string'
+        ? matchProtectedResource(config.issuer, requestedResource)
+        : undefined;
+    if (!resource) {
+      const description = 'resource must name this MCP server';
+      if (redirect_uri) {
+        res.redirect(
+          authorizationRedirect(redirect_uri, config.issuer, {
+            error: 'invalid_target',
+            error_description: description,
+            state,
+          }),
+        );
+      } else {
+        sendError(req, res, 400, 'invalid_target', description);
+      }
+      return;
+    }
+  }
+  const scopes = grantedMcpScopes(scope);
+
   // Determine which flow to use based on redirect_uri presence
   if (redirect_uri) {
     // Authorization Code Flow - redirect to GitLab
@@ -104,6 +160,8 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
       state: state ?? '',
       codeChallenge: code_challenge,
       codeChallengeMethod: code_challenge_method,
+      scopes,
+      resource,
     });
   } else {
     // Device Flow - show HTML page
@@ -112,6 +170,8 @@ export async function authorizeHandler(req: Request, res: Response): Promise<voi
       state: state ?? '',
       codeChallenge: code_challenge,
       codeChallengeMethod: code_challenge_method,
+      scopes,
+      resource,
     });
   }
 }
@@ -132,6 +192,8 @@ async function handleAuthorizationCodeFlow(
     state: string;
     codeChallenge: string;
     codeChallengeMethod: string;
+    scopes: string[];
+    resource?: string;
   },
 ): Promise<void> {
   // Registered in the GitLab application as <OAUTH_ISSUER>/oauth/callback.
@@ -151,6 +213,8 @@ async function handleAuthorizationCodeFlow(
     clientRedirectUri: params.redirectUri,
     callbackUri: callbackUri,
     expiresAt: Date.now() + 10 * 60 * 1000,
+    scopes: params.scopes,
+    resource: params.resource,
   });
 
   // Build GitLab authorization URL
@@ -179,6 +243,8 @@ async function handleDeviceFlow(
     state: string;
     codeChallenge: string;
     codeChallengeMethod: string;
+    scopes: string[];
+    resource?: string;
   },
 ): Promise<void> {
   try {
@@ -202,6 +268,8 @@ async function handleDeviceFlow(
       codeChallengeMethod: params.codeChallengeMethod,
       state: params.state,
       redirectUri: undefined,
+      scopes: params.scopes,
+      resource: params.resource,
     });
 
     logInfo('Device flow initiated for authorization', {
@@ -305,7 +373,8 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
         gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,
         instanceLabel: flow.selectedInstanceLabel,
         clientId: flow.clientId,
-        scopes: ['mcp:tools', 'mcp:resources'],
+        scopes: flow.scopes ?? [...MCP_SCOPES],
+        resource: flow.resource,
         createdAt: now,
         updatedAt: now,
       });
@@ -325,6 +394,7 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
         redirect_uri: flow.redirectUri,
         code: authCode,
         state: flow.state ? flow.state : undefined,
+        iss: config.issuer,
       };
 
       res.json(response);
@@ -593,6 +663,9 @@ function getDeviceFlowHTML(params: DeviceFlowHTMLParams): string {
             redirectUrl.searchParams.set('code', data.code);
             if (data.state) {
               redirectUrl.searchParams.set('state', data.state);
+            }
+            if (data.iss) {
+              redirectUrl.searchParams.set('iss', data.iss);
             }
 
             // Redirect after a brief delay

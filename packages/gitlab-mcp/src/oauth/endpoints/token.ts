@@ -18,8 +18,10 @@ import {
   generateRefreshToken,
   calculateTokenExpiry,
   isTokenExpiringSoon,
+  generateUUID,
 } from '../token-utils';
 import { refreshGitLabToken } from '../gitlab-device-flow';
+import { defaultResource, matchProtectedResource } from '../resource';
 import { logInfo, logDebug, logWarn, logError, truncateId } from '../../logger';
 import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from '../types';
 import { getIpAddress } from '../../utils/request-logger';
@@ -73,10 +75,12 @@ async function handleAuthorizationCode(
   res: Response,
   config: OAuthConfig,
 ): Promise<void> {
-  const { code, code_verifier, redirect_uri } = req.body as {
+  const { code, code_verifier, redirect_uri, client_id, resource } = req.body as {
     code?: string;
     code_verifier?: string;
     redirect_uri?: string;
+    client_id?: string;
+    resource?: string;
   };
 
   // Validate required parameters
@@ -90,6 +94,12 @@ async function handleAuthorizationCode(
     return;
   }
 
+  // RFC 6749 section 4.1.3: a public client identifies itself on the code exchange.
+  if (!client_id) {
+    sendError(req, res, 400, 'invalid_request', 'Missing client_id');
+    return;
+  }
+
   // Look up authorization code
   const authCode = sessionStore.getAuthCode(code);
   if (!authCode) {
@@ -97,10 +107,22 @@ async function handleAuthorizationCode(
     return;
   }
 
+  // Consume before any check so a code is presented at most once, whatever the outcome
+  // (RFC 6749 section 4.1.2); only the caller that removed it may continue.
+  if (!sessionStore.deleteAuthCode(code)) {
+    sendError(req, res, 400, 'invalid_grant', 'Invalid or expired authorization code');
+    return;
+  }
+
   // Check if code has expired
   if (Date.now() > authCode.expiresAt) {
-    sessionStore.deleteAuthCode(code);
     sendError(req, res, 400, 'invalid_grant', 'Authorization code has expired');
+    return;
+  }
+
+  // RFC 6749 section 4.1.3: the code must have been issued to this client.
+  if (client_id !== authCode.clientId) {
+    sendError(req, res, 400, 'invalid_grant', 'Authorization code was issued to another client');
     return;
   }
 
@@ -123,19 +145,14 @@ async function handleAuthorizationCode(
     return;
   }
 
+  const audience = resolveResource(config, session, resource);
+  if (!audience) {
+    sendError(req, res, 400, 'invalid_target', 'resource does not match the authorization');
+    return;
+  }
+
   // Generate MCP tokens
-  const accessToken = createJWT(
-    {
-      iss: config.issuer,
-      sub: session.gitlabUserId.toString(),
-      aud: authCode.clientId,
-      sid: session.id,
-      scope: session.scopes.join(' '),
-      gitlab_user: session.gitlabUsername,
-    },
-    config.sessionSecret,
-    config.tokenTtl,
-  );
+  const accessToken = mintAccessToken(config, session, audience, session.scopes);
 
   const refreshToken = generateRefreshToken();
 
@@ -144,10 +161,8 @@ async function handleAuthorizationCode(
     mcpAccessToken: accessToken,
     mcpRefreshToken: refreshToken,
     mcpTokenExpiry: calculateTokenExpiry(config.tokenTtl),
+    resource: audience,
   });
-
-  // Delete authorization code (single use)
-  sessionStore.deleteAuthCode(code);
 
   logInfo('MCP tokens issued via authorization_code grant', {
     sessionId: truncateId(session.id),
@@ -173,10 +188,21 @@ async function handleAuthorizationCode(
  * Also refreshes the underlying GitLab token if needed.
  */
 async function handleRefreshToken(req: Request, res: Response, config: OAuthConfig): Promise<void> {
-  const { refresh_token } = req.body as { refresh_token?: string };
+  const { refresh_token, client_id, resource, scope } = req.body as {
+    refresh_token?: string;
+    client_id?: string;
+    resource?: string;
+    scope?: string;
+  };
 
   if (!refresh_token) {
     sendError(req, res, 400, 'invalid_request', 'Missing refresh_token');
+    return;
+  }
+
+  // A public client identifies itself on refresh (OAuth 2.1 section 4.3.1).
+  if (!client_id) {
+    sendError(req, res, 400, 'invalid_request', 'Missing client_id');
     return;
   }
 
@@ -184,6 +210,25 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
   const session = sessionStore.getSessionByRefreshToken(refresh_token);
   if (!session) {
     sendError(req, res, 400, 'invalid_grant', 'Invalid refresh token');
+    return;
+  }
+
+  // RFC 6749 section 6: the refresh token is bound to the client it was issued to.
+  if (client_id !== session.clientId) {
+    sendError(req, res, 400, 'invalid_grant', 'Refresh token was issued to another client');
+    return;
+  }
+
+  const audience = resolveResource(config, session, resource);
+  if (!audience) {
+    sendError(req, res, 400, 'invalid_target', 'resource does not match the authorization');
+    return;
+  }
+
+  // RFC 6749 section 6: a refresh may narrow the scope, never widen it.
+  const tokenScopes = scope === undefined ? session.scopes : scope.split(' ').filter(Boolean);
+  if (tokenScopes.length === 0 || !tokenScopes.every((s) => session.scopes.includes(s))) {
+    sendError(req, res, 400, 'invalid_scope', 'scope exceeds the original grant');
     return;
   }
 
@@ -222,18 +267,7 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
   }
 
   // Generate new MCP tokens
-  const accessToken = createJWT(
-    {
-      iss: config.issuer,
-      sub: updatedSession.gitlabUserId.toString(),
-      aud: updatedSession.clientId,
-      sid: updatedSession.id,
-      scope: updatedSession.scopes.join(' '),
-      gitlab_user: updatedSession.gitlabUsername,
-    },
-    config.sessionSecret,
-    config.tokenTtl,
-  );
+  const accessToken = mintAccessToken(config, updatedSession, audience, tokenScopes);
 
   const newRefreshToken = generateRefreshToken();
 
@@ -242,6 +276,7 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
     mcpAccessToken: accessToken,
     mcpRefreshToken: newRefreshToken,
     mcpTokenExpiry: calculateTokenExpiry(config.tokenTtl),
+    resource: audience,
   });
 
   logInfo('MCP tokens refreshed via refresh_token grant', {
@@ -255,10 +290,51 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
     token_type: 'Bearer',
     expires_in: config.tokenTtl,
     refresh_token: newRefreshToken,
-    scope: updatedSession.scopes.join(' '),
+    scope: tokenScopes.join(' '),
   };
 
   res.json(response);
+}
+
+/**
+ * Audience for a token request: the resource the authorization was bound to, which a
+ * `resource` parameter may repeat but not change (RFC 8707 section 2.2). Undefined when
+ * the parameter names another resource.
+ */
+function resolveResource(
+  config: OAuthConfig,
+  session: OAuthSession,
+  requested: string | undefined,
+): string | undefined {
+  const bound = session.resource;
+  if (requested === undefined) {
+    return bound ?? defaultResource(config.issuer);
+  }
+  const match = matchProtectedResource(config.issuer, requested);
+  return match && (bound === undefined || bound === match) ? match : undefined;
+}
+
+/** Sign an MCP access token for the session (claims per RFC 9068 section 2.2). */
+function mintAccessToken(
+  config: OAuthConfig,
+  session: OAuthSession,
+  audience: string,
+  scopes: string[],
+): string {
+  return createJWT(
+    {
+      iss: config.issuer,
+      sub: session.gitlabUserId.toString(),
+      aud: audience,
+      client_id: session.clientId,
+      jti: generateUUID(),
+      sid: session.id,
+      scope: scopes.join(' '),
+      gitlab_user: session.gitlabUsername,
+    },
+    config.sessionSecret,
+    config.tokenTtl,
+  );
 }
 
 /**

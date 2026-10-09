@@ -62,6 +62,8 @@ export interface OAuthSession {
   clientId: string;
   /** Granted scopes */
   scopes: string[];
+  /** RFC 8707 resource the tokens are issued for; absent in sessions persisted by older servers. */
+  resource?: string;
   /** Session creation timestamp (milliseconds since epoch) */
   createdAt: number;
   /** Last update timestamp (milliseconds since epoch) */
@@ -95,6 +97,10 @@ export interface AuthCodeFlowState {
   selectedInstance?: string;
   /** Selected instance label */
   selectedInstanceLabel?: string;
+  /** MCP scopes granted to this authorization; absent means the full default set. */
+  scopes?: string[];
+  /** RFC 8707 resource requested at /authorize; absent means the `/mcp` resource. */
+  resource?: string;
 }
 
 /**
@@ -129,6 +135,10 @@ export interface DeviceFlowState {
   selectedInstance?: string;
   /** Selected instance label */
   selectedInstanceLabel?: string;
+  /** MCP scopes granted to this authorization; absent means the full default set. */
+  scopes?: string[];
+  /** RFC 8707 resource requested at /authorize; absent means the `/mcp` resource. */
+  resource?: string;
 }
 
 /**
@@ -238,6 +248,8 @@ export interface DeviceFlowPollResponse {
   redirect_uri?: string;
   code?: string;
   state?: string;
+  /** Issuer to append to the redirect (RFC 9207 section 2) */
+  iss?: string;
   error?: string;
 }
 
@@ -245,12 +257,16 @@ export interface DeviceFlowPollResponse {
  * JWT payload for MCP access tokens
  */
 export interface MCPTokenPayload {
-  /** Issuer (base URL of gitlab-mcp) */
+  /** Issuer (OAUTH_ISSUER) */
   iss: string;
   /** Subject (GitLab user ID) */
   sub: string;
-  /** Audience (OAuth client ID) */
+  /** Audience: the RFC 8707 resource the token is issued for */
   aud: string;
+  /** OAuth client the token was issued to (RFC 9068 section 2.2) */
+  client_id?: string;
+  /** Unique token identifier (RFC 9068 section 2.2) */
+  jti?: string;
   /** Session ID */
   sid: string;
   /** Granted scopes */

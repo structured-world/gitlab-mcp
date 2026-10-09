@@ -145,6 +145,9 @@ describe('OAuth Callback Handler', () => {
         expect.stringContaining('error_description=User+denied+access'),
       );
       expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('state=client-state-123'));
+      // RFC 9207 section 2: error responses identify the issuer too.
+      const location = new URL(redirectMock.mock.calls[0][0] as string);
+      expect(location.searchParams.get('iss')).toBe('https://gitlab-mcp.example.com');
     });
 
     it('should return JSON error if GitLab returns error and no flow state', async () => {
@@ -357,6 +360,26 @@ describe('OAuth Callback Handler', () => {
       );
       expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('code=auth-code-456'));
       expect(redirectMock).toHaveBeenCalledWith(expect.stringContaining('state=client-state-123'));
+      // RFC 9207 section 2: the client checks iss against the server it started with.
+      const location = new URL(redirectMock.mock.calls[0][0] as string);
+      expect(location.searchParams.get('iss')).toBe('https://gitlab-mcp.example.com');
+    });
+
+    it('should bind the session to the scopes and resource of the authorization', async () => {
+      mockSessionStore.getAuthCodeFlow.mockReturnValue({
+        ...mockAuthCodeFlow,
+        scopes: ['mcp:tools'],
+        resource: 'https://gitlab-mcp.example.com/mcp',
+      });
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(mockSessionStore.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scopes: ['mcp:tools'],
+          resource: 'https://gitlab-mcp.example.com/mcp',
+        }),
+      );
     });
 
     it('should redirect without state if client state is empty', async () => {
@@ -392,6 +415,8 @@ describe('OAuth Callback Handler', () => {
       expect(redirectMock).toHaveBeenCalledWith(
         expect.stringContaining('error_description=Invalid+authorization+code'),
       );
+      const location = new URL(redirectMock.mock.calls[0][0] as string);
+      expect(location.searchParams.get('iss')).toBe('https://gitlab-mcp.example.com');
     });
 
     it('should redirect with error if getting user info fails', async () => {

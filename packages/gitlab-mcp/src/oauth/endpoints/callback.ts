@@ -22,6 +22,8 @@ import { generateSessionId, generateAuthorizationCode, calculateTokenExpiry } fr
 import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 import { GITLAB_BASE_URL } from '../../config';
 import { grantedGitlabScopes } from '../granted-scopes';
+import { MCP_SCOPES } from '../resource';
+import { authorizationRedirect } from '../authorization-response';
 
 /**
  * OAuth callback handler
@@ -56,15 +58,13 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       const flow = sessionStore.getAuthCodeFlow(state);
       if (flow) {
         sessionStore.deleteAuthCodeFlow(state);
-        const redirectUrl = new URL(flow.clientRedirectUri);
-        redirectUrl.searchParams.set('error', error);
-        if (error_description) {
-          redirectUrl.searchParams.set('error_description', error_description);
-        }
-        if (flow.clientState) {
-          redirectUrl.searchParams.set('state', flow.clientState);
-        }
-        res.redirect(redirectUrl.toString());
+        res.redirect(
+          authorizationRedirect(flow.clientRedirectUri, config.issuer, {
+            error,
+            error_description,
+            state: flow.clientState,
+          }),
+        );
         return;
       }
     }
@@ -153,7 +153,8 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,
       instanceLabel: flow.selectedInstanceLabel,
       clientId: flow.clientId,
-      scopes: ['mcp:tools', 'mcp:resources'],
+      scopes: flow.scopes ?? [...MCP_SCOPES],
+      resource: flow.resource,
       createdAt: now,
       updatedAt: now,
     });
@@ -167,18 +168,17 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       username: userInfo.username,
     });
 
-    // Redirect to client with MCP authorization code
-    const redirectUrl = new URL(flow.clientRedirectUri);
-    redirectUrl.searchParams.set('code', mcpAuthCode);
-    if (flow.clientState) {
-      redirectUrl.searchParams.set('state', flow.clientState);
-    }
-
     logDebug('Redirecting to client with authorization code', {
       redirectUri: flow.clientRedirectUri,
     });
 
-    res.redirect(redirectUrl.toString());
+    // Redirect to client with MCP authorization code
+    res.redirect(
+      authorizationRedirect(flow.clientRedirectUri, config.issuer, {
+        code: mcpAuthCode,
+        state: flow.clientState,
+      }),
+    );
   } catch (error: unknown) {
     logError('Failed to complete authorization code flow', { err: error as Error });
 
@@ -186,16 +186,13 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     sessionStore.deleteAuthCodeFlow(state);
 
     // Try to redirect to client with error
-    const redirectUrl = new URL(flow.clientRedirectUri);
-    redirectUrl.searchParams.set('error', 'server_error');
-    redirectUrl.searchParams.set(
-      'error_description',
-      error instanceof Error ? error.message : 'Failed to complete authorization',
+    res.redirect(
+      authorizationRedirect(flow.clientRedirectUri, config.issuer, {
+        error: 'server_error',
+        error_description:
+          error instanceof Error ? error.message : 'Failed to complete authorization',
+        state: flow.clientState,
+      }),
     );
-    if (flow.clientState) {
-      redirectUrl.searchParams.set('state', flow.clientState);
-    }
-
-    res.redirect(redirectUrl.toString());
   }
 }

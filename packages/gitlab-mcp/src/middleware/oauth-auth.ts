@@ -18,9 +18,14 @@ import { sessionStore } from '../oauth/session-store';
 import { verifyMCPToken, isTokenExpiringSoon, calculateTokenExpiry } from '../oauth/token-utils';
 import { refreshGitLabToken } from '../oauth/gitlab-device-flow';
 import { getBaseUrl } from '../oauth/endpoints/metadata';
-import { resourceForPath, resourceMetadataUrl } from '../oauth/resource';
+import {
+  MCP_SCOPES,
+  isProtectedResource,
+  resourceForPath,
+  resourceMetadataUrl,
+} from '../oauth/resource';
 import { logWarn, logError, logDebug, truncateId } from '../logger';
-import { OAuthErrorResponse } from '../oauth/types';
+import { MCPTokenPayload, OAuthErrorResponse } from '../oauth/types';
 import { getMinimalRequestContext } from '../utils/request-logger';
 import { GITLAB_BASE_URL } from '../config';
 
@@ -76,6 +81,11 @@ export async function oauthAuthMiddleware(
     return;
   }
 
+  if (!isIssuedForThisServer(config.issuer, payload)) {
+    sendUnauthorized(req, res, 'invalid_token', 'Token was not issued for this server');
+    return;
+  }
+
   // Get session from token
   const sessionId = payload.sid;
   const session = sessionStore.getSession(sessionId);
@@ -89,6 +99,11 @@ export async function oauthAuthMiddleware(
   if (session.mcpAccessToken !== token) {
     // Token might have been rotated
     sendUnauthorized(req, res, 'invalid_token', 'Token has been superseded');
+    return;
+  }
+
+  if (!hasGrantedScope(payload.scope, session.scopes)) {
+    sendInsufficientScope(req, res);
     return;
   }
 
@@ -204,14 +219,14 @@ export async function optionalOAuthMiddleware(
 
   // Try to validate token
   const payload = verifyMCPToken(token, config.sessionSecret);
-  if (!payload) {
+  if (!payload || !isIssuedForThisServer(config.issuer, payload)) {
     // Invalid token, but this is optional auth, so continue
     next();
     return;
   }
 
   const session = sessionStore.getSession(payload.sid);
-  if (session?.mcpAccessToken !== token) {
+  if (session?.mcpAccessToken !== token || !hasGrantedScope(payload.scope, session.scopes)) {
     next();
     return;
   }
@@ -227,6 +242,41 @@ export async function optionalOAuthMiddleware(
   res.locals.instanceLabel = session.instanceLabel;
 
   next();
+}
+
+/** `iss` is our issuer and `aud` one of our resources (RFC 9068 section 4). */
+function isIssuedForThisServer(issuer: string, payload: MCPTokenPayload): boolean {
+  return payload.iss === issuer && isProtectedResource(issuer, payload.aud);
+}
+
+/**
+ * The token carries at least one MCP scope and nothing beyond the session's grant, so a
+ * token minted before a narrower grant cannot outlive it.
+ */
+function hasGrantedScope(tokenScope: string, grantedScopes: string[]): boolean {
+  const scopes = tokenScope.split(' ').filter(Boolean);
+  return (
+    scopes.some((scope) => MCP_SCOPES.includes(scope)) &&
+    scopes.every((scope) => grantedScopes.includes(scope))
+  );
+}
+
+/** RFC 6750 section 3.1: a valid token without the needed scope gets 403. */
+function sendInsufficientScope(req: Request, res: Response): void {
+  logWarn('Authentication rejected', {
+    event: 'auth_rejected',
+    ...getMinimalRequestContext(req),
+    reason: 'insufficient_scope',
+  });
+  res.setHeader(
+    'WWW-Authenticate',
+    `Bearer realm="gitlab-mcp", error="insufficient_scope", scope="${MCP_SCOPES.join(' ')}"`,
+  );
+  const response: OAuthErrorResponse = {
+    error: 'insufficient_scope',
+    error_description: 'Token lacks the scope this server requires',
+  };
+  res.status(403).json(response);
 }
 
 /**

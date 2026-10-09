@@ -45,6 +45,10 @@ jest.mock('../../../../src/oauth/endpoints/metadata', () => ({
   getBaseUrl: jest.fn(() => 'http://localhost:3333'),
 }));
 
+jest.mock('../../../../src/oauth/endpoints/register', () => ({
+  getRegisteredClient: jest.fn(),
+}));
+
 jest.mock('../../../../src/logger', () => ({
   logger: {
     info: jest.fn(),
@@ -72,6 +76,19 @@ import {
   pollDeviceFlowOnce,
   getGitLabUser,
 } from '../../../../src/oauth/gitlab-device-flow';
+import { getRegisteredClient } from '../../../../src/oauth/endpoints/register';
+
+const mockGetRegisteredClient = getRegisteredClient as jest.MockedFunction<
+  typeof getRegisteredClient
+>;
+const registeredClient = {
+  client_id: 'test-client',
+  redirect_uris: ['https://callback.example.com'],
+  token_endpoint_auth_method: 'none',
+  grant_types: ['authorization_code', 'refresh_token'],
+  response_types: ['code'],
+  created_at: 0,
+};
 
 const mockLoadOAuthConfig = loadOAuthConfig as jest.MockedFunction<typeof loadOAuthConfig>;
 const mockInitiateDeviceFlow = initiateDeviceFlow as jest.MockedFunction<typeof initiateDeviceFlow>;
@@ -117,6 +134,7 @@ describe('OAuth Authorization Endpoint', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockLoadOAuthConfig.mockReturnValue(mockConfig);
+    mockGetRegisteredClient.mockReturnValue(registeredClient);
   });
 
   describe('authorizeHandler', () => {
@@ -276,6 +294,124 @@ describe('OAuth Authorization Endpoint', () => {
       expect(res.redirect).toHaveBeenCalledWith(
         `https://gitlab.example.com/oauth/authorize?state=${storedState}`,
       );
+    });
+
+    describe('client, redirect and resource binding', () => {
+      const codeFlow = (extra: Record<string, string>) =>
+        createMockRequest({
+          response_type: 'code',
+          client_id: 'test-client',
+          code_challenge: 'challenge-abc',
+          code_challenge_method: 'S256',
+          redirect_uri: 'https://callback.example.com',
+          state: 'csrf-state-123',
+          ...extra,
+        }) as Request;
+
+      // RFC 6749 4.1.2.1: never redirect to an unverified URI.
+      it.each([
+        ['an unknown client', undefined, 'Unknown client_id; register the client via /register'],
+        [
+          'an unregistered redirect_uri',
+          { ...registeredClient, redirect_uris: ['https://other.example.com/cb'] },
+          'redirect_uri is not registered for this client',
+        ],
+      ])('reports %s without redirecting', async (_c, client, description) => {
+        mockGetRegisteredClient.mockReturnValue(client);
+        const res = createMockResponse() as Response;
+
+        await authorizeHandler(codeFlow({}), res);
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'invalid_request',
+          error_description: description,
+        });
+        expect(res.redirect).not.toHaveBeenCalled();
+        expect(mockSessionStore.storeAuthCodeFlow).not.toHaveBeenCalled();
+      });
+
+      it('redirects invalid_target with state and iss for a foreign resource (RFC 8707 2, RFC 9207 2)', async () => {
+        const res = createMockResponse() as Response;
+
+        await authorizeHandler(codeFlow({ resource: 'https://other.example.com/mcp' }), res);
+
+        const location = new URL((res.redirect as jest.Mock).mock.calls[0][0] as string);
+        expect(location.origin + location.pathname).toBe('https://callback.example.com/');
+        expect(location.searchParams.get('error')).toBe('invalid_target');
+        expect(location.searchParams.get('state')).toBe('csrf-state-123');
+        expect(location.searchParams.get('iss')).toBe('https://gitlab-mcp.example.com');
+        expect(mockSessionStore.storeAuthCodeFlow).not.toHaveBeenCalled();
+      });
+
+      it('stores the requested resource and supported scopes with the flow', async () => {
+        await authorizeHandler(
+          codeFlow({ resource: 'https://gitlab-mcp.example.com/', scope: 'mcp:tools offline' }),
+          createMockResponse() as Response,
+        );
+
+        expect(mockSessionStore.storeAuthCodeFlow).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({
+            resource: 'https://gitlab-mcp.example.com',
+            scopes: ['mcp:tools'],
+          }),
+        );
+      });
+
+      it('rejects a foreign resource on the device flow with a JSON error', async () => {
+        const res = createMockResponse() as Response;
+
+        await authorizeHandler(
+          createMockRequest({
+            response_type: 'code',
+            client_id: 'cli-client',
+            code_challenge: 'challenge',
+            code_challenge_method: 'S256',
+            resource: 'https://other.example.com',
+          }) as Request,
+          res,
+        );
+
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'invalid_target',
+          error_description: 'resource must name this MCP server',
+        });
+        expect(mockInitiateDeviceFlow).not.toHaveBeenCalled();
+      });
+
+      it('keeps the device flow open to clients without a registration', async () => {
+        // Device flow has no redirect, so it does not depend on DCR (unchanged behaviour).
+        mockGetRegisteredClient.mockReturnValue(undefined);
+        mockInitiateDeviceFlow.mockResolvedValue({
+          device_code: 'device-code',
+          user_code: 'WXYZ-0000',
+          verification_uri: 'https://gitlab.example.com/oauth/authorize',
+          expires_in: 600,
+          interval: 5,
+        });
+        const res = createMockResponse() as Response;
+
+        await authorizeHandler(
+          createMockRequest({
+            response_type: 'code',
+            client_id: 'cli-client',
+            code_challenge: 'challenge',
+            code_challenge_method: 'S256',
+          }) as Request,
+          res,
+        );
+
+        expect(res.send).toHaveBeenCalled();
+        expect(mockSessionStore.storeDeviceFlow).toHaveBeenCalledWith(
+          expect.any(String),
+          expect.objectContaining({
+            clientId: 'cli-client',
+            scopes: ['mcp:tools', 'mcp:resources'],
+          }),
+        );
+      });
     });
 
     it('should store device flow state correctly when no redirect_uri', async () => {
@@ -475,6 +611,8 @@ describe('OAuth Authorization Endpoint', () => {
           redirect_uri: 'https://callback.example.com',
           code: 'auth-code-abc',
           state: 'csrf-state',
+          // RFC 9207: the page appends iss to the client redirect.
+          iss: 'https://gitlab-mcp.example.com',
         });
       },
     );
@@ -570,7 +708,44 @@ describe('OAuth Authorization Endpoint', () => {
         redirect_uri: 'https://callback.example.com',
         code: 'auth-code-abc',
         state: undefined, // State should be undefined when empty
+        iss: 'https://gitlab-mcp.example.com',
       });
+    });
+
+    it('creates the session with the scopes and resource bound at /authorize', async () => {
+      mockSessionStore.getDeviceFlow.mockReturnValue({
+        deviceCode: 'device-code',
+        userCode: 'USER-CODE',
+        verificationUri: 'https://gitlab.example.com/oauth/authorize',
+        expiresAt: Date.now() + 600000,
+        interval: 5,
+        clientId: 'test-client',
+        codeChallenge: 'challenge',
+        codeChallengeMethod: 'S256',
+        state: '',
+        scopes: ['mcp:tools'],
+        resource: 'https://gitlab-mcp.example.com',
+      });
+      mockPollDeviceFlowOnce.mockResolvedValue({
+        access_token: 'gitlab-access-token',
+        refresh_token: 'gitlab-refresh-token',
+        token_type: 'Bearer',
+        expires_in: 7200,
+        created_at: Date.now(),
+      });
+      mockGetGitLabUser.mockResolvedValue({ id: 12345, username: 'testuser' });
+
+      await pollHandler(
+        createMockRequest({ flow_state: 'bound-flow' }) as Request,
+        createMockResponse() as Response,
+      );
+
+      expect(mockSessionStore.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scopes: ['mcp:tools'],
+          resource: 'https://gitlab-mcp.example.com',
+        }),
+      );
     });
   });
 });

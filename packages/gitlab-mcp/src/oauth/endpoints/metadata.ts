@@ -10,7 +10,7 @@
 import { Request, Response } from 'express';
 import { HOST, PORT } from '../../config';
 import { loadOAuthConfig } from '../config';
-import { protectedResources } from '../resource';
+import { MCP_SCOPES, protectedResources } from '../resource';
 
 /**
  * MCP Protocol version supported by this server
@@ -84,7 +84,10 @@ export function metadataHandler(_req: Request, res: Response): void {
     token_endpoint_auth_methods_supported: ['none'],
 
     // OPTIONAL: Supported scopes
-    scopes_supported: ['mcp:tools', 'mcp:resources'],
+    scopes_supported: MCP_SCOPES,
+
+    // Every authorization response carries `iss` (RFC 9207 section 3)
+    authorization_response_iss_parameter_supported: true,
 
     // REQUIRED for Claude.ai: Dynamic Client Registration endpoint (RFC 7591)
     registration_endpoint: `${baseUrl}/register`,
@@ -123,7 +126,7 @@ export function protectedResourceHandler(req: Request, res: Response): void {
     authorization_servers: [config.issuer],
 
     // OPTIONAL: Scopes required for this resource
-    scopes_supported: ['mcp:tools', 'mcp:resources'],
+    scopes_supported: MCP_SCOPES,
 
     // OPTIONAL: Bearer token methods supported
     bearer_methods_supported: ['header'],

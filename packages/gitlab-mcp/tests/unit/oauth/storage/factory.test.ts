@@ -56,14 +56,19 @@ describe('createStorageBackend', () => {
       OAUTH_STORAGE_POSTGRESQL_URL: 'postgresql://db.example/mcp',
     });
     const constructed: unknown[] = [];
-    jest.doMock('@structured-world/gitlab-mcp-db', () => ({
-      PostgreSQLStorageBackend: class {
-        readonly type = 'postgresql';
-        constructor(options: unknown) {
-          constructed.push(options);
-        }
-      },
-    }));
+    // Virtual: the optional package is not built in every checkout (CI runs core alone).
+    jest.doMock(
+      '@structured-world/gitlab-mcp-db',
+      () => ({
+        PostgreSQLStorageBackend: class {
+          readonly type = 'postgresql';
+          constructor(options: unknown) {
+            constructed.push(options);
+          }
+        },
+      }),
+      { virtual: true },
+    );
     const { createStorageBackend } = await import('../../../../src/oauth/storage/factory');
 
     expect(createStorageBackend().type).toBe('postgresql');
@@ -72,9 +77,13 @@ describe('createStorageBackend', () => {
 
   it('explains how to install the database package when it is missing', async () => {
     storageEnv({ OAUTH_STORAGE_TYPE: 'postgresql', DATABASE_URL: 'postgresql://db.example/mcp' });
-    jest.doMock('@structured-world/gitlab-mcp-db', () => {
-      throw new Error("Cannot find module '@structured-world/gitlab-mcp-db'");
-    });
+    jest.doMock(
+      '@structured-world/gitlab-mcp-db',
+      () => {
+        throw new Error("Cannot find module '@structured-world/gitlab-mcp-db'");
+      },
+      { virtual: true },
+    );
     const { createStorageBackend } = await import('../../../../src/oauth/storage/factory');
 
     expect(() => createStorageBackend()).toThrow(

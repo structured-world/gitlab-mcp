@@ -38,8 +38,13 @@ export const MCP_SCOPES: readonly string[] = ['mcp:tools', 'mcp:resources'];
 
 /**
  * Scopes granted for a requested `scope` value. Unknown values are ignored and an empty
- * result grants the full set; RFC 6749 section 3.3 allows both, and the token response
+ * result grants the full set: RFC 6749 section 3.3 lets the server "fully or partially
+ * ignore the scope requested by the client" and apply its default, and the token response
  * always reports the granted scope.
+ * https://www.rfc-editor.org/rfc/rfc6749#section-3.3
+ * A request of only unknown values (`openid`, `offline_access`, which many clients send by
+ * default) is therefore not refused with `invalid_scope`: it gains nothing a request
+ * without `scope` would not get, and refusing it would break those clients.
  */
 export function grantedMcpScopes(requested: string | undefined): string[] {
   const asked = (requested ?? '').split(' ').filter((scope) => MCP_SCOPES.includes(scope));

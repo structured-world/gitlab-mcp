@@ -164,6 +164,19 @@ describe('revokeHandler', () => {
     expect(res.status).toHaveBeenCalledWith(200);
   });
 
+  // A concurrent revocation removed the session during the refresh: the token at hand is
+  // still revoked at GitLab.
+  it('revokes the known GitLab token when the session vanished during the refresh', async () => {
+    mockStore.getSessionByRefreshToken.mockResolvedValue(session);
+    mockFresh.mockResolvedValueOnce(undefined);
+    const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });
+
+    await revokeHandler(req, res);
+
+    expect(mockRevokeGitLab).toHaveBeenCalledWith('gl-access', config, app);
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
   it('answers 500 when OAuth is not configured', async () => {
     mockConfig.mockReturnValue(null);
     const { req, res } = revoke({ token: 'refresh-1', client_id: 'client-1' });

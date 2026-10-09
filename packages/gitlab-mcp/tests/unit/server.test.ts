@@ -1100,6 +1100,75 @@ describe('server', () => {
       );
     });
 
+    // The MCP request itself must run inside the account's token context, not only start it.
+    it('handles an authenticated MCP request inside the token context', async () => {
+      process.env.PORT = '3000';
+      (runWithTokenContext as jest.Mock).mockImplementationOnce(
+        (_context: unknown, fn: () => Promise<void>) => fn(),
+      );
+      await startServer();
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+
+      await mcpHandler(
+        { headers: {}, method: 'POST', path: '/mcp', body: { id: 1 } },
+        {
+          status: jest.fn().mockReturnThis(),
+          json: jest.fn(),
+          headersSent: false,
+          locals: {
+            oauthSessionId: 'oauth-session-123',
+            gitlabToken: 'test-token',
+            gitlabUserId: 42,
+            gitlabUsername: 'testuser',
+          },
+        },
+      );
+
+      expect(mockTransport.handleRequest).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.anything(),
+        { id: 1 },
+      );
+    });
+
+    // Associating or forgetting the MCP session is best effort; a storage failure is logged.
+    it('logs a failed MCP session association and removal', async () => {
+      process.env.PORT = '3000';
+      (mockSessionStore.associateMcpSession as jest.Mock).mockRejectedValueOnce(
+        new Error('storage down'),
+      );
+      (mockSessionStore.removeMcpSessionAssociation as jest.Mock).mockRejectedValueOnce(
+        new Error('storage down'),
+      );
+      await startServer();
+      const mcpHandler = mockApp.all.mock.calls.find(
+        (call) => Array.isArray(call[0]) && call[0].includes('/mcp'),
+      )[1];
+      await mcpHandler(
+        { headers: {}, method: 'POST', path: '/mcp', body: {} },
+        {
+          status: jest.fn().mockReturnThis(),
+          json: jest.fn(),
+          headersSent: false,
+          locals: { oauthSessionId: 'oauth-session-123' },
+        },
+      );
+
+      const sessionId = lastStreamableOpts!.sessionIdGenerator!();
+      lastStreamableOpts!.onsessioninitialized!(sessionId);
+      lastStreamableOpts!.onsessionclosed!(sessionId);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(mockLogWarn).toHaveBeenCalledWith('Failed to store MCP session association', {
+        err: expect.any(Error),
+      });
+      expect(mockLogWarn).toHaveBeenCalledWith('Failed to remove MCP session association', {
+        err: expect.any(Error),
+      });
+    });
+
     it('should handle removeSession error in onsessionclosed gracefully', async () => {
       process.env.PORT = '3000';
       mockSessionManager.removeSession.mockRejectedValueOnce(new Error('Remove failed'));

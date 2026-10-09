@@ -421,8 +421,10 @@ export async function pollHandler(req: Request, res: Response): Promise<void> {
   }
 
   // RFC 8628 3.5: never poll GitLab sooner than the flow's interval, however often the
-  // page or another replica asks.
-  if (flow.nextPollAt !== undefined && Date.now() < flow.nextPollAt) {
+  // page or another replica asks. The reservation is atomic, so of duplicate polls on any
+  // replica one reaches GitLab per interval; the others report pending.
+  const now = Date.now();
+  if (!(await sessionStore.claimDevicePoll(flow_state, now, now + flow.interval * 1000))) {
     res.json({ status: 'pending', interval: flow.interval });
     return;
   }

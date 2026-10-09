@@ -220,6 +220,18 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return record;
   }
 
+  async claimDevicePoll(
+    state: string,
+    now: number,
+    nextPollAt: number,
+  ): Promise<DeviceFlowState | undefined> {
+    const flow = this.deviceFlows.get(state);
+    if (!flow || (flow.nextPollAt !== undefined && flow.nextPollAt > now)) return undefined;
+    const claimed = { ...flow, nextPollAt };
+    this.deviceFlows.set(state, claimed);
+    return claimed;
+  }
+
   async rotateSession(
     sessionId: string,
     expectedRefreshToken: string,

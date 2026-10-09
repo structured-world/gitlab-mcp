@@ -174,6 +174,18 @@ export class SessionStore {
   }
 
   /**
+   * Reserve the next GitLab poll of a device flow; of concurrent pollers on any replica
+   * one wins each interval, the others get undefined.
+   */
+  async claimDevicePoll(
+    state: string,
+    now: number,
+    nextPollAt: number,
+  ): Promise<DeviceFlowState | undefined> {
+    return this.backend.claimDevicePoll(state, now, nextPollAt);
+  }
+
+  /**
    * Get device flow count
    */
   async getDeviceFlowCount(): Promise<number> {

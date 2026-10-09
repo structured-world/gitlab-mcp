@@ -212,9 +212,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   async initialize(): Promise<void> {
     try {
       if (!this.connectionString) {
-        throw new Error(
-          'PostgreSQL storage requires OAUTH_STORAGE_POSTGRESQL_URL or DATABASE_URL',
-        );
+        throw new Error('PostgreSQL storage requires OAUTH_STORAGE_POSTGRESQL_URL or DATABASE_URL');
       }
 
       // Dynamic import Prisma client to avoid initialization if not used
@@ -236,7 +234,9 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
       logInfo('PostgreSQL storage backend initialized via Prisma');
     } catch (error) {
-      logError('Failed to initialize PostgreSQL storage backend', { err: error as Error });
+      logError('Failed to initialize PostgreSQL storage backend', {
+        err: error as Error,
+      });
       throw error;
     }
   }
@@ -638,6 +638,25 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       where: { state },
     })) as PrismaBatchPayload;
     return removed.count === 1 ? this.rowToDeviceFlow(row) : undefined;
+  }
+
+  async claimDevicePoll(
+    state: string,
+    now: number,
+    nextPollAt: number,
+  ): Promise<DeviceFlowStateType | undefined> {
+    const prisma = this.getPrisma();
+    // Conditional update in one statement: of replicas polling the same flow, only the
+    // one that moves nextPollAt forward polls GitLab in this interval.
+    const claimed = (await prisma.deviceFlowState.updateMany({
+      where: {
+        state,
+        OR: [{ nextPollAt: null }, { nextPollAt: { lte: BigInt(now) } }],
+      },
+      data: { nextPollAt: BigInt(nextPollAt) },
+    })) as PrismaBatchPayload;
+    if (claimed.count !== 1) return undefined;
+    return this.getDeviceFlow(state);
   }
 
   // Registered OAuth clients

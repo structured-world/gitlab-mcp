@@ -311,6 +311,34 @@ describe('MemoryStorageBackend', () => {
   });
 
   describe('Device Flow Operations', () => {
+    // One poller per interval reaches GitLab: the reservation moves nextPollAt forward only
+    // when the current interval has elapsed.
+    describe('claimDevicePoll', () => {
+      it('reserves a due poll once and refuses the next caller in the same interval', async () => {
+        await storage.storeDeviceFlow('flow', createTestDeviceFlow({ nextPollAt: 1000 }));
+
+        const first = await storage.claimDevicePoll('flow', 1000, 6000);
+        const second = await storage.claimDevicePoll('flow', 1000, 6000);
+
+        expect(first?.nextPollAt).toBe(6000);
+        expect(second).toBeUndefined();
+        expect((await storage.getDeviceFlow('flow'))?.nextPollAt).toBe(6000);
+      });
+
+      it('refuses a poll before the interval and a missing flow', async () => {
+        await storage.storeDeviceFlow('flow', createTestDeviceFlow({ nextPollAt: 5000 }));
+
+        expect(await storage.claimDevicePoll('flow', 4999, 9999)).toBeUndefined();
+        expect(await storage.claimDevicePoll('missing', 4999, 9999)).toBeUndefined();
+      });
+
+      it('reserves a flow that has no schedule yet', async () => {
+        await storage.storeDeviceFlow('flow', createTestDeviceFlow());
+
+        expect((await storage.claimDevicePoll('flow', 1, 5001))?.nextPollAt).toBe(5001);
+      });
+    });
+
     describe('storeDeviceFlow', () => {
       it('should store device flow by state', async () => {
         const flow = createTestDeviceFlow();

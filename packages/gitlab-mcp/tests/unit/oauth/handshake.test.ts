@@ -452,4 +452,39 @@ describe('OAuth handshake over HTTP', () => {
     );
     expect(token.status).toBe(200);
   });
+
+  // Duplicate polls on two replicas both asked GitLab; the loser got a terminal error and
+  // deleted the flow the winner was completing, so sign-in failed.
+  it('polls GitLab once per interval when replicas poll the same device flow', async () => {
+    const [a, b] = [await replica(), await replica()];
+    const { challenge } = pkce();
+    const html = await (
+      await fetch(
+        `${a.url}/authorize?${new URLSearchParams({
+          response_type: 'code',
+          client_id: 'cli-client',
+          code_challenge: challenge,
+          code_challenge_method: 'S256',
+        })}`,
+      )
+    ).text();
+    const flowState = /flow_state=([A-Za-z0-9_-]+)/.exec(html)![1];
+    const [deviceCode] = [...gitlab.devices.keys()].slice(-1);
+    gitlab.devices.set(deviceCode, jane);
+    jest.spyOn(Date, 'now').mockReturnValue(Date.now() + 6000);
+    const polls = () =>
+      gitlab.requests.filter((r) => r.params.grant_type?.includes('device_code')).length;
+
+    const results = await Promise.all(
+      [a, b].map(
+        async (on) =>
+          (await (await fetch(`${on.url}/oauth/poll?flow_state=${flowState}`)).json()) as {
+            status: string;
+          },
+      ),
+    );
+
+    expect(polls()).toBe(1);
+    expect(results.map((result) => result.status).sort()).toEqual(['complete', 'pending']);
+  });
 });

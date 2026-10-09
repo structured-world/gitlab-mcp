@@ -68,6 +68,17 @@ export interface SessionStorageBackend {
   consumeDeviceFlow(state: string): Promise<DeviceFlowState | undefined>;
 
   /**
+   * Reserve the next GitLab poll of a device flow: when the flow exists and its
+   * `nextPollAt` is unset or not after `now`, set it to `nextPollAt` and return the flow;
+   * otherwise undefined. Of concurrent pollers on any replica, one wins each interval.
+   */
+  claimDevicePoll(
+    state: string,
+    now: number,
+    nextPollAt: number,
+  ): Promise<DeviceFlowState | undefined>;
+
+  /**
    * Apply `updates` only while the session still holds `expectedRefreshToken`
    * (compare-and-set), so of concurrent refreshes exactly one rotates the tokens.
    */

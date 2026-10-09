@@ -18,6 +18,7 @@ jest.mock('../../../../src/oauth/session-store', () => ({
     getDeviceFlow: jest.fn(),
     deleteDeviceFlow: jest.fn(),
     consumeDeviceFlow: jest.fn(),
+    claimDevicePoll: jest.fn(),
     storeAuthCode: jest.fn(),
     createSession: jest.fn(),
   },
@@ -164,6 +165,12 @@ describe('OAuth Authorization Endpoint', () => {
     mockSessionStore.consumeDeviceFlow.mockImplementation((state) =>
       mockSessionStore.getDeviceFlow(state),
     );
+    // The poll reservation follows the stored flow's schedule, as the backends do.
+    mockSessionStore.claimDevicePoll.mockImplementation(async (state, now, nextPollAt) => {
+      const flow = await mockSessionStore.getDeviceFlow(state);
+      if (!flow || (flow.nextPollAt !== undefined && flow.nextPollAt > now)) return undefined;
+      return { ...flow, nextPollAt };
+    });
     mockSelectableOAuthApps.mockResolvedValue([defaultApp]);
     mockOauthAppFor.mockResolvedValue(defaultApp);
   });

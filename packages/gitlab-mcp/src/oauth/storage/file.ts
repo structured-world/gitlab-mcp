@@ -382,6 +382,16 @@ export class FileStorageBackend implements SessionStorageBackend {
     return record;
   }
 
+  async claimDevicePoll(
+    state: string,
+    now: number,
+    nextPollAt: number,
+  ): Promise<DeviceFlowState | undefined> {
+    const claimed = await this.memory.claimDevicePoll(state, now, nextPollAt);
+    if (claimed) this.scheduleSave();
+    return claimed;
+  }
+
   async rotateSession(
     sessionId: string,
     expectedRefreshToken: string,

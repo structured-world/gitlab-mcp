@@ -274,6 +274,33 @@ describe('FileStorageBackend', () => {
       await restarted.close();
     });
 
+    // A process crash keeps the page cache; a power loss does not. The new file and the
+    // rename are flushed before a write-through is reported.
+    it('flushes the file and the directory to disk', async () => {
+      const { code } = await seeded();
+      const realOpen = fs.promises.open.bind(fs.promises);
+      const synced: string[] = [];
+      const open = jest
+        .spyOn(fs.promises, 'open')
+        .mockImplementation(async (file: fs.PathLike, flags?: string | number, mode?: fs.Mode) => {
+          const handle = await realOpen(file, flags, mode);
+          const sync = handle.sync.bind(handle);
+          handle.sync = async () => {
+            synced.push(String(file));
+            await sync();
+          };
+          return handle;
+        });
+      try {
+        await storage.consumeAuthCode(code.code);
+      } finally {
+        open.mockRestore();
+      }
+
+      expect(synced).toContain(`${filePath}.tmp`);
+      if (process.platform !== 'win32') expect(synced).toContain(tempDir);
+    });
+
     it('writes again after a failed write', async () => {
       const { code } = await seeded();
       fs.chmodSync(tempDir, 0o500);

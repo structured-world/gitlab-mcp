@@ -40,6 +40,20 @@ export interface FileStorageOptions {
   saveDebounce?: number;
 }
 
+/**
+ * Flush a directory entry change (the rename) to disk. Windows cannot open a directory
+ * for syncing; NTFS journals the rename itself.
+ */
+async function syncDirectory(dir: string): Promise<void> {
+  if (process.platform === 'win32') return;
+  const handle = await fs.promises.open(dir, 'r');
+  try {
+    await handle.sync();
+  } finally {
+    await handle.close();
+  }
+}
+
 export class FileStorageBackend implements SessionStorageBackend {
   readonly type = 'file' as const;
 
@@ -216,10 +230,18 @@ export class FileStorageBackend implements SessionStorageBackend {
 
     const content = JSON.stringify(data);
     const write = this.writeQueue.then(async () => {
-      // Atomic write: write to temp file, then rename
+      // Atomic write: write to temp file, then rename. Both are flushed to disk, so a
+      // power loss cannot bring back a spent code or a revoked session either.
       const tempPath = `${this.filePath}.tmp`;
-      await fs.promises.writeFile(tempPath, content, 'utf-8');
+      const file = await fs.promises.open(tempPath, 'w');
+      try {
+        await file.writeFile(content, 'utf-8');
+        await file.sync();
+      } finally {
+        await file.close();
+      }
       await fs.promises.rename(tempPath, this.filePath);
+      await syncDirectory(path.dirname(this.filePath));
       logDebug('Saved sessions to file', {
         sessions: data.sessions.length,
         deviceFlows: data.deviceFlows.length,

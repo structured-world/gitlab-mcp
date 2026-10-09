@@ -210,6 +210,10 @@ Users sign in to an operator-configured instance only: the default `GITLAB_API_U
 
 The chosen instance and its application are used for the whole account: authorization, code exchange, user lookup and every token refresh. Each instance's GitLab application registers the same redirect URI, `<OAUTH_ISSUER>/oauth/callback`. Instances with a base path (for example `https://git.example.com/gitlab`) are supported. If an instance is removed from the configuration, its accounts must sign in again; they are never moved to another instance.
 
+### Account profile
+
+The read-only `get_profile` tool takes no input and returns the account behind the connection: an opaque `id`, the GitLab display `name` and `email` when GitLab provides them, and a `nickname` of the form `<username> @ <instance>`. The `id` is derived from the instance and the GitLab user id, so it stays the same across token refresh and reconnects and differs for the same user id on different instances. The tool is marked with `_meta["openai/profile"]` so hosts can label each connection.
+
 ### Reconnecting an account
 
 In OAuth mode every tool descriptor declares `securitySchemes: [{ "type": "oauth2", "scopes": ["mcp:tools"] }]` (mirrored in `_meta`). When GitLab rejects the account's credentials (HTTP 401), the tool result is an error carrying `_meta["mcp/www_authenticate"]` with a `Bearer` challenge (`error="invalid_token"` and an `error_description`) that points at the protected resource metadata, so the client starts its own reconnect flow. HTTP 401 responses carry the same `error` parameters for rejected tokens.

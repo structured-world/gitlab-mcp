@@ -283,6 +283,43 @@ describe('simultaneous MCP client contracts', () => {
     }
   });
 
+  it('publishes the account profile tool and returns a schema-valid profile', async () => {
+    // The host reads the connection's account from the tool marked openai/profile.
+    const profile = await import('../../src/entities/context/profile');
+    const resolve = jest.spyOn(profile, 'getAccountProfile').mockResolvedValue({
+      id: profile.accountProfileId('https://new.example.com', 1),
+      name: 'Fixture User',
+      nickname: 'fixture @ new.example.com',
+    });
+    try {
+      const client = await connect('codex', '2025-11-25');
+      const catalog = await asAccount(['read_api'], 'https://new.example.com', () =>
+        client.listTools(),
+      );
+      const tool = catalog.tools.find((item) => item.name === 'get_profile');
+      expect(tool?._meta?.['openai/profile']).toBe(true);
+      expect(tool?.inputSchema).toEqual({
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      });
+      expect(tool?.outputSchema?.required).toEqual(['id']);
+      expect(tool?.outputSchema?.additionalProperties).toBe(false);
+      expect(tool?.annotations?.readOnlyHint).toBe(true);
+
+      const result = await asAccount(['read_api'], 'https://new.example.com', () =>
+        client.callTool({ name: 'get_profile', arguments: {} }),
+      );
+      expect(result.isError).toBeUndefined();
+      expect(result.structuredContent).toEqual(await resolve.mock.results[0].value);
+      expect(result.content).toEqual([
+        { type: 'text', text: JSON.stringify(result.structuredContent) },
+      ]);
+    } finally {
+      resolve.mockRestore();
+    }
+  });
+
   it('asks the host to reconnect when GitLab rejects the account (401)', async () => {
     // The challenge reaches the client through production dispatch and the SDK.
     coreToolRegistry.set('browse_contract', {

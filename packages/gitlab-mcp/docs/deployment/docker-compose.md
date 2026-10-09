@@ -76,6 +76,19 @@ services:
       - OAUTH_STORAGE_POSTGRESQL_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp
       - GITLAB_API_URL=${GITLAB_API_URL:-https://gitlab.com}
     depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Applies pending database migrations with the Prisma CLI shipped in the image,
+  # then exits; the server starts only after it succeeds.
+  migrate:
+    image: ghcr.io/structured-world/gitlab-mcp-db:latest
+    restart: "no"
+    working_dir: /app/node_modules/@structured-world/gitlab-mcp-db
+    entrypoint: ["node", "node_modules/prisma/build/index.js", "migrate", "deploy"]
+    environment:
+      - OAUTH_STORAGE_POSTGRESQL_URL=postgresql://gitlab_mcp:${POSTGRES_PASSWORD}@postgres:5432/gitlab_mcp
+    depends_on:
       postgres:
         condition: service_healthy
 
@@ -140,7 +153,7 @@ docker compose down
 # View logs
 docker compose logs -f gitlab-mcp
 
-# Update to latest
+# Update to latest (the migrate service applies new migrations first)
 docker compose pull
 docker compose up -d
 

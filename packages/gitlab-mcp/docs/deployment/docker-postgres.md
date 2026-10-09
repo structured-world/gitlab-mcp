@@ -129,6 +129,19 @@ cd node_modules/@structured-world/gitlab-mcp-db
 npx prisma migrate deploy
 ```
 
+The `gitlab-mcp-db` image carries the Prisma CLI, so migrations can run from the
+same image before the server containers start (Prisma commands below run the same
+way with `migrate resolve ...` in place of `migrate deploy`):
+
+```bash
+docker run --rm \
+  -e OAUTH_STORAGE_POSTGRESQL_URL="postgresql://gitlab_mcp:your_secure_password@db-host:5432/gitlab_mcp" \
+  -w /app/node_modules/@structured-world/gitlab-mcp-db \
+  --entrypoint node \
+  ghcr.io/structured-world/gitlab-mcp-db:latest \
+  node_modules/prisma/build/index.js migrate deploy
+```
+
 - **New database:** `migrate deploy` creates every table.
 - **Existing database** created from the packaged schema before migrations were
   shipped (including the `ALTER TABLE` statements above): mark the baseline as applied

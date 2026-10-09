@@ -14,7 +14,8 @@
   "types": "./dist/src/index.d.ts",
   "files": [
     "dist",
-    "prisma"
+    "prisma",
+    "prisma.config.ts"
   ],
   "scripts": {
     "prisma:generate": "prisma generate",
@@ -25,6 +26,7 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "dotenv": "^18.0.7",
     "prisma": "^7.10.0"
   },
   "devDependencies": {

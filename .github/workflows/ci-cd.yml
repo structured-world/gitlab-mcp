@@ -272,6 +272,14 @@ jobs:
           docker run --rm --entrypoint node \
             -v "$PWD/packages/gitlab-mcp-db/scripts/runtime-smoke.cjs:/tmp/runtime-smoke.cjs:ro" \
             ${{ env.IMAGE_NAME }}-db:test /tmp/runtime-smoke.cjs
+          # The bundled Prisma CLI must load its config, schema and engine and reach
+          # the connection step (P1001 against a closed port).
+          migrate_output=$(docker run --rm --entrypoint node \
+            -e OAUTH_STORAGE_POSTGRESQL_URL=postgresql://smoke@127.0.0.1:1/smoke \
+            -w /app/node_modules/@structured-world/gitlab-mcp-db \
+            ${{ env.IMAGE_NAME }}-db:test node_modules/prisma/build/index.js migrate deploy 2>&1 || true)
+          echo "$migrate_output"
+          echo "$migrate_output" | grep -q 'P1001'
 
   # Job 3: Summary
   summary:

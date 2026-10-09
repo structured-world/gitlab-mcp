@@ -1,20 +1,26 @@
 #!/usr/bin/env node
 /**
- * Copy the runtime dependency closure of the PostgreSQL backend into a standalone
+ * Copy what the PostgreSQL backend and `prisma migrate` load into a standalone
  * node_modules directory for the Docker image.
  *
- * Starting from the modules the backend loads at runtime, every package reachable through
- * `dependencies` / `optionalDependencies` is copied with its path relative to the source
- * node_modules, so nested versions keep resolving exactly as they do in the build. Build
- * and migration tooling (the Prisma CLI, Studio, schema engines) is never reached from
- * these entry points and therefore not copied. The Prisma query compilers of other
- * databases and source maps are removed afterwards.
+ * Starting from the entry points, every package reachable through `dependencies` /
+ * `optionalDependencies` is copied with its path relative to the source node_modules, so
+ * nested versions keep resolving exactly as they do in the build. Prisma Studio, `prisma
+ * dev` and the MySQL driver are cut down or left out, and the query compilers of other
+ * databases, Studio assets, source maps and TypeScript files are removed afterwards.
  *
  * Usage: node runtime-node-modules.mjs <target node_modules directory>
  */
 
-import { cpSync, existsSync, readdirSync, readFileSync, rmSync, statSync } from 'node:fs';
-import { createRequire } from 'node:module';
+import {
+  cpSync,
+  existsSync,
+  readdirSync,
+  readFileSync,
+  realpathSync,
+  rmSync,
+  statSync,
+} from 'node:fs';
 import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -25,33 +31,63 @@ if (!target) {
   process.exit(1);
 }
 
-/** Modules the backend imports at runtime (dist/src/postgresql.js and the generated client). */
-const ENTRY_POINTS = ['@prisma/client/runtime/client', '@prisma/adapter-pg'];
+/**
+ * Modules the backend imports at runtime (dist/src/postgresql.js and the generated client),
+ * plus the Prisma CLI and the config loader `prisma migrate deploy` needs.
+ */
+const ENTRY_POINTS = ['@prisma/client/runtime/client', '@prisma/adapter-pg', 'prisma', 'dotenv'];
 
-/** Root directory of the package `name` that contains `resolvedFile`. */
-function packageRoot(resolvedFile, name) {
-  let dir = dirname(resolvedFile);
-  while (dir !== dirname(dir)) {
-    const manifest = join(dir, 'package.json');
-    if (existsSync(manifest) && JSON.parse(readFileSync(manifest, 'utf8')).name === name) {
-      return dir;
-    }
+/**
+ * CLI dependencies `prisma migrate deploy` never loads (the MySQL driver), or loads only a
+ * few self-contained files of at startup: Studio's data layer without its UI stack, and the
+ * state module of `prisma dev` (a local embedded Postgres) without the server. Only the
+ * listed files are copied, and only the listed dependencies (what those files require) are
+ * followed. A Prisma upgrade that loads more fails the image's migration smoke check.
+ */
+const SKIPPED_PACKAGES = new Set(['mysql2']);
+const PARTIAL_PACKAGES = new Map([
+  [
+    '@prisma/studio-core',
+    {
+      files: [
+        'dist/data/bff/index.cjs',
+        'dist/data/mysql2/index.cjs',
+        'dist/data/node-sqlite/index.cjs',
+        'dist/data/postgresjs/index.cjs',
+      ],
+      dependencies: [],
+    },
+  ],
+  [
+    '@prisma/dev',
+    {
+      files: ['dist/state.cjs'],
+      dependencies: [
+        'get-port-please',
+        'pathe',
+        'proper-lockfile',
+        'remeda',
+        'std-env',
+        'valibot',
+        'zeptomatch',
+      ],
+    },
+  ],
+]);
+
+/**
+ * Directory of package `name` as Node finds it from directory `from`: the nearest
+ * `node_modules/<name>` walking up. Independent of `exports`, so ESM-only packages and
+ * packages that hide package.json resolve too. Undefined when not installed.
+ */
+function resolvePackage(name, from) {
+  let dir = from;
+  for (;;) {
+    const candidate = join(dir, 'node_modules', name);
+    if (existsSync(join(candidate, 'package.json'))) return realpathSync(candidate);
+    if (dir === dirname(dir)) return undefined;
     dir = dirname(dir);
   }
-  throw new Error(`No package root for ${name} above ${resolvedFile}`);
-}
-
-/** Resolve package `name` as seen from directory `from`; undefined when not installed. */
-function resolvePackage(name, from) {
-  const require = createRequire(join(from, 'noop.js'));
-  for (const request of [`${name}/package.json`, name]) {
-    try {
-      return packageRoot(require.resolve(request), name);
-    } catch {
-      // Packages whose exports hide package.json resolve through their main entry.
-    }
-  }
-  return undefined;
 }
 
 function packageName(specifier) {
@@ -71,10 +107,14 @@ while (queue.length > 0) {
   if (seen.has(root)) continue;
   seen.add(root);
   const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
+  const partial = PARTIAL_PACKAGES.get(manifest.name);
   const optional = Object.keys(manifest.optionalDependencies ?? {});
-  for (const dependency of [...Object.keys(manifest.dependencies ?? {}), ...optional]) {
+  const dependencies = partial
+    ? partial.dependencies
+    : [...Object.keys(manifest.dependencies ?? {}), ...optional];
+  for (const dependency of dependencies) {
     // Type declarations are not loaded at runtime.
-    if (dependency.startsWith('@types/')) continue;
+    if (dependency.startsWith('@types/') || SKIPPED_PACKAGES.has(dependency)) continue;
     const dependencyRoot = resolvePackage(dependency, root);
     if (dependencyRoot) {
       queue.push(dependencyRoot);
@@ -88,6 +128,15 @@ for (const root of seen) {
   // Keep the layout below the outermost node_modules so nested versions stay nested.
   const marker = `${sep}node_modules${sep}`;
   const relativePath = root.slice(root.indexOf(marker) + marker.length);
+  const name = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).name;
+  const partial = PARTIAL_PACKAGES.get(name);
+  if (partial) {
+    for (const file of ['package.json', ...partial.files]) {
+      if (!existsSync(join(root, file))) throw new Error(`${name} no longer ships ${file}`);
+      cpSync(join(root, file), join(target, relativePath, file));
+    }
+    continue;
+  }
   cpSync(root, join(target, relativePath), {
     recursive: true,
     dereference: true,
@@ -96,21 +145,33 @@ for (const root of seen) {
   });
 }
 
-// The generated client loads only the PostgreSQL query compiler.
-const runtimeDir = join(target, '@prisma', 'client', 'runtime');
-for (const file of readdirSync(runtimeDir)) {
-  if (file.startsWith('query_compiler_') && !file.includes('.postgresql.')) {
-    rmSync(join(runtimeDir, file));
+// The generated client and the CLI load only the "fast" PostgreSQL query compiler.
+for (const dir of [join(target, '@prisma', 'client', 'runtime'), join(target, 'prisma', 'build')]) {
+  for (const file of readdirSync(dir)) {
+    if (
+      file.startsWith('query_compiler_') &&
+      !file.startsWith('query_compiler_fast_bg.postgresql.')
+    ) {
+      rmSync(join(dir, file));
+    }
   }
 }
 
-function removeSourceMaps(dir) {
+// Studio's UI assets, and the wasm schema engine: migrations run on the native schema
+// engine that @prisma/engines installs for the build platform.
+for (const file of ['studio.js', 'studio.css', 'schema_engine_bg.wasm']) {
+  rmSync(join(target, 'prisma', 'build', file));
+}
+
+// Source maps, TypeScript sources and declarations are never loaded at runtime.
+const NON_RUNTIME_FILE = /(\.map|\.[cm]?ts)$/;
+function removeNonRuntimeFiles(dir) {
   for (const entry of readdirSync(dir)) {
     const path = join(dir, entry);
-    if (statSync(path).isDirectory()) removeSourceMaps(path);
-    else if (entry.endsWith('.map')) rmSync(path);
+    if (statSync(path).isDirectory()) removeNonRuntimeFiles(path);
+    else if (NON_RUNTIME_FILE.test(entry)) rmSync(path);
   }
 }
-removeSourceMaps(target);
+removeNonRuntimeFiles(target);
 
 console.log(`Copied ${seen.size} runtime packages to ${target}`);

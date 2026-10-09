@@ -2149,6 +2149,7 @@ __metadata:
     "@structured-world/gitlab-mcp": "workspace:^"
     "@types/jest": "npm:^30.0.0"
     "@types/node": "npm:^25.9.9"
+    dotenv: "npm:^18.0.7"
     jest: "npm:^30.5.2"
     prisma: "npm:^7.10.0"
     ts-jest: "npm:^29.4.14"

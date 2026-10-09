@@ -20,6 +20,7 @@ import {
   pollDeviceFlowStep,
   getGitLabUser,
   buildGitLabAuthUrl,
+  GitLabOAuthHttpError,
 } from '../gitlab-device-flow';
 import {
   generateRandomString,
@@ -420,6 +421,20 @@ async function handleDeviceFlow(
     res.setHeader('Content-Type', 'text/html');
     res.send(html);
   } catch (error: unknown) {
+    // GitLab has the device grant from 17.2 behind a flag, on by default from 17.3
+    // (https://docs.gitlab.com/api/oauth2/#device-authorization-grant-flow); older
+    // instances have no such endpoint, and without redirect_uri there is no other flow.
+    if (error instanceof GitLabOAuthHttpError && error.status === 404) {
+      sendError(
+        req,
+        res,
+        400,
+        'invalid_request',
+        'This GitLab instance does not support device authorization (GitLab 17.3 or later); ' +
+          'authorize with a redirect_uri instead',
+      );
+      return;
+    }
     logError('Failed to initiate device flow', { err: error as Error });
     sendError(req, res, 500, 'server_error', 'Failed to initiate authentication');
   }

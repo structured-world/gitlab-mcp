@@ -202,6 +202,8 @@ The server supports two OAuth flows automatically:
 
 The flow is selected automatically based on the presence of `redirect_uri` in the authorization request.
 
+The Device Flow needs GitLab 17.3 or later (17.2 with the `oauth2_device_grant_flow` feature flag). On older instances a request without `redirect_uri` is refused with `invalid_request`; clients there use the Authorization Code flow.
+
 ### Token binding
 
 - **Client and redirect:** the Authorization Code flow requires a client registered through `/register`, and `redirect_uri` must be one of its registered URIs; otherwise the request fails without a redirect. The Device Flow does not use a redirect and needs no registration.

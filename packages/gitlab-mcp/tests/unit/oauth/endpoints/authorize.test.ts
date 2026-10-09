@@ -35,6 +35,8 @@ jest.mock('../../../../src/oauth/gitlab-device-flow', () => ({
     (_config, _callbackUri: string, state: string) =>
       `https://gitlab.example.com/oauth/authorize?state=${state}`,
   ),
+  GitLabOAuthHttpError: jest.requireActual('../../../../src/oauth/gitlab-device-flow')
+    .GitLabOAuthHttpError,
 }));
 
 jest.mock('../../../../src/oauth/token-utils', () => ({
@@ -83,6 +85,7 @@ import {
   initiateDeviceFlow,
   pollDeviceFlowStep,
   getGitLabUser,
+  GitLabOAuthHttpError,
 } from '../../../../src/oauth/gitlab-device-flow';
 
 const mockPollDeviceFlowStep = pollDeviceFlowStep as jest.MockedFunction<typeof pollDeviceFlowStep>;
@@ -641,6 +644,33 @@ describe('OAuth Authorization Endpoint', () => {
       expect(res.json).toHaveBeenCalledWith({
         error: 'server_error',
         error_description: 'Failed to initiate authentication',
+      });
+    });
+
+    // GitLab has the device grant from 17.2 (behind a flag, on by default from 17.3);
+    // older supported instances answer 404. Without redirect_uri there is no other flow,
+    // so the client is told what is missing instead of getting a server error.
+    it('explains that the instance has no device authorization', async () => {
+      mockInitiateDeviceFlow.mockRejectedValue(
+        new GitLabOAuthHttpError('Failed to initiate device flow: 404 Not Found', 404),
+      );
+
+      const req = createMockRequest({
+        response_type: 'code',
+        client_id: 'test-client',
+        code_challenge: 'challenge',
+        code_challenge_method: 'S256',
+      }) as Request;
+      const res = createMockResponse() as Response;
+
+      await authorizeHandler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'invalid_request',
+        error_description:
+          'This GitLab instance does not support device authorization (GitLab 17.3 or later); ' +
+          'authorize with a redirect_uri instead',
       });
     });
   });

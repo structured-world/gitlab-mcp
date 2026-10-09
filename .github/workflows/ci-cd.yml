@@ -264,11 +264,14 @@ jobs:
           # starts a long-lived server (it ignores --version and never exits, so
           # `docker run ... --version` would hang). Core lives in the in-job
           # registry (pulled on run); the db image was loaded to the host daemon.
+          # Core ships without Prisma: PostgreSQL storage comes only with the db image.
           docker run --rm --entrypoint node localhost:5000/${{ env.IMAGE_NAME }}:test \
-            -e "const fs=require('fs'); if (!fs.existsSync('/app/dist/src/main.js')) process.exit(1); console.log('core image ok')"
-          # The layered image must resolve the optional db backend at runtime.
-          docker run --rm --entrypoint node ${{ env.IMAGE_NAME }}-db:test \
-            -e "if (typeof require('@structured-world/gitlab-mcp-db').PostgreSQLStorageBackend !== 'function') process.exit(1); console.log('db backend resolves')"
+            -e "const fs=require('fs'); if (!fs.existsSync('/app/dist/src/main.js')) process.exit(1); if (['prisma','@prisma'].some((p) => fs.existsSync('/app/node_modules/' + p))) process.exit(1); console.log('core image ok')"
+          # The layered image must load every module the backend needs: a query
+          # against a closed port has to fail as unreachable, not as a missing module.
+          docker run --rm --entrypoint node \
+            -v "$PWD/packages/gitlab-mcp-db/scripts/runtime-smoke.cjs:/tmp/runtime-smoke.cjs:ro" \
+            ${{ env.IMAGE_NAME }}-db:test /tmp/runtime-smoke.cjs
 
   # Job 3: Summary
   summary:

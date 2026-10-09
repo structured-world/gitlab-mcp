@@ -382,6 +382,14 @@ describe('whoami handler', () => {
   });
 
   describe('whoami in OAuth mode', () => {
+    beforeEach(() => {
+      process.env.OAUTH_ENABLED = 'true';
+      ContextManager.resetInstance();
+
+      // In OAuth mode, token scope detection returns null
+      mockConnectionManager.getTokenScopeInfo.mockReturnValue(null);
+    });
+
     it('reports the selected OAuth grant instead of assuming full API access', async () => {
       // A shared host must not report the default account's host or permissions.
       const result = await runWithTokenContext(
@@ -401,13 +409,6 @@ describe('whoami handler', () => {
       expect(mockEnhancedFetch).toHaveBeenCalledWith('https://selected.example.com/api/v4/user', {
         retry: false,
       });
-    });
-    beforeEach(() => {
-      process.env.OAUTH_ENABLED = 'true';
-      ContextManager.resetInstance();
-
-      // In OAuth mode, token scope detection returns null
-      mockConnectionManager.getTokenScopeInfo.mockReturnValue(null);
     });
 
     it('should return oauth token type', async () => {

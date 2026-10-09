@@ -2152,6 +2152,7 @@ __metadata:
     "@typescript-eslint/parser": "npm:^8.71.0"
     auto-changelog: "npm:^2.7.0"
     cross-env: "npm:^10.1.0"
+    cross-spawn: "npm:^7.0.6"
     dotenv: "npm:^18.0.5"
     eslint: "npm:^10.12.0"
     eslint-plugin-prettier: "npm:^5.5.6"

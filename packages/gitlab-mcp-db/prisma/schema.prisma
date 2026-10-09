@@ -63,6 +63,8 @@ model DeviceFlowState {
   codeChallenge           String   @map("code_challenge")
   codeChallengeMethod     String   @map("code_challenge_method")
   redirectUri             String?  @map("redirect_uri")
+  // The original GitLab grant request, retained across polling on another replica.
+  requestedGitlabScopes   Json?    @map("requested_gitlab_scopes")
 
   @@map("oauth_device_flows")
   @@index([deviceCode], map: "idx_oauth_device_flows_device_code")
@@ -79,6 +81,8 @@ model AuthCodeFlowState {
   clientRedirectUri   String   @map("client_redirect_uri")
   callbackUri         String   @map("callback_uri")
   expiresAt           BigInt   @map("expires_at")
+  // OAuth §5.1 lets the token response omit scope when this grant is unchanged.
+  requestedGitlabScopes Json?   @map("requested_gitlab_scopes")
 
   @@map("oauth_auth_code_flows")
   @@index([expiresAt], map: "idx_oauth_auth_code_flows_expires_at")

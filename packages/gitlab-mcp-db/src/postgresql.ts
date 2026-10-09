@@ -45,6 +45,7 @@ interface PrismaOAuthSessionRow {
 }
 
 interface PrismaDeviceFlowStateRow {
+  requestedGitlabScopes?: unknown;
   state: string;
   deviceCode: string;
   userCode: string;
@@ -59,6 +60,7 @@ interface PrismaDeviceFlowStateRow {
 }
 
 interface PrismaAuthCodeFlowStateRow {
+  requestedGitlabScopes?: unknown;
   internalState: string;
   clientId: string;
   codeChallenge: string;
@@ -87,6 +89,15 @@ interface PrismaMcpSessionMappingRow {
 
 interface PrismaBatchPayload {
   count: number;
+}
+
+/** Preserve unknown/empty grants and reject corrupt durable permissions. */
+function storedGitlabScopes(value: unknown): string[] | undefined {
+  if (value == null) return undefined;
+  if (!Array.isArray(value) || !value.every((scope) => typeof scope === 'string')) {
+    throw new Error('Invalid stored GitLab scopes');
+  }
+  return value;
 }
 
 /**
@@ -287,13 +298,6 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
   }
 
   private rowToSession(row: PrismaOAuthSessionRow): OAuthSession {
-    const grants = row.gitlabScopes;
-    if (
-      grants != null &&
-      (!Array.isArray(grants) || !grants.every((scope) => typeof scope === 'string'))
-    ) {
-      throw new Error('Invalid stored GitLab scopes');
-    }
     return {
       id: row.id,
       mcpAccessToken: row.mcpAccessToken,
@@ -302,7 +306,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
       gitlabAccessToken: row.gitlabAccessToken,
       gitlabRefreshToken: row.gitlabRefreshToken,
       gitlabTokenExpiry: Number(row.gitlabTokenExpiry),
-      gitlabScopes: grants == null ? undefined : (grants as string[]),
+      gitlabScopes: storedGitlabScopes(row.gitlabScopes),
       gitlabUserId: row.gitlabUserId,
       gitlabUsername: row.gitlabUsername,
       gitlabApiUrl: row.gitlabApiUrl ?? undefined,
@@ -323,6 +327,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         deviceCode: flow.deviceCode,
         userCode: flow.userCode,
         expiresAt: BigInt(flow.expiresAt),
+        requestedGitlabScopes: flow.requestedGitlabScopes,
       },
       create: {
         state,
@@ -336,6 +341,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         codeChallenge: flow.codeChallenge,
         codeChallengeMethod: flow.codeChallengeMethod,
         redirectUri: flow.redirectUri ?? null,
+        requestedGitlabScopes: flow.requestedGitlabScopes,
       },
     });
   }
@@ -370,6 +376,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   private rowToDeviceFlow(row: PrismaDeviceFlowStateRow): DeviceFlowStateType {
     return {
+      requestedGitlabScopes: storedGitlabScopes(row.requestedGitlabScopes),
       deviceCode: row.deviceCode,
       userCode: row.userCode,
       verificationUri: row.verificationUri,
@@ -397,6 +404,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
         clientRedirectUri: flow.clientRedirectUri,
         callbackUri: flow.callbackUri,
         expiresAt: BigInt(flow.expiresAt),
+        requestedGitlabScopes: flow.requestedGitlabScopes,
       },
     });
   }
@@ -424,6 +432,7 @@ export class PostgreSQLStorageBackend implements SessionStorageBackend {
 
   private rowToAuthCodeFlow(row: PrismaAuthCodeFlowStateRow): AuthCodeFlowStateType {
     return {
+      requestedGitlabScopes: storedGitlabScopes(row.requestedGitlabScopes),
       clientId: row.clientId,
       codeChallenge: row.codeChallenge,
       codeChallengeMethod: row.codeChallengeMethod,

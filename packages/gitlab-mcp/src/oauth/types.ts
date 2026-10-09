@@ -42,7 +42,7 @@ export interface OAuthSession {
   gitlabRefreshToken: string;
   /** GitLab token expiry timestamp (milliseconds since epoch) */
   gitlabTokenExpiry: number;
-  /** Granted GitLab scopes, distinct from MCP scopes; absent when upstream did not report them. */
+  /** Granted GitLab scopes, distinct from MCP scopes; absent for legacy unknown grants. */
   gitlabScopes?: string[];
 
   // User info from GitLab
@@ -73,6 +73,8 @@ export interface OAuthSession {
  * Used when redirect_uri is provided (web-based OAuth like Claude.ai)
  */
 export interface AuthCodeFlowState {
+  /** Scopes sent to GitLab at flow creation; absent in flows persisted by older servers. */
+  requestedGitlabScopes?: string[];
   /** OAuth client ID */
   clientId: string;
   /** PKCE code challenge */
@@ -99,6 +101,8 @@ export interface AuthCodeFlowState {
  * State for tracking an in-progress device authorization flow
  */
 export interface DeviceFlowState {
+  /** Scopes sent to GitLab at flow creation; absent in flows persisted by older servers. */
+  requestedGitlabScopes?: string[];
   /** Device code returned by GitLab */
   deviceCode: string;
   /** User code to display to the user */

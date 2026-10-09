@@ -6,6 +6,7 @@ import {
   forwardWithPolicy,
   isReadCall,
   type ForwardPolicy,
+  DownstreamDisconnectedError,
 } from '../../../src/channel-gateway/forwarding';
 
 function policy(over: Partial<ForwardPolicy>): ForwardPolicy {
@@ -67,7 +68,9 @@ describe('forwardWithPolicy', () => {
     const call = jest.fn(() => {
       n++;
       connected = n !== 1;
-      return n === 1 ? Promise.reject(new Error('link dropped')) : Promise.resolve('result');
+      return n === 1
+        ? Promise.reject(new DownstreamDisconnectedError(new Error('link dropped')))
+        : Promise.resolve('result');
     });
     const out = await forwardWithPolicy(
       policy({ call, isConnected: () => connected }),
@@ -79,9 +82,11 @@ describe('forwardWithPolicy', () => {
   });
 
   it('never retries a write that was sent and failed', async () => {
-    const call = jest.fn(() => Promise.reject(new Error('link dropped')));
+    const call = jest.fn(() =>
+      Promise.reject(new DownstreamDisconnectedError(new Error('link dropped'))),
+    );
     await expect(forwardWithPolicy(policy({ call }), 'manage_pipeline', {})).rejects.toThrow(
-      'link dropped',
+      'Downstream connection closed',
     );
     expect(call).toHaveBeenCalledTimes(1); // no second attempt
   });
@@ -102,11 +107,11 @@ describe('forwardWithPolicy', () => {
     let connected = true;
     call.mockImplementation(() => {
       connected = false;
-      return Promise.reject(new Error('still down'));
+      return Promise.reject(new DownstreamDisconnectedError(new Error('still down')));
     });
     await expect(
       forwardWithPolicy(policy({ call, isConnected: () => connected }), 'browse_pipelines', {}),
-    ).rejects.toThrow('still down');
+    ).rejects.toThrow('Downstream connection closed');
     expect(call).toHaveBeenCalledTimes(2); // initial + one retry, then give up
   });
 
@@ -118,6 +123,36 @@ describe('forwardWithPolicy', () => {
     await expect(
       forwardWithPolicy(policy({ call, waitForConnection }), 'browse_pipelines', {}),
     ).rejects.toThrow('Invalid structured output');
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(waitForConnection).not.toHaveBeenCalled();
+  });
+
+  it('retries a disconnected read even if another connection is already live', async () => {
+    // The failed connection's cause must survive replacement by a reconnected client.
+    const call = jest
+      .fn()
+      .mockRejectedValueOnce(new DownstreamDisconnectedError(new Error('closed')))
+      .mockResolvedValueOnce('result');
+    expect(await forwardWithPolicy(policy({ call }), 'browse_projects', {})).toBe('result');
+    expect(call).toHaveBeenCalledTimes(2);
+  });
+
+  it('never replays a protocol rejection when an unrelated disconnect follows', async () => {
+    // A global link-health change does not turn a received error into an unsent read.
+    let connected = true;
+    const error = new Error('Invalid structured output');
+    const call = jest.fn(() => {
+      connected = false;
+      return Promise.reject(error);
+    });
+    const waitForConnection = jest.fn();
+    await expect(
+      forwardWithPolicy(
+        policy({ call, isConnected: () => connected, waitForConnection }),
+        'browse_projects',
+        {},
+      ),
+    ).rejects.toBe(error);
     expect(call).toHaveBeenCalledTimes(1);
     expect(waitForConnection).not.toHaveBeenCalled();
   });

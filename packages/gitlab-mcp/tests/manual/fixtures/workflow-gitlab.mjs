@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { parse, visit, Kind } from 'graphql';
 
 /** Deterministic GitLab fixture for real-client evaluations; no live credentials. */
 export async function startWorkflowGitLab() {
@@ -47,54 +48,43 @@ export async function startWorkflowGitLab() {
     widgets: [],
     webUrl: 'https://gitlab.example.com/test/backend/-/work_items/3',
   };
-  const server = createServer(async (request, response) => {
-    const url = new URL(request.url, 'http://localhost');
-    const path = decodeURIComponent(url.pathname);
-    let body = '';
-    for await (const chunk of request) body += chunk;
-    const input = body ? JSON.parse(body) : {};
-    requests.push({
-      method: request.method,
-      path,
-      query: Object.fromEntries(url.searchParams),
-      input,
-    });
-    function json(value, status = 200) {
-      response.writeHead(status, { 'content-type': 'application/json' });
-      response.end(JSON.stringify(value));
-    }
-    if (path === '/api/graphql') {
-      const query = input.query ?? '';
-      if (/\bmutation\b/.test(query))
-        return json({
-          errors: [{ message: 'Permission denied: fixture account cannot mutate work items' }],
-        });
-      if (query.includes('__schema'))
-        return json({ errors: [{ message: 'Introspection unavailable in fixture' }] });
-      if (query.includes('metadata'))
-        return json({
-          data: {
-            metadata: { version: '19.0.0', enterprise: true, revision: 'fixture' },
-            currentUser: user,
-          },
-        });
-      if (query.includes('currentLicense'))
-        return json({ data: { currentLicense: { plan: 'ultimate' } } });
-      const namespace = {
-        workItems: { nodes: [item], pageInfo: { hasNextPage: false, endCursor: null } },
-        workItem: item,
-        workItemTypes: { nodes: [{ id: 'gid://gitlab/WorkItems::Type/1', name: 'Issue' }] },
-      };
+  function graphQL(input, json) {
+    const query = input.query ?? '';
+    if (/\bmutation\b/.test(query))
+      return json({
+        errors: [{ message: 'Permission denied: fixture account cannot mutate work items' }],
+      });
+    if (query.includes('__schema'))
+      return json({ errors: [{ message: 'Introspection unavailable in fixture' }] });
+    if (query.includes('metadata'))
       return json({
         data: {
-          namespace,
-          project: namespace,
-          group: namespace,
-          workItem: item,
+          metadata: { version: '19.0.0', enterprise: true, revision: 'fixture' },
           currentUser: user,
         },
       });
-    }
+    if (query.includes('currentLicense'))
+      return json({ data: { currentLicense: { plan: 'ultimate' } } });
+    const invalidTargets = validateGraphQLTargets(query, input.variables);
+    if (invalidTargets.length)
+      return json({ data: Object.fromEntries(invalidTargets.map((name) => [name, null])) });
+    const namespace = {
+      workItems: { nodes: [item], pageInfo: { hasNextPage: false, endCursor: null } },
+      workItem: item,
+      workItemTypes: { nodes: [{ id: 'gid://gitlab/WorkItems::Type/1', name: 'Issue' }] },
+    };
+    return json({
+      data: {
+        namespace,
+        project: namespace,
+        group: namespace,
+        workItem: item,
+        currentUser: user,
+      },
+    });
+  }
+
+  function rest(request, path, response, json) {
     if (request.method !== 'GET') return json({ message: 'Fixture account is read-only' }, 403);
     if (path.includes('/test/denied')) return json({ message: 'Forbidden' }, 403);
     if (path === '/api/v4/user') return json(user);
@@ -111,6 +101,13 @@ export async function startWorkflowGitLab() {
       });
     if (path === '/api/v4/projects') return json([project]);
     if (/^\/api\/v4\/projects\/(?:71|test\/backend)$/.test(path)) return json(project);
+    if (path === '/api/v4/groups/test') return json({ id: 9, full_path: 'test' });
+    const projectRoute = /^\/api\/v4\/projects\/(?:71|test\/backend)(\/.*)$/.exec(path);
+    if (!projectRoute) return json({ message: 'Project route not found' }, 404);
+    return projectRest(projectRoute[1], response, json);
+  }
+
+  function projectRest(path, response, json) {
     if (path.endsWith('/merge_requests')) return json([mr]);
     if (path.endsWith('/merge_requests/12/changes'))
       return json({
@@ -160,8 +157,27 @@ export async function startWorkflowGitLab() {
           mode: '100644',
         },
       ]);
-    if (path === '/api/v4/groups/test') return json({ id: 9, full_path: 'test' });
     return json({ message: `Unimplemented fixture route ${path}` }, 404);
+  }
+
+  const server = createServer(async (request, response) => {
+    const url = new URL(request.url, 'http://localhost');
+    const path = decodeURIComponent(url.pathname);
+    let body = '';
+    for await (const chunk of request) body += chunk;
+    const input = body ? JSON.parse(body) : {};
+    requests.push({
+      method: request.method,
+      path,
+      query: Object.fromEntries(url.searchParams),
+      input,
+    });
+    function json(value, status = 200) {
+      response.writeHead(status, { 'content-type': 'application/json' });
+      response.end(JSON.stringify(value));
+    }
+    if (path === '/api/graphql') return graphQL(input, json);
+    return rest(request, path, response, json);
   });
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   return {
@@ -175,4 +191,34 @@ export async function startWorkflowGitLab() {
         server.close((error) => (error ? reject(error) : resolve())),
       ),
   };
+}
+
+/** Inspect the query's actual target arguments, including inline literals. */
+function validateGraphQLTargets(query, variables = {}) {
+  const invalid = [];
+  visit(parse(query), {
+    Field(node) {
+      for (const argument of node.arguments ?? []) {
+        if (!['fullPath', 'id', 'iid'].includes(argument.name.value)) continue;
+        const value =
+          argument.value.kind === Kind.VARIABLE
+            ? variables[argument.value.name.value]
+            : argument.value.value;
+        if (argument.name.value === 'fullPath' && value !== 'test/backend') {
+          invalid.push(node.alias?.value ?? node.name.value);
+        }
+        if (argument.name.value === 'iid' && String(value) !== '3') {
+          invalid.push(node.alias?.value ?? node.name.value);
+        }
+        if (
+          node.name.value === 'workItem' &&
+          argument.name.value === 'id' &&
+          value !== 'gid://gitlab/WorkItem/51'
+        ) {
+          invalid.push(node.alias?.value ?? node.name.value);
+        }
+      }
+    },
+  });
+  return invalid;
 }

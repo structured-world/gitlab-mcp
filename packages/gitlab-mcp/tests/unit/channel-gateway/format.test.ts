@@ -10,6 +10,19 @@ import {
 import type { WatchEvent } from '../../../src/channel-gateway/watch';
 
 describe('parseToolResult', () => {
+  it('preserves successful envelopes and primitive inputs across optional fields', () => {
+    // Missing optional MCP fields and a false isError flag must not discard successful data.
+    for (const value of [null, undefined, false, 0, 'raw'])
+      expect(parseToolResult(value)).toBe(value);
+    const content = { isError: false, content: [{ type: 'image', data: 'fixture' }] };
+    expect(parseToolResult(content)).toBe(content);
+    expect(parseToolResult({ isError: false, structuredContent: { ok: true } })).toEqual({
+      ok: true,
+    });
+    expect(parseToolResult({ content: [{ type: 'text' }] })).toEqual({
+      content: [{ type: 'text' }],
+    });
+  });
   it('reads native structured output without requiring JSON text', () => {
     // Native MCP tools may provide human prose rather than a duplicate JSON body.
     const data = { id: 7, status: 'running' };

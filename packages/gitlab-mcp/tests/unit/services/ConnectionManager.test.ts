@@ -300,6 +300,48 @@ describe('ConnectionManager Unit', () => {
       );
     });
 
+    it('uses REST detection for a fresh OAuth account without GraphQL scopes', async () => {
+      // Restricted grants must not await another account's GraphQL bootstrap on the same host.
+      const url = 'https://gitlab.example.com';
+      injectInstanceState(manager, url, {});
+      const detectREST = jest
+        .spyOn(
+          manager as unknown as { detectVersionViaREST: (url: string) => Promise<unknown> },
+          'detectVersionViaREST',
+        )
+        .mockResolvedValue({ version: '16.0.0', tier: 'free' });
+      const introspection = jest
+        .spyOn(internals(manager), 'doIntrospection')
+        .mockResolvedValue(undefined);
+      await manager.ensureIntrospected(url, ['read_user', 'read_repository']);
+      expect(introspection).not.toHaveBeenCalled();
+      expect(detectREST).toHaveBeenCalledWith(url);
+      expect(manager.getInstanceInfo(url)).toEqual({ version: '16.0.0', tier: 'free' });
+      await manager.ensureIntrospected(url, ['api']);
+      expect(introspection).toHaveBeenCalledTimes(1);
+    });
+
+    it('lets REST version detection use the authenticated request identity', async () => {
+      // The OAuth-only REST bootstrap must not add the server's static PAT alongside Bearer auth.
+      const url = 'https://gitlab.example.com';
+      injectInstanceState(manager, url, {});
+      const fetch = jest
+        .spyOn(require('../../../src/utils/fetch'), 'enhancedFetch')
+        .mockResolvedValue({
+          ok: true,
+          json: async () => ({ version: '16.0.0', enterprise: false }),
+        });
+      try {
+        await manager.ensureIntrospected(url, ['read_user']);
+        expect(fetch).toHaveBeenCalledWith(`${url}/api/v4/version`, {
+          headers: { Accept: 'application/json' },
+          retry: false,
+        });
+      } finally {
+        fetch.mockRestore();
+      }
+    });
+
     it('should return early if already introspected for same instance', async () => {
       // Mock context to return specific instance URL
       mockGetGitLabApiUrlFromContext.mockReturnValue('https://gitlab.example.com');

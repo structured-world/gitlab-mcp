@@ -86,6 +86,7 @@ describe('OAuth Callback Handler', () => {
     codeChallenge: 'code-challenge',
     codeChallengeMethod: 'S256' as const,
     expiresAt: Date.now() + 600000, // 10 minutes from now
+    requestedGitlabScopes: ['read_api', 'read_user'],
   };
 
   beforeEach(() => {
@@ -282,6 +283,23 @@ describe('OAuth Callback Handler', () => {
         'gitlab-code-123',
         mockAuthCodeFlow.callbackUri,
         mockOAuthConfig,
+      );
+    });
+
+    it('retains the requested grant when the token response omits scope', async () => {
+      // RFC 6749 §5.1 permits omission only when the granted scope is unchanged.
+      mockExchangeGitLabAuthCode.mockResolvedValue({
+        access_token: 'fixture-access',
+        refresh_token: 'fixture-refresh',
+        expires_in: 7200,
+        token_type: 'Bearer',
+        created_at: 1234567890,
+      });
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+      expect(mockSessionStore.createSession).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gitlabScopes: ['read_api', 'read_user'],
+        }),
       );
     });
 

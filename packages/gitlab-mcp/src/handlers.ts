@@ -179,6 +179,7 @@ interface BootstrapContext {
   toolArguments: Record<string, unknown> | undefined;
   effectiveInstanceUrl: string;
   oauthMode: boolean;
+  requestScopes?: readonly string[];
   connectionManager: ConnectionManager;
   healthMonitor: HealthMonitor;
   isTimedOut: () => boolean;
@@ -320,20 +321,8 @@ async function tryManageContextFastPath(
  * introspection step), or undefined on success. All errors are handled internally
  * and surfaced as a CONNECTION_FAILED payload — none are rethrown to the caller.
  */
-// Cognitive complexity is elevated but justified: bootstrapState mutations, error
-// classification, HealthMonitor reporting, and derived-state computation are tightly
-// coupled. Further extraction would add indirection without reducing conceptual complexity.
 async function ensureBootstrapped(ctx: BootstrapContext): Promise<CallToolResult | undefined> {
-  const {
-    toolName,
-    toolArguments,
-    effectiveInstanceUrl,
-    oauthMode,
-    connectionManager,
-    healthMonitor,
-    isTimedOut,
-    bootstrapState,
-  } = ctx;
+  const { effectiveInstanceUrl, oauthMode, requestScopes, connectionManager, bootstrapState } = ctx;
   bootstrapState.started = true;
   try {
     if (!connectionManager.isConnected(effectiveInstanceUrl)) {
@@ -344,7 +333,7 @@ async function ensureBootstrapped(ctx: BootstrapContext): Promise<CallToolResult
     }
     connectionManager.getClient(effectiveInstanceUrl);
     if (oauthMode) {
-      await connectionManager.ensureIntrospected(effectiveInstanceUrl);
+      await connectionManager.ensureIntrospected(effectiveInstanceUrl, requestScopes);
     }
     // Mark bootstrap complete BEFORE cache rebuild — refreshCache is local
     // bookkeeping, not a connectivity step. If it fails, the tool call should
@@ -377,54 +366,105 @@ async function ensureBootstrapped(ctx: BootstrapContext): Promise<CallToolResult
     }
     return undefined;
   } catch (initError) {
-    // bootstrapState.complete is always false here: refreshCache is isolated above,
-    // so the only way to reach this catch is initialize()/getClient()/ensureIntrospected()
-    // failing before bootstrapState.complete was set.
-    const errorCategory = initError instanceof Error ? classifyError(initError) : 'permanent';
-    // Report bootstrap failure to HealthMonitor. When the handler has already
-    // timed out, we still forward auth/permanent errors so the instance
-    // converges to `failed` instead of staying in `reconnecting` indefinitely.
-    if (initError instanceof Error) {
-      if (!isTimedOut() || errorCategory === 'auth' || errorCategory === 'permanent') {
-        healthMonitor.reportError(effectiveInstanceUrl, initError);
-      }
-    }
-    logError(
-      `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`,
-      {
-        instanceUrl: effectiveInstanceUrl,
-        err: initError instanceof Error ? initError : new Error(String(initError)),
-      },
-    );
-    const action =
-      toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : 'unknown';
-    // Use error classification together with HealthMonitor state to determine
-    // the derived connection state. For untracked URLs, getState() falls back
-    // to 'disconnected', so we must not rely on that alone — otherwise
-    // permanent/auth failures would incorrectly appear retriable.
-    const monitorState = healthMonitor.getState(effectiveInstanceUrl);
-    // Prefer explicit monitor states when available; otherwise derive from the
-    // error category: auth/permanent → failed (no auto-retry),
-    // transient/other → disconnected (retriable)
-    let derivedState: 'connecting' | 'disconnected' | 'failed';
-    if (monitorState === 'connecting' || monitorState === 'failed') {
-      derivedState = monitorState;
-    } else if (errorCategory === 'auth' || errorCategory === 'permanent') {
-      derivedState = 'failed';
-    } else {
-      derivedState = 'disconnected';
-    }
-    const connError = createConnectionFailedError(
-      toolName,
-      action,
-      effectiveInstanceUrl,
-      derivedState,
-    );
-    if (!isTimedOut()) {
-      recordEarlyReturnError(toolName, action, connError.message);
-    }
-    return errorToolResult(connError);
+    return formatBootstrapFailure(ctx, initError);
   }
+}
+
+function bootstrapFailureState(
+  monitorState: string,
+  category: ReturnType<typeof classifyError>,
+): 'connecting' | 'disconnected' | 'failed' {
+  if (monitorState === 'connecting' || monitorState === 'failed') return monitorState;
+  return category === 'auth' || category === 'permanent' ? 'failed' : 'disconnected';
+}
+
+function formatBootstrapFailure(ctx: BootstrapContext, initError: unknown): CallToolResult {
+  const { toolName, toolArguments, effectiveInstanceUrl, healthMonitor, isTimedOut } = ctx;
+  // Bootstrap has not completed here: refreshCache is isolated above,
+  // so the only way to reach this catch is initialize()/getClient()/ensureIntrospected()
+  // failing before bootstrapState.complete was set.
+  const errorCategory = initError instanceof Error ? classifyError(initError) : 'permanent';
+  // Report bootstrap failure to HealthMonitor. When the handler has already
+  // timed out, we still forward auth/permanent errors so the instance
+  // converges to `failed` instead of staying in `reconnecting` indefinitely.
+  if (initError instanceof Error) {
+    if (!isTimedOut() || errorCategory === 'auth' || errorCategory === 'permanent') {
+      healthMonitor.reportError(effectiveInstanceUrl, initError);
+    }
+  }
+  logError(
+    `Connection initialization failed: ${initError instanceof Error ? initError.message : String(initError)}`,
+    {
+      instanceUrl: effectiveInstanceUrl,
+      err: initError instanceof Error ? initError : new Error(String(initError)),
+    },
+  );
+  const action =
+    toolArguments && typeof toolArguments.action === 'string' ? toolArguments.action : 'unknown';
+  // Use error classification together with HealthMonitor state to determine
+  // the derived connection state. For untracked URLs, getState() falls back
+  // to 'disconnected', so we must not rely on that alone — otherwise
+  // permanent/auth failures would incorrectly appear retriable.
+  const monitorState = healthMonitor.getState(effectiveInstanceUrl);
+  // Prefer explicit monitor states when available; otherwise derive from the
+  // error category: auth/permanent → failed (no auto-retry),
+  // transient/other → disconnected (retriable)
+  const derivedState = bootstrapFailureState(monitorState, errorCategory);
+  const connError = createConnectionFailedError(
+    toolName,
+    action,
+    effectiveInstanceUrl,
+    derivedState,
+  );
+  if (!isTimedOut()) {
+    recordEarlyReturnError(toolName, action, connError.message);
+  }
+  return errorToolResult(connError);
+}
+
+function recordCallContext(
+  sessionContext: import('./entities/context/types').SessionContext,
+): void {
+  const requestTracker = getRequestTracker();
+  // Capture current context and read-only state for access logging
+  if (sessionContext.scope?.path) {
+    requestTracker.setContextForCurrentRequest(sessionContext.scope.path);
+  }
+  requestTracker.setReadOnlyForCurrentRequest(sessionContext.readOnly);
+
+  // Increment tool count for connection tracking
+  const currentRequestId = getCurrentRequestId();
+  if (currentRequestId) {
+    // Get session ID from the request stack to update connection stats
+    const stack = requestTracker.getStack(currentRequestId);
+    if (stack?.sessionId) {
+      const connectionTracker = getConnectionTracker();
+      connectionTracker.incrementTools(stack.sessionId);
+    }
+  }
+}
+
+function throwDispatchError(
+  error: unknown,
+  toolName: string,
+  instanceUrl: string,
+  healthMonitor: HealthMonitor,
+  timedOut: boolean,
+): never {
+  // Only report connectivity/auth errors to HealthMonitor — not request-level
+  // 4xx (e.g. 404 "project not found") which don't indicate connection problems.
+  // classifyError returns 'permanent' for 4xx like 400/403/404, 'transient' for network issues,
+  // and 'auth' for authentication errors like 401; only 'transient' and 'auth' are reported here.
+  if (!timedOut && error instanceof Error) {
+    const category = classifyError(error);
+    if (category === 'transient' || category === 'auth') {
+      healthMonitor.reportError(instanceUrl, error);
+    }
+  }
+
+  const errorMessage = error instanceof Error ? error.message : String(error);
+  // Preserve original error as cause to allow action extraction and structured error detection
+  throw new Error(`Failed to execute tool '${toolName}': ${errorMessage}`, { cause: error });
 }
 
 /** One-shot startup promise: health monitor init + registry refresh.
@@ -786,6 +826,7 @@ export async function setupHandlers(server: Server): Promise<void> {
         toolArguments,
         effectiveInstanceUrl,
         oauthMode,
+        requestScopes,
         connectionManager,
         healthMonitor,
         isTimedOut: () => timedOut,
@@ -801,33 +842,15 @@ export async function setupHandlers(server: Server): Promise<void> {
       if (LOG_FORMAT === 'condensed') {
         const requestTracker = getRequestTracker();
         requestTracker.setToolForCurrentRequest(toolName, action);
-
-        // Capture current context and read-only state for access logging
         const { getContextManager } = await import('./entities/context/context-manager');
-        const contextManager = getContextManager();
-        const sessionContext = contextManager.getContext();
-        if (sessionContext.scope?.path) {
-          requestTracker.setContextForCurrentRequest(sessionContext.scope.path);
-        }
-        requestTracker.setReadOnlyForCurrentRequest(sessionContext.readOnly);
-
-        // Increment tool count for connection tracking
-        const currentRequestId = getCurrentRequestId();
-        if (currentRequestId) {
-          // Get session ID from the request stack to update connection stats
-          const stack = requestTracker.getStack(currentRequestId);
-          if (stack?.sessionId) {
-            const connectionTracker = getConnectionTracker();
-            connectionTracker.incrementTools(stack.sessionId);
-          }
-        }
+        recordCallContext(getContextManager().getContext());
       }
 
       try {
         // Import the registry manager
         const { RegistryManager } = await import('./registry-manager');
         const registryManager = RegistryManager.getInstance();
-        const definition = registryManager.getTool(toolName, effectiveInstanceUrl);
+        const definition = registryManager.getTool(toolName, effectiveInstanceUrl, requestScopes);
         declaredIdempotent = definition?.idempotent ?? definition?.annotations?.idempotentHint;
 
         // Check if tool exists and passes all filtering (applied at registry level).
@@ -887,20 +910,7 @@ export async function setupHandlers(server: Server): Promise<void> {
 
         return formatToolResult(result, definition);
       } catch (error) {
-        // Only report connectivity/auth errors to HealthMonitor — not request-level
-        // 4xx (e.g. 404 "project not found") which don't indicate connection problems.
-        // classifyError returns 'permanent' for 4xx like 400/403/404, 'transient' for network issues,
-        // and 'auth' for authentication errors like 401; only 'transient' and 'auth' are reported here.
-        if (!timedOut && error instanceof Error) {
-          const category = classifyError(error);
-          if (category === 'transient' || category === 'auth') {
-            healthMonitor.reportError(effectiveInstanceUrl, error);
-          }
-        }
-
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        // Preserve original error as cause to allow action extraction and structured error detection
-        throw new Error(`Failed to execute tool '${toolName}': ${errorMessage}`, { cause: error });
+        throwDispatchError(error, toolName, effectiveInstanceUrl, healthMonitor, timedOut);
       }
     };
 

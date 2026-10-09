@@ -8,13 +8,13 @@ description: Portable GitLab workflows, independent client schemas, structured d
 The npm package includes five portable skills under `skills/`. They use the existing
 MCP tools and work with a configured Codex or Claude Code connection:
 
-| Skill | Workflow |
-|-------|----------|
-| `gitlab-setup` | Diagnose connection, selected account, scope and missing permissions |
-| `gitlab-discovery` | Resolve an exact project or namespace for follow-up work |
-| `gitlab-review` | Inspect MR changes/discussions and publish requested feedback |
-| `gitlab-work-items` | Find and manage requested issues and other work items |
-| `gitlab-ci` | Investigate failed jobs with bounded log reads |
+| Skill               | Workflow                                                             |
+| ------------------- | -------------------------------------------------------------------- |
+| `gitlab-setup`      | Diagnose connection, selected account, scope and missing permissions |
+| `gitlab-discovery`  | Resolve an exact project or namespace for follow-up work             |
+| `gitlab-review`     | Inspect MR changes/discussions and publish requested feedback        |
+| `gitlab-work-items` | Find and manage requested issues and other work items                |
+| `gitlab-ci`         | Investigate failed jobs with bounded log reads                       |
 
 Plugin packaging can include this directory directly. For a project-scoped skill
 installation, place the packaged skill directories in the host's supported project
@@ -81,8 +81,10 @@ and never interprets an error result as a successful operation to watch.
 ## Verify the installed workflows
 
 Build the monorepo and run `yarn evaluate:skills codex` or
-`yarn evaluate:skills claude` from the core package. An optional second argument
-selects the installed client executable. The evaluation packs the npm artifact,
+`yarn evaluate:skills claude` from the core package. The evaluator resolves the
+selected client from the operator's PATH before entering its isolated workspace;
+arbitrary executable arguments are rejected. Windows npm CLI shims are supported.
+The evaluation packs the npm artifact,
 loads its skills into a temporary workspace/session-only plugin, and runs the
 actual built server against a deterministic loopback GitLab fixture. It does not
 use live GitLab credentials or modify global client configuration.

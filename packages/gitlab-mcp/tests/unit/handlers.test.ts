@@ -1830,6 +1830,11 @@ describe('handlers', () => {
   });
 
   describe('timeout error handling', () => {
+    beforeEach(async () => {
+      await setupHandlers(mockServer);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+    });
+
     it('honors an explicit non-idempotent declaration on a browse tool', async () => {
       // A public hint may tighten retry safety; the name must not override it.
       mockRegistryManager.getTool.mockReturnValue({ idempotent: false });
@@ -1840,11 +1845,6 @@ describe('handlers', () => {
       expect(result.isError).toBe(true);
       expect(JSON.parse(result.content![0].text).retryable).toBe(false);
     });
-    beforeEach(async () => {
-      await setupHandlers(mockServer);
-      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
-    });
-
     it('should convert timeout error to structured TIMEOUT response for idempotent tools', async () => {
       // Test timeout handling for browse_* (idempotent) tools
       mockRegistryManager.executeTool.mockRejectedValue(new GitLabTimeoutError('headers', 10000));
@@ -2296,6 +2296,26 @@ describe('handlers', () => {
 
       expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(
         'https://gitlab.example.com',
+        undefined,
+      );
+    });
+
+    it('uses request grants when reading the dispatch idempotency definition', async () => {
+      // A denied account must not inherit a shared host's descriptor/retry hint.
+      const oauth = require('../../src/oauth/index');
+      oauth.getTokenContext.mockReturnValue({
+        gitlabToken: 'fixture-only',
+        gitlabScopes: ['read_api'],
+      });
+      await callToolHandler({ params: { name: 'browse_projects', arguments: { action: 'list' } } });
+      expect(mockRegistryManager.getTool).toHaveBeenCalledWith(
+        'browse_projects',
+        'https://gitlab.example.com',
+        ['read_api'],
+      );
+      expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(
+        'https://gitlab.example.com',
+        ['read_api'],
       );
     });
 
@@ -2333,7 +2353,7 @@ describe('handlers', () => {
       // Verify the OAuth URL was passed through all per-URL code paths
       expect(mockConnectionManager.isConnected).toHaveBeenCalledWith(oauthUrl);
       expect(mockConnectionManager.initialize).toHaveBeenCalledWith(oauthUrl);
-      expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(oauthUrl);
+      expect(mockConnectionManager.ensureIntrospected).toHaveBeenCalledWith(oauthUrl, undefined);
       expect(mockHealthMonitor.isInstanceReachable).toHaveBeenCalledWith(oauthUrl);
       expect(mockHealthMonitor.reportSuccess).toHaveBeenCalledWith(oauthUrl);
       // Per-URL cache resolution: instanceUrl threaded through registry calls

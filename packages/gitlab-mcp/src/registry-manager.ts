@@ -808,10 +808,12 @@ class RegistryManager {
    * @param instanceUrl - Optional instance URL. When omitted, resolves via
    *   OAuth request context → getCurrentInstanceUrl() → GITLAB_BASE_URL
    */
-  public getToolCatalog(instanceUrl?: string): ToolDefinition[] {
+  public getToolCatalog(
+    instanceUrl?: string,
+    mode: ClientSchemaMode = getSchemaMode(),
+  ): ToolDefinition[] {
     const url = this.resolveCacheUrl(instanceUrl);
     const cache = this.resolveCache(instanceUrl);
-    const mode = getSchemaMode();
     const cachedDefs = this.toolDefinitionsCaches.get(url)?.get(mode);
     // Return the cached full-list when available (same object already stored by
     // getAllToolDefinitions on healthy path). If the cache is absent (e.g. first
@@ -1190,13 +1192,7 @@ class RegistryManager {
     const contextTools = unreachableMode ? this.registries.get('context') : null;
 
     // Count total tools — in unreachable mode, only context tools are in scope
-    let totalTools = 0;
-    for (const registry of this.registries.values()) {
-      for (const [toolName] of registry) {
-        if (contextTools && !contextTools.has(toolName)) continue;
-        totalTools++;
-      }
-    }
+    const totalTools = this.countCatalogTools(contextTools);
 
     // In unreachable mode, tier/scope context is irrelevant — only context
     // tools are shown. Skip loadInstanceContext but still apply local filters
@@ -1275,6 +1271,22 @@ class RegistryManager {
     };
     if (accountScopes === undefined) this.filterStatsCaches.set(url, stats);
     return stats;
+  }
+
+  private countCatalogTools(
+    contextTools: ReadonlyMap<string, EnhancedToolDefinition> | null | undefined,
+  ): number {
+    let total = 0;
+    for (const registry of this.registries.values()) {
+      if (!contextTools) {
+        total += registry.size;
+        continue;
+      }
+      for (const name of registry.keys()) {
+        if (contextTools.has(name)) total++;
+      }
+    }
+    return total;
   }
 }
 

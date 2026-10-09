@@ -12,6 +12,13 @@
  *    may have executed before the link dropped, and a retry would double it.
  */
 
+/** The captured downstream client lost its transport while this request was in flight. */
+export class DownstreamDisconnectedError extends Error {
+  constructor(cause: unknown) {
+    super('Downstream connection closed', { cause });
+  }
+}
+
 /** Injected hooks; the gateway supplies real transport, tests supply fakes. */
 export interface ForwardPolicy {
   /** True if `name` is an idempotent read (safe to retry). */
@@ -46,7 +53,7 @@ export async function forwardWithPolicy(
     return await policy.call(name, args);
   } catch (err) {
     // Replay only after a lost link, never a valid protocol/schema rejection.
-    if (policy.isRead(name) && !policy.isConnected()) {
+    if (policy.isRead(name) && err instanceof DownstreamDisconnectedError) {
       await policy.waitForConnection();
       return await policy.call(name, args);
     }

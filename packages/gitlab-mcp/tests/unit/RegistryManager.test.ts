@@ -316,6 +316,23 @@ describe('RegistryManager', () => {
       expect(catalog).toBe(discovery);
       expect(catalog.length).toBeGreaterThan(0);
     });
+
+    it('keeps full catalog projections separate in both client initialization orders', () => {
+      // Inspector/discriminated consumers must never inherit a prior flat client's cache.
+      for (const order of [
+        ['flat', 'discriminated'],
+        ['discriminated', 'flat'],
+      ] as const) {
+        registryManager.refreshCache();
+        for (const mode of order) {
+          const catalog = registryManager.getToolCatalog(undefined, mode);
+          expect(catalog).toBe(registryManager.getAllToolDefinitions(undefined, mode));
+        }
+        expect(registryManager.getToolCatalog(undefined, 'flat')).not.toBe(
+          registryManager.getToolCatalog(undefined, 'discriminated'),
+        );
+      }
+    });
   });
 
   describe('Read-Only Mode Filtering', () => {

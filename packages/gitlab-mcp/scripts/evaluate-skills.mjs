@@ -1,4 +1,4 @@
-import { spawn, execFileSync } from 'node:child_process';
+import { launch, launchSync, resolveExecutable, isMutationCall } from './evaluation-process.mjs';
 import { mkdtemp, mkdir, writeFile, cp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -9,16 +9,18 @@ import { startWorkflowGitLab } from '../tests/manual/fixtures/workflow-gitlab.mj
 // This evaluation intentionally invokes real authenticated model clients. Their
 // MCP server connects only to the loopback fixture; no live GitLab credentials.
 const engine = process.argv[2];
-if (!['codex', 'claude'].includes(engine))
-  throw new Error('Usage: yarn evaluate:skills codex|claude [client-path]');
-const command = process.argv[3] ?? engine;
+if (!['codex', 'claude'].includes(engine) || process.argv.length !== 3)
+  throw new Error('Usage: yarn evaluate:skills codex|claude');
+const command = engine === 'codex' ? resolveExecutable('codex') : resolveExecutable('claude');
+const yarn = resolveExecutable('yarn');
+const tar = resolveExecutable('tar');
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workspace = await mkdtemp(join(tmpdir(), `gitlab-skills-${engine}-`));
 const fixture = await startWorkflowGitLab();
-const version = execFileSync(command, ['--version'], { encoding: 'utf8' }).trim();
+const version = launchSync(command, ['--version'], { encoding: 'utf8' }).trim();
 const artifact = join(workspace, 'package.tgz');
-execFileSync('yarn', ['pack', '--out', artifact], { cwd: root, stdio: 'pipe' });
-execFileSync('tar', ['-xzf', artifact, '-C', workspace]);
+launchSync(yarn, ['pack', '--out', artifact], { cwd: root, stdio: 'pipe' });
+launchSync(tar, ['-xzf', artifact, '-C', workspace]);
 const installed = join(workspace, 'package', 'skills');
 await mkdir(join(workspace, '.agents'), { recursive: true });
 await cp(installed, join(workspace, '.agents', 'skills'), { recursive: true });
@@ -117,7 +119,7 @@ let conversation;
 
 function run(args) {
   return new Promise((resolveRun, reject) => {
-    const child = spawn(command, args, { cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = launch(command, args, { cwd: workspace, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '',
       stderr = '';
     const timer = setTimeout(() => {
@@ -141,74 +143,97 @@ function run(args) {
   });
 }
 
+function skillPrefix(skill) {
+  if (!skill) return '';
+  return engine === 'codex' ? `$${skill} ` : `/gitlab-eval:${skill} `;
+}
+
+function claudeSessionArgs(scenario) {
+  if (scenario.resume) return ['--resume', conversation];
+  return scenario.persist ? [] : ['--no-session-persistence'];
+}
+
+function saveReport() {
+  return writeFile(
+    join(workspace, 'report.json'),
+    JSON.stringify({ engine, version, reports }, null, 2),
+  );
+}
+
+async function runScenario(scenario) {
+  // Checkpoint the previous result before starting its dependent follow-up.
+  if (reports.length) await saveReport();
+  const prefix = skillPrefix(scenario.skill);
+  const prompt = prefix + scenario.prompt;
+  let args;
+  if (engine === 'codex') {
+    const overrides = [
+      '--ignore-user-config',
+      '-c',
+      `mcp_servers.gitlab.command=${JSON.stringify(server.command)}`,
+      // Allow only these fixture commands to reach the server-side denial check.
+      // https://developers.openai.com/codex/config-reference
+      '-c',
+      'mcp_servers.gitlab.tools.manage_context.approval_mode="approve"',
+      '-c',
+      'mcp_servers.gitlab.tools.manage_work_item.approval_mode="approve"',
+      '-c',
+      `mcp_servers.gitlab.args=${JSON.stringify(server.args)}`,
+      '-c',
+      `mcp_servers.gitlab.env={${Object.entries(server.env)
+        .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
+        .join(',')}}`,
+    ];
+    args = [
+      'exec',
+      ...overrides,
+      ...(scenario.resume
+        ? ['resume', conversation]
+        : ['-C', workspace, '-s', 'read-only', ...(scenario.persist ? [] : ['--ephemeral'])]),
+      '--skip-git-repo-check',
+      '--json',
+      prompt,
+    ];
+  } else {
+    args = [
+      '--print',
+      '--strict-mcp-config',
+      '--mcp-config',
+      config,
+      '--plugin-dir',
+      plugin,
+      '--setting-sources',
+      '',
+      '--permission-prompts',
+      'none',
+      '--output-format',
+      'stream-json',
+      '--verbose',
+      '--allowedTools',
+      'Skill,Read,mcp__gitlab__manage_context,mcp__gitlab__browse_projects,mcp__gitlab__browse_merge_requests,mcp__gitlab__browse_mr_discussions,mcp__gitlab__browse_work_items,mcp__gitlab__browse_pipelines,mcp__gitlab__manage_work_item',
+      ...claudeSessionArgs(scenario),
+      '--',
+      prompt,
+    ];
+  }
+  const start = fixture.requests.length;
+  console.log(`${engine} ${version}: ${scenario.name}`);
+  const output = await run(args);
+  await Promise.all([
+    writeFile(join(workspace, `${scenario.name}.jsonl`), output.stdout),
+    writeFile(join(workspace, `${scenario.name}.stderr`), output.stderr),
+  ]);
+  return { scenario, output, start };
+}
+
+function* scenarioRuns() {
+  // The consumer validates each result and updates conversation before requesting
+  // the next promise. Resume scenarios and request-log attribution require this order.
+  for (const scenario of scenarios) yield runScenario(scenario);
+}
+
 try {
-  for (const scenario of scenarios) {
-    const prefix = scenario.skill
-      ? engine === 'codex'
-        ? `$${scenario.skill} `
-        : `/gitlab-eval:${scenario.skill} `
-      : '';
-    const prompt = prefix + scenario.prompt;
-    let args;
-    if (engine === 'codex') {
-      const overrides = [
-        '--ignore-user-config',
-        '-c',
-        `mcp_servers.gitlab.command=${JSON.stringify(server.command)}`,
-        // Allow only these fixture commands to reach the server-side denial check.
-        // https://developers.openai.com/codex/config-reference
-        '-c',
-        'mcp_servers.gitlab.tools.manage_context.approval_mode="approve"',
-        '-c',
-        'mcp_servers.gitlab.tools.manage_work_item.approval_mode="approve"',
-        '-c',
-        `mcp_servers.gitlab.args=${JSON.stringify(server.args)}`,
-        '-c',
-        `mcp_servers.gitlab.env={${Object.entries(server.env)
-          .map(([key, value]) => `${key}=${JSON.stringify(value)}`)
-          .join(',')}}`,
-      ];
-      args = [
-        'exec',
-        ...overrides,
-        ...(scenario.resume
-          ? ['resume', conversation]
-          : ['-C', workspace, '-s', 'read-only', ...(scenario.persist ? [] : ['--ephemeral'])]),
-        '--skip-git-repo-check',
-        '--json',
-        prompt,
-      ];
-    } else {
-      args = [
-        '--print',
-        '--strict-mcp-config',
-        '--mcp-config',
-        config,
-        '--plugin-dir',
-        plugin,
-        '--setting-sources',
-        '',
-        '--permission-prompts',
-        'none',
-        '--output-format',
-        'stream-json',
-        '--verbose',
-        '--allowedTools',
-        'Skill,Read,mcp__gitlab__manage_context,mcp__gitlab__browse_projects,mcp__gitlab__browse_merge_requests,mcp__gitlab__browse_mr_discussions,mcp__gitlab__browse_work_items,mcp__gitlab__browse_pipelines,mcp__gitlab__manage_work_item',
-        ...(scenario.resume
-          ? ['--resume', conversation]
-          : scenario.persist
-            ? []
-            : ['--no-session-persistence']),
-        '--',
-        prompt,
-      ];
-    }
-    const start = fixture.requests.length;
-    console.log(`${engine} ${version}: ${scenario.name}`);
-    const output = await run(args);
-    await writeFile(join(workspace, `${scenario.name}.jsonl`), output.stdout);
-    await writeFile(join(workspace, `${scenario.name}.stderr`), output.stderr);
+  for await (const { scenario, output, start } of scenarioRuns()) {
     const events = output.stdout
       .split('\n')
       .filter((line) => line.startsWith('{'))
@@ -229,6 +254,23 @@ try {
             .flatMap((event) => event.message?.content ?? [])
             .filter((block) => block.type === 'tool_use' && block.name?.startsWith('mcp__'));
     const names = calls.map((call) => call.tool ?? call.name);
+    for (const call of calls) {
+      const raw = call.arguments ?? call.input;
+      const args = typeof raw === 'string' ? JSON.parse(raw) : raw;
+      if (args?.project_id !== undefined)
+        assert(
+          [String(fixture.project.id), fixture.project.path_with_namespace].includes(
+            String(args.project_id),
+          ),
+          'Workflow selected the wrong project',
+        );
+      if (args?.namespace !== undefined)
+        assert.equal(
+          args.namespace,
+          fixture.project.path_with_namespace,
+          'Workflow selected the wrong namespace',
+        );
+    }
     const loadedSkills =
       engine === 'codex'
         ? events
@@ -288,11 +330,7 @@ try {
       assert(rendered.includes('FAIL parser bounds'), 'Job failure log was not returned');
     if (scenario.name === 'negative')
       assert.equal(calls.length, 0, 'Negative prompt invoked GitLab');
-    const writes = calls.filter(
-      (call) =>
-        (call.tool ?? call.name).includes('manage_') &&
-        !(call.tool ?? call.name).endsWith('manage_context'),
-    );
+    const writes = calls.filter(isMutationCall);
     if (scenario.name !== 'unauthorized')
       assert.equal(writes.length, 0, 'Read workflow submitted a mutation');
     if (scenario.name === 'unauthorized') {
@@ -322,11 +360,8 @@ try {
       calls,
       requests: fixture.requests.slice(start),
     });
-    await writeFile(
-      join(workspace, 'report.json'),
-      JSON.stringify({ engine, version, reports }, null, 2),
-    );
   }
+  await saveReport();
   console.log(`PASS: ${reports.length} installed-skill scenarios. Evidence: ${workspace}`);
 } finally {
   await fixture.close();

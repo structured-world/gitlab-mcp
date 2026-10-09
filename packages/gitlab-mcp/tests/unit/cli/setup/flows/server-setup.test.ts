@@ -34,8 +34,12 @@ jest.mock('../../../../../src/cli/docker/container-runtime', () => ({
     runtimeCmd: 'docker',
     runtimeAvailable: true,
     composeCmd: ['docker', 'compose'],
+    composeProvider: 'docker-compose',
+    composeVersion: '2.21.0',
     runtimeVersion: '24.0.7',
   }),
+  completionDependencyError: jest.requireActual('../../../../../src/cli/docker/container-runtime')
+    .completionDependencyError,
 }));
 
 jest.mock('../../../../../src/cli/docker/types', () => ({
@@ -52,6 +56,7 @@ jest.mock('../../../../../src/cli/setup/flows/tool-selection', () => ({
 import { runServerSetupFlow } from '../../../../../src/cli/setup/flows/server-setup';
 import { DiscoveryResult } from '../../../../../src/cli/setup/types';
 import { initDockerConfig, startContainer } from '../../../../../src/cli/docker/docker-utils';
+import { getContainerRuntime } from '../../../../../src/cli/docker/container-runtime';
 import {
   runToolSelectionFlow,
   applyManualCategories,
@@ -321,6 +326,32 @@ describe('flows/server-setup', () => {
     const configArg = (initDockerConfig as jest.Mock).mock.calls[0][0];
     expect(configArg.oauthIssuer).toBe('https://mcp.example.com');
   });
+
+  // The PostgreSQL deployments start the server after a one-shot migration, which Compose
+  // v1 cannot order: refuse before writing files that would not start.
+  it.each(['compose-bundle', 'external-db'])(
+    'refuses a %s OAuth deployment on Compose v1',
+    async (deploymentType) => {
+      (getContainerRuntime as jest.Mock).mockReturnValueOnce({
+        runtime: 'docker',
+        runtimeCmd: 'docker',
+        runtimeAvailable: true,
+        composeCmd: ['docker-compose'],
+        composeProvider: 'docker-compose',
+        composeVersion: '1.29.2',
+        runtimeVersion: '24.0.7',
+      });
+      mockSelect.mockResolvedValueOnce(deploymentType);
+      mockText.mockResolvedValueOnce('3333');
+      mockConfirm.mockResolvedValueOnce(true); // enable oauth
+
+      const result = await runServerSetupFlow(dockerReadyDiscovery);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('Docker Compose v2');
+      expect(initDockerConfig).not.toHaveBeenCalled();
+    },
+  );
 
   it('should return cancelled when the public URL is cancelled', async () => {
     mockSelect.mockResolvedValueOnce('standalone');

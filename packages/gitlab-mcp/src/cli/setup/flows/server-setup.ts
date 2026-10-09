@@ -7,7 +7,7 @@ import * as p from '@clack/prompts';
 import { randomBytes } from 'crypto';
 import { DiscoveryResult, SetupResult, DockerDeploymentType } from '../types';
 import { initDockerConfig, startContainer } from '../../docker/docker-utils';
-import { getContainerRuntime } from '../../docker/container-runtime';
+import { completionDependencyError, getContainerRuntime } from '../../docker/container-runtime';
 import { DEFAULT_DOCKER_CONFIG } from '../../docker/types';
 import { promptOAuthIssuer } from '../../docker/oauth-issuer-prompt';
 import { runToolSelectionFlow, applyManualCategories } from './tool-selection';
@@ -97,6 +97,15 @@ export async function runServerSetupFlow(discovery: DiscoveryResult): Promise<Se
   let oauthSessionSecret: string | undefined;
   let databaseUrl: string | undefined;
   let oauthIssuer: string | undefined;
+
+  if (enableOAuth && deploymentType !== 'standalone') {
+    // PostgreSQL deployments start the server only after a one-shot migration.
+    const unsupported = completionDependencyError(runtime);
+    if (unsupported) {
+      p.log.error(unsupported);
+      return { success: false, mode: 'server', error: unsupported };
+    }
+  }
 
   if (enableOAuth) {
     oauthSessionSecret = randomBytes(32).toString('hex');

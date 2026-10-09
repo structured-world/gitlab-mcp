@@ -19,6 +19,10 @@ export interface ContainerRuntimeInfo {
   runtimeAvailable: boolean;
   /** Compose command tokens, e.g. ["docker", "compose"] or ["podman-compose"], null if unavailable */
   composeCmd: string[] | null;
+  /** Implementation behind the compose command (`podman compose` may run either) */
+  composeProvider?: 'docker-compose' | 'podman-compose';
+  /** Version of that implementation, e.g. "2.21.0" */
+  composeVersion?: string;
   /** Version string of the runtime, undefined if not detected */
   runtimeVersion?: string;
 }

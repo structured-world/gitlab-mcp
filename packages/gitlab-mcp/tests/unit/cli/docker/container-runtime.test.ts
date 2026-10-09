@@ -5,6 +5,7 @@
 
 import * as childProcess from 'child_process';
 import {
+  completionDependencyError,
   detectContainerRuntime,
   getContainerRuntime,
   resetRuntimeCache,
@@ -42,6 +43,68 @@ describe('container-runtime', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     resetRuntimeCache();
+  });
+
+  // The generated PostgreSQL deployments run migrations first with
+  // `depends_on: condition: service_completed_successfully`, which Docker Compose
+  // implements from v2 and podman-compose from 1.6.0.
+  describe('compose version and completion dependencies', () => {
+    function withCompose(runtime: 'docker' | 'podman', composeOutput: string, plugin = true) {
+      mockChildProcess.spawnSync.mockImplementation((cmd, args) => {
+        if (cmd === runtime && args?.[0] === '--version') return successResult(`${runtime} 1.0.0`);
+        if (cmd === runtime && args?.[0] === 'info') return successResult('');
+        if (plugin && cmd === runtime && args?.[0] === 'compose') {
+          return successResult(composeOutput);
+        }
+        if (!plugin && cmd === `${runtime}-compose`) return successResult(composeOutput);
+        return failResult();
+      });
+      return detectContainerRuntime();
+    }
+
+    it.each([
+      ['docker', 'Docker Compose version v2.21.0', true, '2.21.0', 'docker-compose'],
+      [
+        'docker',
+        'docker-compose version 1.29.2, build 5becea4c',
+        false,
+        '1.29.2',
+        'docker-compose',
+      ],
+      [
+        'podman',
+        'podman-compose version 1.6.0\npodman version 5.4.0',
+        false,
+        '1.6.0',
+        'podman-compose',
+      ],
+      ['podman', 'Docker Compose version v2.27.1', true, '2.27.1', 'docker-compose'],
+    ] as const)(
+      'reads the compose version of %s from "%s"',
+      (runtime, output, plugin, version, provider) => {
+        const info = withCompose(runtime, output, plugin);
+
+        expect(info.composeVersion).toBe(version);
+        expect(info.composeProvider).toBe(provider);
+      },
+    );
+
+    it.each([
+      ['Docker Compose version v2.21.0', 'docker', true, true],
+      ['docker-compose version 1.29.2, build 5becea4c', 'docker', false, false],
+      ['podman-compose version 1.6.0', 'podman', false, true],
+      ['podman-compose version 1.5.0', 'podman', false, false],
+    ] as const)('decides completion dependency support for "%s"', (output, runtime, plugin, ok) => {
+      const info = withCompose(runtime, output, plugin);
+
+      expect(completionDependencyError(info)).toEqual(ok ? undefined : expect.any(String));
+    });
+
+    it('names the required versions when the version cannot be read', () => {
+      const info = withCompose('docker', 'compose', true);
+
+      expect(completionDependencyError(info)).toContain('Docker Compose v2');
+    });
   });
 
   describe('detectContainerRuntime', () => {

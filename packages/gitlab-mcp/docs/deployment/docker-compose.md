@@ -18,6 +18,12 @@ All-in-one production deployment with GitLab MCP, PostgreSQL, and optional HTTPS
 - Quick setup of OAuth-enabled multi-instance server
 - Self-contained deployments with easy backup
 
+## Requirements
+
+Docker Compose v2 or podman-compose 1.6.0 or later. The bundle runs database migrations
+as a one-shot service before the server (`depends_on` with
+`condition: service_completed_successfully`), which older Compose releases cannot order.
+
 ## Quick Start
 
 ### 1. Generate Configuration

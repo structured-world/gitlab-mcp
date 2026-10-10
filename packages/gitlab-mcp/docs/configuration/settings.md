@@ -15,11 +15,11 @@ widen it.
 
 ## Three layers
 
-| Layer | Who sets it | Applies to | Kept |
-|-------|-------------|------------|------|
-| Server | Administrator: environment variables and startup presets | Everyone | Server configuration |
-| Account | The user, with `update_settings` or the client's settings page | Every new chat of that GitLab account | Durably (see [Storage](#storage)) |
-| Chat | The user or the assistant, with `manage_context` or the connection panel | The current chat only | Until the chat ends or is reset |
+| Layer   | Who sets it                                                              | Applies to                            | Kept                              |
+| ------- | ------------------------------------------------------------------------ | ------------------------------------- | --------------------------------- |
+| Server  | Administrator: environment variables and startup presets                 | Everyone                              | Server configuration              |
+| Account | The user, with `update_settings` or the client's settings page           | Every new chat of that GitLab account | Durably (see [Storage](#storage)) |
+| Chat    | The user or the assistant, with `manage_context` or the connection panel | The current chat only                 | Until the chat ends or is reset   |
 
 The account is the GitLab user behind the connection: with OAuth, the user who signed in;
 with a static token, the token's instance. Two users of one server never see each other's
@@ -27,13 +27,13 @@ settings, and a chat override never leaks into another chat.
 
 ## What can be set
 
-| Setting | Effect |
-|---------|--------|
-| `preset` | A working preset from the server's presets, or `none` |
-| `readOnly` | Tools that change GitLab are off. Cannot be turned off when the administrator enabled read-only mode. |
-| `scope` | A project or group path to work in; empty to work everywhere you have access |
-| `scopeIncludeSubgroups` | With a group scope, whether projects in its subgroups are included |
-| `tools_<group>` | Turn a tool group off or on, for example `tools_wiki` or `tools_pipelines`. Groups the administrator turned off are not offered. |
+| Setting                 | Effect                                                                                                                           |
+| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| `preset`                | A working preset from the server's presets, or `none`                                                                            |
+| `readOnly`              | Tools that change GitLab are off. Cannot be turned off when the administrator enabled read-only mode.                            |
+| `scope`                 | A project or group path to work in; empty to work everywhere you have access                                                     |
+| `scopeIncludeSubgroups` | With a group scope, whether projects in its subgroups are included                                                               |
+| `tools_<group>`         | Turn a tool group off or on, for example `tools_wiki` or `tools_pipelines`. Groups the administrator turned off are not offered. |
 
 The effective restrictions combine all layers: a chat value replaces the account value for
 that chat. Read-only mode set by the server administrator or by the selected preset always
@@ -42,7 +42,8 @@ applies; a chat cannot turn it off.
 Restrictions are applied when a tool runs, not only to the tool list: a direct call to a
 tool the settings turn off, or to a project or group outside the working scope, is refused
 before anything reaches GitLab. A scope of projects reaches no group, so group operations
-are refused under it.
+are refused under it. A project or group named by its numeric id is checked as the path
+GitLab reports for it.
 
 A listing or search that names no project or group reads the working scope instead of
 everything the account can see: a global search becomes a search of the scope's group or
@@ -53,12 +54,16 @@ projects only shared with the scope's group, todos, merge requests under a group
 are filtered to the scope, reading further GitLab pages until the requested page is full
 (up to 1000 rows per call; a page still short then comes back marked `partial`, with a hint
 to narrow the listing). Your own activity (`browse_events` with `action: "user"`) shows the
-scope project's events under a project scope and is refused under a group scope. A global search or vulnerability listing is refused under a
-scope of several projects or groups, and under a group scope without subgroups (GitLab's
-group results always include them); use one project or group instead. `manage_todos
-mark_all_done` marks only the scope's pending todos done and leaves the others pending. A
-project created or forked without a namespace goes into the scope's group; with no single
-group to put it in, and for a group without a parent, the call is refused.
+scope project's events under a project scope and is refused under a group scope.
+Instance-wide listings read the scope instead: deploy keys and instance audit events those
+of the scope project, all or owned runners those available to the scope's project or group;
+where the scope has no such form, the listing is refused. A global search or vulnerability
+listing is refused under a scope of several projects or groups, and under a group scope
+without subgroups (GitLab's group results always include them); use one project or group
+instead. `manage_todos mark_all_done` marks only the scope's pending todos done and leaves
+the others pending. A project created or forked without a namespace goes into the scope's
+group; with no single group to put it in, and for a group without a parent, the call is
+refused.
 
 The working scope is a focus, not an access boundary: the user sets and clears it. Calls
 that name an object only by its global id (a work item or todo id) are not checked against
@@ -120,10 +125,10 @@ recommendations, and `find_scope_targets` finds projects and groups to scope to.
 
 ## Storage
 
-| Deployment | Account settings are kept in |
-|------------|------------------------------|
-| OAuth with PostgreSQL session storage | The session storage, shared by every replica that uses it |
-| OAuth with file session storage | The session storage file. File storage serves one server process: replicas need PostgreSQL |
+| Deployment                                                                         | Account settings are kept in                                                                                                                                                    |
+| ---------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| OAuth with PostgreSQL session storage                                              | The session storage, shared by every replica that uses it                                                                                                                       |
+| OAuth with file session storage                                                    | The session storage file. File storage serves one server process: replicas need PostgreSQL                                                                                      |
 | OAuth with sessions in memory (the default), or a local server with a static token | `~/.config/gitlab-mcp/settings.json` of the user running the server, shared by every server process of that user; settings survive a restart even though memory sessions do not |
 
 Writes are compare-and-set: two chats editing different settings at the same time both

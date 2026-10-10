@@ -54,6 +54,7 @@ import {
   type EffectivePolicy,
 } from './configuration/policy';
 import { executeScoped } from './configuration/scoped-execution';
+import { withTargetPaths } from './configuration/scope-ids';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -964,9 +965,14 @@ export async function setupHandlers(server: Server): Promise<void> {
       // when they cannot be read: allowing it could bypass a restriction.
       const { RegistryManager: CallRegistry } = await import('./registry-manager');
       const configuration = await getConfigurationService().resolve(caller);
+      // A scope holds paths: numeric ids are checked as the paths they stand for.
+      const callArguments = toolArguments ?? {};
+      const checkedArguments = configuration.policy.scopeEnforcer
+        ? await withTargetPaths(callArguments)
+        : callArguments;
       const settingsRefusal = settingsRejection(
         toolName,
-        toolArguments ?? {},
+        checkedArguments,
         configuration.policy,
         CallRegistry.getInstance(),
       );

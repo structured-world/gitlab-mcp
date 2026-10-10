@@ -352,17 +352,6 @@ function identifierOf(value: unknown): string | undefined {
 }
 
 /**
- * Extract project path from tool arguments
- *
- * Tools may specify project in different ways:
- * - project_id: "group/project" or "123"
- * - namespace: "group/project"
- * - projectId: "group/project"
- *
- * @param args Tool arguments object
- * @returns Array of project paths found in arguments
- */
-/**
  * Arguments that name a project. Destinations count too: a cross-project merge request or
  * job token target.
  */
@@ -383,6 +372,30 @@ const PROJECT_OR_GROUP_FIELDS: ReadonlySet<string> = new Set([
   'fullPath',
 ]);
 
+/**
+ * Arguments that name a group. Destinations count too: a fork's target namespace, a job
+ * token target group, and a namespace read by id or path.
+ */
+const GROUP_FIELDS = [
+  'group_id',
+  'groupId',
+  'group',
+  'target_group_id',
+  'namespace_path',
+  'namespace_id',
+];
+
+/**
+ * Extract project path from tool arguments
+ *
+ * Tools may specify project in different ways:
+ * - project_id: "group/project" or "123"
+ * - namespace: "group/project"
+ * - projectId: "group/project"
+ *
+ * @param args Tool arguments object
+ * @returns Array of project paths found in arguments
+ */
 export function extractProjectsFromArgs(args: Record<string, unknown>): string[] {
   const projects: string[] = [];
   for (const field of PROJECT_FIELDS) {
@@ -405,25 +418,33 @@ export function extractProjectsFromArgs(args: Record<string, unknown>): string[]
  */
 export function extractGroupsFromArgs(args: Record<string, unknown>): string[] {
   const groups: string[] = [];
-
-  // Common parameter names for group identification
-  // Destinations count too: a fork's target namespace, a job token target group, and a
-  // namespace read by id or path.
-  const groupFields = [
-    'group_id',
-    'groupId',
-    'group',
-    'target_group_id',
-    'namespace_path',
-    'namespace_id',
-  ];
-
-  for (const field of groupFields) {
+  for (const field of GROUP_FIELDS) {
     const id = identifierOf(args[field]);
     if (id) groups.push(id);
   }
-
   return groups;
+}
+
+/** What a numeric id argument may name. */
+export type NumericTargetKind = 'project' | 'group' | 'either';
+
+/**
+ * Every argument naming its project or group by numeric id. A scope is saved as paths, so
+ * these are resolved to paths before the check, which compares paths only.
+ */
+export function numericTargets(
+  args: Record<string, unknown>,
+): Array<{ field: string; id: string; kind: NumericTargetKind }> {
+  const found: Array<{ field: string; id: string; kind: NumericTargetKind }> = [];
+  const add = (field: string, kind: NumericTargetKind): void => {
+    const id = identifierOf(args[field]);
+    if (id && /^\d+$/.test(id)) found.push({ field, id, kind });
+  };
+  for (const field of PROJECT_FIELDS) {
+    add(field, PROJECT_OR_GROUP_FIELDS.has(field) ? 'either' : 'project');
+  }
+  for (const field of GROUP_FIELDS) add(field, 'group');
+  return found;
 }
 
 /**

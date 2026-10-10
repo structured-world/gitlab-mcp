@@ -110,6 +110,19 @@ describe('toolRestriction', () => {
     expect(toolRestriction(policy, browse)).toBeNull();
   });
 
+  // The whitelist overrides the deny pattern: a broad pattern with explicit exceptions keeps
+  // the exceptions.
+  it('keeps a whitelisted tool its deny pattern matches', () => {
+    const policy = buildPolicy(
+      { allowed_tools: ['browse_projects'], denied_tools_regex: '^browse_' },
+      { preset: 'mine' },
+      {},
+    );
+
+    expect(toolRestriction(policy, core)).toBeNull();
+    expect(toolRestriction(policy, browse)).toBe("preset 'mine' does not include it");
+  });
+
   // Otherwise read-only mode or a whitelist could lock the caller out of the very tool
   // that turns them off again.
   it.each(['manage_context', 'get_settings', 'update_settings', 'open_settings_panel'])(

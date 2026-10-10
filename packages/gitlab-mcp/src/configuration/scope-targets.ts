@@ -21,10 +21,10 @@ function singleTarget(scope: ScopeConfig): { group: string } | { project: string
 const hasValue = (value: unknown): boolean => value !== undefined && value !== null && value !== '';
 
 /**
- * Why a targetless call cannot be narrowed to the scope, or null. Only a global search
- * whose scope no GitLab search expresses: several projects or groups, or a group without
- * its subgroups (group search always covers them, and search results of every kind
- * cannot be filtered by path).
+ * Why a targetless call cannot be narrowed to the scope, or null: a creation that names no
+ * place, a global search or vulnerability listing no GitLab filter expresses (several
+ * projects or groups, or a group without its subgroups, which group results always cover),
+ * and instance-wide listings with no per-scope form.
  */
 export function targetlessRestriction(tool: string, args: Args, scope: ScopeConfig): string | null {
   const creation = creationRestriction(tool, args, scope);
@@ -35,14 +35,46 @@ export function targetlessRestriction(tool: string, args: Args, scope: ScopeConf
   if (tool === 'browse_search' && args.action === 'global') {
     return unnarrowable(scope, 'a global search cannot be limited', 'search within');
   }
-  // Events name their project only by numeric id, which a path scope cannot be matched
-  // against; a single project scope reads that project's events instead.
-  const target = singleTarget(scope);
-  if (tool === 'browse_events' && args.action === 'user' && !(target && 'project' in target)) {
-    return "your activity cannot be limited to a working scope of a group or several projects; list a project's events with action 'project'";
-  }
-  return null;
+  return INSTANCE_LISTINGS[tool]?.(args, singleTarget(scope)) ?? null;
 }
+
+/** Whether the scope is exactly one project. */
+const isProject = (target: Target | undefined): boolean =>
+  target !== undefined && 'project' in target;
+
+/**
+ * Per tool: why a listing across the whole instance (or all of the caller's activity) cannot
+ * be narrowed to the scope, or null. Those it can are rewritten by NARROWERS.
+ */
+const INSTANCE_LISTINGS: Record<string, (args: Args, target: Target | undefined) => string | null> =
+  {
+    // Events name their project only by numeric id, which a path scope cannot be matched
+    // against; a single project scope reads that project's events instead.
+    browse_events: (args, target) =>
+      args.action === 'user' && !isProject(target)
+        ? "your activity cannot be limited to a working scope of a group or several projects; list a project's events with action 'project'"
+        : null,
+    // GitLab lists deploy keys per project; the public listing exists only instance-wide.
+    browse_deploy_keys: (args, target) => {
+      if (args.action !== 'list' || hasValue(args.project_id)) return null;
+      if (hasValue(args.public)) {
+        return "public deploy keys are listed for the whole instance and cannot be limited to the working scope; list a project's keys with 'project_id'";
+      }
+      return isProject(target)
+        ? null
+        : "deploy keys cannot be listed for a group or several projects; list a project's keys with 'project_id'";
+    },
+    browse_runners: (args, target) =>
+      (args.action === 'list_all' || args.action === 'list_owned') && !target
+        ? "runners cannot be listed for a working scope of several projects or groups; list them for one of them with action 'list_project' or 'list_group'"
+        : null,
+    // A group's audit trail holds the group's own events, not those of its projects.
+    browse_audit_events: (args, target) =>
+      args.action === 'list_instance' &&
+      (!isProject(target) || hasValue(args.entity_type) || hasValue(args.entity_id))
+        ? "instance audit events cannot be limited to the working scope; list a project's or a group's with action 'list_project' or 'list_group'"
+        : null,
+  };
 
 /**
  * Why a call GitLab only offers per project or per whole group cannot follow the scope:
@@ -137,6 +169,27 @@ const NARROWERS: Record<string, (args: Args, target: Target, scope: ScopeConfig)
   browse_events: (args, target) =>
     args.action === 'user' && 'project' in target
       ? { ...args, action: 'project', project_id: target.project }
+      : null,
+  browse_deploy_keys: (args, target) =>
+    args.action === 'list' &&
+    !hasValue(args.project_id) &&
+    !hasValue(args.public) &&
+    'project' in target
+      ? { ...args, project_id: target.project }
+      : null,
+  // Runners available to the scope's project or group, with the same filters.
+  browse_runners: (args, target) => {
+    if (args.action !== 'list_all' && args.action !== 'list_owned') return null;
+    return 'group' in target
+      ? { ...args, action: 'list_group', group_id: target.group }
+      : { ...args, action: 'list_project', project_id: target.project };
+  },
+  browse_audit_events: (args, target) =>
+    args.action === 'list_instance' &&
+    'project' in target &&
+    !hasValue(args.entity_type) &&
+    !hasValue(args.entity_id)
+      ? { ...args, action: 'list_project', project_id: target.project }
       : null,
   browse_vulnerabilities: (args, target) => {
     if (!isTargetlessList(args)) return null;

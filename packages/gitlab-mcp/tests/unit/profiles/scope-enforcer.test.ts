@@ -8,6 +8,7 @@ import {
   extractProjectsFromArgs,
   extractGroupsFromArgs,
   enforceArgsScope,
+  numericTargets,
 } from '../../../src/profiles/scope-enforcer';
 import { ProjectPreset } from '../../../src/profiles/types';
 
@@ -536,6 +537,25 @@ describe('enforceArgsScope', () => {
 
     if (refused) expect(check).toThrow(ScopeViolationError);
     else expect(check).not.toThrow();
+  });
+
+  // Numeric ids are resolved to paths before the check; these are the arguments to resolve.
+  it('lists the arguments that name a project or a group by numeric id', () => {
+    expect(
+      numericTargets({
+        project_id: 7,
+        target_project_id: '8',
+        namespace: '9',
+        group_id: 'team',
+        namespace_id: 4,
+        projectId: 'team/app',
+      }),
+    ).toEqual([
+      { field: 'project_id', id: '7', kind: 'project' },
+      { field: 'namespace', id: '9', kind: 'either' },
+      { field: 'target_project_id', id: '8', kind: 'project' },
+      { field: 'namespace_id', id: '4', kind: 'group' },
+    ]);
   });
 
   it('should allow a destination inside the scope', () => {

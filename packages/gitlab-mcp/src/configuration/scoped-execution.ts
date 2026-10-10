@@ -94,6 +94,13 @@ async function fillScopedPage(
   const perPage = numberOr(args.per_page, DEFAULT_PAGE_SIZE);
   const page = numberOr(args.page, 1);
   const wanted = page * perPage;
+  const readable = MAX_UPSTREAM_PAGES * UPSTREAM_PAGE_SIZE;
+  if ((page - 1) * perPage >= readable) {
+    return partialPage(
+      [],
+      `A scoped listing reads the first ${readable} rows GitLab returns, and page ${page} starts after them.`,
+    );
+  }
   const rows: unknown[] = [];
   let exhausted = false;
   // Pages are read one after another: whether the next one is needed depends on this one.
@@ -106,10 +113,18 @@ async function fillScopedPage(
   }
   const items = rows.slice((page - 1) * perPage, wanted);
   if (exhausted || rows.length >= wanted) return items;
+  return partialPage(
+    items,
+    `Read the first ${readable} rows GitLab returned and found ${rows.length} in the working scope; more may follow.`,
+  );
+}
+
+/** A scoped page the bounded read could not fill, so it is not taken for the end. */
+function partialPage(items: unknown[], reason: string): unknown {
   return {
     items,
     partial: true,
-    message: `Read the first ${MAX_UPSTREAM_PAGES * UPSTREAM_PAGE_SIZE} rows GitLab returned and found ${rows.length} in the working scope; more may follow. Narrow the listing (for example with a search) to see the rest.`,
+    message: `${reason} Narrow the listing (for example with a search) to see the rest.`,
   };
 }
 

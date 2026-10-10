@@ -68,6 +68,36 @@ describe('scopedArgs', () => {
     });
   });
 
+  // Instance-wide administrator listings read the scope's own project or group instead.
+  it.each([
+    [
+      'browse_deploy_keys',
+      { action: 'list', per_page: 5 },
+      project,
+      { action: 'list', per_page: 5, project_id: 'team/app' },
+    ],
+    [
+      'browse_runners',
+      { action: 'list_all', status: 'ONLINE' },
+      project,
+      { action: 'list_project', status: 'ONLINE', project_id: 'team/app' },
+    ],
+    [
+      'browse_runners',
+      { action: 'list_owned' },
+      groupOnly,
+      { action: 'list_group', group_id: 'team' },
+    ],
+    [
+      'browse_audit_events',
+      { action: 'list_instance', created_after: '2026-01-01' },
+      project,
+      { action: 'list_project', created_after: '2026-01-01', project_id: 'team/app' },
+    ],
+  ])('reads %s %j under %j as %j', (tool, args, scope, expected) => {
+    expect(scopedArgs(tool, args, scope)).toEqual(expected);
+  });
+
   it('lists the merge requests of the scope project', () => {
     expect(
       scopedArgs('browse_merge_requests', { action: 'list', state: 'opened' }, project),
@@ -91,6 +121,14 @@ describe('scopedArgs', () => {
     ['manage_project', { action: 'create', name: 'app' }, project],
     ['browse_events', { action: 'project', project_id: 'team/app' }, project],
     ['browse_events', { action: 'user' }, group],
+    ['browse_deploy_keys', { action: 'list', project_id: 'team/app' }, project],
+    ['browse_deploy_keys', { action: 'list', public: true }, project],
+    ['browse_deploy_keys', { action: 'list' }, group],
+    ['browse_runners', { action: 'list_project', project_id: 'team/app' }, project],
+    ['browse_audit_events', { action: 'list_group', group_id: 'team' }, project],
+    ['browse_audit_events', { action: 'list_instance' }, group],
+    ['browse_audit_events', { action: 'list_instance', entity_type: 'User' }, project],
+    ['browse_audit_events', { action: 'list_instance', entity_id: 3 }, project],
   ])('leaves %s %j under %j as it is', (tool, args, scope) => {
     expect(scopedArgs(tool, args, scope)).toBe(args);
   });
@@ -152,6 +190,37 @@ describe('targetlessRestriction', () => {
     expect(targetlessRestriction('browse_events', { action: 'user' }, scope)).toMatch(
       /activity cannot be limited/,
     );
+  });
+
+  // GitLab lists deploy keys per project and audit events per project or per group alone,
+  // and the instance-wide public key listing has no per-project form.
+  it.each([
+    ['browse_deploy_keys', { action: 'list' }, group, /deploy keys/],
+    ['browse_deploy_keys', { action: 'list' }, several, /deploy keys/],
+    ['browse_deploy_keys', { action: 'list', public: true }, project, /public deploy keys/],
+    ['browse_runners', { action: 'list_all' }, several, /runners/],
+    ['browse_audit_events', { action: 'list_instance' }, group, /audit events/],
+    [
+      'browse_audit_events',
+      { action: 'list_instance', entity_type: 'User', entity_id: 4 },
+      project,
+      /audit events/,
+    ],
+  ])('refuses the instance listing %s %j under %j', (tool, args, scope, reason) => {
+    expect(targetlessRestriction(tool, args, scope)).toMatch(reason);
+  });
+
+  it.each([
+    ['browse_deploy_keys', { action: 'list' }, project],
+    ['browse_deploy_keys', { action: 'list', project_id: 'team/app' }, several],
+    ['browse_runners', { action: 'list_all' }, group],
+    ['browse_runners', { action: 'list_project', project_id: 'team/app' }, several],
+    ['browse_audit_events', { action: 'list_instance' }, project],
+    ['browse_audit_events', { action: 'list_group', group_id: 'team' }, several],
+    ['browse_deploy_keys', { action: 'get', project_id: 'team/app', key_id: 1 }, group],
+    ['browse_events', { action: 'project', project_id: 'team/app' }, group],
+  ])('allows the listing %s %j under %j', (tool, args, scope) => {
+    expect(targetlessRestriction(tool, args, scope)).toBeNull();
   });
 
   it('refuses a vulnerability listing a scope of several targets cannot narrow', () => {

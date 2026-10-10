@@ -132,8 +132,11 @@ export function toolRestriction(policy: EffectivePolicy, tool: ToolFacts): strin
   if (tool.group !== undefined && policy.disabledGroups.has(tool.group)) {
     return `the '${tool.group}' tool group is turned off`;
   }
-  if (policy.allowedTools && !policy.allowedTools.has(tool.name)) {
-    return `preset '${policy.presetName}' does not include it`;
+  // A whitelist overrides the deny pattern: the tools it names are the preset's exceptions.
+  if (policy.allowedTools) {
+    return policy.allowedTools.has(tool.name)
+      ? null
+      : `preset '${policy.presetName}' does not include it`;
   }
   if (policy.deniedTools?.test(tool.name)) {
     return `preset '${policy.presetName}' excludes it`;

@@ -108,6 +108,26 @@ describe('executeScoped', () => {
     });
   });
 
+  // A page that starts past the rows a call may read cannot be filled: no request is made.
+  it('answers a page past the readable rows without asking GitLab', async () => {
+    const run = jest.fn();
+
+    const result = await executeScoped(
+      run,
+      'browse_projects',
+      { action: 'search', page: 51, per_page: 20 },
+      groupPolicy,
+    );
+
+    expect(run).not.toHaveBeenCalled();
+    expect(result).toEqual({
+      items: [],
+      partial: true,
+      message:
+        'A scoped listing reads the first 1000 rows GitLab returns, and page 51 starts after them. Narrow the listing (for example with a search) to see the rest.',
+    });
+  });
+
   it('fails a project scope listing on a failure that is not an Error', async () => {
     const run = jest.fn().mockRejectedValue('connection reset');
 

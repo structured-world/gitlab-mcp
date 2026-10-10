@@ -708,15 +708,16 @@ describe('OAuth Token Endpoint', () => {
         });
       });
 
-      // Recording the client as used only stops its registration from expiring: a storage
-      // failure there must not withhold tokens the exchange already issued.
-      it('issues the tokens when the client use cannot be recorded', async () => {
+      // Tokens exist only for a registration that no longer expires: an expired one would
+      // let the refresh token through as a public client's, without the client secret.
+      it('issues no tokens when the client use cannot be recorded', async () => {
         mockSessionStore.markClientUsed.mockRejectedValueOnce(new Error('database down'));
         const res = createMockResponse() as Response;
         await tokenHandler(exchange({}), res);
-        expect(res.status).not.toHaveBeenCalled();
-        expect(res.json).toHaveBeenCalledWith(
-          expect.objectContaining({ access_token: 'mcp-access-token-jwt' }),
+        expect(res.status).toHaveBeenCalledWith(500);
+        expect(mockSessionStore.updateSession).not.toHaveBeenCalled();
+        expect(res.json).not.toHaveBeenCalledWith(
+          expect.objectContaining({ access_token: expect.anything() }),
         );
       });
 

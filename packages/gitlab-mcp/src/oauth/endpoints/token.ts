@@ -286,6 +286,11 @@ async function handleAuthorizationCode(
     return;
   }
 
+  // The client completed an authorization: its registration no longer expires. Recorded
+  // before any token exists, and a failure fails the exchange: an expired registration
+  // would let these refresh tokens through as a public client's, without the secret.
+  await sessionStore.markClientUsed(session.clientId);
+
   // Generate MCP tokens
   const accessToken = mintAccessToken(config, session, audience, session.scopes);
 
@@ -306,13 +311,6 @@ async function handleAuthorizationCode(
   logInfo('MCP tokens issued via authorization_code grant', {
     sessionId: truncateId(session.id),
     userId: session.gitlabUserId,
-  });
-
-  // The client completed an authorization: its registration no longer expires. Missing
-  // the mark only lets an unused-looking registration expire later, so it does not fail
-  // the token response.
-  await sessionStore.markClientUsed(session.clientId).catch((error: unknown) => {
-    logWarn('Failed to record client use', { err: error as Error });
   });
 
   // Return token response
@@ -417,7 +415,10 @@ async function handleRefreshToken(
   const newRefreshToken = generateRefreshToken();
 
   // The refresh token is spent exactly once, by the caller whose compare-and-set wins on
-  // any replica (OAuth 2.1 section 4.3.1 rotation).
+  // any replica (OAuth 2.1 section 4.3.1 rotation). The session keeps its scopes: a
+  // narrowed request narrows only this access token, and the new refresh token carries the
+  // original grant (RFC 6749 section 6: its scope MUST be identical to the presented one,
+  // and an omitted scope means the scope originally granted).
   const rotated = await sessionStore.rotateSession(session.id, refresh_token, {
     mcpAccessToken: accessToken,
     mcpRefreshToken: newRefreshToken,

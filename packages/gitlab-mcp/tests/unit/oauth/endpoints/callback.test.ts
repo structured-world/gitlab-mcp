@@ -414,7 +414,7 @@ describe('OAuth Callback Handler', () => {
           token_type: 'Bearer',
           created_at: 1,
         },
-      } as typeof mockAuthCodeFlow);
+      });
 
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 
@@ -438,7 +438,7 @@ describe('OAuth Callback Handler', () => {
             token_type: 'Bearer',
             created_at: 1,
           },
-        } as typeof mockAuthCodeFlow);
+        });
 
       await callbackHandler(mockRequest as Request, mockResponse as Response);
 

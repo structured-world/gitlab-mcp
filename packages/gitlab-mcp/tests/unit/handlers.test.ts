@@ -2891,8 +2891,11 @@ describe('handlers', () => {
     it('rejects an unknown resource', async () => {
       const read = getRegisteredHandler(mockServer, ReadResourceRequestSchema);
 
+      // The SDK invokes handlers inside a promise chain, so a thrown error answers the request.
       await expect(
-        read({ method: 'resources/read', params: { uri: 'ui://gitlab-mcp/other.html' } }),
+        Promise.resolve().then(() =>
+          read({ method: 'resources/read', params: { uri: 'ui://gitlab-mcp/other.html' } }),
+        ),
       ).rejects.toThrow('Unknown resource: ui://gitlab-mcp/other.html');
     });
   });

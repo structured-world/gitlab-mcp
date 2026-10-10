@@ -207,17 +207,7 @@ export async function updateSettings(
   set: Record<string, SettingValue>,
 ): Promise<{ values: Record<string, SettingValue> }> {
   const page = await settingsPage();
-  const { properties } = page.schema;
-  for (const [name, value] of Object.entries(set)) {
-    const property = properties[name];
-    if (!property) throw new ConfigurationError(`Unknown setting: ${name}`);
-    if (typeof value !== property.type) {
-      throw new ConfigurationError(`Setting ${name} must be a ${property.type}`);
-    }
-    if (property.enum && !property.enum.includes(value as string)) {
-      throw new ConfigurationError(`Setting ${name} must be one of: ${property.enum.join(', ')}`);
-    }
-  }
+  validateSettings(set, page.schema.properties);
 
   const patch: AccountSettingsPatch = {};
   if (typeof set.preset === 'string') {
@@ -232,25 +222,11 @@ export async function updateSettings(
     patch.readOnly = set.readOnly;
   }
   if (typeof set.scope === 'string') {
-    const path = set.scope.trim();
     const includeSubgroups =
       typeof set.scopeIncludeSubgroups === 'boolean'
         ? set.scopeIncludeSubgroups
         : page.values.scopeIncludeSubgroups === true;
-    if (path === '') {
-      patch.scope = null;
-    } else {
-      // The path is checked against GitLab, so a typo is reported instead of saved.
-      let type: 'project' | 'group';
-      try {
-        type = await detectNamespaceType(path);
-      } catch (error: unknown) {
-        throw new ConfigurationError(
-          `No project or group '${path}' was found: ${error instanceof Error ? error.message : String(error)}`,
-        );
-      }
-      patch.scope = { type, path, includeSubgroups: type === 'group' && includeSubgroups };
-    }
+    patch.scope = await scopeSetting(set.scope.trim(), includeSubgroups);
   } else if (typeof set.scopeIncludeSubgroups === 'boolean') {
     // A change of the saved scope, applied to it as saved at write time.
     patch.scopeIncludeSubgroups = set.scopeIncludeSubgroups;
@@ -266,4 +242,38 @@ export async function updateSettings(
 
   await getConfigurationService().updateAccount(caller(), patch);
   return { values: (await settingsPage()).values };
+}
+
+/** Every changed field must exist on the page and match its type and choices. */
+function validateSettings(
+  set: Record<string, SettingValue>,
+  properties: SettingsReadResult['schema']['properties'],
+): void {
+  for (const [name, value] of Object.entries(set)) {
+    const property = properties[name];
+    if (!property) throw new ConfigurationError(`Unknown setting: ${name}`);
+    if (typeof value !== property.type) {
+      throw new ConfigurationError(`Setting ${name} must be a ${property.type}`);
+    }
+    if (property.enum && !property.enum.includes(value as string)) {
+      throw new ConfigurationError(`Setting ${name} must be one of: ${property.enum.join(', ')}`);
+    }
+  }
+}
+
+/** The default scope for a path; an empty path clears it. */
+async function scopeSetting(
+  path: string,
+  includeSubgroups: boolean,
+): Promise<AccountSettingsPatch['scope']> {
+  if (path === '') return null;
+  // The path is checked against GitLab, so a typo is reported instead of saved.
+  let type: 'project' | 'group';
+  try {
+    type = await detectNamespaceType(path);
+  } catch (error: unknown) {
+    const reason = error instanceof Error ? error.message : String(error);
+    throw new ConfigurationError(`No project or group '${path}' was found: ${reason}`);
+  }
+  return { type, path, includeSubgroups: type === 'group' && includeSubgroups };
 }

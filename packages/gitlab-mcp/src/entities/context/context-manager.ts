@@ -17,8 +17,8 @@ import {
   getConfigurationService,
   resolveCaller,
   type Caller,
+  type ResolvedConfiguration,
 } from '../../configuration';
-import type { ResolvedConfiguration } from '../../configuration';
 import { EVERYWHERE } from '../../configuration/policy';
 import {
   PresetInfo,

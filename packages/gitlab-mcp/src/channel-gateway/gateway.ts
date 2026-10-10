@@ -64,6 +64,8 @@ export class ChannelGateway {
   private reconnecting = false;
   private closing = false;
   private pendingWaiters = 0;
+  /** Tools the downstream catalog marks read-only: safe to replay after a lost link. */
+  private readonly catalogReads = new Set<string>();
 
   constructor(private readonly config: GatewayConfig) {
     this.server = new Server(
@@ -111,9 +113,13 @@ export class ChannelGateway {
       // The catalog read must honour the same reconnect/buffer policy as
       // CallTool: a ListTools that lands mid-reconnect should wait for the
       // link (bounded) and replay once, not throw against a dead client.
-      return (await this.readDownstream('tools/list', (client) =>
+      const catalog = (await this.readDownstream('tools/list', (client) =>
         client.listTools(request.params),
       )) as ListToolsResult;
+      for (const tool of catalog.tools) {
+        if (tool.annotations?.readOnlyHint === true) this.catalogReads.add(tool.name);
+      }
+      return catalog;
     });
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const { name, arguments: args } = request.params;
@@ -231,7 +237,8 @@ export class ChannelGateway {
   private forward(name: string, args: unknown): Promise<unknown> {
     return forwardWithPolicy(
       {
-        isRead: isReadCall,
+        // The catalog's own annotation first; the name prefix covers a catalog not yet listed.
+        isRead: (name) => this.catalogReads.has(name) || isReadCall(name),
         isConnected: () => this.connected,
         waitForConnection: () => this.waitForConnection(),
         call: (n, a) => this.callDownstream(n, a),

@@ -232,7 +232,7 @@ export class FileStorageBackend implements SessionStorageBackend {
   private transition<T, Changed extends T>(
     change: () => Promise<T>,
     changed: (result: T) => result is Changed,
-    undo: (result: Changed) => Promise<unknown>,
+    undo: (result: Changed) => unknown,
   ): Promise<T> {
     this.cancelPendingSave();
     return this.enqueue(async () => {
@@ -488,7 +488,7 @@ export class FileStorageBackend implements SessionStorageBackend {
         return this.memory.putAccountSettings(accountKey, settings, expectedVersion);
       },
       isPresent,
-      async () => this.memory.restoreAccountSettings(accountKey, previous),
+      () => this.memory.restoreAccountSettings(accountKey, previous),
     );
   }
 

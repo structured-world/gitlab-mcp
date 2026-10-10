@@ -22,11 +22,18 @@ const hasValue = (value: unknown): boolean => value !== undefined && value !== n
 
 /**
  * Why a targetless call cannot be narrowed to the scope, or null. Only a global search
- * under a scope of several projects or groups: no single filter expresses it.
+ * whose scope no GitLab search expresses: several projects or groups, or a group without
+ * its subgroups (group search always covers them, and search results of every kind
+ * cannot be filtered by path).
  */
 export function targetlessRestriction(tool: string, args: Args, scope: ScopeConfig): string | null {
-  if (tool === 'browse_search' && args.action === 'global' && !singleTarget(scope)) {
+  if (tool !== 'browse_search' || args.action !== 'global') return null;
+  const target = singleTarget(scope);
+  if (!target) {
     return 'a global search cannot be limited to a working scope of several projects or groups; search within one of them';
+  }
+  if ('group' in target && scope.includeSubgroups === false) {
+    return 'a global search cannot be limited to a group without its subgroups; search within one of its projects';
   }
   return null;
 }
@@ -36,7 +43,7 @@ export function scopedArgs(tool: string, args: Args, scope: ScopeConfig): Args {
   const target = singleTarget(scope);
   if (!target) return args;
   if (tool === 'browse_search' && args.action === 'global') {
-    // Group search always covers subgroups: GitLab has no option to exclude them.
+    // Group search covers subgroups; a scope without them is refused before this point.
     return 'group' in target
       ? { ...args, action: 'group', group_id: target.group }
       : { ...args, action: 'project', project_id: target.project };
@@ -69,8 +76,10 @@ function projectPathOf(tool: string, item: Record<string, unknown>): string | un
 }
 
 /**
- * The results of a call that stayed targetless, narrowed to the scope. An item whose
- * place cannot be told is left out: listing it could show something outside the scope.
+ * The results of a listing narrowed to the scope. Project listings are always filtered:
+ * a group's listing also returns projects only shared with it from other namespaces.
+ * An item whose place cannot be told is left out: listing it could show something
+ * outside the scope.
  */
 export function scopedResult(
   tool: string,
@@ -80,8 +89,7 @@ export function scopedResult(
 ): unknown {
   if (!Array.isArray(result)) return result;
   const listing =
-    (tool === 'browse_projects' &&
-      (args.action === 'search' || (args.action === 'list' && !hasValue(args.group_id)))) ||
+    (tool === 'browse_projects' && (args.action === 'search' || args.action === 'list')) ||
     (tool === 'browse_merge_requests' && args.action === 'list' && !hasValue(args.project_id));
   if (listing) {
     return result.filter((item: Record<string, unknown>) => {

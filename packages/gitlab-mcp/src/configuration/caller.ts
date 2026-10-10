@@ -4,7 +4,7 @@
  * never names the account it acts for.
  */
 
-import { AsyncLocalStorage } from 'async_hooks';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { getTokenContext } from '../oauth/token-context';
 import { normalizeInstanceUrl } from '../utils/url';
 

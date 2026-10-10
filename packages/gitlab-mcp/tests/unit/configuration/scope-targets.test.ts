@@ -55,6 +55,13 @@ describe('scopedArgs', () => {
 });
 
 describe('targetlessRestriction', () => {
+  // GitLab's group search always covers subgroups; results are not filterable by path.
+  it('refuses a global search under a group scope that excludes subgroups', () => {
+    expect(targetlessRestriction('browse_search', { action: 'global' }, groupOnly)).toMatch(
+      /subgroups/,
+    );
+  });
+
   it('refuses a global search under a scope of several projects', () => {
     expect(targetlessRestriction('browse_search', { action: 'global' }, several)).toMatch(
       /search within one of them/,
@@ -85,6 +92,15 @@ describe('scopedResult', () => {
     ]);
   });
 
+  // A group's project listing also returns projects only shared with the group.
+  it('leaves out projects shared into the scope group from other namespaces', () => {
+    const listed = [{ path_with_namespace: 'team/app' }, { path_with_namespace: 'other/shared' }];
+
+    expect(
+      scopedResult('browse_projects', { action: 'list', group_id: 'team' }, listed, enforcer),
+    ).toEqual([{ path_with_namespace: 'team/app' }]);
+  });
+
   it('keeps only merge requests of the scope from a cross-project listing', () => {
     const mrs = [
       { iid: 1, references: { full: 'team/sub/app!1' } },
@@ -113,7 +129,6 @@ describe('scopedResult', () => {
   });
 
   it.each([
-    ['browse_projects', { action: 'list', group_id: 'team' }],
     ['browse_merge_requests', { action: 'list', project_id: 'team/app' }],
     ['browse_todos', { action: 'list', project_id: 7 }],
     ['browse_issues', { action: 'list' }],

@@ -4,6 +4,7 @@ import { ManagePipelineSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { enhancedFetch } from '../../utils/fetch';
+import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { logError } from '../../logger';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
@@ -92,7 +93,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
             const { project_id, job_id, per_page, start } = input;
 
             // Custom handling - trace endpoint returns text, needs line processing
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/jobs/${job_id}/trace`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/jobs/${job_id}/trace`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -222,7 +223,7 @@ export const pipelinesToolRegistry: ToolRegistry = new Map<string, EnhancedToolD
               body.inputs = inputs;
             }
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(project_id)}/pipeline?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(project_id)}/pipeline?${queryParams}`;
 
             const response = await enhancedFetch(apiUrl, {
               method: 'POST',

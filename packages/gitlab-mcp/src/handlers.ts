@@ -487,12 +487,35 @@ function settingsRejection(
   const reason = callRestriction(policy, registryManager.getToolFacts(toolName), args);
   if (reason === null) return null;
   const action = typeof args.action === 'string' ? args.action : undefined;
+  const call = action ? `${toolName} ${action}` : toolName;
   const message =
-    `'${toolName}${action ? ` ${action}` : ''}' is not allowed by the current settings: ` +
+    `'${call}' is not allowed by the current settings: ` +
     `${reason}. The account settings are changed with update_settings, this session's ` +
     'with manage_context.';
   recordEarlyReturnError(toolName, action, message);
   return errorToolResult({ error: message });
+}
+
+/**
+ * Runs the tool through the registry (per-URL cache). A listing that names no target
+ * reads the working scope instead of everything the account sees.
+ */
+async function executeInScope(
+  registryManager: import('./registry-manager').RegistryManager,
+  toolName: string,
+  requested: Record<string, unknown>,
+  policy: EffectivePolicy,
+  instanceUrl: string | undefined,
+  requestScopes: readonly string[] | undefined,
+): Promise<unknown> {
+  const args = policy.scope ? scopedArgs(toolName, requested, policy.scope) : requested;
+  const executed =
+    requestScopes === undefined
+      ? await registryManager.executeTool(toolName, args, instanceUrl)
+      : await registryManager.executeTool(toolName, args, instanceUrl, requestScopes);
+  return policy.scopeEnforcer
+    ? scopedResult(toolName, args, executed, policy.scopeEnforcer)
+    : executed;
 }
 
 function recordCallContext(scopePath: string | undefined, readOnly: boolean): void {
@@ -644,7 +667,7 @@ export async function setupHandlers(server: Server): Promise<void> {
   // The settings panel is the server's one resource: an MCP App document. It holds no
   // account data; everything it shows comes from tool calls made with the caller's own
   // authorization.
-  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+  server.setRequestHandler(ListResourcesRequestSchema, () => ({
     resources: [
       {
         uri: SETTINGS_PANEL_URI,
@@ -654,7 +677,7 @@ export async function setupHandlers(server: Server): Promise<void> {
       },
     ],
   }));
-  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+  server.setRequestHandler(ReadResourceRequestSchema, (request) => {
     if (request.params.uri !== SETTINGS_PANEL_URI) {
       throw new McpError(ErrorCode.InvalidParams, `Unknown resource: ${request.params.uri}`);
     }
@@ -1019,23 +1042,14 @@ export async function setupHandlers(server: Server): Promise<void> {
           });
         }
 
-        // Execute the tool using the registry manager (per-URL cache). A listing that
-        // names no target reads the working scope instead of everything the account sees.
-        const { policy } = configuration;
-        const requested = request.params.arguments ?? {};
-        const args = policy.scope ? scopedArgs(toolName, requested, policy.scope) : requested;
-        const executed =
-          requestScopes === undefined
-            ? await registryManager.executeTool(toolName, args, effectiveInstanceUrl)
-            : await registryManager.executeTool(
-                toolName,
-                args,
-                effectiveInstanceUrl,
-                requestScopes,
-              );
-        const result = policy.scopeEnforcer
-          ? scopedResult(toolName, args, executed, policy.scopeEnforcer)
-          : executed;
+        const result = await executeInScope(
+          registryManager,
+          toolName,
+          request.params.arguments ?? {},
+          configuration.policy,
+          effectiveInstanceUrl,
+          requestScopes,
+        );
 
         // Guard against TOCTOU cache miss: hasToolHandler returned true but a
         // concurrent refreshCache swapped the lookup table before executeTool ran.

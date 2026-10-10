@@ -91,7 +91,8 @@ ul.plain { margin: 4px 0 0; padding-left: 18px; }
 @media (max-width: 420px) { body { padding: 8px; } dl { grid-template-columns: 1fr; } }
 `;
 
-const SCRIPT = `
+// Raw: the escapes below belong to the browser script, not to this module.
+const SCRIPT = String.raw`
 (function () {
   'use strict';
   var PROTOCOL = '${MCP_APPS_PROTOCOL_VERSION}';
@@ -161,7 +162,7 @@ const SCRIPT = `
   function toolText(result) {
     var parts = (result && result.content) || [];
     return parts.filter(function (p) { return p.type === 'text'; })
-      .map(function (p) { return p.text; }).join('\\n');
+      .map(function (p) { return p.text; }).join('\n');
   }
 
   function callTool(name, args) {
@@ -179,7 +180,7 @@ const SCRIPT = `
   function explain(error) {
     var message = (error && error.message) || String(error);
     if (/invalid_token|re-authenticate|401|sign in again|no longer accepts/i.test(message)) {
-      return 'Your GitLab sign-in expired or was revoked. Reconnect GitLab from the app\\u2019s connection settings, then open this panel again.';
+      return 'Your GitLab sign-in expired or was revoked. Reconnect GitLab from the app’s connection settings, then open this panel again.';
     }
     if (/CONNECTION_FAILED|unreachable|ECONNREFUSED|timed out|temporarily unavailable/i.test(message)) {
       return 'GitLab is not reachable right now. Your saved settings still apply; try again in a moment.';
@@ -246,7 +247,7 @@ const SCRIPT = `
       var empty = document.createElement('li');
       empty.setAttribute('role', 'option');
       empty.setAttribute('aria-disabled', 'true');
-      text(empty, 'No project or group matches \\u201c' + state.query + '\\u201d');
+      text(empty, 'No project or group matches “' + state.query + '”');
       list.appendChild(empty);
       return;
     }
@@ -261,7 +262,7 @@ const SCRIPT = `
       text(name, target.name);
       var kind = document.createElement('span');
       kind.className = 'kind';
-      text(kind, target.type + ' \\u00b7 ' + target.path);
+      text(kind, target.type + ' · ' + target.path);
       item.appendChild(name);
       item.appendChild(kind);
       item.addEventListener('click', function () { select(target); });
@@ -314,7 +315,7 @@ const SCRIPT = `
   }
 
   function checkHealth() {
-    text(el('health-status'), 'Checking\\u2026');
+    text(el('health-status'), 'Checking…');
     el('health-status').className = 'muted';
     return callTool('check_connection', {}).then(renderHealth).catch(function (error) {
       el('health-status').className = 'status-error';
@@ -349,7 +350,7 @@ const SCRIPT = `
     if (!target) return;
     var includeSubgroups = target.type === 'group' && el('subgroups').checked;
     setBusy(true);
-    announce('Saving\\u2026');
+    announce('Saving…');
     var action = where === 'chat'
       ? callTool('manage_context', { action: 'set_scope', namespace: target.path, includeSubgroups: includeSubgroups })
       : callTool('update_settings', { set: { scope: target.path, scopeIncludeSubgroups: includeSubgroups } });
@@ -374,7 +375,7 @@ const SCRIPT = `
 
   function workEverywhere() {
     setBusy(true);
-    announce('Saving\\u2026');
+    announce('Saving…');
     // Only this chat's scope changes; its preset, read-only mode and the default for new
     // chats stay as they are.
     callTool('manage_context', { action: 'clear_scope' })

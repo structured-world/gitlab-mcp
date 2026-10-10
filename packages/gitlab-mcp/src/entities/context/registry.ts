@@ -17,12 +17,12 @@ import {
   SETTINGS_READ_TOOL,
   SETTINGS_UPDATE_INPUT_SCHEMA,
   SETTINGS_UPDATE_OUTPUT_SCHEMA,
+  SETTINGS_PANEL_TOOL,
   SETTINGS_UPDATE_TOOL,
   readSettings,
   updateSettings,
 } from './settings';
 import { CONNECTION_CHECK_OUTPUT_SCHEMA, checkConnection } from './connection-check';
-import { SETTINGS_PANEL_TOOL } from './settings';
 import { SETTINGS_PANEL_URI } from './settings-panel';
 import {
   SCOPE_SEARCH_INPUT_SCHEMA,
@@ -157,15 +157,16 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
         'openai/outputTemplate': SETTINGS_PANEL_URI,
       },
       resultFormat: 'mcp',
-      handler: async () => ({
-        content: [
-          {
-            type: 'text',
-            text: 'Opened the GitLab connection panel. Clients without app panels change the same settings with get_settings, update_settings and manage_context set_scope.',
-          },
-        ],
-        structuredContent: { opened: true },
-      }),
+      handler: () =>
+        Promise.resolve({
+          content: [
+            {
+              type: 'text',
+              text: 'Opened the GitLab connection panel. Clients without app panels change the same settings with get_settings, update_settings and manage_context set_scope.',
+            },
+          ],
+          structuredContent: { opened: true },
+        }),
     },
   ],
   [

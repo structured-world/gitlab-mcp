@@ -1,4 +1,5 @@
 import { enhancedFetch } from './fetch';
+import { getGitLabBaseUrl } from './gitlab-base-url';
 
 /**
  * Extract namespace (group path) from a full project path.
@@ -74,7 +75,7 @@ async function verifyNamespaceType(
 ): Promise<boolean> {
   try {
     const entityType = type === 'project' ? 'projects' : 'groups';
-    const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/${entityType}/${encodeURIComponent(namespacePath)}`;
+    const apiUrl = `${getGitLabBaseUrl()}/api/v4/${entityType}/${encodeURIComponent(namespacePath)}`;
 
     const response = await enhancedFetch(apiUrl);
 

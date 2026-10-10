@@ -1,4 +1,4 @@
-import * as fs from 'fs';
+import * as fs from 'node:fs';
 
 /**
  * Flush a directory entry change (a rename into it) to disk, so the replaced file

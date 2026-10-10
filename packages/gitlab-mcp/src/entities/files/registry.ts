@@ -4,6 +4,7 @@ import { ManageFilesSchema } from './schema';
 import { gitlab, toQuery } from '../../utils/gitlab-api';
 import { normalizeProjectId } from '../../utils/projectIdentifier';
 import { enhancedFetch } from '../../utils/fetch';
+import { getGitLabBaseUrl } from '../../utils/gitlab-base-url';
 import { ToolRegistry, EnhancedToolDefinition } from '../../types';
 import { assertActionAllowed } from '../utils';
 import { parseGitLabApiError } from '../../utils/error-handler';
@@ -57,7 +58,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
             const queryParams = new URLSearchParams();
             if (input.ref) queryParams.set('ref', input.ref);
 
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(input.project_id)}/repository/files/${encodeURIComponent(input.file_path)}/raw?${queryParams}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(input.project_id)}/repository/files/${encodeURIComponent(input.file_path)}/raw?${queryParams}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {
@@ -76,7 +77,7 @@ export const filesToolRegistry: ToolRegistry = new Map<string, EnhancedToolDefin
 
           case 'download_attachment': {
             // TypeScript knows: input has project_id, secret, filename (required)
-            const apiUrl = `${process.env.GITLAB_API_URL}/api/v4/projects/${normalizeProjectId(input.project_id)}/uploads/${input.secret}/${input.filename}`;
+            const apiUrl = `${getGitLabBaseUrl()}/api/v4/projects/${normalizeProjectId(input.project_id)}/uploads/${input.secret}/${input.filename}`;
             const response = await enhancedFetch(apiUrl);
 
             if (!response.ok) {

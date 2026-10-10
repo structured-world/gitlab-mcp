@@ -84,7 +84,8 @@ function applyAccountPatch(
       if (enabled) disabled.delete(group);
       else disabled.add(group);
     }
-    if (disabled.size > 0) next.disabledToolGroups = [...disabled].sort();
+    if (disabled.size > 0)
+      next.disabledToolGroups = [...disabled].sort((a, b) => a.localeCompare(b));
     else delete next.disabledToolGroups;
   }
   if (scopeIncludeSubgroups !== undefined && next.scope?.type === 'group') {

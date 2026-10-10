@@ -158,6 +158,35 @@ describe('ChannelGateway', () => {
     expect(mockClientReadResource).not.toHaveBeenCalled();
   });
 
+  // A read-only tool without a browse_/get_/list_ name is retried after a lost link too:
+  // the catalog's readOnlyHint says it is a read.
+  it('replays a call the catalog marks read-only after the link drops', async () => {
+    mockClientListTools.mockResolvedValue({
+      tools: [{ name: 'find_scope_targets', annotations: { readOnlyHint: true } }],
+    });
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    await listTools();
+    const original = mockTransportInstance;
+    mockClientCallTool
+      .mockImplementationOnce(async () => {
+        original.closed = true;
+        original.onclose!();
+        await wait(0);
+        throw new McpError(ErrorCode.ConnectionClosed, 'Connection closed');
+      })
+      .mockResolvedValueOnce(mcp({ targets: [] }));
+
+    try {
+      expect(await callTool('find_scope_targets', { query: 'team' })).toEqual(mcp({ targets: [] }));
+      expect(mockClientCallTool).toHaveBeenCalledTimes(2);
+    } finally {
+      // Once-implementations survive clearAllMocks; a failure here must not leak them.
+      mockClientCallTool.mockReset();
+      await gw.stop();
+    }
+  });
+
   it('preserves catalog pagination and metadata in both directions', async () => {
     // Prevent the gateway from truncating paginated catalogs or hiding UI/auth metadata.
     const catalog = {

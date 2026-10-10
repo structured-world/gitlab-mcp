@@ -4,6 +4,14 @@
 
 * exempt stdio session from idle timeout cleanup ([#363](https://github.com/structured-world/gitlab-mcp/issues/363)) ([ca563bd](https://github.com/structured-world/gitlab-mcp/commit/ca563bda9aa969d5d7680d3d89c2c72f32344838)), closes [#361](https://github.com/structured-world/gitlab-mcp/issues/361)
 
+## [10.2.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v10.1.0...gitlab-mcp-v10.2.0) (2026-10-10)
+
+
+### Features
+
+* **mcp:** add Codex contracts and workflow skills ([#640](https://github.com/structured-world/gitlab-mcp/issues/640)) ([dada1b2](https://github.com/structured-world/gitlab-mcp/commit/dada1b2f5168d0cb044d5ef55c5b3bf854132b4e))
+* **oauth:** complete Codex account linking and durable OAuth ([#656](https://github.com/structured-world/gitlab-mcp/issues/656)) ([f86ee6a](https://github.com/structured-world/gitlab-mcp/commit/f86ee6ae6a76ac6982b827dd1afb8f2dcbb063fe)), closes [#636](https://github.com/structured-world/gitlab-mcp/issues/636)
+
 ## [10.1.0](https://github.com/structured-world/gitlab-mcp/compare/gitlab-mcp-v10.0.1...gitlab-mcp-v10.1.0) (2026-10-08)
 
 

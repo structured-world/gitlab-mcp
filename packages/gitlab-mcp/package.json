@@ -1,11 +1,11 @@
 {
   "name": "@structured-world/gitlab-mcp",
   "mcpName": "io.github.structured-world/gitlab-mcp",
-  "version": "10.1.0",
+  "version": "10.2.0",
   "description": "Advanced GitLab MCP server",
   "mcp": {
     "name": "GitLab MCP Server",
-    "description": "Advanced GitLab MCP server - 58 tools across 14 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes",
+    "description": "Advanced GitLab MCP server - 59 tools across 15 entity types with CQRS architecture, OAuth 2.1, and multiple transport modes",
     "repository": "https://github.com/structured-world/gitlab-mcp",
     "homepage": "https://gitlab-mcp.sw.foundation",
     "author": "Dmitry Prudnikov",
@@ -136,6 +136,13 @@
         "category": "Session",
         "tier": "free",
         "readOnly": true
+      },
+      {
+        "name": "get_profile",
+        "description": "Identify the GitLab account this connection uses: a stable account id, display name, email when GitLab provides it, and the username with its instance.",
+        "category": "General",
+        "tier": "free",
+        "readOnly": false
       },
       {
         "name": "browse_labels",

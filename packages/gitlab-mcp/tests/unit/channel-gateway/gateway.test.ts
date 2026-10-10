@@ -12,6 +12,7 @@ import {
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
+  ToolListChangedNotificationSchema,
   McpError,
   ErrorCode,
 } from '@modelcontextprotocol/sdk/types.js';
@@ -26,6 +27,9 @@ let mockServerOptions: { capabilities?: Record<string, unknown> } | undefined;
 const mockServerHandlers = new Map<unknown, (req: unknown) => Promise<unknown>>();
 const mockServerConnect = jest.fn();
 const mockServerNotification = jest.fn();
+const mockServerSendToolListChanged = jest.fn();
+// Notification handlers the gateway registers on the downstream client, by schema.
+const mockClientNotificationHandlers = new Map<unknown, (notification: unknown) => void>();
 const mockTransportClose = jest.fn();
 // The most recently constructed downstream transport, so a test can fire onclose.
 let mockTransportInstance: { onclose?: () => void; close: jest.Mock; closed?: boolean };
@@ -39,6 +43,9 @@ jest.mock('@modelcontextprotocol/sdk/client/index.js', () => ({
       callTool: mockClientCallTool,
       listResources: mockClientListResources,
       readResource: mockClientReadResource,
+      setNotificationHandler: (schema: unknown, handler: (notification: unknown) => void) => {
+        mockClientNotificationHandlers.set(schema, handler);
+      },
       get transport() {
         return transport.closed ? undefined : transport;
       },
@@ -61,6 +68,7 @@ jest.mock('@modelcontextprotocol/sdk/server/index.js', () => ({
     },
     connect: mockServerConnect,
     notification: mockServerNotification,
+    sendToolListChanged: mockServerSendToolListChanged,
   })),
 }));
 
@@ -91,6 +99,8 @@ describe('ChannelGateway', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockServerHandlers.clear();
+    mockClientNotificationHandlers.clear();
+    mockServerSendToolListChanged.mockResolvedValue(undefined);
     mockClientConnect.mockResolvedValue(undefined);
     mockClientListTools.mockResolvedValue({ tools: [] });
     mockClientCallTool.mockResolvedValue(mcp({ ok: true }));
@@ -185,6 +195,86 @@ describe('ChannelGateway', () => {
       mockClientCallTool.mockReset();
       await gw.stop();
     }
+  });
+
+  /** A call that loses the downstream link mid-flight; a replay would answer `replayed`. */
+  function dropLinkOnNextCall(): void {
+    const original = mockTransportInstance;
+    mockClientCallTool
+      .mockImplementationOnce(async () => {
+        original.closed = true;
+        original.onclose!();
+        await wait(0);
+        throw new McpError(ErrorCode.ConnectionClosed, 'Connection closed');
+      })
+      .mockResolvedValueOnce(mcp({ replayed: true }));
+  }
+
+  // A later catalog that no longer marks the tool read-only wins: the call is not replayed.
+  it('stops replaying a tool a later catalog no longer marks read-only', async () => {
+    mockClientListTools
+      .mockResolvedValueOnce({ tools: [{ name: 'run_task', annotations: { readOnlyHint: true } }] })
+      .mockResolvedValueOnce({
+        tools: [{ name: 'run_task', annotations: { readOnlyHint: false } }],
+      });
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    await listTools();
+    await listTools();
+    dropLinkOnNextCall();
+
+    try {
+      await expect(callTool('run_task')).rejects.toThrow();
+      expect(mockClientCallTool).toHaveBeenCalledTimes(1);
+    } finally {
+      mockClientCallTool.mockReset();
+      await gw.stop();
+    }
+  });
+
+  // Two catalog reads in flight: the older answer arriving last does not undo the newer one.
+  it('keeps the newest catalog verdict when catalog answers arrive out of order', async () => {
+    let answerOlder: (value: unknown) => void = () => {};
+    mockClientListTools
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            answerOlder = resolve;
+          }),
+      )
+      .mockResolvedValueOnce({
+        tools: [{ name: 'run_task', annotations: { readOnlyHint: false } }],
+      });
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+    const older = listTools();
+    await wait(0);
+    await listTools();
+    answerOlder({ tools: [{ name: 'run_task', annotations: { readOnlyHint: true } }] });
+    await older;
+    dropLinkOnNextCall();
+
+    try {
+      await expect(callTool('run_task')).rejects.toThrow();
+      expect(mockClientCallTool).toHaveBeenCalledTimes(1);
+    } finally {
+      mockClientCallTool.mockReset();
+      await gw.stop();
+    }
+  });
+
+  // Settings changes make the downstream catalog change: the host must hear about it.
+  it('forwards a downstream tool-list change to the host', async () => {
+    const gw = new ChannelGateway(baseConfig);
+    await gw.start();
+
+    expect(mockServerOptions?.capabilities).toMatchObject({ tools: { listChanged: true } });
+    mockClientNotificationHandlers.get(ToolListChangedNotificationSchema)!({
+      method: 'notifications/tools/list_changed',
+    });
+
+    expect(mockServerSendToolListChanged).toHaveBeenCalledTimes(1);
+    await gw.stop();
   });
 
   it('preserves catalog pagination and metadata in both directions', async () => {

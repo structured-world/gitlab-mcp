@@ -486,6 +486,25 @@ describe('enforceArgsScope', () => {
     expect(() => enforceArgsScope(enforcer, args)).toThrow(ScopeViolationError);
   });
 
+  // A scope of projects reaches no group: group operations (even on the project's own
+  // parent group, e.g. deleting it) are outside it.
+  it.each([{ project: 'myteam/backend' }, { projects: ['myteam/backend', 'other/api'] }])(
+    'should refuse any group under the project-only scope %j',
+    (scope) => {
+      const enforcer = new ScopeEnforcer(scope);
+
+      expect(enforcer.isGroupAllowed('unrelated')).toBe(false);
+      expect(enforcer.isGroupAllowed('myteam')).toBe(false);
+      expect(() => enforceArgsScope(enforcer, { action: 'delete', group_id: 'unrelated' })).toThrow(
+        ScopeViolationError,
+      );
+    },
+  );
+
+  it('should allow any group when the scope restricts nothing', () => {
+    expect(new ScopeEnforcer({}).isGroupAllowed('anything')).toBe(true);
+  });
+
   it('should pass when no project fields in args', () => {
     const enforcer = new ScopeEnforcer({ project: 'myteam/backend' });
     const args = { action: 'list', page: 1 };

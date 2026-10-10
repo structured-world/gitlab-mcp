@@ -35,6 +35,7 @@ import { checkConnection } from '../../../../src/entities/context/connection-che
 import { ConfigurationService } from '../../../../src/configuration/service';
 import { runWithCaller, type Caller } from '../../../../src/configuration/caller';
 import type { AccountSettingsRecord } from '../../../../src/configuration/types';
+import { runWithTokenContext } from '../../../../src/oauth/token-context';
 
 const alice: Caller = {
   accountKey: 'gitlab:https://gitlab.example.com#1',
@@ -123,6 +124,23 @@ describe('checkConnection', () => {
 
     expect(check.availableTools).toBe(count);
     expect(mockAvailableToolNames).toHaveBeenCalledWith(alice.instanceUrl);
+  });
+
+  // The count matches tools/list: an OAuth token's scopes hide tools it cannot call.
+  it("leaves out tools the caller's OAuth token scopes do not allow", async () => {
+    const check = await runWithTokenContext(
+      {
+        gitlabToken: 'token',
+        gitlabUserId: 1,
+        gitlabUsername: 'alice',
+        sessionId: 's1',
+        apiUrl: 'https://gitlab.example.com',
+        gitlabScopes: ['read_user'],
+      },
+      () => runWithCaller(alice, () => checkConnection()),
+    );
+
+    expect(check.availableTools).toBe(0);
   });
 
   it('reports a project scope and no preset', async () => {

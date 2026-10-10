@@ -39,16 +39,18 @@ The effective restrictions combine all layers: a chat value replaces the account
 that chat, and read-only from any layer (including the preset) wins.
 
 Restrictions are applied when a tool runs, not only to the tool list: a direct call to a
-tool the settings turn off, or to a project outside the working scope, is refused before
-anything reaches GitLab.
+tool the settings turn off, or to a project or group outside the working scope, is refused
+before anything reaches GitLab. A scope of projects reaches no group, so group operations
+are refused under it.
 
 A listing or search that names no project or group reads the working scope instead of
 everything the account can see: a global search becomes a search of the scope's group or
 project, a project listing lists the scope's group, a cross-project merge request listing
-lists the scope's project, and results that cannot be filtered at GitLab (project search,
-todos, merge requests under a group scope) are filtered to the scope. A group search always
-includes subgroups. Under a preset scope of several projects or groups a global search is
-refused; search within one of them.
+lists the scope's project, and results that cannot be filtered at GitLab (project listings
+and searches, including projects only shared with the scope's group, todos, merge requests
+under a group scope) are filtered to the scope. A global search is refused under a scope of
+several projects or groups, and under a group scope without subgroups (GitLab's group
+search always includes them); search within one project or group instead.
 
 ## Changing settings
 

@@ -19,6 +19,7 @@ import {
   ListResourcesRequestSchema,
   ListToolsRequestSchema,
   ReadResourceRequestSchema,
+  ToolListChangedNotificationSchema,
   type CallToolResult,
   type ListResourcesResult,
   type ListToolsResult,
@@ -64,15 +65,21 @@ export class ChannelGateway {
   private reconnecting = false;
   private closing = false;
   private pendingWaiters = 0;
-  /** Tools the downstream catalog marks read-only: safe to replay after a lost link. */
-  private readonly catalogReads = new Set<string>();
+  /**
+   * Whether the downstream catalog marks a tool read-only (safe to replay after a lost
+   * link), with the catalog read that said so. Catalog pages arrive independently, so each
+   * page updates only its own tools, and an older read never overrides a newer one.
+   */
+  private readonly catalogReads = new Map<string, { read: boolean; generation: number }>();
+  private catalogGeneration = 0;
 
   constructor(private readonly config: GatewayConfig) {
     this.server = new Server(
       { name: config.name ?? 'gitlab-ci-gateway', version: config.version ?? '0.1.0' },
       {
         capabilities: {
-          tools: {}, // re-exposes the downstream catalog
+          // Re-exposes the downstream catalog, which changes with the caller's settings.
+          tools: { listChanged: true },
           resources: {}, // and the ui:// resources its tools point at (settings panel)
           experimental: { 'claude/channel': {} }, // allowed to push channel events
         },
@@ -105,7 +112,12 @@ export class ChannelGateway {
   }
 
   private newClient(): Client {
-    return new Client({ name: this.config.name ?? 'gitlab-ci-gateway', version: '0.1.0' });
+    const client = new Client({ name: this.config.name ?? 'gitlab-ci-gateway', version: '0.1.0' });
+    // The host lists the catalog again only when told it changed.
+    client.setNotificationHandler(ToolListChangedNotificationSchema, () => {
+      void this.server.sendToolListChanged().catch(() => {});
+    });
+    return client;
   }
 
   private registerHandlers(): void {
@@ -113,12 +125,11 @@ export class ChannelGateway {
       // The catalog read must honour the same reconnect/buffer policy as
       // CallTool: a ListTools that lands mid-reconnect should wait for the
       // link (bounded) and replay once, not throw against a dead client.
+      const generation = ++this.catalogGeneration;
       const catalog = (await this.readDownstream('tools/list', (client) =>
         client.listTools(request.params),
       )) as ListToolsResult;
-      for (const tool of catalog.tools) {
-        if (tool.annotations?.readOnlyHint === true) this.catalogReads.add(tool.name);
-      }
+      this.recordCatalogReads(catalog, generation);
       return catalog;
     });
     this.server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -136,6 +147,21 @@ export class ChannelGateway {
         client.readResource(request.params),
       )) as ReadResourceResult;
     });
+  }
+
+  private recordCatalogReads(catalog: ListToolsResult, generation: number): void {
+    for (const tool of catalog.tools) {
+      const known = this.catalogReads.get(tool.name);
+      if (known && known.generation > generation) continue;
+      // A tool without the annotation is classified by its name, as before it was listed.
+      const read = tool.annotations?.readOnlyHint ?? isReadCall(tool.name);
+      this.catalogReads.set(tool.name, { read, generation });
+    }
+  }
+
+  /** Whether a call is a read: the catalog's annotation, else the name for an unlisted tool. */
+  private isRead(name: string): boolean {
+    return this.catalogReads.get(name)?.read ?? isReadCall(name);
   }
 
   /** An idempotent downstream read under the reconnect/buffer policy. */
@@ -237,8 +263,7 @@ export class ChannelGateway {
   private forward(name: string, args: unknown): Promise<unknown> {
     return forwardWithPolicy(
       {
-        // The catalog's own annotation first; the name prefix covers a catalog not yet listed.
-        isRead: (name) => this.catalogReads.has(name) || isReadCall(name),
+        isRead: (name) => this.isRead(name),
         isConnected: () => this.connected,
         waitForConnection: () => this.waitForConnection(),
         call: (n, a) => this.callDownstream(n, a),

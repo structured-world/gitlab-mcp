@@ -216,9 +216,10 @@ export class ScopeEnforcer {
    * @returns true if allowed, false if outside scope
    */
   isGroupAllowed(groupPath: string): boolean {
-    // If no group restrictions are defined, allow all groups
+    // Without group restrictions, any group only when nothing is restricted: a scope of
+    // projects reaches no group.
     if (!this.hasGroupRestrictions()) {
-      return true;
+      return !this.hasProjectRestrictions();
     }
 
     const normalized = normalizeProjectPath(groupPath);

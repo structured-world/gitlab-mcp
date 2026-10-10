@@ -40,11 +40,17 @@ export interface PresetSource {
  * `toolGroups` and `scopeIncludeSubgroups` are changes to the settings as saved at write
  * time, so they merge with concurrent edits of other groups or of the scope.
  */
+export type ScopePatch = Omit<WorkingScope, 'includeSubgroups'> & { includeSubgroups?: boolean };
+
 export interface AccountSettingsPatch {
   preset?: string | null;
   readOnly?: boolean | null;
   disabledToolGroups?: string[] | null;
-  scope?: WorkingScope | null;
+  /**
+   * A group scope without includeSubgroups keeps the choice saved at write time (included
+   * when none was saved), so it does not overwrite a concurrent change of that choice.
+   */
+  scope?: ScopePatch | null;
   /** Tool group id -> whether it is on. */
   toolGroups?: Record<string, boolean>;
   /** For a saved group scope: whether its subgroups are included. */
@@ -75,9 +81,17 @@ const MAX_WRITE_ATTEMPTS = 5;
 /** The account patch applied to the settings saved now, its changes included. */
 function applyAccountPatch(
   saved: AccountSettings,
-  { toolGroups, scopeIncludeSubgroups, ...fields }: AccountSettingsPatch,
+  { toolGroups, scopeIncludeSubgroups, scope, ...fields }: AccountSettingsPatch,
 ): AccountSettings {
   const next = applyPatch(saved, fields);
+  if (scope === null) delete next.scope;
+  else if (scope) {
+    next.scope = {
+      ...scope,
+      includeSubgroups:
+        scope.type === 'group' && (scope.includeSubgroups ?? saved.scope?.includeSubgroups ?? true),
+    };
+  }
   if (toolGroups) {
     const disabled = new Set(next.disabledToolGroups ?? []);
     for (const [group, enabled] of Object.entries(toolGroups)) {
@@ -138,7 +152,9 @@ export class ConfigurationService {
     } catch {
       // The preset was removed after it was selected. Ignoring it could widen access (it may
       // have been read-only); failing every call would lock the caller out of the settings
-      // that fix it. Read-only keeps both safe.
+      // that fix it. Read-only keeps both safe. Its scope and tool limits are not kept: the
+      // caller chose the preset and may always choose none, so working read-only without
+      // them is narrower than what the caller can set itself.
       const policy = buildPolicy(undefined, account, { ...session, readOnly: true });
       return { ...resolved, policy: { ...policy, presetName }, presetUnavailable: presetName };
     }

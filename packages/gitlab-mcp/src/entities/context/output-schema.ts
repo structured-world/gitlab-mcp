@@ -13,6 +13,7 @@ const baseContext = z.object({
   profileName: z.string().optional(),
   presetName: z.string().optional(),
   readOnly: z.boolean(),
+  disabledToolGroups: z.array(z.string()).optional(),
   scope: scope.optional(),
   oauthMode: z.boolean(),
 });

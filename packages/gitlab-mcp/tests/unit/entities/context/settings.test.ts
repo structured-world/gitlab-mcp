@@ -256,6 +256,29 @@ describe('native settings', () => {
       expect(saved()?.scope).toEqual({ type: 'group', path: 'team', includeSubgroups: false });
     });
 
+    // Another chat changes the subgroup choice while this one checks a new scope path: a
+    // scope change that does not name the choice keeps the one saved at write time.
+    it('keeps a subgroup choice saved while the new scope path was being checked', async () => {
+      mockDetect.mockResolvedValue('group');
+      await update({ scope: 'team', scopeIncludeSubgroups: true });
+      mockDetect.mockImplementationOnce(async () => {
+        await update({ scopeIncludeSubgroups: false });
+        return 'group';
+      });
+
+      await update({ scope: 'other' });
+
+      expect(saved()?.scope).toEqual({ type: 'group', path: 'other', includeSubgroups: false });
+    });
+
+    it('includes subgroups of a first group scope by default', async () => {
+      mockDetect.mockResolvedValue('group');
+
+      await update({ scope: 'team' });
+
+      expect(saved()?.scope).toEqual({ type: 'group', path: 'team', includeSubgroups: true });
+    });
+
     it('clears the scope with an empty path', async () => {
       mockDetect.mockResolvedValue('group');
       await update({ scope: 'team' });

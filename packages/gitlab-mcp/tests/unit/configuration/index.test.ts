@@ -14,8 +14,10 @@ jest.mock('../../../src/oauth/config', () => ({
 }));
 
 let mockBackendType = 'postgresql';
+let mockKeepsSettings = true;
 const mockSessionStore = {
   getBackendType: () => mockBackendType,
+  keepsAccountSettings: () => mockKeepsSettings,
   initialize: jest.fn(async () => undefined),
   getAccountSettings: jest.fn(async () => undefined),
   putAccountSettings: jest.fn(async (accountKey: string, settings: object) => ({
@@ -66,6 +68,7 @@ describe('getConfigurationService', () => {
     resetConfigurationService();
     mockOAuth = false;
     mockBackendType = 'postgresql';
+    mockKeepsSettings = true;
     delete process.env.OAUTH_STORAGE_TYPE;
     dir = fs.mkdtempSync(path.join(os.tmpdir(), 'configuration-index-test-'));
     mockSettingsPath = path.join(dir, 'settings.json');
@@ -116,9 +119,14 @@ describe('getConfigurationService', () => {
 
   // Sessions held in memory (the OAuth default) are gone after a restart; saved settings
   // must not be, so they go to the settings file instead.
-  it('keeps OAuth settings in the settings file when sessions are held in memory', async () => {
+  it.each([
+    ['sessions are held in memory', 'memory'],
+    // A database package older than the server: calls keep working instead of failing.
+    ['the database package cannot keep settings', 'postgresql'],
+  ])('keeps OAuth settings in the settings file when %s', async (_label, backendType) => {
     mockOAuth = true;
-    mockBackendType = 'memory';
+    mockBackendType = backendType;
+    mockKeepsSettings = false;
 
     await getConfigurationService().updateAccount(alice, { readOnly: true });
 

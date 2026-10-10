@@ -222,10 +222,10 @@ export async function updateSettings(
     patch.readOnly = set.readOnly;
   }
   if (typeof set.scope === 'string') {
+    // Without an explicit choice the subgroup flag is taken from the settings saved at
+    // write time, not from this page, which another chat may have changed since.
     const includeSubgroups =
-      typeof set.scopeIncludeSubgroups === 'boolean'
-        ? set.scopeIncludeSubgroups
-        : page.values.scopeIncludeSubgroups === true;
+      typeof set.scopeIncludeSubgroups === 'boolean' ? set.scopeIncludeSubgroups : undefined;
     patch.scope = await scopeSetting(set.scope.trim(), includeSubgroups);
   } else if (typeof set.scopeIncludeSubgroups === 'boolean') {
     // A change of the saved scope, applied to it as saved at write time.
@@ -264,7 +264,7 @@ function validateSettings(
 /** The default scope for a path; an empty path clears it. */
 async function scopeSetting(
   path: string,
-  includeSubgroups: boolean,
+  includeSubgroups: boolean | undefined,
 ): Promise<AccountSettingsPatch['scope']> {
   if (path === '') return null;
   // The path is checked against GitLab, so a typo is reported instead of saved as a guess.
@@ -274,5 +274,7 @@ async function scopeSetting(
       `No project or group '${path}' was found on GitLab, or GitLab could not be reached`,
     );
   }
-  return { type, path, includeSubgroups: type === 'group' && includeSubgroups };
+  return type === 'group'
+    ? { type, path, includeSubgroups }
+    : { type, path, includeSubgroups: false };
 }

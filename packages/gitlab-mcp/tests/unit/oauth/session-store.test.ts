@@ -555,6 +555,25 @@ describe('OAuth Session Store', () => {
         await new SessionStore(backend).putAccountSettings('acct', { readOnly: false }, 0),
       ).toBeUndefined();
     });
+
+    // Settings must survive a restart, and a database package older than the server lacks
+    // the account settings methods: neither backend can keep them.
+    it.each([
+      ['a durable backend with the settings methods', 'postgresql', true, true],
+      ['a backend held in memory', 'memory', true, false],
+      ['a database package without the settings methods', 'postgresql', false, false],
+    ])('keeps account settings with %s: %s', (_label, type, hasMethods, expected) => {
+      const backend = Object.create(new MemoryStorageBackend()) as Record<string, unknown>;
+      Object.defineProperty(backend, 'type', { value: type });
+      if (!hasMethods) {
+        backend.getAccountSettings = undefined;
+        backend.putAccountSettings = undefined;
+      }
+
+      expect(
+        new SessionStore(backend as unknown as SessionStorageBackend).keepsAccountSettings(),
+      ).toBe(expected);
+    });
   });
 
   describe('MCP Session Mapping Operations', () => {

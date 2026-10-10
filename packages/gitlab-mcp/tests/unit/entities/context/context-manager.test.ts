@@ -55,6 +55,7 @@ const mockPresets: Record<string, unknown> = {
   'single-project-scope': { scope: { projects: ['only-project'] } },
   'single-group-scope': { scope: { groups: ['only-group'] } },
   'empty-scope': { scope: { includeSubgroups: true } },
+  'no-wiki': { features: { wiki: false } },
 };
 
 const mockLoadPreset = jest.fn((name: string) =>
@@ -241,6 +242,16 @@ describe('ContextManager', () => {
       const context = await runWithCaller(alice2, () => getContextManager().getContext());
 
       expect(context).toMatchObject({ presetName: 'readonly', readOnly: true });
+    });
+
+    // The settings panel shows these: groups the preset turned off count, not only the
+    // account's own choices.
+    it('reports the tool groups off for the session, by the account and by its preset', async () => {
+      await service.updateAccount(alice1, { preset: 'no-wiki', disabledToolGroups: ['mrs'] });
+
+      const context = await runWithCaller(alice1, () => getContextManager().getContext());
+
+      expect(context.disabledToolGroups).toEqual(['mrs', 'wiki']);
     });
   });
 

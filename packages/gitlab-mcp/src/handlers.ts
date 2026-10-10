@@ -524,6 +524,7 @@ async function executeInScope(
 }
 
 const TODO_PAGE_SIZE = 100;
+const TODO_CONCURRENCY = 5;
 
 /**
  * mark_all_done for a scoped chat: GitLab's own would also clear todos outside the scope,
@@ -549,11 +550,28 @@ async function markScopeTodosDone(
     for (const todo of inScope) ids.push(todo.id);
     if (todos.length < TODO_PAGE_SIZE) break;
   }
-  await Promise.all(ids.map((id) => run('manage_todos', { action: 'mark_done', id })));
+  // A few requests at a time, so a large scope does not run into GitLab's rate limits;
+  // a todo that fails is reported and the rest are still marked.
+  const failed: Array<{ id: unknown; error: string }> = [];
+  let next = 0;
+  const worker = async (): Promise<void> => {
+    while (next < ids.length) {
+      const id = ids[next++];
+      try {
+        await run('manage_todos', { action: 'mark_done', id });
+      } catch (error: unknown) {
+        failed.push({ id, error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(TODO_CONCURRENCY, ids.length) }, worker));
+  const marked = ids.length - failed.length;
+  const failedNote = failed.length > 0 ? `; ${failed.length} could not be marked` : '';
   return {
-    success: true,
-    marked: ids.length,
-    message: `Marked ${ids.length} todos of the working scope as done; todos outside it were left pending`,
+    success: failed.length === 0,
+    marked,
+    failed,
+    message: `Marked ${marked} of ${ids.length} todos of the working scope as done${failedNote}; todos outside it were left pending`,
   };
 }
 

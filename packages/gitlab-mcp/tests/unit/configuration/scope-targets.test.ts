@@ -33,6 +33,15 @@ describe('scopedArgs', () => {
     expect(scopedArgs('browse_projects', { action: 'list' }, scope)).toEqual(expected);
   });
 
+  // Without a namespace GitLab creates the project in the user's own namespace.
+  it('creates a project without a namespace in the scope group', () => {
+    expect(scopedArgs('manage_project', { action: 'create', name: 'app' }, group)).toEqual({
+      action: 'create',
+      name: 'app',
+      namespace: 'team',
+    });
+  });
+
   it('lists the merge requests of the scope project', () => {
     expect(
       scopedArgs('browse_merge_requests', { action: 'list', state: 'opened' }, project),
@@ -68,10 +77,23 @@ describe('targetlessRestriction', () => {
     );
   });
 
+  // A project with no namespace lands in the user's namespace, a group without a parent at
+  // the top level: both outside a scope that names no single group to put them in.
+  it.each([
+    ['manage_project', { action: 'create', name: 'app' }, project],
+    ['manage_project', { action: 'create', name: 'app' }, several],
+    ['manage_namespace', { action: 'create', name: 'Team', path: 'team2' }, group],
+  ])('refuses %s %j under %j', (tool, args, scope) => {
+    expect(targetlessRestriction(tool, args, scope)).toMatch(/outside the working scope/);
+  });
+
   it.each([
     ['browse_search', { action: 'global' }, group],
     ['browse_search', { action: 'group', group_id: 'team' }, several],
     ['browse_projects', { action: 'list' }, several],
+    ['manage_project', { action: 'create', name: 'app' }, group],
+    ['manage_project', { action: 'create', name: 'app', namespace: 'team/sub' }, project],
+    ['manage_namespace', { action: 'create', name: 'Sub', path: 'sub', parent_id: 7 }, group],
   ])('allows %s %j under %j', (tool, args, scope) => {
     expect(targetlessRestriction(tool, args, scope)).toBeNull();
   });

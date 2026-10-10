@@ -211,8 +211,10 @@ const SCRIPT = String.raw`
       : 'Everywhere you have access');
     text(el('access-preset'), context.presetName || 'None');
     text(el('access-readonly'), context.readOnly ? 'On: tools that change GitLab are off' : 'Off');
-    var off = Object.keys(values).filter(function (k) { return k.indexOf('tools_') === 0 && values[k] === false; })
-      .map(function (k) { return (settings.schema.properties[k] || {}).title || k.slice(6); });
+    // What this chat has off: the account's choices and its preset's.
+    var off = (context.disabledToolGroups || []).map(function (group) {
+      return (settings.schema.properties['tools_' + group] || {}).title || group;
+    });
     text(el('access-groups'), off.length ? off.join(', ') : 'All offered groups are on');
   }
 

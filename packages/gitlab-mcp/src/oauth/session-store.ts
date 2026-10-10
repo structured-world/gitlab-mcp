@@ -322,6 +322,19 @@ export class SessionStore {
   // Account Settings
   // ============================================================
 
+  /**
+   * Whether account settings can live here: the backend survives a restart and has the
+   * settings methods, which a database package older than this server lacks.
+   */
+  keepsAccountSettings(): boolean {
+    const backend = this.backend as Partial<SessionStorageBackend>;
+    return (
+      this.backend.type !== 'memory' &&
+      typeof backend.getAccountSettings === 'function' &&
+      typeof backend.putAccountSettings === 'function'
+    );
+  }
+
   async getAccountSettings(accountKey: string): Promise<AccountSettingsRecord | undefined> {
     return this.backend.getAccountSettings(accountKey);
   }

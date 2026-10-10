@@ -51,7 +51,14 @@ and searches, including projects only shared with the scope's group, todos, merg
 under a group scope) are filtered to the scope. A global search is refused under a scope of
 several projects or groups, and under a group scope without subgroups (GitLab's group
 search always includes them); search within one project or group instead. `manage_todos
-mark_all_done` marks only the scope's pending todos done and leaves the others pending.
+mark_all_done` marks only the scope's pending todos done and leaves the others pending. A
+project created without a namespace goes into the scope's group; with no single group to
+put it in, and for a group without a parent, the call is refused.
+
+The working scope is a focus, not an access boundary: the user sets and clears it. Calls
+that name an object only by its global id (a work item or todo id) are not checked against
+the scope. To limit what the server can reach, give it a project or group access token;
+GitLab enforces that on every call.
 
 ## Changing settings
 

@@ -115,6 +115,7 @@ export class ContextManager {
       ...operator,
       readOnly: operator.readOnly || resolved.policy.readOnly,
       presetName: resolved.policy.presetName,
+      disabledToolGroups: [...resolved.policy.disabledGroups].sort((a, b) => a.localeCompare(b)),
       profileName: resolved.session.profile,
       scope: scope
         ? runtimeScopeOf(

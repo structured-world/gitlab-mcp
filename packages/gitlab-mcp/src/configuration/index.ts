@@ -3,6 +3,7 @@
  * the preset loader and per-session tool-list notifications.
  */
 
+import { logWarn } from '../logger';
 import { isOAuthEnabled } from '../oauth/config';
 import { sessionStore } from '../oauth/session-store';
 import { ProfileLoader } from '../profiles/loader';
@@ -16,20 +17,27 @@ export { resolveCaller, runWithCaller, currentCaller, type Caller } from './call
 let settingsStore: Promise<SettingsStore> | undefined;
 
 /**
- * Settings live with the sessions when that storage is durable (file or PostgreSQL), shared
- * by every replica using it. Otherwise (a local server, or sessions held in memory, the
- * OAuth default) they live in the settings file, so saved settings survive a restart.
+ * Settings live with the sessions when that storage can keep them (file or PostgreSQL),
+ * shared by every replica using it. Otherwise (a local server, sessions held in memory as
+ * the OAuth default, or a database package older than the server) they live in the
+ * settings file, so saved settings survive a restart and calls keep working.
  */
 function storeOfDeployment(): Promise<SettingsStore> {
   settingsStore ??= (async (): Promise<SettingsStore> => {
     const sessionsStored = isOAuthEnabled() || Boolean(process.env.OAUTH_STORAGE_TYPE);
-    if (sessionsStored && sessionStore.getBackendType() !== 'memory') {
+    if (sessionsStored && sessionStore.keepsAccountSettings()) {
       await sessionStore.initialize();
       return {
         get: (accountKey) => sessionStore.getAccountSettings(accountKey),
         put: (accountKey, settings, expectedVersion) =>
           sessionStore.putAccountSettings(accountKey, settings, expectedVersion),
       };
+    }
+    if (sessionsStored && sessionStore.getBackendType() !== 'memory') {
+      logWarn(
+        'The session storage cannot keep account settings; upgrade @structured-world/gitlab-mcp-db to the version of this server. Settings are kept in the settings file meanwhile.',
+        { backend: sessionStore.getBackendType() },
+      );
     }
     return new LocalSettingsFile(localSettingsPath());
   })().catch((error: unknown) => {

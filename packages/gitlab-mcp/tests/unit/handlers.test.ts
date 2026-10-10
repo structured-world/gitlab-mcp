@@ -3130,7 +3130,48 @@ describe('handlers', () => {
       expect(JSON.parse(result.content?.[0].text ?? '')).toEqual({
         success: true,
         marked: 2,
-        message: 'Marked 2 todos of the working scope as done; todos outside it were left pending',
+        failed: [],
+        message:
+          'Marked 2 of 2 todos of the working scope as done; todos outside it were left pending',
+      });
+    });
+
+    // A failed todo must not hide the ones already marked, and a large scope must not
+    // flood GitLab with every request at once.
+    it('reports the todos it could not mark and keeps the requests bounded', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+      const todos = Array.from({ length: 12 }, (_, i) => ({
+        id: i + 1,
+        project: { path_with_namespace: 'team/app' },
+      }));
+      let inFlight = 0;
+      let peak = 0;
+      mockRegistryManager.executeTool.mockImplementation(
+        async (tool: string, args: Record<string, unknown>) => {
+          if (tool === 'browse_todos') return args.page === 1 ? todos : [];
+          inFlight++;
+          peak = Math.max(peak, inFlight);
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          inFlight--;
+          if (args.id === 3) throw new Error('GitLab API error: 429 Too Many Requests');
+          return { id: args.id, state: 'done' };
+        },
+      );
+
+      const result = await callToolHandler(
+        { params: { name: 'manage_todos', arguments: { action: 'mark_all_done' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(peak).toBeLessThanOrEqual(5);
+      expect(JSON.parse(result.content?.[0].text ?? '')).toEqual({
+        success: false,
+        marked: 11,
+        failed: [{ id: 3, error: 'GitLab API error: 429 Too Many Requests' }],
+        message:
+          'Marked 11 of 12 todos of the working scope as done; 1 could not be marked; todos outside it were left pending',
       });
     });
 

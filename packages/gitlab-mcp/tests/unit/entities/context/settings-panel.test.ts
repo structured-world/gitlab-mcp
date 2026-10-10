@@ -209,6 +209,29 @@ describe('settings panel', () => {
     expect(panel.byId('health-tools').textContent).toBe('42');
   });
 
+  // A preset can turn groups off that the account left on: the preview shows what this
+  // chat actually has, not only the account's own choices.
+  it('shows the tool groups that are off in this chat, also by its preset', async () => {
+    const panel = startPanel({
+      tools: {
+        manage_context: () => ({
+          action: 'show',
+          data: { readOnly: false, presetName: 'ci', disabledToolGroups: ['wiki', 'runners'] },
+        }),
+      },
+    });
+    await panel.idle();
+
+    expect(panel.byId('access-groups').textContent).toBe('Wiki, runners');
+  });
+
+  it('says all groups are on when this chat has none off', async () => {
+    const panel = startPanel();
+    await panel.idle();
+
+    expect(panel.byId('access-groups').textContent).toBe('All offered groups are on');
+  });
+
   it('applies the host theme and style variables', async () => {
     const panel = startPanel({
       hostContext: {

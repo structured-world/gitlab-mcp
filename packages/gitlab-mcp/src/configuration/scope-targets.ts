@@ -27,6 +27,8 @@ const hasValue = (value: unknown): boolean => value !== undefined && value !== n
  * cannot be filtered by path).
  */
 export function targetlessRestriction(tool: string, args: Args, scope: ScopeConfig): string | null {
+  const creation = creationRestriction(tool, args, scope);
+  if (creation) return creation;
   if (tool !== 'browse_search' || args.action !== 'global') return null;
   const target = singleTarget(scope);
   if (!target) {
@@ -34,6 +36,24 @@ export function targetlessRestriction(tool: string, args: Args, scope: ScopeConf
   }
   if ('group' in target && scope.includeSubgroups === false) {
     return 'a global search cannot be limited to a group without its subgroups; search within one of its projects';
+  }
+  return null;
+}
+
+/**
+ * Creation that names no place lands outside the scope: a project without a namespace in
+ * the user's own namespace (filled in with the scope group when there is a single one), a
+ * group without a parent at the top level.
+ */
+function creationRestriction(tool: string, args: Args, scope: ScopeConfig): string | null {
+  if (args.action !== 'create') return null;
+  if (tool === 'manage_project' && !hasValue(args.namespace)) {
+    const target = singleTarget(scope);
+    if (target && 'group' in target) return null;
+    return "a project without a namespace would be created outside the working scope; name the group to create it in with 'namespace'";
+  }
+  if (tool === 'manage_namespace' && !hasValue(args.parent_id)) {
+    return "a top-level group would be outside the working scope; create it inside a group of the scope with 'parent_id'";
   }
   return null;
 }
@@ -59,6 +79,9 @@ export function scopedArgs(tool: string, args: Args, scope: ScopeConfig): Args {
   }
   if (tool === 'browse_merge_requests' && args.action === 'list' && !hasValue(args.project_id)) {
     if ('project' in target) return { ...args, project_id: target.project };
+  }
+  if (tool === 'manage_project' && args.action === 'create' && !hasValue(args.namespace)) {
+    if ('group' in target) return { ...args, namespace: target.group };
   }
   return args;
 }

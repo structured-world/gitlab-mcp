@@ -141,6 +141,11 @@ export function callRestriction(
   if (action !== undefined && policy.deniedActions.get(tool.name)?.has(action)) {
     return `preset '${policy.presetName}' denies the '${action}' action`;
   }
+  // The working scope is a focus, not an access boundary: the user sets and clears it. Named
+  // targets and destinations are checked here and targetless calls are narrowed or refused,
+  // but an object addressed only by its global id (a work item id, a todo id) or a namespace
+  // that could be a project or a group is not resolved through GitLab first. A hard boundary
+  // is a project or group access token, which GitLab enforces on every call.
   if (policy.scopeEnforcer) {
     try {
       enforceArgsScope(policy.scopeEnforcer, args);

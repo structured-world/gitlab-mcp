@@ -148,7 +148,12 @@ describe('🔄 Data Lifecycle - Complete Infrastructure Setup', () => {
         }),
       });
 
-      expect(createResponse.ok).toBe(true);
+      // Report what GitLab answered: every later lifecycle step depends on this project.
+      if (!createResponse.ok) {
+        throw new Error(
+          `Project creation failed: ${createResponse.status} ${await createResponse.text()}`,
+        );
+      }
       const project = await createResponse.json();
 
       expect(project).toHaveProperty('id');

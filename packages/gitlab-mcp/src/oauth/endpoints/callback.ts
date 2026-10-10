@@ -15,13 +15,20 @@
  */
 
 import { Request, Response } from 'express';
-import { loadOAuthConfig } from '../config';
+import { loadOAuthConfig, type OAuthConfig } from '../config';
+import type { GitLabOAuthApp } from '../oauth-app';
+import type { AuthCodeFlowState, GitLabTokenResponse } from '../types';
 import { sessionStore } from '../session-store';
+import { keepIssuedTokens } from '../issued-tokens';
 import { exchangeGitLabAuthCode, getGitLabUser } from '../gitlab-device-flow';
 import { generateSessionId, generateAuthorizationCode, calculateTokenExpiry } from '../token-utils';
 import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 import { GITLAB_BASE_URL } from '../../config';
 import { grantedGitlabScopes } from '../granted-scopes';
+import { MCP_SCOPES } from '../resource';
+import { authorizationRedirect } from '../authorization-response';
+import { oauthAppFor } from '../instance-app';
+import { discardCompletion } from './authorize';
 
 /**
  * OAuth callback handler
@@ -53,18 +60,18 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     logWarn('GitLab authorization error', { error, error_description });
     // Redirect to client with error if we can find the flow state
     if (state) {
-      const flow = sessionStore.getAuthCodeFlow(state);
+      const flow = await sessionStore.consumeAuthCodeFlow(state).catch((err: unknown) => {
+        logError('Failed to read authorization flow', { err: err as Error });
+        return undefined;
+      });
       if (flow) {
-        sessionStore.deleteAuthCodeFlow(state);
-        const redirectUrl = new URL(flow.clientRedirectUri);
-        redirectUrl.searchParams.set('error', error);
-        if (error_description) {
-          redirectUrl.searchParams.set('error_description', error_description);
-        }
-        if (flow.clientState) {
-          redirectUrl.searchParams.set('state', flow.clientState);
-        }
-        res.redirect(redirectUrl.toString());
+        res.redirect(
+          authorizationRedirect(flow.clientRedirectUri, config.issuer, {
+            error,
+            error_description,
+            state: flow.clientState,
+          }),
+        );
         return;
       }
     }
@@ -92,8 +99,20 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
     return;
   }
 
-  // Look up the auth code flow state
-  const flow = sessionStore.getAuthCodeFlow(state);
+  // The flow stays until the account is set up: GitLab's code works once, so a callback
+  // that fails after the exchange keeps the issued tokens with the flow and a retried
+  // callback finishes with them.
+  let flow;
+  try {
+    flow = await sessionStore.getAuthCodeFlow(state);
+  } catch (err: unknown) {
+    logError('Failed to read authorization flow', { err: err as Error });
+    res.status(503).json({
+      error: 'temporarily_unavailable',
+      error_description: 'Authorization storage is unavailable. Please try again.',
+    });
+    return;
+  }
   if (!flow) {
     res.status(400).json({
       error: 'invalid_request',
@@ -104,7 +123,7 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
 
   // Check if flow has expired
   if (Date.now() > flow.expiresAt) {
-    sessionStore.deleteAuthCodeFlow(state);
+    await sessionStore.deleteAuthCodeFlow(state).catch(() => false);
     res.status(400).json({
       error: 'invalid_request',
       error_description: 'Authorization flow expired. Please start again.',
@@ -113,33 +132,28 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
   }
 
   try {
-    // Exchange GitLab authorization code for tokens
-    const gitlabTokens = await exchangeGitLabAuthCode(code, flow.callbackUri, config);
+    // The instance chosen at /authorize; never another one if it is no longer configured.
+    const app = await oauthAppFor(config, flow.selectedInstance);
+    if (!app) {
+      throw new Error('GitLab instance is no longer configured');
+    }
+
+    const gitlabTokens = flow.gitlabTokens ?? (await exchangeCode(state, flow, code, config, app));
 
     // Get GitLab user info
-    const userInfo = await getGitLabUser(gitlabTokens.access_token);
+    const userInfo = await getGitLabUser(gitlabTokens.access_token, app.baseUrl);
 
-    // Create session
+    // The session and code are stored before the flow is consumed: until then the flow
+    // keeps GitLab's tokens, so a storage failure here is retried by reloading the callback.
     const sessionId = generateSessionId();
     const now = Date.now();
 
     // Generate MCP authorization code for the client
     const mcpAuthCode = generateAuthorizationCode();
 
-    // Store MCP authorization code (single-use, expires in 10 minutes)
-    sessionStore.storeAuthCode({
-      code: mcpAuthCode,
-      sessionId,
-      clientId: flow.clientId,
-      codeChallenge: flow.codeChallenge,
-      codeChallengeMethod: flow.codeChallengeMethod,
-      redirectUri: flow.clientRedirectUri,
-      expiresAt: now + 10 * 60 * 1000, // 10 minutes
-    });
-
-    // Create session with GitLab tokens
+    // Create session with GitLab tokens before the code that references it.
     // MCP tokens will be set when the authorization code is exchanged via /token
-    sessionStore.createSession({
+    await sessionStore.createSession({
       id: sessionId,
       mcpAccessToken: '', // Set on /token
       mcpRefreshToken: '', // Set on /token
@@ -153,13 +167,32 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       gitlabApiUrl: flow.selectedInstance ?? GITLAB_BASE_URL,
       instanceLabel: flow.selectedInstanceLabel,
       clientId: flow.clientId,
-      scopes: ['mcp:tools', 'mcp:resources'],
+      scopes: flow.scopes ?? [...MCP_SCOPES],
+      resource: flow.resource,
       createdAt: now,
       updatedAt: now,
     });
 
-    // Clean up the auth code flow state
-    sessionStore.deleteAuthCodeFlow(state);
+    // Store MCP authorization code (single-use, expires in 10 minutes)
+    await sessionStore.storeAuthCode({
+      code: mcpAuthCode,
+      sessionId,
+      clientId: flow.clientId,
+      codeChallenge: flow.codeChallenge,
+      codeChallengeMethod: flow.codeChallengeMethod,
+      redirectUri: flow.clientRedirectUri,
+      expiresAt: now + 10 * 60 * 1000, // 10 minutes
+    });
+
+    // Exactly one callback completes the flow; another one removes what it created.
+    if (!(await sessionStore.consumeAuthCodeFlow(state))) {
+      await discardCompletion(sessionId, mcpAuthCode);
+      res.status(400).json({
+        error: 'invalid_request',
+        error_description: 'Authorization was already completed.',
+      });
+      return;
+    }
 
     logInfo('Authorization Code Flow completed successfully', {
       sessionId: truncateId(sessionId),
@@ -167,35 +200,54 @@ export async function callbackHandler(req: Request, res: Response): Promise<void
       username: userInfo.username,
     });
 
-    // Redirect to client with MCP authorization code
-    const redirectUrl = new URL(flow.clientRedirectUri);
-    redirectUrl.searchParams.set('code', mcpAuthCode);
-    if (flow.clientState) {
-      redirectUrl.searchParams.set('state', flow.clientState);
-    }
-
     logDebug('Redirecting to client with authorization code', {
       redirectUri: flow.clientRedirectUri,
     });
 
-    res.redirect(redirectUrl.toString());
+    // Redirect to client with MCP authorization code
+    res.redirect(
+      authorizationRedirect(flow.clientRedirectUri, config.issuer, {
+        code: mcpAuthCode,
+        state: flow.clientState,
+      }),
+    );
   } catch (error: unknown) {
     logError('Failed to complete authorization code flow', { err: error as Error });
 
-    // Clean up the flow state on error
-    sessionStore.deleteAuthCodeFlow(state);
-
-    // Try to redirect to client with error
-    const redirectUrl = new URL(flow.clientRedirectUri);
-    redirectUrl.searchParams.set('error', 'server_error');
-    redirectUrl.searchParams.set(
-      'error_description',
-      error instanceof Error ? error.message : 'Failed to complete authorization',
+    // The flow is kept unless it was completed, so the callback can be retried
+    res.redirect(
+      authorizationRedirect(flow.clientRedirectUri, config.issuer, {
+        error: 'server_error',
+        error_description:
+          error instanceof Error ? error.message : 'Failed to complete authorization',
+        state: flow.clientState,
+      }),
     );
-    if (flow.clientState) {
-      redirectUrl.searchParams.set('state', flow.clientState);
-    }
-
-    res.redirect(redirectUrl.toString());
   }
+}
+
+/**
+ * Exchange GitLab's single-use code and keep the tokens with the flow before anything
+ * else can fail. When a concurrent callback already spent the code, its stored tokens are
+ * used instead.
+ */
+async function exchangeCode(
+  state: string,
+  flow: AuthCodeFlowState,
+  code: string,
+  config: OAuthConfig,
+  app: GitLabOAuthApp,
+): Promise<GitLabTokenResponse> {
+  let tokens: GitLabTokenResponse;
+  try {
+    tokens = await exchangeGitLabAuthCode(code, flow.callbackUri, config, app);
+  } catch (error: unknown) {
+    const current = await sessionStore.getAuthCodeFlow(state);
+    if (current?.gitlabTokens) return current.gitlabTokens;
+    throw error;
+  }
+  await keepIssuedTokens(() =>
+    sessionStore.storeAuthCodeFlow(state, { ...flow, gitlabTokens: tokens }),
+  );
+  return tokens;
 }

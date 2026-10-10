@@ -5,13 +5,31 @@
  * Sessions are lost on server restart.
  */
 
-import { OAuthSession, DeviceFlowState, AuthCodeFlowState, AuthorizationCode } from '../types';
+import {
+  OAuthSession,
+  DeviceFlowState,
+  AuthCodeFlowState,
+  AuthorizationCode,
+  RegisteredOAuthClient,
+} from '../types';
 import { SessionStorageBackend, SessionStorageStats } from './types';
 import { logInfo, logWarn, logError, logDebug, truncateId } from '../../logger';
 
 export interface MemoryStorageOptions {
   /** Suppress initialization logging (used when wrapped by FileStorage) */
   silent?: boolean;
+}
+
+/** Remove the entries that expired before `now`; returns how many were removed. */
+function deleteExpired<K>(entries: Map<K, { expiresAt?: number }>, now: number): number {
+  let removed = 0;
+  for (const [key, entry] of entries) {
+    if (entry.expiresAt !== undefined && entry.expiresAt < now) {
+      entries.delete(key);
+      removed++;
+    }
+  }
+  return removed;
 }
 
 export class MemoryStorageBackend implements SessionStorageBackend {
@@ -24,6 +42,9 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   private tokenToSession = new Map<string, string>();
   private refreshTokenToSession = new Map<string, string>();
   private mcpSessionToOAuthSession = new Map<string, string>();
+  private clients = new Map<string, RegisteredOAuthClient>();
+  /** Session id -> end of its GitLab refresh lease (transient, not exported). */
+  private gitlabRefreshLeases = new Map<string, number>();
   private cleanupIntervalId: ReturnType<typeof setInterval> | null = null;
   private silent: boolean;
 
@@ -98,6 +119,7 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     }
 
     this.sessions.delete(sessionId);
+    this.gitlabRefreshLeases.delete(sessionId);
     logDebug('Session deleted', { sessionId });
     return true;
   }
@@ -184,13 +206,96 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     return deleted;
   }
 
+  // Registered OAuth clients
+  async storeClient(client: RegisteredOAuthClient): Promise<void> {
+    this.clients.set(client.clientId, client);
+  }
+
+  async getClient(clientId: string): Promise<RegisteredOAuthClient | undefined> {
+    return this.clients.get(clientId);
+  }
+
+  async markClientUsed(clientId: string): Promise<void> {
+    const client = this.clients.get(clientId);
+    if (client?.expiresAt !== undefined) {
+      this.clients.set(clientId, { ...client, expiresAt: undefined });
+    }
+  }
+
+  async countClientsRegisteredSince(registeredFrom: string, since: number): Promise<number> {
+    let count = 0;
+    for (const client of this.clients.values()) {
+      if (client.registeredFrom === registeredFrom && client.createdAt >= since) count++;
+    }
+    return count;
+  }
+
+  // Single-use consumption: lookup and removal run without an await in between, so in
+  // this process exactly one caller gets the record.
+  async consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {
+    const record = this.authCodes.get(code);
+    if (record) this.authCodes.delete(code);
+    return record;
+  }
+
+  async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    const record = this.authCodeFlows.get(internalState);
+    if (record) this.authCodeFlows.delete(internalState);
+    return record;
+  }
+
+  async consumeDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
+    const record = this.deviceFlows.get(state);
+    if (record) this.deviceFlows.delete(state);
+    return record;
+  }
+
+  async claimDevicePoll(
+    state: string,
+    now: number,
+    nextPollAt: number,
+  ): Promise<DeviceFlowState | undefined> {
+    const flow = this.deviceFlows.get(state);
+    if (!flow || (flow.nextPollAt !== undefined && flow.nextPollAt > now)) return undefined;
+    const claimed = { ...flow, nextPollAt };
+    this.deviceFlows.set(state, claimed);
+    return claimed;
+  }
+
+  async claimGitLabRefresh(
+    sessionId: string,
+    expectedRefreshToken: string,
+    now: number,
+    leaseUntil: number,
+  ): Promise<boolean> {
+    if (this.sessions.get(sessionId)?.gitlabRefreshToken !== expectedRefreshToken) return false;
+    const held = this.gitlabRefreshLeases.get(sessionId);
+    if (held !== undefined && held > now) return false;
+    this.gitlabRefreshLeases.set(sessionId, leaseUntil);
+    return true;
+  }
+
+  async releaseGitLabRefresh(sessionId: string, leaseUntil: number): Promise<void> {
+    if (this.gitlabRefreshLeases.get(sessionId) === leaseUntil) {
+      this.gitlabRefreshLeases.delete(sessionId);
+    }
+  }
+
+  async rotateSession(
+    sessionId: string,
+    expectedRefreshToken: string,
+    updates: Partial<OAuthSession>,
+  ): Promise<boolean> {
+    if (this.sessions.get(sessionId)?.mcpRefreshToken !== expectedRefreshToken) {
+      return false;
+    }
+    return this.updateSession(sessionId, updates);
+  }
+
   // Cleanup
   async cleanup(): Promise<void> {
     const now = Date.now();
     let expiredSessions = 0;
-    let expiredDeviceFlows = 0;
-    let expiredAuthCodeFlows = 0;
-    let expiredAuthCodes = 0;
 
     // Clean up expired sessions (7 days max age)
     const maxAge = 7 * 24 * 60 * 60 * 1000;
@@ -201,41 +306,25 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       }
     }
 
-    // Clean up expired device flows
-    for (const [state, flow] of this.deviceFlows) {
-      if (flow.expiresAt < now) {
-        this.deviceFlows.delete(state);
-        expiredDeviceFlows++;
-      }
-    }
-
-    // Clean up expired auth code flows
-    for (const [state, flow] of this.authCodeFlows) {
-      if (flow.expiresAt < now) {
-        this.authCodeFlows.delete(state);
-        expiredAuthCodeFlows++;
-      }
-    }
-
-    // Clean up expired auth codes
-    for (const [code, auth] of this.authCodes) {
-      if (auth.expiresAt < now) {
-        this.authCodes.delete(code);
-        expiredAuthCodes++;
-      }
-    }
+    const expiredDeviceFlows = deleteExpired(this.deviceFlows, now);
+    const expiredAuthCodeFlows = deleteExpired(this.authCodeFlows, now);
+    const expiredAuthCodes = deleteExpired(this.authCodes, now);
+    // Registrations that never completed an authorization expire; used ones have no expiry
+    const expiredClients = deleteExpired(this.clients, now);
 
     if (
       expiredSessions > 0 ||
       expiredDeviceFlows > 0 ||
       expiredAuthCodeFlows > 0 ||
-      expiredAuthCodes > 0
+      expiredAuthCodes > 0 ||
+      expiredClients > 0
     ) {
       logDebug('Memory storage cleanup completed', {
         expiredSessions,
         expiredDeviceFlows,
         expiredAuthCodeFlows,
         expiredAuthCodes,
+        expiredClients,
         remainingSessions: this.sessions.size,
       });
     }
@@ -285,8 +374,10 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     authCodeFlows: Array<{ internalState: string; flow: AuthCodeFlowState }>;
     authCodes: AuthorizationCode[];
     mcpSessionMappings: Array<{ mcpSessionId: string; oauthSessionId: string }>;
+    clients: RegisteredOAuthClient[];
   } {
     return {
+      clients: Array.from(this.clients.values()),
       sessions: Array.from(this.sessions.values()),
       deviceFlows: Array.from(this.deviceFlows.entries()).map(([state, flow]) => ({ state, flow })),
       authCodeFlows: Array.from(this.authCodeFlows.entries()).map(([internalState, flow]) => ({
@@ -307,8 +398,13 @@ export class MemoryStorageBackend implements SessionStorageBackend {
     authCodeFlows?: Array<{ internalState: string; flow: AuthCodeFlowState }>;
     authCodes?: AuthorizationCode[];
     mcpSessionMappings?: Array<{ mcpSessionId: string; oauthSessionId: string }>;
+    clients?: RegisteredOAuthClient[];
   }): void {
     // Clear existing data
+    this.clients.clear();
+    for (const client of data.clients ?? []) {
+      this.clients.set(client.clientId, client);
+    }
     this.sessions.clear();
     this.deviceFlows.clear();
     this.authCodeFlows.clear();

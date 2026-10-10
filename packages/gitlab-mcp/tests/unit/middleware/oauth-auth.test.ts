@@ -16,6 +16,9 @@ const mockGetBaseUrl = jest.fn();
 const mockSessionStore = {
   getSession: jest.fn(),
   updateSession: jest.fn(),
+  // This replica holds the GitLab refresh lease.
+  claimGitLabRefresh: jest.fn().mockResolvedValue(true),
+  releaseGitLabRefresh: jest.fn().mockResolvedValue(undefined),
 };
 
 jest.mock('../../../src/oauth/config', () => ({
@@ -34,6 +37,18 @@ jest.mock('../../../src/oauth/token-utils', () => ({
 
 jest.mock('../../../src/oauth/gitlab-device-flow', () => ({
   refreshGitLabToken: mockRefreshGitLabToken,
+  GitLabOAuthHttpError: jest.requireActual('../../../src/oauth/gitlab-device-flow')
+    .GitLabOAuthHttpError,
+}));
+
+const sessionApp = {
+  baseUrl: 'https://gitlab.example.com',
+  clientId: 'test-client-id',
+  scopes: 'api,read_user',
+};
+const mockOauthAppFor = jest.fn();
+jest.mock('../../../src/oauth/instance-app', () => ({
+  oauthAppFor: mockOauthAppFor,
 }));
 
 jest.mock('../../../src/oauth/endpoints/metadata', () => ({
@@ -87,6 +102,7 @@ describe('OAuth Authentication Middleware', () => {
   let mockNext: NextFunction;
 
   const mockConfig = {
+    issuer: 'https://mcp.example.com',
     sessionSecret: 'test-session-secret-12345678901234567890',
     clientId: 'test-client-id',
     apiUrl: 'https://gitlab.example.com',
@@ -95,9 +111,9 @@ describe('OAuth Authentication Middleware', () => {
   const mockPayload = {
     iss: 'https://mcp.example.com',
     sub: '12345',
-    aud: 'test-client-id',
+    aud: 'https://mcp.example.com/mcp',
     sid: 'session-123',
-    scope: 'api read_user',
+    scope: 'mcp:tools mcp:resources',
     gitlab_user: 'testuser',
     iat: Math.floor(Date.now() / 1000),
     exp: Math.floor(Date.now() / 1000) + 3600,
@@ -114,7 +130,7 @@ describe('OAuth Authentication Middleware', () => {
     gitlabUserId: 12345,
     gitlabUsername: 'testuser',
     clientId: 'test-client-id',
-    scopes: ['api', 'read_user'],
+    scopes: ['mcp:tools', 'mcp:resources'],
     gitlabScopes: ['read_api'],
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -128,6 +144,7 @@ describe('OAuth Authentication Middleware', () => {
     mockVerifyMCPToken.mockReturnValue(mockPayload);
     mockSessionStore.getSession.mockReturnValue(mockSession);
     mockIsTokenExpiringSoon.mockReturnValue(false);
+    mockOauthAppFor.mockResolvedValue(sessionApp);
   });
 
   describe('oauthAuthMiddleware', () => {
@@ -250,6 +267,101 @@ describe('OAuth Authentication Middleware', () => {
         });
         expect(mockNext).not.toHaveBeenCalled();
       });
+
+      // A signed token minted for another issuer or resource must not reach GitLab work.
+      it.each([
+        ['another issuer', { iss: 'https://other.example.com' }],
+        ['another resource', { aud: 'https://other.example.com/mcp' }],
+        ['the client id as audience', { aud: 'test-client-id' }],
+      ])('should return 401 for a token issued for %s', async (_case, claims) => {
+        mockVerifyMCPToken.mockReturnValue({ ...mockPayload, ...claims });
+        const res = createMockRes();
+
+        await oauthAuthMiddleware(
+          createMockReq({ headers: { authorization: 'Bearer valid-mcp-token' } }),
+          res,
+          mockNext,
+        );
+
+        expect(res.status).toHaveBeenCalledWith(401);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'invalid_token',
+          error_description: 'Token was not issued for this server',
+        });
+        expect(mockSessionStore.getSession).not.toHaveBeenCalled();
+        expect(mockNext).not.toHaveBeenCalled();
+      });
+
+      it('answers 503 when session storage is unavailable, not a bad-token 401', async () => {
+        // An outage must not send the client into a reconnect loop.
+        mockSessionStore.getSession.mockRejectedValue(new Error('database down'));
+        const res = createMockRes();
+
+        await oauthAuthMiddleware(
+          createMockReq({ headers: { authorization: 'Bearer valid-mcp-token' } }),
+          res,
+          mockNext,
+        );
+
+        expect(res.status).toHaveBeenCalledWith(503);
+        expect(res.setHeader).not.toHaveBeenCalled();
+        expect(mockNext).not.toHaveBeenCalled();
+      });
+
+      it('names the error in the challenge for a rejected token (RFC 6750 3)', async () => {
+        mockVerifyMCPToken.mockReturnValue(null);
+        const res = createMockRes();
+
+        await oauthAuthMiddleware(
+          createMockReq({ path: '/mcp', headers: { authorization: 'Bearer bad' } }),
+          res,
+          mockNext,
+        );
+
+        expect(res.setHeader).toHaveBeenCalledWith(
+          'WWW-Authenticate',
+          'Bearer realm="gitlab-mcp", ' +
+            'resource_metadata="https://mcp.example.com/.well-known/oauth-protected-resource/mcp", ' +
+            'error="invalid_token", error_description="Token is invalid or expired"',
+        );
+      });
+
+      it('should accept a token issued for the root resource', async () => {
+        mockVerifyMCPToken.mockReturnValue({ ...mockPayload, aud: 'https://mcp.example.com' });
+
+        await oauthAuthMiddleware(
+          createMockReq({ headers: { authorization: 'Bearer valid-mcp-token' } }),
+          createMockRes(),
+          mockNext,
+        );
+
+        expect(mockNext).toHaveBeenCalled();
+      });
+
+      it.each([
+        ['a scope beyond the session grant', 'mcp:tools mcp:admin', ['mcp:tools']],
+        ['no MCP scope', 'read_user', ['mcp:tools', 'mcp:resources']],
+      ])(
+        'should return 403 insufficient_scope for %s (RFC 6750 3.1)',
+        async (_c, scope, granted) => {
+          mockVerifyMCPToken.mockReturnValue({ ...mockPayload, scope });
+          mockSessionStore.getSession.mockReturnValue({ ...mockSession, scopes: granted });
+          const res = createMockRes();
+
+          await oauthAuthMiddleware(
+            createMockReq({ headers: { authorization: 'Bearer valid-mcp-token' } }),
+            res,
+            mockNext,
+          );
+
+          expect(res.status).toHaveBeenCalledWith(403);
+          expect(res.setHeader).toHaveBeenCalledWith(
+            'WWW-Authenticate',
+            'Bearer realm="gitlab-mcp", error="insufficient_scope", scope="mcp:tools mcp:resources"',
+          );
+          expect(mockNext).not.toHaveBeenCalled();
+        },
+      );
     });
 
     describe('when token is valid', () => {
@@ -288,6 +400,21 @@ describe('OAuth Authentication Middleware', () => {
           expect.stringContaining('resource_metadata='),
         );
       });
+
+      it.each([
+        ['/mcp', 'https://mcp.example.com/.well-known/oauth-protected-resource/mcp'],
+        ['/mcp/message', 'https://mcp.example.com/.well-known/oauth-protected-resource/mcp'],
+        ['/', 'https://mcp.example.com/.well-known/oauth-protected-resource'],
+      ])('points the challenge for %s at %s, built from OAUTH_ISSUER', async (path, url) => {
+        // RFC 9728 section 5.1: the metadata of the endpoint that was called.
+        mockGetBaseUrl.mockReturnValue('https://attacker.example');
+        const res = createMockRes();
+        await oauthAuthMiddleware(createMockReq({ path }), res, mockNext);
+        expect(res.setHeader).toHaveBeenCalledWith(
+          'WWW-Authenticate',
+          `Bearer realm="gitlab-mcp", resource_metadata="${url}"`,
+        );
+      });
     });
 
     describe('when GitLab token needs refresh', () => {
@@ -303,6 +430,8 @@ describe('OAuth Authentication Middleware', () => {
             scope,
           });
           mockCalculateTokenExpiry.mockReturnValue(Date.now() + 7200000);
+          // The session still exists, so the new tokens are stored.
+          mockSessionStore.updateSession.mockResolvedValue(true);
 
           const req = createMockReq({
             headers: { authorization: 'Bearer valid-mcp-token' },
@@ -311,7 +440,11 @@ describe('OAuth Authentication Middleware', () => {
 
           await oauthAuthMiddleware(req, res, mockNext);
 
-          expect(mockRefreshGitLabToken).toHaveBeenCalledWith('gitlab-refresh-token', mockConfig);
+          expect(mockRefreshGitLabToken).toHaveBeenCalledWith(
+            'gitlab-refresh-token',
+            mockConfig,
+            sessionApp,
+          );
           expect(mockSessionStore.updateSession).toHaveBeenCalledWith(
             'session-123',
             expect.objectContaining({
@@ -326,9 +459,14 @@ describe('OAuth Authentication Middleware', () => {
         },
       );
 
-      it('should return 401 when GitLab token refresh fails', async () => {
+      it('should return 401 when GitLab rejects the refresh', async () => {
         mockIsTokenExpiringSoon.mockReturnValue(true);
-        mockRefreshGitLabToken.mockRejectedValue(new Error('Refresh failed'));
+        const { GitLabOAuthHttpError } = jest.requireActual<
+          typeof import('../../../src/oauth/gitlab-device-flow')
+        >('../../../src/oauth/gitlab-device-flow');
+        mockRefreshGitLabToken.mockRejectedValue(
+          new GitLabOAuthHttpError('Failed to refresh token: 400', 400, 'invalid_grant'),
+        );
 
         const req = createMockReq({
           headers: { authorization: 'Bearer valid-mcp-token' },
@@ -341,6 +479,27 @@ describe('OAuth Authentication Middleware', () => {
         expect(res.json).toHaveBeenCalledWith({
           error: 'invalid_token',
           error_description: 'GitLab token refresh failed. Please re-authenticate.',
+        });
+        expect(mockNext).not.toHaveBeenCalled();
+      });
+
+      // A GitLab outage is not a bad token: answering 401 sent clients into a needless
+      // reconnect of an account that still works.
+      it('should return 503 when GitLab is temporarily unavailable', async () => {
+        mockIsTokenExpiringSoon.mockReturnValue(true);
+        mockRefreshGitLabToken.mockRejectedValue(new Error('connect ETIMEDOUT'));
+
+        const req = createMockReq({
+          headers: { authorization: 'Bearer valid-mcp-token' },
+        });
+        const res = createMockRes();
+
+        await oauthAuthMiddleware(req, res, mockNext);
+
+        expect(res.status).toHaveBeenCalledWith(503);
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'temporarily_unavailable',
+          error_description: 'GitLab is temporarily unavailable',
         });
         expect(mockNext).not.toHaveBeenCalled();
       });
@@ -484,6 +643,20 @@ describe('OAuth Authentication Middleware', () => {
         expect(res.locals.gitlabToken).toBe('gitlab-access-token');
         expect(res.locals.gitlabUserId).toBe(12345);
         expect(res.locals.gitlabUsername).toBe('testuser');
+      });
+
+      // Optional authentication: an unreadable store leaves the request anonymous.
+      it('continues without context when the session store fails', async () => {
+        mockSessionStore.getSession.mockRejectedValueOnce(new Error('database down'));
+        const req = createMockReq({
+          headers: { authorization: 'Bearer valid-mcp-token' },
+        });
+        const res = createMockRes();
+
+        await optionalOAuthMiddleware(req, res, mockNext);
+
+        expect(mockNext).toHaveBeenCalled();
+        expect(res.locals.oauthSessionId).toBeUndefined();
       });
     });
   });

@@ -10,6 +10,8 @@ import {
   AuthorizationCode,
   AuthCodeFlowState,
 } from '../../../src/oauth/types';
+import { SessionStorageBackend } from '../../../src/oauth/storage';
+import { MemoryStorageBackend } from '../../../src/oauth/storage/memory';
 
 describe('OAuth Session Store', () => {
   let store: SessionStore;
@@ -66,231 +68,310 @@ describe('OAuth Session Store', () => {
 
   describe('Session Operations', () => {
     describe('createSession', () => {
-      it('should create a new session', () => {
+      it('should create a new session', async () => {
         const session = createTestSession();
-        store.createSession(session);
+        await store.createSession(session);
 
-        const retrieved = store.getSession(session.id);
+        const retrieved = await store.getSession(session.id);
         expect(retrieved).toBeDefined();
         expect(retrieved?.id).toBe(session.id);
       });
 
-      it('should index session by access token', () => {
+      it('should index session by access token', async () => {
         const session = createTestSession();
-        store.createSession(session);
+        await store.createSession(session);
 
-        const retrieved = store.getSessionByToken(session.mcpAccessToken);
+        const retrieved = await store.getSessionByToken(session.mcpAccessToken);
         expect(retrieved).toBeDefined();
         expect(retrieved?.id).toBe(session.id);
+      });
+
+      it('should fail when the backend cannot store the session', async () => {
+        // A sign-in must not be reported as complete when the session was not stored.
+        const backend = new MemoryStorageBackend();
+        jest.spyOn(backend, 'createSession').mockRejectedValue(new Error('database down'));
+        await expect(new SessionStore(backend).createSession(createTestSession())).rejects.toThrow(
+          'database down',
+        );
       });
     });
 
     describe('getSession', () => {
-      it('should return undefined for non-existent session', () => {
-        const session = store.getSession('non-existent-id');
+      it('should return undefined for non-existent session', async () => {
+        const session = await store.getSession('non-existent-id');
         expect(session).toBeUndefined();
       });
 
-      it('should return existing session', () => {
+      it('should return existing session', async () => {
         const session = createTestSession();
-        store.createSession(session);
+        await store.createSession(session);
 
-        const retrieved = store.getSession(session.id);
+        const retrieved = await store.getSession(session.id);
         expect(retrieved).toEqual(session);
+      });
+
+      it('should read every lookup from the backend shared by replicas', async () => {
+        // A session written through one store is visible through another on the same backend.
+        const backend = new MemoryStorageBackend();
+        const replicaA = new SessionStore(backend);
+        const replicaB = new SessionStore(backend);
+        const session = createTestSession({ id: 'shared' });
+
+        await replicaA.createSession(session);
+
+        expect((await replicaB.getSession('shared'))?.id).toBe('shared');
+        expect((await replicaB.getSessionByRefreshToken(session.mcpRefreshToken))?.id).toBe(
+          'shared',
+        );
       });
     });
 
     describe('getSessionByToken', () => {
-      it('should return undefined for non-existent token', () => {
-        const session = store.getSessionByToken('non-existent-token');
+      it('should return undefined for non-existent token', async () => {
+        const session = await store.getSessionByToken('non-existent-token');
         expect(session).toBeUndefined();
       });
 
-      it('should return session by access token', () => {
+      it('should return session by access token', async () => {
         const session = createTestSession({ mcpAccessToken: 'unique-token-123' });
-        store.createSession(session);
+        await store.createSession(session);
 
-        const retrieved = store.getSessionByToken('unique-token-123');
+        const retrieved = await store.getSessionByToken('unique-token-123');
         expect(retrieved?.id).toBe(session.id);
       });
     });
 
     describe('updateSession', () => {
-      it('should update session fields', () => {
+      it('should update session fields', async () => {
         const session = createTestSession();
-        store.createSession(session);
+        await store.createSession(session);
 
-        store.updateSession(session.id, {
+        await store.updateSession(session.id, {
           gitlabAccessToken: 'new-gitlab-token',
           gitlabRefreshToken: 'new-gitlab-refresh',
         });
 
-        const updated = store.getSession(session.id);
+        const updated = await store.getSession(session.id);
         expect(updated?.gitlabAccessToken).toBe('new-gitlab-token');
         expect(updated?.gitlabRefreshToken).toBe('new-gitlab-refresh');
       });
 
-      it('should update updatedAt timestamp', () => {
+      it('should update updatedAt timestamp', async () => {
         const session = createTestSession({ updatedAt: 1000 });
-        store.createSession(session);
+        await store.createSession(session);
 
         const beforeUpdate = Date.now();
-        store.updateSession(session.id, { gitlabAccessToken: 'new-token' });
+        await store.updateSession(session.id, { gitlabAccessToken: 'new-token' });
 
-        const updated = store.getSession(session.id);
+        const updated = await store.getSession(session.id);
         expect(updated?.updatedAt).toBeGreaterThanOrEqual(beforeUpdate);
       });
 
-      it('should update token index when access token changes', () => {
+      it('should update token index when access token changes', async () => {
         const session = createTestSession({ mcpAccessToken: 'old-token' });
-        store.createSession(session);
+        await store.createSession(session);
 
-        store.updateSession(session.id, { mcpAccessToken: 'new-token' });
+        await store.updateSession(session.id, { mcpAccessToken: 'new-token' });
 
         // Old token should not find session
-        expect(store.getSessionByToken('old-token')).toBeUndefined();
+        expect(await store.getSessionByToken('old-token')).toBeUndefined();
         // New token should find session
-        expect(store.getSessionByToken('new-token')?.id).toBe(session.id);
+        expect((await store.getSessionByToken('new-token'))?.id).toBe(session.id);
       });
 
-      it('should do nothing for non-existent session', () => {
+      it('should do nothing for non-existent session', async () => {
         // Should not throw
-        expect(() =>
+        await expect(
           store.updateSession('non-existent', { gitlabAccessToken: 'new' }),
-        ).not.toThrow();
+        ).resolves.toBe(false);
       });
     });
 
     describe('deleteSession', () => {
-      it('should delete existing session', () => {
+      it('should delete existing session', async () => {
         const session = createTestSession();
-        store.createSession(session);
+        await store.createSession(session);
 
-        store.deleteSession(session.id);
+        await store.deleteSession(session.id);
 
-        expect(store.getSession(session.id)).toBeUndefined();
+        expect(await store.getSession(session.id)).toBeUndefined();
       });
 
-      it('should remove token index', () => {
+      it('should remove token index', async () => {
         const session = createTestSession();
-        store.createSession(session);
+        await store.createSession(session);
 
-        store.deleteSession(session.id);
+        await store.deleteSession(session.id);
 
-        expect(store.getSessionByToken(session.mcpAccessToken)).toBeUndefined();
+        expect(await store.getSessionByToken(session.mcpAccessToken)).toBeUndefined();
       });
 
-      it('should do nothing for non-existent session', () => {
+      it('should do nothing for non-existent session', async () => {
         // Should not throw
-        expect(() => store.deleteSession('non-existent')).not.toThrow();
+        await expect(store.deleteSession('non-existent')).resolves.toBe(false);
+      });
+    });
+
+    describe('rotateSession', () => {
+      it('rotates only while the session holds the presented refresh token', async () => {
+        // Of two refreshes with the same token, exactly one may rotate the session.
+        const session = createTestSession({ id: 'rotating', mcpRefreshToken: 'refresh-1' });
+        await store.createSession(session);
+
+        const [first, second] = await Promise.all([
+          store.rotateSession('rotating', 'refresh-1', { mcpRefreshToken: 'refresh-A' }),
+          store.rotateSession('rotating', 'refresh-1', { mcpRefreshToken: 'refresh-B' }),
+        ]);
+
+        expect([first, second].filter(Boolean)).toHaveLength(1);
+        expect(await store.getSessionByRefreshToken('refresh-1')).toBeUndefined();
+      });
+
+      it('refuses an unknown session', async () => {
+        await expect(store.rotateSession('missing', 'refresh-1', {})).resolves.toBe(false);
       });
     });
   });
 
   describe('Device Flow Operations', () => {
     describe('storeDeviceFlow', () => {
-      it('should store device flow by state', () => {
+      it('should store device flow by state', async () => {
         const flow = createTestDeviceFlow();
-        store.storeDeviceFlow('flow-state-123', flow);
+        await store.storeDeviceFlow('flow-state-123', flow);
 
-        const retrieved = store.getDeviceFlow('flow-state-123');
+        const retrieved = await store.getDeviceFlow('flow-state-123');
         expect(retrieved).toBeDefined();
         expect(retrieved?.deviceCode).toBe(flow.deviceCode);
       });
     });
 
     describe('getDeviceFlow', () => {
-      it('should return undefined for non-existent flow', () => {
-        const flow = store.getDeviceFlow('non-existent');
+      it('should return undefined for non-existent flow', async () => {
+        const flow = await store.getDeviceFlow('non-existent');
         expect(flow).toBeUndefined();
       });
 
-      it('should return existing flow', () => {
+      it('should return existing flow', async () => {
         const flow = createTestDeviceFlow();
-        store.storeDeviceFlow('test-state', flow);
+        await store.storeDeviceFlow('test-state', flow);
 
-        const retrieved = store.getDeviceFlow('test-state');
+        const retrieved = await store.getDeviceFlow('test-state');
         expect(retrieved).toEqual(flow);
       });
     });
 
     describe('getDeviceFlowByDeviceCode', () => {
-      it('should return undefined for non-existent device code', () => {
-        const flow = store.getDeviceFlowByDeviceCode('non-existent');
+      it('should return undefined for non-existent device code', async () => {
+        const flow = await store.getDeviceFlowByDeviceCode('non-existent');
         expect(flow).toBeUndefined();
       });
 
-      it('should return flow by device code', () => {
+      it('should return flow by device code', async () => {
         const flow = createTestDeviceFlow({ deviceCode: 'unique-device-code' });
-        store.storeDeviceFlow('test-state', flow);
+        await store.storeDeviceFlow('test-state', flow);
 
-        const retrieved = store.getDeviceFlowByDeviceCode('unique-device-code');
+        const retrieved = await store.getDeviceFlowByDeviceCode('unique-device-code');
         expect(retrieved?.userCode).toBe(flow.userCode);
       });
     });
 
     describe('deleteDeviceFlow', () => {
-      it('should delete existing flow', () => {
+      it('should delete existing flow', async () => {
         const flow = createTestDeviceFlow();
-        store.storeDeviceFlow('test-state', flow);
+        await store.storeDeviceFlow('test-state', flow);
 
-        store.deleteDeviceFlow('test-state');
+        await store.deleteDeviceFlow('test-state');
 
-        expect(store.getDeviceFlow('test-state')).toBeUndefined();
+        expect(await store.getDeviceFlow('test-state')).toBeUndefined();
       });
 
-      it('should do nothing for non-existent flow', () => {
-        expect(() => store.deleteDeviceFlow('non-existent')).not.toThrow();
+      it('should do nothing for non-existent flow', async () => {
+        await expect(store.deleteDeviceFlow('non-existent')).resolves.toBe(false);
+      });
+    });
+
+    describe('consumeDeviceFlow', () => {
+      it('gives the flow to exactly one of concurrent consumers', async () => {
+        // One poller completes the flow, so one session is created.
+        await store.storeDeviceFlow('test-state', createTestDeviceFlow());
+
+        const claims = await Promise.all([
+          store.consumeDeviceFlow('test-state'),
+          store.consumeDeviceFlow('test-state'),
+        ]);
+
+        expect(claims.filter(Boolean)).toHaveLength(1);
+        expect(await store.getDeviceFlow('test-state')).toBeUndefined();
       });
     });
   });
 
   describe('Authorization Code Operations', () => {
     describe('storeAuthCode', () => {
-      it('should store authorization code', () => {
+      it('should store authorization code', async () => {
         const authCode = createTestAuthCode();
-        store.storeAuthCode(authCode);
+        await store.storeAuthCode(authCode);
 
-        const retrieved = store.getAuthCode(authCode.code);
+        const retrieved = await store.getAuthCode(authCode.code);
         expect(retrieved).toBeDefined();
         expect(retrieved?.sessionId).toBe(authCode.sessionId);
       });
     });
 
     describe('getAuthCode', () => {
-      it('should return undefined for non-existent code', () => {
-        const code = store.getAuthCode('non-existent');
+      it('should return undefined for non-existent code', async () => {
+        const code = await store.getAuthCode('non-existent');
         expect(code).toBeUndefined();
       });
 
-      it('should return existing code', () => {
+      it('should return existing code', async () => {
         const authCode = createTestAuthCode({ code: 'unique-code-123' });
-        store.storeAuthCode(authCode);
+        await store.storeAuthCode(authCode);
 
-        const retrieved = store.getAuthCode('unique-code-123');
+        const retrieved = await store.getAuthCode('unique-code-123');
         expect(retrieved).toEqual(authCode);
       });
     });
 
     describe('deleteAuthCode', () => {
-      it('should delete existing code', () => {
+      it('should delete existing code', async () => {
         const authCode = createTestAuthCode();
-        store.storeAuthCode(authCode);
+        await store.storeAuthCode(authCode);
 
-        store.deleteAuthCode(authCode.code);
+        await store.deleteAuthCode(authCode.code);
 
-        expect(store.getAuthCode(authCode.code)).toBeUndefined();
+        expect(await store.getAuthCode(authCode.code)).toBeUndefined();
       });
 
-      it('should do nothing for non-existent code', () => {
-        expect(() => store.deleteAuthCode('non-existent')).not.toThrow();
+      it('should do nothing for non-existent code', async () => {
+        await expect(store.deleteAuthCode('non-existent')).resolves.toBe(false);
+      });
+    });
+
+    describe('consumeAuthCode', () => {
+      it('redeems a code exactly once across concurrent exchanges', async () => {
+        // RFC 6749 4.1.2: an authorization code is single-use.
+        const authCode = createTestAuthCode({ code: 'single-use' });
+        await store.storeAuthCode(authCode);
+
+        const redemptions = await Promise.all([
+          store.consumeAuthCode('single-use'),
+          store.consumeAuthCode('single-use'),
+        ]);
+
+        expect(redemptions.filter(Boolean)).toEqual([authCode]);
+        expect(await store.getAuthCode('single-use')).toBeUndefined();
+      });
+
+      it('returns nothing for an unknown code', async () => {
+        expect(await store.consumeAuthCode('missing')).toBeUndefined();
       });
     });
   });
 
   describe('Cleanup Operations', () => {
     describe('cleanup', () => {
-      it('should remove expired sessions', () => {
+      it('should remove expired sessions', async () => {
         // Session expiration is based on createdAt + 7 days
         const sevenDaysAgo = Date.now() - 8 * 24 * 60 * 60 * 1000; // 8 days ago (expired)
         const expiredSession = createTestSession({
@@ -302,16 +383,16 @@ describe('OAuth Session Store', () => {
           createdAt: Date.now(), // Just created (not expired)
         });
 
-        store.createSession(expiredSession);
-        store.createSession(validSession);
+        await store.createSession(expiredSession);
+        await store.createSession(validSession);
 
-        store.cleanup();
+        await store.cleanup();
 
-        expect(store.getSession('expired-session')).toBeUndefined();
-        expect(store.getSession('valid-session')).toBeDefined();
+        expect(await store.getSession('expired-session')).toBeUndefined();
+        expect(await store.getSession('valid-session')).toBeDefined();
       });
 
-      it('should remove expired device flows', () => {
+      it('should remove expired device flows', async () => {
         const expiredFlow = createTestDeviceFlow({
           expiresAt: Date.now() - 1000, // Expired
         });
@@ -319,16 +400,16 @@ describe('OAuth Session Store', () => {
           expiresAt: Date.now() + 600000, // Not expired
         });
 
-        store.storeDeviceFlow('expired-flow', expiredFlow);
-        store.storeDeviceFlow('valid-flow', validFlow);
+        await store.storeDeviceFlow('expired-flow', expiredFlow);
+        await store.storeDeviceFlow('valid-flow', validFlow);
 
-        store.cleanup();
+        await store.cleanup();
 
-        expect(store.getDeviceFlow('expired-flow')).toBeUndefined();
-        expect(store.getDeviceFlow('valid-flow')).toBeDefined();
+        expect(await store.getDeviceFlow('expired-flow')).toBeUndefined();
+        expect(await store.getDeviceFlow('valid-flow')).toBeDefined();
       });
 
-      it('should remove expired auth codes', () => {
+      it('should remove expired auth codes', async () => {
         const expiredCode = createTestAuthCode({
           code: 'expired-code',
           expiresAt: Date.now() - 1000, // Expired
@@ -338,13 +419,13 @@ describe('OAuth Session Store', () => {
           expiresAt: Date.now() + 600000, // Not expired
         });
 
-        store.storeAuthCode(expiredCode);
-        store.storeAuthCode(validCode);
+        await store.storeAuthCode(expiredCode);
+        await store.storeAuthCode(validCode);
 
-        store.cleanup();
+        await store.cleanup();
 
-        expect(store.getAuthCode('expired-code')).toBeUndefined();
-        expect(store.getAuthCode('valid-code')).toBeDefined();
+        expect(await store.getAuthCode('expired-code')).toBeUndefined();
+        expect(await store.getAuthCode('valid-code')).toBeDefined();
       });
     });
   });
@@ -362,128 +443,161 @@ describe('OAuth Session Store', () => {
     });
 
     describe('storeAuthCodeFlow', () => {
-      it('should store auth code flow by internal state', () => {
+      it('should store auth code flow by internal state', async () => {
         const flow = createTestAuthCodeFlow();
-        store.storeAuthCodeFlow('internal-state-123', flow);
+        await store.storeAuthCodeFlow('internal-state-123', flow);
 
-        const retrieved = store.getAuthCodeFlow('internal-state-123');
+        const retrieved = await store.getAuthCodeFlow('internal-state-123');
         expect(retrieved).toBeDefined();
         expect(retrieved?.clientId).toBe('test-client');
       });
     });
 
     describe('getAuthCodeFlow', () => {
-      it('should return undefined for non-existent flow', () => {
-        const flow = store.getAuthCodeFlow('non-existent');
+      it('should return undefined for non-existent flow', async () => {
+        const flow = await store.getAuthCodeFlow('non-existent');
         expect(flow).toBeUndefined();
       });
     });
 
     describe('deleteAuthCodeFlow', () => {
-      it('should delete existing flow', () => {
+      it('should delete existing flow', async () => {
         const flow = createTestAuthCodeFlow();
-        store.storeAuthCodeFlow('test-state', flow);
+        await store.storeAuthCodeFlow('test-state', flow);
 
-        const deleted = store.deleteAuthCodeFlow('test-state');
+        const deleted = await store.deleteAuthCodeFlow('test-state');
 
         expect(deleted).toBe(true);
-        expect(store.getAuthCodeFlow('test-state')).toBeUndefined();
+        expect(await store.getAuthCodeFlow('test-state')).toBeUndefined();
       });
 
-      it('should return false for non-existent flow', () => {
-        const deleted = store.deleteAuthCodeFlow('non-existent');
+      it('should return false for non-existent flow', async () => {
+        const deleted = await store.deleteAuthCodeFlow('non-existent');
         expect(deleted).toBe(false);
       });
     });
 
+    describe('consumeAuthCodeFlow', () => {
+      it('processes a callback state exactly once', async () => {
+        await store.storeAuthCodeFlow('test-state', createTestAuthCodeFlow());
+
+        const claims = await Promise.all([
+          store.consumeAuthCodeFlow('test-state'),
+          store.consumeAuthCodeFlow('test-state'),
+        ]);
+
+        expect(claims.filter(Boolean)).toHaveLength(1);
+      });
+    });
+
     describe('getAuthCodeFlowCount', () => {
-      it('should return count of auth code flows', () => {
-        expect(store.getAuthCodeFlowCount()).toBe(0);
+      it('should return count of auth code flows', async () => {
+        expect(await store.getAuthCodeFlowCount()).toBe(0);
 
-        store.storeAuthCodeFlow('flow-1', createTestAuthCodeFlow());
-        expect(store.getAuthCodeFlowCount()).toBe(1);
+        await store.storeAuthCodeFlow('flow-1', createTestAuthCodeFlow());
+        expect(await store.getAuthCodeFlowCount()).toBe(1);
 
-        store.storeAuthCodeFlow('flow-2', createTestAuthCodeFlow());
-        expect(store.getAuthCodeFlowCount()).toBe(2);
+        await store.storeAuthCodeFlow('flow-2', createTestAuthCodeFlow());
+        expect(await store.getAuthCodeFlowCount()).toBe(2);
       });
     });
 
     describe('cleanup expired auth code flows', () => {
-      it('should remove expired auth code flows', () => {
+      it('should remove expired auth code flows', async () => {
         const expiredFlow = { ...createTestAuthCodeFlow(), expiresAt: Date.now() - 1000 };
         const validFlow = { ...createTestAuthCodeFlow(), expiresAt: Date.now() + 600000 };
 
-        store.storeAuthCodeFlow('expired-flow', expiredFlow);
-        store.storeAuthCodeFlow('valid-flow', validFlow);
+        await store.storeAuthCodeFlow('expired-flow', expiredFlow);
+        await store.storeAuthCodeFlow('valid-flow', validFlow);
 
-        store.cleanup();
+        await store.cleanup();
 
-        expect(store.getAuthCodeFlow('expired-flow')).toBeUndefined();
-        expect(store.getAuthCodeFlow('valid-flow')).toBeDefined();
+        expect(await store.getAuthCodeFlow('expired-flow')).toBeUndefined();
+        expect(await store.getAuthCodeFlow('valid-flow')).toBeDefined();
       });
+    });
+  });
+
+  describe('Registered Clients', () => {
+    it('keeps a registration visible to every store on the backend', async () => {
+      // Dynamic registrations must survive across replicas sharing the backend.
+      const backend: SessionStorageBackend = new MemoryStorageBackend();
+      const client = {
+        clientId: 'dcr-client',
+        redirectUris: ['https://chatgpt.com/connector_platform_oauth_redirect'],
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code', 'refresh_token'],
+        responseTypes: ['code'],
+        createdAt: 1,
+      };
+
+      await new SessionStore(backend).storeClient(client);
+
+      expect(await new SessionStore(backend).getClient('dcr-client')).toEqual(client);
+      expect(await store.getClient('dcr-client')).toBeUndefined();
     });
   });
 
   describe('MCP Session Mapping Operations', () => {
     describe('associateMcpSession', () => {
-      it('should associate MCP session with OAuth session', () => {
+      it('should associate MCP session with OAuth session', async () => {
         const session = createTestSession();
-        store.createSession(session);
+        await store.createSession(session);
 
-        store.associateMcpSession('mcp-session-123', session.id);
+        await store.associateMcpSession('mcp-session-123', session.id);
 
-        const retrieved = store.getSessionByMcpSessionId('mcp-session-123');
+        const retrieved = await store.getSessionByMcpSessionId('mcp-session-123');
         expect(retrieved?.id).toBe(session.id);
       });
     });
 
     describe('getSessionByMcpSessionId', () => {
-      it('should return undefined for non-existent MCP session', () => {
-        const session = store.getSessionByMcpSessionId('non-existent');
+      it('should return undefined for non-existent MCP session', async () => {
+        const session = await store.getSessionByMcpSessionId('non-existent');
         expect(session).toBeUndefined();
       });
 
-      it('should return undefined when OAuth session was deleted', () => {
+      it('should return undefined when OAuth session was deleted', async () => {
         const session = createTestSession();
-        store.createSession(session);
-        store.associateMcpSession('mcp-session-123', session.id);
-        store.deleteSession(session.id);
+        await store.createSession(session);
+        await store.associateMcpSession('mcp-session-123', session.id);
+        await store.deleteSession(session.id);
 
-        const retrieved = store.getSessionByMcpSessionId('mcp-session-123');
+        const retrieved = await store.getSessionByMcpSessionId('mcp-session-123');
         expect(retrieved).toBeUndefined();
       });
     });
 
     describe('getGitLabTokenByMcpSessionId', () => {
-      it('should return GitLab token for valid MCP session', () => {
+      it('should return GitLab token for valid MCP session', async () => {
         const session = createTestSession({ gitlabAccessToken: 'gitlab-token-xyz' });
-        store.createSession(session);
-        store.associateMcpSession('mcp-session-123', session.id);
+        await store.createSession(session);
+        await store.associateMcpSession('mcp-session-123', session.id);
 
-        const token = store.getGitLabTokenByMcpSessionId('mcp-session-123');
+        const token = await store.getGitLabTokenByMcpSessionId('mcp-session-123');
         expect(token).toBe('gitlab-token-xyz');
       });
 
-      it('should return undefined for non-existent MCP session', () => {
-        const token = store.getGitLabTokenByMcpSessionId('non-existent');
+      it('should return undefined for non-existent MCP session', async () => {
+        const token = await store.getGitLabTokenByMcpSessionId('non-existent');
         expect(token).toBeUndefined();
       });
     });
 
     describe('removeMcpSessionAssociation', () => {
-      it('should remove MCP session association', () => {
+      it('should remove MCP session association', async () => {
         const session = createTestSession();
-        store.createSession(session);
-        store.associateMcpSession('mcp-session-123', session.id);
+        await store.createSession(session);
+        await store.associateMcpSession('mcp-session-123', session.id);
 
-        const deleted = store.removeMcpSessionAssociation('mcp-session-123');
+        const deleted = await store.removeMcpSessionAssociation('mcp-session-123');
 
         expect(deleted).toBe(true);
-        expect(store.getSessionByMcpSessionId('mcp-session-123')).toBeUndefined();
+        expect(await store.getSessionByMcpSessionId('mcp-session-123')).toBeUndefined();
       });
 
-      it('should return false for non-existent association', () => {
-        const deleted = store.removeMcpSessionAssociation('non-existent');
+      it('should return false for non-existent association', async () => {
+        const deleted = await store.removeMcpSessionAssociation('non-existent');
         expect(deleted).toBe(false);
       });
     });
@@ -491,19 +605,19 @@ describe('OAuth Session Store', () => {
 
   describe('Session Enumeration', () => {
     describe('getAllSessions', () => {
-      it('should return empty iterator when no sessions', () => {
-        const sessions = Array.from(store.getAllSessions());
+      it('should return empty list when no sessions', async () => {
+        const sessions = await store.getAllSessions();
         expect(sessions).toEqual([]);
       });
 
-      it('should return all sessions', () => {
+      it('should return all sessions', async () => {
         const session1 = createTestSession({ id: 'session-1' });
         const session2 = createTestSession({ id: 'session-2' });
 
-        store.createSession(session1);
-        store.createSession(session2);
+        await store.createSession(session1);
+        await store.createSession(session2);
 
-        const sessions = Array.from(store.getAllSessions());
+        const sessions = await store.getAllSessions();
         expect(sessions).toHaveLength(2);
         expect(sessions.map((s) => s.id)).toContain('session-1');
         expect(sessions.map((s) => s.id)).toContain('session-2');
@@ -511,65 +625,65 @@ describe('OAuth Session Store', () => {
     });
 
     describe('getSessionByRefreshToken', () => {
-      it('should return undefined for non-existent refresh token', () => {
-        const session = store.getSessionByRefreshToken('non-existent');
+      it('should return undefined for non-existent refresh token', async () => {
+        const session = await store.getSessionByRefreshToken('non-existent');
         expect(session).toBeUndefined();
       });
 
-      it('should return session by refresh token', () => {
+      it('should return session by refresh token', async () => {
         const session = createTestSession({ mcpRefreshToken: 'unique-refresh-token' });
-        store.createSession(session);
+        await store.createSession(session);
 
-        const retrieved = store.getSessionByRefreshToken('unique-refresh-token');
+        const retrieved = await store.getSessionByRefreshToken('unique-refresh-token');
         expect(retrieved?.id).toBe(session.id);
       });
     });
 
     describe('getSessionCount', () => {
-      it('should return count of sessions', () => {
-        expect(store.getSessionCount()).toBe(0);
+      it('should return count of sessions', async () => {
+        expect(await store.getSessionCount()).toBe(0);
 
-        store.createSession(createTestSession({ id: 'session-1' }));
-        expect(store.getSessionCount()).toBe(1);
+        await store.createSession(createTestSession({ id: 'session-1' }));
+        expect(await store.getSessionCount()).toBe(1);
 
-        store.createSession(createTestSession({ id: 'session-2' }));
-        expect(store.getSessionCount()).toBe(2);
+        await store.createSession(createTestSession({ id: 'session-2' }));
+        expect(await store.getSessionCount()).toBe(2);
       });
     });
 
     describe('getDeviceFlowCount', () => {
-      it('should return count of device flows', () => {
-        expect(store.getDeviceFlowCount()).toBe(0);
+      it('should return count of device flows', async () => {
+        expect(await store.getDeviceFlowCount()).toBe(0);
 
-        store.storeDeviceFlow('flow-1', createTestDeviceFlow());
-        expect(store.getDeviceFlowCount()).toBe(1);
+        await store.storeDeviceFlow('flow-1', createTestDeviceFlow());
+        expect(await store.getDeviceFlowCount()).toBe(1);
       });
     });
 
     describe('getAuthCodeCount', () => {
-      it('should return count of auth codes', () => {
-        expect(store.getAuthCodeCount()).toBe(0);
+      it('should return count of auth codes', async () => {
+        expect(await store.getAuthCodeCount()).toBe(0);
 
-        store.storeAuthCode(createTestAuthCode({ code: 'code-1' }));
-        expect(store.getAuthCodeCount()).toBe(1);
+        await store.storeAuthCode(createTestAuthCode({ code: 'code-1' }));
+        expect(await store.getAuthCodeCount()).toBe(1);
       });
     });
   });
 
   describe('updateSession edge cases', () => {
-    it('should return false for non-existent session', () => {
-      const result = store.updateSession('non-existent', { gitlabAccessToken: 'new' });
+    it('should return false for non-existent session', async () => {
+      const result = await store.updateSession('non-existent', { gitlabAccessToken: 'new' });
       expect(result).toBe(false);
     });
 
-    it('should update refresh token index when refresh token changes', () => {
+    it('should update refresh token index when refresh token changes', async () => {
       const session = createTestSession({ mcpRefreshToken: 'old-refresh' });
-      store.createSession(session);
+      await store.createSession(session);
 
-      store.updateSession(session.id, { mcpRefreshToken: 'new-refresh' });
+      await store.updateSession(session.id, { mcpRefreshToken: 'new-refresh' });
 
-      expect(store.getSessionByRefreshToken('old-refresh')).toBeUndefined();
-      expect(store.getSessionByRefreshToken('new-refresh')?.id).toBe(session.id);
+      expect(await store.getSessionByRefreshToken('old-refresh')).toBeUndefined();
+      expect((await store.getSessionByRefreshToken('new-refresh'))?.id).toBe(session.id);
     });
   });
 
@@ -582,13 +696,13 @@ describe('OAuth Session Store', () => {
     });
 
     describe('getStats', () => {
-      it('should return store statistics', () => {
-        store.createSession(createTestSession({ id: 's1' }));
-        store.createSession(createTestSession({ id: 's2' }));
-        store.storeDeviceFlow('df1', createTestDeviceFlow());
-        store.storeAuthCode(createTestAuthCode({ code: 'ac1' }));
+      it('should return store statistics', async () => {
+        await store.createSession(createTestSession({ id: 's1' }));
+        await store.createSession(createTestSession({ id: 's2' }));
+        await store.storeDeviceFlow('df1', createTestDeviceFlow());
+        await store.storeAuthCode(createTestAuthCode({ code: 'ac1' }));
 
-        const stats = store.getStats();
+        const stats = await store.getStats();
 
         expect(stats.sessions).toBe(2);
         expect(stats.deviceFlows).toBe(1);
@@ -598,16 +712,23 @@ describe('OAuth Session Store', () => {
     });
 
     describe('clear', () => {
-      it('should clear all data', () => {
-        store.createSession(createTestSession({ id: 's1' }));
-        store.storeDeviceFlow('df1', createTestDeviceFlow());
-        store.storeAuthCode(createTestAuthCode({ code: 'ac1' }));
+      it('should clear all data', async () => {
+        await store.createSession(createTestSession({ id: 's1' }));
+        await store.storeDeviceFlow('df1', createTestDeviceFlow());
+        await store.storeAuthCode(createTestAuthCode({ code: 'ac1' }));
 
         store.clear();
 
-        expect(store.getSessionCount()).toBe(0);
-        expect(store.getDeviceFlowCount()).toBe(0);
-        expect(store.getAuthCodeCount()).toBe(0);
+        expect(await store.getSessionCount()).toBe(0);
+        expect(await store.getDeviceFlowCount()).toBe(0);
+        expect(await store.getAuthCodeCount()).toBe(0);
+      });
+
+      it('should never wipe a shared database', () => {
+        const backend = { type: 'postgresql' } as unknown as SessionStorageBackend;
+        expect(() => new SessionStore(backend).clear()).toThrow(
+          'clear() is only supported for in-memory storage',
+        );
       });
     });
 
@@ -622,6 +743,26 @@ describe('OAuth Session Store', () => {
           store.stopCleanupInterval();
         }).not.toThrow();
       });
+    });
+
+    // A storage outage during periodic cleanup is logged; it must not surface as an
+    // unhandled rejection that takes the process down.
+    it('survives a failed periodic cleanup', async () => {
+      jest.useFakeTimers();
+      try {
+        const backend = new MemoryStorageBackend();
+        const failing = jest.spyOn(backend, 'cleanup').mockRejectedValue(new Error('down'));
+        const periodic = new SessionStore(backend);
+        await periodic.initialize();
+
+        await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+        expect(failing).toHaveBeenCalled();
+        periodic.stopCleanupInterval();
+        await backend.close();
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 });

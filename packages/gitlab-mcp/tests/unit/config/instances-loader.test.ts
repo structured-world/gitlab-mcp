@@ -229,6 +229,51 @@ instances:
         expect(result.instances[1].label).toBe('Corporate');
       });
 
+      // The JSON object form is the file format in a variable: its defaults apply the same
+      // way, so an instance without oauth.scopes takes defaults.oauth.scopes.
+      it('applies the defaults of the JSON object format', async () => {
+        process.env.GITLAB_INSTANCES = JSON.stringify({
+          instances: [
+            { url: 'https://git.corp.io', oauth: { clientId: 'corp-app' } },
+            { url: 'https://gitlab.com', oauth: { clientId: 'app', scopes: 'read_api' } },
+          ],
+          defaults: {
+            oauth: { scopes: 'api read_user' },
+            rateLimit: { maxConcurrent: 50, queueSize: 200, queueTimeout: 30000 },
+          },
+        });
+
+        const result = await loadInstancesConfig();
+
+        expect(result.instances[0].oauth?.scopes).toBe('api read_user');
+        expect(result.instances[1].oauth?.scopes).toBe('read_api');
+        expect(result.instances[0].rateLimit?.maxConcurrent).toBe(50);
+      });
+
+      // A secret stays out of the configuration (a file or a deployment's env file holding
+      // the instance list) and is read from the variable the configuration names.
+      it('reads an instance OAuth secret from the variable it names', async () => {
+        process.env.CORP_GITLAB_SECRET = 'corp-secret';
+        process.env.GITLAB_INSTANCES = JSON.stringify({
+          instances: [
+            {
+              url: 'https://git.corp.io',
+              oauth: { clientId: 'corp-app', clientSecretEnv: 'CORP_GITLAB_SECRET' },
+            },
+            {
+              url: 'https://gitlab.com',
+              oauth: { clientId: 'public-app', clientSecretEnv: 'UNSET' },
+            },
+          ],
+        });
+
+        const result = await loadInstancesConfig();
+
+        expect(result.instances[0].oauth?.clientSecret).toBe('corp-secret');
+        // An unset variable leaves a public application.
+        expect(result.instances[1].oauth?.clientSecret).toBeUndefined();
+      });
+
       it('should parse bash array format', async () => {
         process.env.GITLAB_INSTANCES =
           '(https://gitlab.com https://git.corp.io https://gl.dev.net)';

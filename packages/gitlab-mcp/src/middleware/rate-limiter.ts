@@ -20,6 +20,7 @@ import {
   RATE_LIMIT_SESSION_MAX_REQUESTS,
 } from '../config';
 import { logDebug, logWarn } from '../logger';
+import { getSessionManager } from '../session-manager';
 import { getMinimalRequestContext, buildRateLimitInfo, truncateId } from '../utils/request-logger';
 
 interface RateLimitEntry {
@@ -78,22 +79,25 @@ function getIpAddress(req: Request): string {
 }
 
 /**
- * Check if request is authenticated (has valid session)
+ * Session the request belongs to, or undefined for an anonymous request. The same id is
+ * the key of the optional per-session limit.
  */
-function isAuthenticated(req: Request, res: Response): boolean {
-  // Check for OAuth session ID set by auth middleware
+function authenticatedSessionId(req: Request, res: Response): string | undefined {
+  // OAuth session ID set by auth middleware
   const oauthSessionId = res.locals.oauthSessionId as string | undefined;
   if (oauthSessionId) {
-    return true;
+    return oauthSessionId;
   }
 
-  // Check for MCP session ID header (indicates active session)
-  const mcpSessionId = req.headers['mcp-session-id'] as string | undefined;
-  if (mcpSessionId) {
-    return true;
-  }
-
-  return false;
+  // An MCP session ID counts only when it names a session this process holds: any client
+  // can send one, and a made-up one must not lift the per-IP limit. Streamable HTTP sends
+  // it in a header, the SSE transport in the query of POST /messages.
+  const headerSessionId = req.headers['mcp-session-id'];
+  const sseSessionId = req.path === '/messages' ? req.query?.sessionId : undefined;
+  const mcpSessionId = typeof headerSessionId === 'string' ? headerSessionId : sseSessionId;
+  return typeof mcpSessionId === 'string' && getSessionManager().hasSession(mcpSessionId)
+    ? mcpSessionId
+    : undefined;
 }
 
 /**
@@ -174,12 +178,11 @@ export function rateLimiterMiddleware(): RequestHandler {
       return;
     }
 
-    // Check if user is authenticated
-    const authenticated = isAuthenticated(req, res);
+    const sessionId = authenticatedSessionId(req, res);
 
     // Authenticated users skip rate limiting by default
     // (they've proven who they are and shouldn't suffer security measures)
-    if (authenticated) {
+    if (sessionId !== undefined) {
       // Only apply session rate limit if explicitly enabled
       if (!RATE_LIMIT_SESSION_ENABLED) {
         next();
@@ -187,8 +190,6 @@ export function rateLimiterMiddleware(): RequestHandler {
       }
 
       // Apply per-session rate limiting (optional)
-      const sessionId =
-        (res.locals.oauthSessionId as string) || (req.headers['mcp-session-id'] as string);
       const key = `session:${sessionId}`;
       const info = checkRateLimit(
         key,

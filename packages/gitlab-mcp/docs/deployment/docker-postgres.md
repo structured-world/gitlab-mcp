@@ -54,6 +54,7 @@ docker run -d --name gitlab-mcp \
   -e PORT=3002 \
   -e HOST=0.0.0.0 \
   -e OAUTH_ENABLED=true \
+  -e OAUTH_ISSUER=https://mcp.example.com \
   -e OAUTH_STORAGE_TYPE=postgresql \
   -e OAUTH_STORAGE_POSTGRESQL_URL="postgresql://gitlab_mcp:your_secure_password@db-host:5432/gitlab_mcp" \
   -e OAUTH_SESSION_SECRET="$(openssl rand -hex 32)" \
@@ -65,16 +66,22 @@ docker run -d --name gitlab-mcp \
 
 ### 3. Configure Clients
 
+Clients connect to `OAUTH_ISSUER` with `/mcp` appended; the discovery metadata names that
+URL as the resource, so any other address fails discovery.
+
 ```json
 {
   "mcpServers": {
     "gitlab": {
       "type": "streamable-http",
-      "url": "http://localhost:3333/mcp"
+      "url": "https://mcp.example.com/mcp"
     }
   }
 }
 ```
+
+For local testing set `OAUTH_ISSUER=http://localhost:3333` and connect to
+`http://localhost:3333/mcp`.
 
 ## Environment Variables
 
@@ -82,6 +89,7 @@ docker run -d --name gitlab-mcp \
 | ------------------------------ | -------- | -------------------------------------------------------------------------------------- |
 | `PORT`                         | Yes      | Internal HTTP port                                                                     |
 | `OAUTH_ENABLED`                | Yes      | Set to `true` to enable per-user OAuth (required for the database backend)             |
+| `OAUTH_ISSUER`                 | Yes      | Public URL clients connect to; issuer of every token                                   |
 | `OAUTH_STORAGE_TYPE`           | Yes      | Set to `postgresql` to use the database backend (requires the `gitlab-mcp-db` image)   |
 | `OAUTH_STORAGE_POSTGRESQL_URL` | Yes      | PostgreSQL connection string (`DATABASE_URL` is also accepted as a fallback)           |
 | `OAUTH_SESSION_SECRET`         | Yes      | Secret for session encryption                                                          |
@@ -116,6 +124,43 @@ can be interpreted as the unchanged requested grant, as required by OAuth 2.0
 §5.1. Leave older flows' requested scopes as SQL `NULL` rather than inferring them
 from configuration that may have changed since the flow began.
 
+### Migrations
+
+The package ships Prisma migrations in `prisma/migrations` and a migration command
+(connection string from `OAUTH_STORAGE_POSTGRESQL_URL` or `DATABASE_URL`). Run it
+before starting an upgraded server:
+
+```bash
+cd node_modules/@structured-world/gitlab-mcp-db
+node dist/src/migrate.js
+```
+
+It waits up to a minute for the database to accept connections, then applies the
+pending migrations with `prisma migrate deploy`:
+
+- **New database:** every table is created.
+- **Existing database** created from the packaged schema before migrations were
+  shipped (including the `ALTER TABLE` statements above): OAuth tables without
+  migration history are detected, the baseline `0_init` is marked applied, and the
+  remaining migrations are deployed.
+
+The `gitlab-mcp-db` image runs the same command before the server containers start:
+
+```bash
+docker run --rm \
+  -e OAUTH_STORAGE_POSTGRESQL_URL="postgresql://gitlab_mcp:your_secure_password@db-host:5432/gitlab_mcp" \
+  -w /app/node_modules/@structured-world/gitlab-mcp-db \
+  --entrypoint node \
+  ghcr.io/structured-world/gitlab-mcp-db:latest \
+  dist/src/migrate.js
+```
+
+The account-linking migration only adds nullable columns and the `oauth_clients`
+table, so existing sessions and flows stay valid. It stores Dynamic Client
+Registrations, the resource, scope and GitLab instance each authorization is bound
+to, and the device flow's client state and poll schedule, so every replica sees the
+same registrations, codes and sessions.
+
 ## Multi-Instance Support
 
 Add multiple GitLab instances via the CLI:
@@ -125,7 +170,10 @@ gitlab-mcp docker add-instance gitlab.com
 gitlab-mcp docker add-instance gitlab.company.com
 ```
 
-Each instance can have its own OAuth application and default preset.
+Each instance can have its own OAuth application and default preset. The CLI writes the
+instance list for the server to `instances.env` (read by the container at every start,
+so `docker compose restart` picks up added instances), and an instance's OAuth secret is
+read from the variable the CLI names, which goes into `.env`.
 
 ## Scaling
 
@@ -134,7 +182,12 @@ For high-availability deployments:
 - Use a managed PostgreSQL service (RDS, Cloud SQL, etc.)
 - Run multiple container replicas behind a load balancer
 - Set `OAUTH_SESSION_SECRET` to the same value across all replicas
-- Use sticky sessions or shared session storage
+- With the PostgreSQL backend the OAuth endpoints (`/register`, `/authorize`,
+  `/oauth/callback`, `/oauth/poll`, `/token`, `/revoke`) need no session affinity:
+  client registrations, authorization codes, refresh-token rotation and device flows
+  are stored and redeemed atomically in the database
+- MCP transport sessions (`/mcp` with `Mcp-Session-Id`, `/sse` and `/messages`) live
+  in the replica that opened them: route them with session affinity
 
 ## Security Notes
 

@@ -7,12 +7,16 @@
 import {
   initiateDeviceFlow,
   pollDeviceFlowOnce,
+  pollDeviceFlowStep,
   pollForToken,
   refreshGitLabToken,
   getGitLabUser,
   validateGitLabToken,
   exchangeGitLabAuthCode,
   buildGitLabAuthUrl,
+  revokeGitLabToken,
+  DeviceGrantRefusedError,
+  GitLabOAuthHttpError,
 } from '../../../src/oauth/gitlab-device-flow';
 import { OAuthConfig } from '../../../src/oauth/config';
 
@@ -46,6 +50,7 @@ jest.mock('../../../src/logger', () => ({
 describe('GitLab Device Flow Client', () => {
   const mockConfig: OAuthConfig = {
     enabled: true,
+    issuer: 'https://gitlab-mcp.example.com',
     gitlabClientId: 'test-client-id',
     gitlabClientSecret: 'test-client-secret',
     gitlabScopes: 'api,read_user',
@@ -113,6 +118,70 @@ describe('GitLab Device Flow Client', () => {
       await expect(initiateDeviceFlow(mockConfig)).rejects.toThrow(
         'Failed to initiate device flow: 400 Invalid client_id',
       );
+    });
+  });
+
+  describe('pollDeviceFlowStep', () => {
+    // RFC 8628 3.5: slow_down must be told apart from pending so the caller can back off.
+    it.each([
+      ['authorization_pending', { status: 'pending' }],
+      ['slow_down', { status: 'slow_down' }],
+    ])('reports %s', async (error, expected) => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        json: jest.fn().mockResolvedValue({ error }),
+      });
+      expect(await pollDeviceFlowStep('device-code-123', mockConfig)).toEqual(expected);
+    });
+
+    it('returns the tokens on completion', async () => {
+      const tokens = { access_token: 'a', refresh_token: 'r', token_type: 'Bearer' };
+      mockFetch.mockResolvedValueOnce({ ok: true, json: jest.fn().mockResolvedValue(tokens) });
+      expect(await pollDeviceFlowStep('device-code-123', mockConfig)).toEqual({
+        status: 'complete',
+        tokens,
+      });
+    });
+
+    it('throws on terminal errors', async () => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        json: jest.fn().mockResolvedValue({ error: 'access_denied' }),
+      });
+      await expect(pollDeviceFlowStep('device-code-123', mockConfig)).rejects.toThrow('denied');
+    });
+
+    // The caller ends the flow only on a refused grant; anything else is retried.
+    it.each(['access_denied', 'expired_token', 'invalid_grant', 'invalid_client'])(
+      'reports %s as a refused grant',
+      async (error) => {
+        mockFetch.mockResolvedValueOnce({
+          ok: false,
+          json: jest.fn().mockResolvedValue({ error }),
+        });
+        await expect(pollDeviceFlowStep('device-code-123', mockConfig)).rejects.toBeInstanceOf(
+          DeviceGrantRefusedError,
+        );
+      },
+    );
+
+    // Only the errors RFC 6749 5.2 and RFC 8628 3.5 define end the flow; a rate limit or
+    // an intermediary's error body is retried until the device code expires.
+    it.each([
+      [{ error: 'server_error' }],
+      [{ error: 'temporarily_unavailable' }],
+      [{ error: 'too_many_requests' }],
+      [{ message: 'Retry later' }],
+    ])('reports %j as a temporary failure', async (body) => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        json: jest.fn().mockResolvedValue(body),
+      });
+      const failure = await pollDeviceFlowStep('device-code-123', mockConfig).catch(
+        (e: unknown) => e,
+      );
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).not.toBeInstanceOf(DeviceGrantRefusedError);
     });
   });
 
@@ -318,6 +387,35 @@ describe('GitLab Device Flow Client', () => {
       // onPending may or may not be called depending on timing
     });
 
+    // RFC 8628 section 3.5: slow_down adds 5 seconds to this and every later interval.
+    it('waits 5 seconds longer after slow_down', async () => {
+      jest.useFakeTimers();
+      try {
+        mockFetch
+          .mockResolvedValueOnce({
+            ok: false,
+            json: jest.fn().mockResolvedValue({ error: 'slow_down' }),
+          })
+          .mockResolvedValueOnce({
+            ok: true,
+            json: jest.fn().mockResolvedValue({ access_token: 'token' }),
+          });
+        const config = { ...mockConfig, devicePollInterval: 1, deviceTimeout: 60 };
+
+        const result = pollForToken('device-code-123', config);
+        await jest.advanceTimersByTimeAsync(1000);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        await jest.advanceTimersByTimeAsync(5999);
+        expect(mockFetch).toHaveBeenCalledTimes(1);
+        await jest.advanceTimersByTimeAsync(1);
+
+        await expect(result).resolves.toEqual({ access_token: 'token' });
+        expect(mockFetch).toHaveBeenCalledTimes(2);
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+
     it('should timeout when authorization never completes', async () => {
       // Always return pending
       mockFetch.mockResolvedValue({
@@ -375,6 +473,25 @@ describe('GitLab Device Flow Client', () => {
       const call = mockFetch.mock.calls[0];
       const body = call[1].body as URLSearchParams;
       expect(body.has('client_secret')).toBe(false);
+    });
+
+    // The OAuth error code tells a refused grant from other failures of the same status.
+    it.each([
+      ['{"error":"invalid_grant","error_description":"revoked"}', 'invalid_grant'],
+      ['<html>Bad Request</html>', undefined],
+      ['{"message":"400 Bad request"}', undefined],
+      ['{"error":{"code":400}}', undefined],
+    ])('reports the OAuth error of %s', async (text, oauthError) => {
+      mockFetch.mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: jest.fn().mockResolvedValue(text),
+      });
+
+      const failure = await refreshGitLabToken('token', mockConfig).catch((e: unknown) => e);
+
+      expect(failure).toBeInstanceOf(GitLabOAuthHttpError);
+      expect((failure as GitLabOAuthHttpError).oauthError).toBe(oauthError);
     });
 
     it('should throw error on failed refresh', async () => {
@@ -559,6 +676,85 @@ describe('GitLab Device Flow Client', () => {
 
       // Scopes should be space-separated (URL-encoded as +)
       expect(url).toContain('scope=api+read_user+write_repository');
+    });
+  });
+
+  describe('per-instance application', () => {
+    // Every call of one account goes to its instance with that instance's application.
+    const app = {
+      baseUrl: 'https://git.corp.example/gitlab',
+      clientId: 'corp-app',
+      clientSecret: 'corp-secret',
+      scopes: 'read_api read_user',
+    };
+    const okJson = (body: unknown) => ({ ok: true, json: jest.fn().mockResolvedValue(body) });
+    const tokens = {
+      access_token: 'a',
+      refresh_token: 'r',
+      token_type: 'Bearer',
+      expires_in: 7200,
+      created_at: 1,
+    };
+
+    it('starts the device flow on the instance with its application', async () => {
+      mockFetch.mockResolvedValueOnce(okJson({ device_code: 'd' }));
+      await initiateDeviceFlow(mockConfig, app);
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe('https://git.corp.example/gitlab/oauth/authorize_device');
+      expect((init.body as URLSearchParams).get('client_id')).toBe('corp-app');
+      expect((init.body as URLSearchParams).get('scope')).toBe('read_api read_user');
+      expect(init.rateLimitBaseUrl).toBe('https://git.corp.example/gitlab');
+    });
+
+    it.each([
+      ['polls the device code', () => pollDeviceFlowOnce('d', mockConfig, app)],
+      ['refreshes', () => refreshGitLabToken('r', mockConfig, app)],
+      ['exchanges the code', () => exchangeGitLabAuthCode('c', 'https://cb', mockConfig, app)],
+    ])('%s at the instance token endpoint with its credentials', async (_c, call) => {
+      mockFetch.mockResolvedValueOnce(okJson(tokens));
+      await call();
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe('https://git.corp.example/gitlab/oauth/token');
+      const body = init.body as URLSearchParams;
+      expect(body.get('client_id')).toBe('corp-app');
+      expect(body.get('client_secret')).toBe('corp-secret');
+    });
+
+    it('omits the secret of a public application', async () => {
+      mockFetch.mockResolvedValueOnce(okJson(tokens));
+      await refreshGitLabToken('r', mockConfig, { ...app, clientSecret: undefined });
+      expect((mockFetch.mock.calls[0][1].body as URLSearchParams).has('client_secret')).toBe(false);
+    });
+
+    it('reads the user from the instance that issued the token', async () => {
+      mockFetch.mockResolvedValueOnce(okJson({ id: 7, username: 'u' }));
+      await getGitLabUser('a', app.baseUrl);
+      expect(mockFetch.mock.calls[0][0]).toBe('https://git.corp.example/gitlab/api/v4/user');
+    });
+
+    it('revokes the token at the instance with its application (RFC 7009)', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true });
+      await revokeGitLabToken('gl-access', mockConfig, app);
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(url).toBe('https://git.corp.example/gitlab/oauth/revoke');
+      const body = init.body as URLSearchParams;
+      expect(body.get('token')).toBe('gl-access');
+      expect(body.get('client_id')).toBe('corp-app');
+      expect(body.get('client_secret')).toBe('corp-secret');
+    });
+
+    it('revokes through the default application when none is given', async () => {
+      mockFetch.mockResolvedValueOnce({ ok: true });
+      await revokeGitLabToken('gl-access', mockConfig);
+      const [url, init] = mockFetch.mock.calls[0];
+      expect(String(url)).toMatch(/\/oauth\/revoke$/);
+      expect((init.body as URLSearchParams).get('client_id')).toBe(mockConfig.gitlabClientId);
+    });
+
+    it('sends the browser to the instance authorization page', () => {
+      const url = new URL(buildGitLabAuthUrl(mockConfig, 'https://cb', 's', app));
+      expect(url.origin + url.pathname).toBe('https://git.corp.example/gitlab/oauth/authorize');
+      expect(url.searchParams.get('client_id')).toBe('corp-app');
     });
   });
 });

@@ -9,6 +9,13 @@
 
 import { Request, Response } from 'express';
 import { HOST, PORT } from '../../config';
+import { loadOAuthConfig } from '../config';
+import {
+  MCP_SCOPES,
+  TOKEN_ENDPOINT_AUTH_METHODS,
+  protectedResources,
+  resourceForMetadataPath,
+} from '../resource';
 
 /**
  * MCP Protocol version supported by this server
@@ -47,8 +54,15 @@ export function getBaseUrl(req: Request): string {
  * @param req - Express request
  * @param res - Express response
  */
-export function metadataHandler(req: Request, res: Response): void {
-  const baseUrl = getBaseUrl(req);
+export function metadataHandler(_req: Request, res: Response): void {
+  const config = loadOAuthConfig();
+  if (!config) {
+    res.status(500).json({ error: 'server_error', error_description: 'OAuth not configured' });
+    return;
+  }
+  // The issuer is configuration, never request headers (RFC 8414 section 3.3: it must
+  // equal the issuer the client expects).
+  const baseUrl = config.issuer;
 
   // OAuth 2.0 Authorization Server Metadata (RFC 8414)
   const metadata = {
@@ -70,15 +84,22 @@ export function metadataHandler(req: Request, res: Response): void {
     // OPTIONAL: Supported PKCE code challenge methods (S256 required for OAuth 2.1)
     code_challenge_methods_supported: ['S256'],
 
-    // OPTIONAL: Token endpoint authentication methods
-    // "none" for public clients (device flow with non-confidential apps)
-    token_endpoint_auth_methods_supported: ['none'],
+    // OPTIONAL: Token endpoint authentication methods: "none" for public clients (PKCE),
+    // and the secret of a client registered with one, in the header or the form
+    token_endpoint_auth_methods_supported: TOKEN_ENDPOINT_AUTH_METHODS,
 
     // OPTIONAL: Supported scopes
-    scopes_supported: ['mcp:tools', 'mcp:resources'],
+    scopes_supported: MCP_SCOPES,
+
+    // Every authorization response carries `iss` (RFC 9207 section 3)
+    authorization_response_iss_parameter_supported: true,
 
     // REQUIRED for Claude.ai: Dynamic Client Registration endpoint (RFC 7591)
     registration_endpoint: `${baseUrl}/register`,
+
+    // Token revocation (RFC 7009), advertised per RFC 8414 section 2
+    revocation_endpoint: `${baseUrl}/revoke`,
+    revocation_endpoint_auth_methods_supported: TOKEN_ENDPOINT_AUTH_METHODS,
 
     // MCP-specific metadata
     mcp_version: MCP_PROTOCOL_VERSION,
@@ -97,18 +118,25 @@ export function metadataHandler(req: Request, res: Response): void {
  * @param res - Express response
  */
 export function protectedResourceHandler(req: Request, res: Response): void {
-  const baseUrl = getBaseUrl(req);
+  const config = loadOAuthConfig();
+  if (!config) {
+    res.status(500).json({ error: 'server_error', error_description: 'OAuth not configured' });
+    return;
+  }
+  const [root, mcp] = protectedResources(config.issuer);
 
-  // OAuth 2.0 Protected Resource Metadata (RFC 9470)
+  // OAuth 2.0 Protected Resource Metadata (RFC 9728)
   const metadata = {
-    // REQUIRED: Resource identifier
-    resource: baseUrl,
+    // REQUIRED: Resource identifier; RFC 9728 section 3.3 requires it to equal the
+    // identifier the client derived this document's URL from.
+    resource:
+      resourceForMetadataPath(config.issuer, req.path) ?? (req.path.endsWith('/mcp') ? mcp : root),
 
     // REQUIRED: Authorization servers that can be used to access this resource
-    authorization_servers: [baseUrl],
+    authorization_servers: [config.issuer],
 
     // OPTIONAL: Scopes required for this resource
-    scopes_supported: ['mcp:tools', 'mcp:resources'],
+    scopes_supported: MCP_SCOPES,
 
     // OPTIONAL: Bearer token methods supported
     bearer_methods_supported: ['header'],

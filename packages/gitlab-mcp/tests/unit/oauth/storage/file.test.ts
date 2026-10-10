@@ -101,6 +101,483 @@ describe('FileStorageBackend', () => {
     }
   });
 
+  // Single-use transitions must be on disk before they are reported: with the debounced
+  // save, a crash right after redeeming a code reloaded the code from the file and let it
+  // be redeemed again (same for a spent refresh token and a revoked session).
+  describe('single-use transitions survive a crash', () => {
+    const slowSave = { saveDebounce: 60_000, saveInterval: 60_000 };
+
+    /** State as a new process sees it after this one died without flushing. */
+    async function reloadAfterCrash(): Promise<FileStorageBackend> {
+      const restarted = new FileStorageBackend({ filePath, ...slowSave });
+      await restarted.initialize();
+      return restarted;
+    }
+
+    async function seeded(): Promise<{ session: OAuthSession; code: AuthorizationCode }> {
+      const session = createTestSession();
+      const code = createTestAuthCode({ sessionId: session.id });
+      const seed = new FileStorageBackend({ filePath, ...slowSave });
+      await seed.initialize();
+      await seed.createSession(session);
+      await seed.storeAuthCode(code);
+      await seed.close();
+      storage = new FileStorageBackend({ filePath, ...slowSave });
+      await storage.initialize();
+      return { session, code };
+    }
+
+    it('persists a consumed authorization code', async () => {
+      const { code } = await seeded();
+
+      expect(await storage.consumeAuthCode(code.code)).toBeDefined();
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.consumeAuthCode(code.code)).toBeUndefined();
+      await restarted.close();
+    });
+
+    it('persists a rotated refresh token', async () => {
+      const { session } = await seeded();
+
+      expect(
+        await storage.rotateSession(session.id, session.mcpRefreshToken, {
+          mcpRefreshToken: 'rotated-refresh',
+        }),
+      ).toBe(true);
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getSessionByRefreshToken(session.mcpRefreshToken)).toBeUndefined();
+      await restarted.close();
+    });
+
+    it('persists consumed authorization and device flows', async () => {
+      await seeded();
+      const authFlow = createTestAuthCodeFlow();
+      const deviceFlow = createTestDeviceFlow();
+      await storage.storeAuthCodeFlow(authFlow.internalState, authFlow);
+      await storage.storeDeviceFlow('device-state', deviceFlow);
+
+      expect(await storage.consumeAuthCodeFlow(authFlow.internalState)).toBeDefined();
+      expect(await storage.consumeDeviceFlow('device-state')).toBeDefined();
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getAuthCodeFlow(authFlow.internalState)).toBeUndefined();
+      expect(await restarted.getDeviceFlow('device-state')).toBeUndefined();
+      await restarted.close();
+    });
+
+    it('reports a missed consumption or rotation without writing', async () => {
+      const { session } = await seeded();
+      const before = fs.statSync(filePath).mtimeMs;
+
+      expect(await storage.consumeAuthCode('unknown')).toBeUndefined();
+      expect(await storage.consumeAuthCodeFlow('unknown')).toBeUndefined();
+      expect(await storage.consumeDeviceFlow('unknown')).toBeUndefined();
+      expect(await storage.rotateSession(session.id, 'not-current', {})).toBe(false);
+
+      expect(fs.statSync(filePath).mtimeMs).toBe(before);
+    });
+
+    /** The next file write fails, on every platform and for every user (root included). */
+    function failNextWrite(): jest.SpyInstance {
+      return jest
+        .spyOn(fs.promises, 'open')
+        .mockRejectedValueOnce(
+          Object.assign(new Error('EACCES: permission denied'), { code: 'EACCES' }),
+        );
+    }
+
+    // A transition that could not be written must not be reported as done.
+    it('fails the operation when the write-through fails', async () => {
+      const { code } = await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(storage.consumeAuthCode(code.code)).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+    });
+
+    // Issued MCP tokens and refreshed GitLab tokens (whose predecessors are spent) are
+    // returned to clients right after this update; losing it strands the account.
+    it('persists a session update', async () => {
+      const { session } = await seeded();
+
+      expect(
+        await storage.updateSession(session.id, {
+          mcpAccessToken: 'issued-access',
+          gitlabRefreshToken: 'gl-refresh-new',
+        }),
+      ).toBe(true);
+      const restarted = await reloadAfterCrash();
+
+      const stored = await restarted.getSession(session.id);
+      expect(stored?.mcpAccessToken).toBe('issued-access');
+      expect(stored?.gitlabRefreshToken).toBe('gl-refresh-new');
+      await restarted.close();
+    });
+
+    // Each of these is handed to a client or to GitLab right after it is stored: a client
+    // id, a code, a session behind a code, a flow GitLab will call back for, and a device
+    // flow holding tokens GitLab issued once. A crash must not lose them.
+    it('persists records handed to clients or GitLab', async () => {
+      await seeded();
+      const client = {
+        clientId: 'registered-client',
+        redirectUris: ['https://client.example.com/callback'],
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code', 'refresh_token'],
+        responseTypes: ['code'],
+        createdAt: 1,
+      };
+      const session = createTestSession();
+      const code = createTestAuthCode({ sessionId: session.id });
+      const authFlow = createTestAuthCodeFlow();
+      const deviceFlow = createTestDeviceFlow({
+        gitlabTokens: {
+          access_token: 'gl-at',
+          refresh_token: 'gl-rt',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: 1,
+        },
+      });
+
+      await storage.storeClient(client);
+      await storage.createSession(session);
+      await storage.storeAuthCode(code);
+      await storage.storeAuthCodeFlow(authFlow.internalState, authFlow);
+      await storage.storeDeviceFlow('device-state', deviceFlow);
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getClient(client.clientId)).toEqual(client);
+      expect(await restarted.getSession(session.id)).toEqual(session);
+      expect(await restarted.getAuthCode(code.code)).toEqual(code);
+      expect(await restarted.getAuthCodeFlow(authFlow.internalState)).toEqual(authFlow);
+      expect((await restarted.getDeviceFlow('device-state'))?.gitlabTokens).toEqual(
+        deviceFlow.gitlabTokens,
+      );
+      await restarted.close();
+    });
+
+    // Writes do not block the event loop, so several can be in flight: they must not share
+    // the temp file, and the file must end with every record.
+    it('keeps every record when writes run concurrently', async () => {
+      await seeded();
+      const clients = Array.from({ length: 10 }, (_, i) => ({
+        clientId: `client-${i}`,
+        redirectUris: ['https://client.example.com/callback'],
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code'],
+        responseTypes: ['code'],
+        createdAt: i,
+      }));
+
+      await Promise.all(clients.map((client) => storage.storeClient(client)));
+      const restarted = await reloadAfterCrash();
+
+      for (const client of clients) {
+        expect(await restarted.getClient(client.clientId)).toEqual(client);
+      }
+      await restarted.close();
+    });
+
+    // A process crash keeps the page cache; a power loss does not. The new file and the
+    // rename are flushed before a write-through is reported.
+    it('flushes the file and the directory to disk', async () => {
+      const { code } = await seeded();
+      const realOpen = fs.promises.open.bind(fs.promises);
+      const synced: string[] = [];
+      const open = jest
+        .spyOn(fs.promises, 'open')
+        .mockImplementation(async (file: fs.PathLike, flags?: string | number, mode?: fs.Mode) => {
+          const handle = await realOpen(file, flags, mode);
+          const sync = handle.sync.bind(handle);
+          handle.sync = async () => {
+            synced.push(String(file));
+            await sync();
+          };
+          return handle;
+        });
+      try {
+        await storage.consumeAuthCode(code.code);
+      } finally {
+        open.mockRestore();
+      }
+
+      expect(synced).toContain(`${filePath}.tmp`);
+      if (process.platform !== 'win32') expect(synced).toContain(tempDir);
+    });
+
+    // A rotation that could not be written is reported as a failure: the client never got
+    // the new refresh token, so its old one must keep working for the retry.
+    it('keeps the old refresh token when the rotation cannot be written', async () => {
+      const { session } = await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(
+          storage.rotateSession(session.id, session.mcpRefreshToken, {
+            mcpAccessToken: 'undisclosed-access',
+            mcpRefreshToken: 'undisclosed-refresh',
+          }),
+        ).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+
+      expect((await storage.getSessionByRefreshToken(session.mcpRefreshToken))?.id).toBe(
+        session.id,
+      );
+      expect(await storage.getSessionByRefreshToken('undisclosed-refresh')).toBeUndefined();
+      expect(await storage.getSessionByToken('undisclosed-access')).toBeUndefined();
+    });
+
+    // A write started meanwhile by another request must not persist the rotation that
+    // failed: after a restart the client's old refresh token still has to work.
+    it('does not let a concurrent write persist a failed rotation', async () => {
+      const { session } = await seeded();
+      const open = failNextWrite();
+      let rotation: Promise<boolean>;
+      try {
+        rotation = storage.rotateSession(session.id, session.mcpRefreshToken, {
+          mcpRefreshToken: 'undisclosed-refresh',
+        });
+        const other = storage.createSession(createTestSession({ id: 'concurrent' }));
+        await expect(rotation).rejects.toThrow('EACCES');
+        await other;
+      } finally {
+        open.mockRestore();
+      }
+      const restarted = await reloadAfterCrash();
+
+      expect((await restarted.getSessionByRefreshToken(session.mcpRefreshToken))?.id).toBe(
+        session.id,
+      );
+      expect(await restarted.getSessionByRefreshToken('undisclosed-refresh')).toBeUndefined();
+      expect(await restarted.getSession('concurrent')).toBeDefined();
+      await restarted.close();
+    });
+
+    // A revocation that could not be written reports a failure; the session must stay
+    // revoked-or-not consistently: still present, so the retry revokes it and a restart
+    // does not bring back a session the retry was told was already gone.
+    it('keeps a session whose deletion cannot be written', async () => {
+      const { session } = await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(storage.deleteSession(session.id)).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+
+      expect((await storage.getSessionByRefreshToken(session.mcpRefreshToken))?.id).toBe(
+        session.id,
+      );
+      expect(await storage.deleteSession(session.id)).toBe(true);
+    });
+
+    // Tokens of an update that could not be written were never handed out: the session
+    // keeps its previous tokens, and no later write may persist the failed ones.
+    it('keeps the previous tokens when an update cannot be written', async () => {
+      const { session } = await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(
+          storage.updateSession(session.id, {
+            mcpAccessToken: 'undisclosed-access',
+            mcpRefreshToken: 'undisclosed-refresh',
+          }),
+        ).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+      await storage.createSession(createTestSession({ id: 'later-write' }));
+      const restarted = await reloadAfterCrash();
+
+      expect(await storage.getSessionByToken('undisclosed-access')).toBeUndefined();
+      expect(await restarted.getSessionByRefreshToken('undisclosed-refresh')).toBeUndefined();
+      expect((await restarted.getSessionByRefreshToken(session.mcpRefreshToken))?.id).toBe(
+        session.id,
+      );
+      await restarted.close();
+    });
+
+    // A session whose creation could not be written was never returned to anyone.
+    it('drops a session whose creation cannot be written', async () => {
+      await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(storage.createSession(createTestSession({ id: 'unwritten' }))).rejects.toThrow(
+          'EACCES',
+        );
+      } finally {
+        open.mockRestore();
+      }
+
+      expect(await storage.getSession('unwritten')).toBeUndefined();
+    });
+
+    // Same for a consumption: the caller saw a failure, so the code stays redeemable.
+    it('keeps a code whose consumption cannot be written', async () => {
+      const { code } = await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(storage.consumeAuthCode(code.code)).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+
+      expect(await storage.consumeAuthCode(code.code)).toBeDefined();
+    });
+
+    // An approved flow whose consumption failed is completed by the retry.
+    it('keeps flows whose consumption cannot be written', async () => {
+      await seeded();
+      const authFlow = createTestAuthCodeFlow();
+      await storage.storeAuthCodeFlow(authFlow.internalState, authFlow);
+      await storage.storeDeviceFlow('device-state', createTestDeviceFlow());
+      let open = failNextWrite();
+      try {
+        await expect(storage.consumeAuthCodeFlow(authFlow.internalState)).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+      open = failNextWrite();
+      try {
+        await expect(storage.consumeDeviceFlow('device-state')).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+
+      expect(await storage.consumeAuthCodeFlow(authFlow.internalState)).toBeDefined();
+      expect(await storage.consumeDeviceFlow('device-state')).toBeDefined();
+    });
+
+    it('writes again after a failed write', async () => {
+      const { code } = await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(storage.consumeAuthCode(code.code)).rejects.toThrow('EACCES');
+      } finally {
+        open.mockRestore();
+      }
+
+      await storage.createSession(createTestSession({ id: 'after-failure' }));
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getSession('after-failure')).toBeDefined();
+      await restarted.close();
+    });
+
+    // A write-through also carries changes waiting for the debounced save and replaces it.
+    it('writes pending debounced changes with the next write-through', async () => {
+      const { session } = await seeded();
+      await storage.associateMcpSession('mcp-session', session.id);
+
+      await storage.storeClient({
+        clientId: 'another-client',
+        redirectUris: ['https://client.example.com/callback'],
+        tokenEndpointAuthMethod: 'none',
+        grantTypes: ['authorization_code'],
+        responseTypes: ['code'],
+        createdAt: 1,
+      });
+      const restarted = await reloadAfterCrash();
+
+      expect((await restarted.getSessionByMcpSessionId('mcp-session'))?.id).toBe(session.id);
+      await restarted.close();
+    });
+
+    it('persists a revoked session', async () => {
+      const { session } = await seeded();
+
+      expect(await storage.deleteSession(session.id)).toBe(true);
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getSession(session.id)).toBeUndefined();
+      await restarted.close();
+    });
+
+    // Background saves (cleanup, debounce, close) have no caller to report to: a failed
+    // one is logged and the next save writes the state again.
+    it('does not fail cleanup when its save fails', async () => {
+      await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(storage.cleanup()).resolves.toBeUndefined();
+      } finally {
+        open.mockRestore();
+      }
+    });
+
+    // The hourly count of a source survives a restart: registrations are written through.
+    it('counts registrations of a source after a restart', async () => {
+      await seeded();
+      const client = (clientId: string, createdAt: number) => ({
+        clientId,
+        redirectUris: ['https://client.example.com/callback'],
+        tokenEndpointAuthMethod: 'none' as const,
+        grantTypes: ['authorization_code'],
+        responseTypes: ['code'],
+        createdAt,
+        registeredFrom: 'source-hash',
+        expiresAt: Date.now() + 60_000,
+      });
+      await storage.storeClient(client('older', 1));
+      await storage.storeClient(client('newer', 2));
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.countClientsRegisteredSince('source-hash', 2)).toBe(1);
+      expect(await restarted.countClientsRegisteredSince('source-hash', 0)).toBe(2);
+      await restarted.close();
+    });
+
+    // Windows cannot open a directory to flush it; NTFS journals the rename itself.
+    it('does not sync the directory on Windows', async () => {
+      const { code } = await seeded();
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+      const open = jest.spyOn(fs.promises, 'open');
+      let opened: string[];
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      try {
+        await storage.consumeAuthCode(code.code);
+        opened = open.mock.calls.map(([file]) => String(file));
+      } finally {
+        Object.defineProperty(process, 'platform', platform);
+        open.mockRestore();
+      }
+
+      expect(opened).toContain(`${filePath}.tmp`);
+      expect(opened).not.toContain(tempDir);
+    });
+  });
+
+  // The reservations of the device poll and the GitLab refresh behave as in memory.
+  describe('poll reservation and refresh lease', () => {
+    beforeEach(async () => {
+      storage = new FileStorageBackend({ filePath });
+      await storage.initialize();
+    });
+
+    it('reserves a device poll once per interval', async () => {
+      await storage.storeDeviceFlow('flow', createTestDeviceFlow({ nextPollAt: 1000 }));
+
+      expect((await storage.claimDevicePoll('flow', 1000, 6000))?.nextPollAt).toBe(6000);
+      expect(await storage.claimDevicePoll('flow', 1000, 6000)).toBeUndefined();
+    });
+
+    it('leases a GitLab refresh token until released', async () => {
+      const session = createTestSession({ gitlabRefreshToken: 'grt' });
+      await storage.createSession(session);
+
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 1, 30001)).toBe(true);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 2, 30002)).toBe(false);
+      await storage.releaseGitLabRefresh(session.id, 30001);
+      expect(await storage.claimGitLabRefresh(session.id, 'grt', 3, 30003)).toBe(true);
+    });
+  });
+
   describe('Initialization and Lifecycle', () => {
     it('should initialize with empty file', async () => {
       storage = new FileStorageBackend({ filePath });
@@ -328,13 +805,8 @@ describe('FileStorageBackend', () => {
       const session = createTestSession({ id: 'delete-test' });
       await storage.createSession(session);
 
-      // Wait for first save
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
+      // Both are written through before they resolve.
       await storage.deleteSession('delete-test');
-
-      // Wait for second save
-      await new Promise((resolve) => setTimeout(resolve, 50));
 
       const data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as StorageData;
       expect(data.sessions).toHaveLength(0);
@@ -367,13 +839,10 @@ describe('FileStorageBackend', () => {
       const flow = createTestDeviceFlow();
       await storage.storeDeviceFlow('delete-flow-state', flow);
 
-      // Wait for first save
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
       await storage.deleteDeviceFlow('delete-flow-state');
 
-      // Wait for second save
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // The deletion is saved with the debounce; flush it instead of racing the timer.
+      await storage.forceSave();
 
       const data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as StorageData;
       expect(data.deviceFlows).toHaveLength(0);
@@ -406,11 +875,10 @@ describe('FileStorageBackend', () => {
       const flow = createTestAuthCodeFlow({ internalState: 'delete-auth-flow' });
       await storage.storeAuthCodeFlow('delete-auth-flow', flow);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
       await storage.deleteAuthCodeFlow('delete-auth-flow');
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // The deletion is saved with the debounce; flush it instead of racing the timer.
+      await storage.forceSave();
 
       const data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as StorageData;
       expect(data.authCodeFlows).toHaveLength(0);
@@ -443,11 +911,10 @@ describe('FileStorageBackend', () => {
       const authCode = createTestAuthCode({ code: 'delete-code' });
       await storage.storeAuthCode(authCode);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
       await storage.deleteAuthCode('delete-code');
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // The deletion is saved with the debounce; flush it instead of racing the timer.
+      await storage.forceSave();
 
       const data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as StorageData;
       expect(data.authCodes).toHaveLength(0);
@@ -469,8 +936,8 @@ describe('FileStorageBackend', () => {
       await storage.createSession(session);
       await storage.associateMcpSession('mcp-123', 'mapped-session');
 
-      // Wait for debounced save
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Transport mappings are saved with the debounce; flush instead of racing the timer.
+      await storage.forceSave();
 
       const data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as StorageData;
       expect(data.mcpSessionMappings).toHaveLength(1);
@@ -482,11 +949,10 @@ describe('FileStorageBackend', () => {
       await storage.createSession(session);
       await storage.associateMcpSession('mcp-456', 'mapped-session-2');
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
       await storage.removeMcpSessionAssociation('mcp-456');
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
+      // Transport mappings are saved with the debounce; flush instead of racing the timer.
+      await storage.forceSave();
 
       const data = JSON.parse(fs.readFileSync(filePath, 'utf-8')) as StorageData;
       expect(data.mcpSessionMappings).toHaveLength(0);
@@ -658,6 +1124,21 @@ describe('FileStorageBackend', () => {
       const tempFile = `${filePath}.tmp`;
       expect(fs.existsSync(tempFile)).toBe(false);
       expect(fs.existsSync(filePath)).toBe(true);
+    });
+
+    // The file holds MCP and GitLab tokens: other OS accounts on the host must not read it,
+    // whatever the umask, including when a temp file left by a crash had wider permissions.
+    // POSIX modes only; Windows has no such permission bits.
+    it('writes the store readable by its owner only', async () => {
+      if (process.platform === 'win32') return;
+      fs.writeFileSync(`${filePath}.tmp`, '', { mode: 0o644 });
+      fs.chmodSync(`${filePath}.tmp`, 0o644);
+      storage = new FileStorageBackend({ filePath, saveDebounce: 10, saveInterval: 60000 });
+      await storage.initialize();
+
+      await storage.createSession(createTestSession({ id: 'mode-test' }));
+
+      expect(fs.statSync(filePath).mode & 0o777).toBe(0o600);
     });
   });
 

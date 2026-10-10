@@ -6,6 +6,7 @@
  */
 
 import { DashboardMetrics, InstanceStatus, formatUptime } from './metrics.js';
+import { escapeHtml } from '../utils/html';
 
 /**
  * Get status indicator symbol and color class
@@ -125,18 +126,6 @@ function formatRelativeTime(isoString: string): string {
 
   const diffDays = Math.floor(diffHours / 24);
   return `${diffDays}d ago`;
-}
-
-/**
- * Escape HTML special characters
- */
-function escapeHtml(str: string): string {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
 }
 
 /**

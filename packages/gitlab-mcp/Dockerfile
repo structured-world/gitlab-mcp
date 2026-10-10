@@ -91,6 +91,10 @@ RUN apk add --no-cache \
 RUN addgroup -g 1001 -S gitlab-mcp && \
     adduser -S gitlab-mcp -u 1001 -G gitlab-mcp
 
+# Data directory for file-based OAuth storage. An empty named volume mounted here takes
+# the ownership of this directory, so the app user can write to it.
+RUN mkdir -p /data && chown gitlab-mcp:gitlab-mcp /data
+
 # Set working directory
 WORKDIR /app
 

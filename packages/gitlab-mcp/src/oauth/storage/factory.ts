@@ -80,11 +80,13 @@ function createPostgreSQLBackend(): SessionStorageBackend {
   // package (it carries Prisma). It is loaded lazily so the default install does
   // not pull Prisma or a postgres driver. Same require pattern as the optional
   // undici load elsewhere in core.
-  let mod: { PostgreSQLStorageBackend: new () => SessionStorageBackend };
+  let mod: {
+    PostgreSQLStorageBackend: new (options?: {
+      connectionString?: string;
+    }) => SessionStorageBackend;
+  };
   try {
-    mod = require('@structured-world/gitlab-mcp-db') as {
-      PostgreSQLStorageBackend: new () => SessionStorageBackend;
-    };
+    mod = require('@structured-world/gitlab-mcp-db') as typeof mod;
   } catch {
     throw new Error(
       "PostgreSQL storage requires the optional '@structured-world/gitlab-mcp-db' package. " +
@@ -94,7 +96,7 @@ function createPostgreSQLBackend(): SessionStorageBackend {
 
   logInfo('Using PostgreSQL session storage (via @structured-world/gitlab-mcp-db)');
 
-  return new mod.PostgreSQLStorageBackend();
+  return new mod.PostgreSQLStorageBackend({ connectionString });
 }
 
 /**

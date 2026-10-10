@@ -62,10 +62,41 @@ export interface OAuthSession {
   clientId: string;
   /** Granted scopes */
   scopes: string[];
+  /** RFC 8707 resource the tokens are issued for; absent in sessions persisted by older servers. */
+  resource?: string;
   /** Session creation timestamp (milliseconds since epoch) */
   createdAt: number;
   /** Last update timestamp (milliseconds since epoch) */
   updatedAt: number;
+}
+
+/**
+ * OAuth client registered through Dynamic Client Registration (RFC 7591)
+ */
+export interface RegisteredOAuthClient {
+  /** Issued client identifier */
+  clientId: string;
+  /** Issued secret, only for confidential clients */
+  clientSecret?: string;
+  /** Redirect URIs the client may use */
+  redirectUris: string[];
+  /** Human-readable client name */
+  clientName?: string;
+  /** Token endpoint authentication method */
+  tokenEndpointAuthMethod: string;
+  /** Grant types the client registered */
+  grantTypes: string[];
+  /** Response types the client registered */
+  responseTypes: string[];
+  /** Registration timestamp (milliseconds since epoch) */
+  createdAt: number;
+  /** Keyed hash of the address that registered the client (anonymous registrations) */
+  registeredFrom?: string;
+  /**
+   * When a registration that never completed an authorization is removed; unset once the
+   * client has been used, and for clients registered before registrations expired.
+   */
+  expiresAt?: number;
 }
 
 /**
@@ -95,6 +126,15 @@ export interface AuthCodeFlowState {
   selectedInstance?: string;
   /** Selected instance label */
   selectedInstanceLabel?: string;
+  /** MCP scopes granted to this authorization; absent means the full default set. */
+  scopes?: string[];
+  /** RFC 8707 resource requested at /authorize; absent means the `/mcp` resource. */
+  resource?: string;
+  /**
+   * Tokens GitLab issued for the callback's code; the code works once, so they are kept
+   * until the account is set up and a retried callback finishes with them.
+   */
+  gitlabTokens?: GitLabTokenResponse;
 }
 
 /**
@@ -115,6 +155,8 @@ export interface DeviceFlowState {
   expiresAt: number;
   /** Polling interval in seconds */
   interval: number;
+  /** Earliest time GitLab may be polled again (milliseconds since epoch, RFC 8628 3.5) */
+  nextPollAt?: number;
   /** OAuth client ID */
   clientId: string;
   /** PKCE code challenge */
@@ -129,6 +171,15 @@ export interface DeviceFlowState {
   selectedInstance?: string;
   /** Selected instance label */
   selectedInstanceLabel?: string;
+  /** MCP scopes granted to this authorization; absent means the full default set. */
+  scopes?: string[];
+  /** RFC 8707 resource requested at /authorize; absent means the `/mcp` resource. */
+  resource?: string;
+  /**
+   * Tokens GitLab issued when the user approved; GitLab hands them out once, so they are
+   * kept until the account is set up and a failed attempt is retried without them lost.
+   */
+  gitlabTokens?: GitLabTokenResponse;
 }
 
 /**
@@ -194,6 +245,10 @@ export interface TokenContext {
   apiUrl: string;
   /** Human-readable instance label for UI display */
   instanceLabel?: string;
+  /** Protected resource the request was sent to; reauthorization challenges point at its metadata. */
+  resource?: string;
+  /** MCP scopes of the access token the request presented (e.g. `mcp:tools`). */
+  mcpScopes?: readonly string[];
 }
 
 /**
@@ -238,6 +293,10 @@ export interface DeviceFlowPollResponse {
   redirect_uri?: string;
   code?: string;
   state?: string;
+  /** Issuer to append to the redirect (RFC 9207 section 2) */
+  iss?: string;
+  /** Seconds to wait before the next poll while pending */
+  interval?: number;
   error?: string;
 }
 
@@ -245,12 +304,16 @@ export interface DeviceFlowPollResponse {
  * JWT payload for MCP access tokens
  */
 export interface MCPTokenPayload {
-  /** Issuer (base URL of gitlab-mcp) */
+  /** Issuer (OAUTH_ISSUER) */
   iss: string;
   /** Subject (GitLab user ID) */
   sub: string;
-  /** Audience (OAuth client ID) */
+  /** Audience: the RFC 8707 resource the token is issued for */
   aud: string;
+  /** OAuth client the token was issued to (RFC 9068 section 2.2) */
+  client_id?: string;
+  /** Unique token identifier (RFC 9068 section 2.2) */
+  jti?: string;
   /** Session ID */
   sid: string;
   /** Granted scopes */

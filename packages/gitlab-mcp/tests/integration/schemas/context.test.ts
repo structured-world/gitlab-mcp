@@ -139,7 +139,8 @@ describe('manage_context Integration Tests', () => {
 
       expect(result.success).toBe(true);
       expect(result.current).toBe(presetName);
-      expect(result.message).toContain('Switched to preset');
+      // The switch applies to this session only.
+      expect(result.message).toBe(`Switched this session to preset '${presetName}'`);
 
       console.log(`  Switched to preset: ${presetName}`);
     });
@@ -283,7 +284,8 @@ describe('manage_context Integration Tests', () => {
       })) as Record<string, unknown>;
 
       expect(result.success).toBe(true);
-      expect(result.message).toContain('reset to initial state');
+      // Reset drops the session overrides; the account settings (none here) apply again.
+      expect(result.message).toBe('Session context reset to the account settings');
       expect(result).toHaveProperty('context');
 
       // Verify reset state

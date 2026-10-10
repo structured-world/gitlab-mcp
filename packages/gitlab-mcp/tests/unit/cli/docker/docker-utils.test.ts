@@ -24,6 +24,7 @@ import {
   removeInstance,
   initDockerConfig,
   saveEnvFile,
+  mergeEnvFile,
   getExpandedConfigDir,
 } from '../../../../src/cli/docker/docker-utils';
 import {
@@ -76,6 +77,8 @@ describe('docker-utils', () => {
     jest.clearAllMocks();
     // Default: Docker runtime available with compose
     mockGetContainerRuntime.mockReturnValue(dockerRuntime);
+    // An existing file reads as empty unless a test gives it content
+    mockFs.readFileSync.mockReturnValue('');
   });
 
   describe('expandPath', () => {
@@ -1321,6 +1324,69 @@ describe('docker-utils', () => {
       });
 
       expect(mockFs.mkdirSync).toHaveBeenCalledWith(expect.any(String), { recursive: true });
+    });
+
+    // Rerunning setup on an existing deployment: the instance secrets and OAuth application
+    // credentials the user keeps in .env survive, and the generated secrets keep their value
+    // (a new session secret would end every session, a new database password would no
+    // longer match the database initialized with the old one).
+    it('keeps user entries and generated secrets of an existing .env', () => {
+      mockFs.existsSync.mockReturnValue(true);
+      mockFs.chmodSync.mockImplementation(() => undefined);
+      mockFs.writeFileSync.mockImplementation(() => undefined);
+      mockFs.readFileSync.mockReturnValue(
+        [
+          'OAUTH_SESSION_SECRET=old-secret',
+          '# secrets named by instances.yml',
+          'WORK_GITLAB_SECRET=s3cret',
+          'OAUTH_CLIENT_ID=app-id',
+          'POSTGRES_PASSWORD=initialized-password',
+          'OAUTH_ISSUER=http://localhost:3333',
+          '',
+        ].join('\n'),
+      );
+
+      saveEnvFile({
+        ...DEFAULT_DOCKER_CONFIG,
+        deploymentType: 'compose-bundle',
+        oauthEnabled: true,
+        oauthSessionSecret: 'new-secret',
+        oauthIssuer: 'https://mcp.example.com',
+      });
+
+      const content = mockFs.writeFileSync.mock.calls.find((call) =>
+        String(call[0]).endsWith('.env'),
+      )![1] as string;
+      expect(content).toBe(
+        [
+          'OAUTH_SESSION_SECRET=old-secret',
+          '# secrets named by instances.yml',
+          'WORK_GITLAB_SECRET=s3cret',
+          'OAUTH_CLIENT_ID=app-id',
+          'POSTGRES_PASSWORD=initialized-password',
+          'OAUTH_ISSUER=https://mcp.example.com',
+          '',
+        ].join('\n'),
+      );
+    });
+  });
+
+  describe('mergeEnvFile', () => {
+    // Compose takes the last assignment of a key: a repeated managed key would override
+    // the value written for it, so later copies are dropped.
+    it('keeps one assignment of a managed key', () => {
+      const merged = mergeEnvFile(
+        'OAUTH_ISSUER=http://localhost:3333\nOTHER=1\nOAUTH_ISSUER=http://stale.example\n',
+        new Map([['OAUTH_ISSUER', 'https://mcp.example.com']]),
+      );
+
+      expect(merged).toBe('OAUTH_ISSUER=https://mcp.example.com\nOTHER=1\n');
+    });
+
+    it('writes the managed keys into a new file', () => {
+      expect(mergeEnvFile('', new Map([['OAUTH_ISSUER', 'https://mcp.example.com']]))).toBe(
+        'OAUTH_ISSUER=https://mcp.example.com\n',
+      );
     });
   });
 

@@ -267,6 +267,11 @@ jobs:
           # Core ships without Prisma: PostgreSQL storage comes only with the db image.
           docker run --rm --entrypoint node localhost:5000/${{ env.IMAGE_NAME }}:test \
             -e "const fs=require('fs'); if (!fs.existsSync('/app/dist/src/main.js')) process.exit(1); if (['prisma','@prisma'].some((p) => fs.existsSync('/app/node_modules/' + p))) process.exit(1); console.log('core image ok')"
+          # Generated deployments keep file-based OAuth storage on a fresh named volume at
+          # /data: the app user must be able to write there.
+          docker run --rm --entrypoint node -v gitlab-mcp-ci-data:/data localhost:5000/${{ env.IMAGE_NAME }}:test \
+            -e "require('fs').writeFileSync('/data/write-check', 'ok'); console.log('data volume writable')"
+          docker volume rm gitlab-mcp-ci-data
           # The layered image must load every module the backend needs: a query
           # against a closed port has to fail as unreachable, not as a missing module.
           docker run --rm --entrypoint node \

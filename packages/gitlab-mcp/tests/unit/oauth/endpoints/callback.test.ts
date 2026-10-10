@@ -311,6 +311,21 @@ describe('OAuth Callback Handler', () => {
         error_description: 'Authorization flow expired. Please start again.',
       });
     });
+
+    // Removing the expired flow is housekeeping; cleanup removes it later if this fails.
+    it('reports an expired flow even when it cannot be removed', async () => {
+      mockRequest.query = { code: 'gitlab-code-123', state: 'expired-state' };
+      withFlow({ ...mockAuthCodeFlow, expiresAt: Date.now() - 1000 });
+      mockSessionStore.deleteAuthCodeFlow.mockRejectedValueOnce(new Error('database down'));
+
+      await callbackHandler(mockRequest as Request, mockResponse as Response);
+
+      expect(statusMock).toHaveBeenCalledWith(400);
+      expect(jsonMock).toHaveBeenCalledWith({
+        error: 'invalid_request',
+        error_description: 'Authorization flow expired. Please start again.',
+      });
+    });
   });
 
   describe('successful authorization', () => {

@@ -28,6 +28,24 @@ export function matchProtectedResource(issuer: string, value: string): string | 
   );
 }
 
+/**
+ * Resource a `resource` request parameter names: undefined when absent, null when it must be
+ * refused with invalid_target. RFC 8707 section 2 lets the parameter repeat; a token here has
+ * one audience, so every value must name the same resource of this server, and a request the
+ * server cannot issue one token for is refused (same section).
+ * https://www.rfc-editor.org/rfc/rfc8707#section-2
+ */
+export function resourceParameter(issuer: string, value: unknown): string | undefined | null {
+  if (value === undefined) return undefined;
+  let named: string | undefined;
+  for (const entry of Array.isArray(value) ? value : [value]) {
+    const match = typeof entry === 'string' ? matchProtectedResource(issuer, entry) : undefined;
+    if (match === undefined || (named !== undefined && named !== match)) return null;
+    named = match;
+  }
+  return named ?? null;
+}
+
 /** Resource tokens are issued for when the client did not name one. */
 export function defaultResource(issuer: string): string {
   return protectedResources(issuer)[1];

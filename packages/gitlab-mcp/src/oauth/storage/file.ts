@@ -232,9 +232,12 @@ export class FileStorageBackend implements SessionStorageBackend {
     const write = this.writeQueue.then(async () => {
       // Atomic write: write to temp file, then rename. Both are flushed to disk, so a
       // power loss cannot bring back a spent code or a revoked session either.
+      // The store holds account tokens: owner-only, whatever the umask. The mode applies
+      // only when the file is created, so a temp file left by a crash is narrowed too.
       const tempPath = `${this.filePath}.tmp`;
-      const file = await fs.promises.open(tempPath, 'w');
+      const file = await fs.promises.open(tempPath, 'w', 0o600);
       try {
+        await file.chmod(0o600);
         await file.writeFile(content, 'utf-8');
         await file.sync();
       } finally {

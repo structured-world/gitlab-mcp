@@ -323,6 +323,10 @@ describe('flows/server-setup', () => {
       'OAUTH_ISSUER must use https (http is allowed only for localhost)',
     );
     expect(issuerPrompt.validate('not a url')).toBe('OAUTH_ISSUER must be an absolute URL');
+    // The prompt passes no value for a cleared field: refused like an empty URL.
+    expect(issuerPrompt.validate(undefined as unknown as string)).toBe(
+      'OAUTH_ISSUER must be an absolute URL',
+    );
     const configArg = (initDockerConfig as jest.Mock).mock.calls[0][0];
     expect(configArg.oauthIssuer).toBe('https://mcp.example.com');
   });

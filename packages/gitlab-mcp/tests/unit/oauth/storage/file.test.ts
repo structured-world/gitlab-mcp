@@ -354,6 +354,62 @@ describe('FileStorageBackend', () => {
       expect(await restarted.getSession(session.id)).toBeUndefined();
       await restarted.close();
     });
+
+    // Background saves (cleanup, debounce, close) have no caller to report to: a failed
+    // one is logged and the next save writes the state again.
+    it('does not fail cleanup when its save fails', async () => {
+      await seeded();
+      const open = failNextWrite();
+      try {
+        await expect(storage.cleanup()).resolves.toBeUndefined();
+      } finally {
+        open.mockRestore();
+      }
+    });
+
+    // Pruned registrations are saved with the debounce; nothing is saved when none went.
+    it('saves pruned registrations', async () => {
+      await seeded();
+      const client = (clientId: string, createdAt: number) => ({
+        clientId,
+        redirectUris: ['https://client.example.com/callback'],
+        tokenEndpointAuthMethod: 'none' as const,
+        grantTypes: ['authorization_code'],
+        responseTypes: ['code'],
+        createdAt,
+        registeredFrom: 'source-hash',
+        expiresAt: Date.now() + 60_000,
+      });
+      await storage.storeClient(client('older', 1));
+      await storage.storeClient(client('newer', 2));
+
+      expect(await storage.pruneUnusedClients('source-hash', 1)).toBe(1);
+      await storage.forceSave();
+      const restarted = await reloadAfterCrash();
+
+      expect(await restarted.getClient('older')).toBeUndefined();
+      expect(await restarted.getClient('newer')).toBeDefined();
+      await restarted.close();
+    });
+
+    // Windows cannot open a directory to flush it; NTFS journals the rename itself.
+    it('does not sync the directory on Windows', async () => {
+      const { code } = await seeded();
+      const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+      const open = jest.spyOn(fs.promises, 'open');
+      let opened: string[];
+      Object.defineProperty(process, 'platform', { value: 'win32' });
+      try {
+        await storage.consumeAuthCode(code.code);
+        opened = open.mock.calls.map(([file]) => String(file));
+      } finally {
+        Object.defineProperty(process, 'platform', platform);
+        open.mockRestore();
+      }
+
+      expect(opened).toContain(`${filePath}.tmp`);
+      expect(opened).not.toContain(tempDir);
+    });
   });
 
   // The reservations of the device poll and the GitLab refresh behave as in memory.
@@ -927,6 +983,21 @@ describe('FileStorageBackend', () => {
       const tempFile = `${filePath}.tmp`;
       expect(fs.existsSync(tempFile)).toBe(false);
       expect(fs.existsSync(filePath)).toBe(true);
+    });
+
+    // The file holds MCP and GitLab tokens: other OS accounts on the host must not read it,
+    // whatever the umask, including when a temp file left by a crash had wider permissions.
+    // POSIX modes only; Windows has no such permission bits.
+    it('writes the store readable by its owner only', async () => {
+      if (process.platform === 'win32') return;
+      fs.writeFileSync(`${filePath}.tmp`, '', { mode: 0o644 });
+      fs.chmodSync(`${filePath}.tmp`, 0o644);
+      storage = new FileStorageBackend({ filePath, saveDebounce: 10, saveInterval: 60000 });
+      await storage.initialize();
+
+      await storage.createSession(createTestSession({ id: 'mode-test' }));
+
+      expect(fs.statSync(filePath).mode & 0o777).toBe(0o600);
     });
   });
 

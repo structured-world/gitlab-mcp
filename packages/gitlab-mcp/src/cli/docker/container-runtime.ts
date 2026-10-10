@@ -97,12 +97,12 @@ function detectComposeCmd(runtime: ContainerRuntime): ComposeDetection | null {
   return null;
 }
 
-/** Whether dotted version `actual` is at least `minimum`. */
+/** Whether version `actual` is at least `minimum`; both are `major.minor.patch`. */
 function versionAtLeast(actual: string, minimum: string): boolean {
   const a = actual.split('.').map(Number);
   const m = minimum.split('.').map(Number);
   for (let i = 0; i < m.length; i++) {
-    if ((a[i] ?? 0) !== m[i]) return (a[i] ?? 0) > m[i];
+    if (a[i] !== m[i]) return a[i] > m[i];
   }
   return true;
 }

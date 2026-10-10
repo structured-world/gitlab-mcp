@@ -102,7 +102,7 @@ describe('OAuth Token Endpoint', () => {
   };
 
   // Helper to create mock request
-  const createMockRequest = (body: Record<string, string | undefined> = {}): Partial<Request> => ({
+  const createMockRequest = (body: Record<string, unknown> = {}): Partial<Request> => ({
     body,
     protocol: 'http',
     get: jest.fn((header: string): string | undefined => {
@@ -145,6 +145,20 @@ describe('OAuth Token Endpoint', () => {
       expect(res.json).toHaveBeenCalledWith({
         error: 'server_error',
         error_description: 'OAuth not configured',
+      });
+    });
+
+    // A request without a parsed form body (wrong content type) has no grant at all.
+    it('answers unsupported_grant_type for a request without a form body', async () => {
+      const req = { ...createMockRequest(), body: undefined } as unknown as Request;
+      const res = createMockResponse() as Response;
+
+      await tokenHandler(req, res);
+
+      expect(res.status).toHaveBeenCalledWith(400);
+      expect(res.json).toHaveBeenCalledWith({
+        error: 'unsupported_grant_type',
+        error_description: 'Grant type "undefined" is not supported',
       });
     });
 
@@ -440,7 +454,7 @@ describe('OAuth Token Endpoint', () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      const exchange = (extra: Record<string, string>) =>
+      const exchange = (extra: Record<string, unknown>) =>
         createMockRequest({
           grant_type: 'authorization_code',
           code: 'valid-code',
@@ -537,20 +551,84 @@ describe('OAuth Token Endpoint', () => {
         );
       });
 
+      // RFC 6749 section 3.2: request parameters must not repeat. A repeated code_verifier
+      // crashed PKCE with a 500 after the code was already spent; it is refused before.
+      it.each(['code', 'code_verifier', 'client_id', 'redirect_uri'])(
+        'rejects a repeated %s before the code is consumed',
+        async (name) => {
+          const res = createMockResponse() as Response;
+          await tokenHandler(exchange({ [name]: ['a', 'b'] }), res);
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(res.json).toHaveBeenCalledWith({
+            error: 'invalid_request',
+            error_description: `${name} must not be repeated`,
+          });
+          expect(mockSessionStore.consumeAuthCode).not.toHaveBeenCalled();
+        },
+      );
+
+      // Recording the client as used only stops its registration from expiring: a storage
+      // failure there must not withhold tokens the exchange already issued.
+      it('issues the tokens when the client use cannot be recorded', async () => {
+        mockSessionStore.markClientUsed.mockRejectedValueOnce(new Error('database down'));
+        const res = createMockResponse() as Response;
+        await tokenHandler(exchange({}), res);
+        expect(res.status).not.toHaveBeenCalled();
+        expect(res.json).toHaveBeenCalledWith(
+          expect.objectContaining({ access_token: 'mcp-access-token-jwt' }),
+        );
+      });
+
+      // RFC 8707 section 2: resource may repeat; values naming one target bind it once.
+      it('accepts a resource repeated with the same target', async () => {
+        await tokenHandler(
+          exchange({
+            resource: ['https://gitlab-mcp.example.com/mcp', 'https://gitlab-mcp.example.com/mcp'],
+          }),
+          createMockResponse() as Response,
+        );
+        expect(createJWT).toHaveBeenCalledWith(
+          expect.objectContaining({ aud: 'https://gitlab-mcp.example.com/mcp' }),
+          expect.any(String),
+          3600,
+        );
+      });
+
+      it('rejects repeated resources naming different targets before the code is consumed', async () => {
+        const res = createMockResponse() as Response;
+        await tokenHandler(
+          exchange({
+            resource: ['https://gitlab-mcp.example.com', 'https://gitlab-mcp.example.com/mcp'],
+          }),
+          res,
+        );
+        expect(res.json).toHaveBeenCalledWith({
+          error: 'invalid_target',
+          error_description: 'resource must name one resource of this server',
+        });
+        expect(mockSessionStore.consumeAuthCode).not.toHaveBeenCalled();
+      });
+
       it.each([
-        ['another server', undefined, 'https://other.example.com/mcp'],
+        [
+          'another server',
+          undefined,
+          'https://other.example.com/mcp',
+          'resource must name one resource of this server',
+        ],
         [
           'a different resource than authorized',
           'https://gitlab-mcp.example.com',
           'https://gitlab-mcp.example.com/mcp',
+          'resource does not match the authorization',
         ],
-      ])('rejects a resource naming %s (RFC 8707 2)', async (_c, bound, resource) => {
+      ])('rejects a resource naming %s (RFC 8707 2)', async (_c, bound, resource, description) => {
         mockSessionStore.getSession.mockResolvedValue({ ...session, resource: bound });
         const res = createMockResponse() as Response;
         await tokenHandler(exchange({ resource }), res);
         expect(res.json).toHaveBeenCalledWith({
           error: 'invalid_target',
-          error_description: 'resource does not match the authorization',
+          error_description: description,
         });
         expect(createJWT).not.toHaveBeenCalled();
       });
@@ -816,7 +894,7 @@ describe('OAuth Token Endpoint', () => {
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
-      const refresh = (extra: Record<string, string | undefined>) =>
+      const refresh = (extra: Record<string, unknown>) =>
         createMockRequest({
           grant_type: 'refresh_token',
           refresh_token: 'valid-refresh-token',
@@ -874,6 +952,21 @@ describe('OAuth Token Endpoint', () => {
           error_description: 'resource does not match the authorization',
         });
       });
+
+      // A repeated scope crashed the handler (split of an array) with a 500.
+      it.each(['refresh_token', 'client_id', 'scope'])(
+        'rejects a repeated %s with invalid_request',
+        async (name) => {
+          const res = createMockResponse() as Response;
+          await tokenHandler(refresh({ [name]: ['a', 'b'] }), res);
+          expect(res.status).toHaveBeenCalledWith(400);
+          expect(res.json).toHaveBeenCalledWith({
+            error: 'invalid_request',
+            error_description: `${name} must not be repeated`,
+          });
+          expect(mockSessionStore.getSessionByRefreshToken).not.toHaveBeenCalled();
+        },
+      );
 
       it('narrows the scope on request (RFC 6749 6)', async () => {
         const res = createMockResponse() as Response;

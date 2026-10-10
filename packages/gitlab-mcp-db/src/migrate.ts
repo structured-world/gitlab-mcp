@@ -27,7 +27,8 @@ interface Queryable {
 
 /** Side effects of a migration run, injectable for tests. */
 export interface MigrateDeps {
-  connect(url: string): Promise<Queryable>;
+  /** Open a connection; the attempt fails after `timeoutMs`. */
+  connect(url: string, timeoutMs: number): Promise<Queryable>;
   /** Run the Prisma CLI with these arguments; returns its exit status. */
   prisma(args: string[]): number;
   sleep(ms: number): Promise<void>;
@@ -39,7 +40,9 @@ async function waitForDatabase(url: string, deps: MigrateDeps): Promise<Queryabl
   const deadline = deps.now() + WAIT_MS;
   for (;;) {
     try {
-      return await deps.connect(url);
+      // An address that neither accepts nor refuses would leave the attempt pending
+      // forever: each attempt gets only what remains of the wait.
+      return await deps.connect(url, Math.max(1, deadline - deps.now()));
     } catch (error: unknown) {
       if (deps.now() >= deadline) {
         deps.log(`Database is not reachable: ${(error as Error).message}`);
@@ -91,12 +94,15 @@ export async function migrate(url: string | undefined, deps: MigrateDeps): Promi
 /** The package directory, where prisma.config.ts lives (this file is dist/src/migrate.js). */
 const PACKAGE_DIR = path.resolve(__dirname, '..', '..');
 
+/** Connect to PostgreSQL, giving up after `timeoutMs`. */
+export async function connectPostgres(url: string, timeoutMs: number): Promise<Queryable> {
+  const client = new Client({ connectionString: url, connectionTimeoutMillis: timeoutMs });
+  await client.connect();
+  return client;
+}
+
 const defaultDeps: MigrateDeps = {
-  async connect(url) {
-    const client = new Client({ connectionString: url });
-    await client.connect();
-    return client;
-  },
+  connect: connectPostgres,
   prisma(args) {
     const cli = path.join(path.dirname(require.resolve('prisma/package.json')), 'build/index.js');
     const result = spawnSync(process.execPath, [cli, ...args], {

@@ -621,34 +621,69 @@ export function saveEnvFile(config: DockerConfig): void {
     mkdirSync(configDir, { recursive: true });
   }
 
-  const lines: string[] = [];
+  const managed = new Map<string, string>();
 
   if (config.oauthSessionSecret) {
-    lines.push(`OAUTH_SESSION_SECRET=${config.oauthSessionSecret}`);
+    managed.set('OAUTH_SESSION_SECRET', config.oauthSessionSecret);
   }
 
   if (config.oauthEnabled) {
     // The public URL chosen during setup; without one, local access on the published port.
-    const issuer = config.oauthIssuer ?? `http://localhost:${config.port}`;
-    lines.push(`OAUTH_ISSUER=${issuer}`);
+    managed.set('OAUTH_ISSUER', config.oauthIssuer ?? `http://localhost:${config.port}`);
   }
 
   if (config.deploymentType === 'compose-bundle' && config.oauthEnabled) {
     // Generate a strong random postgres password for the bundled database
-    const pgPassword = randomBytes(24).toString('base64url');
-    lines.push(`POSTGRES_PASSWORD=${pgPassword}`);
+    managed.set('POSTGRES_PASSWORD', randomBytes(24).toString('base64url'));
   }
 
   if (config.deploymentType === 'external-db' && config.oauthEnabled && config.databaseUrl) {
     // The compose file references it; the URL carries the database password
-    lines.push(`OAUTH_STORAGE_POSTGRESQL_URL=${envLiteralUrl(config.databaseUrl)}`);
+    managed.set('OAUTH_STORAGE_POSTGRESQL_URL', envLiteralUrl(config.databaseUrl));
   }
 
-  if (lines.length > 0) {
+  if (managed.size > 0) {
     const envPath = join(configDir, '.env');
-    // The mode applies only when the file is created: an existing .env is restricted
-    // first, so its secrets never land in a file other accounts on the host can read.
-    if (existsSync(envPath)) chmodSync(envPath, 0o600);
-    writeFileSync(envPath, lines.join('\n') + '\n', { encoding: 'utf8', mode: 0o600 });
+    let existing = '';
+    if (existsSync(envPath)) {
+      // The mode applies only when the file is created: an existing .env is restricted
+      // first, so its secrets never land in a file other accounts on the host can read.
+      chmodSync(envPath, 0o600);
+      existing = readFileSync(envPath, 'utf8');
+    }
+    writeFileSync(envPath, mergeEnvFile(existing, managed), { encoding: 'utf8', mode: 0o600 });
   }
+}
+
+/**
+ * Generated secrets keep the value already written: a new session secret would end every
+ * session, a new database password would not match the database initialized with the old.
+ */
+const GENERATED_ENV_KEYS = new Set(['OAUTH_SESSION_SECRET', 'POSTGRES_PASSWORD']);
+
+/** Variable a `.env` line assigns, if any. */
+function envLineKey(line: string): string | undefined {
+  return /^\s*(?:export\s+)?([A-Za-z_]\w*)\s*=/.exec(line)?.[1];
+}
+
+/**
+ * `.env` content with the `managed` entries set. Everything else (secrets named by instances,
+ * OAuth application credentials added by hand, comments) is kept in place.
+ */
+export function mergeEnvFile(existing: string, managed: ReadonlyMap<string, string>): string {
+  const written = new Set<string>();
+  const lines = existing === '' ? [] : existing.replace(/\n$/, '').split('\n');
+  const merged = lines.flatMap((line) => {
+    const key = envLineKey(line);
+    const value = key === undefined ? undefined : managed.get(key);
+    if (key === undefined || value === undefined) return [line];
+    // A repeated assignment of a managed key would override the value written here.
+    if (written.has(key)) return [];
+    written.add(key);
+    return [GENERATED_ENV_KEYS.has(key) ? line : `${key}=${value}`];
+  });
+  for (const [key, value] of managed) {
+    if (!written.has(key)) merged.push(`${key}=${value}`);
+  }
+  return merged.join('\n') + '\n';
 }

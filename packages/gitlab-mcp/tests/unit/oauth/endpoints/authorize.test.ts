@@ -1002,6 +1002,36 @@ describe('OAuth Authorization Endpoint', () => {
         expect(stored.nextPollAt).toBeLessThan(before + GITLAB_REQUEST_MAX_MS);
       });
 
+      // The flow completed or expired on another replica while this poll failed: it is
+      // not written back.
+      it('does not recreate a flow removed during a failed poll', async () => {
+        // The flow disappears once GitLab has been polled (the reservation reads it too).
+        mockSessionStore.getDeviceFlow.mockImplementation(async () =>
+          mockPollDeviceFlowStep.mock.calls.length > 0 ? undefined : { ...pendingFlow },
+        );
+        mockPollDeviceFlowStep.mockRejectedValue(new Error('Network timeout'));
+
+        await pollHandler(
+          createMockRequest({ flow_state: 'gone' }) as Request,
+          createMockResponse() as Response,
+        );
+
+        expect(mockPollDeviceFlowStep).toHaveBeenCalled();
+        expect(mockSessionStore.storeDeviceFlow).not.toHaveBeenCalled();
+      });
+
+      // Rescheduling is best effort: the reservation expires on its own.
+      it('still answers the poll when the next poll cannot be scheduled', async () => {
+        mockSessionStore.getDeviceFlow.mockResolvedValue({ ...pendingFlow });
+        mockPollDeviceFlowStep.mockRejectedValue(new Error('Network timeout'));
+        mockSessionStore.storeDeviceFlow.mockRejectedValueOnce(new Error('database down'));
+        const res = createMockResponse() as Response;
+
+        await pollHandler(createMockRequest({ flow_state: 'unscheduled' }) as Request, res);
+
+        expect(res.json).toHaveBeenCalled();
+      });
+
       it('adds 5 seconds to the interval on slow_down', async () => {
         mockSessionStore.getDeviceFlow.mockResolvedValue({ ...pendingFlow });
         mockPollDeviceFlowStep.mockResolvedValue({ status: 'slow_down' });
@@ -1050,6 +1080,38 @@ describe('OAuth Authorization Endpoint', () => {
       const code = mockSessionStore.storeAuthCode.mock.calls[0][0].code;
       expect(mockSessionStore.deleteSession).toHaveBeenCalledWith(sessionId);
       expect(mockSessionStore.deleteAuthCode).toHaveBeenCalledWith(code);
+      expect(res.json).toHaveBeenCalledWith({ status: 'pending', interval: 5 });
+    });
+
+    // Removing the loser's records is best effort: its code expires unexchanged anyway.
+    it('answers the losing poll when its records cannot be removed', async () => {
+      mockSessionStore.getDeviceFlow.mockResolvedValue({
+        deviceCode: 'device-code',
+        userCode: 'USER-CODE',
+        verificationUri: 'https://gitlab.example.com/oauth/authorize',
+        expiresAt: Date.now() + 600000,
+        interval: 5,
+        clientId: 'test-client',
+        codeChallenge: 'challenge',
+        codeChallengeMethod: 'S256',
+        state: '',
+      });
+      mockSessionStore.consumeDeviceFlow.mockResolvedValue(undefined);
+      mockSessionStore.deleteAuthCode.mockRejectedValueOnce(new Error('database down'));
+      mockPollDeviceFlowStep.mockResolvedValue({
+        status: 'complete',
+        tokens: {
+          access_token: 'gitlab-access-token',
+          refresh_token: 'gitlab-refresh-token',
+          token_type: 'Bearer',
+          expires_in: 7200,
+          created_at: Date.now(),
+        },
+      });
+      const res = createMockResponse() as Response;
+
+      await pollHandler(createMockRequest({ flow_state: 'raced-flow' }) as Request, res);
+
       expect(res.json).toHaveBeenCalledWith({ status: 'pending', interval: 5 });
     });
 
@@ -1233,7 +1295,7 @@ describe('OAuth Authorization Endpoint', () => {
       expect(res.redirect).not.toHaveBeenCalled();
     });
 
-    it('rejects a resource given more than once', async () => {
+    it('rejects repeated resources when one is foreign', async () => {
       const res = createMockResponse() as Response;
 
       await authorizeHandler(
@@ -1243,6 +1305,41 @@ describe('OAuth Authorization Endpoint', () => {
 
       const location = new URL((res.redirect as jest.Mock).mock.calls[0][0] as string);
       expect(location.searchParams.get('error')).toBe('invalid_target');
+    });
+
+    // RFC 8707 section 2: resource may repeat. A token here has one audience, so values
+    // naming the same resource are accepted and bound once.
+    it('accepts a resource repeated with the same target', async () => {
+      const res = createMockResponse() as Response;
+
+      await authorizeHandler(
+        codeRequest({
+          resource: ['https://gitlab-mcp.example.com/mcp', 'https://gitlab-mcp.example.com/mcp'],
+        }),
+        res,
+      );
+
+      expect(mockSessionStore.storeAuthCodeFlow).toHaveBeenCalledWith(
+        expect.any(String),
+        expect.objectContaining({ resource: 'https://gitlab-mcp.example.com/mcp' }),
+      );
+    });
+
+    // Two different resources of this server cannot share one audience: RFC 8707 section 2
+    // lets the server refuse what it cannot issue with invalid_target.
+    it('rejects repeated resources naming two different targets of this server', async () => {
+      const res = createMockResponse() as Response;
+
+      await authorizeHandler(
+        codeRequest({
+          resource: ['https://gitlab-mcp.example.com', 'https://gitlab-mcp.example.com/mcp'],
+        }),
+        res,
+      );
+
+      const location = new URL((res.redirect as jest.Mock).mock.calls[0][0] as string);
+      expect(location.searchParams.get('error')).toBe('invalid_target');
+      expect(mockSessionStore.storeAuthCodeFlow).not.toHaveBeenCalled();
     });
 
     // RFC 6749 section 3.1: parameters must not repeat. A repeated scope crashed the

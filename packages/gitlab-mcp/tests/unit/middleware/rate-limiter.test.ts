@@ -293,6 +293,31 @@ describe('Rate Limiter with Session Rate Limiting Enabled', () => {
 
     freshStopCleanup();
   });
+
+  // SSE names its session in the query of POST /messages, not in a header; each SSE
+  // session must count against its own quota, never one bucket shared by every client.
+  it('counts SSE messages against the session named in the query', async () => {
+    jest.doMock('../../../src/config', () => ({
+      RATE_LIMIT_IP_ENABLED: true,
+      RATE_LIMIT_IP_WINDOW_MS: 60000,
+      RATE_LIMIT_IP_MAX_REQUESTS: 100,
+      RATE_LIMIT_SESSION_ENABLED: true,
+      RATE_LIMIT_SESSION_WINDOW_MS: 60000,
+      RATE_LIMIT_SESSION_MAX_REQUESTS: 5,
+    }));
+    const fresh = await import('../../../src/middleware/rate-limiter');
+    const middleware = fresh.rateLimiterMiddleware();
+
+    middleware(
+      createMockReq({ path: '/messages', query: { sessionId: 'mcp-session-456' } }),
+      createMockRes(),
+      mockNext,
+    );
+
+    const keys = fresh.getRateLimitStats().entries.map((e) => e.key);
+    expect(keys).toEqual(['session:mcp-session-456']);
+    fresh.stopCleanup();
+  });
 });
 
 describe('Rate Limiter with IP Rate Limiting Disabled', () => {

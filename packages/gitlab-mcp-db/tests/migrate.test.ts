@@ -4,7 +4,8 @@
  * created before migrations shipped, then applies the pending migrations.
  */
 
-import { migrate, type MigrateDeps } from '../src/migrate';
+import * as net from 'node:net';
+import { connectPostgres, migrate, type MigrateDeps } from '../src/migrate';
 
 type Tables = { has_tables: boolean; has_history: boolean };
 
@@ -70,6 +71,28 @@ describe('migrate', () => {
     expect(prismaCalls).toEqual([]);
   });
 
+  // An address that neither accepts nor refuses leaves a connection attempt pending: each
+  // attempt is bounded by what remains of the wait, so the migration gives up in time.
+  it('bounds every connection attempt by the remaining wait', async () => {
+    let clock = 0;
+    const timeouts: number[] = [];
+    const { d } = deps({});
+    d.now = () => clock;
+    d.sleep = async (ms) => {
+      clock += ms;
+    };
+    d.connect = async (_url, timeoutMs) => {
+      timeouts.push(timeoutMs);
+      clock += timeoutMs;
+      throw new Error('timeout expired');
+    };
+
+    expect(await migrate(URL, d)).toBe(1);
+    expect(timeouts[0]).toBe(60_000);
+    expect(timeouts.every((t) => t > 0 && t <= 60_000)).toBe(true);
+    expect(clock).toBeLessThanOrEqual(61_000);
+  });
+
   // Tables from a release before migrations shipped have no migration history:
   // `migrate deploy` would try to create them again and fail.
   it('marks the baseline applied on a database created before migrations shipped', async () => {
@@ -120,4 +143,22 @@ describe('migrate', () => {
     expect(await migrate(undefined, d)).toBe(1);
     expect(prismaCalls).toEqual([]);
   });
+});
+
+describe('connectPostgres', () => {
+  // A server that accepts TCP and never answers: without a timeout the attempt never ends.
+  it('rejects an attempt the server never answers within the timeout', async () => {
+    const sockets: net.Socket[] = [];
+    const server = net.createServer((socket) => sockets.push(socket));
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const { port } = server.address() as net.AddressInfo;
+    try {
+      await expect(
+        connectPostgres(`postgresql://user:secret@127.0.0.1:${port}/mcp`, 200),
+      ).rejects.toThrow();
+    } finally {
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => server.close(() => resolve()));
+    }
+  }, 5_000);
 });

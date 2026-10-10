@@ -178,6 +178,17 @@ describe('withFreshGitLabToken', () => {
     expect(mockRevoke).toHaveBeenCalledWith('gl-new', config, app);
   });
 
+  // Revoking the orphaned tokens is best effort: the caller learns the session is gone,
+  // not that GitLab could not be reached.
+  it('reports the removed session when the orphaned tokens cannot be revoked', async () => {
+    mockRefresh.mockResolvedValue(tokens);
+    mockStore.updateSession.mockResolvedValue(false);
+    mockStore.getSession.mockResolvedValue(undefined);
+    mockRevoke.mockRejectedValueOnce(new Error('GitLab unreachable'));
+
+    expect(await withFreshGitLabToken(expiring, config)).toBeUndefined();
+  });
+
   // GitLab already spent the old refresh token: if the new tokens are not stored, the
   // next refresh presents the spent one and the account is disconnected. The write is
   // retried while this replica still holds the lease, and the lease is released after it.

@@ -744,5 +744,25 @@ describe('OAuth Session Store', () => {
         }).not.toThrow();
       });
     });
+
+    // A storage outage during periodic cleanup is logged; it must not surface as an
+    // unhandled rejection that takes the process down.
+    it('survives a failed periodic cleanup', async () => {
+      jest.useFakeTimers();
+      try {
+        const backend = new MemoryStorageBackend();
+        const failing = jest.spyOn(backend, 'cleanup').mockRejectedValue(new Error('down'));
+        const periodic = new SessionStore(backend);
+        await periodic.initialize();
+
+        await jest.advanceTimersByTimeAsync(5 * 60 * 1000);
+
+        expect(failing).toHaveBeenCalled();
+        periodic.stopCleanupInterval();
+        await backend.close();
+      } finally {
+        jest.useRealTimers();
+      }
+    });
   });
 });

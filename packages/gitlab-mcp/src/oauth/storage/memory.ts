@@ -20,6 +20,18 @@ export interface MemoryStorageOptions {
   silent?: boolean;
 }
 
+/** Remove the entries that expired before `now`; returns how many were removed. */
+function deleteExpired<K>(entries: Map<K, { expiresAt?: number }>, now: number): number {
+  let removed = 0;
+  for (const [key, entry] of entries) {
+    if (entry.expiresAt !== undefined && entry.expiresAt < now) {
+      entries.delete(key);
+      removed++;
+    }
+  }
+  return removed;
+}
+
 export class MemoryStorageBackend implements SessionStorageBackend {
   readonly type = 'memory' as const;
 
@@ -286,9 +298,6 @@ export class MemoryStorageBackend implements SessionStorageBackend {
   async cleanup(): Promise<void> {
     const now = Date.now();
     let expiredSessions = 0;
-    let expiredDeviceFlows = 0;
-    let expiredAuthCodeFlows = 0;
-    let expiredAuthCodes = 0;
 
     // Clean up expired sessions (7 days max age)
     const maxAge = 7 * 24 * 60 * 60 * 1000;
@@ -299,46 +308,25 @@ export class MemoryStorageBackend implements SessionStorageBackend {
       }
     }
 
-    // Clean up expired device flows
-    for (const [state, flow] of this.deviceFlows) {
-      if (flow.expiresAt < now) {
-        this.deviceFlows.delete(state);
-        expiredDeviceFlows++;
-      }
-    }
-
-    // Clean up expired auth code flows
-    for (const [state, flow] of this.authCodeFlows) {
-      if (flow.expiresAt < now) {
-        this.authCodeFlows.delete(state);
-        expiredAuthCodeFlows++;
-      }
-    }
-
-    // Clean up expired auth codes
-    for (const [code, auth] of this.authCodes) {
-      if (auth.expiresAt < now) {
-        this.authCodes.delete(code);
-        expiredAuthCodes++;
-      }
-    }
-
-    // Registrations that never completed an authorization expire
-    for (const [id, client] of this.clients) {
-      if (client.expiresAt !== undefined && client.expiresAt < now) this.clients.delete(id);
-    }
+    const expiredDeviceFlows = deleteExpired(this.deviceFlows, now);
+    const expiredAuthCodeFlows = deleteExpired(this.authCodeFlows, now);
+    const expiredAuthCodes = deleteExpired(this.authCodes, now);
+    // Registrations that never completed an authorization expire; used ones have no expiry
+    const expiredClients = deleteExpired(this.clients, now);
 
     if (
       expiredSessions > 0 ||
       expiredDeviceFlows > 0 ||
       expiredAuthCodeFlows > 0 ||
-      expiredAuthCodes > 0
+      expiredAuthCodes > 0 ||
+      expiredClients > 0
     ) {
       logDebug('Memory storage cleanup completed', {
         expiredSessions,
         expiredDeviceFlows,
         expiredAuthCodeFlows,
         expiredAuthCodes,
+        expiredClients,
         remainingSessions: this.sessions.size,
       });
     }

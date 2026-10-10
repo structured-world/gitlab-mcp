@@ -39,7 +39,7 @@ import {
 import { getIpAddress } from '../../utils/request-logger';
 import { grantedGitlabScopes } from '../granted-scopes';
 import { getRegisteredClient } from './register';
-import { MCP_SCOPES, grantedMcpScopes, matchProtectedResource } from '../resource';
+import { MCP_SCOPES, grantedMcpScopes, resourceParameter } from '../resource';
 import { authorizationRedirect } from '../authorization-response';
 import { oauthAppFor, selectableOAuthApps } from '../instance-app';
 import type { GitLabOAuthApp } from '../oauth-app';
@@ -181,9 +181,10 @@ async function registeredRedirectUri(
 
 /** RFC 8707 section 2: a resource that is not ours is refused with invalid_target. */
 function requestedResource(issuer: string, value: unknown): string | undefined | Rejection {
-  if (value === undefined) return undefined;
-  const resource = typeof value === 'string' ? matchProtectedResource(issuer, value) : undefined;
-  return resource ?? rejection(400, 'invalid_target', 'resource must name this MCP server', true);
+  const resource = resourceParameter(issuer, value);
+  return resource === null
+    ? rejection(400, 'invalid_target', 'resource must name this MCP server', true)
+    : resource;
 }
 
 /**

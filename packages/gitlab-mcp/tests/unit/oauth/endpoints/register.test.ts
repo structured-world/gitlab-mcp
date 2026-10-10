@@ -10,9 +10,10 @@ import {
   UNUSED_REGISTRATIONS_PER_SOURCE,
 } from '../../../../src/oauth/endpoints/register';
 import { sessionStore } from '../../../../src/oauth/session-store';
+import { loadOAuthConfig } from '../../../../src/oauth/config';
 
 jest.mock('../../../../src/oauth/config', () => ({
-  loadOAuthConfig: () => ({ sessionSecret: 'test-session-secret-at-least-32-chars!' }),
+  loadOAuthConfig: jest.fn(() => ({ sessionSecret: 'test-session-secret-at-least-32-chars!' })),
 }));
 
 // Mock logger (registrations go through the real session storage, which also logs)
@@ -54,6 +55,20 @@ describe('OAuth Dynamic Client Registration', () => {
       );
       return (json.mock.calls[0][0] as { client_id: string }).client_id;
     }
+
+    // The source of a registration is keyed with the session secret: without OAuth
+    // configuration nothing is registered.
+    it('answers server_error when OAuth is not configured', async () => {
+      (loadOAuthConfig as jest.Mock).mockReturnValueOnce(null);
+
+      await registerHandler(mockReq as Request, mockRes as Response);
+
+      expect(statusFn).toHaveBeenCalledWith(500);
+      expect(jsonFn).toHaveBeenCalledWith({
+        error: 'server_error',
+        error_description: 'OAuth not configured',
+      });
+    });
 
     // Anonymous registrations are durable: each records a keyed hash of its source and
     // expires unless the client completes an authorization.

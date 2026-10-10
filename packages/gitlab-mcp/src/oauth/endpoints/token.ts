@@ -20,7 +20,7 @@ import {
   generateUUID,
 } from '../token-utils';
 import { withFreshGitLabToken, GitLabGrantRevokedError } from '../gitlab-token-refresh';
-import { defaultResource, matchProtectedResource } from '../resource';
+import { defaultResource, resourceParameter } from '../resource';
 import { logInfo, logWarn, logError, truncateId } from '../../logger';
 import { MCPTokenResponse, OAuthErrorResponse, OAuthSession } from '../types';
 import { getIpAddress } from '../../utils/request-logger';
@@ -41,16 +41,31 @@ export async function tokenHandler(req: Request, res: Response): Promise<void> {
     return;
   }
 
-  const { grant_type } = req.body as { grant_type?: string };
+  // Parameters are checked before anything is consumed: a malformed request must not
+  // spend the code or refresh token a valid retry needs.
+  const body = (typeof req.body === 'object' && req.body !== null ? req.body : {}) as Record<
+    string,
+    unknown
+  >;
+  const params = tokenParams(body);
+  if (typeof params === 'string') {
+    sendError(req, res, 400, 'invalid_request', `${params} must not be repeated`);
+    return;
+  }
+  const resource = resourceParameter(config.issuer, body.resource);
+  if (resource === null) {
+    sendError(req, res, 400, 'invalid_target', 'resource must name one resource of this server');
+    return;
+  }
 
   try {
-    switch (grant_type) {
+    switch (params.grant_type) {
       case 'authorization_code':
-        await handleAuthorizationCode(req, res, config);
+        await handleAuthorizationCode(req, res, config, params, resource);
         break;
 
       case 'refresh_token':
-        await handleRefreshToken(req, res, config);
+        await handleRefreshToken(req, res, config, params, resource);
         break;
 
       default:
@@ -59,7 +74,7 @@ export async function tokenHandler(req: Request, res: Response): Promise<void> {
           res,
           400,
           'unsupported_grant_type',
-          `Grant type "${grant_type}" is not supported`,
+          `Grant type "${params.grant_type}" is not supported`,
         );
     }
   } catch (error: unknown) {
@@ -67,6 +82,33 @@ export async function tokenHandler(req: Request, res: Response): Promise<void> {
     logError('Token request failed', { err: error as Error });
     sendError(req, res, 500, 'server_error', 'Token service is temporarily unavailable');
   }
+}
+
+const TOKEN_PARAMS = [
+  'grant_type',
+  'code',
+  'code_verifier',
+  'redirect_uri',
+  'client_id',
+  'refresh_token',
+  'scope',
+] as const;
+type TokenParams = Partial<Record<(typeof TOKEN_PARAMS)[number], string>>;
+
+/**
+ * The single-valued parameters of a token request, or the name of one that is not a single
+ * string. RFC 6749 section 3.2: request parameters must not be included more than once;
+ * `resource` may repeat (RFC 8707 section 2) and is read separately.
+ */
+function tokenParams(body: Record<string, unknown>): TokenParams | string {
+  const params: TokenParams = {};
+  for (const name of TOKEN_PARAMS) {
+    const value = body[name];
+    if (value === undefined) continue;
+    if (typeof value !== 'string') return name;
+    params[name] = value;
+  }
+  return params;
 }
 
 /**
@@ -79,14 +121,10 @@ async function handleAuthorizationCode(
   req: Request,
   res: Response,
   config: OAuthConfig,
+  params: TokenParams,
+  resource: string | undefined,
 ): Promise<void> {
-  const { code, code_verifier, redirect_uri, client_id, resource } = req.body as {
-    code?: string;
-    code_verifier?: string;
-    redirect_uri?: string;
-    client_id?: string;
-    resource?: string;
-  };
+  const { code, code_verifier, redirect_uri, client_id } = params;
 
   // Validate required parameters
   if (!code) {
@@ -197,13 +235,14 @@ async function handleAuthorizationCode(
  * Issues new access and refresh tokens using a valid refresh token.
  * Also refreshes the underlying GitLab token if needed.
  */
-async function handleRefreshToken(req: Request, res: Response, config: OAuthConfig): Promise<void> {
-  const { refresh_token, client_id, resource, scope } = req.body as {
-    refresh_token?: string;
-    client_id?: string;
-    resource?: string;
-    scope?: string;
-  };
+async function handleRefreshToken(
+  req: Request,
+  res: Response,
+  config: OAuthConfig,
+  params: TokenParams,
+  resource: string | undefined,
+): Promise<void> {
+  const { refresh_token, client_id, scope } = params;
 
   if (!refresh_token) {
     sendError(req, res, 400, 'invalid_request', 'Missing refresh_token');
@@ -309,7 +348,7 @@ async function handleRefreshToken(req: Request, res: Response, config: OAuthConf
 /**
  * Audience for a token request: the resource the authorization was bound to, which a
  * `resource` parameter may repeat but not change (RFC 8707 section 2.2). Undefined when
- * the parameter names another resource.
+ * the parameter names another resource of this server.
  */
 function resolveResource(
   config: OAuthConfig,
@@ -320,8 +359,7 @@ function resolveResource(
   if (requested === undefined) {
     return bound ?? defaultResource(config.issuer);
   }
-  const match = matchProtectedResource(config.issuer, requested);
-  return match && (bound === undefined || bound === match) ? match : undefined;
+  return bound === undefined || bound === requested ? requested : undefined;
 }
 
 /** Sign an MCP access token for the session (claims per RFC 9068 section 2.2). */

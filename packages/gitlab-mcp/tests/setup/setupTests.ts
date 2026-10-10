@@ -23,13 +23,14 @@ if (fs.existsSync(envTestPath)) {
   if (!process.env.USE_PIPELINE) process.env.USE_PIPELINE = 'true';
   if (!process.env.USE_GITLAB_WIKI) process.env.USE_GITLAB_WIKI = 'true';
 
+  // A shared test instance answers slower than the production default allows; .env.test
+  // can still set its own value.
+  if (!process.env.GITLAB_API_HEADERS_TIMEOUT_MS) {
+    process.env.GITLAB_API_HEADERS_TIMEOUT_MS = '20000';
+  }
+
   // Integration tests enabled - environment loaded silently
 } else {
   console.log('⚠️  .env.test not found - Integration tests disabled');
   console.log('   Create .env.test with GitLab credentials to enable integration tests');
-}
-
-// Global test timeout for integration tests
-if (process.env.INTEGRATION_TESTS_ENABLED === 'true') {
-  jest.setTimeout(30000);
 }

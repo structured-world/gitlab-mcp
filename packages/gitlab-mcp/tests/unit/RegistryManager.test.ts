@@ -768,6 +768,17 @@ describe('RegistryManager', () => {
       }
     });
 
+    // The settings page offers only the tool groups this server actually loaded.
+    it('lists the keys of loaded registries and not of those a feature flag turned off', () => {
+      process.env.USE_LABELS = 'false';
+      resetRegistryManagerSingleton();
+
+      const keys = RegistryManager.getInstance().getRegistryKeys();
+
+      expect(keys).toContain('core');
+      expect(keys).not.toContain('labels');
+    });
+
     it('should provide cache refresh functionality', () => {
       const _originalNames = registryManager.getAvailableToolNames();
 

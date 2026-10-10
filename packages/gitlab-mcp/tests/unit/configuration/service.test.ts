@@ -222,6 +222,44 @@ describe('ConfigurationService', () => {
     expect((await service.resolve(caller('alice', 's1'))).session).toEqual({});
   });
 
+  // Closing one chat leaves the account's other chats tracked and their overrides intact.
+  it('keeps the other sessions of the account when one closes', async () => {
+    await service.updateSession(caller('alice', 's1'), { readOnly: true });
+    await service.updateSession(caller('alice', 's2'), { preset: 'readonly' });
+
+    service.forgetSession('s1');
+    await service.updateAccount(caller('alice', 's3'), { preset: 'developer' });
+
+    expect(notified.at(-1)).toEqual(['s2', 's3']);
+    expect((await service.resolve(caller('alice', 's2'))).session).toEqual({ preset: 'readonly' });
+  });
+
+  // A patch field left undefined means "unchanged", unlike null which clears it.
+  it('ignores patch fields that are undefined', async () => {
+    await service.updateSession(caller('alice', 's1'), { preset: 'readonly' });
+
+    const next = await service.updateSession(caller('alice', 's1'), {
+      preset: undefined,
+      readOnly: true,
+    });
+
+    expect(next).toEqual({ preset: 'readonly', readOnly: true });
+  });
+
+  it('reports a preset loader failure that is not an Error', async () => {
+    const failing = new ConfigurationService(
+      async () => store,
+      {
+        load: () => Promise.reject('preset store offline'),
+      },
+      async () => undefined,
+    );
+
+    await expect(
+      failing.updateAccount(caller('alice', 's1'), { preset: 'readonly' }),
+    ).rejects.toThrow("Unknown preset 'readonly': preset store offline");
+  });
+
   // The selected preset was deleted after it was saved: the caller keeps working read-only
   // and can still open the settings to choose another one.
   it('falls back to read-only when the selected preset is gone', async () => {

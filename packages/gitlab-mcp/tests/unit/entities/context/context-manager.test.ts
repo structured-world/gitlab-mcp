@@ -226,6 +226,15 @@ describe('ContextManager', () => {
       expect((await getContextManager().getContext()).host).toBe('other.example.com');
     });
 
+    // A configured instance that is not a URL is shown as configured rather than failing.
+    it('shows an instance that is not a URL as it is', async () => {
+      const context = await runWithCaller({ ...alice1, instanceUrl: 'gitlab-internal' }, () =>
+        getContextManager().getContext(),
+      );
+
+      expect(context.host).toBe('gitlab-internal');
+    });
+
     it('reports the account settings of the caller', async () => {
       await service.updateAccount(alice1, { preset: 'readonly' });
 

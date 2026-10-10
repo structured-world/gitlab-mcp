@@ -166,6 +166,27 @@ describe('callRestriction', () => {
     );
   });
 
+  // Only a scope violation is a refusal; a failing check is a fault, not a reason to show.
+  it('propagates an error of the scope check that is not a violation', () => {
+    const policy = buildPolicy(
+      undefined,
+      { scope: { type: 'project', path: 'team/app', includeSubgroups: false } },
+      {},
+    );
+    const broken = {
+      ...policy,
+      scopeEnforcer: {
+        enforce: () => {
+          throw new TypeError('enforcer broke');
+        },
+      } as unknown as NonNullable<typeof policy.scopeEnforcer>,
+    };
+
+    expect(() => callRestriction(broken, browse, { project_id: 'team/app' })).toThrow(
+      'enforcer broke',
+    );
+  });
+
   it('reports the tool restriction before looking at the arguments', () => {
     const policy = buildPolicy(undefined, { readOnly: true }, {});
 

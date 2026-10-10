@@ -1,5 +1,18 @@
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  ErrorCode,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  McpError,
+  ReadResourceRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
+import {
+  MCP_APP_MIME_TYPE,
+  SETTINGS_PANEL_RESOURCE_META,
+  SETTINGS_PANEL_URI,
+  settingsPanelHtml,
+} from './entities/context/settings-panel';
 import { ConnectionManager } from './services/ConnectionManager';
 import { HealthMonitor } from './services/HealthMonitor';
 import { normalizeInstanceUrl } from './utils/url';
@@ -29,6 +42,7 @@ import {
 } from './configuration';
 import { groupOfRegistry } from './configuration/groups';
 import {
+  CONFIGURATION_TOOLS,
   callRestriction,
   toolRestriction,
   type EffectivePolicy,
@@ -204,8 +218,8 @@ interface BootstrapContext {
  * Return a CONNECTION_FAILED response if the target instance is unreachable for
  * non-context tools, or null to proceed normally.
  *
- * manage_context always passes through — it operates on local state and can
- * surface the disconnected status to the caller.
+ * Configuration tools always pass through: they work on local state and are how the
+ * caller finds out about, and recovers from, the disconnected state.
  */
 function checkUnreachableInstance(
   toolName: string,
@@ -213,7 +227,10 @@ function checkUnreachableInstance(
   effectiveInstanceUrl: string,
   healthMonitor: HealthMonitor,
 ): CallToolResult | null {
-  if (healthMonitor.isInstanceReachable(effectiveInstanceUrl) || toolName === 'manage_context') {
+  if (
+    healthMonitor.isInstanceReachable(effectiveInstanceUrl) ||
+    CONFIGURATION_TOOLS.has(toolName)
+  ) {
     return null;
   }
   const action =
@@ -284,7 +301,7 @@ async function resyncSessionAfterSwitchProfile(
 }
 
 /**
- * Fast-path for manage_context when the instance is unreachable: bypass connection
+ * Fast-path for configuration tools when the instance is unreachable: bypass connection
  * bootstrap and health reporting. Returns a tool response if handled, or null to
  * fall through to the normal bootstrap path.
  *
@@ -299,7 +316,10 @@ async function tryManageContextFastPath(
   healthMonitor: HealthMonitor,
   sessionId: string | undefined,
 ): Promise<CallToolResult | null> {
-  if (toolName !== 'manage_context' || healthMonitor.isInstanceReachable(effectiveInstanceUrl)) {
+  if (
+    !CONFIGURATION_TOOLS.has(toolName) ||
+    healthMonitor.isInstanceReachable(effectiveInstanceUrl)
+  ) {
     return null;
   }
   if (LOG_FORMAT === 'condensed') {
@@ -633,6 +653,36 @@ export async function setupHandlers(server: Server): Promise<void> {
     // No authentication configured - server will respond to tools/list but tool calls will fail
     logInfo('Skipping connection initialization - no authentication configured');
   }
+
+  // The settings panel is the server's one resource: an MCP App document. It holds no
+  // account data; everything it shows comes from tool calls made with the caller's own
+  // authorization.
+  server.setRequestHandler(ListResourcesRequestSchema, async () => ({
+    resources: [
+      {
+        uri: SETTINGS_PANEL_URI,
+        name: 'GitLab connection panel',
+        mimeType: MCP_APP_MIME_TYPE,
+        _meta: SETTINGS_PANEL_RESOURCE_META,
+      },
+    ],
+  }));
+  server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    if (request.params.uri !== SETTINGS_PANEL_URI) {
+      throw new McpError(ErrorCode.InvalidParams, `Unknown resource: ${request.params.uri}`);
+    }
+    return {
+      contents: [
+        {
+          uri: SETTINGS_PANEL_URI,
+          mimeType: MCP_APP_MIME_TYPE,
+          text: settingsPanelHtml(),
+          _meta: SETTINGS_PANEL_RESOURCE_META,
+        },
+      ],
+    };
+  });
+
   // List tools handler
   // Uses per-session instance URL tracking so each session receives the tool list
   // filtered for its target GitLab instance (#398). The sessionId from RequestHandlerExtra

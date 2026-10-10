@@ -279,6 +279,7 @@ export default defineConfig({
           text: "Configuration Reference",
           items: [
             { text: "Instance Configuration", link: "/configuration/instances" },
+            { text: "Settings", link: "/configuration/settings" },
             { text: "Rate Limiting", link: "/configuration/rate-limiting" },
           ],
         },

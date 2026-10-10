@@ -118,4 +118,64 @@ describe('LocalSettingsFile', () => {
 
     await expect(new LocalSettingsFile(filePath).get('acct')).rejects.toThrow(SyntaxError);
   });
+
+  it('reads a file without accounts as empty', async () => {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    fs.writeFileSync(filePath, JSON.stringify({ version: 1 }));
+
+    expect(await new LocalSettingsFile(filePath).get('acct')).toBeUndefined();
+  });
+
+  // Only a missing file means "no settings yet"; an unreadable one is an error.
+  it('reports a file it cannot read instead of treating it as empty', async () => {
+    fs.mkdirSync(filePath, { recursive: true });
+
+    await expect(new LocalSettingsFile(filePath).get('acct')).rejects.toMatchObject({
+      code: 'EISDIR',
+    });
+  });
+
+  describe('lock', () => {
+    const errno = (code: string) => Object.assign(new Error(code), { code });
+
+    afterEach(() => {
+      jest.restoreAllMocks();
+      jest.useRealTimers();
+    });
+
+    it('reports a lock it cannot create for a reason other than contention', async () => {
+      jest.spyOn(fs.promises, 'open').mockRejectedValueOnce(errno('EACCES'));
+
+      await expect(
+        new LocalSettingsFile(filePath).put('acct', { readOnly: true }, 0),
+      ).rejects.toMatchObject({ code: 'EACCES' });
+    });
+
+    // The holder released the lock between the failed create and the age check.
+    it('retries at once when the lock disappears while being checked', async () => {
+      jest.spyOn(fs.promises, 'open').mockRejectedValueOnce(errno('EEXIST'));
+      jest.spyOn(fs.promises, 'stat').mockRejectedValueOnce(errno('ENOENT'));
+
+      expect(
+        await new LocalSettingsFile(filePath).put('acct', { readOnly: true }, 0),
+      ).toBeDefined();
+    });
+
+    // A live process holding the lock for longer than the wait: give up with a clear error.
+    it('gives up on a lock another live process keeps holding', async () => {
+      jest.useFakeTimers();
+      jest.spyOn(fs.promises, 'mkdir').mockResolvedValue(undefined);
+      jest.spyOn(fs.promises, 'open').mockRejectedValue(errno('EEXIST'));
+      jest
+        .spyOn(fs.promises, 'stat')
+        .mockResolvedValue({ mtimeMs: Date.now() } as unknown as fs.Stats);
+
+      const write = new LocalSettingsFile(filePath).put('acct', { readOnly: true }, 0);
+      const outcome = expect(write).rejects.toThrow(
+        `Settings file is locked by another process: ${filePath}.lock`,
+      );
+      await jest.advanceTimersByTimeAsync(10_000);
+      await outcome;
+    });
+  });
 });

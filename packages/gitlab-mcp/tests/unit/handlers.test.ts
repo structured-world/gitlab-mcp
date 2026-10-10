@@ -4,7 +4,12 @@
  */
 
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
+import {
+  CallToolRequestSchema,
+  ListResourcesRequestSchema,
+  ListToolsRequestSchema,
+  ReadResourceRequestSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import { setupHandlers, resetHandlersState } from '../../src/handlers';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 import { GitLabTimeoutError } from '../../src/utils/fetch';
@@ -173,7 +178,11 @@ type McpHandler = (
  *  This decouples tests from the registration order inside setupHandlers(). */
 function getRegisteredHandler(
   mockServer: jest.Mocked<Server>,
-  schema: typeof ListToolsRequestSchema | typeof CallToolRequestSchema,
+  schema:
+    | typeof ListToolsRequestSchema
+    | typeof CallToolRequestSchema
+    | typeof ListResourcesRequestSchema
+    | typeof ReadResourceRequestSchema,
 ): McpHandler {
   // Use findLast to get the latest registered handler (not a stale pre-retry one)
   const calls = (mockServer.setRequestHandler as jest.Mock).mock.calls;
@@ -263,8 +272,16 @@ describe('handlers', () => {
       expect(mockHealthMonitor.initialize).toHaveBeenCalledTimes(1);
       expect(mockHealthMonitor.onStateChange).toHaveBeenCalledTimes(1);
 
-      // Should set up both handlers
-      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
+      // Tools, plus the resources serving the settings panel
+      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(4);
+      expect(mockServer.setRequestHandler).toHaveBeenCalledWith(
+        ListResourcesRequestSchema,
+        expect.any(Function),
+      );
+      expect(mockServer.setRequestHandler).toHaveBeenCalledWith(
+        ReadResourceRequestSchema,
+        expect.any(Function),
+      );
       expect(mockServer.setRequestHandler).toHaveBeenCalledWith(
         ListToolsRequestSchema,
         expect.any(Function),
@@ -301,7 +318,7 @@ describe('handlers', () => {
       await setupHandlers(mockServer);
 
       // Should still set up handlers — tools/list returns context-only tools
-      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
+      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(4);
       // refreshCache IS called even when disconnected (applies disconnected-mode filter)
       // setupHandlers calls refreshCache() without URL — the per-URL variant is
       // used only in the state-change callback, not during initial setup.
@@ -2250,8 +2267,8 @@ describe('handlers', () => {
       });
 
       await setupHandlers(mockServer);
-      // Both handlers should still be registered despite cache failure
-      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(2);
+      // All handlers should still be registered despite cache failure
+      expect(mockServer.setRequestHandler).toHaveBeenCalledTimes(4);
       // Cache failure is logged as a warning
       expect(logWarn).toHaveBeenCalledWith(
         'Failed to refresh registry cache during handler setup',
@@ -2809,6 +2826,66 @@ describe('handlers', () => {
     });
   });
 
+  // The settings panel is served as an MCP App resource with a CSP that allows no origin.
+  describe('settings panel resource', () => {
+    const PANEL_URI = 'ui://gitlab-mcp/settings-panel-v1.html';
+
+    beforeEach(async () => {
+      await setupHandlers(mockServer);
+    });
+
+    it('lists the panel as an MCP App document', async () => {
+      const list = getRegisteredHandler(mockServer, ListResourcesRequestSchema);
+
+      const result = (await list({ method: 'resources/list', params: {} })) as {
+        resources: Array<Record<string, unknown>>;
+      };
+
+      expect(result.resources).toEqual([
+        {
+          uri: PANEL_URI,
+          name: 'GitLab connection panel',
+          mimeType: 'text/html;profile=mcp-app',
+          _meta: {
+            ui: {
+              csp: { connectDomains: [], resourceDomains: [], frameDomains: [] },
+              prefersBorder: true,
+            },
+          },
+        },
+      ]);
+    });
+
+    it('reads the panel document with its CSP metadata', async () => {
+      const read = getRegisteredHandler(mockServer, ReadResourceRequestSchema);
+
+      const result = (await read({ method: 'resources/read', params: { uri: PANEL_URI } })) as {
+        contents: Array<{ uri: string; mimeType: string; text: string; _meta: unknown }>;
+      };
+
+      expect(result.contents).toHaveLength(1);
+      expect(result.contents[0].uri).toBe(PANEL_URI);
+      expect(result.contents[0].mimeType).toBe('text/html;profile=mcp-app');
+      expect(result.contents[0].text.startsWith('<!doctype html>')).toBe(true);
+      // Self-contained: nothing is loaded from anywhere, which the empty CSP would block.
+      expect(result.contents[0].text).not.toMatch(/<(script|link|img)[^>]+(src|href)=/);
+      expect(result.contents[0]._meta).toEqual({
+        ui: {
+          csp: { connectDomains: [], resourceDomains: [], frameDomains: [] },
+          prefersBorder: true,
+        },
+      });
+    });
+
+    it('rejects an unknown resource', async () => {
+      const read = getRegisteredHandler(mockServer, ReadResourceRequestSchema);
+
+      await expect(
+        read({ method: 'resources/read', params: { uri: 'ui://gitlab-mcp/other.html' } }),
+      ).rejects.toThrow('Unknown resource: ui://gitlab-mcp/other.html');
+    });
+  });
+
   // The caller's settings take effect in execution, also for direct calls a UI never
   // offered: a restricted tool is neither listed nor run, and nothing reaches GitLab.
   describe('caller settings', () => {
@@ -2881,6 +2958,19 @@ describe('handlers', () => {
       );
       expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
       expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
+    });
+
+    it('names only the tool when a refused call has no action', async () => {
+      await service().updateSession(staticCaller(), { readOnly: true });
+
+      const result = await callToolHandler(
+        { params: { name: 'manage_merge_request', arguments: {} } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.content?.[0].text).toContain(
+        "'manage_merge_request' is not allowed by the current settings: read-only mode is on",
+      );
     });
 
     it('refuses a project outside the working scope and runs one inside it', async () => {

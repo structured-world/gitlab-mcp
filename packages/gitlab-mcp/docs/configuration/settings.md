@@ -1,0 +1,117 @@
+---
+title: Settings
+description: "Per-account and per-chat settings for GitLab MCP Server: working preset, read-only mode, default project or group, and tool groups. Changed from the client's settings page, the connection panel, or with tools."
+head:
+  - - meta
+    - name: keywords
+      content: settings, preset, read-only, scope, tool groups, manage_context, update_settings, MCP App
+---
+
+# Settings
+
+Each GitLab account that uses the server has its own settings, and each chat can change
+them for itself. Settings only narrow what the server administrator allows; they never
+widen it.
+
+## Three layers
+
+| Layer | Who sets it | Applies to | Kept |
+|-------|-------------|------------|------|
+| Server | Administrator: environment variables and startup presets | Everyone | Server configuration |
+| Account | The user, with `update_settings` or the client's settings page | Every new chat of that GitLab account | Durably (see [Storage](#storage)) |
+| Chat | The user or the assistant, with `manage_context` or the connection panel | The current chat only | Until the chat ends or is reset |
+
+The account is the GitLab user behind the connection: with OAuth, the user who signed in;
+with a static token, the token's instance. Two users of one server never see each other's
+settings, and a chat override never leaks into another chat.
+
+## What can be set
+
+| Setting | Effect |
+|---------|--------|
+| `preset` | A working preset from the server's presets, or `none` |
+| `readOnly` | Tools that change GitLab are off. Cannot be turned off when the administrator enabled read-only mode. |
+| `scope` | A project or group path to work in; empty to work everywhere you have access |
+| `scopeIncludeSubgroups` | With a group scope, whether projects in its subgroups are included |
+| `tools_<group>` | Turn a tool group off or on, for example `tools_wiki` or `tools_pipelines`. Groups the administrator turned off are not offered. |
+
+The effective restrictions combine all layers: a chat value replaces the account value for
+that chat, and read-only from any layer (including the preset) wins.
+
+Restrictions are applied when a tool runs, not only to the tool list: a direct call to a
+tool the settings turn off, or to a project outside the working scope, is refused before
+anything reaches GitLab.
+
+## Changing settings
+
+### Clients with a settings page
+
+Clients that render server settings natively (for example Codex) show the account settings
+as a settings page for the connection. The server advertises it with the `openai/settings`
+capability; the page reads `get_settings` and saves with `update_settings`.
+
+### The connection panel
+
+Clients that support MCP Apps show the connection panel when the `open_settings_panel`
+tool runs. In the panel you can:
+
+- search your projects and groups and choose where to work, for this chat
+  (**Use in this chat**) or as the default for new chats (**Save for new chats**);
+- see what the current chat can do: preset, read-only mode and tool groups that are off;
+- check the connection: account, GitLab version and tier, available tools, and what to do
+  about problems such as an expired sign-in.
+
+The panel loads nothing from the network and calls only this server's tools through the
+client, with your own authorization. Success is reported from the settings the server
+holds after saving, not from the request.
+
+### Any client
+
+Every setting can also be changed with tools, so clients without a settings page or app
+panels, and the assistant itself, can use them:
+
+```json
+// get_settings: current values and what each can be set to
+{}
+
+// update_settings: change only the listed settings for new chats
+{ "set": { "scope": "my-group", "scopeIncludeSubgroups": true, "tools_wiki": false } }
+
+// manage_context: change only this chat
+{ "action": "set_scope", "namespace": "my-group/my-project" }
+{ "action": "switch_preset", "preset": "readonly" }
+{ "action": "reset" }
+```
+
+`update_settings` validates every value before saving anything; an invalid value saves
+nothing. `manage_context reset` drops the chat's overrides, so the chat uses the account
+settings again.
+
+`check_connection` reports the account, the instance, the restrictions in effect and
+recommendations, and `find_scope_targets` finds projects and groups to scope to.
+
+## Storage
+
+| Deployment | Account settings are kept in |
+|------------|------------------------------|
+| OAuth, or `OAUTH_STORAGE_TYPE` set | The session storage (memory, file or PostgreSQL), shared by every replica that uses it |
+| Local server with a static token | `~/.config/gitlab-mcp/settings.json`, shared by every local server process of the user |
+
+Writes are compare-and-set: two chats editing different settings at the same time both
+keep their change. Chat overrides are held by the server process that serves the chat.
+
+If a saved preset is later removed from the server, chats that use it work read-only until
+another preset is chosen, and `check_connection` reports it.
+
+## Updates in open chats
+
+When settings change, the server sends `tools/list_changed` to the chats they affect, so
+clients refresh the tool list. With several replicas, only chats served by the replica that
+saved the change are notified; chats on other replicas apply the new settings from their
+next request, but their clients refresh the tool list only on their next list request.
+
+## Related Documentation
+
+- [Read-Only Mode](/security/read-only) - Server-wide read-only mode
+- [Context Switching](/advanced/context-switching) - Switching GitLab instances
+- [Instance Configuration](/configuration/instances) - Configuring GitLab instances

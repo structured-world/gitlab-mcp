@@ -1,0 +1,155 @@
+/**
+ * The connection check combines what GitLab reports about the credentials with the
+ * caller's effective settings, and tells the user what to do about problems.
+ */
+
+jest.mock('../../../../src/config', () => ({ GITLAB_BASE_URL: 'https://gitlab.example.com' }));
+
+const mockWhoami = jest.fn();
+jest.mock('../../../../src/entities/context/whoami', () => ({
+  executeWhoami: () => mockWhoami(),
+}));
+
+let mockService: unknown;
+jest.mock('../../../../src/configuration', () => ({
+  ...jest.requireActual('../../../../src/configuration/caller'),
+  getConfigurationService: () => mockService,
+}));
+
+import { checkConnection } from '../../../../src/entities/context/connection-check';
+import { ConfigurationService } from '../../../../src/configuration/service';
+import { runWithCaller, type Caller } from '../../../../src/configuration/caller';
+import type { AccountSettingsRecord } from '../../../../src/configuration/types';
+
+const alice: Caller = {
+  accountKey: 'gitlab:https://gitlab.example.com#1',
+  sessionKey: 's1',
+  accountLabel: 'alice@gitlab.example.com',
+  instanceUrl: 'https://gitlab.example.com',
+  oauth: true,
+};
+
+function whoami(overrides: Record<string, unknown> = {}) {
+  return {
+    user: { username: 'alice' },
+    server: {
+      apiUrl: 'https://gitlab.example.com',
+      version: '17.4.0',
+      tier: 'premium',
+      readOnlyMode: false,
+    },
+    capabilities: { availableToolCount: 42 },
+    warnings: ['Token expires in 3 days'],
+    recommendations: [{ action: 'renew_token', message: 'Renew the token', priority: 'high' }],
+    ...overrides,
+  };
+}
+
+describe('checkConnection', () => {
+  let records: Map<string, AccountSettingsRecord>;
+
+  beforeEach(() => {
+    records = new Map();
+    mockWhoami.mockResolvedValue(whoami());
+    mockService = new ConfigurationService(
+      async () => ({
+        get: async (key: string) => records.get(key),
+        put: async () => undefined,
+      }),
+      {
+        load: async (name: string) => {
+          if (name === 'readonly') return { read_only: true };
+          throw new Error(`Preset not found: ${name}`);
+        },
+      },
+      async () => undefined,
+    );
+  });
+
+  function save(settings: AccountSettingsRecord['settings']): void {
+    records.set(alice.accountKey, {
+      accountKey: alice.accountKey,
+      settings,
+      version: 1,
+      updatedAt: 1,
+    });
+  }
+
+  it("reports the account, GitLab and the caller's restrictions", async () => {
+    save({ preset: 'readonly', scope: { type: 'group', path: 'team', includeSubgroups: true } });
+
+    const check = await runWithCaller(alice, () => checkConnection());
+
+    expect(check).toEqual({
+      account: 'alice',
+      instance: 'https://gitlab.example.com',
+      gitlabVersion: '17.4.0',
+      tier: 'premium',
+      authenticated: true,
+      readOnly: true,
+      preset: 'readonly',
+      scope: 'team',
+      availableTools: 42,
+      warnings: ['Token expires in 3 days'],
+      recommendations: ['Renew the token'],
+    });
+  });
+
+  it('reports a project scope and no preset', async () => {
+    save({ scope: { type: 'project', path: 'team/app', includeSubgroups: false } });
+
+    const check = await runWithCaller(alice, () => checkConnection());
+
+    expect(check).toMatchObject({ preset: null, scope: 'team/app', readOnly: false });
+  });
+
+  it('reports read-only mode of the server', async () => {
+    mockWhoami.mockResolvedValue(
+      whoami({
+        server: {
+          apiUrl: 'https://gitlab.example.com',
+          version: '17.4.0',
+          tier: 'free',
+          readOnlyMode: true,
+        },
+      }),
+    );
+
+    expect((await runWithCaller(alice, () => checkConnection())).readOnly).toBe(true);
+  });
+
+  // GitLab did not identify anyone with the credentials: shown as not signed in.
+  it('reports credentials GitLab does not accept', async () => {
+    mockWhoami.mockResolvedValue(whoami({ user: null }));
+
+    const check = await runWithCaller(alice, () => checkConnection());
+
+    expect(check).toMatchObject({
+      authenticated: false,
+      account: 'alice@gitlab.example.com',
+      scope: null,
+    });
+  });
+
+  it('checks the server connection outside a tool call', async () => {
+    const check = await checkConnection();
+
+    expect(check.account).toBe('alice');
+  });
+
+  // The saved preset was removed from the server: the chat works read-only, and the
+  // check says why and how to get out of it.
+  it('explains a saved preset that no longer exists', async () => {
+    save({ preset: 'retired' });
+
+    const check = await runWithCaller(alice, () => checkConnection());
+
+    expect(check.readOnly).toBe(true);
+    expect(check.warnings).toContain(
+      "The saved preset 'retired' no longer exists on this server; tools that change GitLab are off until another preset is chosen.",
+    );
+    expect(check.recommendations).toContain(
+      'Choose another preset in the GitLab settings, or with update_settings.',
+    );
+  });
+});

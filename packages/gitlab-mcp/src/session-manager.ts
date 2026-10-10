@@ -5,6 +5,7 @@ import { setupHandlers } from './handlers';
 import { logInfo, logWarn, logError, logDebug } from './logger';
 import { normalizeInstanceUrl } from './utils/url';
 import { getConfigurationService } from './configuration';
+import { SETTINGS_READ_TOOL, SETTINGS_UPDATE_TOOL } from './entities/context/settings';
 
 /** Default session idle timeout: 30 minutes */
 const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -74,7 +75,18 @@ export class SessionManager {
 
     const server = new Server(
       { name: packageName, version: packageVersion },
-      { capabilities: { tools: { listChanged: true } } },
+      {
+        capabilities: {
+          tools: { listChanged: true },
+          // The settings panel (an MCP App) is served as a ui:// resource.
+          resources: {},
+          // OpenAI structured settings: the host renders a native settings page from these
+          // tools. Up to protocol 2025-11-25 (the SDK's latest) it is advertised here.
+          experimental: {
+            'openai/settings': { readTool: SETTINGS_READ_TOOL, updateTool: SETTINGS_UPDATE_TOOL },
+          },
+        },
+      },
     );
 
     // Register request handlers (idempotent — same logic for every session)

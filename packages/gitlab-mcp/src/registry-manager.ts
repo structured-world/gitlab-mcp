@@ -409,6 +409,11 @@ class RegistryManager {
     return this.readOnlyToolSet.has(toolName);
   }
 
+  /** Keys of the registries this server loaded (feature flags off are absent). */
+  public getRegistryKeys(): string[] {
+    return [...this.registries.keys()];
+  }
+
   /** Key of the registry a tool belongs to (`mrs`, `wiki`, `core`, ...); undefined if unknown. */
   public getToolRegistryKey(toolName: string): string | undefined {
     if (!this.toolRegistryKeys) {

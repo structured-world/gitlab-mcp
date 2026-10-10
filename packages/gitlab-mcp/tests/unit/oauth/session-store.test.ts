@@ -538,6 +538,25 @@ describe('OAuth Session Store', () => {
     });
   });
 
+  describe('Account Settings', () => {
+    // Replicas sharing a backend see one account's settings and serialize writes on it.
+    it('keeps settings in the backend shared by every store', async () => {
+      const backend: SessionStorageBackend = new MemoryStorageBackend();
+
+      const stored = await new SessionStore(backend).putAccountSettings(
+        'acct',
+        { readOnly: true },
+        0,
+      );
+
+      expect(stored).toMatchObject({ settings: { readOnly: true }, version: 1 });
+      expect(await new SessionStore(backend).getAccountSettings('acct')).toEqual(stored);
+      expect(
+        await new SessionStore(backend).putAccountSettings('acct', { readOnly: false }, 0),
+      ).toBeUndefined();
+    });
+  });
+
   describe('MCP Session Mapping Operations', () => {
     describe('associateMcpSession', () => {
       it('should associate MCP session with OAuth session', async () => {

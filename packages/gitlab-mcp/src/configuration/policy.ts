@@ -30,12 +30,18 @@ export interface EffectivePolicy {
   scopeEnforcer?: ScopeEnforcer;
 }
 
-/** Tools that configure the caller's own session and account: never restricted here. */
+/**
+ * Tools that configure or diagnose the caller's own connection. Settings never restrict
+ * them, and they answer while GitLab is unreachable: that is when they are needed.
+ */
 export const CONFIGURATION_TOOLS: ReadonlySet<string> = new Set([
   'manage_context',
   'get_settings',
   'update_settings',
+  'check_connection',
   'open_settings_panel',
+  // Choosing a new scope means searching outside the current one.
+  'find_scope_targets',
 ]);
 
 export function scopeConfigOf(scope: WorkingScope): ScopeConfig {

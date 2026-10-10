@@ -122,8 +122,7 @@ export class ConfigurationService {
       if (!next.success) throw new ConfigurationError(next.error.issues[0].message);
       const stored = await store.put(caller.accountKey, next.data, current?.version ?? 0);
       if (stored) {
-        this.track(caller);
-        await this.notify([...(this.accountSessions.get(caller.accountKey) ?? [])]);
+        await this.notify([...this.track(caller)]);
         return stored;
       }
     }
@@ -180,9 +179,11 @@ export class ConfigurationService {
     return `${caller.accountKey}\n${caller.sessionKey}`;
   }
 
-  private track(caller: Caller): void {
+  /** Record the caller's session under its account; returns the account's sessions. */
+  private track(caller: Caller): Set<string> {
     const sessions = this.accountSessions.get(caller.accountKey) ?? new Set<string>();
     sessions.add(caller.sessionKey);
     this.accountSessions.set(caller.accountKey, sessions);
+    return sessions;
   }
 }

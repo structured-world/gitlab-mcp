@@ -11,6 +11,25 @@ import { handleManageContext } from './handlers';
 import { ContextOutputSchema } from './output-schema';
 import { ToolSchema } from '@modelcontextprotocol/sdk/types.js';
 import { ACCOUNT_PROFILE_OUTPUT_SCHEMA, getAccountProfile } from './profile';
+import {
+  CONNECTION_CHECK_TOOL,
+  SETTINGS_READ_OUTPUT_SCHEMA,
+  SETTINGS_READ_TOOL,
+  SETTINGS_UPDATE_INPUT_SCHEMA,
+  SETTINGS_UPDATE_OUTPUT_SCHEMA,
+  SETTINGS_UPDATE_TOOL,
+  readSettings,
+  updateSettings,
+} from './settings';
+import { CONNECTION_CHECK_OUTPUT_SCHEMA, checkConnection } from './connection-check';
+import { SETTINGS_PANEL_TOOL } from './settings';
+import { SETTINGS_PANEL_URI } from './settings-panel';
+import {
+  SCOPE_SEARCH_INPUT_SCHEMA,
+  SCOPE_SEARCH_OUTPUT_SCHEMA,
+  SCOPE_SEARCH_TOOL,
+  findScopeTargets,
+} from './scope-search';
 
 /**
  * Context tools registry - 1 CQRS tool with 8 actions
@@ -78,7 +97,105 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
       },
     },
   ],
+  [
+    SETTINGS_READ_TOOL,
+    {
+      name: SETTINGS_READ_TOOL,
+      title: 'GitLab settings',
+      description:
+        "Show this connection's settings for new chats: working preset, read-only mode, default project or group, and which tool groups are on, with what each can be set to.",
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      outputSchema: SETTINGS_READ_OUTPUT_SCHEMA,
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+      resultFormat: 'mcp',
+      handler: async () => settingsResult(await readSettings()),
+    },
+  ],
+  [
+    SETTINGS_UPDATE_TOOL,
+    {
+      name: SETTINGS_UPDATE_TOOL,
+      title: 'Change GitLab settings',
+      description:
+        "Change this connection's settings for new chats. Pass only the settings to change, by the names get_settings lists; the others keep their value. Nothing is saved when any value is invalid. Returns the saved values.",
+      inputSchema: SETTINGS_UPDATE_INPUT_SCHEMA,
+      outputSchema: SETTINGS_UPDATE_OUTPUT_SCHEMA,
+      annotations: { readOnlyHint: false, destructiveHint: false, idempotentHint: true },
+      resultFormat: 'mcp',
+      handler: async (args: unknown) => {
+        const { set } = args as { set: Record<string, string | number | boolean> };
+        return settingsResult(await updateSettings(set));
+      },
+    },
+  ],
+  [
+    CONNECTION_CHECK_TOOL,
+    {
+      name: CONNECTION_CHECK_TOOL,
+      title: 'Check connection',
+      description:
+        'Check the GitLab connection: which account it uses, whether GitLab answers, the restrictions in effect, and what to do about problems.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      outputSchema: CONNECTION_CHECK_OUTPUT_SCHEMA,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+      resultFormat: 'mcp',
+      handler: async () => settingsResult(await checkConnection()),
+    },
+  ],
+  [
+    SETTINGS_PANEL_TOOL,
+    {
+      name: SETTINGS_PANEL_TOOL,
+      title: 'GitLab connection panel',
+      description:
+        'Open the GitLab connection panel to search projects and groups, choose where this chat or new chats work, and check the connection.',
+      inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true },
+      _meta: {
+        ui: { resourceUri: SETTINGS_PANEL_URI },
+        // Alias read by hosts that predate the standard key.
+        'openai/outputTemplate': SETTINGS_PANEL_URI,
+      },
+      resultFormat: 'mcp',
+      handler: async () => ({
+        content: [
+          {
+            type: 'text',
+            text: 'Opened the GitLab connection panel. Clients without app panels change the same settings with get_settings, update_settings and manage_context set_scope.',
+          },
+        ],
+        structuredContent: { opened: true },
+      }),
+    },
+  ],
+  [
+    SCOPE_SEARCH_TOOL,
+    {
+      name: SCOPE_SEARCH_TOOL,
+      title: 'Find projects and groups',
+      description:
+        'Find projects you are a member of and groups you can see by name or path, to choose a working scope.',
+      inputSchema: SCOPE_SEARCH_INPUT_SCHEMA,
+      outputSchema: SCOPE_SEARCH_OUTPUT_SCHEMA,
+      annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: true },
+      resultFormat: 'mcp',
+      handler: async (args: unknown) => {
+        const { query } = args as { query: string };
+        return settingsResult(await findScopeTargets(query));
+      },
+    },
+  ],
 ]);
+
+function settingsResult(data: object): {
+  content: Array<{ type: 'text'; text: string }>;
+  structuredContent: Record<string, unknown>;
+} {
+  return {
+    content: [{ type: 'text', text: JSON.stringify(data, null, 2) }],
+    structuredContent: data as Record<string, unknown>,
+  };
+}
 
 /**
  * Get read-only tool names from the registry
@@ -87,7 +204,16 @@ export const contextToolRegistry: ToolRegistry = new Map<string, EnhancedToolDef
  * not GitLab data.
  */
 export function getContextReadOnlyToolNames(): string[] {
-  return ['manage_context', 'get_profile'];
+  // update_settings changes only this server's settings, never GitLab data.
+  return [
+    'manage_context',
+    'get_profile',
+    SETTINGS_READ_TOOL,
+    SETTINGS_UPDATE_TOOL,
+    CONNECTION_CHECK_TOOL,
+    SETTINGS_PANEL_TOOL,
+    SCOPE_SEARCH_TOOL,
+  ];
 }
 
 /**

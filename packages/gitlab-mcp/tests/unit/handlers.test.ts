@@ -8,6 +8,8 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { setupHandlers, resetHandlersState } from '../../src/handlers';
 import { StructuredToolError, parseGitLabApiError } from '../../src/utils/error-handler';
 import { GitLabTimeoutError } from '../../src/utils/fetch';
+import { ConfigurationService } from '../../src/configuration/service';
+import { resolveCaller } from '../../src/configuration/caller';
 
 // Mock ConnectionManager
 const mockConnectionManager = {
@@ -49,7 +51,22 @@ const mockRegistryManager = {
   executeTool: jest.fn(),
   refreshCache: jest.fn(),
   getTool: jest.fn(),
+  getToolRegistryKey: jest.fn().mockReturnValue(undefined),
+  isReadOnlyTool: jest.fn().mockReturnValue(true),
 };
+
+// A real configuration service over an in-memory store, so the caller's settings are
+// applied exactly as in production; the home directory is never touched.
+const mockSettings = new Map<
+  string,
+  { accountKey: string; settings: Record<string, unknown>; version: number; updatedAt: number }
+>();
+const mockSettingsRead = jest.fn();
+let mockConfigurationService: unknown;
+jest.mock('../../src/configuration', () => ({
+  ...jest.requireActual('../../src/configuration/caller'),
+  getConfigurationService: () => mockConfigurationService,
+}));
 
 jest.mock('../../src/registry-manager', () => ({
   RegistryManager: {
@@ -116,10 +133,8 @@ jest.mock('../../src/logging/index', () => ({
   getCurrentRequestId: jest.fn(() => mockGetCurrentRequestId()),
 }));
 
-// Mock ContextManager — returns default context (no scope.path by default).
-// Tests that need scope.path coverage override mockContextManager.getContext directly.
+// Mock ContextManager: only the profile re-pin after switch_profile reads it.
 const mockContextManager = {
-  getContext: jest.fn().mockReturnValue({ readOnly: false }),
   getCurrentProfileUrl: jest.fn().mockResolvedValue(null),
 };
 
@@ -178,6 +193,25 @@ describe('handlers', () => {
     jest.clearAllMocks();
     resetHandlersState();
 
+    mockSettings.clear();
+    mockSettingsRead.mockImplementation(async (key: string) => mockSettings.get(key));
+    mockRegistryManager.getToolRegistryKey.mockReturnValue(undefined);
+    mockRegistryManager.isReadOnlyTool.mockReturnValue(true);
+    mockConfigurationService = new ConfigurationService(
+      async () => ({
+        get: mockSettingsRead,
+        put: async (key: string, settings: Record<string, unknown>, expected: number) => {
+          const version = mockSettings.get(key)?.version ?? 0;
+          if (version !== expected) return undefined;
+          const record = { accountKey: key, settings, version: version + 1, updatedAt: 1 };
+          mockSettings.set(key, record);
+          return record;
+        },
+      }),
+      { load: async () => ({}) },
+      async () => undefined,
+    );
+
     // Create mock server
     mockServer = {
       setRequestHandler: jest.fn(),
@@ -218,8 +252,6 @@ describe('handlers', () => {
     mockSessionManager.getSessionInstanceUrl.mockReturnValue('https://gitlab.example.com');
     mockSessionManager.setSessionInstanceUrl.mockReturnValue(undefined);
 
-    // ContextManager default: no scope path (most tests don't need it)
-    mockContextManager.getContext.mockReturnValue({ readOnly: false });
     mockContextManager.getCurrentProfileUrl.mockResolvedValue(null);
   });
 
@@ -2519,13 +2551,12 @@ describe('handlers', () => {
       expect(mockConnectionTracker.recordError).not.toHaveBeenCalled();
     });
 
-    it('should set context path when sessionContext.scope.path is present (line 713)', async () => {
-      // Line 713: requestTracker.setContextForCurrentRequest is called only when
-      // contextManager.getContext() returns a context with scope.path set.
-      mockContextManager.getContext.mockReturnValue({
-        scope: { path: 'groups/my-group' },
-        readOnly: false,
-      });
+    // The access log records the caller's working scope.
+    it('records the working scope of the caller in the access log', async () => {
+      await (mockConfigurationService as ConfigurationService).updateAccount(
+        resolveCaller(undefined, 'https://gitlab.example.com'),
+        { scope: { type: 'group', path: 'groups/my-group', includeSubgroups: true } },
+      );
 
       await callToolHandler({
         params: {
@@ -2775,6 +2806,153 @@ describe('handlers', () => {
         'sess-early-001',
         expect.any(String),
       );
+    });
+  });
+
+  // The caller's settings take effect in execution, also for direct calls a UI never
+  // offered: a restricted tool is neither listed nor run, and nothing reaches GitLab.
+  describe('caller settings', () => {
+    const staticCaller = () => resolveCaller('sess-1', 'https://gitlab.example.com');
+    const service = () => mockConfigurationService as ConfigurationService;
+
+    beforeEach(async () => {
+      await setupHandlers(mockServer);
+      listToolsHandler = getRegisteredHandler(mockServer, ListToolsRequestSchema);
+      callToolHandler = getRegisteredHandler(mockServer, CallToolRequestSchema);
+      mockRegistryManager.getAllToolDefinitions.mockReturnValue([
+        { name: 'browse_merge_requests', description: '', inputSchema: { type: 'object' } },
+        { name: 'manage_merge_request', description: '', inputSchema: { type: 'object' } },
+        { name: 'manage_context', description: '', inputSchema: { type: 'object' } },
+      ]);
+      mockRegistryManager.isReadOnlyTool.mockImplementation(
+        (name: string) => !name.startsWith('manage_'),
+      );
+      mockRegistryManager.getToolRegistryKey.mockImplementation((name: string) =>
+        name.includes('merge_request') ? 'mrs' : 'context',
+      );
+    });
+
+    it('lists every tool for a caller without settings', async () => {
+      const result = await listToolsHandler({}, { sessionId: 'sess-1' });
+
+      expect(result.tools?.map((t) => t.name)).toEqual([
+        'browse_merge_requests',
+        'manage_merge_request',
+        'manage_context',
+      ]);
+    });
+
+    it('hides write tools from a read-only account and keeps manage_context', async () => {
+      await service().updateAccount(staticCaller(), { readOnly: true });
+
+      const result = await listToolsHandler({}, { sessionId: 'sess-1' });
+
+      expect(result.tools?.map((t) => t.name)).toEqual(['browse_merge_requests', 'manage_context']);
+    });
+
+    it('hides the tools of a group the account switched off', async () => {
+      await service().updateAccount(staticCaller(), { disabledToolGroups: ['mrs'] });
+
+      const result = await listToolsHandler({}, { sessionId: 'sess-1' });
+
+      expect(result.tools?.map((t) => t.name)).toEqual(['manage_context']);
+    });
+
+    // Listing is visibility only: an unreadable settings store does not empty the list.
+    it('keeps the registry list when the settings cannot be read', async () => {
+      mockSettingsRead.mockRejectedValue(new Error('database down'));
+
+      const result = await listToolsHandler({}, { sessionId: 'sess-1' });
+
+      expect(result.tools).toHaveLength(3);
+    });
+
+    it('refuses a direct call to a write tool in read-only mode without running it', async () => {
+      await service().updateSession(staticCaller(), { readOnly: true });
+
+      const result = await callToolHandler(
+        { params: { name: 'manage_merge_request', arguments: { action: 'merge' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content?.[0].text).toContain(
+        "'manage_merge_request merge' is not allowed by the current settings: read-only mode is on",
+      );
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+      expect(mockConnectionManager.initialize).not.toHaveBeenCalled();
+    });
+
+    it('refuses a project outside the working scope and runs one inside it', async () => {
+      await service().updateAccount(staticCaller(), {
+        scope: { type: 'group', path: 'team', includeSubgroups: true },
+      });
+
+      const outside = await callToolHandler(
+        {
+          params: {
+            name: 'browse_merge_requests',
+            arguments: { action: 'list', project_id: 'other/app' },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+      const inside = await callToolHandler(
+        {
+          params: {
+            name: 'browse_merge_requests',
+            arguments: { action: 'list', project_id: 'team/app' },
+          },
+        },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(outside.content?.[0].text).toMatch(/outside the allowed scope/);
+      expect(inside.isError).toBeFalsy();
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledTimes(1);
+    });
+
+    // Another chat of the same account keeps its own session settings.
+    it('applies a session override to its own session only', async () => {
+      await service().updateSession(staticCaller(), { readOnly: true });
+
+      const other = await callToolHandler(
+        { params: { name: 'manage_merge_request', arguments: { action: 'merge' } } },
+        { sessionId: 'sess-2' },
+      );
+
+      expect(other.isError).toBeFalsy();
+      expect(mockRegistryManager.executeTool).toHaveBeenCalledTimes(1);
+    });
+
+    // Running a call without knowing the caller's restrictions could bypass them.
+    it('refuses a call when the settings cannot be read', async () => {
+      mockSettingsRead.mockRejectedValue(new Error('database down'));
+
+      const result = await callToolHandler(
+        { params: { name: 'browse_merge_requests', arguments: { action: 'list' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(result.isError).toBe(true);
+      expect(result.content?.[0].text).toContain('database down');
+      expect(mockRegistryManager.executeTool).not.toHaveBeenCalled();
+    });
+
+    it('runs the tool with its caller available to it', async () => {
+      const { currentCaller } = jest.requireActual('../../src/configuration/caller');
+      let seen: unknown;
+      mockRegistryManager.executeTool.mockImplementation(async () => {
+        seen = currentCaller();
+        return { ok: true };
+      });
+
+      await callToolHandler(
+        { params: { name: 'manage_context', arguments: { action: 'show' } } },
+        { sessionId: 'sess-1' },
+      );
+
+      expect(seen).toMatchObject({ sessionKey: 'sess-1', oauth: false });
     });
   });
 });

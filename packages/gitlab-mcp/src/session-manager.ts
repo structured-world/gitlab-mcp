@@ -4,6 +4,7 @@ import { packageName, packageVersion, GITLAB_BASE_URL } from './config';
 import { setupHandlers } from './handlers';
 import { logInfo, logWarn, logError, logDebug } from './logger';
 import { normalizeInstanceUrl } from './utils/url';
+import { getConfigurationService } from './configuration';
 
 /** Default session idle timeout: 30 minutes */
 const DEFAULT_SESSION_TIMEOUT_MS = 30 * 60 * 1000;
@@ -163,6 +164,7 @@ export class SessionManager {
     if (!session) return;
 
     this.sessions.delete(sessionId);
+    getConfigurationService().forgetSession(sessionId);
 
     try {
       await session.server.close();
@@ -213,6 +215,24 @@ export class SessionManager {
       notifiedCount: promises.length,
       instanceUrl: normalizedFilter ?? 'all',
     });
+  }
+
+  /**
+   * Send tools/list_changed to the given sessions of this process only: a change of one
+   * account's or one session's settings does not make every client re-fetch its tools.
+   */
+  async notifyToolsListChanged(sessionIds: readonly string[]): Promise<void> {
+    await Promise.allSettled(
+      sessionIds.map(async (sessionId) => {
+        const session = this.sessions.get(sessionId);
+        if (!session) return;
+        try {
+          await session.server.notification({ method: 'notifications/tools/list_changed' });
+        } catch (error: unknown) {
+          logDebug('Failed to send tools/list_changed to session', { err: error, sessionId });
+        }
+      }),
+    );
   }
 
   /**

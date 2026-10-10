@@ -23,6 +23,7 @@ import {
   RegisteredOAuthClient,
 } from './types';
 import { SessionStorageBackend, createStorageBackend } from './storage';
+import type { AccountSettings, AccountSettingsRecord } from '../configuration/types';
 import { MemoryStorageBackend } from './storage/memory';
 import { logInfo, logError, logDebug } from '../logger';
 
@@ -315,6 +316,23 @@ export class SessionStore {
   /** How many clients `registeredFrom` registered at or after `since` (epoch ms), used or not. */
   async countClientsRegisteredSince(registeredFrom: string, since: number): Promise<number> {
     return this.backend.countClientsRegisteredSince(registeredFrom, since);
+  }
+
+  // ============================================================
+  // Account Settings
+  // ============================================================
+
+  async getAccountSettings(accountKey: string): Promise<AccountSettingsRecord | undefined> {
+    return this.backend.getAccountSettings(accountKey);
+  }
+
+  /** Compare-and-set write; undefined when another write changed the settings first. */
+  async putAccountSettings(
+    accountKey: string,
+    settings: AccountSettings,
+    expectedVersion: number,
+  ): Promise<AccountSettingsRecord | undefined> {
+    return this.backend.putAccountSettings(accountKey, settings, expectedVersion);
   }
 
   // ============================================================

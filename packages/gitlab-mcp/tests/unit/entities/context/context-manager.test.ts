@@ -1,10 +1,12 @@
 /**
  * Unit tests for ContextManager
  *
- * Tests the ContextManager singleton and its methods.
+ * manage_context acts on the caller of the running tool call and its current session,
+ * through the configuration service: presets and scopes are session overrides, another
+ * caller's or another session's context never changes, and reset brings back the
+ * account settings.
  */
 
-// Mock config module BEFORE importing ContextManager
 let mockGitLabBaseUrl = 'https://gitlab.example.com';
 let mockGitLabReadOnlyMode = false;
 
@@ -17,113 +19,62 @@ jest.mock('../../../../src/config', () => ({
   },
 }));
 
-// Mock dependencies
 jest.mock('../../../../src/utils/namespace', () => ({
   detectNamespaceType: jest.fn(),
 }));
 
-// Mock server module for tools list changed notification
 jest.mock('../../../../src/server', () => ({
   sendToolsListChangedNotification: jest.fn().mockResolvedValue(undefined),
 }));
 
-// Mock NamespaceTierDetector for switchInstance tests
 const mockClearNamespaceTierCache = jest.fn();
 jest.mock('../../../../src/services/NamespaceTierDetector', () => ({
   clearNamespaceTierCache: () => mockClearNamespaceTierCache(),
   detectNamespaceTier: jest.fn(),
 }));
 
-// Mock ConnectionManager for switchInstance tests
 const mockReinitialize = jest.fn();
 const mockGetCurrentInstanceUrl = jest.fn().mockReturnValue('https://gitlab.example.com');
-const mockConnectionManagerGetInstance = jest.fn(() => ({
-  reinitialize: mockReinitialize,
-  getCurrentInstanceUrl: mockGetCurrentInstanceUrl,
-}));
 jest.mock('../../../../src/services/ConnectionManager', () => ({
   ConnectionManager: {
-    getInstance: () => mockConnectionManagerGetInstance(),
+    getInstance: () => ({
+      reinitialize: mockReinitialize,
+      getCurrentInstanceUrl: mockGetCurrentInstanceUrl,
+    }),
   },
 }));
 
-// Mock preset responses for different test scenarios
 const mockPresets: Record<string, unknown> = {
-  readonly: {
-    description: 'Read-only preset',
-    read_only: true,
-  },
-  developer: {
-    description: 'Developer preset',
-    read_only: false,
-  },
-  'multi-projects': {
-    description: 'Multi-project preset',
-    read_only: false,
-    scope: {
-      projects: ['team/project1', 'team/project2', 'team/project3'],
-    },
-  },
-  'multi-groups': {
-    description: 'Multi-group preset',
-    read_only: false,
-    scope: {
-      groups: ['team-a', 'team-b'],
-      includeSubgroups: true,
-    },
-  },
-  'namespace-scope': {
-    description: 'Namespace scoped preset',
-    read_only: false,
-    scope: {
-      namespace: 'my-namespace',
-      includeSubgroups: true,
-    },
-  },
-  'single-project-scope': {
-    description: 'Single project in array',
-    read_only: false,
-    scope: {
-      projects: ['only-project'],
-    },
-  },
-  'single-group-scope': {
-    description: 'Single group in array',
-    read_only: false,
-    scope: {
-      groups: ['only-group'],
-    },
-  },
+  readonly: { description: 'Read-only preset', read_only: true },
+  developer: { description: 'Developer preset', read_only: false },
+  'multi-projects': { scope: { projects: ['team/project1', 'team/project2', 'team/project3'] } },
+  'multi-groups': { scope: { groups: ['team-a', 'team-b'], includeSubgroups: true } },
+  'namespace-scope': { scope: { namespace: 'my-namespace', includeSubgroups: true } },
+  'single-project-scope': { scope: { projects: ['only-project'] } },
+  'single-group-scope': { scope: { groups: ['only-group'] } },
+  'empty-scope': { scope: { includeSubgroups: true } },
 };
+
+const mockLoadPreset = jest.fn((name: string) =>
+  mockPresets[name]
+    ? Promise.resolve(mockPresets[name])
+    : Promise.reject(new Error(`Preset not found: ${name}`)),
+);
 
 jest.mock('../../../../src/profiles/loader', () => ({
   ProfileLoader: jest.fn().mockImplementation(() => ({
     listProfiles: jest.fn().mockResolvedValue([
+      { name: 'readonly', readOnly: true, isBuiltIn: true, isPreset: true },
+      { name: 'developer', readOnly: false, isBuiltIn: true, isPreset: true },
       {
-        name: 'readonly',
-        description: 'Read-only preset',
-        readOnly: true,
-        isBuiltIn: true,
-        isPreset: true,
-      },
-      {
-        name: 'developer',
-        description: 'Developer preset',
+        name: 'production',
+        host: 'gitlab.example.com',
         readOnly: false,
-        isBuiltIn: true,
-        isPreset: true,
+        isBuiltIn: false,
+        isPreset: false,
       },
     ]),
-    loadPreset: jest.fn().mockImplementation((name: string) => {
-      if (name === 'invalid-preset') {
-        return Promise.reject(new Error('Preset not found: invalid-preset'));
-      }
-      const preset = mockPresets[name] || {
-        description: 'Test preset',
-        read_only: false,
-      };
-      return Promise.resolve(preset);
-    }),
+    loadPreset: (name: string) => mockLoadPreset(name),
     loadProfile: jest.fn().mockImplementation((name: string) => {
       if (name === 'invalid-profile') {
         return Promise.reject(new Error('Profile not found: invalid-profile'));
@@ -143,41 +94,84 @@ jest.mock('../../../../src/profiles/loader', () => ({
   })),
 }));
 
+// A real configuration service over an in-memory store; notifications are recorded.
+const mockNotified: string[][] = [];
+let mockService: unknown;
+jest.mock('../../../../src/configuration', () => {
+  const actual = jest.requireActual('../../../../src/configuration/caller');
+  return {
+    ...actual,
+    getConfigurationService: () => mockService,
+  };
+});
+
 import {
   ContextManager,
   getContextManager,
 } from '../../../../src/entities/context/context-manager';
 import { detectNamespaceType } from '../../../../src/utils/namespace';
 import { sendToolsListChangedNotification } from '../../../../src/server';
+import { ConfigurationService } from '../../../../src/configuration/service';
+import { runWithCaller, type Caller } from '../../../../src/configuration/caller';
+import type { AccountSettingsRecord, AccountSettings } from '../../../../src/configuration/types';
 
 const mockDetectNamespaceType = detectNamespaceType as jest.MockedFunction<
   typeof detectNamespaceType
 >;
-
 const mockSendToolsListChangedNotification =
   sendToolsListChangedNotification as jest.MockedFunction<typeof sendToolsListChangedNotification>;
 
+function memoryStore() {
+  const records = new Map<string, AccountSettingsRecord>();
+  return {
+    records,
+    get: async (key: string) => records.get(key),
+    put: async (key: string, settings: AccountSettings, expected: number) => {
+      const version = records.get(key)?.version ?? 0;
+      if (version !== expected) return undefined;
+      const record = { accountKey: key, settings, version: version + 1, updatedAt: 1 };
+      records.set(key, record);
+      return record;
+    },
+  };
+}
+
+function caller(accountKey: string, sessionKey: string): Caller {
+  return {
+    accountKey,
+    sessionKey,
+    accountLabel: accountKey,
+    instanceUrl: 'https://gitlab.example.com',
+    oauth: false,
+  };
+}
+
+const alice1 = caller('alice', 's1');
+const alice2 = caller('alice', 's2');
+const bob = caller('bob', 's3');
+
 describe('ContextManager', () => {
   const originalEnv = process.env;
+  let store: ReturnType<typeof memoryStore>;
+  let service: ConfigurationService;
 
   beforeEach(() => {
-    // Reset singleton and mocks before each test
     ContextManager.resetInstance();
     jest.clearAllMocks();
-
-    // Reset mock values
+    mockNotified.length = 0;
     mockGitLabBaseUrl = 'https://gitlab.example.com';
     mockGitLabReadOnlyMode = false;
-
-    // Reset switchInstance mocks
-    mockClearNamespaceTierCache.mockReset();
     mockReinitialize.mockReset();
-
-    // Set up test environment
-    process.env = {
-      ...originalEnv,
-      OAUTH_ENABLED: 'false',
-    };
+    process.env = { ...originalEnv, OAUTH_ENABLED: 'false' };
+    store = memoryStore();
+    service = new ConfigurationService(
+      async () => store,
+      { load: (name) => mockLoadPreset(name) },
+      async (keys) => {
+        mockNotified.push([...keys]);
+      },
+    );
+    mockService = service;
   });
 
   afterAll(() => {
@@ -185,691 +179,325 @@ describe('ContextManager', () => {
   });
 
   describe('singleton pattern', () => {
-    it('should return the same instance on multiple calls', () => {
-      const instance1 = ContextManager.getInstance();
-      const instance2 = ContextManager.getInstance();
-      expect(instance1).toBe(instance2);
-    });
-
-    it('should create a new instance after reset', () => {
-      const instance1 = ContextManager.getInstance();
+    it('returns the same instance until reset', () => {
+      const first = ContextManager.getInstance();
+      expect(ContextManager.getInstance()).toBe(first);
+      expect(getContextManager()).toBe(first);
       ContextManager.resetInstance();
-      const instance2 = ContextManager.getInstance();
-      expect(instance1).not.toBe(instance2);
-    });
-
-    it('should work with getContextManager helper', () => {
-      const instance1 = getContextManager();
-      const instance2 = ContextManager.getInstance();
-      expect(instance1).toBe(instance2);
+      expect(ContextManager.getInstance()).not.toBe(first);
     });
   });
 
   describe('getContext', () => {
-    it('should return current context with basic info', () => {
-      const manager = ContextManager.getInstance();
-      const context = manager.getContext();
+    it('reports the operator configuration for a caller without settings', async () => {
+      const context = await runWithCaller(alice1, () => getContextManager().getContext());
 
-      expect(context.host).toBe('gitlab.example.com');
-      expect(context.apiUrl).toBe('https://gitlab.example.com');
-      expect(context.readOnly).toBe(false);
-      expect(context.oauthMode).toBe(false);
+      expect(context).toMatchObject({
+        host: 'gitlab.example.com',
+        apiUrl: 'https://gitlab.example.com',
+        readOnly: false,
+        oauthMode: false,
+        presetName: undefined,
+        scope: undefined,
+      });
+      expect(context.initialContext).toEqual({
+        host: 'gitlab.example.com',
+        apiUrl: 'https://gitlab.example.com',
+        readOnly: false,
+        oauthMode: false,
+      });
     });
 
-    it('should reflect read-only mode from config', () => {
+    it('reports the operator read-only mode', async () => {
       mockGitLabReadOnlyMode = true;
-      ContextManager.resetInstance();
 
-      const manager = ContextManager.getInstance();
-      const context = manager.getContext();
-
-      expect(context.readOnly).toBe(true);
+      expect((await getContextManager().getContext()).readOnly).toBe(true);
     });
 
-    it('should reflect OAuth mode from environment', () => {
+    it('reports OAuth mode', async () => {
       process.env.OAUTH_ENABLED = 'true';
-      ContextManager.resetInstance();
 
-      const manager = ContextManager.getInstance();
-      const context = manager.getContext();
-
-      expect(context.oauthMode).toBe(true);
+      expect((await getContextManager().getContext()).oauthMode).toBe(true);
     });
 
-    it('should include initial context for reset', () => {
-      const manager = ContextManager.getInstance();
-      const context = manager.getContext();
+    it('uses the server instance outside a tool call', async () => {
+      mockGitLabBaseUrl = 'https://other.example.com';
 
-      expect(context.initialContext).toBeDefined();
-      expect(context.initialContext?.host).toBe('gitlab.example.com');
+      expect((await getContextManager().getContext()).host).toBe('other.example.com');
     });
 
-    it('should handle invalid URL in getHost by returning raw value', () => {
-      // Test the catch branch in getHost() when URL parsing fails
-      mockGitLabBaseUrl = 'not-a-valid-url';
-      ContextManager.resetInstance();
+    it('reports the account settings of the caller', async () => {
+      await service.updateAccount(alice1, { preset: 'readonly' });
 
-      const manager = ContextManager.getInstance();
-      const context = manager.getContext();
+      const context = await runWithCaller(alice2, () => getContextManager().getContext());
 
-      // When URL is invalid, getHost returns the raw value
-      expect(context.host).toBe('not-a-valid-url');
+      expect(context).toMatchObject({ presetName: 'readonly', readOnly: true });
     });
   });
 
-  describe('listPresets', () => {
-    it('should return available presets', async () => {
-      const manager = ContextManager.getInstance();
-      const presets = await manager.listPresets();
+  describe('listPresets and listProfiles', () => {
+    it('lists the presets', async () => {
+      const presets = await getContextManager().listPresets();
 
-      expect(presets).toHaveLength(2);
-      expect(presets[0].name).toBe('readonly');
-      expect(presets[1].name).toBe('developer');
-    });
-  });
-
-  describe('listProfiles', () => {
-    it('should throw error in non-OAuth mode', async () => {
-      process.env.OAUTH_ENABLED = 'false';
-      ContextManager.resetInstance();
-
-      const manager = ContextManager.getInstance();
-
-      await expect(manager.listProfiles()).rejects.toThrow('only available in OAuth mode');
+      expect(presets.map((p) => p.name)).toEqual(['readonly', 'developer']);
     });
 
-    it('should return profiles in OAuth mode', async () => {
-      process.env.OAUTH_ENABLED = 'true';
-      ContextManager.resetInstance();
-
-      const manager = ContextManager.getInstance();
-      const profiles = await manager.listProfiles();
-
-      // Our mock returns presets, which are filtered out for profiles
-      // So this returns empty (profiles have isPreset: false)
-      expect(Array.isArray(profiles)).toBe(true);
-    });
-  });
-
-  describe('switchPreset', () => {
-    it('should switch to a valid preset', async () => {
-      const manager = ContextManager.getInstance();
-      const result = await manager.switchPreset('readonly');
-
-      expect(result.success).toBe(true);
-      expect(result.current).toBe('readonly');
-      expect(result.message).toContain('Switched to preset');
-    });
-
-    it('should return previous preset name on switch', async () => {
-      const manager = ContextManager.getInstance();
-
-      await manager.switchPreset('readonly');
-      const result = await manager.switchPreset('developer');
-
-      expect(result.previous).toBe('readonly');
-      expect(result.current).toBe('developer');
-    });
-
-    it('should update getCurrentPresetName after switch', async () => {
-      const manager = ContextManager.getInstance();
-
-      expect(manager.getCurrentPresetName()).toBeNull();
-
-      await manager.switchPreset('readonly');
-
-      expect(manager.getCurrentPresetName()).toBe('readonly');
-    });
-
-    it('should send tools/list_changed notification after successful switch', async () => {
-      // Reset mock to track calls in this test
-      mockSendToolsListChangedNotification.mockClear();
-
-      const manager = ContextManager.getInstance();
-      await manager.switchPreset('readonly');
-
-      // Verify notification was sent
-      expect(mockSendToolsListChangedNotification).toHaveBeenCalledTimes(1);
-    });
-
-    it('should send notification on each preset switch', async () => {
-      mockSendToolsListChangedNotification.mockClear();
-
-      const manager = ContextManager.getInstance();
-
-      await manager.switchPreset('readonly');
-      await manager.switchPreset('developer');
-
-      // Should be called twice - once for each switch
-      expect(mockSendToolsListChangedNotification).toHaveBeenCalledTimes(2);
-    });
-
-    it('should throw error when preset loading fails', async () => {
-      const manager = ContextManager.getInstance();
-
-      await expect(manager.switchPreset('invalid-preset')).rejects.toThrow(
-        "Failed to switch to preset 'invalid-preset'",
-      );
-    });
-
-    it('should clear scope when switching to preset without scope', async () => {
-      const manager = ContextManager.getInstance();
-
-      // First switch to preset with scope
-      await manager.switchPreset('multi-groups');
-      expect(manager.hasScope()).toBe(true);
-
-      // Then switch to preset without scope - should clear
-      await manager.switchPreset('readonly');
-      expect(manager.hasScope()).toBe(false);
-      expect(manager.getScopeEnforcer()).toBeNull();
-    });
-  });
-
-  describe('switchProfile', () => {
-    it('should throw error in non-OAuth mode', async () => {
-      process.env.OAUTH_ENABLED = 'false';
-      ContextManager.resetInstance();
-
-      const manager = ContextManager.getInstance();
-
-      await expect(manager.switchProfile('production')).rejects.toThrow(
+    it('refuses to list profiles outside OAuth mode', async () => {
+      await expect(getContextManager().listProfiles()).rejects.toThrow(
         'only available in OAuth mode',
       );
     });
 
-    it('should switch profile in OAuth mode', async () => {
+    it('lists only full profiles in OAuth mode', async () => {
       process.env.OAUTH_ENABLED = 'true';
-      ContextManager.resetInstance();
 
-      const manager = ContextManager.getInstance();
-      const result = await manager.switchProfile('production');
+      const profiles = await getContextManager().listProfiles();
 
-      expect(result.success).toBe(true);
-      expect(result.current).toBe('production');
+      expect(profiles.map((p) => p.name)).toEqual(['production']);
+    });
+  });
+
+  describe('switchPreset', () => {
+    it('switches the current session and reports the previous preset', async () => {
+      const manager = getContextManager();
+
+      await runWithCaller(alice1, () => manager.switchPreset('developer'));
+      const result = await runWithCaller(alice1, () => manager.switchPreset('readonly'));
+
+      expect(result).toEqual({
+        success: true,
+        previous: 'developer',
+        current: 'readonly',
+        message: "Switched this session to preset 'readonly'",
+      });
     });
 
-    it('should throw error when profile loading fails in OAuth mode', async () => {
+    // The defect this replaces: a preset switched in one chat applied to every user.
+    it('changes only the calling session', async () => {
+      const manager = getContextManager();
+
+      await runWithCaller(alice1, () => manager.switchPreset('readonly'));
+
+      expect((await runWithCaller(alice1, () => manager.getContext())).readOnly).toBe(true);
+      expect((await runWithCaller(alice2, () => manager.getContext())).readOnly).toBe(false);
+      expect((await runWithCaller(bob, () => manager.getContext())).presetName).toBeUndefined();
+    });
+
+    it('notifies only the calling session', async () => {
+      await runWithCaller(alice1, () => getContextManager().switchPreset('readonly'));
+
+      expect(mockNotified).toEqual([['s1']]);
+      expect(mockSendToolsListChangedNotification).not.toHaveBeenCalled();
+    });
+
+    it('keeps the account default for other sessions', async () => {
+      await service.updateAccount(alice1, { preset: 'developer' });
+
+      await runWithCaller(alice1, () => getContextManager().switchPreset('readonly'));
+
+      expect(store.records.get('alice')?.settings).toEqual({ preset: 'developer' });
+    });
+
+    it('refuses an unknown preset and changes nothing', async () => {
+      await expect(
+        runWithCaller(alice1, () => getContextManager().switchPreset('invalid-preset')),
+      ).rejects.toThrow("Failed to switch to preset 'invalid-preset'");
+
+      expect(
+        (await runWithCaller(alice1, () => getContextManager().getContext())).presetName,
+      ).toBeUndefined();
+    });
+
+    it('drops the preset scope when switching to a preset without one', async () => {
+      const manager = getContextManager();
+      await runWithCaller(alice1, () => manager.switchPreset('multi-groups'));
+      await runWithCaller(alice1, () => manager.switchPreset('readonly'));
+
+      expect((await runWithCaller(alice1, () => manager.getContext())).scope).toBeUndefined();
+    });
+  });
+
+  describe('switchProfile and getCurrentProfileUrl', () => {
+    it('refuses to switch profiles outside OAuth mode', async () => {
+      await expect(getContextManager().switchProfile('production')).rejects.toThrow(
+        'only available in OAuth mode',
+      );
+    });
+
+    it('switches the session profile in OAuth mode and resolves its URL', async () => {
       process.env.OAUTH_ENABLED = 'true';
-      ContextManager.resetInstance();
+      const manager = getContextManager();
 
-      const manager = ContextManager.getInstance();
+      const result = await runWithCaller(alice1, () => manager.switchProfile('production'));
 
-      await expect(manager.switchProfile('invalid-profile')).rejects.toThrow(
+      expect(result).toMatchObject({ success: true, current: 'production' });
+      await expect(runWithCaller(alice1, () => manager.getCurrentProfileUrl())).resolves.toBe(
+        'https://gitlab.example.com',
+      );
+      await expect(runWithCaller(alice2, () => manager.getCurrentProfileUrl())).resolves.toBeNull();
+    });
+
+    it('prefers the profile api_url over the host', async () => {
+      process.env.OAUTH_ENABLED = 'true';
+      const manager = getContextManager();
+      await runWithCaller(alice1, () => manager.switchProfile('override-api-url'));
+
+      await expect(runWithCaller(alice1, () => manager.getCurrentProfileUrl())).resolves.toBe(
+        'https://api.example.com',
+      );
+    });
+
+    it('refuses an unknown profile', async () => {
+      process.env.OAUTH_ENABLED = 'true';
+
+      await expect(getContextManager().switchProfile('invalid-profile')).rejects.toThrow(
         "Failed to switch to profile 'invalid-profile'",
       );
     });
   });
 
-  describe('getCurrentProfileUrl', () => {
-    it('should return null when no profile is active', async () => {
-      ContextManager.resetInstance();
-      const manager = ContextManager.getInstance();
-
-      await expect(manager.getCurrentProfileUrl()).resolves.toBeNull();
-    });
-
-    it('should resolve URL from profile.host after switch_profile (#407)', async () => {
-      process.env.OAUTH_ENABLED = 'true';
-      ContextManager.resetInstance();
-
-      const manager = ContextManager.getInstance();
-      await manager.switchProfile('production');
-
-      await expect(manager.getCurrentProfileUrl()).resolves.toBe('https://gitlab.example.com');
-    });
-
-    it('should prefer profile.api_url over derived host URL (#407)', async () => {
-      // Regression guard: when a profile defines an explicit api_url override,
-      // getCurrentProfileUrl() must return it instead of the https://{host} fallback.
-      // This mirrors profiles/applicator.ts behavior and is required for multi-instance
-      // setups where api_url points at a separate API host.
-      process.env.OAUTH_ENABLED = 'true';
-      ContextManager.resetInstance();
-
-      const manager = ContextManager.getInstance();
-      await manager.switchProfile('override-api-url');
-
-      await expect(manager.getCurrentProfileUrl()).resolves.toBe('https://api.example.com');
-    });
-  });
-
   describe('setScope', () => {
-    it('should set scope for a group', async () => {
-      mockDetectNamespaceType.mockResolvedValue('group');
+    it.each([
+      ['group', 'my-group', true, { type: 'group', path: 'my-group', includeSubgroups: true }],
+      ['group', 'my-group', false, { type: 'group', path: 'my-group', includeSubgroups: false }],
+      ['project', 'g/p', true, { type: 'project', path: 'g/p', includeSubgroups: false }],
+    ] as const)(
+      'sets a detected %s scope for the session',
+      async (type, namespace, includeSubgroups, expected) => {
+        mockDetectNamespaceType.mockResolvedValue(type);
+        const manager = getContextManager();
 
-      const manager = ContextManager.getInstance();
-      const result = await manager.setScope('my-group');
+        const result = await runWithCaller(alice1, () =>
+          manager.setScope(namespace, includeSubgroups),
+        );
 
-      expect(result.success).toBe(true);
-      expect(result.scope.type).toBe('group');
-      expect(result.scope.path).toBe('my-group');
-      expect(result.scope.includeSubgroups).toBe(true);
-      expect(result.scope.detected).toBe(true);
-    });
+        expect(result.scope).toEqual({ ...expected, detected: true });
+        expect((await runWithCaller(alice1, () => manager.getContext())).scope).toEqual({
+          ...expected,
+          detected: true,
+        });
+        expect((await runWithCaller(alice2, () => manager.getContext())).scope).toBeUndefined();
+      },
+    );
 
-    it('should set scope for a project', async () => {
-      mockDetectNamespaceType.mockResolvedValue('project');
+    it('reports a namespace that cannot be resolved', async () => {
+      mockDetectNamespaceType.mockRejectedValue(new Error('API error'));
 
-      const manager = ContextManager.getInstance();
-      const result = await manager.setScope('group/project');
-
-      expect(result.success).toBe(true);
-      expect(result.scope.type).toBe('project');
-      expect(result.scope.path).toBe('group/project');
-      expect(result.scope.includeSubgroups).toBe(false); // Projects don't have subgroups
-    });
-
-    it('should respect includeSubgroups parameter for groups', async () => {
-      mockDetectNamespaceType.mockResolvedValue('group');
-
-      const manager = ContextManager.getInstance();
-      const result = await manager.setScope('my-group', false);
-
-      expect(result.scope.includeSubgroups).toBe(false);
-    });
-
-    it('should update hasScope after setScope', async () => {
-      mockDetectNamespaceType.mockResolvedValue('group');
-
-      const manager = ContextManager.getInstance();
-
-      expect(manager.hasScope()).toBe(false);
-
-      await manager.setScope('my-group');
-
-      expect(manager.hasScope()).toBe(true);
-    });
-
-    it('should update context with scope after setScope', async () => {
-      mockDetectNamespaceType.mockResolvedValue('group');
-
-      const manager = ContextManager.getInstance();
-      await manager.setScope('my-group');
-
-      const context = manager.getContext();
-      expect(context.scope).toBeDefined();
-      expect(context.scope?.type).toBe('group');
-      expect(context.scope?.path).toBe('my-group');
+      await expect(getContextManager().setScope('missing')).rejects.toThrow(
+        "Failed to set scope for 'missing': API error",
+      );
     });
   });
 
   describe('reset', () => {
-    it('should reset context to initial state', async () => {
+    it('drops the session overrides and keeps the account settings', async () => {
       mockDetectNamespaceType.mockResolvedValue('group');
+      await service.updateAccount(alice1, { preset: 'developer' });
+      const manager = getContextManager();
+      await runWithCaller(alice1, () => manager.switchPreset('readonly'));
+      await runWithCaller(alice1, () => manager.setScope('my-group'));
 
-      const manager = ContextManager.getInstance();
-
-      // Make some changes
-      await manager.switchPreset('readonly');
-      await manager.setScope('my-group');
-
-      expect(manager.getCurrentPresetName()).toBe('readonly');
-      expect(manager.hasScope()).toBe(true);
-
-      // Reset
-      const result = manager.reset();
+      const result = await runWithCaller(alice1, () => manager.reset());
 
       expect(result.success).toBe(true);
-      expect(result.message).toContain('reset to initial state');
-      expect(manager.getCurrentPresetName()).toBeNull();
-      expect(manager.hasScope()).toBe(false);
-    });
-
-    it('should return restored context', async () => {
-      const manager = ContextManager.getInstance();
-      const result = manager.reset();
-
-      expect(result.context).toBeDefined();
-      expect(result.context.host).toBe('gitlab.example.com');
+      expect(result.context).toMatchObject({ presetName: 'developer', scope: undefined });
     });
   });
 
-  describe('getScopeEnforcer', () => {
-    it('should return null when no scope is set', () => {
-      const manager = ContextManager.getInstance();
+  describe('scopes of presets', () => {
+    it.each([
+      [
+        'multi-projects',
+        {
+          type: 'project',
+          path: 'team/project1',
+          additionalPaths: ['team/project2', 'team/project3'],
+        },
+      ],
+      [
+        'multi-groups',
+        { type: 'group', path: 'team-a', additionalPaths: ['team-b'], includeSubgroups: true },
+      ],
+      ['namespace-scope', { type: 'group', path: 'my-namespace', includeSubgroups: true }],
+      [
+        'single-project-scope',
+        { type: 'project', path: 'only-project', additionalPaths: undefined },
+      ],
+      ['single-group-scope', { type: 'group', path: 'only-group', additionalPaths: undefined }],
+    ])('shows the scope of preset %s', async (preset, expected) => {
+      const manager = getContextManager();
+      await runWithCaller(alice1, () => manager.switchPreset(preset));
 
-      expect(manager.getScopeEnforcer()).toBeNull();
+      const context = await runWithCaller(alice1, () => manager.getContext());
+
+      expect(context.scope).toMatchObject({ ...expected, detected: false });
     });
 
-    it('should return ScopeEnforcer after scope is set', async () => {
-      mockDetectNamespaceType.mockResolvedValue('group');
+    it('reports a preset scope without any target', async () => {
+      const manager = getContextManager();
+      await runWithCaller(alice1, () => manager.switchPreset('empty-scope'));
 
-      const manager = ContextManager.getInstance();
-      await manager.setScope('my-group');
-
-      const enforcer = manager.getScopeEnforcer();
-      expect(enforcer).not.toBeNull();
-      expect(enforcer?.getScopeDescription()).toContain('my-group');
-    });
-  });
-
-  describe('getCurrentPreset', () => {
-    it('should return null when no preset is set', () => {
-      const manager = ContextManager.getInstance();
-      expect(manager.getCurrentPreset()).toBeNull();
-    });
-
-    it('should return preset after switchPreset', async () => {
-      const manager = ContextManager.getInstance();
-      await manager.switchPreset('readonly');
-
-      const preset = manager.getCurrentPreset();
-      expect(preset).not.toBeNull();
-    });
-  });
-
-  describe('error handling', () => {
-    it('should handle setScope errors', async () => {
-      mockDetectNamespaceType.mockRejectedValue(new Error('API error'));
-
-      const manager = ContextManager.getInstance();
-
-      await expect(manager.setScope('invalid-namespace')).rejects.toThrow('Failed to set scope');
-    });
-
-    it('should handle switchPreset with invalid preset', async () => {
-      // This test verifies that ContextManager is created successfully
-      // The actual error handling for invalid presets is tested via integration tests
-      // since mocking ProfileLoader after module import requires complex setup
-      const manager = ContextManager.getInstance();
-      expect(manager).toBeDefined();
-    });
-  });
-
-  describe('scopeConfigToRuntimeScope edge cases', () => {
-    it('should handle scope with namespace field', async () => {
-      mockDetectNamespaceType.mockResolvedValue('group');
-
-      const manager = ContextManager.getInstance();
-      await manager.setScope('my-namespace');
-
-      const context = manager.getContext();
-      expect(context.scope).toBeDefined();
-      expect(context.scope?.type).toBe('group');
-    });
-
-    it('should not have additionalPaths for single project scope', async () => {
-      mockDetectNamespaceType.mockResolvedValue('project');
-
-      const manager = ContextManager.getInstance();
-      await manager.setScope('group/project');
-
-      const context = manager.getContext();
-      expect(context.scope).toBeDefined();
-      expect(context.scope?.path).toBe('group/project');
-      expect(context.scope?.additionalPaths).toBeUndefined();
-    });
-
-    it('should not have additionalPaths for single group scope', async () => {
-      mockDetectNamespaceType.mockResolvedValue('group');
-
-      const manager = ContextManager.getInstance();
-      await manager.setScope('my-group');
-
-      const context = manager.getContext();
-      expect(context.scope).toBeDefined();
-      expect(context.scope?.path).toBe('my-group');
-      expect(context.scope?.additionalPaths).toBeUndefined();
-    });
-
-    it('should include additionalPaths for multiple projects from preset', async () => {
-      const manager = ContextManager.getInstance();
-
-      // Switch to preset with multiple projects
-      await manager.switchPreset('multi-projects');
-
-      const context = manager.getContext();
-      expect(context.scope).toBeDefined();
-      expect(context.scope?.type).toBe('project');
-      expect(context.scope?.path).toBe('team/project1');
-      expect(context.scope?.additionalPaths).toEqual(['team/project2', 'team/project3']);
-    });
-
-    it('should include additionalPaths for multiple groups from preset', async () => {
-      const manager = ContextManager.getInstance();
-
-      // Switch to preset with multiple groups
-      await manager.switchPreset('multi-groups');
-
-      const context = manager.getContext();
-      expect(context.scope).toBeDefined();
-      expect(context.scope?.type).toBe('group');
-      expect(context.scope?.path).toBe('team-a');
-      expect(context.scope?.additionalPaths).toEqual(['team-b']);
-      expect(context.scope?.includeSubgroups).toBe(true);
-    });
-
-    it('should handle namespace scope from preset', async () => {
-      const manager = ContextManager.getInstance();
-
-      // Switch to preset with namespace scope
-      await manager.switchPreset('namespace-scope');
-
-      const context = manager.getContext();
-      expect(context.scope).toBeDefined();
-      expect(context.scope?.type).toBe('group');
-      expect(context.scope?.path).toBe('my-namespace');
-      expect(context.scope?.includeSubgroups).toBe(true);
-    });
-
-    it('should not have additionalPaths for single project in array', async () => {
-      const manager = ContextManager.getInstance();
-
-      // Switch to preset with single project in projects array
-      await manager.switchPreset('single-project-scope');
-
-      const context = manager.getContext();
-      expect(context.scope).toBeDefined();
-      expect(context.scope?.type).toBe('project');
-      expect(context.scope?.path).toBe('only-project');
-      expect(context.scope?.additionalPaths).toBeUndefined();
-    });
-
-    it('should not have additionalPaths for single group in array', async () => {
-      const manager = ContextManager.getInstance();
-
-      // Switch to preset with single group in groups array
-      await manager.switchPreset('single-group-scope');
-
-      const context = manager.getContext();
-      expect(context.scope).toBeDefined();
-      expect(context.scope?.type).toBe('group');
-      expect(context.scope?.path).toBe('only-group');
-      expect(context.scope?.additionalPaths).toBeUndefined();
-    });
-  });
-
-  describe('listPresets edge cases', () => {
-    it('should add current preset to list if not already present', async () => {
-      const manager = ContextManager.getInstance();
-
-      // First switch to a preset (our mock returns 'readonly' and 'developer')
-      await manager.switchPreset('custom-preset');
-
-      // The preset should appear in list even if not in ProfileLoader results
-      const presets = await manager.listPresets();
-
-      // Should have presets from ProfileLoader mock
-      expect(presets.length).toBeGreaterThan(0);
+      await expect(runWithCaller(alice1, () => manager.getContext())).rejects.toThrow(
+        'Invalid scope configuration',
+      );
     });
   });
 
   describe('switchInstance', () => {
-    /**
-     * Tests switchInstance() method (lines 431-486)
-     */
-    it('should throw error in OAuth mode', async () => {
+    it('refuses in OAuth mode', async () => {
       process.env.OAUTH_ENABLED = 'true';
-      ContextManager.resetInstance();
 
-      const manager = ContextManager.getInstance();
-
-      await expect(manager.switchInstance('https://other-gitlab.com')).rejects.toThrow(
+      await expect(getContextManager().switchInstance('https://other.example.com')).rejects.toThrow(
         'Cannot switch instances in OAuth mode',
       );
     });
 
-    it('should throw error when instance is not configured', async () => {
-      process.env.OAUTH_ENABLED = 'false';
-      ContextManager.resetInstance();
-
-      const manager = ContextManager.getInstance();
-
-      await expect(manager.switchInstance('https://unknown-gitlab.com')).rejects.toThrow(
-        'Instance not configured',
-      );
+    it('refuses an instance that is not configured', async () => {
+      await expect(
+        getContextManager().switchInstance('https://unknown-gitlab.com'),
+      ).rejects.toThrow('Instance not configured');
     });
 
-    it('should successfully switch to a configured instance in static token mode', async () => {
-      process.env.OAUTH_ENABLED = 'false';
-      ContextManager.resetInstance();
-
-      // Set up a configured instance via InstanceRegistry
+    it('switches, notifies every session and clears the session scope', async () => {
       const { InstanceRegistry } = await import('../../../../src/services/InstanceRegistry');
-      const registry = InstanceRegistry.getInstance();
-      registry.register({
-        url: 'https://new-gitlab.example.com',
-        label: 'New GitLab',
-        insecureSkipVerify: false,
-      });
-
-      const manager = ContextManager.getInstance();
-
-      // With mocked ConnectionManager.reinitialize, this should succeed
-      // Verifies: validation passes (not "Instance not configured" or "OAuth mode" error)
-      await expect(manager.switchInstance('https://new-gitlab.example.com')).resolves.not.toThrow();
-    });
-
-    it('should clear scope when switching instances', async () => {
-      process.env.OAUTH_ENABLED = 'false';
-      mockDetectNamespaceType.mockResolvedValue('group');
-      ContextManager.resetInstance();
-
-      // Set up a configured instance
-      const { InstanceRegistry } = await import('../../../../src/services/InstanceRegistry');
-      const registry = InstanceRegistry.getInstance();
-      registry.register({
-        url: 'https://new-gitlab.example.com',
-        label: 'New GitLab',
-        insecureSkipVerify: false,
-      });
-
-      const manager = ContextManager.getInstance();
-
-      // Set a scope first
-      await manager.setScope('my-group');
-      expect(manager.hasScope()).toBe(true);
-
-      // Try to switch instance - it will fail at reinitialize but should clear scope
-      try {
-        await manager.switchInstance('https://new-gitlab.example.com');
-      } catch {
-        // Expected to fail
-      }
-
-      // Scope should be cleared even if switch fails later
-      // (scope is cleared before reinitialize in the try block)
-      expect(manager.hasScope()).toBe(false);
-    });
-
-    it('should send tools/list_changed notification on successful switch', async () => {
-      // This is tested indirectly - when switch succeeds, notification is sent
-      // Since we can't fully mock ConnectionManager.reinitialize easily,
-      // we verify the notification mock is set up
-      expect(mockSendToolsListChangedNotification).toBeDefined();
-    });
-
-    it('should successfully complete switch when all dependencies succeed', async () => {
-      /**
-       * Tests the SUCCESS path of switchInstance (lines 465-477):
-       * - Clears currentScope and currentScopeEnforcer
-       * - Logs "Switched GitLab instance"
-       * - Calls sendToolsListChangedNotification
-       * - Returns success result with previous/current URLs
-       */
-      process.env.OAUTH_ENABLED = 'false';
-      mockClearNamespaceTierCache.mockClear();
-      mockReinitialize.mockClear();
-      mockReinitialize.mockResolvedValue(undefined); // Make reinitialize succeed
-      mockSendToolsListChangedNotification.mockClear();
-      ContextManager.resetInstance();
-
-      // Set up a configured instance via InstanceRegistry
-      const { InstanceRegistry } = await import('../../../../src/services/InstanceRegistry');
-      const registry = InstanceRegistry.getInstance();
-      registry.register({
+      InstanceRegistry.getInstance().register({
         url: 'https://success-gitlab.example.com',
         label: 'Success GitLab',
         insecureSkipVerify: false,
       });
-
-      const manager = ContextManager.getInstance();
-
-      // Set a scope that should be cleared on instance switch
+      mockReinitialize.mockResolvedValue(undefined);
       mockDetectNamespaceType.mockResolvedValue('group');
-      await manager.setScope('my-group');
-      expect(manager.hasScope()).toBe(true);
+      const manager = getContextManager();
+      await runWithCaller(alice1, () => manager.setScope('my-group'));
 
-      // Now switch instance - should succeed with our mocks
-      const result = await manager.switchInstance('https://success-gitlab.example.com');
+      const result = await runWithCaller(alice1, () =>
+        manager.switchInstance('https://success-gitlab.example.com'),
+      );
 
-      // Verify success result
-      expect(result.success).toBe(true);
-      expect(result.previous).toBe('https://gitlab.example.com');
-      expect(result.current).toBe('https://success-gitlab.example.com');
+      expect(result).toMatchObject({
+        success: true,
+        previous: 'https://gitlab.example.com',
+        current: 'https://success-gitlab.example.com',
+      });
       expect(result.message).toContain('Success GitLab');
-
-      // Verify dependencies were called
       expect(mockClearNamespaceTierCache).toHaveBeenCalled();
       expect(mockReinitialize).toHaveBeenCalledWith('https://success-gitlab.example.com');
       expect(mockSendToolsListChangedNotification).toHaveBeenCalled();
-
-      // Verify scope was cleared (lines 465-466)
-      expect(manager.hasScope()).toBe(false);
-      expect(manager.getScopeEnforcer()).toBeNull();
+      expect((await runWithCaller(alice1, () => manager.getContext())).scope).toBeUndefined();
     });
-  });
 
-  describe('reset edge cases', () => {
-    /**
-     * Tests reset error when initialContext is null (line 367)
-     * This is a defensive check that should rarely happen in practice.
-     */
-    it('should handle reset when initialContext is artificially cleared', () => {
-      const manager = ContextManager.getInstance();
+    it('reports a failed reconnection', async () => {
+      const { InstanceRegistry } = await import('../../../../src/services/InstanceRegistry');
+      InstanceRegistry.getInstance().register({
+        url: 'https://broken-gitlab.example.com',
+        label: 'Broken',
+        insecureSkipVerify: false,
+      });
+      mockReinitialize.mockRejectedValue(new Error('unreachable'));
 
-      // Force clear initial context (defensive check in reset())
-      (manager as any).initialContext = null;
-
-      expect(() => manager.reset()).toThrow('No initial context captured - cannot reset');
-    });
-  });
-
-  describe('scopeConfigToRuntimeScope invalid scope', () => {
-    /**
-     * Tests invalid scope error (lines 162-163)
-     * This happens when ScopeConfig has no usable scope fields.
-     * scopeConfigToRuntimeScope is called in getContext(), not in switchPreset()
-     */
-    it('should throw error for empty scope config when getting context', async () => {
-      // Add preset with empty scope to mock
-      mockPresets['empty-scope'] = {
-        description: 'Empty scope preset',
-        read_only: false,
-        scope: {
-          // No project, group, namespace, projects, or groups defined
-          includeSubgroups: true,
-        },
-      };
-
-      const manager = ContextManager.getInstance();
-
-      // switchPreset succeeds (just stores the config)
-      await manager.switchPreset('empty-scope');
-
-      // getContext() calls scopeConfigToRuntimeScope which throws for invalid scope
-      expect(() => manager.getContext()).toThrow('Invalid scope configuration');
+      await expect(
+        getContextManager().switchInstance('https://broken-gitlab.example.com'),
+      ).rejects.toThrow("Failed to switch to instance 'https://broken-gitlab.example.com'");
     });
   });
 });

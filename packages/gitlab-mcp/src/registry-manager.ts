@@ -149,6 +149,8 @@ class RegistryManager {
 
   // Cached read-only tools list built from registries
   private readOnlyToolsCache: string[] | null = null;
+  private readOnlyToolSet: Set<string> | null = null;
+  private toolRegistryKeys: Map<string, string> | null = null;
 
   private constructor() {
     this.initializeRegistries();
@@ -399,6 +401,23 @@ class RegistryManager {
   private getReadOnlyTools(): string[] {
     this.readOnlyToolsCache ??= this.buildReadOnlyToolsList();
     return this.readOnlyToolsCache;
+  }
+
+  /** Whether the tool only reads GitLab (it stays available in read-only mode). */
+  public isReadOnlyTool(toolName: string): boolean {
+    this.readOnlyToolSet ??= new Set(this.getReadOnlyTools());
+    return this.readOnlyToolSet.has(toolName);
+  }
+
+  /** Key of the registry a tool belongs to (`mrs`, `wiki`, `core`, ...); undefined if unknown. */
+  public getToolRegistryKey(toolName: string): string | undefined {
+    if (!this.toolRegistryKeys) {
+      this.toolRegistryKeys = new Map();
+      for (const [key, registry] of this.registries) {
+        for (const name of registry.keys()) this.toolRegistryKeys.set(name, key);
+      }
+    }
+    return this.toolRegistryKeys.get(toolName);
   }
 
   /**

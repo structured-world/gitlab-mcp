@@ -1,0 +1,188 @@
+/**
+ * The configuration service: the one place that reads and changes what a caller works
+ * with. Native settings, manage_context and the settings panel all go through it, so the
+ * same choice means the same thing everywhere and takes effect in tool execution.
+ */
+
+import type { Preset } from '../profiles/types';
+import type { Caller } from './caller';
+import { TOOL_GROUP_IDS } from './groups';
+import { buildPolicy, selectedPreset, type EffectivePolicy, type SessionOverrides } from './policy';
+import type { SettingsStore } from './settings-store';
+import {
+  AccountSettingsSchema,
+  type AccountSettings,
+  type AccountSettingsRecord,
+  type WorkingScope,
+} from './types';
+
+/** A request the configuration cannot honour; nothing was changed. */
+export class ConfigurationError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ConfigurationError';
+  }
+}
+
+export interface PresetSource {
+  /** Load a preset; rejects for an unknown name. */
+  load(name: string): Promise<Preset>;
+}
+
+/** Field values to set; `null` removes the field and the operator default applies again. */
+export interface AccountSettingsPatch {
+  preset?: string | null;
+  readOnly?: boolean | null;
+  disabledToolGroups?: string[] | null;
+  scope?: WorkingScope | null;
+}
+
+export interface SessionOverridesPatch {
+  preset?: string | null;
+  readOnly?: boolean | null;
+  scope?: WorkingScope | null;
+  profile?: string | null;
+}
+
+export interface ResolvedConfiguration {
+  caller: Caller;
+  /** Stored account settings; version 0 when the account never saved any. */
+  account: AccountSettings;
+  accountVersion: number;
+  session: SessionOverrides;
+  policy: EffectivePolicy;
+  /** The selected preset could not be loaded; the caller works read-only until it is fixed. */
+  presetUnavailable?: string;
+}
+
+/** Concurrent edits of different fields are merged; this bounds the retries. */
+const MAX_WRITE_ATTEMPTS = 5;
+
+function applyPatch<T extends object>(base: T, patch: object): T {
+  const next: Record<string, unknown> = { ...(base as Record<string, unknown>) };
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) continue;
+    if (value === null) delete next[key];
+    else next[key] = value;
+  }
+  return next as T;
+}
+
+export class ConfigurationService {
+  /** Session overrides by account and session: another account never sees them. */
+  private readonly overrides = new Map<string, SessionOverrides>();
+  /** Sessions of each account on this replica, to notify them of account changes. */
+  private readonly accountSessions = new Map<string, Set<string>>();
+
+  constructor(
+    private readonly store: () => Promise<SettingsStore>,
+    private readonly presets: PresetSource,
+    private readonly notify: (sessionKeys: string[]) => Promise<void>,
+  ) {}
+
+  /** The caller's settings and the policy they produce. */
+  async resolve(caller: Caller): Promise<ResolvedConfiguration> {
+    this.track(caller);
+    const record = await (await this.store()).get(caller.accountKey);
+    const account = record?.settings ?? {};
+    const session = this.overrides.get(this.overrideKey(caller)) ?? {};
+    const resolved = {
+      caller,
+      account,
+      accountVersion: record?.version ?? 0,
+      session,
+    };
+    const presetName = selectedPreset(account, session);
+    if (presetName === undefined) {
+      return { ...resolved, policy: buildPolicy(undefined, account, session) };
+    }
+    try {
+      const preset = await this.presets.load(presetName);
+      return { ...resolved, policy: buildPolicy(preset, account, session) };
+    } catch {
+      // The preset was removed after it was selected. Ignoring it could widen access (it may
+      // have been read-only); failing every call would lock the caller out of the settings
+      // that fix it. Read-only keeps both safe.
+      const policy = buildPolicy(undefined, account, { ...session, readOnly: true });
+      return { ...resolved, policy: { ...policy, presetName }, presetUnavailable: presetName };
+    }
+  }
+
+  /**
+   * Change the account's settings. Fields left out keep their stored value, also when
+   * another session saved meanwhile: a conflicting write re-reads and re-applies the
+   * patch. Every value is validated before anything is written.
+   */
+  async updateAccount(caller: Caller, patch: AccountSettingsPatch): Promise<AccountSettingsRecord> {
+    await this.validate(patch);
+    const store = await this.store();
+    for (let attempt = 0; attempt < MAX_WRITE_ATTEMPTS; attempt++) {
+      const current = await store.get(caller.accountKey);
+      const next = AccountSettingsSchema.safeParse(applyPatch(current?.settings ?? {}, patch));
+      if (!next.success) throw new ConfigurationError(next.error.issues[0].message);
+      const stored = await store.put(caller.accountKey, next.data, current?.version ?? 0);
+      if (stored) {
+        this.track(caller);
+        await this.notify([...(this.accountSessions.get(caller.accountKey) ?? [])]);
+        return stored;
+      }
+    }
+    throw new ConfigurationError('The settings kept changing meanwhile; try again');
+  }
+
+  /** Change what the caller's current session uses; other sessions keep theirs. */
+  async updateSession(caller: Caller, patch: SessionOverridesPatch): Promise<SessionOverrides> {
+    await this.validate(patch);
+    const key = this.overrideKey(caller);
+    const next = applyPatch(this.overrides.get(key) ?? {}, patch);
+    if (Object.keys(next).length === 0) this.overrides.delete(key);
+    else this.overrides.set(key, next);
+    this.track(caller);
+    await this.notify([caller.sessionKey]);
+    return next;
+  }
+
+  /** Drop the session's overrides: it uses the account settings again. */
+  async resetSession(caller: Caller): Promise<void> {
+    this.overrides.delete(this.overrideKey(caller));
+    await this.notify([caller.sessionKey]);
+  }
+
+  /** Forget a closed session. */
+  forgetSession(sessionKey: string): void {
+    for (const [accountKey, sessions] of this.accountSessions) {
+      if (!sessions.delete(sessionKey)) continue;
+      this.overrides.delete(`${accountKey}\n${sessionKey}`);
+      if (sessions.size === 0) this.accountSessions.delete(accountKey);
+    }
+  }
+
+  private async validate(patch: AccountSettingsPatch | SessionOverridesPatch): Promise<void> {
+    if (typeof patch.preset === 'string') await this.loadPreset(patch.preset);
+    const groups = 'disabledToolGroups' in patch ? patch.disabledToolGroups : undefined;
+    const unknown = (groups ?? []).filter((group) => !TOOL_GROUP_IDS.has(group));
+    if (unknown.length > 0) {
+      throw new ConfigurationError(`Unknown tool group: ${unknown.join(', ')}`);
+    }
+  }
+
+  private async loadPreset(name: string): Promise<Preset> {
+    try {
+      return await this.presets.load(name);
+    } catch (error: unknown) {
+      throw new ConfigurationError(
+        `Unknown preset '${name}': ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  private overrideKey(caller: Caller): string {
+    return `${caller.accountKey}\n${caller.sessionKey}`;
+  }
+
+  private track(caller: Caller): void {
+    const sessions = this.accountSessions.get(caller.accountKey) ?? new Set<string>();
+    sessions.add(caller.sessionKey);
+    this.accountSessions.set(caller.accountKey, sessions);
+  }
+}

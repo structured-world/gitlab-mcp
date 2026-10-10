@@ -198,9 +198,9 @@ function buildCapabilities(tokenInfo: WhoamiTokenInfo | null): WhoamiCapabilitie
 /**
  * Build current context info from ContextManager
  */
-function buildContextInfo(): WhoamiContextInfo {
+async function buildContextInfo(): Promise<WhoamiContextInfo> {
   const contextManager = getContextManager();
-  const context = contextManager.getContext();
+  const context = await contextManager.getContext();
 
   return {
     activePreset: context.presetName ?? null,
@@ -437,7 +437,7 @@ export async function executeWhoami(): Promise<WhoamiResult> {
 
   const serverInfo = buildServerInfo();
   const capabilities = buildCapabilities(tokenInfo);
-  const contextInfo = buildContextInfo();
+  const contextInfo = await buildContextInfo();
   const warnings = generateWarnings(tokenInfo, capabilities, effectiveIsAdmin);
 
   // Honest admin signal: role present but elevation inactive means admin tools

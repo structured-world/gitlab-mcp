@@ -16,11 +16,24 @@ import {
 } from './utils/error-handler';
 import { GitLabTimeoutError } from './utils/fetch';
 import { getRequestTracker, getConnectionTracker, getCurrentRequestId } from './logging/index';
-import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL } from './config';
+import { LOG_FORMAT, HANDLER_TIMEOUT_MS, GITLAB_BASE_URL, GITLAB_READ_ONLY_MODE } from './config';
 import { getSchemaMode } from './utils/schema-utils';
 import { formatToolResult, errorToolResult } from './utils/tool-result';
 import { OAUTH_SECURITY_SCHEMES, toolScopeRejection, withReauthChallenge } from './oauth/tool-auth';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
+import {
+  getConfigurationService,
+  resolveCaller,
+  runWithCaller,
+  type Caller,
+} from './configuration';
+import { groupOfRegistry } from './configuration/groups';
+import {
+  callRestriction,
+  toolRestriction,
+  type EffectivePolicy,
+  type ToolFacts,
+} from './configuration/policy';
 
 interface JsonSchemaProperty {
   type?: string;
@@ -423,15 +436,65 @@ function formatBootstrapFailure(ctx: BootstrapContext, initError: unknown): Call
   return withReauthChallenge(errorToolResult(connError), initError);
 }
 
-function recordCallContext(
-  sessionContext: import('./entities/context/types').SessionContext,
-): void {
+/** What the policy needs to know about a tool, from the registry it belongs to. */
+function toolFacts(
+  toolName: string,
+  registryManager: import('./registry-manager').RegistryManager,
+): ToolFacts {
+  return {
+    name: toolName,
+    group: groupOfRegistry(registryManager.getToolRegistryKey(toolName)),
+    readOnly: registryManager.isReadOnlyTool(toolName),
+  };
+}
+
+/**
+ * The tool list narrowed by the caller's settings. When the settings cannot be read the
+ * list stays as the registry built it: listing is only visibility, and every call is
+ * still checked (and refused while the settings cannot be read).
+ */
+async function withoutRestrictedTools<T extends { name: string }>(
+  tools: T[],
+  caller: Caller,
+  registryManager: import('./registry-manager').RegistryManager,
+): Promise<T[]> {
+  let policy: EffectivePolicy;
+  try {
+    policy = (await getConfigurationService().resolve(caller)).policy;
+  } catch (error: unknown) {
+    logWarn('Could not read the caller settings for the tool list', { err: error as Error });
+    return tools;
+  }
+  return tools.filter(
+    (tool) => toolRestriction(policy, toolFacts(tool.name, registryManager)) === null,
+  );
+}
+
+/** A refusal for a call the caller's settings do not allow, or null when it may run. */
+function settingsRejection(
+  toolName: string,
+  args: Record<string, unknown>,
+  policy: EffectivePolicy,
+  registryManager: import('./registry-manager').RegistryManager,
+): CallToolResult | null {
+  const reason = callRestriction(policy, toolFacts(toolName, registryManager), args);
+  if (reason === null) return null;
+  const action = typeof args.action === 'string' ? args.action : undefined;
+  const message =
+    `'${toolName}${action ? ` ${action}` : ''}' is not allowed by the current settings: ` +
+    `${reason}. The account settings are changed with update_settings, this session's ` +
+    'with manage_context.';
+  recordEarlyReturnError(toolName, action, message);
+  return errorToolResult({ error: message });
+}
+
+function recordCallContext(scopePath: string | undefined, readOnly: boolean): void {
   const requestTracker = getRequestTracker();
   // Capture current context and read-only state for access logging
-  if (sessionContext.scope?.path) {
-    requestTracker.setContextForCurrentRequest(sessionContext.scope.path);
+  if (scopePath) {
+    requestTracker.setContextForCurrentRequest(scopePath);
   }
-  requestTracker.setReadOnlyForCurrentRequest(sessionContext.readOnly);
+  requestTracker.setReadOnlyForCurrentRequest(readOnly);
 
   // Increment tool count for connection tracking
   const currentRequestId = getCurrentRequestId();
@@ -607,10 +670,15 @@ export async function setupHandlers(server: Server): Promise<void> {
     // OAuth deployments declare the token every tool needs; static-token mode keeps
     // the descriptors as before.
     const securitySchemes = isCatalogOAuth() ? OAUTH_SECURITY_SCHEMES : undefined;
-    const tools =
+    const catalog =
       scopes === undefined
         ? registryManager.getAllToolDefinitions(sessionInstanceUrl, mode)
         : registryManager.getAllToolDefinitions(sessionInstanceUrl, mode, scopes);
+    const tools = await withoutRestrictedTools(
+      catalog,
+      resolveCaller(listToolsSessionId, sessionInstanceUrl ?? GITLAB_BASE_URL),
+      registryManager,
+    );
 
     logInfo('Returning tools list', { toolCount: tools.length });
 
@@ -769,6 +837,8 @@ export async function setupHandlers(server: Server): Promise<void> {
       const { getSessionManager: getSessionMgrForCall } = await import('./session-manager');
       getSessionMgrForCall().setSessionInstanceUrl(callSessionId, requestInstanceUrl);
     }
+    // Whose settings apply, from the authenticated request only.
+    const caller = resolveCaller(callSessionId, requestInstanceUrl);
 
     // Flag to prevent late reportSuccess/reportError from a timed-out handlerWork()
     // overwriting the timeout signal already sent to HealthMonitor.
@@ -818,6 +888,18 @@ export async function setupHandlers(server: Server): Promise<void> {
       const toolName = request.params.name;
       const toolArguments = request.params.arguments;
 
+      // The caller's settings, checked before anything reaches GitLab. A call is refused
+      // when they cannot be read: allowing it could bypass a restriction.
+      const { RegistryManager: CallRegistry } = await import('./registry-manager');
+      const configuration = await getConfigurationService().resolve(caller);
+      const settingsRefusal = settingsRejection(
+        toolName,
+        toolArguments ?? {},
+        configuration.policy,
+        CallRegistry.getInstance(),
+      );
+      if (settingsRefusal) return settingsRefusal;
+
       // Early return: instance unreachable for non-context tools
       // (isInstanceReachable treats untracked URLs as reachable before HealthMonitor.initialize)
       const unreachableResult = checkUnreachableInstance(
@@ -861,8 +943,11 @@ export async function setupHandlers(server: Server): Promise<void> {
       if (LOG_FORMAT === 'condensed') {
         const requestTracker = getRequestTracker();
         requestTracker.setToolForCurrentRequest(toolName, action);
-        const { getContextManager } = await import('./entities/context/context-manager');
-        recordCallContext(getContextManager().getContext());
+        const scope = configuration.policy.scope;
+        recordCallContext(
+          scope?.project ?? scope?.group ?? scope?.namespace ?? scope?.projects?.[0],
+          GITLAB_READ_ONLY_MODE || configuration.policy.readOnly,
+        );
       }
 
       try {
@@ -939,7 +1024,7 @@ export async function setupHandlers(server: Server): Promise<void> {
       // complete — but the alternative (no timeout) leaves bootstrap unbounded
       // if the instance is hung. The timedOut flag prevents late reportSuccess/
       // reportError from overwriting the timeout health signal.
-      const result = await Promise.race([handlerWork(), timeoutPromise]);
+      const result = await Promise.race([runWithCaller(caller, handlerWork), timeoutPromise]);
 
       if (result === HANDLER_TIMEOUT_SYMBOL) {
         // timedOut already set in timer callback — handler is still running but we respond

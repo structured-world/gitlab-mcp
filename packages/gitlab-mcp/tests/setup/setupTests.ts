@@ -23,12 +23,6 @@ if (fs.existsSync(envTestPath)) {
   if (!process.env.USE_PIPELINE) process.env.USE_PIPELINE = 'true';
   if (!process.env.USE_GITLAB_WIKI) process.env.USE_GITLAB_WIKI = 'true';
 
-  // A shared test instance answers slower than the production default allows; .env.test
-  // can still set its own value.
-  if (!process.env.GITLAB_API_HEADERS_TIMEOUT_MS) {
-    process.env.GITLAB_API_HEADERS_TIMEOUT_MS = '20000';
-  }
-
   // Integration tests enabled - environment loaded silently
 } else {
   console.log('⚠️  .env.test not found - Integration tests disabled');

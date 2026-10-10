@@ -728,32 +728,33 @@ describe('Work Items Schema - GitLab 18.3 Integration', () => {
       }
 
       console.log('🏷️  Testing removeLabelIds (incremental remove)...');
+      const labelIdsOf = (item: any): string[] =>
+        (item.widgets?.find((w: any) => w.type === 'LABELS')?.labels?.nodes ?? []).map(
+          (label: any) => String(label.id),
+        );
 
-      // Get current labels count before removal
+      // Start from a known label set: the earlier label tests skip without two labels, so
+      // the work item may carry none at this point.
+      await helper.executeTool('manage_work_item', {
+        action: 'update',
+        id: testWorkItemId,
+        labelIds: [label1Id],
+      });
       const beforeRemove = (await helper.executeTool('browse_work_items', {
         action: 'get',
         id: testWorkItemId,
       })) as any;
-      const beforeWidget = beforeRemove.widgets?.find((w: any) => w.type === 'LABELS');
-      const beforeCount = beforeWidget?.labels?.nodes?.length || 0;
-      console.log(`  Before remove: ${beforeCount} labels`);
+      expect(labelIdsOf(beforeRemove)).toContain(label1Id);
 
-      // Remove label1
       const removeUpdate = (await helper.executeTool('manage_work_item', {
         action: 'update',
         id: testWorkItemId,
         removeLabelIds: [label1Id],
       })) as any;
 
-      expect(removeUpdate).toBeDefined();
-
-      // Verify label was removed
-      const labelsWidget = removeUpdate.widgets?.find((w: any) => w.type === 'LABELS');
-      const afterCount = labelsWidget?.labels?.nodes?.length || 0;
-      console.log(`  ✅ After remove: ${afterCount} labels`);
-
-      // Should have fewer labels
-      expect(afterCount).toBeLessThan(beforeCount);
+      // The removed label is gone and nothing else changed
+      expect(labelIdsOf(removeUpdate)).not.toContain(label1Id);
+      expect(labelIdsOf(removeUpdate)).toHaveLength(labelIdsOf(beforeRemove).length - 1);
 
       console.log('✅ removeLabelIds incremental remove test completed');
     }, 30000);

@@ -333,6 +333,32 @@ describe('FileStorageBackend', () => {
       expect(await storage.getSessionByToken('undisclosed-access')).toBeUndefined();
     });
 
+    // A write started meanwhile by another request must not persist the rotation that
+    // failed: after a restart the client's old refresh token still has to work.
+    it('does not let a concurrent write persist a failed rotation', async () => {
+      const { session } = await seeded();
+      const open = failNextWrite();
+      let rotation: Promise<boolean>;
+      try {
+        rotation = storage.rotateSession(session.id, session.mcpRefreshToken, {
+          mcpRefreshToken: 'undisclosed-refresh',
+        });
+        const other = storage.createSession(createTestSession({ id: 'concurrent' }));
+        await expect(rotation).rejects.toThrow('EACCES');
+        await other;
+      } finally {
+        open.mockRestore();
+      }
+      const restarted = await reloadAfterCrash();
+
+      expect((await restarted.getSessionByRefreshToken(session.mcpRefreshToken))?.id).toBe(
+        session.id,
+      );
+      expect(await restarted.getSessionByRefreshToken('undisclosed-refresh')).toBeUndefined();
+      expect(await restarted.getSession('concurrent')).toBeDefined();
+      await restarted.close();
+    });
+
     // Same for a consumption: the caller saw a failure, so the code stays redeemable.
     it('keeps a code whose consumption cannot be written', async () => {
       const { code } = await seeded();

@@ -40,6 +40,10 @@ export interface FileStorageOptions {
   saveDebounce?: number;
 }
 
+function isPresent<T>(record: T | undefined): record is T {
+  return record !== undefined;
+}
+
 /**
  * Flush a directory entry change (the rename) to disk. Windows cannot open a directory
  * for syncing; NTFS journals the rename itself.
@@ -199,21 +203,67 @@ export class FileStorageBackend implements SessionStorageBackend {
    * reported only after this succeeds, so a crash cannot bring them back.
    */
   private async persistNow(): Promise<void> {
+    this.cancelPendingSave();
+    await this.writeSnapshot();
+  }
+
+  private cancelPendingSave(): void {
     if (this.saveDebounceId) {
       clearTimeout(this.saveDebounceId);
       this.saveDebounceId = null;
     }
     this.pendingSave = false;
-    await this.writeSnapshot();
   }
 
   /**
-   * Atomically replace the file with the current state; rejects when the write fails.
-   * The state is captured now and writes run one at a time in call order, so concurrent
-   * writes never share the temp file and the last call's state is what remains.
+   * Run `task` as the next step of the write queue: steps run one at a time in call order,
+   * so concurrent writes never share the temp file. A failed step is reported to its
+   * caller; the next one still runs.
    */
+  private enqueue<T>(task: () => Promise<T>): Promise<T> {
+    const step = this.writeQueue.then(task);
+    this.writeQueue = step.then(
+      () => undefined,
+      () => undefined,
+    );
+    return step;
+  }
+
+  /** Atomically replace the file with the state at the time the write runs. */
   private writeSnapshot(): Promise<void> {
-    if (!this.initialized) return Promise.resolve();
+    return this.enqueue(() => this.writeState());
+  }
+
+  /**
+   * A single-use transition as one step of the write queue: the change, the write of the
+   * resulting state and, when the write fails, the undo of the change. No other write can
+   * capture the changed state in between, so a transition reported as failed is never
+   * persisted. `changed` tells whether there is anything to write.
+   */
+  private transition<T, Changed extends T>(
+    change: () => Promise<T>,
+    changed: (result: T) => result is Changed,
+    undo: (result: Changed) => Promise<unknown>,
+  ): Promise<T> {
+    this.cancelPendingSave();
+    return this.enqueue(async () => {
+      const result = await change();
+      if (!changed(result)) return result;
+      try {
+        await this.writeState();
+      } catch (error: unknown) {
+        // The caller never used the result, so the code, flow or refresh token it would
+        // have spent stays usable for the retry.
+        await undo(result);
+        throw error;
+      }
+      return result;
+    });
+  }
+
+  /** Write the current state; rejects when the write fails. Runs only inside the queue. */
+  private async writeState(): Promise<void> {
+    if (!this.initialized) return;
 
     const exportedData = this.memory.exportData();
 
@@ -228,32 +278,26 @@ export class FileStorageBackend implements SessionStorageBackend {
       clients: exportedData.clients,
     };
 
-    const content = JSON.stringify(data);
-    const write = this.writeQueue.then(async () => {
-      // Atomic write: write to temp file, then rename. Both are flushed to disk, so a
-      // power loss cannot bring back a spent code or a revoked session either.
-      // The store holds account tokens: owner-only, whatever the umask. The mode applies
-      // only when the file is created, so a temp file left by a crash is narrowed too.
-      const tempPath = `${this.filePath}.tmp`;
-      const file = await fs.promises.open(tempPath, 'w', 0o600);
-      try {
-        await file.chmod(0o600);
-        await file.writeFile(content, 'utf-8');
-        await file.sync();
-      } finally {
-        await file.close();
-      }
-      await fs.promises.rename(tempPath, this.filePath);
-      await syncDirectory(path.dirname(this.filePath));
-      logDebug('Saved sessions to file', {
-        sessions: data.sessions.length,
-        deviceFlows: data.deviceFlows.length,
-        authCodes: data.authCodes.length,
-      });
+    // Atomic write: write to temp file, then rename. Both are flushed to disk, so a power
+    // loss cannot bring back a spent code or a revoked session either. The store holds
+    // account tokens: owner-only, whatever the umask. The mode applies only when the file
+    // is created, so a temp file left by a crash is narrowed too.
+    const tempPath = `${this.filePath}.tmp`;
+    const file = await fs.promises.open(tempPath, 'w', 0o600);
+    try {
+      await file.chmod(0o600);
+      await file.writeFile(JSON.stringify(data), 'utf-8');
+      await file.sync();
+    } finally {
+      await file.close();
+    }
+    await fs.promises.rename(tempPath, this.filePath);
+    await syncDirectory(path.dirname(this.filePath));
+    logDebug('Saved sessions to file', {
+      sessions: data.sessions.length,
+      deviceFlows: data.deviceFlows.length,
+      authCodes: data.authCodes.length,
     });
-    // A failed write is reported to its caller; the next write still runs.
-    this.writeQueue = write.catch(() => undefined);
-    return write;
   }
 
   private scheduleSave(): void {
@@ -413,40 +457,30 @@ export class FileStorageBackend implements SessionStorageBackend {
     return removed;
   }
 
-  /**
-   * Write a single-use transition through; when the write fails, undo it in memory before
-   * reporting the failure. The caller then never used the result, so the record (a code,
-   * a flow, the client's refresh token) must stay usable for its retry.
-   */
-  private async persistOrUndo(undo: () => Promise<unknown>): Promise<void> {
-    try {
-      await this.persistNow();
-    } catch (error: unknown) {
-      await undo();
-      throw error;
-    }
-  }
-
   // Single-use consumption and refresh rotation: written through before they are
   // reported, so a crash cannot make a spent code, flow or refresh token usable again.
-  async consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {
-    const record = await this.memory.consumeAuthCode(code);
-    if (record) await this.persistOrUndo(() => this.memory.storeAuthCode(record));
-    return record;
+  consumeAuthCode(code: string): Promise<AuthorizationCode | undefined> {
+    return this.transition(
+      () => this.memory.consumeAuthCode(code),
+      isPresent,
+      (record) => this.memory.storeAuthCode(record),
+    );
   }
 
-  async consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
-    const record = await this.memory.consumeAuthCodeFlow(internalState);
-    if (record) {
-      await this.persistOrUndo(() => this.memory.storeAuthCodeFlow(internalState, record));
-    }
-    return record;
+  consumeAuthCodeFlow(internalState: string): Promise<AuthCodeFlowState | undefined> {
+    return this.transition(
+      () => this.memory.consumeAuthCodeFlow(internalState),
+      isPresent,
+      (record) => this.memory.storeAuthCodeFlow(internalState, record),
+    );
   }
 
-  async consumeDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
-    const record = await this.memory.consumeDeviceFlow(state);
-    if (record) await this.persistOrUndo(() => this.memory.storeDeviceFlow(state, record));
-    return record;
+  consumeDeviceFlow(state: string): Promise<DeviceFlowState | undefined> {
+    return this.transition(
+      () => this.memory.consumeDeviceFlow(state),
+      isPresent,
+      (record) => this.memory.storeDeviceFlow(state, record),
+    );
   }
 
   async claimDevicePoll(
@@ -479,15 +513,19 @@ export class FileStorageBackend implements SessionStorageBackend {
     expectedRefreshToken: string,
     updates: Partial<OAuthSession>,
   ): Promise<boolean> {
-    // The stored session is updated in place: copy the fields the rotation replaces first.
-    const current = await this.memory.getSession(sessionId);
     const previous: Partial<OAuthSession> = {};
-    for (const key of Object.keys(updates) as Array<keyof OAuthSession>) {
-      Object.assign(previous, { [key]: current?.[key] });
-    }
-    const rotated = await this.memory.rotateSession(sessionId, expectedRefreshToken, updates);
-    if (rotated) await this.persistOrUndo(() => this.memory.updateSession(sessionId, previous));
-    return rotated;
+    return this.transition(
+      async () => {
+        // The stored session is updated in place: copy the fields the rotation replaces.
+        const current = await this.memory.getSession(sessionId);
+        for (const key of Object.keys(updates) as Array<keyof OAuthSession>) {
+          Object.assign(previous, { [key]: current?.[key] });
+        }
+        return this.memory.rotateSession(sessionId, expectedRefreshToken, updates);
+      },
+      (rotated): rotated is true => rotated,
+      () => this.memory.updateSession(sessionId, previous),
+    );
   }
 
   // Cleanup
